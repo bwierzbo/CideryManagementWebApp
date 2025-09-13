@@ -93,6 +93,9 @@ importers:
       dotenv:
         specifier: ^17.2.2
         version: 17.2.2
+      drizzle-orm:
+        specifier: ^0.28.6
+        version: 0.28.6(@types/pg@8.15.5)(pg@8.16.3)
       lucide-react:
         specifier: ^0.544.0
         version: 0.544.0(react@18.3.1)
