@@ -18,6 +18,7 @@
   "dependencies": {
     "@types/json-diff": "^1.0.3",
     "db": "workspace:^",
+    "drizzle-orm": "^0.28.6",
     "json-diff": "^1.0.6",
     "typescript": "^5.3.0",
     "zod": "^3.22.4"

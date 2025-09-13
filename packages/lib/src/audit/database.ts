@@ -1,12 +1,8 @@
-import { DrizzleD1Database } from 'drizzle-orm/d1'
-import { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import { eq, and, desc, asc, gte, lte, inArray, sql } from 'drizzle-orm'
+import { type Database } from 'db'
 import { auditLogs, auditMetadata, type AuditLog, type NewAuditLog, type AuditMetadata, type NewAuditMetadata } from 'db/src/schema/audit'
 import type { AuditLogEntry, AuditSnapshot } from './service'
 import { createAuditLogEntry, validateAuditSnapshot } from './service'
-
-// Database type - adjust based on your setup
-type Database = PostgresJsDatabase<any> | DrizzleD1Database<any>
 
 export interface AuditQueryOptions {
   tableName?: string

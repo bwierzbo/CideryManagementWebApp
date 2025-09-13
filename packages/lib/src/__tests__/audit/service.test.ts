@@ -341,7 +341,7 @@ describe('Audit Service', () => {
 
     it('should reject invalid operation type', () => {
       const snapshot = {
-        operation: 'invalid_operation',
+        operation: 'invalid_operation' as any,
         tableName: 'users',
         recordId: '123e4567-e89b-12d3-a456-426614174000'
       } as AuditSnapshot
