@@ -79,7 +79,7 @@ export default function AuthTestPage() {
 
           <div>
             <h3 className="font-medium">RBAC Endpoint (/vendors.list)</h3>
-            <p className="text-sm text-gray-600">Requires 'list vendor' permission</p>
+            <p className="text-sm text-gray-600">Requires &apos;list vendor&apos; permission</p>
             <p className={vendorsList.isLoading ? 'text-yellow-600' : vendorsList.isSuccess ? 'text-green-600' : 'text-red-600'}>
               {!session ? '⚪ Not attempted (not signed in)' : vendorsList.isLoading ? 'Loading...' : vendorsList.isSuccess ? '✅ Success: ' + JSON.stringify(vendorsList.data) : '❌ Error: ' + vendorsList.error?.message}
             </p>

@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { 
+import {
   Package,
-  Bottle,
+  Wine,
   Archive,
   MapPin,
   BarChart3,
@@ -35,8 +35,8 @@ import { z } from "zod"
 const packagingSchema = z.object({
   batchId: z.string().uuid("Select a batch"),
   packageDate: z.string().min(1, "Package date is required"),
-  bottleSize: z.string().min(1, "Bottle size is required"),
-  bottleCount: z.number().positive("Bottle count must be positive"),
+  bottleSize: z.string().min(1, "Wine size is required"),
+  bottleCount: z.number().positive("Wine count must be positive"),
   volumePackagedL: z.number().positive("Volume must be positive"),
   lossL: z.number().min(0, "Loss cannot be negative").optional(),
   abvAtPackaging: z.number().min(0).max(20).optional(),
@@ -69,7 +69,7 @@ function PackagingRunForm() {
     { id: "B-2024-003", batchNumber: "B-2024-003", currentVolumeL: 1150, abv: 6.5, vessel: "Bright Tank 1" }
   ]
 
-  const calculateBottleVolume = (size: string) => {
+  const calculateWineVolume = (size: string) => {
     switch (size) {
       case "375ml": return 0.375
       case "500ml": return 0.5
@@ -81,7 +81,7 @@ function PackagingRunForm() {
 
   const calculateExpectedVolume = () => {
     if (!bottleCount || !bottleSize) return 0
-    return bottleCount * calculateBottleVolume(bottleSize)
+    return bottleCount * calculateWineVolume(bottleSize)
   }
 
   const calculateLossPercentage = () => {
@@ -137,7 +137,7 @@ function PackagingRunForm() {
           {/* Packaging Details */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <Label htmlFor="bottleSize">Bottle Size</Label>
+              <Label htmlFor="bottleSize">Wine Size</Label>
               <Select onValueChange={(value) => setValue("bottleSize", value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select size" />
@@ -152,7 +152,7 @@ function PackagingRunForm() {
               {errors.bottleSize && <p className="text-sm text-red-600 mt-1">{errors.bottleSize.message}</p>}
             </div>
             <div>
-              <Label htmlFor="bottleCount">Bottle Count</Label>
+              <Label htmlFor="bottleCount">Wine Count</Label>
               <Input 
                 id="bottleCount" 
                 type="number"
@@ -270,7 +270,7 @@ function InventoryView() {
       packageDate: "2024-01-20",
       expiryDate: "2025-01-20",
       value: 6900.00,
-      costPerBottle: 15.00
+      costPerWine: 15.00
     },
     {
       id: "INV-002", 
@@ -286,7 +286,7 @@ function InventoryView() {
       packageDate: "2024-01-18",
       expiryDate: "2025-01-18",
       value: 9375.00,
-      costPerBottle: 12.50
+      costPerWine: 12.50
     },
     {
       id: "INV-003",
@@ -302,7 +302,7 @@ function InventoryView() {
       packageDate: "2024-01-15",
       expiryDate: "2025-01-15", 
       value: 14240.00,
-      costPerBottle: 16.00
+      costPerWine: 16.00
     }
   ]
 
@@ -313,7 +313,7 @@ function InventoryView() {
   )
 
   const totalValue = inventory.reduce((sum, item) => sum + item.value, 0)
-  const totalBottles = inventory.reduce((sum, item) => sum + item.currentStock, 0)
+  const totalWines = inventory.reduce((sum, item) => sum + item.currentStock, 0)
   const totalAvailable = inventory.reduce((sum, item) => sum + item.availableStock, 0)
 
   return (
@@ -356,10 +356,10 @@ function InventoryView() {
           <div className="bg-blue-50 p-4 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-blue-600">Total Bottles</p>
-                <p className="text-2xl font-bold text-blue-900">{totalBottles.toLocaleString()}</p>
+                <p className="text-sm text-blue-600">Total Wines</p>
+                <p className="text-2xl font-bold text-blue-900">{totalWines.toLocaleString()}</p>
               </div>
-              <Bottle className="w-8 h-8 text-blue-600" />
+              <Wine className="w-8 h-8 text-blue-600" />
             </div>
           </div>
           <div className="bg-green-50 p-4 rounded-lg">
@@ -506,7 +506,7 @@ function RecentPackagingRuns() {
               <TableHead>Date</TableHead>
               <TableHead>Product</TableHead>
               <TableHead>Size</TableHead>
-              <TableHead>Bottles</TableHead>
+              <TableHead>Wines</TableHead>
               <TableHead>Volume</TableHead>
               <TableHead>Loss</TableHead>
               <TableHead>Location</TableHead>
