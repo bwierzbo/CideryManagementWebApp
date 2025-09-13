@@ -2,6 +2,15 @@ import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
 import { getServerSession } from 'next-auth/next'
 import { appRouter } from 'api'
 import { authOptions } from '../../auth/[...nextauth]/route'
+import { initializeAuditSystem } from 'api/src/middleware/audit'
+import { db } from 'db'
+
+// Initialize audit system once
+initializeAuditSystem(db, {
+  enabled: true,
+  excludedTables: ['audit_logs', 'audit_metadata', 'sessions'],
+  includeRequestInfo: true
+})
 
 const handler = (req: Request) =>
   fetchRequestHandler({

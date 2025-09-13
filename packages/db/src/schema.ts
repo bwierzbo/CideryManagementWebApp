@@ -353,3 +353,6 @@ export const cogsItemsRelations = relations(cogsItems, ({ one }) => ({
     references: [batches.id]
   })
 }))
+
+// Re-export audit schema
+export * from './schema/audit'

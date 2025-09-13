@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { router, publicProcedure, protectedProcedure, adminProcedure, createRbacProcedure } from '../trpc'
+import { auditRouter } from './audit'
 import { 
   db, 
   vendors, 
@@ -1684,7 +1685,10 @@ export const appRouter = router({
           role: ctx.session?.user?.role
         }
       })
-  })
+  }),
+
+  // Audit logging and reporting
+  audit: auditRouter
 })
 
 export type AppRouter = typeof appRouter

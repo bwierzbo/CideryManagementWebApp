@@ -1,5 +1,6 @@
 import { initTRPC, TRPCError } from '@trpc/server'
 import { can } from 'lib/src/rbac/roles'
+import { auditMiddleware, enhancedAuditMiddleware, createAuditMiddleware } from './middleware/audit'
 
 export interface Context {
   session?: {
@@ -41,6 +42,11 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
 })
 
 /**
+ * Protected procedure with automatic audit logging
+ */
+export const auditedProcedure = protectedProcedure.use(auditMiddleware)
+
+/**
  * Admin-only procedure that requires admin role
  */
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -61,14 +67,14 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 export const createRbacProcedure = (action: string, entity: string) =>
   protectedProcedure.use(({ ctx, next }) => {
     const userRole = ctx.session?.user?.role as 'admin' | 'operator'
-    
+
     if (!userRole || !can(userRole, action as any, entity as any)) {
-      throw new TRPCError({ 
+      throw new TRPCError({
         code: 'FORBIDDEN',
         message: `Insufficient permissions to ${action} ${entity}`
       })
     }
-    
+
     return next({
       ctx: {
         ...ctx,
@@ -76,3 +82,18 @@ export const createRbacProcedure = (action: string, entity: string) =>
       },
     })
   })
+
+/**
+ * Create an audited RBAC procedure that includes automatic audit logging
+ */
+export const createAuditedRbacProcedure = (action: string, entity: string) =>
+  createRbacProcedure(action, entity).use(auditMiddleware)
+
+/**
+ * Create a procedure with specific audit configuration
+ */
+export const createCustomAuditProcedure = (
+  tableName: string,
+  operation: 'create' | 'update' | 'delete' | 'soft_delete' | 'restore',
+  dataFetcher?: (recordId: string) => Promise<any>
+) => protectedProcedure.use(createAuditMiddleware(tableName, operation, dataFetcher))

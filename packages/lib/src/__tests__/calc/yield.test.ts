@@ -251,17 +251,17 @@ describe('Yield Calculations', () => {
   describe('Yield Curve Validation', () => {
     it('should show realistic yield ranges across varieties', () => {
       const varieties = [
-        'Honeycrisp', 'Granny Smith', 'Gala', 'Fuji', 
+        'Honeycrisp', 'Granny Smith', 'Gala', 'Fuji',
         'Northern Spy', 'Rhode Island Greening', 'McIntosh'
       ]
-      
+
       varieties.forEach(variety => {
         const range = getVarietyYieldRange(variety)
-        
+
         // All yields should be realistic (between 0.4 and 0.8 L/kg)
         expect(range.min).toBeGreaterThan(0.4)
         expect(range.max).toBeLessThan(0.8)
-        
+
         // Range should be reasonable (not more than 0.25 spread)
         expect(range.max - range.min).toBeLessThanOrEqual(0.25)
       })
@@ -275,7 +275,7 @@ describe('Yield Calculations', () => {
         { actual: 0.48, expected: 0.6, efficiency: 80 },
         { actual: 0.72, expected: 0.6, efficiency: 120 }
       ]
-      
+
       testCases.forEach(({ actual, expected, efficiency }) => {
         expect(calculateExtractionEfficiency(actual, expected)).toBe(efficiency)
       })
@@ -285,7 +285,7 @@ describe('Yield Calculations', () => {
       const baseExpected = 0.6
       const testActuals = [0.48, 0.54, 0.6, 0.66, 0.72]
       const expectedVariances = [-20, -10, 0, 10, 20]
-      
+
       testActuals.forEach((actual, index) => {
         const variance = calcVariancePct(actual, baseExpected)
         expect(variance).toBe(expectedVariances[index])
@@ -296,14 +296,371 @@ describe('Yield Calculations', () => {
       // Poor extraction day
       const poorYield = calcActualLPerKg(400, 1000) // 0.4 L/kg
       expect(getYieldPerformanceCategory(calculateExtractionEfficiency(poorYield, 0.6))).toBe('Very Poor')
-      
-      // Good extraction day  
+
+      // Good extraction day
       const goodYield = calcActualLPerKg(650, 1000) // 0.65 L/kg
       expect(getYieldPerformanceCategory(calculateExtractionEfficiency(goodYield, 0.6))).toBe('Excellent')
-      
+
       // Exceptional day
       const exceptionalYield = calcActualLPerKg(720, 1000) // 0.72 L/kg
       expect(getYieldPerformanceCategory(calculateExtractionEfficiency(exceptionalYield, 0.6))).toBe('Exceptional')
+    })
+  })
+
+  describe('Yield Precision and Edge Cases', () => {
+    it('should handle very small yields with precision', () => {
+      // Minimal juice extraction
+      const minimalYield = calcActualLPerKg(0.1, 1000)
+      expect(minimalYield).toBe(0.0001)
+
+      // Very small apple quantities (should be within physical limits)
+      const smallBatch = calcActualLPerKg(0.15, 0.1) // 0.15L from 0.1kg = 1.5 L/kg (under 2x limit)
+      expect(smallBatch).toBe(1.5000)
+    })
+
+    it('should maintain precision with large quantities', () => {
+      // Industrial scale processing
+      const largeScale = calcActualLPerKg(50000, 75000)
+      expect(largeScale).toBe(0.6667)
+
+      // Very large numbers should still work
+      const megaScale = calcActualLPerKg(1000000, 1666666)
+      expect(megaScale).toBe(0.6000)
+    })
+
+    it('should handle decimal precision edge cases', () => {
+      // Test rounding to 4 decimal places
+      const precisionTests = [
+        { juice: 100, apples: 333, expected: 0.3003 },
+        { juice: 1, apples: 3, expected: 0.3333 },
+        { juice: 1000, apples: 777, expected: 1.287 }
+      ]
+
+      precisionTests.forEach(({ juice, apples, expected }) => {
+        expect(calcActualLPerKg(juice, apples)).toBe(expected)
+      })
+    })
+
+    it('should handle variance calculation boundary conditions', () => {
+      // Very small variances
+      const tinyVariance = calcVariancePct(0.60001, 0.6)
+      expect(tinyVariance).toBe(0.00)
+
+      // Very large variances
+      const hugeVariance = calcVariancePct(1.8, 0.6)
+      expect(hugeVariance).toBe(200.00)
+
+      // Precision at boundary
+      const boundaryVariance = calcVariancePct(0.599999, 0.6)
+      expect(boundaryVariance).toBe(-0.00)
+    })
+
+    it('should validate physical impossibility checks', () => {
+      // Juice cannot exceed 2x apple weight (1 kg apples = 1L at most, plus water)
+      expect(() => calcActualLPerKg(2001, 1000))
+        .toThrow('Juice volume cannot exceed twice the input weight')
+
+      // Edge case: exactly 2x should work
+      expect(() => calcActualLPerKg(2000, 1000)).not.toThrow()
+
+      // Very close to limit should work
+      expect(() => calcActualLPerKg(1999.99, 1000)).not.toThrow()
+    })
+
+    it('should handle floating-point precision in yield calculations', () => {
+      // Test potential floating-point arithmetic issues
+      const juice = 0.1 + 0.2 // JavaScript precision issue
+      const apples = 0.3
+
+      const yield1 = calcActualLPerKg(juice, 1)
+      const yield2 = calcActualLPerKg(0.3, 1)
+
+      // Should be approximately equal within precision
+      expect(Math.abs(yield1 - yield2)).toBeLessThan(0.0001)
+    })
+  })
+
+  describe('Variety Yield Edge Cases', () => {
+    it('should handle case sensitivity in variety names', () => {
+      // Test same variety with different cases
+      const lower = getVarietyYieldRange('honeycrisp')
+      const upper = getVarietyYieldRange('HONEYCRISP')
+      const mixed = getVarietyYieldRange('HoneyCrisp')
+      const correct = getVarietyYieldRange('Honeycrisp')
+
+      // All should return default since case doesn't match
+      expect(lower).toEqual({ min: 0.50, max: 0.70, typical: 0.60 })
+      expect(upper).toEqual({ min: 0.50, max: 0.70, typical: 0.60 })
+      expect(mixed).toEqual({ min: 0.50, max: 0.70, typical: 0.60 })
+
+      // Only exact case should return specific variety
+      expect(correct.typical).toBe(0.62)
+    })
+
+    it('should handle empty and whitespace variety names', () => {
+      expect(getVarietyYieldRange('')).toEqual({ min: 0.50, max: 0.70, typical: 0.60 })
+      expect(getVarietyYieldRange('   ')).toEqual({ min: 0.50, max: 0.70, typical: 0.60 })
+      expect(getVarietyYieldRange('\t\n')).toEqual({ min: 0.50, max: 0.70, typical: 0.60 })
+    })
+
+    it('should validate variety yield relationships', () => {
+      // High-yielding varieties should have higher typical yields
+      const highYielders = ['Northern Spy', 'Rhode Island Greening']
+      const lowYielders = ['Red Delicious', 'Fuji']
+
+      const avgHighYield = highYielders
+        .map(v => getVarietyYieldRange(v).typical)
+        .reduce((sum, val) => sum + val, 0) / highYielders.length
+
+      const avgLowYield = lowYielders
+        .map(v => getVarietyYieldRange(v).typical)
+        .reduce((sum, val) => sum + val, 0) / lowYielders.length
+
+      expect(avgHighYield).toBeGreaterThan(avgLowYield)
+    })
+
+    it('should validate all defined varieties have consistent ranges', () => {
+      const definedVarieties = [
+        'Honeycrisp', 'Granny Smith', 'Gala', 'Fuji', 'Northern Spy',
+        'Rhode Island Greening', 'McIntosh', 'Red Delicious', 'Golden Delicious', 'Braeburn'
+      ]
+
+      definedVarieties.forEach(variety => {
+        const range = getVarietyYieldRange(variety)
+
+        // Validate range consistency
+        expect(range.min).toBeLessThan(range.typical)
+        expect(range.typical).toBeLessThan(range.max)
+
+        // Validate realistic values
+        expect(range.min).toBeGreaterThan(0.4)
+        expect(range.max).toBeLessThan(0.8)
+        expect(range.typical).toBeGreaterThan(0.5)
+        expect(range.typical).toBeLessThan(0.75)
+      })
+    })
+  })
+
+  describe('Performance Category Edge Cases', () => {
+    it('should handle boundary efficiency values', () => {
+      // Test exact boundary values
+      expect(getYieldPerformanceCategory(110.0)).toBe('Exceptional')
+      expect(getYieldPerformanceCategory(109.99)).toBe('Excellent')
+      expect(getYieldPerformanceCategory(100.0)).toBe('Excellent')
+      expect(getYieldPerformanceCategory(99.99)).toBe('Good')
+      expect(getYieldPerformanceCategory(90.0)).toBe('Good')
+      expect(getYieldPerformanceCategory(89.99)).toBe('Fair')
+      expect(getYieldPerformanceCategory(80.0)).toBe('Fair')
+      expect(getYieldPerformanceCategory(79.99)).toBe('Poor')
+      expect(getYieldPerformanceCategory(70.0)).toBe('Poor')
+      expect(getYieldPerformanceCategory(69.99)).toBe('Very Poor')
+    })
+
+    it('should handle extreme efficiency values', () => {
+      // Very high efficiency (theoretically impossible but handle gracefully)
+      expect(getYieldPerformanceCategory(200)).toBe('Exceptional')
+      expect(getYieldPerformanceCategory(1000)).toBe('Exceptional')
+
+      // Very low efficiency
+      expect(getYieldPerformanceCategory(0)).toBe('Very Poor')
+      expect(getYieldPerformanceCategory(-50)).toBe('Very Poor')
+    })
+
+    it('should provide consistent categorization logic', () => {
+      // Generate efficiency values and ensure monotonic categorization
+      const categories = ['Very Poor', 'Poor', 'Fair', 'Good', 'Excellent', 'Exceptional']
+      const efficiencies = [0, 50, 75, 85, 95, 105, 115]
+
+      const results = efficiencies.map(eff => getYieldPerformanceCategory(eff))
+
+      // Each subsequent efficiency should have same or better category
+      for (let i = 1; i < results.length; i++) {
+        const currentIndex = categories.indexOf(results[i])
+        const previousIndex = categories.indexOf(results[i - 1])
+        expect(currentIndex).toBeGreaterThanOrEqual(previousIndex)
+      }
+    })
+  })
+
+  describe('Weighted Average Edge Cases', () => {
+    it('should handle edge cases in weighted average calculations', () => {
+      // Single press run
+      const singleRun = [{ juiceVolumeL: 500, inputWeightKg: 1000 }]
+      expect(calculateWeightedAverageYield(singleRun)).toBe(0.5)
+
+      // Identical runs
+      const identicalRuns = [
+        { juiceVolumeL: 300, inputWeightKg: 500 },
+        { juiceVolumeL: 300, inputWeightKg: 500 },
+        { juiceVolumeL: 300, inputWeightKg: 500 }
+      ]
+      expect(calculateWeightedAverageYield(identicalRuns)).toBe(0.6)
+    })
+
+    it('should handle extreme weight differences', () => {
+      const extremeRuns = [
+        { juiceVolumeL: 1, inputWeightKg: 10 },      // 0.1 L/kg, tiny run
+        { juiceVolumeL: 10000, inputWeightKg: 15000 } // 0.667 L/kg, huge run
+      ]
+
+      const weightedAvg = calculateWeightedAverageYield(extremeRuns)
+
+      // Should be heavily weighted toward the large run
+      expect(weightedAvg).toBeCloseTo(0.6667, 3)
+      expect(weightedAvg).toBeGreaterThan(0.6)
+    })
+
+    it('should handle zero juice volume edge cases', () => {
+      const zeroJuiceRuns = [
+        { juiceVolumeL: 0, inputWeightKg: 100 },    // Complete failure
+        { juiceVolumeL: 500, inputWeightKg: 1000 }  // Normal run
+      ]
+
+      // Should handle gracefully
+      const avg = calculateWeightedAverageYield(zeroJuiceRuns)
+      expect(avg).toBe(0.4545) // 500 / 1100 = 0.4545
+    })
+
+    it('should validate mathematical accuracy', () => {
+      const precisionRuns = [
+        { juiceVolumeL: 333.333, inputWeightKg: 555.555 },
+        { juiceVolumeL: 666.666, inputWeightKg: 999.999 }
+      ]
+
+      const manualCalc = (333.333 + 666.666) / (555.555 + 999.999)
+      const weightedAvg = calculateWeightedAverageYield(precisionRuns)
+
+      // Should match manual calculation within rounding precision
+      expect(Math.abs(weightedAvg - manualCalc)).toBeLessThan(0.0001)
+    })
+  })
+
+  describe('Potential Volume Calculation Edge Cases', () => {
+    it('should handle edge cases in potential volume calculations', () => {
+      // Mix of very small and large lots
+      const mixedInventory = [
+        { weightKg: 0.1, variety: 'Gala' },
+        { weightKg: 10000, variety: 'Honeycrisp' },
+        { weightKg: 1, variety: 'Unknown Variety' }
+      ]
+
+      const potential = calculatePotentialJuiceVolume(mixedInventory)
+      const expected = (0.1 * 0.6) + (10000 * 0.62) + (1 * 0.6)
+      expect(potential).toBeCloseTo(expected, 2)
+    })
+
+    it('should handle very large inventory calculations', () => {
+      // Test with unrealistically large numbers to check for overflow
+      const massiveInventory = [
+        { weightKg: 1000000, variety: 'Granny Smith' }
+      ]
+
+      const potential = calculatePotentialJuiceVolume(massiveInventory)
+      expect(potential).toBe(650000) // 1M * 0.65
+      expect(Number.isFinite(potential)).toBe(true)
+    })
+
+    it('should handle precision with many small lots', () => {
+      // Many small lots that could accumulate precision errors
+      const manySmallLots = Array.from({ length: 1000 }, (_, i) => ({
+        weightKg: 0.001 + (i * 0.0001), // Tiny weights
+        variety: 'Fuji'
+      }))
+
+      const potential = calculatePotentialJuiceVolume(manySmallLots)
+      expect(Number.isFinite(potential)).toBe(true)
+      expect(potential).toBeGreaterThan(0)
+    })
+
+    it('should validate calculation accuracy with mixed varieties', () => {
+      // Test manual calculation verification
+      const testInventory = [
+        { weightKg: 100, variety: 'Honeycrisp' },    // 100 * 0.62 = 62
+        { weightKg: 200, variety: 'Granny Smith' },  // 200 * 0.65 = 130
+        { weightKg: 150, variety: 'Unknown' }        // 150 * 0.60 = 90
+      ]
+
+      const calculated = calculatePotentialJuiceVolume(testInventory)
+      const manual = 62 + 130 + 90
+      expect(calculated).toBe(manual)
+    })
+  })
+
+  describe('Real-World Production Scenarios', () => {
+    it('should model seasonal yield variations', () => {
+      // Early season vs late season yields for same variety
+      const earlySeasonYield = calcActualLPerKg(280, 500) // Lower yield
+      const lateSeasonYield = calcActualLPerKg(320, 500)  // Higher yield
+
+      const earlyEfficiency = calculateExtractionEfficiency(earlySeasonYield, 0.6)
+      const lateEfficiency = calculateExtractionEfficiency(lateSeasonYield, 0.6)
+
+      expect(lateEfficiency).toBeGreaterThan(earlyEfficiency)
+      expect(getYieldPerformanceCategory(earlyEfficiency)).not.toBe('Exceptional')
+      expect(getYieldPerformanceCategory(lateEfficiency)).toBe('Excellent')
+    })
+
+    it('should model multi-variety press runs', () => {
+      // Realistic multi-variety press run
+      const multiVarietyRuns = [
+        { juiceVolumeL: 150, inputWeightKg: 250 }, // Honeycrisp: good yield
+        { juiceVolumeL: 120, inputWeightKg: 200 }, // Gala: average yield
+        { juiceVolumeL: 100, inputWeightKg: 180 }  // Red Delicious: poor yield
+      ]
+
+      const avgYield = calculateWeightedAverageYield(multiVarietyRuns)
+      const totalYield = calcActualLPerKg(370, 630)
+
+      expect(avgYield).toBe(totalYield)
+      expect(avgYield).toBeGreaterThan(0.55)
+      expect(avgYield).toBeLessThan(0.65)
+    })
+
+    it('should demonstrate yield optimization scenarios', () => {
+      // Before optimization: poor extraction
+      const beforeOptimization = [
+        { juiceVolumeL: 400, inputWeightKg: 1000 }, // 40% yield
+        { juiceVolumeL: 450, inputWeightKg: 1000 }, // 45% yield
+        { juiceVolumeL: 380, inputWeightKg: 1000 }  // 38% yield
+      ]
+
+      // After optimization: improved extraction
+      const afterOptimization = [
+        { juiceVolumeL: 600, inputWeightKg: 1000 }, // 60% yield
+        { juiceVolumeL: 620, inputWeightKg: 1000 }, // 62% yield
+        { juiceVolumeL: 580, inputWeightKg: 1000 }  // 58% yield
+      ]
+
+      const beforeAvg = calculateWeightedAverageYield(beforeOptimization)
+      const afterAvg = calculateWeightedAverageYield(afterOptimization)
+
+      const improvement = calcVariancePct(afterAvg, beforeAvg)
+      expect(improvement).toBeGreaterThan(40) // Significant improvement
+      expect(getYieldPerformanceCategory(calculateExtractionEfficiency(beforeAvg, 0.6))).toBe('Very Poor')
+      expect(getYieldPerformanceCategory(calculateExtractionEfficiency(afterAvg, 0.6))).toBe('Excellent')
+    })
+
+    it('should validate commercial production targets', () => {
+      // Industry standard targets
+      const commercialTargets = {
+        smallCidery: { expectedYield: 0.55, minAcceptable: 0.50 },
+        mediumCidery: { expectedYield: 0.60, minAcceptable: 0.55 },
+        largeCidery: { expectedYield: 0.65, minAcceptable: 0.60 }
+      }
+
+      Object.entries(commercialTargets).forEach(([scale, targets]) => {
+        const achievedYield = targets.expectedYield
+        const efficiency = calculateExtractionEfficiency(achievedYield, targets.expectedYield)
+        const variance = calcVariancePct(achievedYield, targets.expectedYield)
+
+        expect(efficiency).toBe(100) // Meeting targets
+        expect(variance).toBe(0)
+        expect(getYieldPerformanceCategory(efficiency)).toBe('Excellent')
+
+        // Test performance against minimum acceptable
+        const minEfficiency = calculateExtractionEfficiency(targets.minAcceptable, targets.expectedYield)
+        expect(minEfficiency).toBeGreaterThanOrEqual(90) // Should be at least "Good"
+      })
     })
   })
 })

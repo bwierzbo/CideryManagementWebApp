@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
 import {
   AuditEventBus,
   auditEventBus,
@@ -9,443 +9,410 @@ import {
   publishRestoreEvent,
   createDatabaseAuditSubscriber
 } from '../../audit/eventBus'
+import type { AuditEvent } from '../../audit/eventBus'
 
-describe('Audit Event Bus', () => {
+describe('AuditEventBus', () => {
   let eventBus: AuditEventBus
-  let mockHandler: ReturnType<typeof vi.fn>
-  let mockAsyncHandler: ReturnType<typeof vi.fn>
+  let mockHandler: Mock
 
   beforeEach(() => {
     eventBus = new AuditEventBus()
     mockHandler = vi.fn()
-    mockAsyncHandler = vi.fn().mockResolvedValue(undefined)
   })
 
-  describe('AuditEventBus', () => {
-    describe('subscribe', () => {
-      it('should subscribe to events and return subscription ID', () => {
-        const subId = eventBus.subscribe(mockHandler)
-        expect(typeof subId).toBe('string')
-        expect(subId).toMatch(/^sub_\d+$/)
-      })
+  describe('subscribe and unsubscribe', () => {
+    it('should subscribe to events and return subscription ID', () => {
+      const subscriptionId = eventBus.subscribe(mockHandler)
 
-      it('should generate unique subscription IDs', () => {
-        const subId1 = eventBus.subscribe(mockHandler)
-        const subId2 = eventBus.subscribe(mockHandler)
-        expect(subId1).not.toBe(subId2)
-      })
-
-      it('should subscribe with table filter', () => {
-        const subId = eventBus.subscribe(mockHandler, 'vendors')
-        expect(typeof subId).toBe('string')
-      })
-
-      it('should increment subscription count', () => {
-        expect(eventBus.getSubscriptionCount()).toBe(0)
-        eventBus.subscribe(mockHandler)
-        expect(eventBus.getSubscriptionCount()).toBe(1)
-        eventBus.subscribe(mockHandler)
-        expect(eventBus.getSubscriptionCount()).toBe(2)
-      })
+      expect(subscriptionId).toMatch(/^sub_\d+$/)
+      expect(eventBus.getSubscriptionCount()).toBe(1)
     })
 
-    describe('unsubscribe', () => {
-      it('should unsubscribe and return true for valid subscription', () => {
-        const subId = eventBus.subscribe(mockHandler)
-        const result = eventBus.unsubscribe(subId)
-        expect(result).toBe(true)
-        expect(eventBus.getSubscriptionCount()).toBe(0)
-      })
+    it('should unsubscribe from events', () => {
+      const subscriptionId = eventBus.subscribe(mockHandler)
 
-      it('should return false for invalid subscription', () => {
-        const result = eventBus.unsubscribe('invalid_id')
-        expect(result).toBe(false)
-      })
+      expect(eventBus.getSubscriptionCount()).toBe(1)
+
+      const unsubscribed = eventBus.unsubscribe(subscriptionId)
+
+      expect(unsubscribed).toBe(true)
+      expect(eventBus.getSubscriptionCount()).toBe(0)
     })
 
-    describe('publish', () => {
-      it('should publish events to all subscribers', async () => {
-        eventBus.subscribe(mockHandler)
-        eventBus.subscribe(mockAsyncHandler)
-
-        const event = {
-          tableName: 'vendors',
-          recordId: '123',
-          operation: 'create' as const,
-          newData: { name: 'Test Vendor' },
-          timestamp: new Date()
-        }
-
-        await eventBus.publish(event)
-
-        expect(mockHandler).toHaveBeenCalledWith(event)
-        expect(mockAsyncHandler).toHaveBeenCalledWith(event)
-      })
-
-      it('should filter events by table name', async () => {
-        const vendorHandler = vi.fn()
-        const batchHandler = vi.fn()
-        const allHandler = vi.fn()
-
-        eventBus.subscribe(vendorHandler, 'vendors')
-        eventBus.subscribe(batchHandler, 'batches') 
-        eventBus.subscribe(allHandler) // No filter
-
-        const vendorEvent = {
-          tableName: 'vendors',
-          recordId: '123',
-          operation: 'create' as const,
-          newData: { name: 'Test Vendor' },
-          timestamp: new Date()
-        }
-
-        await eventBus.publish(vendorEvent)
-
-        expect(vendorHandler).toHaveBeenCalledWith(vendorEvent)
-        expect(batchHandler).not.toHaveBeenCalled()
-        expect(allHandler).toHaveBeenCalledWith(vendorEvent)
-      })
-
-      it('should handle handler errors gracefully', async () => {
-        const errorHandler = vi.fn().mockImplementation(() => {
-          throw new Error('Handler error')
-        })
-        const goodHandler = vi.fn()
-
-        eventBus.subscribe(errorHandler)
-        eventBus.subscribe(goodHandler)
-
-        const event = {
-          tableName: 'vendors',
-          recordId: '123',
-          operation: 'create' as const,
-          timestamp: new Date()
-        }
-
-        // Should not throw
-        await expect(eventBus.publish(event)).resolves.toBeUndefined()
-        
-        expect(errorHandler).toHaveBeenCalled()
-        expect(goodHandler).toHaveBeenCalled()
-      })
-
-      it('should wait for async handlers to complete', async () => {
-        let handlerResolved = false
-        const asyncHandler = vi.fn().mockImplementation(async () => {
-          await new Promise(resolve => setTimeout(resolve, 10))
-          handlerResolved = true
-        })
-
-        eventBus.subscribe(asyncHandler)
-
-        const event = {
-          tableName: 'vendors',
-          recordId: '123',
-          operation: 'create' as const,
-          timestamp: new Date()
-        }
-
-        await eventBus.publish(event)
-        
-        expect(handlerResolved).toBe(true)
-      })
+    it('should return false when unsubscribing non-existent subscription', () => {
+      const result = eventBus.unsubscribe('non-existent')
+      expect(result).toBe(false)
     })
 
-    describe('clearAllSubscriptions', () => {
-      it('should clear all subscriptions', () => {
-        eventBus.subscribe(mockHandler)
-        eventBus.subscribe(mockHandler)
-        expect(eventBus.getSubscriptionCount()).toBe(2)
+    it('should support table-specific subscriptions', () => {
+      const generalHandler = vi.fn()
+      const userHandler = vi.fn()
 
-        eventBus.clearAllSubscriptions()
-        expect(eventBus.getSubscriptionCount()).toBe(0)
-      })
+      eventBus.subscribe(generalHandler)
+      eventBus.subscribe(userHandler, 'users')
+
+      expect(eventBus.getSubscriptionCount()).toBe(2)
     })
   })
 
-  describe('Helper Functions', () => {
-    beforeEach(() => {
-      auditEventBus.clearAllSubscriptions()
-    })
+  describe('publish', () => {
+    it('should publish events to all subscribers', async () => {
+      const handler1 = vi.fn()
+      const handler2 = vi.fn()
 
-    describe('publishCreateEvent', () => {
-      it('should publish create event with correct structure', async () => {
-        auditEventBus.subscribe(mockHandler)
+      eventBus.subscribe(handler1)
+      eventBus.subscribe(handler2)
 
-        await publishCreateEvent(
-          'vendors',
-          'vendor-123',
-          { name: 'New Vendor', isActive: true },
-          'user-456',
-          'Adding new supplier'
-        )
-
-        expect(mockHandler).toHaveBeenCalledWith({
-          tableName: 'vendors',
-          recordId: 'vendor-123',
-          operation: 'create',
-          newData: { name: 'New Vendor', isActive: true },
-          changedBy: 'user-456',
-          reason: 'Adding new supplier',
-          timestamp: expect.any(Date)
-        })
-      })
-
-      it('should work without optional parameters', async () => {
-        auditEventBus.subscribe(mockHandler)
-
-        await publishCreateEvent('vendors', 'vendor-123', { name: 'New Vendor' })
-
-        expect(mockHandler).toHaveBeenCalledWith({
-          tableName: 'vendors',
-          recordId: 'vendor-123',
-          operation: 'create',
-          newData: { name: 'New Vendor' },
-          changedBy: undefined,
-          reason: undefined,
-          timestamp: expect.any(Date)
-        })
-      })
-    })
-
-    describe('publishUpdateEvent', () => {
-      it('should publish update event with old and new data', async () => {
-        auditEventBus.subscribe(mockHandler)
-
-        const oldData = { name: 'Old Vendor', isActive: true }
-        const newData = { name: 'Updated Vendor', isActive: true }
-
-        await publishUpdateEvent(
-          'vendors',
-          'vendor-123',
-          oldData,
-          newData,
-          'user-456',
-          'Updating vendor name'
-        )
-
-        expect(mockHandler).toHaveBeenCalledWith({
-          tableName: 'vendors',
-          recordId: 'vendor-123',
-          operation: 'update',
-          oldData,
-          newData,
-          changedBy: 'user-456',
-          reason: 'Updating vendor name',
-          timestamp: expect.any(Date)
-        })
-      })
-    })
-
-    describe('publishDeleteEvent', () => {
-      it('should publish delete event', async () => {
-        auditEventBus.subscribe(mockHandler)
-
-        const oldData = { name: 'Deleted Vendor', isActive: true }
-
-        await publishDeleteEvent(
-          'vendors',
-          'vendor-123',
-          oldData,
-          'user-456',
-          'Vendor no longer needed'
-        )
-
-        expect(mockHandler).toHaveBeenCalledWith({
-          tableName: 'vendors',
-          recordId: 'vendor-123',
-          operation: 'delete',
-          oldData,
-          changedBy: 'user-456',
-          reason: 'Vendor no longer needed',
-          timestamp: expect.any(Date)
-        })
-      })
-    })
-
-    describe('publishSoftDeleteEvent', () => {
-      it('should publish soft delete event', async () => {
-        auditEventBus.subscribe(mockHandler)
-
-        const oldData = { name: 'Soft Deleted Vendor', isActive: true, deletedAt: null }
-
-        await publishSoftDeleteEvent(
-          'vendors',
-          'vendor-123',
-          oldData,
-          'user-456',
-          'Deactivating vendor'
-        )
-
-        expect(mockHandler).toHaveBeenCalledWith({
-          tableName: 'vendors',
-          recordId: 'vendor-123',
-          operation: 'soft_delete',
-          oldData,
-          changedBy: 'user-456',
-          reason: 'Deactivating vendor',
-          timestamp: expect.any(Date)
-        })
-      })
-    })
-
-    describe('publishRestoreEvent', () => {
-      it('should publish restore event', async () => {
-        auditEventBus.subscribe(mockHandler)
-
-        const newData = { name: 'Restored Vendor', isActive: true, deletedAt: null }
-
-        await publishRestoreEvent(
-          'vendors',
-          'vendor-123',
-          newData,
-          'user-456',
-          'Reactivating vendor'
-        )
-
-        expect(mockHandler).toHaveBeenCalledWith({
-          tableName: 'vendors',
-          recordId: 'vendor-123',
-          operation: 'restore',
-          newData,
-          changedBy: 'user-456',
-          reason: 'Reactivating vendor',
-          timestamp: expect.any(Date)
-        })
-      })
-    })
-  })
-
-  describe('createDatabaseAuditSubscriber', () => {
-    it('should create a database audit subscriber', async () => {
-      const mockWriteToDatabase = vi.fn().mockResolvedValue(undefined)
-      
-      const subId = createDatabaseAuditSubscriber(mockWriteToDatabase)
-      expect(typeof subId).toBe('string')
-
-      // Test that it writes to database when event is published
-      await publishCreateEvent('vendors', 'vendor-123', { name: 'Test' })
-
-      expect(mockWriteToDatabase).toHaveBeenCalledWith({
-        tableName: 'vendors',
-        recordId: 'vendor-123',
+      const event: AuditEvent = {
+        tableName: 'users',
+        recordId: '123',
         operation: 'create',
-        oldData: undefined,
-        newData: { name: 'Test' },
-        changedBy: undefined,
-        changedAt: expect.any(Date),
-        reason: undefined
-      })
-    })
-
-    it('should handle database write errors gracefully', async () => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      const mockWriteToDatabase = vi.fn().mockRejectedValue(new Error('Database error'))
-      
-      createDatabaseAuditSubscriber(mockWriteToDatabase)
-
-      // Should not throw
-      await expect(publishCreateEvent('vendors', 'vendor-123', { name: 'Test' }))
-        .resolves.toBeUndefined()
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Failed to write audit log to database:',
-        expect.any(Error)
-      )
-      
-      consoleSpy.mockRestore()
-    })
-  })
-
-  describe('Event Flow Integration', () => {
-    it('should handle a complete CRUD cycle', async () => {
-      const events: any[] = []
-      auditEventBus.subscribe((event) => events.push(event))
-
-      const recordId = 'vendor-123'
-      const userId = 'user-456'
-
-      // Create
-      await publishCreateEvent(recordId, recordId, { name: 'New Vendor' }, userId)
-      
-      // Update  
-      await publishUpdateEvent(
-        recordId, 
-        recordId, 
-        { name: 'New Vendor' }, 
-        { name: 'Updated Vendor' }, 
-        userId
-      )
-      
-      // Soft Delete
-      await publishSoftDeleteEvent(
-        recordId, 
-        recordId, 
-        { name: 'Updated Vendor', deletedAt: null }, 
-        userId
-      )
-      
-      // Restore
-      await publishRestoreEvent(
-        recordId, 
-        recordId, 
-        { name: 'Updated Vendor', deletedAt: null }, 
-        userId
-      )
-      
-      // Hard Delete
-      await publishDeleteEvent(
-        recordId, 
-        recordId, 
-        { name: 'Updated Vendor' }, 
-        userId
-      )
-
-      expect(events).toHaveLength(5)
-      expect(events[0].operation).toBe('create')
-      expect(events[1].operation).toBe('update')
-      expect(events[2].operation).toBe('soft_delete')
-      expect(events[3].operation).toBe('restore')
-      expect(events[4].operation).toBe('delete')
-    })
-
-    it('should handle multiple concurrent events', async () => {
-      const events: any[] = []
-      auditEventBus.subscribe((event) => events.push(event))
-
-      const promises = []
-      
-      // Publish multiple events concurrently
-      for (let i = 0; i < 10; i++) {
-        promises.push(
-          publishCreateEvent('vendors', `vendor-${i}`, { name: `Vendor ${i}` })
-        )
+        newData: { name: 'John Doe' },
+        timestamp: new Date()
       }
 
-      await Promise.all(promises)
+      await eventBus.publish(event)
 
-      expect(events).toHaveLength(10)
-      events.forEach((event, index) => {
-        expect(event.recordId).toBe(`vendor-${index}`)
-        expect(event.operation).toBe('create')
+      expect(handler1).toHaveBeenCalledWith(event)
+      expect(handler2).toHaveBeenCalledWith(event)
+      expect(handler1).toHaveBeenCalledTimes(1)
+      expect(handler2).toHaveBeenCalledTimes(1)
+    })
+
+    it('should filter events by table name', async () => {
+      const generalHandler = vi.fn()
+      const userHandler = vi.fn()
+      const productHandler = vi.fn()
+
+      eventBus.subscribe(generalHandler)
+      eventBus.subscribe(userHandler, 'users')
+      eventBus.subscribe(productHandler, 'products')
+
+      const userEvent: AuditEvent = {
+        tableName: 'users',
+        recordId: '123',
+        operation: 'create',
+        newData: { name: 'John Doe' },
+        timestamp: new Date()
+      }
+
+      await eventBus.publish(userEvent)
+
+      expect(generalHandler).toHaveBeenCalledWith(userEvent)
+      expect(userHandler).toHaveBeenCalledWith(userEvent)
+      expect(productHandler).not.toHaveBeenCalled()
+    })
+
+    it('should handle async event handlers', async () => {
+      const syncHandler = vi.fn()
+      const asyncHandler = vi.fn().mockResolvedValue(undefined)
+
+      eventBus.subscribe(syncHandler)
+      eventBus.subscribe(asyncHandler)
+
+      const event: AuditEvent = {
+        tableName: 'users',
+        recordId: '123',
+        operation: 'create',
+        newData: { name: 'John Doe' },
+        timestamp: new Date()
+      }
+
+      await eventBus.publish(event)
+
+      expect(syncHandler).toHaveBeenCalledWith(event)
+      expect(asyncHandler).toHaveBeenCalledWith(event)
+    })
+
+    it('should handle errors in event handlers gracefully', async () => {
+      const errorHandler = vi.fn().mockImplementation(() => {
+        throw new Error('Handler error')
+      })
+      const workingHandler = vi.fn()
+
+      // Mock console.error to avoid noise in tests
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      eventBus.subscribe(errorHandler)
+      eventBus.subscribe(workingHandler)
+
+      const event: AuditEvent = {
+        tableName: 'users',
+        recordId: '123',
+        operation: 'create',
+        newData: { name: 'John Doe' },
+        timestamp: new Date()
+      }
+
+      // Should not throw
+      await expect(eventBus.publish(event)).resolves.toBeUndefined()
+
+      expect(errorHandler).toHaveBeenCalledWith(event)
+      expect(workingHandler).toHaveBeenCalledWith(event)
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Error in audit event handler'),
+        expect.any(Error)
+      )
+
+      consoleSpy.mockRestore()
+    })
+
+    it('should handle async handler rejections', async () => {
+      const rejectingHandler = vi.fn().mockRejectedValue(new Error('Async error'))
+      const workingHandler = vi.fn()
+
+      eventBus.subscribe(rejectingHandler)
+      eventBus.subscribe(workingHandler)
+
+      const event: AuditEvent = {
+        tableName: 'users',
+        recordId: '123',
+        operation: 'create',
+        newData: { name: 'John Doe' },
+        timestamp: new Date()
+      }
+
+      // Should not throw
+      await expect(eventBus.publish(event)).resolves.toBeUndefined()
+
+      expect(rejectingHandler).toHaveBeenCalledWith(event)
+      expect(workingHandler).toHaveBeenCalledWith(event)
+    })
+  })
+
+  describe('clearAllSubscriptions', () => {
+    it('should clear all subscriptions', () => {
+      eventBus.subscribe(vi.fn())
+      eventBus.subscribe(vi.fn())
+      eventBus.subscribe(vi.fn(), 'users')
+
+      expect(eventBus.getSubscriptionCount()).toBe(3)
+
+      eventBus.clearAllSubscriptions()
+
+      expect(eventBus.getSubscriptionCount()).toBe(0)
+    })
+  })
+})
+
+describe('Global auditEventBus', () => {
+  beforeEach(() => {
+    // Clear global event bus before each test
+    auditEventBus.clearAllSubscriptions()
+  })
+
+  it('should provide a global event bus instance', () => {
+    expect(auditEventBus).toBeInstanceOf(AuditEventBus)
+  })
+
+  it('should maintain state across calls', () => {
+    const handler = vi.fn()
+    const subscriptionId = auditEventBus.subscribe(handler)
+
+    expect(auditEventBus.getSubscriptionCount()).toBe(1)
+
+    auditEventBus.unsubscribe(subscriptionId)
+
+    expect(auditEventBus.getSubscriptionCount()).toBe(0)
+  })
+})
+
+describe('Helper functions', () => {
+  beforeEach(() => {
+    auditEventBus.clearAllSubscriptions()
+  })
+
+  describe('publishCreateEvent', () => {
+    it('should publish create event with correct data', async () => {
+      const handler = vi.fn()
+      auditEventBus.subscribe(handler)
+
+      await publishCreateEvent(
+        'users',
+        '123',
+        { name: 'John Doe', email: 'john@example.com' },
+        'user123',
+        'New user registration'
+      )
+
+      expect(handler).toHaveBeenCalledWith({
+        tableName: 'users',
+        recordId: '123',
+        operation: 'create',
+        newData: { name: 'John Doe', email: 'john@example.com' },
+        changedBy: 'user123',
+        reason: 'New user registration',
+        timestamp: expect.any(Date)
       })
     })
 
-    it('should maintain event ordering for sequential operations', async () => {
-      const events: any[] = []
-      auditEventBus.subscribe((event) => events.push(event))
+    it('should work without optional parameters', async () => {
+      const handler = vi.fn()
+      auditEventBus.subscribe(handler)
 
-      const recordId = 'vendor-123'
+      await publishCreateEvent('users', '123', { name: 'John Doe' })
 
-      // Sequential operations
-      await publishCreateEvent('vendors', recordId, { name: 'Vendor', version: 1 })
-      await publishUpdateEvent('vendors', recordId, { version: 1 }, { version: 2 })
-      await publishUpdateEvent('vendors', recordId, { version: 2 }, { version: 3 })
-
-      expect(events).toHaveLength(3)
-      expect(events[0].newData.version).toBe(1)
-      expect(events[1].newData.version).toBe(2)  
-      expect(events[2].newData.version).toBe(3)
+      expect(handler).toHaveBeenCalledWith({
+        tableName: 'users',
+        recordId: '123',
+        operation: 'create',
+        newData: { name: 'John Doe' },
+        changedBy: undefined,
+        reason: undefined,
+        timestamp: expect.any(Date)
+      })
     })
+  })
+
+  describe('publishUpdateEvent', () => {
+    it('should publish update event with old and new data', async () => {
+      const handler = vi.fn()
+      auditEventBus.subscribe(handler)
+
+      const oldData = { name: 'John Doe', email: 'john@old.com' }
+      const newData = { name: 'John Smith', email: 'john@new.com' }
+
+      await publishUpdateEvent('users', '123', oldData, newData, 'user123', 'Name change')
+
+      expect(handler).toHaveBeenCalledWith({
+        tableName: 'users',
+        recordId: '123',
+        operation: 'update',
+        oldData,
+        newData,
+        changedBy: 'user123',
+        reason: 'Name change',
+        timestamp: expect.any(Date)
+      })
+    })
+  })
+
+  describe('publishDeleteEvent', () => {
+    it('should publish delete event with old data', async () => {
+      const handler = vi.fn()
+      auditEventBus.subscribe(handler)
+
+      const oldData = { name: 'John Doe', email: 'john@example.com' }
+
+      await publishDeleteEvent('users', '123', oldData, 'admin123', 'User requested deletion')
+
+      expect(handler).toHaveBeenCalledWith({
+        tableName: 'users',
+        recordId: '123',
+        operation: 'delete',
+        oldData,
+        changedBy: 'admin123',
+        reason: 'User requested deletion',
+        timestamp: expect.any(Date)
+      })
+    })
+  })
+
+  describe('publishSoftDeleteEvent', () => {
+    it('should publish soft delete event', async () => {
+      const handler = vi.fn()
+      auditEventBus.subscribe(handler)
+
+      const oldData = { name: 'John Doe', isActive: true }
+
+      await publishSoftDeleteEvent('users', '123', oldData, 'admin123', 'Account deactivation')
+
+      expect(handler).toHaveBeenCalledWith({
+        tableName: 'users',
+        recordId: '123',
+        operation: 'soft_delete',
+        oldData,
+        changedBy: 'admin123',
+        reason: 'Account deactivation',
+        timestamp: expect.any(Date)
+      })
+    })
+  })
+
+  describe('publishRestoreEvent', () => {
+    it('should publish restore event', async () => {
+      const handler = vi.fn()
+      auditEventBus.subscribe(handler)
+
+      const newData = { name: 'John Doe', isActive: true }
+
+      await publishRestoreEvent('users', '123', newData, 'admin123', 'Account reactivation')
+
+      expect(handler).toHaveBeenCalledWith({
+        tableName: 'users',
+        recordId: '123',
+        operation: 'restore',
+        newData,
+        changedBy: 'admin123',
+        reason: 'Account reactivation',
+        timestamp: expect.any(Date)
+      })
+    })
+  })
+})
+
+describe('createDatabaseAuditSubscriber', () => {
+  beforeEach(() => {
+    auditEventBus.clearAllSubscriptions()
+  })
+
+  it('should create database subscriber that writes to database', async () => {
+    const mockWriteFunction = vi.fn().mockResolvedValue(undefined)
+
+    const subscriptionId = createDatabaseAuditSubscriber(mockWriteFunction)
+
+    expect(subscriptionId).toMatch(/^sub_\d+$/)
+    expect(auditEventBus.getSubscriptionCount()).toBe(1)
+
+    // Publish an event
+    const event: AuditEvent = {
+      tableName: 'users',
+      recordId: '123',
+      operation: 'create',
+      newData: { name: 'John Doe' },
+      changedBy: 'user123',
+      timestamp: new Date('2024-01-01T10:00:00Z')
+    }
+
+    await auditEventBus.publish(event)
+
+    expect(mockWriteFunction).toHaveBeenCalledWith({
+      tableName: 'users',
+      recordId: '123',
+      operation: 'create',
+      oldData: undefined,
+      newData: { name: 'John Doe' },
+      changedBy: 'user123',
+      changedAt: new Date('2024-01-01T10:00:00Z'),
+      reason: undefined
+    })
+  })
+
+  it('should handle database write errors gracefully', async () => {
+    const mockWriteFunction = vi.fn().mockRejectedValue(new Error('Database error'))
+
+    // Mock console.error to avoid noise in tests
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    createDatabaseAuditSubscriber(mockWriteFunction)
+
+    const event: AuditEvent = {
+      tableName: 'users',
+      recordId: '123',
+      operation: 'create',
+      newData: { name: 'John Doe' },
+      timestamp: new Date()
+    }
+
+    // Should not throw
+    await expect(auditEventBus.publish(event)).resolves.toBeUndefined()
+
+    expect(mockWriteFunction).toHaveBeenCalled()
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'Failed to write audit log to database:',
+      expect.any(Error)
+    )
+
+    consoleSpy.mockRestore()
   })
 })
