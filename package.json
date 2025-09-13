@@ -13,18 +13,24 @@
     "dev": "concurrently \"pnpm --filter web run dev\" \"pnpm --filter worker run dev\"",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
     "format": "pnpm -r run format",
-    "clean": "pnpm -r run clean && rm -rf node_modules",
+    "clean": "pnpm -r run clean && rm -rf node_modules coverage",
     "db:generate": "pnpm --filter db run generate",
     "db:migrate": "pnpm --filter db run migrate",
     "db:seed": "pnpm --filter db run seed"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@vitest/coverage-v8": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
     "concurrently": "^8.2.2",
     "prettier": "^3.2.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
   },
   "pnpm": {
     "overrides": {
