@@ -31,11 +31,23 @@ export interface PerformanceMetrics {
 }
 
 /**
+ * Timer result interface
+ */
+export interface TimerResult {
+  name: string;
+  duration: number;
+  startTime: number;
+  endTime: number;
+}
+
+/**
  * Performance monitoring utility for E2E tests
  */
 export class PerformanceMonitor {
   private page: Page;
   private networkRequests: Array<{ url: string; startTime: number; endTime?: number; size?: number }> = [];
+  private timers: Map<string, { startTime: number; endTime?: number }> = new Map();
+  private completedTimers: Map<string, TimerResult> = new Map();
 
   constructor(page: Page) {
     this.page = page;
@@ -380,9 +392,80 @@ export class PerformanceMonitor {
   }
 
   /**
+   * Start a named timer
+   */
+  startTimer(name: string): { stop: () => TimerResult } {
+    const startTime = performance.now();
+    this.timers.set(name, { startTime });
+
+    return {
+      stop: () => this.stopTimer(name)
+    };
+  }
+
+  /**
+   * Stop a named timer
+   */
+  stopTimer(name: string): TimerResult {
+    const endTime = performance.now();
+    const timer = this.timers.get(name);
+
+    if (!timer) {
+      throw new Error(`Timer '${name}' was not started`);
+    }
+
+    const duration = endTime - timer.startTime;
+    const result: TimerResult = {
+      name,
+      duration,
+      startTime: timer.startTime,
+      endTime
+    };
+
+    this.completedTimers.set(name, result);
+    this.timers.delete(name);
+
+    return result;
+  }
+
+  /**
+   * Get timer result by name
+   */
+  getTimerResult(name: string): TimerResult | undefined {
+    return this.completedTimers.get(name);
+  }
+
+  /**
+   * Get all completed timer results
+   */
+  getAllTimerResults(): Map<string, TimerResult> {
+    return new Map(this.completedTimers);
+  }
+
+  /**
+   * Get performance summary of all timers
+   */
+  getPerformanceSummary(): Record<string, TimerResult> {
+    const summary: Record<string, TimerResult> = {};
+    for (const [name, result] of this.completedTimers) {
+      summary[name] = result;
+    }
+    return summary;
+  }
+
+  /**
+   * Clear all timer data
+   */
+  clearTimers(): void {
+    this.timers.clear();
+    this.completedTimers.clear();
+  }
+
+  /**
    * Reset monitoring state
    */
   reset(): void {
     this.networkRequests = [];
+    this.clearTimers();
   }
 }
