@@ -102,3 +102,13 @@ Thumbs.db
 # Temporary files
 .tmp/
 temp/
+
+# E2E Testing
+test-results/
+playwright-report/
+playwright/.auth/
+
+# Quality Reports
+quality-dashboard/
+performance-report.md
+.coverage-history/

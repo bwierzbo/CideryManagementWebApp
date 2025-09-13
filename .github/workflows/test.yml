@@ -342,10 +342,85 @@ jobs:
           test -d packages/lib/dist || (echo "Lib package build failed" && exit 1)
           test -d packages/worker/dist || (echo "Worker package build failed" && exit 1)
 
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: build
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: cidery_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup E2E environment
+        run: |
+          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cidery_test" >> $GITHUB_ENV
+          echo "TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cidery_test" >> $GITHUB_ENV
+          echo "NODE_ENV=test" >> $GITHUB_ENV
+          echo "NEXTAUTH_SECRET=e2e-test-secret" >> $GITHUB_ENV
+          echo "NEXTAUTH_URL=http://localhost:3000" >> $GITHUB_ENV
+          echo "CI=true" >> $GITHUB_ENV
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps
+
+      - name: Build application for E2E tests
+        run: pnpm build
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+
+      - name: Upload E2E test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 30
+
+      - name: Upload E2E test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-html-report
+          path: test-results/e2e-html-report/
+          retention-days: 30
+
   quality-report:
     name: Quality Metrics Report
     runs-on: ubuntu-latest
-    needs: [test, audit-snapshots, build]
+    needs: [test, audit-snapshots, build, e2e-tests]
     if: always()
 
     steps:
@@ -360,18 +435,21 @@ jobs:
           ## Test Results
           - **Coverage**: ${{ needs.test.outputs.coverage-total }}% (threshold: ${{ env.COVERAGE_THRESHOLD }}%)
           - **Test Duration**: ${{ needs.test.outputs.test-duration }}s (threshold: ${{ env.PERFORMANCE_THRESHOLD }}s)
-          - **Test Status**: ${{ needs.test.result }}
+          - **Unit Tests**: ${{ needs.test.result }}
+          - **E2E Tests**: ${{ needs.e2e-tests.result }}
           - **Audit Snapshots**: ${{ needs.audit-snapshots.result }}
           - **Build Status**: ${{ needs.build.result }}
 
           ## Quality Gates Status
           - Coverage Threshold: $([ "${{ needs.test.result }}" == "success" ] && echo "PASS" || echo "FAIL")
           - Performance Threshold: $([ "${{ needs.test.result }}" == "success" ] && echo "PASS" || echo "FAIL")
+          - E2E Test Suite: $([ "${{ needs.e2e-tests.result }}" == "success" ] && echo "PASS" || echo "FAIL")
           - Audit Log Validation: $([ "${{ needs.audit-snapshots.result }}" == "success" ] && echo "PASS" || echo "FAIL")
           - Build Verification: $([ "${{ needs.build.result }}" == "success" ] && echo "PASS" || echo "FAIL")
 
           ## Recommendations
-          $([ "${{ needs.test.result }}" != "success" ] && echo "- Fix failing tests and ensure coverage meets threshold")
+          $([ "${{ needs.test.result }}" != "success" ] && echo "- Fix failing unit tests and ensure coverage meets threshold")
+          $([ "${{ needs.e2e-tests.result }}" != "success" ] && echo "- Fix failing E2E tests or update page objects")
           $([ "${{ needs.audit-snapshots.result }}" != "success" ] && echo "- Update audit log snapshots or fix audit logic")
           $([ "${{ needs.build.result }}" != "success" ] && echo "- Fix build errors in packages")
 
@@ -389,7 +467,7 @@ jobs:
 
       - name: Set job status
         run: |
-          if [ "${{ needs.test.result }}" != "success" ] || [ "${{ needs.audit-snapshots.result }}" != "success" ] || [ "${{ needs.build.result }}" != "success" ]; then
+          if [ "${{ needs.test.result }}" != "success" ] || [ "${{ needs.e2e-tests.result }}" != "success" ] || [ "${{ needs.audit-snapshots.result }}" != "success" ] || [ "${{ needs.build.result }}" != "success" ]; then
             echo "::error::Quality gates failed - check individual job results"
             exit 1
           fi
