@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { AuditDatabase, AuditQueryService } from 'lib/src/audit'
+import { AuditDatabase } from 'lib/src/audit/database'
 import {
+  AuditQueryService,
   auditQuerySchema,
   recordHistoryQuerySchema,
   userActivityQuerySchema,
