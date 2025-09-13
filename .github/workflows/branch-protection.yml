@@ -1,0 +1,442 @@
+name: Branch Protection Setup
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/branch-protection.yml'
+  workflow_dispatch:
+
+jobs:
+  setup-branch-protection:
+    name: Configure Branch Protection Rules
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure Main Branch Protection
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+
+            try {
+              await github.rest.repos.updateBranchProtection({
+                owner,
+                repo,
+                branch: 'main',
+                required_status_checks: {
+                  strict: true,
+                  contexts: [
+                    'Test & Coverage',
+                    'Audit Log Snapshot Validation',
+                    'Build Check',
+                    'Quality Metrics Report'
+                  ]
+                },
+                enforce_admins: false, // Allow admins to bypass in emergencies
+                required_pull_request_reviews: {
+                  required_approving_review_count: 1,
+                  dismiss_stale_reviews: true,
+                  require_code_owner_reviews: true,
+                  require_last_push_approval: false
+                },
+                restrictions: null, // No push restrictions
+                required_linear_history: false,
+                allow_force_pushes: false,
+                allow_deletions: false,
+                block_creations: false,
+                required_conversation_resolution: true,
+                lock_branch: false,
+                allow_fork_syncing: true
+              });
+
+              console.log('Branch protection rules updated for main branch');
+
+              // Also set up develop branch protection if it exists
+              try {
+                await github.rest.repos.getBranch({
+                  owner,
+                  repo,
+                  branch: 'develop'
+                });
+
+                await github.rest.repos.updateBranchProtection({
+                  owner,
+                  repo,
+                  branch: 'develop',
+                  required_status_checks: {
+                    strict: false, // Less strict for develop
+                    contexts: [
+                      'Test & Coverage',
+                      'Build Check'
+                    ]
+                  },
+                  enforce_admins: false,
+                  required_pull_request_reviews: {
+                    required_approving_review_count: 1,
+                    dismiss_stale_reviews: false,
+                    require_code_owner_reviews: false,
+                    require_last_push_approval: false
+                  },
+                  restrictions: null,
+                  required_linear_history: false,
+                  allow_force_pushes: false,
+                  allow_deletions: false,
+                  block_creations: false,
+                  required_conversation_resolution: false,
+                  lock_branch: false,
+                  allow_fork_syncing: true
+                });
+
+                console.log('Branch protection rules updated for develop branch');
+              } catch (error) {
+                console.log('Develop branch not found, skipping protection setup');
+              }
+
+            } catch (error) {
+              console.error('Failed to update branch protection:', error);
+              throw error;
+            }
+
+  setup-repository-settings:
+    name: Configure Repository Quality Settings
+    runs-on: ubuntu-latest
+    needs: setup-branch-protection
+
+    steps:
+      - name: Configure Repository Settings
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+
+            try {
+              // Update repository settings for quality enforcement
+              await github.rest.repos.update({
+                owner,
+                repo,
+                // Security settings
+                security_and_analysis: {
+                  secret_scanning: { status: 'enabled' },
+                  secret_scanning_push_protection: { status: 'enabled' }
+                },
+                // Merge settings
+                allow_merge_commit: true,
+                allow_squash_merge: true,
+                allow_rebase_merge: false,
+                delete_branch_on_merge: true,
+                allow_auto_merge: false,
+                // Other quality settings
+                has_discussions: true,
+                has_issues: true,
+                has_projects: true,
+                has_wiki: false
+              });
+
+              console.log('Repository settings updated for quality enforcement');
+
+              // Create or update quality gate check rules
+              const rulesets = await github.rest.repos.getRepoRulesets({
+                owner,
+                repo
+              });
+
+              console.log('Current rulesets:', rulesets.data.length);
+
+              // Create quality gates ruleset if it doesn't exist
+              const qualityRulesetExists = rulesets.data.some(r => r.name === 'Quality Gates');
+
+              if (!qualityRulesetExists) {
+                await github.rest.repos.createRepoRuleset({
+                  owner,
+                  repo,
+                  name: 'Quality Gates',
+                  target: 'branch',
+                  enforcement: 'active',
+                  conditions: {
+                    ref_name: {
+                      include: ['refs/heads/main', 'refs/heads/develop'],
+                      exclude: []
+                    }
+                  },
+                  rules: [
+                    {
+                      type: 'required_status_checks',
+                      parameters: {
+                        strict_required_status_checks_policy: true,
+                        required_status_checks: [
+                          { context: 'Test & Coverage', integration_id: null },
+                          { context: 'Audit Log Snapshot Validation', integration_id: null },
+                          { context: 'Build Check', integration_id: null },
+                          { context: 'Quality Metrics Report', integration_id: null }
+                        ]
+                      }
+                    },
+                    {
+                      type: 'pull_request',
+                      parameters: {
+                        required_approving_review_count: 1,
+                        dismiss_stale_reviews_on_push: true,
+                        require_code_owner_review: true,
+                        require_last_push_approval: false,
+                        required_review_thread_resolution: true
+                      }
+                    },
+                    {
+                      type: 'deletion',
+                      parameters: {}
+                    },
+                    {
+                      type: 'non_fast_forward',
+                      parameters: {}
+                    }
+                  ],
+                  bypass_actors: [
+                    {
+                      actor_id: context.payload.repository.owner.id,
+                      actor_type: 'OrganizationAdmin',
+                      bypass_mode: 'always'
+                    }
+                  ]
+                });
+
+                console.log('Quality Gates ruleset created');
+              } else {
+                console.log('Quality Gates ruleset already exists');
+              }
+
+            } catch (error) {
+              console.error('Failed to configure repository settings:', error);
+              // Don't fail the workflow for settings that might not be available
+              console.log('Continuing despite repository configuration errors...');
+            }
+
+  create-quality-issue-templates:
+    name: Create Quality Issue Templates
+    runs-on: ubuntu-latest
+    needs: setup-repository-settings
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create issue templates
+        run: |
+          mkdir -p .github/ISSUE_TEMPLATE
+
+          # Coverage regression template
+          cat > .github/ISSUE_TEMPLATE/coverage-regression.yml << 'EOF'
+          name: 📉 Coverage Regression
+          description: Report when test coverage drops below acceptable thresholds
+          title: "Coverage Regression: [Affected Package/Area]"
+          labels: ["coverage", "regression", "priority:high"]
+          body:
+            - type: markdown
+              attributes:
+                value: |
+                  ## Coverage Regression Report
+                  Use this template when test coverage has dropped significantly.
+
+            - type: input
+              id: current-coverage
+              attributes:
+                label: Current Coverage
+                description: What is the current coverage percentage?
+                placeholder: "e.g., 87.5%"
+              validations:
+                required: true
+
+            - type: input
+              id: previous-coverage
+              attributes:
+                label: Previous Coverage
+                description: What was the previous coverage percentage?
+                placeholder: "e.g., 92.1%"
+              validations:
+                required: true
+
+            - type: input
+              id: affected-package
+              attributes:
+                label: Affected Package
+                description: Which package or area is affected?
+                placeholder: "e.g., packages/lib, packages/api"
+              validations:
+                required: true
+
+            - type: textarea
+              id: missing-tests
+              attributes:
+                label: Missing Test Areas
+                description: What areas lack test coverage?
+                placeholder: "Describe the functions, methods, or code paths that need tests"
+              validations:
+                required: true
+
+            - type: textarea
+              id: action-plan
+              attributes:
+                label: Action Plan
+                description: What steps will be taken to restore coverage?
+                placeholder: "List specific tests that need to be added"
+              validations:
+                required: true
+          EOF
+
+          # Performance regression template
+          cat > .github/ISSUE_TEMPLATE/performance-regression.yml << 'EOF'
+          name: 🐌 Performance Regression
+          description: Report when test performance degrades significantly
+          title: "Performance Regression: [Affected Area]"
+          labels: ["performance", "regression", "priority:medium"]
+          body:
+            - type: markdown
+              attributes:
+                value: |
+                  ## Performance Regression Report
+                  Use this template when test suite performance has degraded.
+
+            - type: input
+              id: current-duration
+              attributes:
+                label: Current Test Duration
+                description: How long do tests currently take?
+                placeholder: "e.g., 75 seconds"
+              validations:
+                required: true
+
+            - type: input
+              id: benchmark-duration
+              attributes:
+                label: Benchmark Duration
+                description: What is the target/expected duration?
+                placeholder: "e.g., 60 seconds"
+              validations:
+                required: true
+
+            - type: textarea
+              id: slow-tests
+              attributes:
+                label: Identified Slow Tests
+                description: Which tests are performing poorly?
+                placeholder: "List specific test files or test names"
+              validations:
+                required: true
+
+            - type: textarea
+              id: optimization-plan
+              attributes:
+                label: Optimization Plan
+                description: How will performance be improved?
+                placeholder: "Describe optimization strategies"
+              validations:
+                required: true
+          EOF
+
+          # Quality gate failure template
+          cat > .github/ISSUE_TEMPLATE/quality-gate-failure.yml << 'EOF'
+          name: 🚨 Quality Gate Failure
+          description: Report when quality gates are failing
+          title: "Quality Gate Failure: [Gate Type]"
+          labels: ["quality-gate", "failure", "priority:high"]
+          body:
+            - type: markdown
+              attributes:
+                value: |
+                  ## Quality Gate Failure Report
+                  Use this template when quality gates are preventing merges.
+
+            - type: dropdown
+              id: gate-type
+              attributes:
+                label: Failed Gate Type
+                description: Which quality gate is failing?
+                options:
+                  - Coverage Threshold
+                  - Performance Benchmark
+                  - Audit Compliance
+                  - Code Quality
+                  - Build Verification
+              validations:
+                required: true
+
+            - type: textarea
+              id: failure-details
+              attributes:
+                label: Failure Details
+                description: What specific checks are failing?
+                placeholder: "Include error messages, metrics, or test output"
+              validations:
+                required: true
+
+            - type: input
+              id: pr-number
+              attributes:
+                label: Related PR
+                description: Which PR is affected? (if applicable)
+                placeholder: "e.g., #123"
+
+            - type: textarea
+              id: resolution-plan
+              attributes:
+                label: Resolution Plan
+                description: How will the quality gate failure be addressed?
+                placeholder: "Describe steps to fix the failing checks"
+              validations:
+                required: true
+          EOF
+
+          echo "Issue templates created successfully"
+
+      - name: Create or update CODEOWNERS
+        run: |
+          cat > .github/CODEOWNERS << 'EOF'
+          # Global code owners
+          * @bwierzbo
+
+          # Quality and testing
+          /tests/ @bwierzbo
+          /.github/workflows/ @bwierzbo
+          /scripts/ @bwierzbo
+          vitest.config.ts @bwierzbo
+
+          # Package-specific ownership
+          /packages/lib/ @bwierzbo
+          /packages/api/ @bwierzbo
+          /packages/db/ @bwierzbo
+          /packages/worker/ @bwierzbo
+
+          # Application code
+          /apps/web/ @bwierzbo
+
+          # Configuration files
+          *.config.* @bwierzbo
+          package.json @bwierzbo
+          pnpm-*.yaml @bwierzbo
+          EOF
+
+          echo "CODEOWNERS file created/updated"
+
+      - name: Commit quality configuration files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/ISSUE_TEMPLATE/ .github/CODEOWNERS
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Configure quality gates and issue templates
+
+            - Add coverage regression issue template
+            - Add performance regression issue template
+            - Add quality gate failure issue template
+            - Update CODEOWNERS for quality oversight"
+            git push
+          fi

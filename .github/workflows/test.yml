@@ -1,8 +1,8 @@
-name: Test Suite
+name: Test Suite & Quality Gates
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, 'epic/**', 'feature/**' ]
   pull_request:
     branches: [ main, develop ]
 
@@ -10,11 +10,252 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  COVERAGE_THRESHOLD: 95
+  PERFORMANCE_THRESHOLD: 60
+
 jobs:
   test:
     name: Test & Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    outputs:
+      coverage-total: ${{ steps.coverage-check.outputs.total-coverage }}
+      test-duration: ${{ steps.test-timing.outputs.duration }}
+      coverage-report: ${{ steps.coverage-summary.outputs.report }}
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: cidery_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for coverage comparison
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup test environment
+        run: |
+          echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cidery_test" >> $GITHUB_ENV
+          echo "NODE_ENV=test" >> $GITHUB_ENV
+          echo "NEXTAUTH_SECRET=test-secret" >> $GITHUB_ENV
+          echo "NEXTAUTH_URL=http://localhost:3000" >> $GITHUB_ENV
+
+      - name: Run type checking
+        run: pnpm typecheck
+
+      - name: Run linting
+        run: pnpm lint
+
+      - name: Start test timing
+        id: test-start
+        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+      - name: Calculate test duration
+        id: test-timing
+        run: |
+          start_time=${{ steps.test-start.outputs.start-time }}
+          end_time=$(date +%s)
+          duration=$((end_time - start_time))
+          echo "duration=$duration" >> $GITHUB_OUTPUT
+          echo "Test suite completed in ${duration} seconds"
+
+      - name: Validate test performance
+        run: |
+          duration=${{ steps.test-timing.outputs.duration }}
+          if [ $duration -gt ${{ env.PERFORMANCE_THRESHOLD }} ]; then
+            echo "::error::Test suite took ${duration}s, exceeding threshold of ${{ env.PERFORMANCE_THRESHOLD }}s"
+            exit 1
+          fi
+          echo "::notice::Test performance: ${duration}s (threshold: ${{ env.PERFORMANCE_THRESHOLD }}s)"
+
+      - name: Check coverage thresholds
+        id: coverage-check
+        run: |
+          # Extract coverage percentages from coverage summary
+          if [ -f coverage/coverage-summary.json ]; then
+            total=$(jq -r '.total.lines.pct' coverage/coverage-summary.json)
+            branches=$(jq -r '.total.branches.pct' coverage/coverage-summary.json)
+            functions=$(jq -r '.total.functions.pct' coverage/coverage-summary.json)
+            statements=$(jq -r '.total.statements.pct' coverage/coverage-summary.json)
+
+            echo "total-coverage=$total" >> $GITHUB_OUTPUT
+            echo "Coverage Summary:"
+            echo "Lines: ${total}%"
+            echo "Branches: ${branches}%"
+            echo "Functions: ${functions}%"
+            echo "Statements: ${statements}%"
+
+            # Check if any coverage metric is below threshold
+            failed=false
+            if (( $(echo "$total < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) )); then
+              echo "::error::Line coverage ${total}% is below threshold ${{ env.COVERAGE_THRESHOLD }}%"
+              failed=true
+            fi
+            if (( $(echo "$branches < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) )); then
+              echo "::error::Branch coverage ${branches}% is below threshold ${{ env.COVERAGE_THRESHOLD }}%"
+              failed=true
+            fi
+            if (( $(echo "$functions < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) )); then
+              echo "::error::Function coverage ${functions}% is below threshold ${{ env.COVERAGE_THRESHOLD }}%"
+              failed=true
+            fi
+            if (( $(echo "$statements < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) )); then
+              echo "::error::Statement coverage ${statements}% is below threshold ${{ env.COVERAGE_THRESHOLD }}%"
+              failed=true
+            fi
+
+            if [ "$failed" = true ]; then
+              echo "::error::Coverage check failed - one or more metrics below ${{ env.COVERAGE_THRESHOLD }}% threshold"
+              exit 1
+            fi
+
+            echo "::notice::All coverage metrics meet the ${{ env.COVERAGE_THRESHOLD }}% threshold"
+          else
+            echo "::error::Coverage summary not found"
+            exit 1
+          fi
+
+      - name: Generate coverage summary for PR
+        id: coverage-summary
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            total=$(jq -r '.total.lines.pct' coverage/coverage-summary.json)
+            branches=$(jq -r '.total.branches.pct' coverage/coverage-summary.json)
+            functions=$(jq -r '.total.functions.pct' coverage/coverage-summary.json)
+            statements=$(jq -r '.total.statements.pct' coverage/coverage-summary.json)
+
+            # Create detailed coverage report
+            cat > coverage-report.md << EOF
+          ## Coverage Report
+
+          | Metric | Coverage | Status |
+          |--------|----------|--------|
+          | Lines | ${total}% | $([ $(echo "$total >= ${{ env.COVERAGE_THRESHOLD }}" | bc -l) -eq 1 ] && echo "Pass" || echo "Fail") |
+          | Branches | ${branches}% | $([ $(echo "$branches >= ${{ env.COVERAGE_THRESHOLD }}" | bc -l) -eq 1 ] && echo "Pass" || echo "Fail") |
+          | Functions | ${functions}% | $([ $(echo "$functions >= ${{ env.COVERAGE_THRESHOLD }}" | bc -l) -eq 1 ] && echo "Pass" || echo "Fail") |
+          | Statements | ${statements}% | $([ $(echo "$statements >= ${{ env.COVERAGE_THRESHOLD }}" | bc -l) -eq 1 ] && echo "Pass" || echo "Fail") |
+
+          **Threshold:** ${{ env.COVERAGE_THRESHOLD }}%
+          **Test Duration:** ${{ steps.test-timing.outputs.duration }}s (max: ${{ env.PERFORMANCE_THRESHOLD }}s)
+
+          $([ $(echo "$total >= ${{ env.COVERAGE_THRESHOLD }}" | bc -l) -eq 1 ] && echo "All coverage requirements met!" || echo "Coverage below threshold - please add tests")
+          EOF
+
+            # Set multiline output
+            {
+              echo 'report<<EOF'
+              cat coverage-report.md
+              echo EOF
+            } >> $GITHUB_OUTPUT
+          fi
+
+      - name: Store coverage history and analyze trends
+        run: |
+          # Create coverage history directory
+          mkdir -p .coverage-history
+
+          # Store current coverage data with timestamp
+          timestamp=$(date +%Y%m%d_%H%M%S)
+          branch_name=${GITHUB_REF#refs/heads/}
+
+          if [ -f coverage/coverage-summary.json ]; then
+            cp coverage/coverage-summary.json .coverage-history/coverage_${branch_name}_${timestamp}.json
+          fi
+
+          # Run coverage trend analysis
+          npx tsx scripts/coverage-trend-tracker.ts store
+          npx tsx scripts/coverage-trend-tracker.ts analyze $branch_name
+
+      - name: Analyze test performance
+        run: |
+          # Run performance analysis
+          npx tsx scripts/performance-monitor.ts analyze
+
+          # Generate performance report
+          npx tsx scripts/performance-monitor.ts report > performance-report.md
+
+      - name: Generate quality dashboard
+        run: |
+          # Generate comprehensive quality metrics
+          npx tsx scripts/quality-dashboard.ts generate
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: |
+            ./apps/web/coverage/lcov.info
+            ./packages/api/coverage/lcov.info
+            ./packages/db/coverage/lcov.info
+            ./packages/lib/coverage/lcov.info
+            ./packages/worker/coverage/lcov.info
+          fail_ci_if_error: true
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: ${{ steps.coverage-summary.outputs.report }}
+
+      - name: Archive coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage/
+            .coverage-history/
+            quality-dashboard/
+            performance-report.md
+          retention-days: 30
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            coverage/
+            tests/snapshots/
+          retention-days: 30
+
+  audit-snapshots:
+    name: Audit Log Snapshot Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: test
 
     services:
       postgres:
@@ -53,41 +294,19 @@ jobs:
         run: |
           echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cidery_test" >> $GITHUB_ENV
           echo "NODE_ENV=test" >> $GITHUB_ENV
-          echo "NEXTAUTH_SECRET=test-secret" >> $GITHUB_ENV
-          echo "NEXTAUTH_URL=http://localhost:3000" >> $GITHUB_ENV
 
-      - name: Run type checking
-        run: pnpm typecheck
+      - name: Run audit snapshot tests
+        run: pnpm test tests/audit/ --reporter=verbose
 
-      - name: Run linting
-        run: pnpm lint
-
-      - name: Run tests with coverage
-        run: pnpm test:coverage
-
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: |
-            ./apps/web/coverage/lcov.info
-            ./packages/api/coverage/lcov.info
-            ./packages/db/coverage/lcov.info
-            ./packages/lib/coverage/lcov.info
-            ./packages/worker/coverage/lcov.info
-          fail_ci_if_error: false
-
-      - name: Comment coverage on PR
-        if: github.event_name == 'pull_request'
-        uses: romeovs/lcov-reporter-action@v0.3.1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          lcov-file: |
-            ./apps/web/coverage/lcov.info
-            ./packages/api/coverage/lcov.info
-            ./packages/db/coverage/lcov.info
-            ./packages/lib/coverage/lcov.info
-            ./packages/worker/coverage/lcov.info
+      - name: Validate audit log diffs
+        run: |
+          # Check for any uncommitted snapshot changes
+          if ! git diff --exit-code tests/snapshots/; then
+            echo "::error::Audit log snapshots have changes - please commit updated snapshots"
+            git diff tests/snapshots/
+            exit 1
+          fi
+          echo "::notice::All audit log snapshots are up to date"
 
   build:
     name: Build Check
@@ -122,3 +341,56 @@ jobs:
           test -d packages/db/dist || (echo "DB package build failed" && exit 1)
           test -d packages/lib/dist || (echo "Lib package build failed" && exit 1)
           test -d packages/worker/dist || (echo "Worker package build failed" && exit 1)
+
+  quality-report:
+    name: Quality Metrics Report
+    runs-on: ubuntu-latest
+    needs: [test, audit-snapshots, build]
+    if: always()
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate quality report
+        run: |
+          cat > quality-report.md << EOF
+          # Quality Metrics Dashboard
+
+          ## Test Results
+          - **Coverage**: ${{ needs.test.outputs.coverage-total }}% (threshold: ${{ env.COVERAGE_THRESHOLD }}%)
+          - **Test Duration**: ${{ needs.test.outputs.test-duration }}s (threshold: ${{ env.PERFORMANCE_THRESHOLD }}s)
+          - **Test Status**: ${{ needs.test.result }}
+          - **Audit Snapshots**: ${{ needs.audit-snapshots.result }}
+          - **Build Status**: ${{ needs.build.result }}
+
+          ## Quality Gates Status
+          - Coverage Threshold: $([ "${{ needs.test.result }}" == "success" ] && echo "PASS" || echo "FAIL")
+          - Performance Threshold: $([ "${{ needs.test.result }}" == "success" ] && echo "PASS" || echo "FAIL")
+          - Audit Log Validation: $([ "${{ needs.audit-snapshots.result }}" == "success" ] && echo "PASS" || echo "FAIL")
+          - Build Verification: $([ "${{ needs.build.result }}" == "success" ] && echo "PASS" || echo "FAIL")
+
+          ## Recommendations
+          $([ "${{ needs.test.result }}" != "success" ] && echo "- Fix failing tests and ensure coverage meets threshold")
+          $([ "${{ needs.audit-snapshots.result }}" != "success" ] && echo "- Update audit log snapshots or fix audit logic")
+          $([ "${{ needs.build.result }}" != "success" ] && echo "- Fix build errors in packages")
+
+          Generated at: $(date -u)
+          EOF
+
+          cat quality-report.md
+
+      - name: Upload quality report
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report
+          path: quality-report.md
+          retention-days: 30
+
+      - name: Set job status
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ] || [ "${{ needs.audit-snapshots.result }}" != "success" ] || [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::Quality gates failed - check individual job results"
+            exit 1
+          fi
+          echo "::notice::All quality gates passed successfully"
