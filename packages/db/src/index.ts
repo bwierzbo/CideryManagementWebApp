@@ -1,3 +1,5 @@
-import { db, type Database } from './client'
-export { db, type Database }
+// Re-export everything from client
+export { db, type Database } from './client'
+
+// Re-export everything from schema
 export * from './schema'
