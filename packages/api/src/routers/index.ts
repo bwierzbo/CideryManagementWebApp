@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { router, publicProcedure, protectedProcedure, adminProcedure, createRbacProcedure } from '../trpc'
 import { auditRouter } from './audit'
+import { healthRouter } from './health'
 import { 
   db, 
   vendors, 
@@ -1686,6 +1687,9 @@ export const appRouter = router({
         }
       })
   }),
+
+  // Health check and system monitoring
+  health: healthRouter,
 
   // Audit logging and reporting
   audit: auditRouter
