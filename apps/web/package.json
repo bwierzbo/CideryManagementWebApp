@@ -26,6 +26,7 @@
     "@trpc/client": "^11.5.1",
     "@trpc/next": "^11.5.1",
     "@trpc/react-query": "^11.5.1",
+    "@trpc/server": "^11.5.1",
     "api": "workspace:^",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",

@@ -142,9 +142,9 @@ function PingStatus() {
 
 function LiquidMap() {
   const { data: session } = useSession()
-  const { data: liquidData, isLoading } = trpc.vessel.liquidMap.useQuery()
+  const { data: liquidData, isPending } = trpc.vessel.liquidMap.useQuery()
   
-  const canView = session?.user?.role === 'admin' || session?.user?.role === 'operator'
+  const canView = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'operator'
 
   if (!canView) {
     return (
@@ -166,7 +166,7 @@ function LiquidMap() {
     )
   }
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <Card>
         <CardHeader>
@@ -314,10 +314,10 @@ function LiquidMap() {
 
 function COGSReport() {
   const { data: session } = useSession()
-  const { data: cogsData, isLoading, refetch } = trpc.reports.cogsPerBatch.useQuery()
+  const { data: cogsData, isPending, refetch } = trpc.reports.cogsPerBatch.useQuery()
   
-  const isAdmin = session?.user?.role === 'admin'
-  const canView = session?.user?.role === 'admin' || session?.user?.role === 'operator'
+  const isAdmin = (session?.user as any)?.role === 'admin'
+  const canView = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'operator'
 
   const exportCSV = () => {
     if (!cogsData?.batches) return
@@ -519,7 +519,7 @@ function COGSReport() {
     )
   }
 
-  if (isLoading) {
+  if (isPending) {
     return (
       <Card>
         <CardHeader>
@@ -656,8 +656,8 @@ export default function DashboardPage() {
               {session?.user && (
                 <div>
                   <p className="text-sm text-gray-500">Role</p>
-                  <Badge variant={session.user.role === 'admin' ? 'default' : 'secondary'}>
-                    {session.user.role || 'Unknown'}
+                  <Badge variant={(session.user as any).role === 'admin' ? 'default' : 'secondary'}>
+                    {(session.user as any).role || 'Unknown'}
                   </Badge>
                 </div>
               )}

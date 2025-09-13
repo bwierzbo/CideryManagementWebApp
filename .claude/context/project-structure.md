@@ -1,7 +1,7 @@
 ---
 created: 2025-09-13T04:03:23Z
-last_updated: 2025-09-13T04:03:23Z
-version: 1.0
+last_updated: 2025-09-13T19:24:59Z
+version: 1.1
 author: Claude Code PM System
 ---
 
@@ -13,6 +13,10 @@ author: Claude Code PM System
 cidery-management-app/
 ├── .claude/                    # Claude Code configuration and scripts
 │   ├── context/               # Project context documentation
+│   ├── epics/                 # Epic and task management
+│   │   ├── prd-system-verification/  # System verification epic (completed)
+│   │   └── uipagesauth/       # UI Pages Auth epic (in progress)
+│   ├── prds/                  # Product Requirement Documents
 │   └── scripts/               # PM and automation scripts
 ├── .git/                      # Git repository data
 ├── apps/                      # Application packages
@@ -164,3 +168,7 @@ worker/
 - **Domain-driven**: Align with cidery business processes
 - **Separation of concerns**: Clear boundaries between packages
 - **Type safety**: Shared types ensure consistency across packages
+
+## Update History
+
+- 2025-09-13T19:24:59Z: Added .claude/epics/ and .claude/prds/ directories for project management system
