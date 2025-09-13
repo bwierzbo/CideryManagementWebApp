@@ -1549,7 +1549,26 @@ export const appRouter = router({
   reports: router({
     cogsPerBatch: createRbacProcedure('list', 'reports').query(async () => {
       try {
-        const batchCostData = await db
+        // TODO: Implement when batchCosts and cogsItems tables are created
+        return {
+          batches: [] as Array<{
+            batchId: string
+            batchNumber: string
+            batchStatus: string
+            totalAppleCost: string
+            laborCost: string
+            overheadCost: string
+            packagingCost: string
+            totalCost: string
+            costPerBottle: string | null
+            costPerL: string | null
+            calculatedAt: Date | null
+            initialVolumeL: string | null
+            currentVolumeL: string | null
+          }>,
+          count: 0
+        }
+        /* const batchCostData = await db
           .select({
             batchId: batchCosts.batchId,
             batchNumber: batches.batchNumber,
@@ -1600,7 +1619,7 @@ export const appRouter = router({
             cogsItems: cogsItemsByBatch[batch.batchId] || [],
           })),
           count: batchCostData.length,
-        }
+        } */
       } catch (error) {
         console.error('Error getting COGS per batch:', error)
         throw new TRPCError({
@@ -1627,7 +1646,14 @@ export const appRouter = router({
             })
           }
 
-          const costs = await db
+          // TODO: Implement when batchCosts and cogsItems tables are created
+          return {
+            batch: batch[0],
+            costs: null,
+            cogsBreakdown: [],
+          }
+
+          /* const costs = await db
             .select()
             .from(batchCosts)
             .where(and(eq(batchCosts.batchId, input.batchId), isNull(batchCosts.deletedAt)))
@@ -1643,7 +1669,7 @@ export const appRouter = router({
             batch: batch[0],
             costs: costs[0] || null,
             cogsBreakdown,
-          }
+          } */
         } catch (error) {
           if (error instanceof TRPCError) throw error
           console.error('Error getting batch COGS detail:', error)

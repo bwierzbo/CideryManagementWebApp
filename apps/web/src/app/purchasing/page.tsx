@@ -206,8 +206,13 @@ function VendorManagement() {
   )
 }
 
-function PurchaseForm() {
-  const [lines, setLines] = useState([
+function PurchaseFormComponent() {
+  const [lines, setLines] = useState<Array<{
+    appleVarietyId: string
+    quantity: number
+    unit: "kg" | "lb"
+    pricePerUnit: number
+  }>>([
     { appleVarietyId: "", quantity: 0, unit: "kg", pricePerUnit: 0 }
   ])
 
@@ -230,15 +235,15 @@ function PurchaseForm() {
   })
 
   const addLine = () => {
-    const newLines = [...lines, { appleVarietyId: "", quantity: 0, unit: "kg", pricePerUnit: 0 }]
+    const newLines = [...lines, { appleVarietyId: "", quantity: 0, unit: "kg" as "kg" | "lb", pricePerUnit: 0 }]
     setLines(newLines)
-    setValue("lines", newLines as any)
+    setValue("lines", newLines)
   }
 
   const removeLine = (index: number) => {
     const newLines = lines.filter((_, i) => i !== index)
     setLines(newLines)
-    setValue("lines", newLines as any)
+    setValue("lines", newLines)
   }
 
   const calculateLineTotal = (quantity: number, price: number) => {
@@ -559,7 +564,7 @@ export default function PurchasingPage() {
         {/* Tab Content */}
         <div className="space-y-8">
           {activeTab === "vendors" && <VendorManagement />}
-          {activeTab === "purchase" && <PurchaseForm />}
+          {activeTab === "purchase" && <PurchaseFormComponent />}
           {activeTab === "history" && <RecentPurchases />}
         </div>
       </main>

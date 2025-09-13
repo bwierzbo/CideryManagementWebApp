@@ -222,7 +222,7 @@ export const auditRouter = router({
   writeMetadata: createRbacProcedure('create', 'audit')
     .input(z.object({
       metadataType: z.string().min(1, 'Metadata type is required'),
-      data: z.record(z.any()),
+      data: z.record(z.string(), z.any()),
       tableName: z.string().optional(),
       validUntil: z.date().or(z.string().transform(val => new Date(val))).optional()
     }))

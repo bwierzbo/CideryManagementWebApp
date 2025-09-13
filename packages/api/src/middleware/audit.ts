@@ -1,6 +1,6 @@
-import { TRPCError, type MiddlewareFunction } from '@trpc/server'
-import { getIronSession } from 'iron-session'
-import { AuditDatabase, type AuditSnapshot } from 'lib/src/audit/database'
+import { TRPCError, type AnyMiddlewareFunction } from '@trpc/server'
+import { AuditDatabase } from 'lib/src/audit/database'
+import type { AuditSnapshot } from 'lib/src/audit/service'
 import { auditEventBus, createDatabaseAuditSubscriber } from 'lib/src/audit/eventBus'
 import type { Context } from '../trpc'
 
@@ -55,7 +55,7 @@ export function initializeAuditSystem(database: any, config?: Partial<AuditConfi
           newData: auditLogEntry.newData,
           context: {
             userId: auditLogEntry.changedBy,
-            userEmail: auditLogEntry.changedByEmail,
+            userEmail: undefined, // This will be populated by the audit service
             reason: auditLogEntry.reason
           },
           timestamp: auditLogEntry.changedAt
@@ -111,12 +111,18 @@ function extractOperationInfo(
 /**
  * Middleware function that automatically logs audit events for mutations
  */
-export const auditMiddleware: MiddlewareFunction<Context, Context, any> = async ({
+export const auditMiddleware: AnyMiddlewareFunction = async ({
   ctx,
   next,
   path,
   type,
   input
+}: {
+  ctx: any
+  next: any
+  path: string
+  type: string
+  input: any
 }) => {
   // Skip if audit is disabled
   if (!auditConfig.enabled || !auditDatabaseInstance) {
@@ -186,6 +192,7 @@ export const auditMiddleware: MiddlewareFunction<Context, Context, any> = async 
   const auditContext = {
     userId: ctx.session?.user?.id,
     userEmail: ctx.session?.user?.email,
+    reason: undefined, // Can be set by the specific procedure if needed
     ...requestInfo
   }
 
@@ -222,8 +229,14 @@ export const auditMiddleware: MiddlewareFunction<Context, Context, any> = async 
  */
 export const enhancedAuditMiddleware = (
   dataFetcher?: (tableName: string, recordId: string) => Promise<any>
-): MiddlewareFunction<Context, Context, any> => {
-  return async ({ ctx, next, path, type, input }) => {
+): AnyMiddlewareFunction => {
+  return async ({ ctx, next, path, type, input }: {
+    ctx: any
+    next: any
+    path: string
+    type: string
+    input: any
+  }) => {
     // Skip if audit is disabled
     if (!auditConfig.enabled || !auditDatabaseInstance) {
       return next({ ctx })
@@ -321,8 +334,12 @@ export function createAuditMiddleware(
   tableName: string,
   operation: 'create' | 'update' | 'delete' | 'soft_delete' | 'restore',
   dataFetcher?: (recordId: string) => Promise<any>
-): MiddlewareFunction<Context, Context, any> {
-  return async ({ ctx, next, input }) => {
+): AnyMiddlewareFunction {
+  return async ({ ctx, next, input }: {
+    ctx: any
+    next: any
+    input: any
+  }) => {
     // Skip if audit is disabled
     if (!auditConfig.enabled || !auditDatabaseInstance) {
       return next({ ctx })

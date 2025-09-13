@@ -1,7 +1,7 @@
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch'
 import { getServerSession } from 'next-auth/next'
 import { appRouter } from 'api'
-import { authOptions } from '../../auth/[...nextauth]/route'
+import { authOptions } from '../../../../lib/auth'
 import { initializeAuditSystem } from 'api/src/middleware/audit'
 import { db } from 'db'
 
