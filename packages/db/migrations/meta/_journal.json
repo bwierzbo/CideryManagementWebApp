@@ -1,0 +1,13 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1757699909348,
+      "tag": "0000_medical_retro_girl",
+      "breakpoints": true
+    }
+  ]
+}

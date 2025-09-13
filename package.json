@@ -1,0 +1,35 @@
+{
+  "name": "cidery-management-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cidery Management MVP - Replace Excel with a web app to track vendor purchases → pressing → fermentation → packaging → inventory",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "concurrently \"pnpm --filter web run dev\" \"pnpm --filter worker run dev\"",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "format": "pnpm -r run format",
+    "clean": "pnpm -r run clean && rm -rf node_modules",
+    "db:generate": "pnpm --filter db run generate",
+    "db:migrate": "pnpm --filter db run migrate",
+    "db:seed": "pnpm --filter db run seed"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "concurrently": "^8.2.2",
+    "prettier": "^3.2.0",
+    "typescript": "^5.3.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "^18.2.0",
+      "@types/react-dom": "^18.2.0"
+    }
+  }
+}

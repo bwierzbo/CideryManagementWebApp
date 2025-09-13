@@ -1,0 +1,355 @@
+import { pgTable, uuid, text, decimal, integer, timestamp, boolean, jsonb, pgEnum } from 'drizzle-orm/pg-core'
+import { relations } from 'drizzle-orm'
+
+// PostgreSQL Enums
+export const unitEnum = pgEnum('unit', ['kg', 'lb', 'L', 'gal'])
+export const batchStatusEnum = pgEnum('batch_status', ['planned', 'active', 'completed', 'cancelled'])
+export const vesselStatusEnum = pgEnum('vessel_status', ['available', 'in_use', 'cleaning', 'maintenance'])
+export const vesselTypeEnum = pgEnum('vessel_type', ['fermenter', 'conditioning_tank', 'bright_tank', 'storage'])
+export const transactionTypeEnum = pgEnum('transaction_type', ['purchase', 'transfer', 'adjustment', 'sale', 'waste'])
+export const cogsItemTypeEnum = pgEnum('cogs_item_type', ['apple_cost', 'labor', 'overhead', 'packaging'])
+export const userRoleEnum = pgEnum('user_role', ['admin', 'operator'])
+
+// Core Tables
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').notNull().unique(),
+  name: text('name').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  role: userRoleEnum('role').notNull().default('operator'),
+  isActive: boolean('is_active').notNull().default(true),
+  lastLoginAt: timestamp('last_login_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+export const vendors = pgTable('vendors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  contactInfo: jsonb('contact_info'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const appleVarieties = pgTable('apple_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  description: text('description'),
+  typicalBrix: decimal('typical_brix', { precision: 4, scale: 2 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const purchases = pgTable('purchases', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
+  purchaseDate: timestamp('purchase_date').notNull(),
+  totalCost: decimal('total_cost', { precision: 10, scale: 2 }).notNull(),
+  invoiceNumber: text('invoice_number'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const purchaseItems = pgTable('purchase_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  purchaseId: uuid('purchase_id').notNull().references(() => purchases.id),
+  appleVarietyId: uuid('apple_variety_id').notNull().references(() => appleVarieties.id),
+  quantity: decimal('quantity', { precision: 10, scale: 3 }).notNull(),
+  unit: unitEnum('unit').notNull(),
+  pricePerUnit: decimal('price_per_unit', { precision: 8, scale: 4 }).notNull(),
+  totalCost: decimal('total_cost', { precision: 10, scale: 2 }).notNull(),
+  // Canonical storage (always kg for weight, L for volume)
+  quantityKg: decimal('quantity_kg', { precision: 10, scale: 3 }),
+  quantityL: decimal('quantity_l', { precision: 10, scale: 3 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const pressRuns = pgTable('press_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runDate: timestamp('run_date').notNull(),
+  notes: text('notes'),
+  totalAppleProcessedKg: decimal('total_apple_processed_kg', { precision: 10, scale: 3 }).notNull(),
+  totalJuiceProducedL: decimal('total_juice_produced_l', { precision: 10, scale: 3 }).notNull(),
+  extractionRate: decimal('extraction_rate', { precision: 5, scale: 4 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const pressItems = pgTable('press_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pressRunId: uuid('press_run_id').notNull().references(() => pressRuns.id),
+  purchaseItemId: uuid('purchase_item_id').notNull().references(() => purchaseItems.id),
+  quantityUsedKg: decimal('quantity_used_kg', { precision: 10, scale: 3 }).notNull(),
+  juiceProducedL: decimal('juice_produced_l', { precision: 10, scale: 3 }).notNull(),
+  brixMeasured: decimal('brix_measured', { precision: 4, scale: 2 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const vessels = pgTable('vessels', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  type: vesselTypeEnum('type').notNull(),
+  capacityL: decimal('capacity_l', { precision: 10, scale: 3 }).notNull(),
+  status: vesselStatusEnum('status').notNull().default('available'),
+  location: text('location'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const batches = pgTable('batches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchNumber: text('batch_number').notNull().unique(),
+  status: batchStatusEnum('status').notNull().default('planned'),
+  vesselId: uuid('vessel_id').references(() => vessels.id),
+  startDate: timestamp('start_date').notNull(),
+  targetCompletionDate: timestamp('target_completion_date'),
+  actualCompletionDate: timestamp('actual_completion_date'),
+  initialVolumeL: decimal('initial_volume_l', { precision: 10, scale: 3 }).notNull(),
+  currentVolumeL: decimal('current_volume_l', { precision: 10, scale: 3 }).notNull(),
+  targetAbv: decimal('target_abv', { precision: 4, scale: 2 }),
+  actualAbv: decimal('actual_abv', { precision: 4, scale: 2 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const batchIngredients = pgTable('batch_ingredients', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => batches.id),
+  pressItemId: uuid('press_item_id').notNull().references(() => pressItems.id),
+  volumeUsedL: decimal('volume_used_l', { precision: 10, scale: 3 }).notNull(),
+  brixAtUse: decimal('brix_at_use', { precision: 4, scale: 2 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const batchMeasurements = pgTable('batch_measurements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => batches.id),
+  measurementDate: timestamp('measurement_date').notNull(),
+  specificGravity: decimal('specific_gravity', { precision: 5, scale: 4 }),
+  abv: decimal('abv', { precision: 4, scale: 2 }),
+  ph: decimal('ph', { precision: 3, scale: 2 }),
+  totalAcidity: decimal('total_acidity', { precision: 4, scale: 2 }),
+  temperature: decimal('temperature', { precision: 4, scale: 1 }),
+  volumeL: decimal('volume_l', { precision: 10, scale: 3 }),
+  notes: text('notes'),
+  takenBy: text('taken_by'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const packages = pgTable('packages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => batches.id),
+  packageDate: timestamp('package_date').notNull(),
+  volumePackagedL: decimal('volume_packaged_l', { precision: 10, scale: 3 }).notNull(),
+  bottleSize: text('bottle_size').notNull(),
+  bottleCount: integer('bottle_count').notNull(),
+  abvAtPackaging: decimal('abv_at_packaging', { precision: 4, scale: 2 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const inventory = pgTable('inventory', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  packageId: uuid('package_id').notNull().references(() => packages.id),
+  currentBottleCount: integer('current_bottle_count').notNull(),
+  reservedBottleCount: integer('reserved_bottle_count').notNull().default(0),
+  location: text('location'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const inventoryTransactions = pgTable('inventory_transactions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  inventoryId: uuid('inventory_id').notNull().references(() => inventory.id),
+  transactionType: transactionTypeEnum('transaction_type').notNull(),
+  quantityChange: integer('quantity_change').notNull(),
+  transactionDate: timestamp('transaction_date').notNull(),
+  reason: text('reason'),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const batchCosts = pgTable('batch_costs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => batches.id),
+  totalAppleCost: decimal('total_apple_cost', { precision: 10, scale: 2 }).notNull(),
+  laborCost: decimal('labor_cost', { precision: 10, scale: 2 }).notNull().default('0.00'),
+  overheadCost: decimal('overhead_cost', { precision: 10, scale: 2 }).notNull().default('0.00'),
+  packagingCost: decimal('packaging_cost', { precision: 10, scale: 2 }).notNull().default('0.00'),
+  totalCost: decimal('total_cost', { precision: 10, scale: 2 }).notNull(),
+  costPerBottle: decimal('cost_per_bottle', { precision: 8, scale: 4 }),
+  costPerL: decimal('cost_per_l', { precision: 8, scale: 4 }),
+  calculatedAt: timestamp('calculated_at').notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+export const cogsItems = pgTable('cogs_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => batches.id),
+  itemType: cogsItemTypeEnum('item_type').notNull(),
+  description: text('description').notNull(),
+  cost: decimal('cost', { precision: 10, scale: 2 }).notNull(),
+  quantity: decimal('quantity', { precision: 10, scale: 3 }),
+  unit: unitEnum('unit'),
+  appliedAt: timestamp('applied_at').notNull(),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+})
+
+// Audit log for tracking all changes
+export const auditLog = pgTable('audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tableName: text('table_name').notNull(),
+  recordId: uuid('record_id').notNull(),
+  operation: text('operation').notNull(),
+  oldData: jsonb('old_data'),
+  newData: jsonb('new_data'),
+  changedBy: text('changed_by'),
+  changedAt: timestamp('changed_at').notNull().defaultNow(),
+  reason: text('reason')
+})
+
+// Relations
+export const vendorsRelations = relations(vendors, ({ many }) => ({
+  purchases: many(purchases)
+}))
+
+export const purchasesRelations = relations(purchases, ({ one, many }) => ({
+  vendor: one(vendors, {
+    fields: [purchases.vendorId],
+    references: [vendors.id]
+  }),
+  items: many(purchaseItems)
+}))
+
+export const purchaseItemsRelations = relations(purchaseItems, ({ one, many }) => ({
+  purchase: one(purchases, {
+    fields: [purchaseItems.purchaseId],
+    references: [purchases.id]
+  }),
+  appleVariety: one(appleVarieties, {
+    fields: [purchaseItems.appleVarietyId],
+    references: [appleVarieties.id]
+  }),
+  pressItems: many(pressItems)
+}))
+
+export const pressRunsRelations = relations(pressRuns, ({ many }) => ({
+  items: many(pressItems)
+}))
+
+export const pressItemsRelations = relations(pressItems, ({ one, many }) => ({
+  pressRun: one(pressRuns, {
+    fields: [pressItems.pressRunId],
+    references: [pressRuns.id]
+  }),
+  purchaseItem: one(purchaseItems, {
+    fields: [pressItems.purchaseItemId],
+    references: [purchaseItems.id]
+  }),
+  batchIngredients: many(batchIngredients)
+}))
+
+export const vesselsRelations = relations(vessels, ({ many }) => ({
+  batches: many(batches)
+}))
+
+export const batchesRelations = relations(batches, ({ one, many }) => ({
+  vessel: one(vessels, {
+    fields: [batches.vesselId],
+    references: [vessels.id]
+  }),
+  ingredients: many(batchIngredients),
+  measurements: many(batchMeasurements),
+  packages: many(packages),
+  costs: many(batchCosts),
+  cogsItems: many(cogsItems)
+}))
+
+export const batchIngredientsRelations = relations(batchIngredients, ({ one }) => ({
+  batch: one(batches, {
+    fields: [batchIngredients.batchId],
+    references: [batches.id]
+  }),
+  pressItem: one(pressItems, {
+    fields: [batchIngredients.pressItemId],
+    references: [pressItems.id]
+  })
+}))
+
+export const batchMeasurementsRelations = relations(batchMeasurements, ({ one }) => ({
+  batch: one(batches, {
+    fields: [batchMeasurements.batchId],
+    references: [batches.id]
+  })
+}))
+
+export const packagesRelations = relations(packages, ({ one, many }) => ({
+  batch: one(batches, {
+    fields: [packages.batchId],
+    references: [batches.id]
+  }),
+  inventory: many(inventory)
+}))
+
+export const inventoryRelations = relations(inventory, ({ one, many }) => ({
+  package: one(packages, {
+    fields: [inventory.packageId],
+    references: [packages.id]
+  }),
+  transactions: many(inventoryTransactions)
+}))
+
+export const inventoryTransactionsRelations = relations(inventoryTransactions, ({ one }) => ({
+  inventory: one(inventory, {
+    fields: [inventoryTransactions.inventoryId],
+    references: [inventory.id]
+  })
+}))
+
+export const batchCostsRelations = relations(batchCosts, ({ one }) => ({
+  batch: one(batches, {
+    fields: [batchCosts.batchId],
+    references: [batches.id]
+  })
+}))
+
+export const cogsItemsRelations = relations(cogsItems, ({ one }) => ({
+  batch: one(batches, {
+    fields: [cogsItems.batchId],
+    references: [batches.id]
+  })
+}))
