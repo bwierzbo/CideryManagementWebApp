@@ -1,7 +1,6 @@
 import { DrizzleD1Database } from 'drizzle-orm/d1'
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js'
 import { eq, and, desc, asc, gte, lte, inArray, sql } from 'drizzle-orm'
-import { count } from 'drizzle-orm/pg-core'
 import { auditLogs, auditMetadata, type AuditLog, type NewAuditLog, type AuditMetadata, type NewAuditMetadata } from 'db/src/schema/audit'
 import type { AuditLogEntry, AuditSnapshot } from './service'
 import { createAuditLogEntry, validateAuditSnapshot } from './service'
@@ -123,7 +122,7 @@ export class AuditDatabase {
 
     // Get total count
     const countQuery = this.db
-      .select({ count: count() })
+      .select({ count: sql<number>`COUNT(*)` })
       .from(auditLogs)
 
     if (whereClause) {
@@ -208,7 +207,7 @@ export class AuditDatabase {
     const operationCounts = await this.db
       .select({
         operation: auditLogs.operation,
-        count: count()
+        count: sql<number>`COUNT(*)`
       })
       .from(auditLogs)
       .where(and(
@@ -399,7 +398,7 @@ export class AuditDatabase {
       .select({
         tableName: auditLogs.tableName,
         operation: auditLogs.operation,
-        count: count(),
+        count: sql<number>`COUNT(*)`,
         lastActivity: sql<Date>`MAX(${auditLogs.changedAt})`
       })
       .from(auditLogs)
