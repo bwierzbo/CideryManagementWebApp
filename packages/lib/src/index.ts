@@ -10,3 +10,60 @@ export {
   publishRestoreEvent,
   createDatabaseAuditSubscriber
 } from './audit/eventBus';
+
+// Re-export validation functions and schemas
+export * from './validation';
+
+// Re-export calculation functions
+export * from './calc/abv';
+export * from './calc/yield';
+export * from './calc/cogs';
+export * from './calc/financial';
+
+// Re-export audit service functions
+export {
+  generateAuditChecksum,
+  validateAuditIntegrity,
+  generateDataDiff,
+  sanitizeAuditData,
+  createAuditLogEntry,
+  filterAuditDataForQuery,
+  validateAuditSnapshot,
+  extractChangedFields,
+  generateChangeSummary
+} from './audit/service';
+
+// Re-export audit database functions
+export {
+  AuditDatabase
+} from './audit/database';
+
+// Re-export audit query functions
+export {
+  AuditQueryService,
+  auditQuerySchema,
+  recordHistoryQuerySchema,
+  userActivityQuerySchema,
+  auditStatsQuerySchema,
+  integrityCheckSchema
+} from './audit/queries';
+
+// Export audit types
+export type {
+  AuditContext,
+  AuditSnapshot,
+  AuditLogEntry
+} from './audit/service';
+
+export type {
+  AuditQueryOptions,
+  AuditQueryResult
+} from './audit/database';
+
+export type {
+  AuditQueryInput,
+  RecordHistoryQueryInput,
+  UserActivityQueryInput,
+  AuditStatsQueryInput,
+  IntegrityCheckInput
+} from './audit/queries';
