@@ -3,14 +3,15 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { 
-  BarChart3, 
-  ShoppingCart, 
-  Grape, 
-  Beaker, 
-  Package, 
-  Archive, 
-  FileText, 
+import {
+  BarChart3,
+  ShoppingCart,
+  Grape,
+  Beaker,
+  Package,
+  Archive,
+  FileText,
+  BookOpen,
   Settings,
   Menu,
   X
@@ -54,15 +55,21 @@ const navItems = [
     icon: Archive,
     description: "Stock Management"
   },
-  { 
-    name: "Reports", 
-    href: "/reports", 
+  {
+    name: "Reports",
+    href: "/reports",
     icon: FileText,
     description: "COGS & Analytics"
   },
-  { 
-    name: "Admin", 
-    href: "/admin", 
+  {
+    name: "Recipes",
+    href: "/recipes",
+    icon: BookOpen,
+    description: "Recipe Management"
+  },
+  {
+    name: "Admin",
+    href: "/admin",
     icon: Settings,
     description: "System Settings"
   },
