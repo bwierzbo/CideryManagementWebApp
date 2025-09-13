@@ -4,7 +4,7 @@
  */
 
 // Available user roles in the system
-export type UserRole = 'admin' | 'operator'
+export type UserRole = 'admin' | 'operator' | 'viewer'
 
 // Available actions that can be performed
 export type Action = 'create' | 'read' | 'update' | 'delete' | 'list'
@@ -64,6 +64,23 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: 'package', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'cost', actions: ['read', 'list'] }, // Can view costs but not modify
     { entity: 'report', actions: ['create', 'read', 'list'] }, // Can generate and view reports
+    { entity: 'audit_log', actions: ['read', 'list'] } // Can view audit logs
+  ],
+
+  viewer: [
+    // Viewers have read-only access to operational data
+    { entity: 'vendor', actions: ['read', 'list'] },
+    { entity: 'user', actions: ['read', 'list'] }, // Can only view users
+    { entity: 'apple_variety', actions: ['read', 'list'] },
+    { entity: 'purchase', actions: ['read', 'list'] },
+    { entity: 'press_run', actions: ['read', 'list'] },
+    { entity: 'batch', actions: ['read', 'list'] },
+    { entity: 'vessel', actions: ['read', 'list'] },
+    { entity: 'inventory', actions: ['read', 'list'] },
+    { entity: 'measurement', actions: ['read', 'list'] },
+    { entity: 'package', actions: ['read', 'list'] },
+    { entity: 'cost', actions: ['read', 'list'] }, // Can view costs but not modify
+    { entity: 'report', actions: ['read', 'list'] }, // Can view reports but not generate
     { entity: 'audit_log', actions: ['read', 'list'] } // Can view audit logs
   ]
 }
@@ -188,7 +205,8 @@ export function canPerformBulkOperations(userRole: UserRole): boolean {
 export function getRoleLevel(userRole: UserRole): number {
   const roleLevels: Record<UserRole, number> = {
     admin: 100,
-    operator: 50
+    operator: 50,
+    viewer: 10
   }
   
   return roleLevels[userRole] || 0

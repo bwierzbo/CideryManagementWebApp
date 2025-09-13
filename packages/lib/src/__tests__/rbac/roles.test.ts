@@ -51,6 +51,40 @@ describe('RBAC System', () => {
       })
     })
 
+    describe('viewer permissions', () => {
+      it('should only allow viewer to read and list entities', () => {
+        const entities = ['vendor', 'user', 'apple_variety', 'purchase', 'press_run', 'batch', 'vessel', 'inventory', 'measurement', 'package', 'cost', 'report', 'audit_log']
+
+        entities.forEach(entity => {
+          expect(can('viewer', 'read', entity as any)).toBe(true)
+          expect(can('viewer', 'list', entity as any)).toBe(true)
+          expect(can('viewer', 'create', entity as any)).toBe(false)
+          expect(can('viewer', 'update', entity as any)).toBe(false)
+          expect(can('viewer', 'delete', entity as any)).toBe(false)
+        })
+      })
+
+      it('should have no create, update, or delete permissions for any entity', () => {
+        const entities = ['vendor', 'user', 'apple_variety', 'purchase', 'press_run', 'batch', 'vessel', 'inventory', 'measurement', 'package', 'cost', 'report', 'audit_log']
+        const writeActions = ['create', 'update', 'delete']
+
+        entities.forEach(entity => {
+          writeActions.forEach(action => {
+            expect(can('viewer', action as any, entity as any)).toBe(false)
+          })
+        })
+      })
+
+      it('should be able to view all operational data but not modify', () => {
+        expect(can('viewer', 'read', 'batch')).toBe(true)
+        expect(can('viewer', 'list', 'inventory')).toBe(true)
+        expect(can('viewer', 'read', 'purchase')).toBe(true)
+        expect(can('viewer', 'update', 'batch')).toBe(false)
+        expect(can('viewer', 'delete', 'inventory')).toBe(false)
+        expect(can('viewer', 'create', 'purchase')).toBe(false)
+      })
+    })
+
     describe('operator permissions', () => {
       it('should allow operator to create/update vendors but not delete them', () => {
         expect(can('operator', 'create', 'vendor')).toBe(true)
@@ -203,6 +237,10 @@ describe('RBAC System', () => {
     it('should identify operator as non-administrative', () => {
       expect(isAdministrativeRole('operator')).toBe(false)
     })
+
+    it('should identify viewer as non-administrative', () => {
+      expect(isAdministrativeRole('viewer')).toBe(false)
+    })
   })
 
   describe('canPerformBulkOperations', () => {
@@ -213,12 +251,17 @@ describe('RBAC System', () => {
     it('should not allow operator to perform bulk operations', () => {
       expect(canPerformBulkOperations('operator')).toBe(false)
     })
+
+    it('should not allow viewer to perform bulk operations', () => {
+      expect(canPerformBulkOperations('viewer')).toBe(false)
+    })
   })
 
   describe('getRoleLevel', () => {
     it('should return correct levels for each role', () => {
       expect(getRoleLevel('admin')).toBe(100)
       expect(getRoleLevel('operator')).toBe(50)
+      expect(getRoleLevel('viewer')).toBe(10)
     })
 
     it('should return 0 for invalid roles', () => {
@@ -231,6 +274,10 @@ describe('RBAC System', () => {
       expect(hasHigherPermissions('admin', 'operator')).toBe(true)
       expect(hasHigherPermissions('operator', 'admin')).toBe(false)
       expect(hasHigherPermissions('admin', 'admin')).toBe(false)
+      expect(hasHigherPermissions('operator', 'viewer')).toBe(true)
+      expect(hasHigherPermissions('viewer', 'operator')).toBe(false)
+      expect(hasHigherPermissions('admin', 'viewer')).toBe(true)
+      expect(hasHigherPermissions('viewer', 'admin')).toBe(false)
     })
   })
 
