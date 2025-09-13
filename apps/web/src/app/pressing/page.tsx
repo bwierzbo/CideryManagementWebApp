@@ -214,7 +214,7 @@ function CompletePressRunForm() {
   }
 
   const calculateVariance = () => {
-    if (!totalJuiceProducedL || totalJuiceProducedL === 0) return 0
+    if (!totalJuiceProducedL || totalJuiceProducedL === 0) return "0.0"
     const variance = ((totalJuiceProducedL - expectedYieldL) / expectedYieldL) * 100
     return variance.toFixed(1)
   }
