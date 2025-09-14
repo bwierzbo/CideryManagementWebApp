@@ -8,13 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { HarvestDatePicker } from "@/components/ui/harvest-date-picker"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  ShoppingCart, 
-  Building2, 
+import {
+  Plus,
+  Edit,
+  Trash2,
+  ShoppingCart,
+  Building2,
   Receipt,
   Calendar,
   DollarSign,
@@ -22,6 +23,7 @@ import {
   Search,
   Filter
 } from "lucide-react"
+import { bushelsToKg, formatUnitConversion } from "lib"
 import { trpc } from "@/utils/trpc"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -37,17 +39,18 @@ const vendorSchema = z.object({
 
 const purchaseLineSchema = z.object({
   appleVarietyId: z.string().uuid("Select an apple variety"),
-  quantity: z.number().positive("Quantity must be positive"),
-  unit: z.enum(["kg", "lb"]),
-  pricePerUnit: z.number().positive("Price must be positive"),
+  quantity: z.number().positive("Quantity must be positive").optional(),
+  unit: z.enum(["kg", "lb", "bushel"]),
+  pricePerUnit: z.number().positive("Price must be positive").optional(),
+  harvestDate: z.date().nullable().optional(),
 })
 
 const purchaseSchema = z.object({
   vendorId: z.string().uuid("Select a vendor"),
   purchaseDate: z.string().min(1, "Purchase date is required"),
-  invoiceNumber: z.string().optional(),
+  globalHarvestDate: z.date().nullable().optional(),
   notes: z.string().optional(),
-  lines: z.array(purchaseLineSchema).min(1, "At least one line item is required"),
+  lines: z.array(purchaseLineSchema).min(1, "At least one apple variety is required"),
 })
 
 type VendorForm = z.infer<typeof vendorSchema>
@@ -207,13 +210,15 @@ function VendorManagement() {
 }
 
 function PurchaseFormComponent() {
+  const [globalHarvestDate, setGlobalHarvestDate] = useState<Date | null>(null)
   const [lines, setLines] = useState<Array<{
     appleVarietyId: string
-    quantity: number
-    unit: "kg" | "lb"
-    pricePerUnit: number
+    quantity: number | undefined
+    unit: "kg" | "lb" | "bushel"
+    pricePerUnit: number | undefined
+    harvestDate: Date | null | undefined
   }>>([
-    { appleVarietyId: "", quantity: 0, unit: "kg", pricePerUnit: 0 }
+    { appleVarietyId: "", quantity: undefined, unit: "kg", pricePerUnit: undefined, harvestDate: undefined }
   ])
 
   const { data: vendorData } = trpc.vendor.list.useQuery()
@@ -230,12 +235,13 @@ function PurchaseFormComponent() {
   } = useForm<PurchaseForm>({
     resolver: zodResolver(purchaseSchema),
     defaultValues: {
+      globalHarvestDate: null,
       lines: lines
     }
   })
 
   const addLine = () => {
-    const newLines = [...lines, { appleVarietyId: "", quantity: 0, unit: "kg" as "kg" | "lb", pricePerUnit: 0 }]
+    const newLines = [...lines, { appleVarietyId: "", quantity: undefined, unit: "kg" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: globalHarvestDate }]
     setLines(newLines)
     setValue("lines", newLines)
   }
@@ -246,12 +252,27 @@ function PurchaseFormComponent() {
     setValue("lines", newLines)
   }
 
-  const calculateLineTotal = (quantity: number, price: number) => {
-    return (quantity * price).toFixed(2)
+  const calculateLineTotal = (quantity: number | undefined, price: number | undefined) => {
+    const qty = quantity || 0
+    const prc = price || 0
+    return (qty * prc).toFixed(2)
   }
 
   const calculateGrandTotal = () => {
-    return lines.reduce((total, line) => total + (line.quantity * line.pricePerUnit), 0).toFixed(2)
+    return lines.reduce((total, line) => {
+      const quantity = line.quantity || 0
+      const price = line.pricePerUnit || 0
+      return total + (quantity * price)
+    }, 0).toFixed(2)
+  }
+
+  const getConversionDisplay = (quantity: number | undefined, unit: string) => {
+    if (!quantity || unit !== 'bushel') return null
+    try {
+      return formatUnitConversion(quantity, 'bushels', 'kg')
+    } catch {
+      return null
+    }
   }
 
   const onSubmit = (data: PurchaseForm) => {
@@ -290,36 +311,45 @@ function PurchaseFormComponent() {
             </div>
             <div>
               <Label htmlFor="purchaseDate">Purchase Date</Label>
-              <Input 
-                id="purchaseDate" 
+              <Input
+                id="purchaseDate"
                 type="date"
-                {...register("purchaseDate")} 
+                {...register("purchaseDate")}
               />
               {errors.purchaseDate && <p className="text-sm text-red-600 mt-1">{errors.purchaseDate.message}</p>}
             </div>
             <div>
-              <Label htmlFor="invoiceNumber">Invoice Number</Label>
-              <Input 
-                id="invoiceNumber" 
-                {...register("invoiceNumber")} 
-                placeholder="INV-2024-001"
+              <HarvestDatePicker
+                id="globalHarvestDate"
+                label="Harvest Date (All Varieties)"
+                placeholder="Select harvest date"
+                value={globalHarvestDate}
+                onChange={(date) => {
+                  setGlobalHarvestDate(date)
+                  setValue("globalHarvestDate", date)
+                  // Auto-populate individual harvest dates
+                  const newLines = lines.map(line => ({ ...line, harvestDate: date }))
+                  setLines(newLines)
+                  // Update form values for each line
+                  newLines.forEach((_, index) => {
+                    setValue(`lines.${index}.harvestDate`, date)
+                  })
+                }}
+                showClearButton={true}
+                allowFutureDates={false}
               />
             </div>
           </div>
 
           {/* Purchase Lines */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium">Line Items</h3>
-              <Button type="button" onClick={addLine} variant="outline">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Line
-              </Button>
+            <div className="mb-4">
+              <h3 className="text-lg font-medium">Apple Varieties</h3>
             </div>
-            
+
             <div className="space-y-4">
               {lines.map((line, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-4 p-4 border rounded-lg">
+                <div key={index} className="grid grid-cols-1 md:grid-cols-7 gap-4 p-4 border rounded-lg">
                   <div className="md:col-span-2">
                     <Label>Apple Variety</Label>
                     <Select onValueChange={(value) => {
@@ -332,31 +362,54 @@ function PurchaseFormComponent() {
                         <SelectValue placeholder="Select variety" />
                       </SelectTrigger>
                       <SelectContent>
-                        {/* Hardcoded varieties for now */}
-                        <SelectItem value="honeycrisp">Honeycrisp</SelectItem>
-                        <SelectItem value="gala">Gala</SelectItem>
-                        <SelectItem value="granny-smith">Granny Smith</SelectItem>
-                        <SelectItem value="fuji">Fuji</SelectItem>
+                        {appleVarieties.map((variety: any) => (
+                          <SelectItem key={variety.id} value={variety.id}>
+                            {variety.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>Quantity</Label>
-                    <Input 
+                    <HarvestDatePicker
+                      id={`harvestDate-${index}`}
+                      label="Harvest Date"
+                      placeholder="Select date"
+                      value={line.harvestDate}
+                      onChange={(date) => {
+                        const newLines = [...lines]
+                        newLines[index].harvestDate = date
+                        setLines(newLines)
+                        setValue(`lines.${index}.harvestDate`, date)
+                      }}
+                      showClearButton={true}
+                      allowFutureDates={false}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <Label>Quantity <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                    <Input
                       type="number"
                       step="0.01"
-                      value={line.quantity}
+                      value={line.quantity || ''}
+                      placeholder="Enter quantity"
                       onChange={(e) => {
                         const newLines = [...lines]
-                        newLines[index].quantity = parseFloat(e.target.value) || 0
+                        newLines[index].quantity = e.target.value ? parseFloat(e.target.value) : undefined
                         setLines(newLines)
                         setValue(`lines.${index}.quantity`, newLines[index].quantity)
                       }}
                     />
+                    {getConversionDisplay(line.quantity, line.unit) && (
+                      <div className="text-xs text-gray-600 mt-1">
+                        {getConversionDisplay(line.quantity, line.unit)}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label>Unit</Label>
-                    <Select value={line.unit} onValueChange={(value: "kg" | "lb") => {
+                    <Select value={line.unit} onValueChange={(value: "kg" | "lb" | "bushel") => {
                       const newLines = [...lines]
                       newLines[index].unit = value
                       setLines(newLines)
@@ -368,18 +421,20 @@ function PurchaseFormComponent() {
                       <SelectContent>
                         <SelectItem value="kg">kg</SelectItem>
                         <SelectItem value="lb">lb</SelectItem>
+                        <SelectItem value="bushel">bushel</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>Price/Unit</Label>
-                    <Input 
+                    <Label>Price/Unit <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                    <Input
                       type="number"
                       step="0.01"
-                      value={line.pricePerUnit}
+                      value={line.pricePerUnit || ''}
+                      placeholder="Enter price"
                       onChange={(e) => {
                         const newLines = [...lines]
-                        newLines[index].pricePerUnit = parseFloat(e.target.value) || 0
+                        newLines[index].pricePerUnit = e.target.value ? parseFloat(e.target.value) : undefined
                         setLines(newLines)
                         setValue(`lines.${index}.pricePerUnit`, newLines[index].pricePerUnit)
                       }}
@@ -393,7 +448,7 @@ function PurchaseFormComponent() {
                       </div>
                     </div>
                     {lines.length > 1 && (
-                      <Button 
+                      <Button
                         type="button"
                         variant="outline"
                         size="sm"
@@ -407,7 +462,15 @@ function PurchaseFormComponent() {
                 </div>
               ))}
             </div>
-            
+
+            {/* Add Apple Variety Button - repositioned for mobile UX */}
+            <div className="mt-4">
+              <Button type="button" onClick={addLine} variant="outline" className="w-full md:w-auto">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Apple Variety
+              </Button>
+            </div>
+
             <div className="flex justify-end mt-4">
               <div className="text-right">
                 <p className="text-sm text-gray-600">Grand Total</p>
