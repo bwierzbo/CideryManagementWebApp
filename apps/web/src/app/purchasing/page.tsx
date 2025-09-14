@@ -1082,7 +1082,7 @@ export default function PurchasingPage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="flex flex-col sm:flex-row sm:space-x-1 mb-6 sm:mb-8 bg-gray-100 p-1 rounded-lg w-full sm:w-fit">
           {[
             { key: "vendors", label: "Vendors", icon: Building2 },
             { key: "purchase", label: "New Purchase", icon: ShoppingCart },
@@ -1093,14 +1093,14 @@ export default function PurchasingPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`flex items-center justify-center sm:justify-start px-2 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors flex-1 sm:flex-none ${
                   activeTab === tab.key
                     ? "bg-white text-gray-900 shadow-sm"
                     : "text-gray-600 hover:text-gray-900"
                 }`}
               >
-                <Icon className="w-4 h-4 mr-2" />
-                {tab.label}
+                <Icon className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline ml-2 sm:ml-0">{tab.label}</span>
               </button>
             )
           })}
