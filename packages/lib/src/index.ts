@@ -14,6 +14,9 @@ export {
 // Re-export validation functions and schemas
 export * from './validation';
 
+// Re-export utility functions
+export * from './utils';
+
 // Re-export calculation functions
 export * from './calc/abv';
 export * from './calc/yield';
