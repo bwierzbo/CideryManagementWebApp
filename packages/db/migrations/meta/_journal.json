@@ -15,6 +15,13 @@
       "when": 1757813490470,
       "tag": "0001_condemned_morgan_stark",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1757830844776,
+      "tag": "0002_special_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, decimal, integer, timestamp, boolean, jsonb, pgEnum, date } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, decimal, integer, timestamp, boolean, jsonb, pgEnum, date, index, uniqueIndex } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
 // PostgreSQL Enums
@@ -9,6 +9,12 @@ export const vesselTypeEnum = pgEnum('vessel_type', ['fermenter', 'conditioning_
 export const transactionTypeEnum = pgEnum('transaction_type', ['purchase', 'transfer', 'adjustment', 'sale', 'waste'])
 export const cogsItemTypeEnum = pgEnum('cogs_item_type', ['apple_cost', 'labor', 'overhead', 'packaging'])
 export const userRoleEnum = pgEnum('user_role', ['admin', 'operator'])
+export const pressRunStatusEnum = pgEnum('press_run_status', [
+  'draft',        // Initial state, can be edited freely
+  'in_progress',  // Active pressing session in mobile app
+  'completed',    // Finished pressing, juice transferred to vessel
+  'cancelled'     // Cancelled press run, resources released
+])
 
 // Core Tables
 export const users = pgTable('users', {
@@ -234,6 +240,118 @@ export const cogsItems = pgTable('cogs_items', {
   deletedAt: timestamp('deleted_at')
 })
 
+// ApplePress Mobile Workflow Tables - separate from existing press tables
+export const applePressRuns = pgTable('apple_press_runs', {
+  // Primary identification
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Core relationships following existing foreign key patterns
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
+  vesselId: uuid('vessel_id').references(() => vessels.id), // Target vessel for juice collection
+
+  // Workflow status with enum constraint
+  status: pressRunStatusEnum('status').notNull().default('draft'),
+
+  // Timing fields for session management
+  startTime: timestamp('start_time'),
+  endTime: timestamp('end_time'),
+  scheduledDate: date('scheduled_date'), // Planning/scheduling support
+
+  // Aggregate measurements (calculated from loads)
+  // Using existing decimal precision patterns: precision 10, scale 3 for weights/volumes
+  totalAppleWeightKg: decimal('total_apple_weight_kg', { precision: 10, scale: 3 }),
+  totalJuiceVolumeL: decimal('total_juice_volume_l', { precision: 10, scale: 3 }),
+  extractionRate: decimal('extraction_rate', { precision: 5, scale: 4 }), // Percentage with 4 decimal precision
+
+  // Labor cost tracking following existing cost field patterns
+  laborHours: decimal('labor_hours', { precision: 8, scale: 2 }),
+  laborCostPerHour: decimal('labor_cost_per_hour', { precision: 8, scale: 2 }),
+  totalLaborCost: decimal('total_labor_cost', { precision: 10, scale: 2 }), // Matches existing cost precision
+
+  // Operational metadata
+  notes: text('notes'),
+  pressingMethod: text('pressing_method'), // e.g., "hydraulic", "screw_press", "bladder_press"
+  weatherConditions: text('weather_conditions'), // External factors affecting pressing
+
+  // Full audit trail following existing pattern from schema.ts
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdBy: uuid('created_by').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  deletedAt: timestamp('deleted_at') // Soft delete support
+}, (table) => ({
+  // Performance indexes optimized for mobile app query patterns
+  vendorIdx: index('apple_press_runs_vendor_idx').on(table.vendorId),
+  statusIdx: index('apple_press_runs_status_idx').on(table.status),
+  scheduledDateIdx: index('apple_press_runs_scheduled_date_idx').on(table.scheduledDate),
+  startTimeIdx: index('apple_press_runs_start_time_idx').on(table.startTime),
+
+  // Composite indexes for common filtered queries
+  vendorStatusIdx: index('apple_press_runs_vendor_status_idx').on(table.vendorId, table.status),
+  dateStatusIdx: index('apple_press_runs_date_status_idx').on(table.scheduledDate, table.status),
+
+  // User attribution indexes for audit queries
+  createdByIdx: index('apple_press_runs_created_by_idx').on(table.createdBy),
+  updatedByIdx: index('apple_press_runs_updated_by_idx').on(table.updatedBy)
+}))
+
+export const applePressRunLoads = pgTable('apple_press_run_loads', {
+  // Primary identification
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  // Core relationships with proper cascade behavior
+  applePressRunId: uuid('apple_press_run_id').notNull().references(() => applePressRuns.id, { onDelete: 'cascade' }),
+  purchaseItemId: uuid('purchase_item_id').notNull().references(() => purchaseItems.id), // Traceability chain
+  appleVarietyId: uuid('apple_variety_id').notNull().references(() => appleVarieties.id),
+
+  // Load sequencing for ordered processing
+  loadSequence: integer('load_sequence').notNull(), // Order within press run (1, 2, 3, ...)
+
+  // Apple weight measurements following canonical storage pattern from purchaseItems
+  appleWeightKg: decimal('apple_weight_kg', { precision: 10, scale: 3 }).notNull(), // Canonical storage in kg
+  originalWeight: decimal('original_weight', { precision: 10, scale: 3 }), // As entered by user
+  originalWeightUnit: text('original_weight_unit'), // Original unit for display/editing
+
+  // Juice volume measurements following same pattern
+  juiceVolumeL: decimal('juice_volume_l', { precision: 10, scale: 3 }), // Canonical storage in L
+  originalVolume: decimal('original_volume', { precision: 10, scale: 3 }), // As entered by user
+  originalVolumeUnit: text('original_volume_unit'), // Original unit for display/editing
+
+  // Quality measurements following existing precision patterns
+  brixMeasured: decimal('brix_measured', { precision: 4, scale: 2 }), // Sugar content
+  phMeasured: decimal('ph_measured', { precision: 3, scale: 2 }), // Acidity measurement
+
+  // Load-specific operational data
+  notes: text('notes'),
+  pressedAt: timestamp('pressed_at'), // When this specific load was processed
+
+  // Fruit condition tracking for quality control
+  appleCondition: text('apple_condition'), // e.g., "excellent", "good", "fair", "poor"
+  defectPercentage: decimal('defect_percentage', { precision: 4, scale: 2 }), // % of damaged fruit
+
+  // Full audit trail matching applePressRuns pattern
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdBy: uuid('created_by').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  deletedAt: timestamp('deleted_at') // Soft delete support
+}, (table) => ({
+  // Performance indexes for mobile queries
+  applePressRunIdx: index('apple_press_run_loads_apple_press_run_idx').on(table.applePressRunId),
+  purchaseItemIdx: index('apple_press_run_loads_purchase_item_idx').on(table.purchaseItemId),
+  varietyIdx: index('apple_press_run_loads_variety_idx').on(table.appleVarietyId),
+
+  // Composite index for ordered retrieval within press run
+  sequenceIdx: index('apple_press_run_loads_sequence_idx').on(table.applePressRunId, table.loadSequence),
+
+  // User attribution indexes
+  createdByIdx: index('apple_press_run_loads_created_by_idx').on(table.createdBy),
+  updatedByIdx: index('apple_press_run_loads_updated_by_idx').on(table.updatedBy),
+
+  // Unique constraint to prevent duplicate sequences within a press run
+  uniqueSequence: uniqueIndex('apple_press_run_loads_unique_sequence').on(table.applePressRunId, table.loadSequence)
+}))
+
 // Audit log for tracking all changes
 export const auditLog = pgTable('audit_log', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -356,6 +474,60 @@ export const cogsItemsRelations = relations(cogsItems, ({ one }) => ({
   batch: one(batches, {
     fields: [cogsItems.batchId],
     references: [batches.id]
+  })
+}))
+
+// ApplePress Relations
+export const applePressRunsRelations = relations(applePressRuns, ({ one, many }) => ({
+  // Core entity relationships
+  vendor: one(vendors, {
+    fields: [applePressRuns.vendorId],
+    references: [vendors.id]
+  }),
+  vessel: one(vessels, {
+    fields: [applePressRuns.vesselId],
+    references: [vessels.id]
+  }),
+
+  // User attribution relationships for RBAC
+  createdByUser: one(users, {
+    fields: [applePressRuns.createdBy],
+    references: [users.id]
+  }),
+  updatedByUser: one(users, {
+    fields: [applePressRuns.updatedBy],
+    references: [users.id]
+  }),
+
+  // Child relationships
+  loads: many(applePressRunLoads)
+}))
+
+export const applePressRunLoadsRelations = relations(applePressRunLoads, ({ one }) => ({
+  // Parent relationship with cascade delete
+  applePressRun: one(applePressRuns, {
+    fields: [applePressRunLoads.applePressRunId],
+    references: [applePressRuns.id]
+  }),
+
+  // Traceability relationships
+  purchaseItem: one(purchaseItems, {
+    fields: [applePressRunLoads.purchaseItemId],
+    references: [purchaseItems.id]
+  }),
+  appleVariety: one(appleVarieties, {
+    fields: [applePressRunLoads.appleVarietyId],
+    references: [appleVarieties.id]
+  }),
+
+  // User attribution relationships
+  createdByUser: one(users, {
+    fields: [applePressRunLoads.createdBy],
+    references: [users.id]
+  }),
+  updatedByUser: one(users, {
+    fields: [applePressRunLoads.updatedBy],
+    references: [users.id]
   })
 }))
 
