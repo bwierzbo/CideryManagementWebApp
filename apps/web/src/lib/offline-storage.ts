@@ -91,6 +91,7 @@ class OfflineStorageManager {
 
   // Storage Info Management
   getStorageInfo(): StorageInfo | null {
+    if (typeof window === 'undefined') return null
     try {
       const info = localStorage.getItem(STORAGE_KEYS.STORAGE_INFO)
       return info ? JSON.parse(info) : null
@@ -110,7 +111,9 @@ class OfflineStorageManager {
       }
 
       const updated = { ...current, ...updates }
-      localStorage.setItem(STORAGE_KEYS.STORAGE_INFO, JSON.stringify(updated))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEYS.STORAGE_INFO, JSON.stringify(updated))
+      }
     } catch (error) {
       console.warn('Failed to update storage info:', error)
     }

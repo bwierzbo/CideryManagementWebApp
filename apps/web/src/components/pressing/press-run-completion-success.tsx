@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator"
 import {
   CheckCircle2,
   Droplets,
-  Flask,
+  Beaker,
   TrendingUp,
   ArrowRight,
   Eye,
@@ -110,7 +110,7 @@ export function PressRunCompletionSuccess({
             </div>
 
             <div className="text-center p-4 bg-purple-50 rounded-lg">
-              <Flask className="w-6 h-6 text-purple-600 mx-auto mb-2" />
+              <Beaker className="w-6 h-6 text-purple-600 mx-auto mb-2" />
               <div className="text-sm font-medium text-purple-800 mb-1">
                 Assigned to Vessel
               </div>
@@ -219,7 +219,7 @@ export function PressRunCompletionSuccess({
             onClick={onViewJuiceLot}
             className="h-12 bg-blue-600 hover:bg-blue-700"
           >
-            <Flask className="w-5 h-5 mr-2" />
+            <Beaker className="w-5 h-5 mr-2" />
             View Juice Lot
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>

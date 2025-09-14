@@ -48,7 +48,7 @@ import {
   Droplets,
   Clock,
   Users,
-  Flask,
+  Beaker,
   Calculator,
   CheckCircle2,
   AlertTriangle,
@@ -319,7 +319,7 @@ export function PressRunCompletionForm({
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center text-base">
-                <Flask className="w-4 h-4 mr-2 text-purple-600" />
+                <Beaker className="w-4 h-4 mr-2 text-purple-600" />
                 Vessel Assignment
               </CardTitle>
             </CardHeader>
