@@ -3,6 +3,7 @@ import { router, publicProcedure, protectedProcedure, adminProcedure, createRbac
 import { auditRouter } from './audit'
 import { healthRouter } from './health'
 import { invoiceNumberRouter } from './invoiceNumber'
+import { pressRunRouter } from './pressRun'
 import {
   db,
   vendors,
@@ -18,7 +19,8 @@ import {
   inventoryTransactions,
   vessels,
   appleVarieties,
-  auditLog
+  auditLog,
+  applePressRunLoads
 } from 'db'
 import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
@@ -678,6 +680,202 @@ export const appRouter = router({
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to delete purchase'
+          })
+        }
+      }),
+  }),
+
+  // Purchase Line Integration for Apple Press workflow
+  purchaseLine: router({
+    available: createRbacProcedure('list', 'purchaseLine')
+      .input(z.object({
+        vendorId: z.string().uuid().optional(),
+        appleVarietyId: z.string().uuid().optional(),
+        limit: z.number().int().min(1).max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        try {
+          // Build WHERE conditions
+          const conditions = [
+            isNull(purchaseItems.deletedAt),
+            isNull(purchases.deletedAt),
+          ]
+
+          if (input.vendorId) {
+            conditions.push(eq(purchases.vendorId, input.vendorId))
+          }
+
+          if (input.appleVarietyId) {
+            conditions.push(eq(purchaseItems.appleVarietyId, input.appleVarietyId))
+          }
+
+          // Get purchase items with consumed quantities from apple press run loads
+          const availableItems = await db
+            .select({
+              // Purchase item details
+              purchaseItemId: purchaseItems.id,
+              purchaseId: purchaseItems.purchaseId,
+              appleVarietyId: purchaseItems.appleVarietyId,
+              varietyName: appleVarieties.name,
+              originalQuantity: purchaseItems.originalQuantity,
+              originalUnit: purchaseItems.originalUnit,
+              quantityKg: purchaseItems.quantityKg,
+              harvestDate: purchaseItems.harvestDate,
+              notes: purchaseItems.notes,
+
+              // Purchase details
+              vendorId: purchases.vendorId,
+              vendorName: vendors.name,
+              purchaseDate: purchases.purchaseDate,
+              invoiceNumber: purchases.invoiceNumber,
+
+              // Calculate consumed quantity from apple press run loads
+              consumedKg: sql<string>`COALESCE(SUM(${applePressRunLoads.appleWeightKg}), 0)`,
+            })
+            .from(purchaseItems)
+            .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
+            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
+            .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
+            .where(and(...conditions))
+            .groupBy(
+              purchaseItems.id,
+              purchaseItems.purchaseId,
+              purchaseItems.appleVarietyId,
+              appleVarieties.name,
+              purchaseItems.originalQuantity,
+              purchaseItems.originalUnit,
+              purchaseItems.quantityKg,
+              purchaseItems.harvestDate,
+              purchaseItems.notes,
+              purchases.vendorId,
+              vendors.name,
+              purchases.purchaseDate,
+              purchases.invoiceNumber
+            )
+            .limit(input.limit)
+            .offset(input.offset)
+            .orderBy(desc(purchases.purchaseDate), appleVarieties.name)
+
+          // Filter items that have available quantity and calculate remaining amounts
+          const availableInventory = availableItems
+            .map(item => {
+              const totalKg = parseFloat(item.quantityKg || '0')
+              const consumedKg = parseFloat(item.consumedKg || '0')
+              const availableKg = totalKg - consumedKg
+
+              return {
+                ...item,
+                totalQuantityKg: totalKg,
+                consumedQuantityKg: consumedKg,
+                availableQuantityKg: availableKg,
+                // Calculate available percentage
+                availablePercentage: totalKg > 0 ? (availableKg / totalKg * 100) : 0,
+              }
+            })
+            .filter(item => item.availableQuantityKg > 0) // Only return items with available inventory
+
+          // Get total count for pagination (similar query but count only)
+          const countResult = await db
+            .select({
+              count: sql<number>`COUNT(DISTINCT ${purchaseItems.id})`
+            })
+            .from(purchaseItems)
+            .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
+            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
+            .where(and(...conditions))
+
+          const totalCount = countResult[0]?.count || 0
+
+          return {
+            items: availableInventory,
+            pagination: {
+              total: totalCount,
+              limit: input.limit,
+              offset: input.offset,
+              hasMore: input.offset + availableInventory.length < totalCount,
+            },
+            summary: {
+              totalAvailableItems: availableInventory.length,
+              totalAvailableKg: availableInventory.reduce((sum, item) => sum + item.availableQuantityKg, 0),
+            }
+          }
+        } catch (error) {
+          console.error('Error getting available purchase lines:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to get available purchase lines'
+          })
+        }
+      }),
+
+    validateAvailability: createRbacProcedure('read', 'purchaseLine')
+      .input(z.object({
+        purchaseItemId: z.string().uuid(),
+        requestedQuantityKg: z.number().positive(),
+      }))
+      .query(async ({ input }) => {
+        try {
+          // Get purchase item with current consumption
+          const item = await db
+            .select({
+              purchaseItemId: purchaseItems.id,
+              quantityKg: purchaseItems.quantityKg,
+              consumedKg: sql<string>`COALESCE(SUM(${applePressRunLoads.appleWeightKg}), 0)`,
+              varietyName: appleVarieties.name,
+              vendorName: vendors.name,
+            })
+            .from(purchaseItems)
+            .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
+            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
+            .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
+            .where(and(
+              eq(purchaseItems.id, input.purchaseItemId),
+              isNull(purchaseItems.deletedAt)
+            ))
+            .groupBy(
+              purchaseItems.id,
+              purchaseItems.quantityKg,
+              appleVarieties.name,
+              vendors.name
+            )
+            .limit(1)
+
+          if (!item.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Purchase item not found'
+            })
+          }
+
+          const totalKg = parseFloat(item[0].quantityKg || '0')
+          const consumedKg = parseFloat(item[0].consumedKg || '0')
+          const availableKg = totalKg - consumedKg
+
+          const isAvailable = input.requestedQuantityKg <= availableKg
+          const shortfallKg = isAvailable ? 0 : input.requestedQuantityKg - availableKg
+
+          return {
+            isAvailable,
+            availableQuantityKg: availableKg,
+            requestedQuantityKg: input.requestedQuantityKg,
+            shortfallKg,
+            totalQuantityKg: totalKg,
+            consumedQuantityKg: consumedKg,
+            item: {
+              id: item[0].purchaseItemId,
+              varietyName: item[0].varietyName,
+              vendorName: item[0].vendorName,
+            }
+          }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error validating purchase line availability:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to validate purchase line availability'
           })
         }
       }),
