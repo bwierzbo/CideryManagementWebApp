@@ -133,15 +133,12 @@ const HarvestDatePicker = React.forwardRef<HTMLInputElement, HarvestDatePickerPr
               max={maxDate}
               placeholder={placeholder}
               className={cn(
-                "pr-16", // Make room for icons
+                showClearButton && dateValue && !disabled ? "pr-8" : "", // Make room for clear button only
                 validationError && "border-red-500 focus:border-red-500 focus:ring-red-500",
                 className
               )}
               {...props}
             />
-
-            {/* Calendar icon - always visible for better UX indication */}
-            <Calendar className="absolute right-10 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
 
             {/* Clear button */}
             {showClearButton && dateValue && !disabled && (
@@ -164,12 +161,6 @@ const HarvestDatePicker = React.forwardRef<HTMLInputElement, HarvestDatePickerPr
           <p className="text-sm text-red-600 mt-1">{validationError}</p>
         )}
 
-        {/* Helper text for mobile users */}
-        {!disabled && !validationError && (
-          <p className="text-xs text-gray-500">
-            {allowFutureDates ? "Select any date" : "Select a date up to today"}
-          </p>
-        )}
       </div>
     )
   }
