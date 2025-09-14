@@ -35,12 +35,25 @@ Dependencies:
   - Complete `press_runs` and `press_run_loads` table design
   - Full audit/RBAC integration following existing patterns
   - TypeScript schema implementation and documentation ready
+- **Task #30**: Database Migration Implementation - ✅ COMPLETED
+  - Full schema integration into packages/db/src/schema.ts
+  - Migration generated and applied successfully
+  - All database tests passing with new tables
+- **Task #31**: tRPC Press Run Router - ✅ COMPLETED
+  - Comprehensive API with 8 endpoints for press run management
+  - Full RBAC integration and mobile optimization
+  - Type-safe procedures with Zod validation
+- **Task #23**: Purchase Line Integration - ✅ COMPLETED
+  - Real-time inventory validation and traceability
+  - Purchase line availability tracking
+  - Integration with existing purchase system
 
-## Now Ready Tasks (3)
-- **Task #30**: Database Migration Implementation - Ready (depends on #29 ✅)
+## Now Ready Tasks (2)
+- **Task #25**: Fruit Load Entry Components - Ready (depends on #31 ✅, #23 ✅)
+- **Task #26**: Press Run Completion UI - Ready (depends on #31 ✅, #23 ✅)
 
 ## Active Agents
-- None currently active - launching next wave
+- Launching final UI component wave
 
 ## Queued Tasks (6)
 - Task #31 - Waiting for #30 to complete

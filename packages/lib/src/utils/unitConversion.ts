@@ -16,6 +16,12 @@ import { validatePositiveQuantity } from '../validation/volume-quantity';
 export const BUSHEL_TO_KG_FACTOR = 18.14;
 
 /**
+ * Conversion factor: 1 US gallon = 3.78541 liters
+ * Source: US Liquid Gallon standard
+ */
+export const GAL_TO_L_FACTOR = 3.78541;
+
+/**
  * Convert bushels to kilograms with 0.01 kg precision
  * @param bushels - Amount in bushels to convert
  * @returns Amount in kilograms, rounded to 0.01 kg precision
@@ -42,6 +48,32 @@ export function kgToBushels(kg: number): number {
 }
 
 /**
+ * Convert gallons to liters with 0.01 L precision
+ * @param gallons - Amount in gallons to convert
+ * @returns Amount in liters, rounded to 0.01 L precision
+ * @throws QuantityValidationError for invalid inputs
+ */
+export function gallonsToLiters(gallons: number): number {
+  validatePositiveQuantity(gallons, 'Gallons', 'gal', 'unit conversion');
+
+  // Convert and round to 0.01 L precision
+  return Math.round(gallons * GAL_TO_L_FACTOR * 100) / 100;
+}
+
+/**
+ * Convert liters to gallons with 0.01 gallon precision
+ * @param liters - Amount in liters to convert
+ * @returns Amount in gallons, rounded to 0.01 gallon precision
+ * @throws QuantityValidationError for invalid inputs
+ */
+export function litersToGallons(liters: number): number {
+  validatePositiveQuantity(liters, 'Liters', 'L', 'unit conversion');
+
+  // Convert and round to 0.01 gallon precision
+  return Math.round((liters / GAL_TO_L_FACTOR) * 100) / 100;
+}
+
+/**
  * Format a unit conversion for display
  * @param value - The numeric value to format
  * @param fromUnit - Source unit (e.g., 'bushels', 'kg')
@@ -65,6 +97,10 @@ export function formatUnitConversion(
       converted = bushelsToKg(value);
     } else if (fromUnit === 'kg' && toUnit === 'bushels') {
       converted = kgToBushels(value);
+    } else if (fromUnit === 'gal' && toUnit === 'L') {
+      converted = gallonsToLiters(value);
+    } else if (fromUnit === 'L' && toUnit === 'gal') {
+      converted = litersToGallons(value);
     } else {
       throw new Error(`Unsupported conversion from ${fromUnit} to ${toUnit}`);
     }
@@ -94,6 +130,12 @@ export function validateConversionPrecision(
   } else if (fromUnit === 'kg' && toUnit === 'bushels') {
     const bushels = kgToBushels(originalValue);
     roundTripValue = bushelsToKg(bushels);
+  } else if (fromUnit === 'gal' && toUnit === 'L') {
+    const liters = gallonsToLiters(originalValue);
+    roundTripValue = litersToGallons(liters);
+  } else if (fromUnit === 'L' && toUnit === 'gal') {
+    const gallons = litersToGallons(originalValue);
+    roundTripValue = gallonsToLiters(gallons);
   } else {
     throw new Error(`Unsupported conversion validation from ${fromUnit} to ${toUnit}`);
   }
@@ -120,6 +162,14 @@ export function getConversionFactor(fromUnit: string, toUnit: string): number {
     'kg': {
       'bushels': 1 / BUSHEL_TO_KG_FACTOR,
       'kg': 1
+    },
+    'gal': {
+      'L': GAL_TO_L_FACTOR,
+      'gal': 1
+    },
+    'L': {
+      'gal': 1 / GAL_TO_L_FACTOR,
+      'L': 1
     }
   };
 

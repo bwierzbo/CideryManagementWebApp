@@ -20,6 +20,7 @@ import {
   vessels,
   appleVarieties,
   auditLog,
+  applePressRuns,
   applePressRunLoads
 } from 'db'
 import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
@@ -2247,6 +2248,9 @@ export const appRouter = router({
         }
       })
   }),
+
+  // Apple Press Run management - mobile workflow
+  pressRun: pressRunRouter,
 
   // Invoice number generation
   invoiceNumber: invoiceNumberRouter,

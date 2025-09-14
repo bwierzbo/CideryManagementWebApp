@@ -5,6 +5,7 @@ import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { PressRunCompletion } from "@/components/pressing"
 import {
   Grape,
   Play,
@@ -18,6 +19,7 @@ import {
   RefreshCw,
   TrendingUp
 } from "lucide-react"
+import { trpc } from "@/utils/trpc"
 
 interface PressRun {
   id: string
@@ -30,6 +32,8 @@ interface PressRun {
   totalJuiceL?: number
   yield?: string
 }
+
+type ViewMode = 'home' | 'completion'
 
 // Mobile-optimized Press Run Header
 function PressRunHeader() {
@@ -59,28 +63,45 @@ function PressRunHeader() {
 }
 
 // Mobile-optimized Active Runs Section
-function ActiveRunsSection() {
-  // Mock active press runs
-  const activeRuns: PressRun[] = [
-    {
-      id: "PR-2024-001",
-      startDate: "2024-01-15",
-      totalAppleKg: 1250,
-      varieties: ["Honeycrisp", "Gala"],
-      status: "in_progress",
-      duration: "4h 23m",
-      estimatedCompletion: "18:30"
-    },
-    {
-      id: "PR-2024-002",
-      startDate: "2024-01-14",
-      totalAppleKg: 890,
-      varieties: ["Granny Smith"],
-      status: "in_progress",
-      duration: "2h 15m",
-      estimatedCompletion: "16:45"
-    }
-  ]
+function ActiveRunsSection({ onCompletePressRun }: { onCompletePressRun: (pressRunId: string) => void }) {
+  const { data: pressRunsData, isLoading, refetch } = trpc.pressRun.list.useQuery({
+    status: 'in_progress',
+    limit: 10,
+  })
+
+  // Convert tRPC data to expected format
+  const activeRuns = pressRunsData?.pressRuns?.map(run => ({
+    id: run.id,
+    startDate: run.startTime ? new Date(run.startTime).toLocaleDateString() : 'Unknown',
+    totalAppleKg: parseFloat(run.totalAppleWeightKg || '0'),
+    varieties: ['Mixed Varieties'], // This would need to be expanded with actual variety data
+    status: run.status as "in_progress" | "completed",
+    duration: run.startTime ? calculateDuration(run.startTime) : 'Unknown',
+    loadCount: run.loadCount || 0,
+    vendorName: run.vendorName,
+  })) || []
+
+  function calculateDuration(startTime: string): string {
+    const start = new Date(startTime)
+    const now = new Date()
+    const diffMs = now.getTime() - start.getTime()
+    const hours = Math.floor(diffMs / (1000 * 60 * 60))
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+    return `${hours}h ${minutes}m`
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="mb-6">
+        <CardContent className="p-6">
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-sm text-gray-600">Loading active press runs...</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   if (activeRuns.length === 0) {
     return (
@@ -108,6 +129,7 @@ function ActiveRunsSection() {
           variant="ghost"
           size="sm"
           className="text-blue-600 h-8 px-3"
+          onClick={() => refetch()}
         >
           <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
@@ -121,8 +143,9 @@ function ActiveRunsSection() {
               {/* Run Header */}
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h4 className="font-semibold text-gray-900">{run.id}</h4>
+                  <h4 className="font-semibold text-gray-900">{run.vendorName || `Run ${run.id.slice(0, 8)}`}</h4>
                   <p className="text-sm text-gray-600">Started {run.startDate}</p>
+                  <p className="text-xs text-gray-500">{run.loadCount || 0} loads processed</p>
                 </div>
                 <Badge variant="secondary" className="bg-blue-100 text-blue-800">
                   In Progress
@@ -165,7 +188,11 @@ function ActiveRunsSection() {
                   <Eye className="w-4 h-4 mr-2" />
                   Details
                 </Button>
-                <Button size="sm" className="flex-1 h-10 bg-green-600 hover:bg-green-700">
+                <Button
+                  size="sm"
+                  className="flex-1 h-10 bg-green-600 hover:bg-green-700"
+                  onClick={() => onCompletePressRun(run.id)}
+                >
                   <CheckCircle2 className="w-4 h-4 mr-2" />
                   Complete
                 </Button>
@@ -287,6 +314,54 @@ function ActionButtons() {
 }
 
 export default function PressingPage() {
+  const [viewMode, setViewMode] = useState<ViewMode>('home')
+  const [selectedPressRunId, setSelectedPressRunId] = useState<string | null>(null)
+
+  const handleCompletePressRun = (pressRunId: string) => {
+    setSelectedPressRunId(pressRunId)
+    setViewMode('completion')
+  }
+
+  const handleBackToHome = () => {
+    setSelectedPressRunId(null)
+    setViewMode('home')
+  }
+
+  const handleCompletionFinished = () => {
+    setSelectedPressRunId(null)
+    setViewMode('home')
+  }
+
+  const handleViewJuiceLot = (vesselId: string) => {
+    // Navigate to batch/fermentation view
+    window.location.href = `/fermentation/vessels/${vesselId}`
+  }
+
+  const handleStartNewRun = () => {
+    // Navigate to new press run creation
+    window.location.href = '/pressing/new'
+  }
+
+  // Completion view
+  if (viewMode === 'completion' && selectedPressRunId) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <main className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 pb-8">
+          <PressRunCompletion
+            pressRunId={selectedPressRunId}
+            onComplete={handleCompletionFinished}
+            onCancel={handleBackToHome}
+            onViewJuiceLot={handleViewJuiceLot}
+            onStartNewRun={handleStartNewRun}
+            onBackToPressingHome={handleBackToHome}
+          />
+        </main>
+      </div>
+    )
+  }
+
+  // Home view
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -304,7 +379,7 @@ export default function PressingPage() {
         <PressRunHeader />
 
         {/* Active Runs */}
-        <ActiveRunsSection />
+        <ActiveRunsSection onCompletePressRun={handleCompletePressRun} />
 
         {/* Recent Completed Runs */}
         <CompletedRunsSection />
