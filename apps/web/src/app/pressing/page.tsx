@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PressRunCompletion } from "@/components/pressing"
+import { usePressRunDrafts, useNetworkSync, useOfflineCapability } from "@/hooks/use-press-run-drafts"
 import {
   Grape,
   Play,
@@ -17,7 +18,13 @@ import {
   Eye,
   ArrowRight,
   RefreshCw,
-  TrendingUp
+  TrendingUp,
+  Wifi,
+  WifiOff,
+  Download,
+  AlertTriangle,
+  Trash2,
+  Edit3
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 
@@ -35,14 +42,22 @@ interface PressRun {
 
 type ViewMode = 'home' | 'completion'
 
-// Mobile-optimized Press Run Header
+// Mobile-optimized Press Run Header with network status
 function PressRunHeader() {
+  const { isOnline, syncing, syncAllDrafts } = useNetworkSync()
+  const { storageQuota } = useOfflineCapability()
+
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   })
+
+  const handleManualSync = async () => {
+    if (!isOnline) return
+    await syncAllDrafts()
+  }
 
   return (
     <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mb-6">
@@ -54,8 +69,52 @@ function PressRunHeader() {
             {today}
           </p>
         </div>
-        <div className="bg-amber-100 rounded-full p-3">
-          <Grape className="w-6 h-6 text-amber-600" />
+        <div className="flex items-center space-x-3">
+          {/* Network Status */}
+          <div className="flex items-center space-x-2">
+            {isOnline ? (
+              <div className="flex items-center text-green-600">
+                <Wifi className="w-4 h-4 mr-1" />
+                <span className="text-xs font-medium">Online</span>
+              </div>
+            ) : (
+              <div className="flex items-center text-red-600">
+                <WifiOff className="w-4 h-4 mr-1" />
+                <span className="text-xs font-medium">Offline</span>
+              </div>
+            )}
+
+            {/* Sync Button */}
+            {isOnline && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleManualSync}
+                disabled={syncing}
+                className="text-xs h-6 px-2"
+              >
+                {syncing ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Download className="w-3 h-3" />
+                )}
+              </Button>
+            )}
+
+            {/* Storage Quota Warning */}
+            {storageQuota.isNearLimit && (
+              <div className="flex items-center text-orange-600">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-xs font-medium ml-1">
+                  {storageQuota.percentUsed.toFixed(0)}%
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-amber-100 rounded-full p-3">
+            <Grape className="w-6 h-6 text-amber-600" />
+          </div>
         </div>
       </div>
     </div>
@@ -205,6 +264,149 @@ function ActiveRunsSection({ onCompletePressRun }: { onCompletePressRun: (pressR
   )
 }
 
+// Draft Press Runs Section for Resume Functionality
+function DraftRunsSection({ onResumeDraft }: { onResumeDraft: (draftId: string) => void }) {
+  const { drafts, loading, deleteDraft } = usePressRunDrafts()
+  const { isOnline } = useNetworkSync()
+
+  const handleDeleteDraft = async (draftId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirm('Are you sure you want to delete this draft? This action cannot be undone.')) {
+      deleteDraft(draftId)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card className="mb-6">
+        <CardContent className="p-6">
+          <div className="text-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+            <p className="text-sm text-gray-600">Loading drafts...</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (drafts.length === 0) {
+    return null // Don't show section if no drafts
+  }
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">Resumable Press Runs</h3>
+        <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+          {drafts.length} draft{drafts.length !== 1 ? 's' : ''}
+        </Badge>
+      </div>
+
+      <div className="space-y-3">
+        {drafts.map((draft) => {
+          const statusColors = {
+            draft: 'bg-gray-100 text-gray-800',
+            syncing: 'bg-blue-100 text-blue-800',
+            synced: 'bg-green-100 text-green-800',
+            error: 'bg-red-100 text-red-800',
+          }
+
+          const lastModified = new Date(draft.lastModified)
+          const timeSinceModified = Math.round((Date.now() - lastModified.getTime()) / (1000 * 60)) // minutes
+
+          return (
+            <Card
+              key={draft.id}
+              className="border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => onResumeDraft(draft.id)}
+            >
+              <CardContent className="p-4">
+                {/* Draft Header */}
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <h4 className="font-semibold text-gray-900 flex items-center">
+                      <Edit3 className="w-4 h-4 mr-2 text-orange-600" />
+                      {draft.vendorName || `Draft ${draft.id.slice(0, 8)}`}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      Started {new Date(draft.startTime).toLocaleDateString()}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Modified {timeSinceModified < 60
+                        ? `${timeSinceModified}m ago`
+                        : `${Math.round(timeSinceModified / 60)}h ago`}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Badge variant="secondary" className={statusColors[draft.status]}>
+                      {draft.status === 'draft' && 'Draft'}
+                      {draft.status === 'syncing' && 'Syncing...'}
+                      {draft.status === 'synced' && 'Synced'}
+                      {draft.status === 'error' && 'Sync Failed'}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => handleDeleteDraft(draft.id, e)}
+                      className="text-red-600 hover:bg-red-50 h-8 w-8 p-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Draft Stats */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="flex items-center">
+                    <Scale className="w-4 h-4 text-gray-500 mr-2" />
+                    <div>
+                      <p className="text-xs text-gray-600">Total Weight</p>
+                      <p className="font-medium text-sm">{draft.totalAppleWeightKg.toFixed(1)} kg</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center">
+                    <Clock className="w-4 h-4 text-gray-500 mr-2" />
+                    <div>
+                      <p className="text-xs text-gray-600">Loads</p>
+                      <p className="font-medium text-sm">{draft.loads.length} added</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sync Status Messages */}
+                {draft.status === 'error' && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3">
+                    <p className="text-xs text-red-800 flex items-center">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      Failed to sync ({draft.syncAttempts} attempts)
+                      {isOnline && ' - Will retry automatically'}
+                    </p>
+                  </div>
+                )}
+
+                {!isOnline && draft.status === 'draft' && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 mb-3">
+                    <p className="text-xs text-yellow-800 flex items-center">
+                      <WifiOff className="w-3 h-3 mr-1" />
+                      Saved locally - will sync when online
+                    </p>
+                  </div>
+                )}
+
+                {/* Action Button */}
+                <Button size="sm" className="w-full h-10 bg-orange-600 hover:bg-orange-700">
+                  <Play className="w-4 h-4 mr-2" />
+                  Resume Press Run
+                </Button>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // Mobile-optimized Completed Runs Section
 function CompletedRunsSection() {
   const recentCompleted: PressRun[] = [
@@ -316,6 +518,7 @@ function ActionButtons() {
 export default function PressingPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('home')
   const [selectedPressRunId, setSelectedPressRunId] = useState<string | null>(null)
+  const [resumingDraftId, setResumingDraftId] = useState<string | null>(null)
 
   const handleCompletePressRun = (pressRunId: string) => {
     setSelectedPressRunId(pressRunId)
@@ -324,11 +527,13 @@ export default function PressingPage() {
 
   const handleBackToHome = () => {
     setSelectedPressRunId(null)
+    setResumingDraftId(null)
     setViewMode('home')
   }
 
   const handleCompletionFinished = () => {
     setSelectedPressRunId(null)
+    setResumingDraftId(null)
     setViewMode('home')
   }
 
@@ -340,6 +545,12 @@ export default function PressingPage() {
   const handleStartNewRun = () => {
     // Navigate to new press run creation
     window.location.href = '/pressing/new'
+  }
+
+  const handleResumeDraft = (draftId: string) => {
+    // For now, navigate to a new press run page with the draft ID
+    // In the future, this could be a dedicated resume page
+    window.location.href = `/pressing/resume/${draftId}`
   }
 
   // Completion view
@@ -377,6 +588,9 @@ export default function PressingPage() {
 
         {/* Press Run Header */}
         <PressRunHeader />
+
+        {/* Draft Runs - Resume Functionality */}
+        <DraftRunsSection onResumeDraft={handleResumeDraft} />
 
         {/* Active Runs */}
         <ActiveRunsSection onCompletePressRun={handleCompletePressRun} />
