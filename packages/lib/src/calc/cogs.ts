@@ -312,3 +312,225 @@ export function calculateInventoryValue(inventoryBottles: number, recentCogsPerB
 
   return Math.round(inventoryValue * 100) / 100
 }
+
+/**
+ * Purchase item data structure for cost calculations
+ * Handles nullable cost values for free ingredients
+ */
+export interface PurchaseItemData {
+  id: string
+  quantity: number
+  quantityKg?: number | null
+  pricePerUnit?: number | null
+  totalCost?: number | null
+  appleVarietyId: string
+}
+
+/**
+ * Press run data with purchase item allocations
+ */
+export interface PressRunData {
+  id: string
+  totalAppleProcessedKg: number
+  totalJuiceProducedL: number
+  items: Array<{
+    purchaseItemId: string
+    quantityUsedKg: number
+    juiceProducedL: number
+  }>
+}
+
+/**
+ * Calculate weighted average cost per kg from purchase items
+ * Handles null costs by treating them as $0.00 (free ingredients)
+ *
+ * @param purchaseItems - Array of purchase items with costs
+ * @returns Weighted average cost per kg, or 0 if no paid items
+ */
+export function calculateWeightedAverageCostPerKg(purchaseItems: PurchaseItemData[]): number {
+  if (purchaseItems.length === 0) {
+    return 0
+  }
+
+  let totalCost = 0
+  let totalWeight = 0
+
+  for (const item of purchaseItems) {
+    const weightKg = item.quantityKg || 0
+    const cost = item.totalCost || 0 // Treat null as $0.00
+
+    if (weightKg > 0) {
+      totalCost += cost
+      totalWeight += weightKg
+    }
+  }
+
+  if (totalWeight === 0) {
+    return 0
+  }
+
+  return Math.round((totalCost / totalWeight) * 10000) / 10000 // 4 decimal places
+}
+
+/**
+ * Calculate apple cost for a batch from actual purchase data
+ * Handles mixed free and paid apple sources
+ *
+ * @param pressRunData - Press run information
+ * @param purchaseItems - Associated purchase items with costs
+ * @returns Apple cost breakdown
+ */
+export function calculateAppleCostFromPurchases(
+  pressRunData: PressRunData,
+  purchaseItems: PurchaseItemData[]
+): {
+  totalCost: number
+  averageCostPerKg: number
+  freeAppleKg: number
+  paidAppleKg: number
+  breakdown: Array<{
+    purchaseItemId: string
+    quantityUsedKg: number
+    unitCost: number
+    totalCost: number
+    isFree: boolean
+  }>
+} {
+  let totalCost = 0
+  let freeAppleKg = 0
+  let paidAppleKg = 0
+  const breakdown = []
+
+  // Create lookup map for purchase items
+  const purchaseMap = new Map(purchaseItems.map(item => [item.id, item]))
+
+  for (const pressItem of pressRunData.items) {
+    const purchaseItem = purchaseMap.get(pressItem.purchaseItemId)
+
+    if (!purchaseItem) {
+      throw new Error(`Purchase item ${pressItem.purchaseItemId} not found`)
+    }
+
+    const quantityUsedKg = pressItem.quantityUsedKg
+    const unitCost = purchaseItem.pricePerUnit || 0
+    const itemCost = quantityUsedKg * unitCost
+    const isFree = !purchaseItem.pricePerUnit || purchaseItem.pricePerUnit === 0
+
+    if (isFree) {
+      freeAppleKg += quantityUsedKg
+    } else {
+      paidAppleKg += quantityUsedKg
+    }
+
+    totalCost += itemCost
+    breakdown.push({
+      purchaseItemId: pressItem.purchaseItemId,
+      quantityUsedKg,
+      unitCost,
+      totalCost: Math.round(itemCost * 100) / 100,
+      isFree
+    })
+  }
+
+  const totalAppleKg = freeAppleKg + paidAppleKg
+  const averageCostPerKg = totalAppleKg > 0 ? totalCost / totalAppleKg : 0
+
+  return {
+    totalCost: Math.round(totalCost * 100) / 100,
+    averageCostPerKg: Math.round(averageCostPerKg * 10000) / 10000,
+    freeAppleKg,
+    paidAppleKg,
+    breakdown
+  }
+}
+
+/**
+ * Calculate batch COGS using actual purchase costs
+ * Integrates real purchase data instead of hardcoded rates
+ *
+ * @param batchData - Batch production data
+ * @param purchaseCostData - Apple cost data from purchases
+ * @param config - Labor, overhead, and packaging rates (apple cost ignored)
+ * @returns Updated COGS components with actual apple costs
+ */
+export function calculateCogsFromPurchases(
+  batchData: BatchCostData,
+  purchaseCostData: {
+    totalCost: number
+    averageCostPerKg: number
+    freeAppleKg: number
+    paidAppleKg: number
+  },
+  config: Omit<CostAllocationConfig, 'appleCostPerKg'>
+): CogsComponent[] {
+  const components: CogsComponent[] = []
+
+  // Apple cost (using actual purchase data, adjusted for wastage)
+  const appleWastageMultiplier = 1 + (config.wastageRate / 100)
+  const adjustedAppleCost = purchaseCostData.totalCost * appleWastageMultiplier
+
+  components.push({
+    itemType: 'apple_cost',
+    amount: Math.round(adjustedAppleCost * 100) / 100,
+    description: `Apple cost: ${purchaseCostData.freeAppleKg}kg free + ${purchaseCostData.paidAppleKg}kg paid (adjusted for ${config.wastageRate}% wastage)`,
+    unitCost: purchaseCostData.averageCostPerKg,
+    quantity: batchData.appleWeightKg * appleWastageMultiplier
+  })
+
+  // Labor cost (unchanged from existing logic)
+  const laborCost = batchData.laborHours * config.laborRatePerHour
+  components.push({
+    itemType: 'labor',
+    amount: Math.round(laborCost * 100) / 100,
+    description: `Labor cost for ${batchData.laborHours} hours`,
+    unitCost: config.laborRatePerHour,
+    quantity: batchData.laborHours
+  })
+
+  // Overhead cost (unchanged from existing logic)
+  const overheadCost = batchData.juiceVolumeL * config.overheadRatePerL
+  components.push({
+    itemType: 'overhead',
+    amount: Math.round(overheadCost * 100) / 100,
+    description: `Overhead allocation for ${batchData.juiceVolumeL}L production`,
+    unitCost: config.overheadRatePerL,
+    quantity: batchData.juiceVolumeL
+  })
+
+  // Packaging cost (unchanged from existing logic)
+  const packagingCost = batchData.packagingUnits * config.packagingCostPerUnit
+  components.push({
+    itemType: 'packaging',
+    amount: Math.round(packagingCost * 100) / 100,
+    description: `Packaging cost for ${batchData.packagingUnits} units`,
+    unitCost: config.packagingCostPerUnit,
+    quantity: batchData.packagingUnits
+  })
+
+  return components
+}
+
+/**
+ * Calculate total COGS using actual purchase data
+ * Alternative to calculateTotalCogs that uses real apple costs
+ *
+ * @param batchData - Batch production data
+ * @param purchaseCostData - Apple cost data from purchases
+ * @param config - Labor, overhead, and packaging rates
+ * @returns Total COGS amount using actual purchase costs
+ */
+export function calculateTotalCogsFromPurchases(
+  batchData: BatchCostData,
+  purchaseCostData: {
+    totalCost: number
+    averageCostPerKg: number
+    freeAppleKg: number
+    paidAppleKg: number
+  },
+  config: Omit<CostAllocationConfig, 'appleCostPerKg'>
+): number {
+  const components = calculateCogsFromPurchases(batchData, purchaseCostData, config)
+  const totalCogs = components.reduce((sum, component) => sum + component.amount, 0)
+
+  return Math.round(totalCogs * 100) / 100
+}

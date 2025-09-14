@@ -10,8 +10,14 @@ import {
   calculateYieldVarianceCostImpact,
   getCogsPerformanceCategory,
   calculateInventoryValue,
+  calculateWeightedAverageCostPerKg,
+  calculateAppleCostFromPurchases,
+  calculateCogsFromPurchases,
+  calculateTotalCogsFromPurchases,
   type BatchCostData,
-  type CostAllocationConfig
+  type CostAllocationConfig,
+  type PurchaseItemData,
+  type PressRunData
 } from '../../calc/cogs'
 
 describe('COGS Calculations', () => {
@@ -509,6 +515,388 @@ describe('COGS Calculations', () => {
 
       // Overhead impact: 1000L * $0.50 difference = $500
       expect(baseCogs - lowOverheadCogs).toBe(500)
+    })
+  })
+
+  describe('Purchase Cost Integration', () => {
+    const samplePurchaseItems: PurchaseItemData[] = [
+      {
+        id: 'purchase-item-1',
+        quantity: 1000,
+        quantityKg: 1000,
+        pricePerUnit: 2.50,
+        totalCost: 2500.00,
+        appleVarietyId: 'variety-1'
+      },
+      {
+        id: 'purchase-item-2',
+        quantity: 500,
+        quantityKg: 500,
+        pricePerUnit: null, // Free apples
+        totalCost: null,
+        appleVarietyId: 'variety-2'
+      },
+      {
+        id: 'purchase-item-3',
+        quantity: 200,
+        quantityKg: 200,
+        pricePerUnit: 3.00,
+        totalCost: 600.00,
+        appleVarietyId: 'variety-1'
+      }
+    ]
+
+    const samplePressRun: PressRunData = {
+      id: 'press-run-1',
+      totalAppleProcessedKg: 1500,
+      totalJuiceProducedL: 1000,
+      items: [
+        {
+          purchaseItemId: 'purchase-item-1',
+          quantityUsedKg: 800, // Use 800kg of paid apples
+          juiceProducedL: 600
+        },
+        {
+          purchaseItemId: 'purchase-item-2',
+          quantityUsedKg: 500, // Use 500kg of free apples
+          juiceProducedL: 300
+        },
+        {
+          purchaseItemId: 'purchase-item-3',
+          quantityUsedKg: 200, // Use 200kg of premium paid apples
+          juiceProducedL: 100
+        }
+      ]
+    }
+
+    describe('calculateWeightedAverageCostPerKg', () => {
+      it('should calculate weighted average including free apples', () => {
+        const avgCost = calculateWeightedAverageCostPerKg(samplePurchaseItems)
+
+        // Expected: (2500 + 0 + 600) / (1000 + 500 + 200) = 3100 / 1700 = 1.8235
+        expect(avgCost).toBe(1.8235)
+      })
+
+      it('should return 0 for all free apples', () => {
+        const freeItems: PurchaseItemData[] = [
+          {
+            id: 'free-1',
+            quantity: 1000,
+            quantityKg: 1000,
+            pricePerUnit: null,
+            totalCost: null,
+            appleVarietyId: 'variety-1'
+          }
+        ]
+
+        const avgCost = calculateWeightedAverageCostPerKg(freeItems)
+        expect(avgCost).toBe(0)
+      })
+
+      it('should handle empty purchase items', () => {
+        const avgCost = calculateWeightedAverageCostPerKg([])
+        expect(avgCost).toBe(0)
+      })
+
+      it('should handle zero weight items', () => {
+        const zeroWeightItems: PurchaseItemData[] = [
+          {
+            id: 'zero-weight-1',
+            quantity: 0,
+            quantityKg: 0,
+            pricePerUnit: 5.00,
+            totalCost: 0,
+            appleVarietyId: 'variety-1'
+          }
+        ]
+
+        const avgCost = calculateWeightedAverageCostPerKg(zeroWeightItems)
+        expect(avgCost).toBe(0)
+      })
+    })
+
+    describe('calculateAppleCostFromPurchases', () => {
+      it('should calculate apple cost with mixed free and paid sources', () => {
+        const result = calculateAppleCostFromPurchases(samplePressRun, samplePurchaseItems)
+
+        expect(result.totalCost).toBe(2600.00) // 800*2.50 + 500*0 + 200*3.00 = 2000 + 0 + 600
+        expect(result.freeAppleKg).toBe(500)
+        expect(result.paidAppleKg).toBe(1000) // 800 + 200
+        expect(result.averageCostPerKg).toBe(1.7333) // 2600 / 1500
+
+        expect(result.breakdown).toHaveLength(3)
+        expect(result.breakdown[0].isFree).toBe(false)
+        expect(result.breakdown[0].totalCost).toBe(2000.00)
+        expect(result.breakdown[1].isFree).toBe(true)
+        expect(result.breakdown[1].totalCost).toBe(0)
+        expect(result.breakdown[2].isFree).toBe(false)
+        expect(result.breakdown[2].totalCost).toBe(600.00)
+      })
+
+      it('should handle all free apples', () => {
+        const freeItems: PurchaseItemData[] = [
+          {
+            id: 'free-1',
+            quantity: 1000,
+            quantityKg: 1000,
+            pricePerUnit: null,
+            totalCost: null,
+            appleVarietyId: 'variety-1'
+          }
+        ]
+
+        const freePressRun: PressRunData = {
+          id: 'press-run-free',
+          totalAppleProcessedKg: 1000,
+          totalJuiceProducedL: 700,
+          items: [
+            {
+              purchaseItemId: 'free-1',
+              quantityUsedKg: 1000,
+              juiceProducedL: 700
+            }
+          ]
+        }
+
+        const result = calculateAppleCostFromPurchases(freePressRun, freeItems)
+
+        expect(result.totalCost).toBe(0)
+        expect(result.freeAppleKg).toBe(1000)
+        expect(result.paidAppleKg).toBe(0)
+        expect(result.averageCostPerKg).toBe(0)
+        expect(result.breakdown[0].isFree).toBe(true)
+      })
+
+      it('should handle zero price per unit as free', () => {
+        const zeroPrice: PurchaseItemData[] = [
+          {
+            id: 'zero-price-1',
+            quantity: 500,
+            quantityKg: 500,
+            pricePerUnit: 0, // Explicitly zero price
+            totalCost: 0,
+            appleVarietyId: 'variety-1'
+          }
+        ]
+
+        const zeroPressRun: PressRunData = {
+          id: 'press-run-zero',
+          totalAppleProcessedKg: 500,
+          totalJuiceProducedL: 350,
+          items: [
+            {
+              purchaseItemId: 'zero-price-1',
+              quantityUsedKg: 500,
+              juiceProducedL: 350
+            }
+          ]
+        }
+
+        const result = calculateAppleCostFromPurchases(zeroPressRun, zeroPrice)
+
+        expect(result.totalCost).toBe(0)
+        expect(result.freeAppleKg).toBe(500)
+        expect(result.paidAppleKg).toBe(0)
+        expect(result.breakdown[0].isFree).toBe(true)
+      })
+
+      it('should throw error for missing purchase item', () => {
+        const incompletePressRun: PressRunData = {
+          ...samplePressRun,
+          items: [
+            {
+              purchaseItemId: 'missing-item',
+              quantityUsedKg: 100,
+              juiceProducedL: 70
+            }
+          ]
+        }
+
+        expect(() => {
+          calculateAppleCostFromPurchases(incompletePressRun, samplePurchaseItems)
+        }).toThrow('Purchase item missing-item not found')
+      })
+    })
+
+    describe('calculateCogsFromPurchases', () => {
+      it('should calculate COGS with actual purchase data', () => {
+        const purchaseCostData = {
+          totalCost: 2600.00,
+          averageCostPerKg: 1.7333,
+          freeAppleKg: 500,
+          paidAppleKg: 1000
+        }
+
+        const config = {
+          laborRatePerHour: 25.00,
+          overheadRatePerL: 0.75,
+          packagingCostPerUnit: 1.20,
+          wastageRate: 5.0
+        }
+
+        const components = calculateCogsFromPurchases(defaultBatchData, purchaseCostData, config)
+
+        expect(components).toHaveLength(4)
+
+        // Apple cost with wastage: 2600 * 1.05 = 2730
+        const appleCost = components.find(c => c.itemType === 'apple_cost')
+        expect(appleCost?.amount).toBe(2730.00)
+        expect(appleCost?.description).toContain('500kg free + 1000kg paid')
+        expect(appleCost?.description).toContain('5% wastage')
+
+        // Other components should be same as original logic
+        const laborCost = components.find(c => c.itemType === 'labor')
+        expect(laborCost?.amount).toBe(200.00) // 8 * 25.00
+
+        const overheadCost = components.find(c => c.itemType === 'overhead')
+        expect(overheadCost?.amount).toBe(750.00) // 1000 * 0.75
+
+        const packagingCost = components.find(c => c.itemType === 'packaging')
+        expect(packagingCost?.amount).toBe(600.00) // 500 * 1.20
+      })
+
+      it('should handle all free apples with zero wastage', () => {
+        const freePurchaseCostData = {
+          totalCost: 0,
+          averageCostPerKg: 0,
+          freeAppleKg: 1500,
+          paidAppleKg: 0
+        }
+
+        const zeroWastageConfig = {
+          laborRatePerHour: 25.00,
+          overheadRatePerL: 0.75,
+          packagingCostPerUnit: 1.20,
+          wastageRate: 0
+        }
+
+        const components = calculateCogsFromPurchases(defaultBatchData, freePurchaseCostData, zeroWastageConfig)
+
+        const appleCost = components.find(c => c.itemType === 'apple_cost')
+        expect(appleCost?.amount).toBe(0)
+        expect(appleCost?.description).toContain('1500kg free + 0kg paid')
+      })
+    })
+
+    describe('calculateTotalCogsFromPurchases', () => {
+      it('should match sum of components', () => {
+        const purchaseCostData = {
+          totalCost: 2600.00,
+          averageCostPerKg: 1.7333,
+          freeAppleKg: 500,
+          paidAppleKg: 1000
+        }
+
+        const config = {
+          laborRatePerHour: 25.00,
+          overheadRatePerL: 0.75,
+          packagingCostPerUnit: 1.20,
+          wastageRate: 5.0
+        }
+
+        const totalCogs = calculateTotalCogsFromPurchases(defaultBatchData, purchaseCostData, config)
+        const components = calculateCogsFromPurchases(defaultBatchData, purchaseCostData, config)
+        const componentSum = components.reduce((sum, c) => sum + c.amount, 0)
+
+        expect(totalCogs).toBe(componentSum)
+        // Expected: 2730 + 200 + 750 + 600 = 4280
+        expect(totalCogs).toBe(4280.00)
+      })
+
+      it('should handle all free apples scenario', () => {
+        const freePurchaseCostData = {
+          totalCost: 0,
+          averageCostPerKg: 0,
+          freeAppleKg: 1500,
+          paidAppleKg: 0
+        }
+
+        const config = {
+          laborRatePerHour: 25.00,
+          overheadRatePerL: 0.75,
+          packagingCostPerUnit: 1.20,
+          wastageRate: 5.0
+        }
+
+        const totalCogs = calculateTotalCogsFromPurchases(defaultBatchData, freePurchaseCostData, config)
+
+        // Only labor, overhead, and packaging costs: 200 + 750 + 600 = 1550
+        expect(totalCogs).toBe(1550.00)
+      })
+    })
+
+    describe('Purchase Integration Scenarios', () => {
+      it('should demonstrate cost impact of free vs paid apples', () => {
+        // Scenario 1: All paid apples at $2.50/kg
+        const allPaidData = {
+          totalCost: 3750.00, // 1500kg * $2.50
+          averageCostPerKg: 2.50,
+          freeAppleKg: 0,
+          paidAppleKg: 1500
+        }
+
+        // Scenario 2: 50% free apples
+        const mixedData = {
+          totalCost: 1875.00, // 750kg * $2.50
+          averageCostPerKg: 1.25, // 1875 / 1500
+          freeAppleKg: 750,
+          paidAppleKg: 750
+        }
+
+        // Scenario 3: All free apples
+        const allFreeData = {
+          totalCost: 0,
+          averageCostPerKg: 0,
+          freeAppleKg: 1500,
+          paidAppleKg: 0
+        }
+
+        const config = {
+          laborRatePerHour: 25.00,
+          overheadRatePerL: 0.75,
+          packagingCostPerUnit: 1.20,
+          wastageRate: 5.0
+        }
+
+        const allPaidCogs = calculateTotalCogsFromPurchases(defaultBatchData, allPaidData, config)
+        const mixedCogs = calculateTotalCogsFromPurchases(defaultBatchData, mixedData, config)
+        const allFreeCogs = calculateTotalCogsFromPurchases(defaultBatchData, allFreeData, config)
+
+        // All paid should be most expensive
+        expect(allPaidCogs).toBeGreaterThan(mixedCogs)
+        expect(mixedCogs).toBeGreaterThan(allFreeCogs)
+
+        // Cost difference should be apple cost difference (with wastage)
+        const appleCostDiff = (allPaidData.totalCost - mixedData.totalCost) * 1.05
+        expect(allPaidCogs - mixedCogs).toBe(appleCostDiff)
+
+        // Free apples save significant costs
+        const freeAppleSavings = allPaidCogs - allFreeCogs
+        expect(freeAppleSavings).toBe(3937.50) // 3750 * 1.05
+      })
+
+      it('should show correct cost per bottle with free ingredients', () => {
+        const mixedData = {
+          totalCost: 1000.00,
+          averageCostPerKg: 0.67, // 1000 / 1500
+          freeAppleKg: 1000,
+          paidAppleKg: 500
+        }
+
+        const config = {
+          laborRatePerHour: 20.00,
+          overheadRatePerL: 0.50,
+          packagingCostPerUnit: 1.00,
+          wastageRate: 10.0
+        }
+
+        const totalCogs = calculateTotalCogsFromPurchases(defaultBatchData, mixedData, config)
+        const costPerBottle = calculateCostPerBottle(totalCogs, 500)
+
+        // This should be significantly lower than all-paid scenario
+        expect(costPerBottle).toBeLessThan(6.00) // Reasonable for 50% free apples
+        expect(totalCogs).toBeGreaterThan(1000) // Should include non-apple costs
+      })
     })
   })
 })
