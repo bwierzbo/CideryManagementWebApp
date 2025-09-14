@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,9 +21,12 @@ import {
   DollarSign,
   Package,
   Search,
-  Filter
+  Filter,
+  CheckCircle,
+  XCircle,
+  X
 } from "lucide-react"
-import { bushelsToKg, formatUnitConversion } from "lib"
+import { bushelsToKg } from "lib"
 import { trpc } from "@/utils/trpc"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -58,7 +61,8 @@ type PurchaseForm = z.infer<typeof purchaseSchema>
 
 function VendorManagement() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [editingVendor, setEditingVendor] = useState<string | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingVendor, setEditingVendor] = useState<any>(null)
 
   const { data: vendorData, refetch: refetchVendors } = trpc.vendor.list.useQuery()
   const vendors = vendorData?.vendors || []
@@ -66,6 +70,14 @@ function VendorManagement() {
     onSuccess: () => {
       refetchVendors()
       setIsAddDialogOpen(false)
+      reset()
+    }
+  })
+  const updateVendor = trpc.vendor.update.useMutation({
+    onSuccess: () => {
+      refetchVendors()
+      setIsEditDialogOpen(false)
+      setEditingVendor(null)
       reset()
     }
   })
@@ -83,7 +95,36 @@ function VendorManagement() {
   })
 
   const onSubmit = (data: VendorForm) => {
-    createVendor.mutate(data)
+    if (editingVendor) {
+      updateVendor.mutate({ ...data, id: editingVendor.id })
+    } else {
+      createVendor.mutate(data)
+    }
+  }
+
+  const handleEdit = (vendor: any) => {
+    setEditingVendor(vendor)
+    // Pre-populate the form with vendor data
+    reset({
+      name: vendor.name,
+      contactEmail: vendor.contactInfo?.email || "",
+      contactPhone: vendor.contactInfo?.phone || "",
+      address: vendor.contactInfo?.address || "",
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleAddNew = () => {
+    setEditingVendor(null)
+    reset()
+    setIsAddDialogOpen(true)
+  }
+
+  const handleCloseDialog = () => {
+    setIsAddDialogOpen(false)
+    setIsEditDialogOpen(false)
+    setEditingVendor(null)
+    reset()
   }
 
   return (
@@ -97,18 +138,22 @@ function VendorManagement() {
             </CardTitle>
             <CardDescription>Manage your apple suppliers and vendors</CardDescription>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
+            if (!open) handleCloseDialog()
+          }}>
             <DialogTrigger asChild>
-              <Button>
+              <Button onClick={handleAddNew}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add Vendor
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Add New Vendor</DialogTitle>
+                <DialogTitle>{editingVendor ? 'Edit Vendor' : 'Add New Vendor'}</DialogTitle>
                 <DialogDescription>
-                  Create a new vendor to track apple purchases from.
+                  {editingVendor
+                    ? 'Update vendor information and contact details.'
+                    : 'Create a new vendor to track apple purchases from.'}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -148,11 +193,14 @@ function VendorManagement() {
                   />
                 </div>
                 <div className="flex justify-end space-x-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                  <Button type="button" variant="outline" onClick={handleCloseDialog}>
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={createVendor.isPending}>
-                    {createVendor.isPending ? "Creating..." : "Create Vendor"}
+                  <Button type="submit" disabled={createVendor.isPending || updateVendor.isPending}>
+                    {editingVendor
+                      ? (updateVendor.isPending ? "Updating..." : "Update Vendor")
+                      : (createVendor.isPending ? "Creating..." : "Create Vendor")
+                    }
                   </Button>
                 </div>
               </form>
@@ -175,12 +223,12 @@ function VendorManagement() {
             {vendors.map((vendor: any) => (
               <TableRow key={vendor.id}>
                 <TableCell className="font-medium">{vendor.name}</TableCell>
-                <TableCell>{vendor.contactEmail || "—"}</TableCell>
-                <TableCell>{vendor.contactPhone || "—"}</TableCell>
+                <TableCell>{vendor.contactInfo?.email || "—"}</TableCell>
+                <TableCell>{vendor.contactInfo?.phone || "—"}</TableCell>
                 <TableCell>
                   <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    vendor.isActive 
-                      ? "bg-green-100 text-green-800" 
+                    vendor.isActive
+                      ? "bg-green-100 text-green-800"
                       : "bg-red-100 text-red-800"
                   }`}>
                     {vendor.isActive ? "Active" : "Inactive"}
@@ -188,13 +236,19 @@ function VendorManagement() {
                 </TableCell>
                 <TableCell>
                   <div className="flex space-x-2">
-                    <Button size="sm" variant="outline">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleEdit(vendor)}
+                      title="Edit vendor"
+                    >
                       <Edit className="w-3 h-3" />
                     </Button>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       variant="outline"
                       onClick={() => deleteVendor.mutate({ id: vendor.id })}
+                      title="Delete vendor"
                     >
                       <Trash2 className="w-3 h-3" />
                     </Button>
@@ -209,8 +263,17 @@ function VendorManagement() {
   )
 }
 
+type NotificationType = {
+  id: number
+  type: 'success' | 'error'
+  title: string
+  message: string
+}
+
 function PurchaseFormComponent() {
   const [globalHarvestDate, setGlobalHarvestDate] = useState<Date | null>(null)
+  const [purchaseDate, setPurchaseDate] = useState<string>("")
+  const [notifications, setNotifications] = useState<NotificationType[]>([])
   const [lines, setLines] = useState<Array<{
     appleVarietyId: string
     quantity: number | undefined
@@ -220,6 +283,18 @@ function PurchaseFormComponent() {
   }>>([
     { appleVarietyId: "", quantity: undefined, unit: "kg", pricePerUnit: undefined, harvestDate: undefined }
   ])
+
+  const addNotification = (type: 'success' | 'error', title: string, message: string) => {
+    const id = Date.now()
+    setNotifications(prev => [...prev, { id, type, title, message }])
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    }, 5000) // Auto-dismiss after 5 seconds
+  }
+
+  const removeNotification = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
 
   const { data: vendorData } = trpc.vendor.list.useQuery()
   const vendors = vendorData?.vendors || []
@@ -231,7 +306,8 @@ function PurchaseFormComponent() {
     handleSubmit,
     formState: { errors },
     setValue,
-    watch
+    watch,
+    reset
   } = useForm<PurchaseForm>({
     resolver: zodResolver(purchaseSchema),
     defaultValues: {
@@ -240,8 +316,31 @@ function PurchaseFormComponent() {
     }
   })
 
+  const handlePurchaseDateChange = (dateString: string) => {
+    setPurchaseDate(dateString)
+    setValue("purchaseDate", dateString)
+
+    // Auto-populate harvest dates with purchase date
+    if (dateString) {
+      const purchaseDateObj = new Date(dateString + "T12:00:00")
+      setGlobalHarvestDate(purchaseDateObj)
+      setValue("globalHarvestDate", purchaseDateObj)
+
+      // Update all existing lines with the purchase date as harvest date
+      const newLines = lines.map(line => ({ ...line, harvestDate: purchaseDateObj }))
+      setLines(newLines)
+
+      // Update form values for each line
+      newLines.forEach((_, index) => {
+        setValue(`lines.${index}.harvestDate`, purchaseDateObj)
+      })
+    }
+  }
+
   const addLine = () => {
-    const newLines = [...lines, { appleVarietyId: "", quantity: undefined, unit: "kg" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: globalHarvestDate }]
+    // Use purchase date as harvest date for new lines if available
+    const harvestDateForNewLine = purchaseDate ? new Date(purchaseDate + "T12:00:00") : globalHarvestDate
+    const newLines = [...lines, { appleVarietyId: "", quantity: undefined, unit: "kg" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: harvestDateForNewLine }]
     setLines(newLines)
     setValue("lines", newLines)
   }
@@ -258,6 +357,20 @@ function PurchaseFormComponent() {
     return (qty * prc).toFixed(2)
   }
 
+  const createPurchase = trpc.purchase.create.useMutation({
+    onSuccess: (result) => {
+      addNotification('success', 'Purchase Created Successfully!', `Invoice ${result.purchase.invoiceNumber} has been generated`)
+      // Reset form
+      reset()
+      setLines([{ appleVarietyId: "", quantity: undefined, unit: "kg" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: null }])
+      setPurchaseDate("")
+      setGlobalHarvestDate(null)
+    },
+    onError: (error) => {
+      addNotification('error', 'Failed to Create Purchase', error.message)
+    }
+  })
+
   const calculateGrandTotal = () => {
     return lines.reduce((total, line) => {
       const quantity = line.quantity || 0
@@ -266,27 +379,82 @@ function PurchaseFormComponent() {
     }, 0).toFixed(2)
   }
 
-  const getConversionDisplay = (quantity: number | undefined, unit: string) => {
-    if (!quantity || unit !== 'bushel') return null
+  const onSubmit = (data: PurchaseForm) => {
     try {
-      return formatUnitConversion(quantity, 'bushels', 'kg')
-    } catch {
-      return null
+      // Convert form data to API format
+      const items = data.lines
+        .filter(line => line.appleVarietyId && line.quantity) // Only include complete lines
+        .map(line => ({
+          appleVarietyId: line.appleVarietyId,
+          quantity: line.quantity!,
+          unit: line.unit as 'kg' | 'lb' | 'L' | 'gal' | 'bushel',
+          pricePerUnit: line.pricePerUnit,
+          harvestDate: line.harvestDate || undefined,
+          notes: undefined // Frontend doesn't have notes per line
+        }))
+
+      if (items.length === 0) {
+        addNotification('error', 'Incomplete Form', 'Please add at least one apple variety with quantity')
+        return
+      }
+
+      // Submit to API
+      createPurchase.mutate({
+        vendorId: data.vendorId,
+        purchaseDate: new Date(data.purchaseDate),
+        notes: data.notes,
+        items: items
+      })
+    } catch (error) {
+      console.error('Error preparing purchase data:', error)
+      addNotification('error', 'Form Error', 'Error preparing purchase data. Please check your inputs.')
     }
   }
 
-  const onSubmit = (data: PurchaseForm) => {
-    console.log("Purchase data:", data)
-    // TODO: Implement purchase creation mutation
-  }
-
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ShoppingCart className="w-5 h-5 text-green-600" />
-          Create Purchase Order
-        </CardTitle>
+    <>
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map((notification) => (
+          <div
+            key={notification.id}
+            className={`
+              min-w-80 max-w-md p-4 rounded-lg shadow-lg border
+              ${notification.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+              }
+            `}
+          >
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 mt-0.5">
+                {notification.type === 'success' ? (
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-600" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">{notification.title}</p>
+                <p className="text-sm mt-1 opacity-90">{notification.message}</p>
+              </div>
+              <button
+                onClick={() => removeNotification(notification.id)}
+                className="flex-shrink-0 ml-4 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShoppingCart className="w-5 h-5 text-green-600" />
+            Create Purchase Order
+          </CardTitle>
         <CardDescription>Record a new apple purchase from vendors</CardDescription>
       </CardHeader>
       <CardContent>
@@ -314,7 +482,8 @@ function PurchaseFormComponent() {
               <Input
                 id="purchaseDate"
                 type="date"
-                {...register("purchaseDate")}
+                value={purchaseDate}
+                onChange={(e) => handlePurchaseDateChange(e.target.value)}
               />
               {errors.purchaseDate && <p className="text-sm text-red-600 mt-1">{errors.purchaseDate.message}</p>}
             </div>
@@ -401,11 +570,6 @@ function PurchaseFormComponent() {
                         setValue(`lines.${index}.quantity`, newLines[index].quantity)
                       }}
                     />
-                    {getConversionDisplay(line.quantity, line.unit) && (
-                      <div className="text-xs text-gray-600 mt-1">
-                        {getConversionDisplay(line.quantity, line.unit)}
-                      </div>
-                    )}
                   </div>
                   <div>
                     <Label>Unit</Label>
@@ -488,50 +652,278 @@ function PurchaseFormComponent() {
             />
           </div>
 
-          <div className="flex justify-end space-x-2">
-            <Button type="button" variant="outline">
-              Save as Draft
-            </Button>
-            <Button type="submit">
-              Create Purchase Order
+          <div className="flex justify-end">
+            <Button type="submit" disabled={createPurchase.isPending}>
+              {createPurchase.isPending ? "Creating..." : "Create Purchase Order"}
             </Button>
           </div>
         </form>
       </CardContent>
     </Card>
+    </>
+  )
+}
+
+interface EditPurchaseDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  purchase: any | null
+  onSuccess: () => void
+  onError: (error: string) => void
+}
+
+function EditPurchaseDialog({ open, onOpenChange, purchase, onSuccess, onError }: EditPurchaseDialogProps) {
+  const utils = trpc.useUtils()
+  const updatePurchase = trpc.purchase.update.useMutation({
+    onSuccess: async () => {
+      // Invalidate and refetch purchase list
+      await utils.purchase.list.invalidate()
+      onSuccess()
+    },
+    onError: (error) => {
+      onError(error.message)
+    }
+  })
+  const { data: vendorData } = trpc.vendor.list.useQuery()
+  const { data: varietyData } = trpc.appleVariety.list.useQuery()
+
+  const vendors = vendorData?.vendors || []
+  const varieties = varietyData?.appleVarieties || []
+
+  const [formData, setFormData] = useState({
+    vendorId: '',
+    purchaseDate: '',
+    notes: '',
+  })
+
+  // Helper function to format date for input field (timezone safe)
+  const formatDateForInput = (dateString: string) => {
+    const date = new Date(dateString)
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  // Update form data when purchase changes
+  useEffect(() => {
+    if (purchase) {
+      setFormData({
+        vendorId: purchase.vendorId || '',
+        purchaseDate: purchase.purchaseDate ? formatDateForInput(purchase.purchaseDate) : '',
+        notes: purchase.notes || '',
+      })
+    }
+  }, [purchase])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!purchase) return
+
+    updatePurchase.mutate({
+      id: purchase.id,
+      ...formData,
+      purchaseDate: formData.purchaseDate ? new Date(formData.purchaseDate) : undefined,
+    })
+  }
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  if (!purchase) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Edit className="w-5 h-5 text-blue-600" />
+            Edit Purchase Order
+          </DialogTitle>
+          <DialogDescription>
+            Update the purchase order details. Only basic information can be edited.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Vendor Selection */}
+          <div>
+            <Label htmlFor="vendor">Vendor</Label>
+            <Select value={formData.vendorId} onValueChange={(value) => handleInputChange('vendorId', value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select vendor" />
+              </SelectTrigger>
+              <SelectContent>
+                {vendors.map((vendor: any) => (
+                  <SelectItem key={vendor.id} value={vendor.id}>
+                    {vendor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Purchase Date */}
+          <div>
+            <Label htmlFor="purchaseDate">Purchase Date</Label>
+            <Input
+              id="purchaseDate"
+              type="date"
+              value={formData.purchaseDate}
+              onChange={(e) => handleInputChange('purchaseDate', e.target.value)}
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <Label htmlFor="notes">Notes</Label>
+            <Input
+              id="notes"
+              type="text"
+              value={formData.notes}
+              onChange={(e) => handleInputChange('notes', e.target.value)}
+              placeholder="Additional notes (optional)"
+            />
+          </div>
+
+          {/* Current Items Display */}
+          <div>
+            <Label>Current Items</Label>
+            <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded border">
+              {purchase.itemsSummary || 'No items'}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Note: Item details cannot be edited. To modify items, create a new purchase order.
+            </p>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={updatePurchase.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={updatePurchase.isPending}
+            >
+              {updatePurchase.isPending ? "Updating..." : "Update Purchase"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 function RecentPurchases() {
-  // Mock data for now
-  const purchases = [
-    {
-      id: "PO-2024-001",
-      vendor: "Mountain View Orchards",
-      date: "2024-01-15",
-      items: "Honeycrisp (500kg), Gala (300kg)",
-      total: "$1,250.00",
-      status: "Delivered"
+  const [notifications, setNotifications] = useState<NotificationType[]>([])
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; purchaseId: string | null }>({ show: false, purchaseId: null })
+  const [editPurchase, setEditPurchase] = useState<{ show: boolean; purchase: any | null }>({ show: false, purchase: null })
+
+  const utils = trpc.useUtils()
+  const { data: purchaseData, isLoading, error } = trpc.purchase.list.useQuery()
+  const deletePurchase = trpc.purchase.delete.useMutation({
+    onSuccess: async () => {
+      // Invalidate and refetch purchase list
+      await utils.purchase.list.invalidate()
+      addNotification('success', 'Purchase Deleted', 'Purchase order has been successfully deleted')
+      setDeleteConfirm({ show: false, purchaseId: null })
     },
-    {
-      id: "PO-2024-002", 
-      vendor: "Sunrise Apple Farm",
-      date: "2024-01-12",
-      items: "Granny Smith (600kg)",
-      total: "$1,080.00",
-      status: "Pending"
+    onError: (error) => {
+      addNotification('error', 'Delete Failed', error?.message || 'Failed to delete purchase order')
+      console.error('Failed to delete purchase:', error)
     }
-  ]
+  })
+
+  const purchases = purchaseData?.purchases || []
+
+  // Notification helper functions
+  const addNotification = (type: 'success' | 'error', title: string, message: string) => {
+    const id = Date.now()
+    const notification = { id, type, title, message }
+    setNotifications(prev => [...prev, notification])
+
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    }, 5000)
+  }
+
+  const removeNotification = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
+
+  const handleEditPurchase = (purchaseId: string) => {
+    const purchase = purchases.find(p => p.id === purchaseId)
+    if (purchase) {
+      setEditPurchase({ show: true, purchase })
+    }
+  }
+
+  const handleDeletePurchase = (purchaseId: string) => {
+    setDeleteConfirm({ show: true, purchaseId })
+  }
+
+  const confirmDelete = () => {
+    if (!deleteConfirm.purchaseId) return
+    deletePurchase.mutate({ id: deleteConfirm.purchaseId })
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Receipt className="w-5 h-5 text-purple-600" />
-              Recent Purchases
-            </CardTitle>
+    <>
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map((notification) => (
+          <div
+            key={notification.id}
+            className={`
+              min-w-80 max-w-md p-4 rounded-lg shadow-lg border
+              ${notification.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+              }
+              transform transition-all duration-300 ease-in-out
+            `}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-start">
+                <div className="flex-shrink-0 mr-3">
+                  {notification.type === 'success' ? (
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <XCircle className="w-5 h-5 text-red-600" />
+                  )}
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm">{notification.title}</h4>
+                  <p className="text-sm mt-1 opacity-90">{notification.message}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => removeNotification(notification.id)}
+                className="flex-shrink-0 ml-3 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-purple-600" />
+                Recent Purchases
+              </CardTitle>
             <CardDescription>Your latest purchase orders</CardDescription>
           </div>
           <div className="flex space-x-2">
@@ -550,37 +942,127 @@ function RecentPurchases() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Order ID</TableHead>
               <TableHead>Vendor</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Items</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {purchases.map((purchase) => (
-              <TableRow key={purchase.id}>
-                <TableCell className="font-medium">{purchase.id}</TableCell>
-                <TableCell>{purchase.vendor}</TableCell>
-                <TableCell>{purchase.date}</TableCell>
-                <TableCell className="max-w-xs truncate">{purchase.items}</TableCell>
-                <TableCell className="font-semibold text-green-600">{purchase.total}</TableCell>
-                <TableCell>
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    purchase.status === "Delivered" 
-                      ? "bg-green-100 text-green-800" 
-                      : "bg-yellow-100 text-yellow-800"
-                  }`}>
-                    {purchase.status}
-                  </span>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8">
+                  Loading purchases...
                 </TableCell>
               </TableRow>
-            ))}
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-red-600">
+                  Error loading purchases: {error.message}
+                </TableCell>
+              </TableRow>
+            ) : purchases.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                  No purchase orders found
+                </TableCell>
+              </TableRow>
+            ) : (
+              purchases.map((purchase) => (
+                <TableRow key={purchase.id}>
+                  <TableCell>{purchase.vendorName || 'Unknown Vendor'}</TableCell>
+                  <TableCell>
+                    {new Date(purchase.purchaseDate).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit'
+                    })}
+                  </TableCell>
+                  <TableCell className="max-w-xs truncate">
+                    {purchase.itemsSummary || `${purchase.itemCount} item(s)`}
+                  </TableCell>
+                  <TableCell className="font-semibold text-green-600">
+                    ${purchase.totalCost ? parseFloat(purchase.totalCost.toString()).toFixed(2) : '0.00'}
+                  </TableCell>
+                  <TableCell>
+                    <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                      Complete
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditPurchase(purchase.id)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeletePurchase(purchase.id)}
+                        className="text-red-600 hover:text-red-700 hover:border-red-300"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </CardContent>
     </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirm.show} onOpenChange={(open) => !open && setDeleteConfirm({ show: false, purchaseId: null })}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="w-5 h-5 text-red-600" />
+              Delete Purchase Order
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this purchase order? This action cannot be undone and will remove all associated data.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteConfirm({ show: false, purchaseId: null })}
+              disabled={deletePurchase.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deletePurchase.isPending}
+            >
+              {deletePurchase.isPending ? "Deleting..." : "Delete Purchase"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Purchase Dialog */}
+      <EditPurchaseDialog
+        open={editPurchase.show}
+        onOpenChange={(open) => !open && setEditPurchase({ show: false, purchase: null })}
+        purchase={editPurchase.purchase}
+        onSuccess={() => {
+          setEditPurchase({ show: false, purchase: null })
+          addNotification('success', 'Purchase Updated', 'Purchase order has been successfully updated')
+        }}
+        onError={(error) => {
+          addNotification('error', 'Update Failed', error || 'Failed to update purchase order')
+        }}
+      />
+    </>
   )
 }
 

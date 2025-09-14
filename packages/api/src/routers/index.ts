@@ -22,7 +22,7 @@ import {
 } from 'db'
 import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
-import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent } from 'lib'
+import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, bushelsToKg } from 'lib'
 
 export const appRouter = router({
   // Basic health check
@@ -49,7 +49,7 @@ export const appRouter = router({
 
   // Vendor management with proper RBAC and audit logging
   vendor: router({
-    list: createRbacProcedure('list', 'vendor').query(async () => {
+    list: publicProcedure.query(async () => {
       try {
         const vendorList = await db
           .select()
@@ -73,15 +73,23 @@ export const appRouter = router({
     create: createRbacProcedure('create', 'vendor')
       .input(z.object({
         name: z.string().min(1, 'Name is required'),
-        contactInfo: z.any().optional(),
+        contactEmail: z.string().email().optional().or(z.literal("")),
+        contactPhone: z.string().optional(),
+        address: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         try {
+          // Build contactInfo object
+          const contactInfo: any = {}
+          if (input.contactEmail) contactInfo.email = input.contactEmail
+          if (input.contactPhone) contactInfo.phone = input.contactPhone
+          if (input.address) contactInfo.address = input.address
+
           const newVendor = await db
             .insert(vendors)
             .values({
               name: input.name,
-              contactInfo: input.contactInfo,
+              contactInfo: Object.keys(contactInfo).length > 0 ? contactInfo : null,
               createdAt: new Date(),
               updatedAt: new Date(),
             })
@@ -159,6 +167,70 @@ export const appRouter = router({
             message: 'Failed to delete vendor'
           })
         }
+      }),
+
+    update: createRbacProcedure('update', 'vendor')
+      .input(z.object({
+        id: z.string().uuid(),
+        name: z.string().min(1, 'Name is required'),
+        contactEmail: z.string().email().optional().or(z.literal("")),
+        contactPhone: z.string().optional(),
+        address: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const existing = await db
+            .select()
+            .from(vendors)
+            .where(eq(vendors.id, input.id))
+            .limit(1)
+
+          if (!existing.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Vendor not found'
+            })
+          }
+
+          // Build contactInfo object
+          const contactInfo: any = {}
+          if (input.contactEmail) contactInfo.email = input.contactEmail
+          if (input.contactPhone) contactInfo.phone = input.contactPhone
+          if (input.address) contactInfo.address = input.address
+
+          const updatedVendor = await db
+            .update(vendors)
+            .set({
+              name: input.name,
+              contactInfo: Object.keys(contactInfo).length > 0 ? contactInfo : null,
+              updatedAt: new Date(),
+            })
+            .where(eq(vendors.id, input.id))
+            .returning()
+
+          // Audit logging
+          await db.insert(auditLog).values({
+            tableName: 'vendors',
+            recordId: input.id,
+            operation: 'update',
+            oldData: existing[0],
+            newData: { name: input.name, contactInfo },
+            changedBy: ctx.session?.user?.id,
+          })
+
+          return {
+            success: true,
+            vendor: updatedVendor[0],
+            message: `Vendor "${input.name}" updated successfully`,
+          }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error updating vendor:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to update vendor'
+          })
+        }
       })
   }),
 
@@ -170,6 +242,7 @@ export const appRouter = router({
           .select({
             id: purchases.id,
             vendorId: purchases.vendorId,
+            vendorName: vendors.name,
             purchaseDate: purchases.purchaseDate,
             invoiceNumber: purchases.invoiceNumber,
             totalCost: purchases.totalCost,
@@ -177,12 +250,40 @@ export const appRouter = router({
             createdAt: purchases.createdAt,
           })
           .from(purchases)
+          .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
           .where(isNull(purchases.deletedAt))
           .orderBy(desc(purchases.purchaseDate), desc(purchases.createdAt))
 
+        // Get purchase items for each purchase to create item summary
+        const purchasesWithItems = await Promise.all(
+          purchaseList.map(async (purchase) => {
+            const items = await db
+              .select({
+                id: purchaseItems.id,
+                appleVarietyId: purchaseItems.appleVarietyId,
+                varietyName: appleVarieties.name,
+                originalQuantity: purchaseItems.originalQuantity,
+                originalUnit: purchaseItems.originalUnit,
+              })
+              .from(purchaseItems)
+              .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+              .where(eq(purchaseItems.purchaseId, purchase.id))
+
+            const itemsSummary = items.map(item =>
+              `${item.originalQuantity} ${item.originalUnit} ${item.varietyName}`
+            ).join(', ')
+
+            return {
+              ...purchase,
+              itemsSummary,
+              itemCount: items.length,
+            }
+          })
+        )
+
         return {
-          purchases: purchaseList,
-          count: purchaseList.length,
+          purchases: purchasesWithItems,
+          count: purchasesWithItems.length,
         }
       } catch (error) {
         console.error('Error listing purchases:', error)
@@ -202,8 +303,9 @@ export const appRouter = router({
         items: z.array(z.object({
           appleVarietyId: z.string().uuid('Invalid apple variety ID'),
           quantity: z.number().positive('Quantity must be positive'),
-          unit: z.enum(['kg', 'lb', 'L', 'gal']),
+          unit: z.enum(['kg', 'lb', 'L', 'gal', 'bushel']),
           pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
+          harvestDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
           notes: z.string().optional(),
         })).min(1, 'At least one item is required'),
       }))
@@ -219,6 +321,10 @@ export const appRouter = router({
               const itemTotal = item.pricePerUnit ? item.quantity * item.pricePerUnit : 0
               totalCost += itemTotal
 
+              // Store original values for traceability
+              const originalUnit = item.unit
+              const originalQuantity = item.quantity
+
               // Convert to canonical units (kg for weight, L for volume)
               let quantityKg: number | null = null
               let quantityL: number | null = null
@@ -227,6 +333,8 @@ export const appRouter = router({
                 quantityKg = item.quantity
               } else if (item.unit === 'lb') {
                 quantityKg = item.quantity * 0.453592 // lb to kg
+              } else if (item.unit === 'bushel') {
+                quantityKg = bushelsToKg(item.quantity) // bushel to kg using utility
               } else if (item.unit === 'L') {
                 quantityL = item.quantity
               } else if (item.unit === 'gal') {
@@ -238,6 +346,8 @@ export const appRouter = router({
                 totalCost: itemTotal,
                 quantityKg,
                 quantityL,
+                originalUnit,
+                originalQuantity,
               })
             }
 
@@ -327,6 +437,9 @@ export const appRouter = router({
                   totalCost: item.totalCost > 0 ? item.totalCost.toString() : null,
                   quantityKg: item.quantityKg?.toString(),
                   quantityL: item.quantityL?.toString(),
+                  harvestDate: item.harvestDate ? item.harvestDate.toISOString().split('T')[0] : null,
+                  originalUnit: item.originalUnit,
+                  originalQuantity: item.originalQuantity.toString(),
                   notes: item.notes,
                   createdAt: new Date(),
                   updatedAt: new Date(),
@@ -401,6 +514,170 @@ export const appRouter = router({
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to get purchase'
+          })
+        }
+      }),
+
+    update: createRbacProcedure('update', 'purchase')
+      .input(z.object({
+        id: z.string().uuid(),
+        vendorId: z.string().uuid('Invalid vendor ID').optional(),
+        purchaseDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
+        invoiceNumber: z.string().optional(),
+        notes: z.string().optional(),
+        items: z.array(z.object({
+          id: z.string().uuid().optional(), // For existing items
+          appleVarietyId: z.string().uuid('Invalid apple variety ID'),
+          quantity: z.number().positive('Quantity must be positive'),
+          unit: z.enum(['kg', 'lb', 'L', 'gal', 'bushel']),
+          pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
+          harvestDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
+          notes: z.string().optional(),
+        })).min(1, 'At least one item is required').optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const existingPurchase = await db
+            .select()
+            .from(purchases)
+            .where(and(eq(purchases.id, input.id), isNull(purchases.deletedAt)))
+
+          if (!existingPurchase.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Purchase not found'
+            })
+          }
+
+          return await db.transaction(async (tx) => {
+            // Update purchase if fields provided
+            if (input.vendorId || input.purchaseDate || input.invoiceNumber !== undefined || input.notes !== undefined) {
+              const updateData: any = {}
+              if (input.vendorId) updateData.vendorId = input.vendorId
+              if (input.purchaseDate) updateData.purchaseDate = input.purchaseDate
+              if (input.invoiceNumber !== undefined) updateData.invoiceNumber = input.invoiceNumber
+              if (input.notes !== undefined) updateData.notes = input.notes
+
+              await tx
+                .update(purchases)
+                .set(updateData)
+                .where(eq(purchases.id, input.id))
+            }
+
+            // Update items if provided
+            if (input.items) {
+              // Remove existing items (soft delete)
+              await tx
+                .update(purchaseItems)
+                .set({ deletedAt: new Date() })
+                .where(eq(purchaseItems.purchaseId, input.id))
+
+              // Add new/updated items
+              const processedItems = []
+              let totalCost = 0
+
+              for (const item of input.items) {
+                const itemTotal = item.pricePerUnit ? item.quantity * item.pricePerUnit : 0
+                totalCost += itemTotal
+
+                const originalUnit = item.unit
+                const originalQuantity = item.quantity
+
+                let quantityKg: number | null = null
+                let quantityL: number | null = null
+
+                if (item.unit === 'kg') {
+                  quantityKg = item.quantity
+                } else if (item.unit === 'lb') {
+                  quantityKg = item.quantity * 0.453592
+                } else if (item.unit === 'bushel') {
+                  quantityKg = bushelsToKg(item.quantity)
+                } else if (item.unit === 'L') {
+                  quantityL = item.quantity
+                } else if (item.unit === 'gal') {
+                  quantityL = item.quantity * 3.78541
+                }
+
+                processedItems.push({
+                  purchaseId: input.id,
+                  appleVarietyId: item.appleVarietyId,
+                  quantity: originalQuantity.toString(),
+                  unit: originalUnit,
+                  quantityKg: quantityKg?.toString() || null,
+                  quantityL: quantityL?.toString() || null,
+                  originalUnit,
+                  originalQuantity: originalQuantity.toString(),
+                  pricePerUnit: item.pricePerUnit?.toString() || null,
+                  totalCost: itemTotal.toString(),
+                  harvestDate: item.harvestDate ? item.harvestDate.toISOString().split('T')[0] : null,
+                  notes: item.notes,
+                })
+              }
+
+              await tx.insert(purchaseItems).values(processedItems)
+
+              // Update total cost
+              await tx
+                .update(purchases)
+                .set({ totalCost: totalCost.toString() })
+                .where(eq(purchases.id, input.id))
+            }
+
+            // Audit log
+            await publishUpdateEvent('purchase', input.id, {}, {}, ctx.session?.user?.email || 'system')
+
+            return { success: true, id: input.id }
+          })
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error updating purchase:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to update purchase'
+          })
+        }
+      }),
+
+    delete: createRbacProcedure('delete', 'purchase')
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const existingPurchase = await db
+            .select()
+            .from(purchases)
+            .where(and(eq(purchases.id, input.id), isNull(purchases.deletedAt)))
+
+          if (!existingPurchase.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Purchase not found'
+            })
+          }
+
+          // Soft delete the purchase
+          await db.transaction(async (tx) => {
+            await tx
+              .update(purchases)
+              .set({ deletedAt: new Date() })
+              .where(eq(purchases.id, input.id))
+
+            // Also soft delete associated purchase items
+            await tx
+              .update(purchaseItems)
+              .set({ deletedAt: new Date() })
+              .where(eq(purchaseItems.purchaseId, input.id))
+
+            // Audit log
+            await publishDeleteEvent('purchase', input.id, {}, ctx.session?.user?.email || 'system')
+          })
+
+          return { success: true, id: input.id }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error deleting purchase:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to delete purchase'
           })
         }
       }),
@@ -1460,7 +1737,7 @@ export const appRouter = router({
 
   // Apple Varieties management
   appleVariety: router({
-    list: createRbacProcedure('list', 'appleVariety').query(async () => {
+    list: publicProcedure.query(async () => {
       try {
         const varietyList = await db
           .select()
