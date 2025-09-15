@@ -165,12 +165,12 @@ class ServiceWorkerManager {
 
   // Background sync registration
   async registerBackgroundSync(tag: string): Promise<SyncRegistrationResult> {
-    if (!this.registration || !this.registration.sync) {
+    if (!this.registration || !('sync' in this.registration)) {
       return { success: false, error: 'Background sync not supported' }
     }
 
     try {
-      await this.registration.sync.register(tag)
+      await (this.registration as any).sync.register(tag)
       console.log('[SW Manager] Background sync registered:', tag)
       return { success: true }
     } catch (error) {
@@ -185,7 +185,7 @@ class ServiceWorkerManager {
   // Check if app is running in standalone mode (PWA)
   isStandalone(): boolean {
     return window.matchMedia('(display-mode: standalone)').matches ||
-           window.navigator.standalone === true ||
+           (window.navigator as any).standalone === true ||
            document.referrer.includes('android-app://')
   }
 
