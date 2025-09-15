@@ -406,9 +406,9 @@ class ConflictResolutionManager {
           case 'phMeasured':
           case 'defectPercentage':
             // Use the larger numeric value
-            const localNum = parseFloat(localValue?.toString() || '0')
-            const serverNum = parseFloat(serverValue?.toString() || '0')
-            resolvedData[field as keyof PressRunDraft] = Math.max(localNum, serverNum) as any
+            const localNum: number = parseFloat(localValue?.toString() || '0')
+            const serverNum: number = parseFloat(serverValue?.toString() || '0')
+            (resolvedData as any)[field] = Math.max(localNum, serverNum)
             break
 
           case 'notes':
