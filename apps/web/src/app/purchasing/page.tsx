@@ -24,7 +24,8 @@ import {
   Filter,
   CheckCircle,
   XCircle,
-  X
+  X,
+  RefreshCw
 } from "lucide-react"
 import { bushelsToKg } from "lib"
 import { trpc } from "@/utils/trpc"
@@ -209,55 +210,109 @@ function VendorManagement() {
         </div>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Contact</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {vendors.map((vendor: any) => (
-              <TableRow key={vendor.id}>
-                <TableCell className="font-medium">{vendor.name}</TableCell>
-                <TableCell>{vendor.contactInfo?.email || "—"}</TableCell>
-                <TableCell>{vendor.contactInfo?.phone || "—"}</TableCell>
-                <TableCell>
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    vendor.isActive
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800"
-                  }`}>
-                    {vendor.isActive ? "Active" : "Inactive"}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <div className="flex space-x-2">
+        {/* Desktop Table */}
+        <div className="hidden md:block">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {vendors.map((vendor: any) => (
+                <TableRow key={vendor.id}>
+                  <TableCell className="font-medium">{vendor.name}</TableCell>
+                  <TableCell>{vendor.contactInfo?.email || "—"}</TableCell>
+                  <TableCell>{vendor.contactInfo?.phone || "—"}</TableCell>
+                  <TableCell>
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      vendor.isActive
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                    }`}>
+                      {vendor.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEdit(vendor)}
+                        title="Edit vendor"
+                      >
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deleteVendor.mutate({ id: vendor.id })}
+                        title="Delete vendor"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden space-y-4">
+          {vendors.map((vendor: any) => (
+            <Card key={vendor.id} className="border border-gray-200">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-gray-900">{vendor.name}</h3>
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-1 ${
+                      vendor.isActive
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                    }`}>
+                      {vendor.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                  <div className="flex space-x-2 ml-4">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleEdit(vendor)}
                       title="Edit vendor"
                     >
-                      <Edit className="w-3 h-3" />
+                      <Edit className="w-4 h-4" />
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => deleteVendor.mutate({ id: vendor.id })}
                       title="Delete vendor"
+                      className="text-red-600 hover:text-red-700"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+                </div>
+                <div className="space-y-1 text-sm text-gray-600">
+                  <div className="flex items-center">
+                    <span className="font-medium w-16">Email:</span>
+                    <span>{vendor.contactInfo?.email || "—"}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="font-medium w-16">Phone:</span>
+                    <span>{vendor.contactInfo?.phone || "—"}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </CardContent>
     </Card>
   )
@@ -281,7 +336,7 @@ function PurchaseFormComponent() {
     pricePerUnit: number | undefined
     harvestDate: Date | null | undefined
   }>>([
-    { appleVarietyId: "", quantity: undefined, unit: "kg", pricePerUnit: undefined, harvestDate: undefined }
+    { appleVarietyId: "", quantity: undefined, unit: "lb", pricePerUnit: undefined, harvestDate: undefined }
   ])
 
   const addNotification = (type: 'success' | 'error', title: string, message: string) => {
@@ -319,28 +374,12 @@ function PurchaseFormComponent() {
   const handlePurchaseDateChange = (dateString: string) => {
     setPurchaseDate(dateString)
     setValue("purchaseDate", dateString)
-
-    // Auto-populate harvest dates with purchase date
-    if (dateString) {
-      const purchaseDateObj = new Date(dateString + "T12:00:00")
-      setGlobalHarvestDate(purchaseDateObj)
-      setValue("globalHarvestDate", purchaseDateObj)
-
-      // Update all existing lines with the purchase date as harvest date
-      const newLines = lines.map(line => ({ ...line, harvestDate: purchaseDateObj }))
-      setLines(newLines)
-
-      // Update form values for each line
-      newLines.forEach((_, index) => {
-        setValue(`lines.${index}.harvestDate`, purchaseDateObj)
-      })
-    }
   }
 
   const addLine = () => {
-    // Use purchase date as harvest date for new lines if available
-    const harvestDateForNewLine = purchaseDate ? new Date(purchaseDate + "T12:00:00") : globalHarvestDate
-    const newLines = [...lines, { appleVarietyId: "", quantity: undefined, unit: "kg" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: harvestDateForNewLine }]
+    // Use global harvest date for new lines if available
+    const harvestDateForNewLine = globalHarvestDate
+    const newLines = [...lines, { appleVarietyId: "", quantity: undefined, unit: "lb" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: harvestDateForNewLine }]
     setLines(newLines)
     setValue("lines", newLines)
   }
@@ -362,7 +401,7 @@ function PurchaseFormComponent() {
       addNotification('success', 'Purchase Created Successfully!', `Invoice ${result.purchase.invoiceNumber} has been generated`)
       // Reset form
       reset()
-      setLines([{ appleVarietyId: "", quantity: undefined, unit: "kg" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: null }])
+      setLines([{ appleVarietyId: "", quantity: undefined, unit: "lb" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: null }])
       setPurchaseDate("")
       setGlobalHarvestDate(null)
     },
@@ -460,11 +499,11 @@ function PurchaseFormComponent() {
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           {/* Purchase Header */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="sm:col-span-2 lg:col-span-1">
               <Label htmlFor="vendorId">Vendor</Label>
               <Select onValueChange={(value) => setValue("vendorId", value)}>
-                <SelectTrigger>
+                <SelectTrigger className="h-12">
                   <SelectValue placeholder="Select vendor" />
                 </SelectTrigger>
                 <SelectContent>
@@ -484,10 +523,11 @@ function PurchaseFormComponent() {
                 type="date"
                 value={purchaseDate}
                 onChange={(e) => handlePurchaseDateChange(e.target.value)}
+                className="h-12"
               />
               {errors.purchaseDate && <p className="text-sm text-red-600 mt-1">{errors.purchaseDate.message}</p>}
             </div>
-            <div>
+            <div className="sm:col-span-2 lg:col-span-1">
               <HarvestDatePicker
                 id="globalHarvestDate"
                 label="Harvest Date (All Varieties)"
@@ -518,110 +558,240 @@ function PurchaseFormComponent() {
 
             <div className="space-y-4">
               {lines.map((line, index) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-7 gap-4 p-4 border rounded-lg">
-                  <div className="md:col-span-2">
-                    <Label>Apple Variety</Label>
-                    <Select onValueChange={(value) => {
-                      const newLines = [...lines]
-                      newLines[index].appleVarietyId = value
-                      setLines(newLines)
-                      setValue(`lines.${index}.appleVarietyId`, value)
-                    }}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select variety" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {appleVarieties.map((variety: any) => (
-                          <SelectItem key={variety.id} value={variety.id}>
-                            {variety.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <HarvestDatePicker
-                      id={`harvestDate-${index}`}
-                      label="Harvest Date"
-                      placeholder="Select date"
-                      value={line.harvestDate}
-                      onChange={(date) => {
+                <div key={index} className="border rounded-lg p-4">
+                  {/* Desktop Layout */}
+                  <div className="hidden lg:grid lg:grid-cols-7 gap-4">
+                    <div className="lg:col-span-2">
+                      <Label>Apple Variety</Label>
+                      <Select onValueChange={(value) => {
                         const newLines = [...lines]
-                        newLines[index].harvestDate = date
+                        newLines[index].appleVarietyId = value
                         setLines(newLines)
-                        setValue(`lines.${index}.harvestDate`, date)
-                      }}
-                      showClearButton={true}
-                      allowFutureDates={false}
-                      className="w-full"
-                    />
-                  </div>
-                  <div>
-                    <Label>Quantity <span className="text-gray-500 text-sm">(Optional)</span></Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={line.quantity || ''}
-                      placeholder="Enter quantity"
-                      onChange={(e) => {
+                        setValue(`lines.${index}.appleVarietyId`, value)
+                      }}>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select variety" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {appleVarieties.map((variety: any) => (
+                            <SelectItem key={variety.id} value={variety.id}>
+                              {variety.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <HarvestDatePicker
+                        id={`harvestDate-${index}`}
+                        label="Harvest Date"
+                        placeholder="Select date"
+                        value={line.harvestDate}
+                        onChange={(date) => {
+                          const newLines = [...lines]
+                          newLines[index].harvestDate = date
+                          setLines(newLines)
+                          setValue(`lines.${index}.harvestDate`, date)
+                        }}
+                        showClearButton={true}
+                        allowFutureDates={false}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <Label>Quantity <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={line.quantity || ''}
+                        placeholder="Enter quantity"
+                        className="h-10"
+                        onChange={(e) => {
+                          const newLines = [...lines]
+                          newLines[index].quantity = e.target.value ? parseFloat(e.target.value) : undefined
+                          setLines(newLines)
+                          setValue(`lines.${index}.quantity`, newLines[index].quantity)
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>Unit</Label>
+                      <Select value={line.unit} onValueChange={(value: "kg" | "lb" | "bushel") => {
                         const newLines = [...lines]
-                        newLines[index].quantity = e.target.value ? parseFloat(e.target.value) : undefined
+                        newLines[index].unit = value
                         setLines(newLines)
-                        setValue(`lines.${index}.quantity`, newLines[index].quantity)
-                      }}
-                    />
+                        setValue(`lines.${index}.unit`, value)
+                      }}>
+                        <SelectTrigger className="h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="lb">lb</SelectItem>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="bushel">bushel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Price/Unit <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={line.pricePerUnit || ''}
+                        placeholder="Enter price"
+                        className="h-10"
+                        onChange={(e) => {
+                          const newLines = [...lines]
+                          newLines[index].pricePerUnit = e.target.value ? parseFloat(e.target.value) : undefined
+                          setLines(newLines)
+                          setValue(`lines.${index}.pricePerUnit`, newLines[index].pricePerUnit)
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <div className="w-full">
+                        <Label>Total</Label>
+                        <div className="text-lg font-semibold text-green-600">
+                          ${calculateLineTotal(line.quantity, line.pricePerUnit)}
+                        </div>
+                      </div>
+                      {lines.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeLine(index)}
+                          className="ml-2"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <Label>Unit</Label>
-                    <Select value={line.unit} onValueChange={(value: "kg" | "lb" | "bushel") => {
-                      const newLines = [...lines]
-                      newLines[index].unit = value
-                      setLines(newLines)
-                      setValue(`lines.${index}.unit`, value)
-                    }}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="kg">kg</SelectItem>
-                        <SelectItem value="lb">lb</SelectItem>
-                        <SelectItem value="bushel">bushel</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Price/Unit <span className="text-gray-500 text-sm">(Optional)</span></Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={line.pricePerUnit || ''}
-                      placeholder="Enter price"
-                      onChange={(e) => {
+
+                  {/* Mobile/Tablet Layout */}
+                  <div className="lg:hidden space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-gray-900">Apple Variety #{index + 1}</h4>
+                      {lines.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeLine(index)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Apple Variety Selection */}
+                    <div>
+                      <Label>Apple Variety</Label>
+                      <Select onValueChange={(value) => {
                         const newLines = [...lines]
-                        newLines[index].pricePerUnit = e.target.value ? parseFloat(e.target.value) : undefined
+                        newLines[index].appleVarietyId = value
                         setLines(newLines)
-                        setValue(`lines.${index}.pricePerUnit`, newLines[index].pricePerUnit)
-                      }}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <div className="w-full">
-                      <Label>Total</Label>
-                      <div className="text-lg font-semibold text-green-600">
-                        ${calculateLineTotal(line.quantity, line.pricePerUnit)}
+                        setValue(`lines.${index}.appleVarietyId`, value)
+                      }}>
+                        <SelectTrigger className="h-12">
+                          <SelectValue placeholder="Select variety" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {appleVarieties.map((variety: any) => (
+                            <SelectItem key={variety.id} value={variety.id}>
+                              {variety.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Harvest Date */}
+                    <div>
+                      <HarvestDatePicker
+                        id={`harvestDate-mobile-${index}`}
+                        label="Harvest Date"
+                        placeholder="Select date"
+                        value={line.harvestDate}
+                        onChange={(date) => {
+                          const newLines = [...lines]
+                          newLines[index].harvestDate = date
+                          setLines(newLines)
+                          setValue(`lines.${index}.harvestDate`, date)
+                        }}
+                        showClearButton={true}
+                        allowFutureDates={false}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Quantity and Unit in a grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Quantity <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={line.quantity || ''}
+                          placeholder="0.00"
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines]
+                            newLines[index].quantity = e.target.value ? parseFloat(e.target.value) : undefined
+                            setLines(newLines)
+                            setValue(`lines.${index}.quantity`, newLines[index].quantity)
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Unit</Label>
+                        <Select value={line.unit} onValueChange={(value: "kg" | "lb" | "bushel") => {
+                          const newLines = [...lines]
+                          newLines[index].unit = value
+                          setLines(newLines)
+                          setValue(`lines.${index}.unit`, value)
+                        }}>
+                          <SelectTrigger className="h-12">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="lb">lb</SelectItem>
+                            <SelectItem value="kg">kg</SelectItem>
+                            <SelectItem value="bushel">bushel</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
-                    {lines.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => removeLine(index)}
-                        className="ml-2"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    )}
+
+                    {/* Price and Total */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Price/Unit <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={line.pricePerUnit || ''}
+                          placeholder="0.00"
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines]
+                            newLines[index].pricePerUnit = e.target.value ? parseFloat(e.target.value) : undefined
+                            setLines(newLines)
+                            setValue(`lines.${index}.pricePerUnit`, newLines[index].pricePerUnit)
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Total</Label>
+                        <div className="h-12 flex items-center">
+                          <div className="text-xl font-semibold text-green-600">
+                            ${calculateLineTotal(line.quantity, line.pricePerUnit)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -827,7 +997,12 @@ function RecentPurchases() {
   const [editPurchase, setEditPurchase] = useState<{ show: boolean; purchase: any | null }>({ show: false, purchase: null })
 
   const utils = trpc.useUtils()
-  const { data: purchaseData, isLoading, error } = trpc.purchase.list.useQuery()
+  const { data: purchaseData, isLoading, error, refetch } = trpc.purchase.list.useQuery()
+
+  // Refetch data when the component mounts (tab becomes active)
+  useEffect(() => {
+    refetch()
+  }, [refetch])
   const deletePurchase = trpc.purchase.delete.useMutation({
     onSuccess: async () => {
       // Invalidate and refetch purchase list
@@ -927,6 +1102,15 @@ function RecentPurchases() {
             <CardDescription>Your latest purchase orders</CardDescription>
           </div>
           <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
             <Button variant="outline" size="sm">
               <Search className="w-4 h-4 mr-2" />
               Search
@@ -939,66 +1123,142 @@ function RecentPurchases() {
         </div>
       </CardHeader>
       <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Vendor</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Items</TableHead>
-              <TableHead>Total</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
+        {/* Desktop Table */}
+        <div className="hidden md:block">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8">
-                  Loading purchases...
-                </TableCell>
+                <TableHead>Vendor</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ) : error ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-red-600">
-                  Error loading purchases: {error.message}
-                </TableCell>
-              </TableRow>
-            ) : purchases.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
-                  No purchase orders found
-                </TableCell>
-              </TableRow>
-            ) : (
-              purchases.map((purchase) => (
-                <TableRow key={purchase.id}>
-                  <TableCell>{purchase.vendorName || 'Unknown Vendor'}</TableCell>
-                  <TableCell>
-                    {new Date(purchase.purchaseDate).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit'
-                    })}
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">
+                    Loading purchases...
                   </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {purchase.itemsSummary || `${purchase.itemCount} item(s)`}
+                </TableRow>
+              ) : error ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-red-600">
+                    Error loading purchases: {error.message}
                   </TableCell>
-                  <TableCell className="font-semibold text-green-600">
-                    ${purchase.totalCost ? parseFloat(purchase.totalCost.toString()).toFixed(2) : '0.00'}
+                </TableRow>
+              ) : purchases.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                    No purchase orders found
                   </TableCell>
-                  <TableCell>
-                    <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
-                      Complete
-                    </span>
-                  </TableCell>
-                  <TableCell>
+                </TableRow>
+              ) : (
+                purchases.map((purchase) => (
+                  <TableRow key={purchase.id}>
+                    <TableCell>{purchase.vendorName || 'Unknown Vendor'}</TableCell>
+                    <TableCell>
+                      {new Date(purchase.purchaseDate).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit'
+                      })}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate">
+                      {purchase.itemsSummary || `${purchase.itemCount} item(s)`}
+                    </TableCell>
+                    <TableCell className="font-semibold text-green-600">
+                      ${purchase.totalCost ? parseFloat(purchase.totalCost.toString()).toFixed(2) : '0.00'}
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
+                        Complete
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditPurchase(purchase.id)}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeletePurchase(purchase.id)}
+                          className="text-red-600 hover:text-red-700 hover:border-red-300"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Mobile Cards */}
+        <div className="md:hidden">
+          {isLoading ? (
+            <div className="text-center py-8">
+              <div className="text-gray-500">Loading purchases...</div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8 text-red-600">
+              Error loading purchases: {error.message}
+            </div>
+          ) : purchases.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No purchase orders found
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {purchases.map((purchase) => (
+                <Card key={purchase.id} className="border border-gray-200">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900">{purchase.vendorName || 'Unknown Vendor'}</h3>
+                        <p className="text-sm text-gray-600">
+                          {new Date(purchase.purchaseDate).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </p>
+                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 mt-1">
+                          Complete
+                        </span>
+                      </div>
+                      <div className="text-right ml-4">
+                        <div className="text-lg font-semibold text-green-600">
+                          ${purchase.totalCost ? parseFloat(purchase.totalCost.toString()).toFixed(2) : '0.00'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-gray-600 mb-3">
+                      <div className="flex items-center">
+                        <span className="font-medium w-16">Items:</span>
+                        <span className="truncate">{purchase.itemsSummary || `${purchase.itemCount} item(s)`}</span>
+                      </div>
+                    </div>
+
                     <div className="flex space-x-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleEditPurchase(purchase.id)}
+                        className="flex-1"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-4 h-4 mr-2" />
+                        Edit
                       </Button>
                       <Button
                         variant="outline"
@@ -1009,12 +1269,12 @@ function RecentPurchases() {
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
 
@@ -1067,7 +1327,7 @@ function RecentPurchases() {
 }
 
 export default function PurchasingPage() {
-  const [activeTab, setActiveTab] = useState<"vendors" | "purchase" | "history">("vendors")
+  const [activeTab, setActiveTab] = useState<"purchase" | "vendors" | "history">("purchase")
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1084,8 +1344,8 @@ export default function PurchasingPage() {
         {/* Tab Navigation */}
         <div className="flex flex-col sm:flex-row sm:space-x-1 mb-6 sm:mb-8 bg-gray-100 p-1 rounded-lg w-full sm:w-fit">
           {[
-            { key: "vendors", label: "Vendors", icon: Building2 },
             { key: "purchase", label: "New Purchase", icon: ShoppingCart },
+            { key: "vendors", label: "Vendors", icon: Building2 },
             { key: "history", label: "Purchase History", icon: Receipt },
           ].map((tab) => {
             const Icon = tab.icon
