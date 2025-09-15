@@ -129,7 +129,6 @@ function ActiveRunsSection({
                 <div>
                   <h4 className="font-semibold text-gray-900">{run.vendorName || `Run ${run.id.slice(0, 8)}`}</h4>
                   <p className="text-sm text-gray-600">Started {run.startDate}</p>
-                  <p className="text-xs text-gray-500">{run.loadCount || 0} loads processed</p>
                 </div>
                 <Badge variant="secondary" className="bg-blue-100 text-blue-800">
                   In Progress
@@ -148,8 +147,8 @@ function ActiveRunsSection({
                 <div className="flex items-center">
                   <Clock className="w-4 h-4 text-gray-500 mr-2" />
                   <div>
-                    <p className="text-xs text-gray-600">Duration</p>
-                    <p className="font-medium text-sm">{run.duration}</p>
+                    <p className="text-xs text-gray-600">Loads</p>
+                    <p className="font-medium text-sm">{run.loadCount || 0} processed</p>
                   </div>
                 </div>
               </div>
