@@ -408,7 +408,8 @@ class ConflictResolutionManager {
             // Use the larger numeric value
             const localNum = +(localValue?.toString() || '0')
             const serverNum = +(serverValue?.toString() || '0')
-            (resolvedData as any)[field] = Math.max(localNum, serverNum)
+            const resolvedValue = Math.max(localNum, serverNum);
+            (resolvedData as any)[field] = resolvedValue
             break
 
           case 'notes':
