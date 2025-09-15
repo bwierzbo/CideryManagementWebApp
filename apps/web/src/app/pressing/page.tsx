@@ -58,7 +58,7 @@ function ActiveRunsSection({
     id: run.id,
     startDate: run.startTime ? new Date(run.startTime).toLocaleDateString() : 'Unknown',
     totalAppleKg: parseFloat(run.totalAppleWeightKg || '0'),
-    varieties: ['Mixed Varieties'], // This would need to be expanded with actual variety data
+    varieties: run.varieties && run.varieties.length > 0 ? run.varieties : ['No varieties'],
     status: run.status as "in_progress" | "completed",
     duration: run.startTime ? calculateDuration(run.startTime) : 'Unknown',
     loadCount: run.loadCount || 0,

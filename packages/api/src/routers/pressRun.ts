@@ -626,10 +626,11 @@ export const pressRunRouter = router({
 
         const totalCount = totalCountResult[0]?.count || 0
 
-        // Get load counts for each press run
+        // Get load counts and varieties for each press run
         const pressRunIds = pressRunsList.map(pr => pr.id)
 
         let loadCounts: Record<string, number> = {}
+        let pressRunVarieties: Record<string, string[]> = {}
         if (pressRunIds.length > 0) {
           const loadCountsResult = await db
             .select({
@@ -647,12 +648,37 @@ export const pressRunRouter = router({
             acc[row.pressRunId] = row.count
             return acc
           }, {} as Record<string, number>)
+
+          // Get varieties for each press run
+          const varietiesResult = await db
+            .select({
+              pressRunId: applePressRunLoads.applePressRunId,
+              varietyName: appleVarieties.name
+            })
+            .from(applePressRunLoads)
+            .leftJoin(appleVarieties, eq(applePressRunLoads.appleVarietyId, appleVarieties.id))
+            .where(and(
+              inArray(applePressRunLoads.applePressRunId, pressRunIds),
+              isNull(applePressRunLoads.deletedAt)
+            ))
+            .groupBy(applePressRunLoads.applePressRunId, appleVarieties.name)
+
+          pressRunVarieties = varietiesResult.reduce((acc, row) => {
+            if (!acc[row.pressRunId]) {
+              acc[row.pressRunId] = []
+            }
+            if (row.varietyName && !acc[row.pressRunId].includes(row.varietyName)) {
+              acc[row.pressRunId].push(row.varietyName)
+            }
+            return acc
+          }, {} as Record<string, string[]>)
         }
 
-        // Enhance press runs with load counts
+        // Enhance press runs with load counts and varieties
         const enhancedPressRuns = pressRunsList.map(pressRun => ({
           ...pressRun,
           loadCount: loadCounts[pressRun.id] || 0,
+          varieties: pressRunVarieties[pressRun.id] || [],
           extractionRatePercent: pressRun.extractionRate
             ? Math.round(parseFloat(pressRun.extractionRate) * 10000) / 100
             : null,
