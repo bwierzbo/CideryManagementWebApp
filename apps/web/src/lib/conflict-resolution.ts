@@ -214,8 +214,8 @@ class ConflictResolutionManager {
 
       // Handle numeric comparisons with tolerance
       if (field === 'weightKg' || field === 'brixMeasured' || field === 'phMeasured' || field === 'defectPercentage') {
-        const localNum = parseFloat(localValue?.toString() || '0')
-        const serverNum = parseFloat(serverValue?.toString() || '0')
+        const localNum = +(localValue?.toString() || '0')
+        const serverNum = +(serverValue?.toString() || '0')
 
         if (Math.abs(localNum - serverNum) > 0.01) { // 0.01 tolerance
           conflictFields.push(field)
@@ -406,8 +406,8 @@ class ConflictResolutionManager {
           case 'phMeasured':
           case 'defectPercentage':
             // Use the larger numeric value
-            const localNum: number = parseFloat(localValue?.toString() || '0')
-            const serverNum: number = parseFloat(serverValue?.toString() || '0')
+            const localNum = +(localValue?.toString() || '0')
+            const serverNum = +(serverValue?.toString() || '0')
             (resolvedData as any)[field] = Math.max(localNum, serverNum)
             break
 
@@ -466,14 +466,14 @@ class ConflictResolutionManager {
         purchaseLineId: load.purchaseItemId,
         appleVarietyId: load.appleVarietyId,
         appleVarietyName: load.appleVarietyName || 'Unknown',
-        weightKg: parseFloat(load.appleWeightKg || '0'),
+        weightKg: +(load.appleWeightKg || '0'),
         weightUnitEntered: 'kg' as const,
-        originalWeight: parseFloat(load.originalWeight || '0'),
+        originalWeight: +(load.originalWeight || '0'),
         originalWeightUnit: load.originalWeightUnit || 'kg' as const,
-        brixMeasured: load.brixMeasured ? parseFloat(load.brixMeasured) : undefined,
-        phMeasured: load.phMeasured ? parseFloat(load.phMeasured) : undefined,
+        brixMeasured: load.brixMeasured ? +load.brixMeasured : undefined,
+        phMeasured: load.phMeasured ? +load.phMeasured : undefined,
         appleCondition: load.appleCondition,
-        defectPercentage: load.defectPercentage ? parseFloat(load.defectPercentage) : undefined,
+        defectPercentage: load.defectPercentage ? +load.defectPercentage : undefined,
         notes: load.notes,
         status: 'confirmed' as const,
         loadSequence: index + 1,
@@ -481,7 +481,7 @@ class ConflictResolutionManager {
       lastModified: serverData.updatedAt || new Date().toISOString(),
       syncAttempts: 0,
       notes: serverData.notes,
-      totalAppleWeightKg: parseFloat(serverData.totalAppleWeightKg || '0'),
+      totalAppleWeightKg: +(serverData.totalAppleWeightKg || '0'),
     }
   }
 
