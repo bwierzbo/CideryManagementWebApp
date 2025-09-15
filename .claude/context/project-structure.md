@@ -1,7 +1,7 @@
 ---
 created: 2025-09-13T04:03:23Z
-last_updated: 2025-09-13T19:24:59Z
-version: 1.1
+last_updated: 2025-09-14T21:40:54Z
+version: 1.2
 author: Claude Code PM System
 ---
 
@@ -14,9 +14,11 @@ cidery-management-app/
 ├── .claude/                    # Claude Code configuration and scripts
 │   ├── context/               # Project context documentation
 │   ├── epics/                 # Epic and task management
+│   │   ├── applepress/        # Apple Press epic (completed)
 │   │   ├── prd-system-verification/  # System verification epic (completed)
 │   │   └── uipagesauth/       # UI Pages Auth epic (in progress)
 │   ├── prds/                  # Product Requirement Documents
+│   │   └── applepress.md      # Apple Press PRD
 │   └── scripts/               # PM and automation scripts
 ├── .git/                      # Git repository data
 ├── apps/                      # Application packages
@@ -45,10 +47,36 @@ cidery-management-app/
 web/
 ├── src/
 │   ├── app/                  # Next.js 15 App Router pages
+│   │   ├── pressing/         # Apple pressing workflow pages
+│   │   │   ├── [id]/         # Dynamic press run detail pages
+│   │   │   └── new/          # New press run creation
 │   ├── components/           # React components (shadcn/ui based)
+│   │   ├── pressing/         # Press run related components
+│   │   │   ├── FruitLoadFormWithTRPC.tsx
+│   │   │   ├── OfflineFruitLoadForm.tsx
+│   │   │   ├── press-run-completion.tsx
+│   │   │   └── press-run-summary.tsx
+│   │   └── ui/               # shadcn/ui components
+│   │       ├── alert-dialog.tsx
+│   │       ├── confirm-dialog.tsx
+│   │       └── progress.tsx
+│   ├── hooks/                # Custom React hooks
+│   │   ├── use-press-run-drafts.ts
+│   │   └── use-toast.ts
 │   ├── lib/                  # Frontend utilities and configuration
+│   │   ├── conflict-resolution.ts
+│   │   ├── offline-storage.ts
+│   │   └── service-worker.ts
+│   ├── server/               # Server-side routers
+│   │   └── routers/
+│   │       └── press-run.ts
+│   ├── __tests__/            # Testing files
+│   │   └── offline-functionality.test.ts
 │   └── types/                # TypeScript type definitions
 ├── public/                   # Static assets
+│   ├── manifest.json         # PWA manifest
+│   └── sw.js                 # Service worker
+├── OFFLINE_CAPABILITIES.md   # Offline feature documentation
 ├── .eslintrc.json           # ESLint configuration
 ├── next.config.js           # Next.js configuration
 ├── package.json             # Web app dependencies
@@ -66,8 +94,11 @@ api/
 │   │   ├── auth.ts          # Authentication routes
 │   │   ├── vendor.ts        # Vendor management routes
 │   │   ├── purchase.ts      # Purchase tracking routes
+│   │   ├── pressRun.ts      # Press run operations (completed)
 │   │   ├── production.ts    # Production workflow routes
-│   │   └── reporting.ts     # COGS and reporting routes
+│   │   ├── reporting.ts     # COGS and reporting routes
+│   │   └── __tests__/       # Router tests
+│   │       └── purchase-line-integration.test.ts
 │   ├── procedures/          # Shared tRPC procedures
 │   ├── middleware/          # Authentication and validation middleware
 │   └── index.ts             # API entry point and router composition

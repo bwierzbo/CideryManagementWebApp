@@ -1,13 +1,12 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { db, applePressRuns, applePressRunLoads, vendors, vessels, purchaseItems, appleVarieties, auditLog, users } from 'db'
+import { db, applePressRuns, applePressRunLoads, vendors, vessels, purchaseItems, purchases, appleVarieties, auditLog, users } from 'db'
 import { eq, and, desc, asc, sql, isNull, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent } from 'lib'
 
 // Input validation schemas
 const createPressRunSchema = z.object({
-  vendorId: z.string().uuid('Invalid vendor ID'),
   scheduledDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
   startTime: z.date().or(z.string().transform(val => new Date(val))).optional(),
   notes: z.string().optional(),
@@ -17,6 +16,7 @@ const createPressRunSchema = z.object({
 
 const addLoadSchema = z.object({
   pressRunId: z.string().uuid('Invalid press run ID'),
+  vendorId: z.string().uuid('Invalid vendor ID'),
   purchaseItemId: z.string().uuid('Invalid purchase item ID'),
   appleVarietyId: z.string().uuid('Invalid apple variety ID'),
   appleWeightKg: z.number().positive('Apple weight must be positive'),
@@ -27,6 +27,25 @@ const addLoadSchema = z.object({
   appleCondition: z.enum(['excellent', 'good', 'fair', 'poor']).optional(),
   defectPercentage: z.number().min(0).max(100).optional(),
   notes: z.string().optional(),
+})
+
+const updateLoadSchema = z.object({
+  loadId: z.string().uuid('Invalid load ID'),
+  vendorId: z.string().uuid('Invalid vendor ID'),
+  purchaseItemId: z.string().uuid('Invalid purchase item ID'),
+  appleVarietyId: z.string().uuid('Invalid apple variety ID'),
+  appleWeightKg: z.number().positive('Apple weight must be positive'),
+  originalWeight: z.number().positive('Original weight must be positive'),
+  originalWeightUnit: z.enum(['kg', 'lb', 'bushel']),
+  brixMeasured: z.number().min(0).max(30).optional(),
+  phMeasured: z.number().min(2).max(5).optional(),
+  appleCondition: z.enum(['excellent', 'good', 'fair', 'poor']).optional(),
+  defectPercentage: z.number().min(0).max(100).optional(),
+  notes: z.string().optional(),
+})
+
+const deleteLoadSchema = z.object({
+  loadId: z.string().uuid('Invalid load ID'),
 })
 
 const finishPressRunSchema = z.object({
@@ -62,28 +81,13 @@ export const pressRunRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
-          // Verify vendor exists
-          const vendor = await tx
-            .select()
-            .from(vendors)
-            .where(and(eq(vendors.id, input.vendorId), eq(vendors.isActive, true)))
-            .limit(1)
-
-          if (!vendor.length) {
-            throw new TRPCError({
-              code: 'NOT_FOUND',
-              message: 'Vendor not found or inactive'
-            })
-          }
-
           // Create new press run
           const newPressRun = await tx
             .insert(applePressRuns)
             .values({
-              vendorId: input.vendorId,
-              status: 'draft',
+              status: 'in_progress',
               scheduledDate: input.scheduledDate ? input.scheduledDate.toISOString().split('T')[0] : null,
-              startTime: input.startTime,
+              startTime: input.startTime || new Date(),
               notes: input.notes,
               pressingMethod: input.pressingMethod,
               weatherConditions: input.weatherConditions,
@@ -102,9 +106,7 @@ export const pressRunRouter = router({
             pressRunId,
             {
               pressRunId,
-              vendorId: input.vendorId,
-              vendorName: vendor[0].name,
-              status: 'draft',
+              status: 'in_progress',
               scheduledDate: input.scheduledDate,
             },
             ctx.session?.user?.id,
@@ -114,7 +116,7 @@ export const pressRunRouter = router({
           return {
             success: true,
             pressRun: newPressRun[0],
-            message: `Press run created for ${vendor[0].name}`,
+            message: 'Press run created successfully',
           }
         })
       } catch (error) {
@@ -182,14 +184,7 @@ export const pressRunRouter = router({
             })
           }
 
-          // Check if enough quantity is available (basic validation)
-          const availableKg = parseFloat(purchaseItem[0].quantityKg || '0')
-          if (input.appleWeightKg > availableKg) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `Not enough quantity available. Available: ${availableKg}kg, Requested: ${input.appleWeightKg}kg`
-            })
-          }
+          // Note: Purchase weights are estimates only - no validation against actual pressing weights
 
           // Get next load sequence number
           const existingLoads = await tx
@@ -283,6 +278,133 @@ export const pressRunRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to add load to press run'
+        })
+      }
+    }),
+
+  // Update existing load - admin/operator only
+  updateLoad: createRbacProcedure('update', 'press_run')
+    .input(updateLoadSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // Verify load exists and get press run info
+          const existingLoad = await tx
+            .select({
+              loadId: applePressRunLoads.id,
+              pressRunId: applePressRunLoads.applePressRunId,
+              pressRunStatus: applePressRuns.status,
+            })
+            .from(applePressRunLoads)
+            .leftJoin(applePressRuns, eq(applePressRunLoads.applePressRunId, applePressRuns.id))
+            .where(and(eq(applePressRunLoads.id, input.loadId), isNull(applePressRunLoads.deletedAt)))
+            .limit(1)
+
+          if (!existingLoad.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Load not found'
+            })
+          }
+
+          if (existingLoad[0].pressRunStatus === 'completed' || existingLoad[0].pressRunStatus === 'cancelled') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Cannot update loads in completed or cancelled press run'
+            })
+          }
+
+          // Verify purchase item exists and has enough quantity
+          const purchaseItem = await tx
+            .select()
+            .from(purchaseItems)
+            .where(and(eq(purchaseItems.id, input.purchaseItemId), isNull(purchaseItems.deletedAt)))
+            .limit(1)
+
+          if (!purchaseItem.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Purchase item not found'
+            })
+          }
+
+          // Verify apple variety exists
+          const appleVariety = await tx
+            .select()
+            .from(appleVarieties)
+            .where(eq(appleVarieties.id, input.appleVarietyId))
+            .limit(1)
+
+          if (!appleVariety.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Apple variety not found'
+            })
+          }
+
+          // Update the load
+          const updatedLoad = await tx
+            .update(applePressRunLoads)
+            .set({
+              purchaseItemId: input.purchaseItemId,
+              appleVarietyId: input.appleVarietyId,
+              appleWeightKg: input.appleWeightKg.toString(),
+              originalWeight: input.originalWeight.toString(),
+              originalWeightUnit: input.originalWeightUnit,
+              brixMeasured: input.brixMeasured?.toString(),
+              phMeasured: input.phMeasured?.toString(),
+              appleCondition: input.appleCondition,
+              defectPercentage: input.defectPercentage?.toString(),
+              notes: input.notes,
+              updatedBy: ctx.session?.user?.id,
+              updatedAt: new Date(),
+            })
+            .where(eq(applePressRunLoads.id, input.loadId))
+            .returning()
+
+          // Update press run totals
+          const allLoads = await tx
+            .select({ appleWeightKg: applePressRunLoads.appleWeightKg })
+            .from(applePressRunLoads)
+            .where(and(eq(applePressRunLoads.applePressRunId, existingLoad[0].pressRunId), isNull(applePressRunLoads.deletedAt)))
+
+          const totalAppleWeightKg = allLoads.reduce((sum, load) => sum + parseFloat(load.appleWeightKg || '0'), 0)
+
+          await tx
+            .update(applePressRuns)
+            .set({
+              totalAppleWeightKg: totalAppleWeightKg.toString(),
+              updatedBy: ctx.session?.user?.id,
+              updatedAt: new Date(),
+            })
+            .where(eq(applePressRuns.id, existingLoad[0].pressRunId))
+
+          // Publish audit event
+          await publishUpdateEvent(
+            'apple_press_run_loads',
+            input.loadId,
+            existingLoad[0],
+            {
+              appleVarietyName: appleVariety[0].name,
+              weightKg: input.appleWeightKg,
+            },
+            ctx.session?.user?.id,
+            'Load updated'
+          )
+
+          return {
+            success: true,
+            load: updatedLoad[0],
+            totalAppleWeightKg,
+            message: `Load updated: ${input.originalWeight} ${input.originalWeightUnit} ${appleVariety[0].name}`,
+          }
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        console.error('Error updating load:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update load'
         })
       }
     }),
@@ -603,13 +725,14 @@ export const pressRunRouter = router({
 
         const pressRun = pressRunResult[0]
 
-        // Get loads with apple variety and purchase item info
+        // Get loads with apple variety and purchase item info including vendor details
         const loads = await db
           .select({
             id: applePressRunLoads.id,
             purchaseItemId: applePressRunLoads.purchaseItemId,
             appleVarietyId: applePressRunLoads.appleVarietyId,
             appleVarietyName: appleVarieties.name,
+            vendorId: purchases.vendorId,
             loadSequence: applePressRunLoads.loadSequence,
             appleWeightKg: applePressRunLoads.appleWeightKg,
             originalWeight: applePressRunLoads.originalWeight,
@@ -627,6 +750,8 @@ export const pressRunRouter = router({
           })
           .from(applePressRunLoads)
           .leftJoin(appleVarieties, eq(applePressRunLoads.appleVarietyId, appleVarieties.id))
+          .leftJoin(purchaseItems, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
+          .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
           .where(and(
             eq(applePressRunLoads.applePressRunId, input.id),
             isNull(applePressRunLoads.deletedAt)
@@ -907,6 +1032,106 @@ export const pressRunRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to delete press run'
+        })
+      }
+    }),
+
+  // Delete load - admin/operator only
+  deleteLoad: createRbacProcedure('delete', 'press_run')
+    .input(deleteLoadSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // Verify load exists and get press run info
+          const load = await tx
+            .select({
+              id: applePressRunLoads.id,
+              applePressRunId: applePressRunLoads.applePressRunId,
+              loadSequence: applePressRunLoads.loadSequence,
+            })
+            .from(applePressRunLoads)
+            .where(and(eq(applePressRunLoads.id, input.loadId), isNull(applePressRunLoads.deletedAt)))
+            .limit(1)
+
+          if (!load.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Load not found'
+            })
+          }
+
+          // Verify press run is still in progress
+          const pressRun = await tx
+            .select({ status: applePressRuns.status })
+            .from(applePressRuns)
+            .where(and(eq(applePressRuns.id, load[0].applePressRunId), isNull(applePressRuns.deletedAt)))
+            .limit(1)
+
+          if (!pressRun.length || pressRun[0].status !== 'in_progress') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Cannot delete load - press run is not in progress'
+            })
+          }
+
+          // Soft delete the load
+          const deletedLoad = await tx
+            .update(applePressRunLoads)
+            .set({
+              deletedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(applePressRunLoads.id, input.loadId))
+            .returning()
+
+          // Resequence remaining loads to maintain consecutive numbering
+          const remainingLoads = await tx
+            .select({
+              id: applePressRunLoads.id,
+              loadSequence: applePressRunLoads.loadSequence,
+            })
+            .from(applePressRunLoads)
+            .where(and(
+              eq(applePressRunLoads.applePressRunId, load[0].applePressRunId),
+              isNull(applePressRunLoads.deletedAt)
+            ))
+            .orderBy(asc(applePressRunLoads.loadSequence))
+
+          // Update sequence numbers to be consecutive (1, 2, 3, ...)
+          for (let i = 0; i < remainingLoads.length; i++) {
+            const newSequence = i + 1
+            if (remainingLoads[i].loadSequence !== newSequence) {
+              await tx
+                .update(applePressRunLoads)
+                .set({
+                  loadSequence: newSequence,
+                  updatedAt: new Date(),
+                })
+                .where(eq(applePressRunLoads.id, remainingLoads[i].id))
+            }
+          }
+
+          // Create audit log entry
+          await publishDeleteEvent(
+            'apple_press_run_load',
+            input.loadId,
+            load[0],
+            ctx.session?.user?.id,
+            `Load #${load[0].loadSequence} deleted from press run`
+          )
+
+          return {
+            success: true,
+            loadId: input.loadId,
+            message: 'Load deleted successfully'
+          }
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        console.error('Error deleting load:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to delete load'
         })
       }
     }),

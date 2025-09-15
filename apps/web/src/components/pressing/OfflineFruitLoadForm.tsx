@@ -48,7 +48,7 @@ const fruitLoadSchema = z.object({
   purchaseItemId: z.string().uuid("Please select a purchase line"),
   appleVarietyId: z.string().uuid("Please select an apple variety"),
   weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000"),
-  weightUnit: z.enum(['lbs', 'kg'], { required_error: "Please select a weight unit" }),
+  weightUnit: z.enum(['lbs', 'kg'], { message: "Please select a weight unit" }),
   brixMeasured: z.number().min(0).max(30).optional(),
   phMeasured: z.number().min(2).max(5).optional(),
   appleCondition: z.enum(['excellent', 'good', 'fair', 'poor']).optional(),

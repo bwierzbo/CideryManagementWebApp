@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Form,
   FormControl,
@@ -28,17 +27,21 @@ import {
   AlertCircle,
   Search,
   Apple,
-  Beaker,
   Info,
-  RefreshCw
+  RefreshCw,
+  Building2,
+  Trash2
 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 // Form validation schema
 const fruitLoadSchema = z.object({
+  vendorId: z.string().uuid("Please select a vendor"),
   purchaseItemId: z.string().uuid("Please select a purchase line"),
   appleVarietyId: z.string().uuid("Please select an apple variety"),
   weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000"),
-  weightUnit: z.enum(['lbs', 'kg'], { required_error: "Please select a weight unit" }),
+  weightUnit: z.enum(['lbs', 'kg'], { message: "Please select a weight unit" }),
   brixMeasured: z.number().min(0).max(30).optional(),
   phMeasured: z.number().min(2).max(5).optional(),
   appleCondition: z.enum(['excellent', 'good', 'fair', 'poor']).optional(),
@@ -51,8 +54,10 @@ type FruitLoadFormData = z.infer<typeof fruitLoadSchema>
 interface FruitLoadFormWithTRPCProps {
   loadSequence: number
   vendorId?: string
+  editingLoad?: any // The load being edited (if in edit mode)
   onSubmit: (load: {
     loadSequence: number
+    vendorId: string
     purchaseItemId: string
     appleVarietyId: string
     appleVarietyName: string
@@ -61,36 +66,34 @@ interface FruitLoadFormWithTRPCProps {
     originalWeightUnit: 'kg' | 'lb' | 'bushel'
     brixMeasured?: number
     phMeasured?: number
-    appleCondition?: 'excellent' | 'good' | 'fair' | 'poor'
+    appleCondition?: string
     defectPercentage?: number
     notes?: string
   }) => void
   onCancel?: () => void
+  onDelete?: (loadId: string) => void // Optional delete callback
   isSubmitting?: boolean
 }
 
 export function FruitLoadFormWithTRPC({
   loadSequence,
   vendorId,
+  editingLoad,
   onSubmit,
   onCancel,
+  onDelete,
   isSubmitting = false
 }: FruitLoadFormWithTRPCProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedPurchaseItem, setSelectedPurchaseItem] = useState<any>(null)
   const [requestedWeightKg, setRequestedWeightKg] = useState<number>(0)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   // tRPC queries
   const {
-    data: purchaseLines,
-    isLoading: purchaseLinesLoading,
-    error: purchaseLinesError,
-    refetch: refetchPurchaseLines
-  } = trpc.purchaseLine.available.useQuery({
-    vendorId,
-    limit: 50,
-    offset: 0
-  })
+    data: vendors,
+    isLoading: vendorsLoading
+  } = trpc.vendor.list.useQuery()
 
   const {
     data: appleVarieties,
@@ -98,36 +101,45 @@ export function FruitLoadFormWithTRPC({
   } = trpc.appleVariety.list.useQuery()
 
   // Availability validation query
-  const {
-    data: availabilityCheck,
-    isLoading: availabilityLoading,
-    error: availabilityError
-  } = trpc.purchaseLine.validateAvailability.useQuery(
-    {
-      purchaseItemId: selectedPurchaseItem?.purchaseItemId || "",
-      requestedQuantityKg: requestedWeightKg
-    },
-    {
-      enabled: !!selectedPurchaseItem && requestedWeightKg > 0,
-    }
-  )
+  // Note: Removed availability validation - purchase weights are estimates only
+
+  // Determine if we're in edit mode and set appropriate defaults
+  const isEditMode = !!editingLoad
 
   const form = useForm<FruitLoadFormData>({
     resolver: zodResolver(fruitLoadSchema),
     defaultValues: {
-      weightUnit: 'lbs', // Default to lbs as per task requirements
-      weight: undefined,
-      brixMeasured: undefined,
-      phMeasured: undefined,
-      appleCondition: undefined,
-      defectPercentage: undefined,
-      notes: ""
+      vendorId: editingLoad?.vendorId || vendorId || "",
+      purchaseItemId: editingLoad?.purchaseItemId || "",
+      appleVarietyId: editingLoad?.appleVarietyId || "",
+      weightUnit: editingLoad?.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad?.originalWeightUnit || 'lbs'),
+      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '0') : 0,
+      brixMeasured: editingLoad?.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
+      phMeasured: editingLoad?.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
+      appleCondition: editingLoad?.appleCondition || undefined,
+      defectPercentage: editingLoad?.defectPercentage ? parseFloat(editingLoad.defectPercentage) : undefined,
+      notes: editingLoad?.notes || ""
     }
   })
 
-  // Watch for weight and unit changes
+  // Watch for form changes
+  const watchedVendorId = form.watch('vendorId')
   const watchedWeight = form.watch('weight')
   const watchedUnit = form.watch('weightUnit')
+
+  // Purchase lines query - depends on vendor selection
+  const {
+    data: purchaseLines,
+    isLoading: purchaseLinesLoading,
+    error: purchaseLinesError,
+    refetch: refetchPurchaseLines
+  } = trpc.purchaseLine.available.useQuery({
+    vendorId: watchedVendorId || vendorId,
+    limit: 50,
+    offset: 0
+  }, {
+    enabled: !!(watchedVendorId || vendorId)
+  })
 
   // Update requested weight for availability checking
   useEffect(() => {
@@ -136,6 +148,34 @@ export function FruitLoadFormWithTRPC({
       setRequestedWeightKg(weightKg)
     }
   }, [watchedWeight, watchedUnit])
+
+  // Reset form values when editingLoad changes
+  useEffect(() => {
+    if (editingLoad) {
+      form.reset({
+        vendorId: editingLoad.vendorId || "",
+        purchaseItemId: editingLoad.purchaseItemId || "",
+        appleVarietyId: editingLoad.appleVarietyId || "",
+        weightUnit: editingLoad.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad.originalWeightUnit || 'lbs'),
+        weight: editingLoad ? parseFloat(editingLoad.originalWeight || '0') : 0,
+        brixMeasured: editingLoad.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
+        phMeasured: editingLoad.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
+        appleCondition: editingLoad.appleCondition || undefined,
+        defectPercentage: editingLoad.defectPercentage ? parseFloat(editingLoad.defectPercentage) : undefined,
+        notes: editingLoad.notes || ""
+      })
+    }
+  }, [editingLoad, form])
+
+  // Set initial selected purchase item for edit mode
+  useEffect(() => {
+    if (editingLoad && purchaseLines?.items) {
+      const purchaseItem = purchaseLines.items.find(item => item.purchaseItemId === editingLoad.purchaseItemId)
+      if (purchaseItem) {
+        setSelectedPurchaseItem(purchaseItem)
+      }
+    }
+  }, [editingLoad, purchaseLines])
 
   // Unit conversion helpers
   const convertWeight = (weight: number, fromUnit: 'lbs' | 'kg', toUnit: 'lbs' | 'kg'): number => {
@@ -172,6 +212,7 @@ export function FruitLoadFormWithTRPC({
 
     onSubmit({
       loadSequence,
+      vendorId: data.vendorId,
       purchaseItemId: data.purchaseItemId,
       appleVarietyId: data.appleVarietyId,
       appleVarietyName: variety?.name || 'Unknown',
@@ -190,14 +231,17 @@ export function FruitLoadFormWithTRPC({
     setSelectedPurchaseItem(purchaseLineItem)
     form.setValue('purchaseItemId', purchaseLineItem.purchaseItemId)
     form.setValue('appleVarietyId', purchaseLineItem.appleVarietyId)
+  }
 
-    // Set suggested brix from apple variety
-    if (appleVarieties) {
-      const variety = appleVarieties.appleVarieties.find(v => v.id === purchaseLineItem.appleVarietyId)
-      if (variety?.typicalBrix) {
-        form.setValue('brixMeasured', parseFloat(variety.typicalBrix))
-      }
+  const handleDeleteClick = () => {
+    setShowDeleteDialog(true)
+  }
+
+  const handleConfirmDelete = () => {
+    if (onDelete && editingLoad?.id) {
+      onDelete(editingLoad.id)
     }
+    setShowDeleteDialog(false)
   }
 
   // Show loading state
@@ -231,10 +275,10 @@ export function FruitLoadFormWithTRPC({
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
-          <div className="bg-blue-100 rounded-full p-2">
-            <Apple className="w-5 h-5 text-blue-600" />
+          <div className={`rounded-full p-2 ${isEditMode ? 'bg-blue-100' : 'bg-blue-100'}`}>
+            <Apple className={`w-5 h-5 ${isEditMode ? 'text-blue-600' : 'text-blue-600'}`} />
           </div>
-          <span>Add Fruit Load #{loadSequence}</span>
+          <span>{isEditMode ? `Edit Fruit Load #${loadSequence}` : `Add Fruit Load #${loadSequence}`}</span>
         </CardTitle>
       </CardHeader>
 
@@ -242,7 +286,44 @@ export function FruitLoadFormWithTRPC({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
 
-            {/* Purchase Line Selection */}
+            {/* Vendor Selection */}
+            <FormField
+              control={form.control}
+              name="vendorId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-base font-medium flex items-center">
+                    <Building2 className="w-4 h-4 mr-2" />
+                    Select Vendor
+                  </FormLabel>
+                  <FormControl>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={vendorsLoading}
+                    >
+                      <SelectTrigger className="h-12">
+                        <SelectValue placeholder={vendorsLoading ? "Loading vendors..." : "Choose a vendor..."} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {vendors?.vendors?.map((vendor) => (
+                          <SelectItem key={vendor.id} value={vendor.id}>
+                            {vendor.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormDescription>
+                    Select the vendor supplying this apple load
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Purchase Line Selection - Only show when vendor is selected */}
+            {watchedVendorId && (
             <div className="space-y-3">
               <Label className="text-base font-medium">Select Purchase Line</Label>
 
@@ -326,8 +407,10 @@ export function FruitLoadFormWithTRPC({
                 </div>
               )}
             </div>
+            )}
 
-            {/* Weight Input with Unit Toggle */}
+            {/* Weight Input with Unit Toggle - Only show when purchase line is selected */}
+            {selectedPurchaseItem && (
             <div className="space-y-4">
               <Label className="text-base font-medium">Apple Weight</Label>
 
@@ -348,7 +431,8 @@ export function FruitLoadFormWithTRPC({
                             step="0.1"
                             placeholder="0.0"
                             className="pl-10 h-12 text-lg"
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : 0)}
                           />
                         </div>
                       </FormControl>
@@ -411,171 +495,20 @@ export function FruitLoadFormWithTRPC({
                 </div>
               )}
 
-              {/* Real-time inventory validation */}
-              {availabilityLoading && selectedPurchaseItem && requestedWeightKg > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+              {/* Purchase quantity reference (informational only) */}
+              {selectedPurchaseItem && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-center space-x-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
-                    <span className="text-sm text-gray-800">
-                      Checking inventory availability...
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {availabilityCheck && !availabilityLoading && (
-                <div>
-                  {!availabilityCheck.isAvailable ? (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-2">
-                        <AlertCircle className="w-4 h-4 text-red-600" />
-                        <div className="text-sm text-red-800">
-                          <p className="font-medium">Insufficient inventory!</p>
-                          <p>
-                            Available: {availabilityCheck.availableQuantityKg.toFixed(1)} kg
-                            {availabilityCheck.shortfallKg > 0 && (
-                              <> • Shortfall: {availabilityCheck.shortfallKg.toFixed(1)} kg</>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : availabilityCheck.requestedQuantityKg > availabilityCheck.availableQuantityKg * 0.8 ? (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-2">
-                        <Info className="w-4 h-4 text-yellow-600" />
-                        <span className="text-sm text-yellow-800">
-                          Using {((availabilityCheck.requestedQuantityKg / availabilityCheck.availableQuantityKg) * 100).toFixed(0)}% of available inventory
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                      <div className="flex items-center space-x-2">
-                        <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        <span className="text-sm text-green-800">
-                          Inventory available ({availabilityCheck.availableQuantityKg.toFixed(1)} kg total)
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {availabilityError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <div className="flex items-center space-x-2">
-                    <AlertCircle className="w-4 h-4 text-red-600" />
-                    <span className="text-sm text-red-800">
-                      Error checking availability: {availabilityError.message}
+                    <Info className="w-4 h-4 text-blue-600" />
+                    <span className="text-sm text-blue-800">
+                      Purchase estimate: {parseFloat(selectedPurchaseItem.quantityKg || '0').toFixed(1)} kg
+                      <span className="text-blue-600 ml-1">(actual pressing weight may vary)</span>
                     </span>
                   </div>
                 </div>
               )}
             </div>
-
-            {/* Quality Measurements */}
-            <div className="space-y-4">
-              <Label className="text-base font-medium">Quality Measurements (Optional)</Label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="brixMeasured"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Brix (°)</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Beaker className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <Input
-                            {...field}
-                            type="number"
-                            step="0.1"
-                            min="0"
-                            max="30"
-                            placeholder="0.0"
-                            className="pl-10"
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="phMeasured"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>pH</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          step="0.1"
-                          min="2"
-                          max="5"
-                          placeholder="3.5"
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="appleCondition"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Apple Condition</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select condition" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="excellent">Excellent</SelectItem>
-                          <SelectItem value="good">Good</SelectItem>
-                          <SelectItem value="fair">Fair</SelectItem>
-                          <SelectItem value="poor">Poor</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="defectPercentage"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Defect %</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max="100"
-                          placeholder="0"
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
+            )}
 
             {/* Notes */}
             <FormField
@@ -610,24 +543,38 @@ export function FruitLoadFormWithTRPC({
               >
                 Cancel
               </Button>
+
+              {/* Delete button - only show in edit mode */}
+              {isEditMode && onDelete && editingLoad?.id && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleDeleteClick}
+                  className="h-12 px-4"
+                  disabled={isSubmitting}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              )}
+
               <Button
                 type="submit"
                 disabled={
                   isSubmitting ||
-                  !selectedPurchaseItem ||
-                  (availabilityCheck && !availabilityCheck.isAvailable)
+                  !selectedPurchaseItem
                 }
                 className="flex-1 h-12 bg-green-600 hover:bg-green-700 disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Adding Load...
+                    {isEditMode ? 'Updating Load...' : 'Adding Load...'}
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4 mr-2" />
-                    Add Load #{loadSequence}
+                    {isEditMode ? `Update Load #${loadSequence}` : `Add Load #${loadSequence}`}
                   </>
                 )}
               </Button>
@@ -635,6 +582,18 @@ export function FruitLoadFormWithTRPC({
           </form>
         </Form>
       </CardContent>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Load"
+        description={`Are you sure you want to delete Load #${editingLoad?.loadSequence || ''}? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={handleConfirmDelete}
+      />
     </Card>
   )
 }

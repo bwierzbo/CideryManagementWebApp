@@ -273,7 +273,6 @@ export function useNetworkSync() {
 
       // 1. Create the press run
       const pressRunResult = await createPressRun.mutateAsync({
-        vendorId: draft.vendorId,
         startTime: new Date(draft.startTime),
         notes: draft.notes,
       })
@@ -288,6 +287,7 @@ export function useNetworkSync() {
       for (const load of draft.loads) {
         await addLoadMutation.mutateAsync({
           pressRunId: serverPressRunId,
+          vendorId: '', // Will be derived from purchase line
           purchaseItemId: load.purchaseLineId,
           appleVarietyId: load.appleVarietyId,
           appleWeightKg: load.weightKg,

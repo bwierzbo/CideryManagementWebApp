@@ -60,9 +60,7 @@ import { trpc } from "@/utils/trpc"
 // Completion Form Schema based on task requirements
 const pressRunCompletionSchema = z.object({
   juiceVolumeL: z.number().min(1, "Juice volume must be at least 1L").max(50000, "Juice volume cannot exceed 50,000L"),
-  juiceVolumeUnit: z.enum(['L', 'gal'], {
-    errorMap: () => ({ message: "Unit must be L or gal" })
-  }),
+  juiceVolumeUnit: z.enum(['L', 'gal'], { message: "Unit must be L or gal" }),
   vesselId: z.string().uuid("Please select a vessel"),
   laborHours: z.number().min(0, "Labor hours cannot be negative").max(24, "Labor hours cannot exceed 24").optional(),
   workerCount: z.number().int().min(1, "Worker count must be at least 1").max(20, "Worker count cannot exceed 20").optional(),

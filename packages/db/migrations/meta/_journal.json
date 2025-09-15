@@ -22,6 +22,13 @@
       "when": 1757830844776,
       "tag": "0002_special_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1757902465411,
+      "tag": "0003_steep_captain_stacy",
+      "breakpoints": true
     }
   ]
 }

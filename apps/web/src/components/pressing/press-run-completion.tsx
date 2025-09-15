@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { AlertCircle, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -38,13 +38,19 @@ export function PressRunCompletion({
     data: pressRunData,
     isLoading: pressRunLoading,
     error: pressRunError,
-  } = trpc.pressRun.get.useQuery({ id: pressRunId }, {
-    onSuccess: () => setCurrentStep('form'),
-    onError: (err) => {
-      setError(err.message)
+  } = trpc.pressRun.get.useQuery({ id: pressRunId })
+
+  // Update step based on query state
+  React.useEffect(() => {
+    if (pressRunLoading) {
+      setCurrentStep('loading')
+    } else if (pressRunError) {
+      setError(pressRunError.message)
       setCurrentStep('error')
-    },
-  })
+    } else if (pressRunData) {
+      setCurrentStep('form')
+    }
+  }, [pressRunData, pressRunLoading, pressRunError])
 
   // Completion mutation
   const completePressRunMutation = trpc.pressRun.finish.useMutation({
@@ -169,7 +175,7 @@ export function PressRunCompletion({
             id: pressRunData.pressRun.id,
             vendorName: pressRunData.pressRun.vendorName || 'Unknown Vendor',
             status: pressRunData.pressRun.status,
-            startTime: pressRunData.pressRun.startTime,
+            startTime: pressRunData.pressRun.startTime || undefined,
             totalAppleWeightKg: parseFloat(pressRunData.pressRun.totalAppleWeightKg || '0'),
             loads: pressRunData.loads?.map(load => ({
               id: load.id,
@@ -178,9 +184,9 @@ export function PressRunCompletion({
               originalWeight: parseFloat(load.originalWeight || '0'),
               originalWeightUnit: load.originalWeightUnit || 'kg',
               loadSequence: load.loadSequence || 0,
-              appleCondition: load.appleCondition,
-              brixMeasured: load.brixMeasured,
-              notes: load.notes,
+              appleCondition: load.appleCondition || undefined,
+              brixMeasured: load.brixMeasured || undefined,
+              notes: load.notes || undefined,
             })) || [],
           }}
         />
@@ -213,7 +219,7 @@ export function PressRunCompletion({
         )}
 
         {/* Loading overlay during submission */}
-        {completePressRunMutation.isLoading && (
+        {completePressRunMutation.isPending && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-sm mx-4">
               <div className="text-center">

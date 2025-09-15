@@ -10,18 +10,19 @@ export type UserRole = 'admin' | 'operator' | 'viewer'
 export type Action = 'create' | 'read' | 'update' | 'delete' | 'list'
 
 // Available entities in the system
-export type Entity = 
-  | 'vendor' 
-  | 'user' 
-  | 'apple_variety' 
-  | 'purchase' 
-  | 'press_run' 
-  | 'batch' 
-  | 'vessel' 
-  | 'inventory' 
-  | 'measurement' 
-  | 'package' 
-  | 'cost' 
+export type Entity =
+  | 'vendor'
+  | 'user'
+  | 'apple_variety'
+  | 'purchase'
+  | 'purchaseLine'
+  | 'press_run'
+  | 'batch'
+  | 'vessel'
+  | 'inventory'
+  | 'measurement'
+  | 'package'
+  | 'cost'
   | 'report'
   | 'audit_log'
 
@@ -39,6 +40,7 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: 'user', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'apple_variety', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'purchase', actions: ['create', 'read', 'update', 'delete', 'list'] },
+    { entity: 'purchaseLine', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'press_run', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'batch', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'vessel', actions: ['create', 'read', 'update', 'delete', 'list'] },
@@ -56,6 +58,7 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: 'user', actions: ['read', 'list'] }, // Can only view users, not manage them
     { entity: 'apple_variety', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'purchase', actions: ['create', 'read', 'update', 'delete', 'list'] },
+    { entity: 'purchaseLine', actions: ['read', 'list'] }, // Can view purchase lines but not modify
     { entity: 'press_run', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'batch', actions: ['create', 'read', 'update', 'delete', 'list'] },
     { entity: 'vessel', actions: ['create', 'read', 'update', 'delete', 'list'] },
@@ -73,6 +76,7 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: 'user', actions: ['read', 'list'] }, // Can only view users
     { entity: 'apple_variety', actions: ['read', 'list'] },
     { entity: 'purchase', actions: ['read', 'list'] },
+    { entity: 'purchaseLine', actions: ['read', 'list'] }, // Can view purchase lines
     { entity: 'press_run', actions: ['read', 'list'] },
     { entity: 'batch', actions: ['read', 'list'] },
     { entity: 'vessel', actions: ['read', 'list'] },

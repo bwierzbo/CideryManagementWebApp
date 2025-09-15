@@ -142,10 +142,6 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
               <div className="text-2xl font-bold text-amber-800">{pressRun.loads.length}</div>
               <div className="text-sm text-amber-600">Total Loads</div>
             </div>
-            <div className="text-center p-3 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-800">{totalWeightKg.toFixed(0)}</div>
-              <div className="text-sm text-green-600">kg Apples</div>
-            </div>
             <div className="text-center p-3 bg-blue-50 rounded-lg">
               <div className="text-2xl font-bold text-blue-800">{totalWeightLbs.toFixed(0)}</div>
               <div className="text-sm text-blue-600">lbs Apples</div>
@@ -204,13 +200,13 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
                   <div className="mt-2">
                     <p className="text-xs text-gray-600 mb-1">Conditions:</p>
                     <div className="flex flex-wrap gap-1">
-                      {[...new Set(summary.conditions)].map(condition => (
+                      {[...new Set(summary.conditions)].map((condition, index) => (
                         <Badge
-                          key={condition}
+                          key={`${condition}-${index}`}
                           variant="secondary"
-                          className={`text-xs ${formatCondition(condition)}`}
+                          className={`text-xs ${formatCondition(condition as string)}`}
                         >
-                          {condition}
+                          {condition as string}
                         </Badge>
                       ))}
                     </div>
@@ -320,14 +316,6 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
               <p className="text-gray-600">Vendor</p>
               <p className="font-medium">{pressRun.vendorName}</p>
             </div>
-            {pressRun.startTime && (
-              <div>
-                <p className="text-gray-600">Started</p>
-                <p className="font-medium">
-                  {new Date(pressRun.startTime).toLocaleString()}
-                </p>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>

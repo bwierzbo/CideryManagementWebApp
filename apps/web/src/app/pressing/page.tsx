@@ -6,27 +6,24 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PressRunCompletion } from "@/components/pressing"
-import { usePressRunDrafts, useNetworkSync, useOfflineCapability } from "@/hooks/use-press-run-drafts"
+import { usePressRunDrafts, useNetworkSync } from "@/hooks/use-press-run-drafts"
 import {
-  Grape,
   Play,
   CheckCircle2,
   Clock,
   Scale,
-  Calendar,
   Plus,
   Eye,
   ArrowRight,
   RefreshCw,
   TrendingUp,
-  Wifi,
-  WifiOff,
-  Download,
-  AlertTriangle,
   Trash2,
-  Edit3
+  Edit3,
+  AlertTriangle,
+  WifiOff
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 interface PressRun {
   id: string
@@ -42,87 +39,15 @@ interface PressRun {
 
 type ViewMode = 'home' | 'completion'
 
-// Mobile-optimized Press Run Header with network status
-function PressRunHeader() {
-  const { isOnline, syncing, syncAllDrafts } = useNetworkSync()
-  const { storageQuota } = useOfflineCapability()
-
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  })
-
-  const handleManualSync = async () => {
-    if (!isOnline) return
-    await syncAllDrafts()
-  }
-
-  return (
-    <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mb-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-amber-900">Press Operations</h2>
-          <p className="text-sm text-amber-700 flex items-center mt-1">
-            <Calendar className="w-4 h-4 mr-2" />
-            {today}
-          </p>
-        </div>
-        <div className="flex items-center space-x-3">
-          {/* Network Status */}
-          <div className="flex items-center space-x-2">
-            {isOnline ? (
-              <div className="flex items-center text-green-600">
-                <Wifi className="w-4 h-4 mr-1" />
-                <span className="text-xs font-medium">Online</span>
-              </div>
-            ) : (
-              <div className="flex items-center text-red-600">
-                <WifiOff className="w-4 h-4 mr-1" />
-                <span className="text-xs font-medium">Offline</span>
-              </div>
-            )}
-
-            {/* Sync Button */}
-            {isOnline && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleManualSync}
-                disabled={syncing}
-                className="text-xs h-6 px-2"
-              >
-                {syncing ? (
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Download className="w-3 h-3" />
-                )}
-              </Button>
-            )}
-
-            {/* Storage Quota Warning */}
-            {storageQuota.isNearLimit && (
-              <div className="flex items-center text-orange-600">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="text-xs font-medium ml-1">
-                  {storageQuota.percentUsed.toFixed(0)}%
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-amber-100 rounded-full p-3">
-            <Grape className="w-6 h-6 text-amber-600" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // Mobile-optimized Active Runs Section
-function ActiveRunsSection({ onCompletePressRun }: { onCompletePressRun: (pressRunId: string) => void }) {
+function ActiveRunsSection({
+  onCompletePressRun,
+  onCancelPressRun
+}: {
+  onCompletePressRun: (pressRunId: string) => void
+  onCancelPressRun: (pressRunId: string) => void
+}) {
   const { data: pressRunsData, isLoading, refetch } = trpc.pressRun.list.useQuery({
     status: 'in_progress',
     limit: 10,
@@ -243,7 +168,12 @@ function ActiveRunsSection({ onCompletePressRun }: { onCompletePressRun: (pressR
 
               {/* Mobile-optimized Action Buttons */}
               <div className="flex space-x-2">
-                <Button size="sm" variant="outline" className="flex-1 h-10">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 h-10"
+                  onClick={() => window.location.href = `/pressing/${run.id}`}
+                >
                   <Eye className="w-4 h-4 mr-2" />
                   Details
                 </Button>
@@ -254,6 +184,17 @@ function ActiveRunsSection({ onCompletePressRun }: { onCompletePressRun: (pressR
                 >
                   <CheckCircle2 className="w-4 h-4 mr-2" />
                   Complete
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-10 w-10 p-0 text-red-600 hover:bg-red-50"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onCancelPressRun(run.id)
+                  }}
+                >
+                  <Trash2 className="w-4 h-4" />
                 </Button>
               </div>
             </CardContent>
@@ -484,7 +425,7 @@ function CompletedRunsSection() {
 }
 
 // Mobile-optimized Action Buttons - Bottom aligned for thumb access
-function ActionButtons() {
+function ActionButtons({ onStartNewRun, isCreating }: { onStartNewRun: () => void, isCreating: boolean }) {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 lg:relative lg:bottom-auto lg:border-t-0 lg:p-0 lg:bg-transparent">
       <div className="max-w-7xl mx-auto lg:px-0">
@@ -493,9 +434,20 @@ function ActionButtons() {
           <Button
             size="lg"
             className="w-full h-12 bg-amber-600 hover:bg-amber-700 lg:flex-1"
+            onClick={onStartNewRun}
+            disabled={isCreating}
           >
-            <Plus className="w-5 h-5 mr-2" />
-            Start New Press Run
+            {isCreating ? (
+              <>
+                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                Creating Press Run...
+              </>
+            ) : (
+              <>
+                <Plus className="w-5 h-5 mr-2" />
+                Start New Press Run
+              </>
+            )}
           </Button>
 
           {/* Secondary Action - View All Runs */}
@@ -519,6 +471,20 @@ export default function PressingPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('home')
   const [selectedPressRunId, setSelectedPressRunId] = useState<string | null>(null)
   const [resumingDraftId, setResumingDraftId] = useState<string | null>(null)
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
+  const [pressRunToCancel, setPressRunToCancel] = useState<string | null>(null)
+
+  // Cancel press run mutation
+  const cancelPressRunMutation = trpc.pressRun.cancel.useMutation({
+    onSuccess: () => {
+      // Refresh the page data
+      window.location.reload()
+    },
+    onError: (error) => {
+      console.error('Failed to cancel press run:', error)
+      alert('Failed to cancel press run. Please try again.')
+    }
+  })
 
   const handleCompletePressRun = (pressRunId: string) => {
     setSelectedPressRunId(pressRunId)
@@ -542,15 +508,47 @@ export default function PressingPage() {
     window.location.href = `/fermentation/vessels/${vesselId}`
   }
 
+  // Create press run mutation
+  const createPressRunMutation = trpc.pressRun.create.useMutation({
+    onSuccess: (result) => {
+      if (result.success && result.pressRun) {
+        // Navigate directly to the press run with addFirstLoad=true
+        window.location.href = `/pressing/${result.pressRun.id}?addFirstLoad=true`
+      }
+    },
+    onError: (error) => {
+      console.error('Failed to create press run:', error)
+      alert('Failed to create press run. Please try again.')
+    }
+  })
+
   const handleStartNewRun = () => {
-    // Navigate to new press run creation
-    window.location.href = '/pressing/new'
+    // Create press run directly and navigate to the details page
+    createPressRunMutation.mutate({
+      startTime: new Date(),
+      notes: undefined,
+    })
   }
 
   const handleResumeDraft = (draftId: string) => {
     // For now, navigate to a new press run page with the draft ID
     // In the future, this could be a dedicated resume page
     window.location.href = `/pressing/resume/${draftId}`
+  }
+
+  const handleCancelPressRun = (pressRunId: string) => {
+    setPressRunToCancel(pressRunId)
+    setShowCancelDialog(true)
+  }
+
+  const handleConfirmCancel = () => {
+    if (pressRunToCancel) {
+      cancelPressRunMutation.mutate({
+        id: pressRunToCancel,
+        reason: 'User requested cancellation from main page'
+      })
+    }
+    setPressRunToCancel(null)
   }
 
   // Completion view
@@ -586,21 +584,34 @@ export default function PressingPage() {
           </p>
         </div>
 
-        {/* Press Run Header */}
-        <PressRunHeader />
 
         {/* Draft Runs - Resume Functionality */}
         <DraftRunsSection onResumeDraft={handleResumeDraft} />
 
         {/* Active Runs */}
-        <ActiveRunsSection onCompletePressRun={handleCompletePressRun} />
+        <ActiveRunsSection
+          onCompletePressRun={handleCompletePressRun}
+          onCancelPressRun={handleCancelPressRun}
+        />
 
         {/* Recent Completed Runs */}
         <CompletedRunsSection />
 
         {/* Bottom-aligned Action Buttons (Mobile) */}
-        <ActionButtons />
+        <ActionButtons onStartNewRun={handleStartNewRun} isCreating={createPressRunMutation.isPending} />
       </main>
+
+      {/* Confirmation Dialog */}
+      <ConfirmDialog
+        open={showCancelDialog}
+        onOpenChange={setShowCancelDialog}
+        title="Delete Press Run"
+        description="Are you sure you want to delete this press run? This action cannot be undone."
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={handleConfirmCancel}
+      />
     </div>
   )
 }

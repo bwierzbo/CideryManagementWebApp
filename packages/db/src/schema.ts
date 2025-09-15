@@ -246,7 +246,7 @@ export const applePressRuns = pgTable('apple_press_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
 
   // Core relationships following existing foreign key patterns
-  vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
+  vendorId: uuid('vendor_id').references(() => vendors.id), // Nullable - vendor determined by loads
   vesselId: uuid('vessel_id').references(() => vessels.id), // Target vessel for juice collection
 
   // Workflow status with enum constraint
