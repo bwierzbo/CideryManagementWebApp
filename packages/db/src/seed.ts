@@ -1,11 +1,12 @@
 import { db } from './client'
-import { 
+import {
   users,
-  vendors, 
-  appleVarieties, 
-  purchases, 
-  purchaseItems, 
-  pressRuns, 
+  vendors,
+  appleVarieties,
+  vendorVarieties,
+  purchases,
+  purchaseItems,
+  pressRuns,
   pressItems,
   vessels,
   batches,
@@ -79,39 +80,110 @@ async function main() {
     const seedVarieties = await db.insert(appleVarieties).values([
       {
         name: 'Honeycrisp',
-        description: 'Sweet and crisp variety, excellent for cider',
-        typicalBrix: '14.5',
-        notes: 'High sugar content, mild acidity'
+        ciderCategory: 'sweet',
+        tannin: 'low',
+        acid: 'medium',
+        sugarBrix: 'medium-high',
+        harvestWindow: 'Mid',
+        varietyNotes: 'High sugar content, mild acidity'
       },
       {
         name: 'Granny Smith',
-        description: 'Tart green apple, adds acidity to blends',
-        typicalBrix: '12.8',
-        notes: 'High acid, balances sweeter varieties'
+        ciderCategory: 'sharp',
+        tannin: 'low',
+        acid: 'high',
+        sugarBrix: 'medium',
+        harvestWindow: 'Late',
+        varietyNotes: 'High acid, balances sweeter varieties'
       },
       {
         name: 'Gala',
-        description: 'Mild sweet apple, good for blending',
-        typicalBrix: '13.2',
-        notes: 'Moderate sugar, subtle flavor'
+        ciderCategory: 'sweet',
+        tannin: 'low',
+        acid: 'medium',
+        sugarBrix: 'medium',
+        harvestWindow: 'Early-Mid',
+        varietyNotes: 'Moderate sugar, subtle flavor'
       },
       {
         name: 'Fuji',
-        description: 'Very sweet apple with complex flavor',
-        typicalBrix: '15.2',
-        notes: 'Highest sugar content in our varieties'
+        ciderCategory: 'sweet',
+        tannin: 'low',
+        acid: 'low-medium',
+        sugarBrix: 'high',
+        harvestWindow: 'Late',
+        varietyNotes: 'Highest sugar content in our varieties'
       },
       {
         name: 'Northern Spy',
-        description: 'Traditional cider apple with excellent balance',
-        typicalBrix: '13.8',
-        notes: 'Classic cider variety, well-balanced'
+        ciderCategory: 'bittersweet',
+        tannin: 'medium',
+        acid: 'medium',
+        sugarBrix: 'medium-high',
+        harvestWindow: 'Mid-Late',
+        varietyNotes: 'Classic cider variety, well-balanced'
       },
       {
         name: 'Rhode Island Greening',
-        description: 'Heritage variety excellent for cider',
-        typicalBrix: '12.5',
-        notes: 'Traditional New England cider apple'
+        ciderCategory: 'sharp',
+        tannin: 'low-medium',
+        acid: 'high',
+        sugarBrix: 'medium',
+        harvestWindow: 'Mid',
+        varietyNotes: 'Traditional New England cider apple'
+      }
+    ]).returning()
+
+    // Seed vendor varieties (link vendors to the varieties they can supply)
+    console.log('🔗 Seeding vendor varieties...')
+    const seedVendorVarieties = await db.insert(vendorVarieties).values([
+      // Mountain View Orchards (vendor 0) - offers Honeycrisp, Granny Smith, Gala
+      {
+        vendorId: seedVendors[0].id,
+        varietyId: seedVarieties[0].id, // Honeycrisp
+        notes: 'Premium grade, excellent for single varietal ciders'
+      },
+      {
+        vendorId: seedVendors[0].id,
+        varietyId: seedVarieties[1].id, // Granny Smith
+        notes: 'Consistent quality, great for blending'
+      },
+      {
+        vendorId: seedVendors[0].id,
+        varietyId: seedVarieties[2].id, // Gala
+        notes: 'Mild flavor, good for entry-level ciders'
+      },
+      // Sunrise Apple Farm (vendor 1) - offers Gala, Fuji, Northern Spy
+      {
+        vendorId: seedVendors[1].id,
+        varietyId: seedVarieties[2].id, // Gala
+        notes: 'Bulk quantities available'
+      },
+      {
+        vendorId: seedVendors[1].id,
+        varietyId: seedVarieties[3].id, // Fuji
+        notes: 'High sugar content, perfect for sweet ciders'
+      },
+      {
+        vendorId: seedVendors[1].id,
+        varietyId: seedVarieties[4].id, // Northern Spy
+        notes: 'Traditional variety, small batches'
+      },
+      // Heritage Fruit Co. (vendor 2) - offers Northern Spy, Rhode Island Greening, Honeycrisp
+      {
+        vendorId: seedVendors[2].id,
+        varietyId: seedVarieties[4].id, // Northern Spy
+        notes: 'Heirloom quality, premium pricing'
+      },
+      {
+        vendorId: seedVendors[2].id,
+        varietyId: seedVarieties[5].id, // Rhode Island Greening
+        notes: 'Heritage variety specialist'
+      },
+      {
+        vendorId: seedVendors[2].id,
+        varietyId: seedVarieties[0].id, // Honeycrisp
+        notes: 'Organic certification available'
       }
     ]).returning()
 
@@ -606,6 +678,7 @@ async function main() {
     console.log('✅ Database seeding completed successfully!')
     console.log(`   • ${seedVendors.length} vendors`)
     console.log(`   • ${seedVarieties.length} apple varieties`)
+    console.log(`   • ${seedVendorVarieties.length} vendor-variety relationships`)
     console.log(`   • ${seedPurchases.length} purchases with ${seedPurchaseItems.length} items`)
     console.log(`   • ${seedPressRuns.length} press runs with ${seedPressItems.length} items`)
     console.log(`   • ${seedVessels.length} vessels`)

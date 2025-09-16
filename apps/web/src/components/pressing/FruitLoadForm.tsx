@@ -365,7 +365,7 @@ export function FruitLoadForm({
               </div>
 
               {/* Real-time unit conversion display */}
-              {watchedWeight && watchedUnit && (
+              {(watchedWeight != null && watchedWeight > 0) && watchedUnit && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-center justify-center space-x-3">
                     <span className="text-sm text-blue-800">

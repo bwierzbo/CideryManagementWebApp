@@ -1,9 +1,524 @@
 {
   "version": "5",
   "dialect": "pg",
-  "id": "9375ef6f-5f42-4b9b-a41e-18f98c07fe3c",
-  "prevId": "313c4cce-0056-4713-9823-5ec2402ac577",
+  "id": "d9e788da-8ab9-48fd-ada3-1ea04932730f",
+  "prevId": "329e54bf-7b24-4255-a44c-fa3f8c165537",
   "tables": {
+    "apple_press_run_loads": {
+      "name": "apple_press_run_loads",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "apple_press_run_id": {
+          "name": "apple_press_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purchase_item_id": {
+          "name": "purchase_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "apple_variety_id": {
+          "name": "apple_variety_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "load_sequence": {
+          "name": "load_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "apple_weight_kg": {
+          "name": "apple_weight_kg",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "original_weight": {
+          "name": "original_weight",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_weight_unit": {
+          "name": "original_weight_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "juice_volume_l": {
+          "name": "juice_volume_l",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_volume": {
+          "name": "original_volume",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "original_volume_unit": {
+          "name": "original_volume_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "brix_measured": {
+          "name": "brix_measured",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ph_measured": {
+          "name": "ph_measured",
+          "type": "numeric(3, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pressed_at": {
+          "name": "pressed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "apple_condition": {
+          "name": "apple_condition",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "defect_percentage": {
+          "name": "defect_percentage",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "apple_press_run_loads_apple_press_run_idx": {
+          "name": "apple_press_run_loads_apple_press_run_idx",
+          "columns": [
+            "apple_press_run_id"
+          ],
+          "isUnique": false
+        },
+        "apple_press_run_loads_purchase_item_idx": {
+          "name": "apple_press_run_loads_purchase_item_idx",
+          "columns": [
+            "purchase_item_id"
+          ],
+          "isUnique": false
+        },
+        "apple_press_run_loads_variety_idx": {
+          "name": "apple_press_run_loads_variety_idx",
+          "columns": [
+            "apple_variety_id"
+          ],
+          "isUnique": false
+        },
+        "apple_press_run_loads_sequence_idx": {
+          "name": "apple_press_run_loads_sequence_idx",
+          "columns": [
+            "apple_press_run_id",
+            "load_sequence"
+          ],
+          "isUnique": false
+        },
+        "apple_press_run_loads_created_by_idx": {
+          "name": "apple_press_run_loads_created_by_idx",
+          "columns": [
+            "created_by"
+          ],
+          "isUnique": false
+        },
+        "apple_press_run_loads_updated_by_idx": {
+          "name": "apple_press_run_loads_updated_by_idx",
+          "columns": [
+            "updated_by"
+          ],
+          "isUnique": false
+        },
+        "apple_press_run_loads_unique_sequence": {
+          "name": "apple_press_run_loads_unique_sequence",
+          "columns": [
+            "apple_press_run_id",
+            "load_sequence"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "apple_press_run_loads_apple_press_run_id_apple_press_runs_id_fk": {
+          "name": "apple_press_run_loads_apple_press_run_id_apple_press_runs_id_fk",
+          "tableFrom": "apple_press_run_loads",
+          "tableTo": "apple_press_runs",
+          "columnsFrom": [
+            "apple_press_run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "apple_press_run_loads_purchase_item_id_purchase_items_id_fk": {
+          "name": "apple_press_run_loads_purchase_item_id_purchase_items_id_fk",
+          "tableFrom": "apple_press_run_loads",
+          "tableTo": "purchase_items",
+          "columnsFrom": [
+            "purchase_item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "apple_press_run_loads_apple_variety_id_apple_varieties_id_fk": {
+          "name": "apple_press_run_loads_apple_variety_id_apple_varieties_id_fk",
+          "tableFrom": "apple_press_run_loads",
+          "tableTo": "apple_varieties",
+          "columnsFrom": [
+            "apple_variety_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "apple_press_run_loads_created_by_users_id_fk": {
+          "name": "apple_press_run_loads_created_by_users_id_fk",
+          "tableFrom": "apple_press_run_loads",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "apple_press_run_loads_updated_by_users_id_fk": {
+          "name": "apple_press_run_loads_updated_by_users_id_fk",
+          "tableFrom": "apple_press_run_loads",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "apple_press_runs": {
+      "name": "apple_press_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "vessel_id": {
+          "name": "vessel_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "press_run_status",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "start_time": {
+          "name": "start_time",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_time": {
+          "name": "end_time",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scheduled_date": {
+          "name": "scheduled_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_apple_weight_kg": {
+          "name": "total_apple_weight_kg",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_juice_volume_l": {
+          "name": "total_juice_volume_l",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extraction_rate": {
+          "name": "extraction_rate",
+          "type": "numeric(5, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "labor_hours": {
+          "name": "labor_hours",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "labor_cost_per_hour": {
+          "name": "labor_cost_per_hour",
+          "type": "numeric(8, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_labor_cost": {
+          "name": "total_labor_cost",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pressing_method": {
+          "name": "pressing_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weather_conditions": {
+          "name": "weather_conditions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "apple_press_runs_vendor_idx": {
+          "name": "apple_press_runs_vendor_idx",
+          "columns": [
+            "vendor_id"
+          ],
+          "isUnique": false
+        },
+        "apple_press_runs_status_idx": {
+          "name": "apple_press_runs_status_idx",
+          "columns": [
+            "status"
+          ],
+          "isUnique": false
+        },
+        "apple_press_runs_scheduled_date_idx": {
+          "name": "apple_press_runs_scheduled_date_idx",
+          "columns": [
+            "scheduled_date"
+          ],
+          "isUnique": false
+        },
+        "apple_press_runs_start_time_idx": {
+          "name": "apple_press_runs_start_time_idx",
+          "columns": [
+            "start_time"
+          ],
+          "isUnique": false
+        },
+        "apple_press_runs_vendor_status_idx": {
+          "name": "apple_press_runs_vendor_status_idx",
+          "columns": [
+            "vendor_id",
+            "status"
+          ],
+          "isUnique": false
+        },
+        "apple_press_runs_date_status_idx": {
+          "name": "apple_press_runs_date_status_idx",
+          "columns": [
+            "scheduled_date",
+            "status"
+          ],
+          "isUnique": false
+        },
+        "apple_press_runs_created_by_idx": {
+          "name": "apple_press_runs_created_by_idx",
+          "columns": [
+            "created_by"
+          ],
+          "isUnique": false
+        },
+        "apple_press_runs_updated_by_idx": {
+          "name": "apple_press_runs_updated_by_idx",
+          "columns": [
+            "updated_by"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "apple_press_runs_vendor_id_vendors_id_fk": {
+          "name": "apple_press_runs_vendor_id_vendors_id_fk",
+          "tableFrom": "apple_press_runs",
+          "tableTo": "vendors",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "apple_press_runs_vessel_id_vessels_id_fk": {
+          "name": "apple_press_runs_vessel_id_vessels_id_fk",
+          "tableFrom": "apple_press_runs",
+          "tableTo": "vessels",
+          "columnsFrom": [
+            "vessel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "apple_press_runs_created_by_users_id_fk": {
+          "name": "apple_press_runs_created_by_users_id_fk",
+          "tableFrom": "apple_press_runs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "apple_press_runs_updated_by_users_id_fk": {
+          "name": "apple_press_runs_updated_by_users_id_fk",
+          "tableFrom": "apple_press_runs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
     "apple_varieties": {
       "name": "apple_varieties",
       "schema": "",
@@ -21,23 +536,48 @@
           "primaryKey": false,
           "notNull": true
         },
-        "description": {
-          "name": "description",
+        "cider_category": {
+          "name": "cider_category",
+          "type": "cider_category_enum",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tannin": {
+          "name": "tannin",
+          "type": "intensity_enum",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "acid": {
+          "name": "acid",
+          "type": "intensity_enum",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sugar_brix": {
+          "name": "sugar_brix",
+          "type": "intensity_enum",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "harvest_window": {
+          "name": "harvest_window",
+          "type": "harvest_window_enum",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "variety_notes": {
+          "name": "variety_notes",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "typical_brix": {
-          "name": "typical_brix",
-          "type": "numeric(4, 2)",
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
           "primaryKey": false,
-          "notNull": false
-        },
-        "notes": {
-          "name": "notes",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -60,7 +600,15 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "apple_varieties_name_unique_idx": {
+          "name": "apple_varieties_name_unique_idx",
+          "columns": [
+            "name"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
@@ -1411,6 +1959,111 @@
         }
       }
     },
+    "vendor_varieties": {
+      "name": "vendor_varieties",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "vendor_id": {
+          "name": "vendor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "variety_id": {
+          "name": "variety_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "vendor_varieties_vendor_variety_unique_idx": {
+          "name": "vendor_varieties_vendor_variety_unique_idx",
+          "columns": [
+            "vendor_id",
+            "variety_id"
+          ],
+          "isUnique": true
+        },
+        "vendor_varieties_vendor_idx": {
+          "name": "vendor_varieties_vendor_idx",
+          "columns": [
+            "vendor_id"
+          ],
+          "isUnique": false
+        },
+        "vendor_varieties_variety_idx": {
+          "name": "vendor_varieties_variety_idx",
+          "columns": [
+            "variety_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vendor_varieties_vendor_id_vendors_id_fk": {
+          "name": "vendor_varieties_vendor_id_vendors_id_fk",
+          "tableFrom": "vendor_varieties",
+          "tableTo": "vendors",
+          "columnsFrom": [
+            "vendor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "vendor_varieties_variety_id_apple_varieties_id_fk": {
+          "name": "vendor_varieties_variety_id_apple_varieties_id_fk",
+          "tableFrom": "vendor_varieties",
+          "tableTo": "apple_varieties",
+          "columnsFrom": [
+            "variety_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
     "vendors": {
       "name": "vendors",
       "schema": "",
@@ -1812,6 +2465,15 @@
         "cancelled": "cancelled"
       }
     },
+    "cider_category_enum": {
+      "name": "cider_category_enum",
+      "values": {
+        "sweet": "sweet",
+        "bittersweet": "bittersweet",
+        "sharp": "sharp",
+        "bittersharp": "bittersharp"
+      }
+    },
     "cogs_item_type": {
       "name": "cogs_item_type",
       "values": {
@@ -1819,6 +2481,35 @@
         "labor": "labor",
         "overhead": "overhead",
         "packaging": "packaging"
+      }
+    },
+    "harvest_window_enum": {
+      "name": "harvest_window_enum",
+      "values": {
+        "Late": "Late",
+        "Mid-Late": "Mid-Late",
+        "Mid": "Mid",
+        "Early-Mid": "Early-Mid",
+        "Early": "Early"
+      }
+    },
+    "intensity_enum": {
+      "name": "intensity_enum",
+      "values": {
+        "high": "high",
+        "medium-high": "medium-high",
+        "medium": "medium",
+        "low-medium": "low-medium",
+        "low": "low"
+      }
+    },
+    "press_run_status": {
+      "name": "press_run_status",
+      "values": {
+        "draft": "draft",
+        "in_progress": "in_progress",
+        "completed": "completed",
+        "cancelled": "cancelled"
       }
     },
     "transaction_type": {

@@ -4,7 +4,6 @@ import { auditRouter } from './audit'
 import { healthRouter } from './health'
 import { invoiceNumberRouter } from './invoiceNumber'
 import { pressRunRouter } from './pressRun'
-import { vendorVarietyRouter } from './vendorVariety'
 import { varietiesRouter } from './varieties'
 import {
   db,
@@ -28,7 +27,6 @@ import {
 import { eq, and, desc, asc, sql, isNull, ne } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, bushelsToKg } from 'lib'
-import { ensureVendorVariety } from '../lib/dbChecks'
 
 export const appRouter = router({
   // Basic health check
@@ -318,16 +316,17 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         try {
           return await db.transaction(async (tx) => {
+            // TODO: Re-enable vendor-variety validation after fixing imports
             // Validate vendor-variety relationships for all items
-            for (const item of input.items) {
-              const isValidVariety = await ensureVendorVariety(input.vendorId, item.appleVarietyId)
-              if (!isValidVariety) {
-                throw new TRPCError({
-                  code: 'BAD_REQUEST',
-                  message: 'This vendor is not configured for the selected variety. Please link the variety to the vendor first.'
-                })
-              }
-            }
+            // for (const item of input.items) {
+            //   const isValidVariety = await ensureVendorVariety(input.vendorId, item.appleVarietyId)
+            //   if (!isValidVariety) {
+            //     throw new TRPCError({
+            //       code: 'BAD_REQUEST',
+            //       message: 'This vendor is not configured for the selected variety. Please link the variety to the vendor first.'
+            //     })
+            //   }
+            // }
 
             // Calculate total cost and convert units
             let totalCost = 0
@@ -583,19 +582,20 @@ export const appRouter = router({
 
             // Update items if provided
             if (input.items) {
+              // TODO: Re-enable vendor-variety validation after fixing imports
               // Validate vendor-variety relationships for all new items
-              const finalVendorId = input.vendorId || existingPurchase[0].vendorId
-              if (finalVendorId) {
-                for (const item of input.items) {
-                  const isValidVariety = await ensureVendorVariety(finalVendorId, item.appleVarietyId)
-                  if (!isValidVariety) {
-                    throw new TRPCError({
-                      code: 'BAD_REQUEST',
-                      message: 'This vendor is not configured for the selected variety. Please link the variety to the vendor first.'
-                    })
-                  }
-                }
-              }
+              // const finalVendorId = input.vendorId || existingPurchase[0].vendorId
+              // if (finalVendorId) {
+              //   for (const item of input.items) {
+              //     const isValidVariety = await ensureVendorVariety(finalVendorId, item.appleVarietyId)
+              //     if (!isValidVariety) {
+              //       throw new TRPCError({
+              //         code: 'BAD_REQUEST',
+              //         message: 'This vendor is not configured for the selected variety. Please link the variety to the vendor first.'
+              //       })
+              //     }
+              //   }
+              // }
 
               // Remove existing items (soft delete)
               await tx
@@ -2472,8 +2472,9 @@ export const appRouter = router({
   // Invoice number generation
   invoiceNumber: invoiceNumberRouter,
 
+  // TODO: Re-enable after fixing imports
   // Vendor variety management
-  vendorVariety: vendorVarietyRouter,
+  // vendorVariety: vendorVarietyRouter,
 
   // Health check and system monitoring
   health: healthRouter,

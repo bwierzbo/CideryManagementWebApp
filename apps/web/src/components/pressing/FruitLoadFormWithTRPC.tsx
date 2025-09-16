@@ -98,7 +98,7 @@ export function FruitLoadFormWithTRPC({
   const {
     data: appleVarieties,
     isLoading: varietiesLoading
-  } = trpc.appleVariety.list.useQuery()
+  } = trpc.appleVariety.listAll.useQuery({ includeInactive: false })
 
   // Availability validation query
   // Note: Removed availability validation - purchase weights are estimates only
@@ -113,7 +113,7 @@ export function FruitLoadFormWithTRPC({
       purchaseItemId: editingLoad?.purchaseItemId || "",
       appleVarietyId: editingLoad?.appleVarietyId || "",
       weightUnit: editingLoad?.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad?.originalWeightUnit || 'lbs'),
-      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '0') : 0,
+      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '1') : 1,
       brixMeasured: editingLoad?.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
       phMeasured: editingLoad?.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
       appleCondition: editingLoad?.appleCondition || undefined,
@@ -157,7 +157,7 @@ export function FruitLoadFormWithTRPC({
         purchaseItemId: editingLoad.purchaseItemId || "",
         appleVarietyId: editingLoad.appleVarietyId || "",
         weightUnit: editingLoad.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad.originalWeightUnit || 'lbs'),
-        weight: editingLoad ? parseFloat(editingLoad.originalWeight || '0') : 0,
+        weight: editingLoad ? parseFloat(editingLoad.originalWeight || '0') : undefined,
         brixMeasured: editingLoad.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
         phMeasured: editingLoad.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
         appleCondition: editingLoad.appleCondition || undefined,
@@ -201,16 +201,18 @@ export function FruitLoadFormWithTRPC({
   ) || []
 
   const handleSubmit = (data: FruitLoadFormData) => {
-    if (!selectedPurchaseItem || !appleVarieties) return
+    if (!selectedPurchaseItem || !appleVarieties) {
+      return
+    }
 
-    const variety = appleVarieties.appleVarieties.find(v => v.id === data.appleVarietyId)
+    const variety = appleVarieties?.appleVarieties.find(v => v.id === data.appleVarietyId)
     const weightKg = data.weightUnit === 'kg' ? data.weight : convertWeight(data.weight, 'lbs', 'kg')
 
     // Convert weight unit to match database enum
     let originalWeightUnit: 'kg' | 'lb' | 'bushel' = 'kg'
     if (data.weightUnit === 'lbs') originalWeightUnit = 'lb'
 
-    onSubmit({
+    const submitData = {
       loadSequence,
       vendorId: data.vendorId,
       purchaseItemId: data.purchaseItemId,
@@ -224,7 +226,9 @@ export function FruitLoadFormWithTRPC({
       appleCondition: data.appleCondition,
       defectPercentage: data.defectPercentage,
       notes: data.notes || undefined
-    })
+    }
+
+    onSubmit(submitData)
   }
 
   const handlePurchaseLineSelect = (purchaseLineItem: any) => {
@@ -432,7 +436,7 @@ export function FruitLoadFormWithTRPC({
                             placeholder="0.0"
                             className="pl-10 h-12 text-lg"
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : 0)}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : 1)}
                           />
                         </div>
                       </FormControl>
@@ -481,7 +485,7 @@ export function FruitLoadFormWithTRPC({
               </div>
 
               {/* Real-time unit conversion display */}
-              {watchedWeight && watchedUnit && (
+              {watchedWeight && watchedWeight > 0 && watchedUnit && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-center justify-center space-x-3">
                     <span className="text-sm text-blue-800">
@@ -562,7 +566,8 @@ export function FruitLoadFormWithTRPC({
                 type="submit"
                 disabled={
                   isSubmitting ||
-                  !selectedPurchaseItem
+                  !selectedPurchaseItem ||
+                  !form.formState.isValid
                 }
                 className="flex-1 h-12 bg-green-600 hover:bg-green-700 disabled:opacity-50"
               >

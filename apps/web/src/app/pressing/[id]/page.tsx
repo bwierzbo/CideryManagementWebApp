@@ -127,6 +127,10 @@ export default function PressRunDetailsPage() {
       appleWeightKg: loadData.appleWeightKg,
       originalWeight: loadData.originalWeight,
       originalWeightUnit: loadData.originalWeightUnit,
+      brixMeasured: loadData.brixMeasured,
+      phMeasured: loadData.phMeasured,
+      appleCondition: loadData.appleCondition,
+      defectPercentage: loadData.defectPercentage,
       notes: loadData.notes,
     })
   }
@@ -142,6 +146,10 @@ export default function PressRunDetailsPage() {
       appleWeightKg: loadData.appleWeightKg,
       originalWeight: loadData.originalWeight,
       originalWeightUnit: loadData.originalWeightUnit,
+      brixMeasured: loadData.brixMeasured,
+      phMeasured: loadData.phMeasured,
+      appleCondition: loadData.appleCondition,
+      defectPercentage: loadData.defectPercentage,
       notes: loadData.notes,
     })
   }

@@ -58,10 +58,10 @@ const transferSchema = z.object({
 const tankSchema = z.object({
   name: z.string().optional(),
   capacityL: z.number().positive('Capacity must be positive'),
-  capacityUnit: z.enum(['L', 'gal']).default('L'),
+  capacityUnit: z.enum(['L', 'gal']),
   material: z.enum(['stainless_steel', 'plastic']).optional(),
   jacketed: z.enum(['yes', 'no']).optional(),
-  status: z.enum(['available', 'in_use', 'maintenance', 'cleaning']).default('available'),
+  status: z.enum(['available', 'in_use', 'maintenance', 'cleaning']),
   location: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -82,6 +82,7 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
     resolver: zodResolver(tankSchema),
     defaultValues: {
       capacityUnit: 'L',
+      status: 'available',
     }
   })
 
@@ -496,7 +497,7 @@ function VesselMap() {
             <DialogHeader>
               <DialogTitle>Delete Tank</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete "{vesselToDelete?.name || 'Unknown'}"? This action cannot be undone.
+                Are you sure you want to delete &quot;{vesselToDelete?.name || 'Unknown'}&quot;? This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end space-x-2 mt-4">

@@ -257,7 +257,6 @@ function LiquidMap() {
                   </div>
                   
                   <div className="text-sm text-gray-600 mb-2">
-                    <p>Type: {vessel.vesselType}</p>
                     <p>Capacity: {(Number(vessel.vesselCapacityL) || 0).toFixed(1)}L</p>
                     {vessel.vesselLocation && <p>Location: {vessel.vesselLocation}</p>}
                   </div>

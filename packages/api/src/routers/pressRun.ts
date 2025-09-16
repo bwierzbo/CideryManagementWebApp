@@ -135,12 +135,13 @@ export const pressRunRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
-          // Verify press run exists and is editable
+          // Verify press run exists and is editable - lock the row to prevent concurrent modifications
           const pressRun = await tx
             .select()
             .from(applePressRuns)
             .where(and(eq(applePressRuns.id, input.pressRunId), isNull(applePressRuns.deletedAt)))
             .limit(1)
+            .for('update')
 
           if (!pressRun.length) {
             throw new TRPCError({
@@ -186,15 +187,13 @@ export const pressRunRouter = router({
 
           // Note: Purchase weights are estimates only - no validation against actual pressing weights
 
-          // Get next load sequence number
-          const existingLoads = await tx
-            .select({ loadSequence: applePressRunLoads.loadSequence })
+          // Get next load sequence number (press run is already locked above, preventing race conditions)
+          const maxSequenceResult = await tx
+            .select({ maxSequence: sql<number>`COALESCE(MAX(${applePressRunLoads.loadSequence}), 0)` })
             .from(applePressRunLoads)
             .where(and(eq(applePressRunLoads.applePressRunId, input.pressRunId), isNull(applePressRunLoads.deletedAt)))
-            .orderBy(desc(applePressRunLoads.loadSequence))
-            .limit(1)
 
-          const nextSequence = existingLoads.length > 0 ? (existingLoads[0].loadSequence || 0) + 1 : 1
+          const nextSequence = (maxSequenceResult[0]?.maxSequence || 0) + 1
 
           // Create the load
           const newLoad = await tx

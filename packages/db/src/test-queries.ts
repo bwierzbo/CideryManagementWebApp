@@ -28,17 +28,17 @@ async function testQueries() {
     console.log(`   Found ${allVendors.length} active vendors`)
     console.log(`   First vendor: ${allVendors[0]?.name}`)
 
-    // Test 2: Apple varieties with typical brix
+    // Test 2: Apple varieties with high sugar content
     console.log('\n2. 🍎 Testing apple variety queries...')
-    const varietiesWithBrix = await db
+    const varietiesWithHighSugar = await db
       .select()
       .from(appleVarieties)
-      .where(sql`${appleVarieties.typicalBrix} > 13.0`)
-      .orderBy(desc(appleVarieties.typicalBrix))
-    
-    console.log(`   Found ${varietiesWithBrix.length} varieties with brix > 13.0`)
-    varietiesWithBrix.forEach(v => {
-      console.log(`   - ${v.name}: ${v.typicalBrix}° Brix`)
+      .where(sql`${appleVarieties.sugarBrix} IN ('high', 'medium-high')`)
+      .orderBy(appleVarieties.name)
+
+    console.log(`   Found ${varietiesWithHighSugar.length} varieties with high sugar content`)
+    varietiesWithHighSugar.forEach(v => {
+      console.log(`   - ${v.name}: ${v.sugarBrix} sugar`)
     })
 
     // Test 3: Complex purchase query with joins

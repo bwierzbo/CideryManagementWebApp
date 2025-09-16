@@ -1,1 +1,0 @@
-ALTER TABLE "apple_press_runs" ALTER COLUMN "vendor_id" DROP NOT NULL;

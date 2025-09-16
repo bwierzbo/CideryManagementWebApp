@@ -1,0 +1,1 @@
+ALTER TABLE "apple_varieties" ALTER COLUMN "sugar_brix" SET DATA TYPE intensity_enum;

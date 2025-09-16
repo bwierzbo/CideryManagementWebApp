@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { 
+import {
   Settings,
   Users,
   Database,
@@ -26,8 +26,14 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
-  Save
+  Save,
+  Apple,
+  Archive,
+  ArchiveRestore,
+  X,
+  XCircle
 } from "lucide-react"
+import { trpc } from "@/utils/trpc"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -42,10 +48,18 @@ const userSchema = z.object({
 
 const appleVarietySchema = z.object({
   name: z.string().min(1, "Name is required"),
-  description: z.string().optional(),
-  typicalBrix: z.number().min(0).max(30).optional(),
-  notes: z.string().optional(),
 })
+
+const renameVarietySchema = z.object({
+  name: z.string().min(1, "Name is required"),
+})
+
+type NotificationType = {
+  id: number
+  type: 'success' | 'error'
+  title: string
+  message: string
+}
 
 type UserForm = z.infer<typeof userSchema>
 type AppleVarietyForm = z.infer<typeof appleVarietySchema>
@@ -288,39 +302,65 @@ function UserManagement() {
 function ReferenceValues() {
   const [activeSection, setActiveSection] = useState<"varieties" | "vessels" | "locations">("varieties")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [editingVariety, setEditingVariety] = useState<any>(null)
+  const [showInactive, setShowInactive] = useState(false)
+  const [notifications, setNotifications] = useState<NotificationType[]>([])
 
-  // Mock apple varieties
-  const appleVarieties = [
-    {
-      id: "1",
-      name: "Honeycrisp",
-      description: "Sweet and crisp apple variety",
-      typicalBrix: 15.2,
-      notes: "Excellent for single-variety ciders"
+  const addNotification = (type: 'success' | 'error', title: string, message: string) => {
+    const id = Date.now()
+    setNotifications(prev => [...prev, { id, type, title, message }])
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    }, 5000)
+  }
+
+  const removeNotification = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
+
+  // tRPC hooks
+  const { data: varietiesData, refetch: refetchVarieties } = trpc.appleVariety.listAll.useQuery(
+    { includeInactive: showInactive }
+  )
+  const appleVarieties = varietiesData?.appleVarieties || []
+
+  const createVariety = trpc.appleVariety.create.useMutation({
+    onSuccess: (result) => {
+      refetchVarieties()
+      setIsAddDialogOpen(false)
+      addNotification('success', 'Variety Created', 'Variety created successfully')
+      reset()
     },
-    {
-      id: "2", 
-      name: "Granny Smith",
-      description: "Tart green apple",
-      typicalBrix: 12.8,
-      notes: "Adds acidity to blends"
-    },
-    {
-      id: "3",
-      name: "Gala",
-      description: "Sweet red apple",
-      typicalBrix: 13.2,
-      notes: "Good for mild ciders"
-    },
-    {
-      id: "4",
-      name: "Fuji",
-      description: "Very sweet, crisp apple",
-      typicalBrix: 15.8,
-      notes: "High sugar content"
+    onError: (error) => {
+      addNotification('error', 'Creation Failed', error.message)
     }
-  ]
+  })
 
+  const renameVariety = trpc.appleVariety.update.useMutation({
+    onSuccess: (result) => {
+      refetchVarieties()
+      setIsRenameDialogOpen(false)
+      setEditingVariety(null)
+      addNotification('success', 'Variety Renamed', result.message || 'Variety renamed successfully')
+      renameReset()
+    },
+    onError: (error) => {
+      addNotification('error', 'Rename Failed', error.message)
+    }
+  })
+
+  const setActiveVariety = trpc.appleVariety.update.useMutation({
+    onSuccess: (result) => {
+      refetchVarieties()
+      addNotification('success', 'Status Updated', result.message || 'Status updated successfully')
+    },
+    onError: (error) => {
+      addNotification('error', 'Update Failed', error.message)
+    }
+  })
+
+  // Form hooks
   const {
     register,
     handleSubmit,
@@ -330,162 +370,361 @@ function ReferenceValues() {
     resolver: zodResolver(appleVarietySchema)
   })
 
+  const {
+    register: renameRegister,
+    handleSubmit: renameHandleSubmit,
+    formState: { errors: renameErrors },
+    reset: renameReset,
+    setValue: renameSetValue
+  } = useForm<AppleVarietyForm>({
+    resolver: zodResolver(renameVarietySchema)
+  })
+
   const onSubmit = (data: AppleVarietyForm) => {
-    console.log("Apple variety data:", data)
-    // TODO: Implement apple variety creation
-    setIsAddDialogOpen(false)
-    reset()
+    createVariety.mutate({
+      name: data.name,
+      ciderCategory: undefined,
+      tannin: undefined,
+      acid: undefined,
+      sugarBrix: undefined,
+      harvestWindow: undefined,
+      varietyNotes: undefined
+    })
   }
 
+  const onRenameSubmit = (data: AppleVarietyForm) => {
+    if (editingVariety) {
+      renameVariety.mutate({
+        id: editingVariety.id,
+        patch: {
+          name: data.name,
+          ciderCategory: undefined,
+          tannin: undefined,
+          acid: undefined,
+          sugarBrix: undefined,
+          harvestWindow: undefined,
+          varietyNotes: undefined
+        }
+      })
+    }
+  }
+
+  const handleRename = (variety: any) => {
+    setEditingVariety(variety)
+    renameSetValue('name', variety.name)
+    setIsRenameDialogOpen(true)
+  }
+
+  const handleArchive = (variety: any) => {
+    setActiveVariety.mutate({
+      id: variety.id,
+      patch: {
+        isActive: false,
+        ciderCategory: undefined,
+        tannin: undefined,
+        acid: undefined,
+        sugarBrix: undefined,
+        harvestWindow: undefined,
+        varietyNotes: undefined
+      }
+    })
+  }
+
+  const handleRestore = (variety: any) => {
+    setActiveVariety.mutate({
+      id: variety.id,
+      patch: {
+        isActive: true,
+        ciderCategory: undefined,
+        tannin: undefined,
+        acid: undefined,
+        sugarBrix: undefined,
+        harvestWindow: undefined,
+        varietyNotes: undefined
+      }
+    })
+  }
+
+  const isActive = (variety: any) => !variety.deletedAt
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-green-600" />
-              Reference Values
-            </CardTitle>
-            <CardDescription>Manage system reference data and lookup values</CardDescription>
+    <>
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map((notification) => (
+          <div
+            key={notification.id}
+            className={`
+              min-w-80 max-w-md p-4 rounded-lg shadow-lg border
+              ${notification.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+              }
+            `}
+          >
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 mt-0.5">
+                {notification.type === 'success' ? (
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-600" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">{notification.title}</p>
+                <p className="text-sm mt-1 opacity-90">{notification.message}</p>
+              </div>
+              <button
+                onClick={() => removeNotification(notification.id)}
+                className="flex-shrink-0 ml-4 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Add {activeSection === "varieties" ? "Variety" : activeSection === "vessels" ? "Vessel" : "Location"}
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Apple className="w-5 h-5 text-green-600" />
+                Apple Varieties
+              </CardTitle>
+              <CardDescription>Manage the master list of apple varieties used throughout the system</CardDescription>
+            </div>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowInactive(!showInactive)}
+              >
+                {showInactive ? "Hide Archived" : "Show Archived"}
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Apple Variety</DialogTitle>
-                <DialogDescription>
-                  Add a new apple variety for purchase and pressing operations.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div>
-                  <Label htmlFor="name">Variety Name</Label>
-                  <Input 
-                    id="name" 
-                    {...register("name")} 
-                    placeholder="e.g., Northern Spy"
-                  />
-                  {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Input 
-                    id="description" 
-                    {...register("description")} 
-                    placeholder="Brief description of the variety"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="typicalBrix">Typical Brix (°)</Label>
-                  <Input 
-                    id="typicalBrix" 
-                    type="number"
-                    step="0.1"
-                    {...register("typicalBrix", { valueAsNumber: true })} 
-                    placeholder="e.g., 14.5"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="notes">Notes</Label>
-                  <Input 
-                    id="notes" 
-                    {...register("notes")} 
-                    placeholder="Additional notes..."
-                  />
-                </div>
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchVarieties()}
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+              <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
                     Add Variety
                   </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {/* Section Tabs */}
-        <div className="flex space-x-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
-          {[
-            { key: "varieties", label: "Apple Varieties" },
-            { key: "vessels", label: "Vessels" },
-            { key: "locations", label: "Locations" },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveSection(tab.key as any)}
-              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                activeSection === tab.key
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Apple Varieties */}
-        {activeSection === "varieties" && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Typical Brix</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {appleVarieties.map((variety) => (
-                <TableRow key={variety.id}>
-                  <TableCell className="font-medium">{variety.name}</TableCell>
-                  <TableCell>{variety.description}</TableCell>
-                  <TableCell>
-                    <span className="font-mono">{variety.typicalBrix}°</span>
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">{variety.notes}</TableCell>
-                  <TableCell>
-                    <div className="flex space-x-1">
-                      <Button size="sm" variant="outline">
-                        <Edit className="w-3 h-3" />
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Add New Apple Variety</DialogTitle>
+                    <DialogDescription>
+                      Create a new apple variety for use throughout the system.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    <div>
+                      <Label htmlFor="name">Variety Name</Label>
+                      <Input
+                        id="name"
+                        {...register("name")}
+                        placeholder="e.g., Honeycrisp, Granny Smith"
+                      />
+                      {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
+                    </div>
+                    <div className="flex justify-end space-x-2 pt-4">
+                      <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                        Cancel
                       </Button>
-                      <Button size="sm" variant="outline">
-                        <Trash2 className="w-3 h-3" />
+                      <Button type="submit" disabled={createVariety.isPending}>
+                        {createVariety.isPending ? "Creating..." : "Create Variety"}
                       </Button>
                     </div>
-                  </TableCell>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Desktop Table */}
+          <div className="hidden md:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-
-        {/* Placeholder for other sections */}
-        {activeSection === "vessels" && (
-          <div className="text-center py-8 text-gray-500">
-            <Database className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p>Vessel management coming soon</p>
+              </TableHeader>
+              <TableBody>
+                {appleVarieties.map((variety) => (
+                  <TableRow key={variety.id}>
+                    <TableCell className="font-medium">{variety.name}</TableCell>
+                    <TableCell>
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        isActive(variety)
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}>
+                        {isActive(variety) ? "Active" : "Archived"}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {variety.createdAt ? new Date(variety.createdAt).toLocaleDateString() : "—"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRename(variety)}
+                          title="Rename variety"
+                        >
+                          <Edit className="w-3 h-3" />
+                        </Button>
+                        {isActive(variety) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleArchive(variety)}
+                            title="Archive variety"
+                            className="text-orange-600 hover:text-orange-700"
+                          >
+                            <Archive className="w-3 h-3" />
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRestore(variety)}
+                            title="Restore variety"
+                            className="text-green-600 hover:text-green-700"
+                          >
+                            <ArchiveRestore className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
-        )}
 
-        {activeSection === "locations" && (
-          <div className="text-center py-8 text-gray-500">
-            <Database className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p>Location management coming soon</p>
+          {/* Mobile Cards */}
+          <div className="md:hidden space-y-4">
+            {appleVarieties.map((variety) => (
+              <Card key={variety.id} className="border border-gray-200">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h3 className="font-medium text-gray-900">{variety.name}</h3>
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-1 ${
+                        isActive(variety)
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-800"
+                      }`}>
+                        {isActive(variety) ? "Active" : "Archived"}
+                      </span>
+                    </div>
+                    <div className="flex space-x-2 ml-4">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRename(variety)}
+                        title="Rename variety"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      {isActive(variety) ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleArchive(variety)}
+                          title="Archive variety"
+                          className="text-orange-600 hover:text-orange-700"
+                        >
+                          <Archive className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRestore(variety)}
+                          title="Restore variety"
+                          className="text-green-600 hover:text-green-700"
+                        >
+                          <ArchiveRestore className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    <p>Created: {variety.createdAt ? new Date(variety.createdAt).toLocaleDateString() : "—"}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {appleVarieties.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              <Apple className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-medium mb-2">No varieties found</h3>
+              <p className="text-sm mb-4">
+                {showInactive
+                  ? "No apple varieties found. Add your first variety to get started."
+                  : "No active varieties found. Try showing archived varieties or add a new one."
+                }
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Rename Dialog */}
+      <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Apple Variety</DialogTitle>
+            <DialogDescription>
+              Change the name of this apple variety. This will update all references throughout the system.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={renameHandleSubmit(onRenameSubmit)} className="space-y-4">
+            <div>
+              <Label htmlFor="rename-name">Variety Name</Label>
+              <Input
+                id="rename-name"
+                {...renameRegister("name")}
+                placeholder="Enter new name"
+              />
+              {renameErrors.name && <p className="text-sm text-red-600 mt-1">{renameErrors.name.message}</p>}
+            </div>
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsRenameDialogOpen(false)
+                  setEditingVariety(null)
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={renameVariety.isPending}>
+                {renameVariety.isPending ? "Renaming..." : "Rename Variety"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

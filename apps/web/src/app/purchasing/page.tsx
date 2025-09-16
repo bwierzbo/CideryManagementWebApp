@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from "react"
+import Link from "next/link"
+import { useSession } from "next-auth/react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker"
@@ -25,7 +28,10 @@ import {
   CheckCircle,
   XCircle,
   X,
-  RefreshCw
+  RefreshCw,
+  Apple,
+  Tag,
+  ExternalLink
 } from "lucide-react"
 import { bushelsToKg } from "lib"
 import { trpc } from "@/utils/trpc"
@@ -60,13 +66,27 @@ const purchaseSchema = z.object({
 type VendorForm = z.infer<typeof vendorSchema>
 type PurchaseForm = z.infer<typeof purchaseSchema>
 
-function VendorManagement() {
+function VendorManagement({ preSelectedVendorId }: { preSelectedVendorId?: string | null }) {
+  const { data: session } = useSession()
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingVendor, setEditingVendor] = useState<any>(null)
+  const [selectedVendor, setSelectedVendor] = useState<any>(null)
+  const [isAddVarietyModalOpen, setIsAddVarietyModalOpen] = useState(false)
+  const [varietySearchQuery, setVarietySearchQuery] = useState('')
 
   const { data: vendorData, refetch: refetchVendors } = trpc.vendor.list.useQuery()
   const vendors = vendorData?.vendors || []
+
+  // Handle pre-selected vendor
+  React.useEffect(() => {
+    if (preSelectedVendorId && vendors.length > 0) {
+      const vendor = vendors.find(v => v.id === preSelectedVendorId)
+      if (vendor) {
+        setSelectedVendor(vendor)
+      }
+    }
+  }, [preSelectedVendorId, vendors])
   const createVendor = trpc.vendor.create.useMutation({
     onSuccess: () => {
       refetchVendors()
@@ -129,25 +149,44 @@ function VendorManagement() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-blue-600" />
-              Vendors
-            </CardTitle>
-            <CardDescription>Manage your apple suppliers and vendors</CardDescription>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-blue-600" />
+                Vendors
+              </CardTitle>
+              <CardDescription>Manage your apple suppliers and vendors</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
+                if (!open) handleCloseDialog()
+              }}>
+                <DialogTrigger asChild>
+                  <Button onClick={handleAddNew}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Vendor
+                  </Button>
+                </DialogTrigger>
+              </Dialog>
+
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/apples" className="flex items-center gap-1">
+                  <Apple className="w-4 h-4" />
+                  <span className="hidden sm:inline">Manage master varieties</span>
+                  <span className="sm:hidden">Varieties</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+              </Button>
+            </div>
           </div>
+        </CardHeader>
+        <CardContent>
           <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
             if (!open) handleCloseDialog()
           }}>
-            <DialogTrigger asChild>
-              <Button onClick={handleAddNew}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Vendor
-              </Button>
-            </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>{editingVendor ? 'Edit Vendor' : 'Add New Vendor'}</DialogTitle>
@@ -207,9 +246,8 @@ function VendorManagement() {
               </form>
             </DialogContent>
           </Dialog>
-        </div>
-      </CardHeader>
-      <CardContent>
+        </CardContent>
+        <CardContent>
         {/* Desktop Table */}
         <div className="hidden md:block">
           <Table>
@@ -224,7 +262,13 @@ function VendorManagement() {
             </TableHeader>
             <TableBody>
               {vendors.map((vendor: any) => (
-                <TableRow key={vendor.id}>
+                <TableRow
+                  key={vendor.id}
+                  className={`cursor-pointer hover:bg-gray-50 ${
+                    selectedVendor?.id === vendor.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                  }`}
+                  onClick={() => setSelectedVendor(vendor)}
+                >
                   <TableCell className="font-medium">{vendor.name}</TableCell>
                   <TableCell>{vendor.contactInfo?.email || "—"}</TableCell>
                   <TableCell>{vendor.contactInfo?.phone || "—"}</TableCell>
@@ -242,7 +286,10 @@ function VendorManagement() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => handleEdit(vendor)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleEdit(vendor)
+                        }}
                         title="Edit vendor"
                       >
                         <Edit className="w-3 h-3" />
@@ -250,7 +297,10 @@ function VendorManagement() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => deleteVendor.mutate({ id: vendor.id })}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteVendor.mutate({ id: vendor.id })
+                        }}
                         title="Delete vendor"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -266,7 +316,13 @@ function VendorManagement() {
         {/* Mobile Cards */}
         <div className="md:hidden space-y-4">
           {vendors.map((vendor: any) => (
-            <Card key={vendor.id} className="border border-gray-200">
+            <Card
+              key={vendor.id}
+              className={`border border-gray-200 cursor-pointer ${
+                selectedVendor?.id === vendor.id ? 'border-blue-500 bg-blue-50' : ''
+              }`}
+              onClick={() => setSelectedVendor(vendor)}
+            >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
@@ -283,7 +339,10 @@ function VendorManagement() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleEdit(vendor)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleEdit(vendor)
+                      }}
                       title="Edit vendor"
                     >
                       <Edit className="w-4 h-4" />
@@ -291,7 +350,10 @@ function VendorManagement() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteVendor.mutate({ id: vendor.id })}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        deleteVendor.mutate({ id: vendor.id })
+                      }}
                       title="Delete vendor"
                       className="text-red-600 hover:text-red-700"
                     >
@@ -315,6 +377,330 @@ function VendorManagement() {
         </div>
       </CardContent>
     </Card>
+
+    {/* Apple Varieties Panel */}
+    {selectedVendor && <VendorVarietiesPanel vendor={selectedVendor} />}
+  </div>
+  )
+}
+
+function VendorVarietiesPanel({ vendor }: { vendor: any }) {
+  const [isAddVarietyModalOpen, setIsAddVarietyModalOpen] = useState(false)
+
+  // TODO: Replace with actual role check from session/auth
+  const isAdmin = true // For now, assume all users are admin for testing
+
+  // tRPC hooks for vendor varieties
+  // const { data: varietiesData, refetch: refetchVarieties } = // trpc.vendorVariety.listForVendor.useQuery(
+  //   { vendorId: vendor.id },
+  //   { enabled: !!vendor.id }
+  // )
+
+  // const detachVariety = trpc.vendorVariety.detach.useMutation({
+  //   onSuccess: () => {
+  //     refetchVarieties()
+  //   }
+  // })
+
+  const varieties = varietiesData?.varieties || []
+
+  const handleDetachVariety = (varietyId: string) => {
+    detachVariety.mutate({
+      vendorId: vendor.id,
+      varietyId
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Apple className="w-5 h-5 text-green-600" />
+              Apple Varieties for {vendor.name}
+            </CardTitle>
+            <CardDescription>
+              Manage which apple varieties this vendor can supply
+            </CardDescription>
+          </div>
+          {isAdmin && (
+            <Dialog open={isAddVarietyModalOpen} onOpenChange={setIsAddVarietyModalOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Apple Variety
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+                <AddVarietyModal
+                  vendor={vendor}
+                  isOpen={isAddVarietyModalOpen}
+                  onClose={() => setIsAddVarietyModalOpen(false)}
+                  onSuccess={() => {
+                    // refetchVarieties()
+                    setIsAddVarietyModalOpen(false)
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {varieties.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <Apple className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <h3 className="text-lg font-medium mb-2">No varieties linked</h3>
+            <p className="text-sm mb-4">Add the first apple variety this vendor can supply.</p>
+            {isAdmin && (
+              <Button onClick={() => setIsAddVarietyModalOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Apple Variety
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Desktop view */}
+            <div className="hidden md:block">
+              <div className="flex flex-wrap gap-2">
+                {varieties.map((variety) => (
+                  <div
+                    key={variety.id}
+                    className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-sm"
+                  >
+                    <Tag className="w-3 h-3" />
+                    <span className="font-medium">{variety.name}</span>
+                    {isAdmin && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-4 w-4 p-0 hover:bg-red-100 text-green-600 hover:text-red-600"
+                        onClick={() => handleDetachVariety(variety.id)}
+                        title="Remove variety"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Mobile view */}
+            <div className="md:hidden space-y-2">
+              {varieties.map((variety) => (
+                <div
+                  key={variety.id}
+                  className="flex items-center justify-between bg-green-50 border border-green-200 px-4 py-3 rounded-lg"
+                >
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-green-600" />
+                    <span className="font-medium text-green-800">{variety.name}</span>
+                  </div>
+                  {isAdmin && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-600 hover:text-red-700 hover:bg-red-100"
+                      onClick={() => handleDetachVariety(variety.id)}
+                      title="Remove variety"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {varieties.length > 0 && (
+              <div className="text-sm text-gray-500 mt-4">
+                {varieties.length} {varieties.length === 1 ? 'variety' : 'varieties'} linked
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function AddVarietyModal({ vendor, isOpen, onClose, onSuccess }: {
+  vendor: any
+  isOpen: boolean
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedVariety, setSelectedVariety] = useState<any>(null)
+  const [isCreatingNew, setIsCreatingNew] = useState(false)
+  const [notes, setNotes] = useState('')
+
+  // Search varieties with debounced query
+  const { data: searchResults } = // trpc.vendorVariety.search.useQuery(
+    { q: searchQuery, limit: 10 },
+    { enabled: searchQuery.length >= 2 }
+  )
+
+  const attachVariety = // trpc.vendorVariety.attach.useMutation({
+    onSuccess: () => {
+      onSuccess()
+      setSearchQuery('')
+      setSelectedVariety(null)
+      setIsCreatingNew(false)
+      setNotes('')
+    }
+  })
+
+  const varieties = searchResults?.varieties || []
+
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    setSelectedVariety(null)
+    setIsCreatingNew(false)
+  }
+
+  const canCreateNew = searchQuery.trim().length >= 2 &&
+    varieties.length === 0 &&
+    !varieties.some(v => v.name.toLowerCase() === searchQuery.toLowerCase())
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Apple className="w-5 h-5 text-green-600" />
+          Add Apple Variety
+        </DialogTitle>
+        <DialogDescription>
+          Search for an existing variety or create a new one for {vendor.name}.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4 mt-4">
+        {/* Search Input */}
+        <div>
+          <Label htmlFor="variety-search">Apple Variety</Label>
+          <Input
+            id="variety-search"
+            placeholder="Search for apple varieties..."
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="h-12"
+          />
+        </div>
+
+        {/* Search Results */}
+        {searchQuery.length >= 2 && (
+          <div className="space-y-2">
+            {varieties.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-sm text-gray-600">Existing varieties:</Label>
+                {varieties.map((variety) => (
+                  <div
+                    key={variety.id}
+                    className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      selectedVariety?.id === variety.id
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => {
+                      setSelectedVariety(variety)
+                      setIsCreatingNew(false)
+                    }}
+                  >
+                    <Tag className="w-4 h-4 text-green-600" />
+                    <span className="font-medium">{variety.name}</span>
+                    {variety.description && (
+                      <span className="text-sm text-gray-500">— {variety.description}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Create New Option */}
+            {canCreateNew && (
+              <div className="space-y-1">
+                <Label className="text-sm text-gray-600">Or create new:</Label>
+                <div
+                  className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    isCreatingNew
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => {
+                    setIsCreatingNew(true)
+                    setSelectedVariety(null)
+                  }}
+                >
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <span className="font-medium">Create &quot;{searchQuery}&quot; and link</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {searchQuery.length > 0 && searchQuery.length < 2 && (
+          <p className="text-sm text-gray-500">Type at least 2 characters to search</p>
+        )}
+      </div>
+
+      {/* Notes Field - Only show when creating new variety */}
+      {isCreatingNew && (
+        <div>
+          <Label htmlFor="notes">Notes (Optional)</Label>
+          <Textarea
+            id="notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Add notes about this variety for this vendor (e.g., 'Premium grade, excellent for single varietal ciders')"
+            rows={3}
+          />
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="flex justify-end space-x-2 pt-4">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+
+        {/* Link Existing Variety Button */}
+        {selectedVariety && (
+          <Button
+            onClick={() => {
+              attachVariety.mutate({
+                vendorId: vendor.id,
+                varietyNameOrId: selectedVariety.id,
+                // No notes for existing varieties
+              })
+            }}
+            disabled={attachVariety.isPending}
+          >
+            {attachVariety.isPending ? "Linking..." : `Link ${selectedVariety.name}`}
+          </Button>
+        )}
+
+        {/* Create New Variety Button */}
+        {isCreatingNew && (
+          <Button
+            onClick={() => {
+              attachVariety.mutate({
+                vendorId: vendor.id,
+                varietyNameOrId: searchQuery.trim(),
+                notes: notes.trim() || undefined
+              })
+            }}
+            disabled={attachVariety.isPending}
+          >
+            {attachVariety.isPending ? "Creating..." : `Create & Link "${searchQuery}"`}
+          </Button>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -325,18 +711,25 @@ type NotificationType = {
   message: string
 }
 
-function PurchaseFormComponent() {
+function PurchaseFormComponent({ setPreSelectedVendorId, setActiveTab }: {
+  setPreSelectedVendorId: (id: string) => void
+  setActiveTab: (tab: "purchase" | "vendors" | "history" | "vendor-varieties") => void
+}) {
+  const { data: session } = useSession()
   const [globalHarvestDate, setGlobalHarvestDate] = useState<Date | null>(null)
   const [purchaseDate, setPurchaseDate] = useState<string>("")
   const [notifications, setNotifications] = useState<NotificationType[]>([])
+  const [selectedVendorId, setSelectedVendorId] = useState<string>("")
   const [lines, setLines] = useState<Array<{
     appleVarietyId: string
     quantity: number | undefined
     unit: "kg" | "lb" | "bushel"
     pricePerUnit: number | undefined
     harvestDate: Date | null | undefined
+    isValid?: boolean
+    validationError?: string
   }>>([
-    { appleVarietyId: "", quantity: undefined, unit: "lb", pricePerUnit: undefined, harvestDate: undefined }
+    { appleVarietyId: "", quantity: undefined, unit: "lb", pricePerUnit: undefined, harvestDate: undefined, isValid: true }
   ])
 
   const addNotification = (type: 'success' | 'error', title: string, message: string) => {
@@ -353,8 +746,13 @@ function PurchaseFormComponent() {
 
   const { data: vendorData } = trpc.vendor.list.useQuery()
   const vendors = vendorData?.vendors || []
-  const { data: appleVarietyData } = trpc.appleVariety.list.useQuery()
-  const appleVarieties = appleVarietyData?.appleVarieties || []
+
+  // Get vendor varieties when vendor is selected
+  const { data: vendorVarietiesData } = // trpc.vendorVariety.listForVendor.useQuery(
+    { vendorId: selectedVendorId },
+    { enabled: !!selectedVendorId }
+  )
+  const vendorVarieties = vendorVarietiesData?.varieties || []
 
   const {
     register,
@@ -379,10 +777,46 @@ function PurchaseFormComponent() {
   const addLine = () => {
     // Use global harvest date for new lines if available
     const harvestDateForNewLine = globalHarvestDate
-    const newLines = [...lines, { appleVarietyId: "", quantity: undefined, unit: "lb" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: harvestDateForNewLine }]
+    const newLines = [...lines, { appleVarietyId: "", quantity: undefined, unit: "lb" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: harvestDateForNewLine, isValid: true }]
     setLines(newLines)
     setValue("lines", newLines)
   }
+
+  const handleVendorChange = (newVendorId: string) => {
+    setSelectedVendorId(newVendorId)
+    setValue("vendorId", newVendorId)
+
+    // Validate existing lines against new vendor
+    if (newVendorId && lines.some(line => line.appleVarietyId)) {
+      // We'll validate when vendor varieties are loaded
+      // This will be handled by useEffect
+    }
+  }
+
+  const validateLines = () => {
+    if (!selectedVendorId || vendorVarieties.length === 0) return
+
+    const validVarietyIds = new Set(vendorVarieties.map(v => v.id))
+    const newLines = lines.map(line => {
+      if (!line.appleVarietyId) {
+        return { ...line, isValid: true, validationError: undefined }
+      }
+
+      const isValid = validVarietyIds.has(line.appleVarietyId)
+      return {
+        ...line,
+        isValid,
+        validationError: isValid ? undefined : "This variety is not available for the selected vendor"
+      }
+    })
+
+    setLines(newLines)
+  }
+
+  // Validate lines when vendor varieties change
+  React.useEffect(() => {
+    validateLines()
+  }, [vendorVarieties, selectedVendorId])
 
   const removeLine = (index: number) => {
     const newLines = lines.filter((_, i) => i !== index)
@@ -391,9 +825,8 @@ function PurchaseFormComponent() {
   }
 
   const calculateLineTotal = (quantity: number | undefined, price: number | undefined) => {
-    const qty = quantity || 0
-    const prc = price || 0
-    return (qty * prc).toFixed(2)
+    if (!quantity || !price) return "—"
+    return (quantity * price).toFixed(2)
   }
 
   const createPurchase = trpc.purchase.create.useMutation({
@@ -411,14 +844,21 @@ function PurchaseFormComponent() {
   })
 
   const calculateGrandTotal = () => {
-    return lines.reduce((total, line) => {
-      const quantity = line.quantity || 0
-      const price = line.pricePerUnit || 0
-      return total + (quantity * price)
-    }, 0).toFixed(2)
+    const total = lines.reduce((total, line) => {
+      if (!line.quantity || !line.pricePerUnit) return total
+      return total + (line.quantity * line.pricePerUnit)
+    }, 0)
+    return total > 0 ? total.toFixed(2) : "—"
   }
 
   const onSubmit = (data: PurchaseForm) => {
+    // Check for validation errors before submitting
+    const hasInvalidLines = lines.some(line => line.isValid === false)
+    if (hasInvalidLines) {
+      addNotification('error', 'Invalid Varieties', 'Please fix variety selections that are not available for the selected vendor')
+      return
+    }
+
     try {
       // Convert form data to API format
       const items = data.lines
@@ -502,7 +942,7 @@ function PurchaseFormComponent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="sm:col-span-2 lg:col-span-1">
               <Label htmlFor="vendorId">Vendor</Label>
-              <Select onValueChange={(value) => setValue("vendorId", value)}>
+              <Select onValueChange={handleVendorChange}>
                 <SelectTrigger className="h-12">
                   <SelectValue placeholder="Select vendor" />
                 </SelectTrigger>
@@ -573,13 +1013,37 @@ function PurchaseFormComponent() {
                           <SelectValue placeholder="Select variety" />
                         </SelectTrigger>
                         <SelectContent>
-                          {appleVarieties.map((variety: any) => (
+                          {vendorVarieties.map((variety: any) => (
                             <SelectItem key={variety.id} value={variety.id}>
                               {variety.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {line.validationError && (
+                        <p className="text-sm text-red-600 mt-1">{line.validationError}</p>
+                      )}
+                      {selectedVendorId && vendorVarieties.length === 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Need a new variety? {(session?.user as any)?.role === 'admin' ? (
+                            <>Visit the <Link href="/apples" className="text-blue-600 hover:underline">Apples page</Link> to add it.</>
+                          ) : (
+                            'Ask an Admin to add it on the Apples page.'
+                          )}
+                        </p>
+                      )}
+                      {selectedVendorId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPreSelectedVendorId(selectedVendorId)
+                            setActiveTab("vendor-varieties")
+                          }}
+                          className="text-sm text-blue-600 hover:text-blue-800 underline mt-1"
+                        >
+                          Manage vendor varieties
+                        </button>
+                      )}
                     </div>
                     <div>
                       <HarvestDatePicker
@@ -699,13 +1163,37 @@ function PurchaseFormComponent() {
                           <SelectValue placeholder="Select variety" />
                         </SelectTrigger>
                         <SelectContent>
-                          {appleVarieties.map((variety: any) => (
+                          {vendorVarieties.map((variety: any) => (
                             <SelectItem key={variety.id} value={variety.id}>
                               {variety.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {line.validationError && (
+                        <p className="text-sm text-red-600 mt-1">{line.validationError}</p>
+                      )}
+                      {selectedVendorId && vendorVarieties.length === 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Need a new variety? {(session?.user as any)?.role === 'admin' ? (
+                            <>Visit the <Link href="/apples" className="text-blue-600 hover:underline">Apples page</Link> to add it.</>
+                          ) : (
+                            'Ask an Admin to add it on the Apples page.'
+                          )}
+                        </p>
+                      )}
+                      {selectedVendorId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPreSelectedVendorId(selectedVendorId)
+                            setActiveTab("vendor-varieties")
+                          }}
+                          className="text-sm text-blue-600 hover:text-blue-800 underline mt-1"
+                        >
+                          Manage vendor varieties
+                        </button>
+                      )}
                     </div>
 
                     {/* Harvest Date */}
@@ -787,7 +1275,10 @@ function PurchaseFormComponent() {
                         <Label>Total</Label>
                         <div className="h-12 flex items-center">
                           <div className="text-xl font-semibold text-green-600">
-                            ${calculateLineTotal(line.quantity, line.pricePerUnit)}
+                            {(line.quantity != null && line.quantity > 0) && line.pricePerUnit
+                              ? `$${(line.quantity * line.pricePerUnit).toFixed(2)}`
+                              : <span className="text-gray-400">$—</span>
+                            }
                           </div>
                         </div>
                       </div>
@@ -1326,8 +1817,67 @@ function RecentPurchases() {
   )
 }
 
+function VendorVarietiesManagement() {
+  const [selectedVendorId, setSelectedVendorId] = useState<string>("")
+
+  // Get all vendors for selection
+  const { data: vendorsData, isLoading: vendorsLoading } = trpc.vendor.list.useQuery()
+  const vendors = vendorsData?.vendors || []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Apple className="w-5 h-5 text-green-600" />
+          Vendor Variety Management
+        </CardTitle>
+        <CardDescription>
+          Manage which apple varieties each vendor can supply. Add new varieties and link them to vendors.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Vendor Selection */}
+        <div>
+          <Label htmlFor="vendor-select">Select Vendor</Label>
+          <Select value={selectedVendorId} onValueChange={setSelectedVendorId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Choose a vendor to manage their varieties..." />
+            </SelectTrigger>
+            <SelectContent>
+              {vendors?.map((vendor) => (
+                <SelectItem key={vendor.id} value={vendor.id}>
+                  {vendor.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Vendor Varieties Panel - reuse existing component */}
+        {selectedVendorId && (
+          <div className="border-t pt-6">
+            <VendorVarietiesPanel
+              vendor={vendors.find(v => v.id === selectedVendorId) || { id: selectedVendorId, name: "Unknown Vendor" }}
+            />
+          </div>
+        )}
+
+        {/* Instructions when no vendor selected */}
+        {!selectedVendorId && (
+          <div className="text-center py-8 text-gray-500">
+            <Apple className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+            <p className="text-lg font-medium">Select a vendor to manage their apple varieties</p>
+            <p className="text-sm">You can add new varieties, link existing ones, or remove varieties from the selected vendor.</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function PurchasingPage() {
-  const [activeTab, setActiveTab] = useState<"purchase" | "vendors" | "history">("purchase")
+  const [activeTab, setActiveTab] = useState<"purchase" | "vendors" | "history" | "vendor-varieties">("purchase")
+  const [preSelectedVendorId, setPreSelectedVendorId] = useState<string | null>(null)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1346,6 +1896,7 @@ export default function PurchasingPage() {
           {[
             { key: "purchase", label: "New Purchase", icon: ShoppingCart },
             { key: "vendors", label: "Vendors", icon: Building2 },
+            { key: "vendor-varieties", label: "Vendor Varieties", icon: Apple },
             { key: "history", label: "Purchase History", icon: Receipt },
           ].map((tab) => {
             const Icon = tab.icon
@@ -1368,8 +1919,9 @@ export default function PurchasingPage() {
 
         {/* Tab Content */}
         <div className="space-y-8">
-          {activeTab === "vendors" && <VendorManagement />}
-          {activeTab === "purchase" && <PurchaseFormComponent />}
+          {activeTab === "vendors" && <VendorManagement preSelectedVendorId={preSelectedVendorId} />}
+          {activeTab === "purchase" && <PurchaseFormComponent setPreSelectedVendorId={setPreSelectedVendorId} setActiveTab={setActiveTab} />}
+          {activeTab === "vendor-varieties" && <VendorVarietiesManagement />}
           {activeTab === "history" && <RecentPurchases />}
         </div>
       </main>

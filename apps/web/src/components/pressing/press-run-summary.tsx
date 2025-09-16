@@ -44,6 +44,7 @@ interface PressRunSummaryProps {
       appleCondition?: string
       brixMeasured?: string
       notes?: string
+      vendorId?: string
     }>
   }
   showActions?: boolean
@@ -52,6 +53,14 @@ interface PressRunSummaryProps {
 export function PressRunSummary({ pressRun, showActions = false }: PressRunSummaryProps) {
   const totalWeightKg = pressRun.totalAppleWeightKg
   const totalWeightLbs = totalWeightKg * 2.20462
+
+  // Calculate unique vendor count from loads
+  const uniqueVendorIds = new Set(
+    pressRun.loads
+      .map(load => load.vendorId)
+      .filter(vendorId => vendorId && vendorId.trim() !== '')
+  )
+  const vendorCount = uniqueVendorIds.size || 1 // Default to 1 if no vendor IDs found
 
   // Group loads by variety for summary
   const varietySummary = pressRun.loads.reduce((acc, load) => {
@@ -150,6 +159,10 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
               <div className="text-2xl font-bold text-purple-800">{Object.keys(varietySummary).length}</div>
               <div className="text-sm text-purple-600">Varieties</div>
             </div>
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-800">{vendorCount}</div>
+              <div className="text-sm text-green-600">Vendor{vendorCount !== 1 ? 's' : ''}</div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -237,9 +250,6 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
                   <TableHead className="w-12">Load</TableHead>
                   <TableHead>Variety</TableHead>
                   <TableHead>Weight</TableHead>
-                  <TableHead>Condition</TableHead>
-                  <TableHead>Brix</TableHead>
-                  <TableHead className="w-32">Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -256,34 +266,6 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
                       <TableCell>
                         {formatWeight(load.appleWeightKg, load.originalWeight, load.originalWeightUnit)}
                       </TableCell>
-                      <TableCell>
-                        {load.appleCondition ? (
-                          <Badge
-                            variant="secondary"
-                            className={`text-xs ${formatCondition(load.appleCondition)}`}
-                          >
-                            {load.appleCondition}
-                          </Badge>
-                        ) : (
-                          <span className="text-gray-400 text-sm">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {load.brixMeasured ? (
-                          <span className="font-mono text-sm">{load.brixMeasured}°</span>
-                        ) : (
-                          <span className="text-gray-400 text-sm">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {load.notes ? (
-                          <div className="text-xs text-gray-600 max-w-32 truncate" title={load.notes}>
-                            {load.notes}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 text-sm">—</span>
-                        )}
-                      </TableCell>
                     </TableRow>
                   ))}
               </TableBody>
@@ -292,33 +274,6 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
         </CardContent>
       </Card>
 
-      {/* Press Run Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center text-base">
-            <Clock className="w-4 h-4 mr-2 text-orange-600" />
-            Press Run Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-gray-600">Run ID</p>
-              <p className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">{pressRun.id}</p>
-            </div>
-            <div>
-              <p className="text-gray-600">Status</p>
-              <Badge variant="secondary" className="mt-1">
-                {pressRun.status}
-              </Badge>
-            </div>
-            <div>
-              <p className="text-gray-600">Vendor</p>
-              <p className="font-medium">{pressRun.vendorName}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

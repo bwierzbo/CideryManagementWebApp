@@ -14,20 +14,27 @@ import {
   BookOpen,
   Settings,
   Menu,
-  X
+  X,
+  Apple
 } from "lucide-react"
 import { useState } from "react"
 
 const navItems = [
-  { 
-    name: "Dashboard", 
-    href: "/dashboard", 
+  {
+    name: "Dashboard",
+    href: "/dashboard",
     icon: BarChart3,
     description: "Overview & Analytics"
   },
-  { 
-    name: "Purchasing", 
-    href: "/purchasing", 
+  {
+    name: "Apples",
+    href: "/apples",
+    icon: Apple,
+    description: "Variety Database"
+  },
+  {
+    name: "Purchasing",
+    href: "/purchasing",
     icon: ShoppingCart,
     description: "Vendor & Orders"
   },

@@ -1,11 +1,13 @@
 import { pgTable, uuid, text, decimal, integer, timestamp, boolean, jsonb, pgEnum, date, index, uniqueIndex } from 'drizzle-orm/pg-core'
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 
 // PostgreSQL Enums
 export const unitEnum = pgEnum('unit', ['kg', 'lb', 'L', 'gal', 'bushel'])
 export const batchStatusEnum = pgEnum('batch_status', ['planned', 'active', 'completed', 'cancelled'])
 export const vesselStatusEnum = pgEnum('vessel_status', ['available', 'in_use', 'cleaning', 'maintenance'])
 export const vesselTypeEnum = pgEnum('vessel_type', ['fermenter', 'conditioning_tank', 'bright_tank', 'storage'])
+export const vesselMaterialEnum = pgEnum('vessel_material', ['stainless_steel', 'plastic'])
+export const vesselJacketedEnum = pgEnum('vessel_jacketed', ['yes', 'no'])
 export const transactionTypeEnum = pgEnum('transaction_type', ['purchase', 'transfer', 'adjustment', 'sale', 'waste'])
 export const cogsItemTypeEnum = pgEnum('cogs_item_type', ['apple_cost', 'labor', 'overhead', 'packaging'])
 export const userRoleEnum = pgEnum('user_role', ['admin', 'operator'])
@@ -15,6 +17,11 @@ export const pressRunStatusEnum = pgEnum('press_run_status', [
   'completed',    // Finished pressing, juice transferred to vessel
   'cancelled'     // Cancelled press run, resources released
 ])
+
+// Apple variety characteristic enums
+export const ciderCategoryEnum = pgEnum('cider_category_enum', ['sweet', 'bittersweet', 'sharp', 'bittersharp'])
+export const intensityEnum = pgEnum('intensity_enum', ['high', 'medium-high', 'medium', 'low-medium', 'low'])
+export const harvestWindowEnum = pgEnum('harvest_window_enum', ['Late', 'Mid-Late', 'Mid', 'Early-Mid', 'Early'])
 
 // Core Tables
 export const users = pgTable('users', {
@@ -42,13 +49,37 @@ export const vendors = pgTable('vendors', {
 export const appleVarieties = pgTable('apple_varieties', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  description: text('description'),
-  typicalBrix: decimal('typical_brix', { precision: 4, scale: 2 }),
+  // Apple variety characteristics
+  ciderCategory: ciderCategoryEnum('cider_category'),
+  tannin: intensityEnum('tannin'),
+  acid: intensityEnum('acid'),
+  sugarBrix: intensityEnum('sugar_brix'),
+  harvestWindow: harvestWindowEnum('harvest_window'),
+  varietyNotes: text('variety_notes'),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  // Unique constraint on name - case-insensitive will be handled manually
+  nameUniqueIdx: uniqueIndex('apple_varieties_name_unique_idx').on(table.name)
+}))
+
+export const vendorVarieties = pgTable('vendor_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id, { onDelete: 'cascade' }),
+  varietyId: uuid('variety_id').notNull().references(() => appleVarieties.id, { onDelete: 'cascade' }),
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at')
-})
+}, (table) => ({
+  // Unique constraint to prevent duplicate vendor-variety pairs
+  vendorVarietyUniqueIdx: uniqueIndex('vendor_varieties_vendor_variety_unique_idx').on(table.vendorId, table.varietyId),
+  // Performance indexes
+  vendorIdx: index('vendor_varieties_vendor_idx').on(table.vendorId),
+  varietyIdx: index('vendor_varieties_variety_idx').on(table.varietyId)
+}))
 
 export const purchases = pgTable('purchases', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -111,9 +142,12 @@ export const pressItems = pgTable('press_items', {
 
 export const vessels = pgTable('vessels', {
   id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  type: vesselTypeEnum('type').notNull(),
+  name: text('name'),
+  type: vesselTypeEnum('type'), // TEMPORARY: Keep for DB compatibility until migration
   capacityL: decimal('capacity_l', { precision: 10, scale: 3 }).notNull(),
+  capacityUnit: unitEnum('capacity_unit').notNull().default('L'),
+  material: vesselMaterialEnum('material'),
+  jacketed: vesselJacketedEnum('jacketed'),
   status: vesselStatusEnum('status').notNull().default('available'),
   location: text('location'),
   notes: text('notes'),
@@ -367,7 +401,25 @@ export const auditLog = pgTable('audit_log', {
 
 // Relations
 export const vendorsRelations = relations(vendors, ({ many }) => ({
-  purchases: many(purchases)
+  purchases: many(purchases),
+  vendorVarieties: many(vendorVarieties)
+}))
+
+export const appleVarietiesRelations = relations(appleVarieties, ({ many }) => ({
+  purchaseItems: many(purchaseItems),
+  vendorVarieties: many(vendorVarieties),
+  applePressRunLoads: many(applePressRunLoads)
+}))
+
+export const vendorVarietiesRelations = relations(vendorVarieties, ({ one }) => ({
+  vendor: one(vendors, {
+    fields: [vendorVarieties.vendorId],
+    references: [vendors.id]
+  }),
+  variety: one(appleVarieties, {
+    fields: [vendorVarieties.varietyId],
+    references: [appleVarieties.id]
+  })
 }))
 
 export const purchasesRelations = relations(purchases, ({ one, many }) => ({

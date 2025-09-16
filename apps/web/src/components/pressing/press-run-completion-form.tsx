@@ -113,16 +113,11 @@ export function PressRunCompletionForm({
     },
   })
 
+  const [displayValue, setDisplayValue] = useState<string>('')
+
   const watchedValues = form.watch()
 
-  // Real-time volume conversion
-  const displayVolume = watchedValues.juiceVolumeUnit === 'L'
-    ? watchedValues.juiceVolumeL
-    : watchedValues.juiceVolumeL ? litersToGallons(watchedValues.juiceVolumeL) : 0
-
-  const canonicalVolumeL = watchedValues.juiceVolumeUnit === 'gal' && watchedValues.juiceVolumeL
-    ? gallonsToLiters(watchedValues.juiceVolumeL)
-    : watchedValues.juiceVolumeL || 0
+  const canonicalVolumeL = watchedValues.juiceVolumeL || 0
 
   // Calculate yield percentage
   const totalAppleKg = pressRun?.totalAppleWeightKg || 0
@@ -164,8 +159,16 @@ export function PressRunCompletionForm({
   }
 
   const handleVolumeChange = (value: string) => {
+    setDisplayValue(value)
+
+    if (value === '') {
+      // Allow clearing the field
+      form.setValue('juiceVolumeL', undefined)
+      return
+    }
+
     const numValue = parseFloat(value)
-    if (!isNaN(numValue)) {
+    if (!isNaN(numValue) && numValue >= 0) {
       // Always store in canonical liters
       const volumeInL = watchedValues.juiceVolumeUnit === 'gal'
         ? gallonsToLiters(numValue)
@@ -178,54 +181,21 @@ export function PressRunCompletionForm({
     const currentVolumeL = watchedValues.juiceVolumeL || 0
     form.setValue('juiceVolumeUnit', newUnit)
 
-    // Convert current volume to display in new unit
-    const displayValue = newUnit === 'gal'
-      ? litersToGallons(currentVolumeL)
-      : currentVolumeL
+    // Only convert if there's a positive value to convert
+    if (currentVolumeL > 0) {
+      // Convert current volume to display in new unit
+      const newDisplayValue = newUnit === 'gal'
+        ? litersToGallons(currentVolumeL).toString()
+        : currentVolumeL.toString()
 
-    // Update the form field to display the converted value
-    form.setValue('juiceVolumeL', currentVolumeL) // Keep canonical value
+      setDisplayValue(newDisplayValue)
+    } else {
+      setDisplayValue('')
+    }
   }
 
   return (
     <div className="space-y-6">
-      {/* Press Run Summary Header */}
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center text-lg">
-            <Scale className="w-5 h-5 mr-2 text-amber-600" />
-            Complete Press Run
-          </CardTitle>
-          <CardDescription>
-            Finalize pressing operations and assign juice to vessel
-          </CardDescription>
-        </CardHeader>
-        {pressRun && (
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex items-center">
-                <div>
-                  <p className="text-sm text-gray-600">Vendor</p>
-                  <p className="font-medium">{pressRun.vendorName}</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <div>
-                  <p className="text-sm text-gray-600">Total Apples</p>
-                  <p className="font-medium">{pressRun.totalAppleWeightKg} kg</p>
-                </div>
-              </div>
-              <div className="flex items-center">
-                <div>
-                  <p className="text-sm text-gray-600">Loads</p>
-                  <p className="font-medium">{pressRun.loads?.length || 0} loads</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        )}
-      </Card>
-
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* Juice Volume Input */}
@@ -251,7 +221,7 @@ export function PressRunCompletionForm({
                             step="0.01"
                             min="0"
                             placeholder="Enter volume..."
-                            value={displayVolume || ''}
+                            value={displayValue}
                             onChange={(e) => handleVolumeChange(e.target.value)}
                             className="text-lg h-12"
                           />

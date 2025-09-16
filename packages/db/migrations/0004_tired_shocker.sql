@@ -1,0 +1,1 @@
+ALTER TABLE "vessels" ADD COLUMN "type" "vessel_type";

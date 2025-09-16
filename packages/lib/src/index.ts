@@ -23,6 +23,9 @@ export * from './calc/yield';
 export * from './calc/cogs';
 export * from './calc/financial';
 
+// Re-export apple-related constants and utilities
+export * from './apples';
+
 // Re-export audit service functions
 export {
   generateAuditChecksum,
