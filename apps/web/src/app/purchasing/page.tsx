@@ -391,19 +391,16 @@ function VendorVarietiesPanel({ vendor }: { vendor: any }) {
   const isAdmin = true // For now, assume all users are admin for testing
 
   // tRPC hooks for vendor varieties
-  // const { data: varietiesData, refetch: refetchVarieties } = trpc.vendorVariety.listForVendor.useQuery(
-  //   { vendorId: vendor.id },
-  //   { enabled: !!vendor.id }
-  // )
-  const varietiesData = { varieties: [] }
-  const refetchVarieties = () => {}
+  const { data: varietiesData, refetch: refetchVarieties } = trpc.vendorVariety.listForVendor.useQuery(
+    { vendorId: vendor.id },
+    { enabled: !!vendor.id }
+  )
 
-  // const detachVariety = trpc.vendorVariety.detach.useMutation({
-  //   onSuccess: () => {
-  //     refetchVarieties()
-  //   }
-  // })
-  const detachVariety = { mutate: () => {} }
+  const detachVariety = trpc.vendorVariety.detach.useMutation({
+    onSuccess: () => {
+      refetchVarieties()
+    }
+  })
 
   const varieties = varietiesData?.varieties || []
 
@@ -541,22 +538,20 @@ function AddVarietyModal({ vendor, isOpen, onClose, onSuccess }: {
   const [notes, setNotes] = useState('')
 
   // Search varieties with debounced query
-  // const { data: searchResults } = trpc.vendorVariety.search.useQuery(
-  //   { q: searchQuery, limit: 10 },
-  //   { enabled: searchQuery.length >= 2 }
-  // )
-  const searchResults = { varieties: [] }
+  const { data: searchResults } = trpc.vendorVariety.search.useQuery(
+    { q: searchQuery, limit: 10 },
+    { enabled: searchQuery.length >= 2 }
+  )
 
-  // const attachVariety = trpc.vendorVariety.attach.useMutation({
-  //   onSuccess: () => {
-  //     onSuccess()
-  //     setSearchQuery('')
-  //     setSelectedVariety(null)
-  //     setIsCreatingNew(false)
-  //     setNotes('')
-  //   }
-  // })
-  const attachVariety = { mutate: () => {} }
+  const attachVariety = trpc.vendorVariety.attach.useMutation({
+    onSuccess: () => {
+      onSuccess()
+      setSearchQuery('')
+      setSelectedVariety(null)
+      setIsCreatingNew(false)
+      setNotes('')
+    }
+  })
 
   const varieties = searchResults?.varieties || []
 
@@ -753,11 +748,10 @@ function PurchaseFormComponent({ setPreSelectedVendorId, setActiveTab }: {
   const vendors = vendorData?.vendors || []
 
   // Get vendor varieties when vendor is selected
-  // const { data: vendorVarietiesData } = trpc.vendorVariety.listForVendor.useQuery(
-  //   { vendorId: selectedVendorId },
-  //   { enabled: !!selectedVendorId }
-  // )
-  const vendorVarietiesData = { varieties: [] }
+  const { data: vendorVarietiesData } = trpc.vendorVariety.listForVendor.useQuery(
+    { vendorId: selectedVendorId },
+    { enabled: !!selectedVendorId }
+  )
   const vendorVarieties = vendorVarietiesData?.varieties || []
 
   const {

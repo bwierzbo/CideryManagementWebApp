@@ -5,6 +5,7 @@ import { healthRouter } from './health'
 import { invoiceNumberRouter } from './invoiceNumber'
 import { pressRunRouter } from './pressRun'
 import { varietiesRouter } from './varieties'
+import { vendorVarietyRouter } from './vendorVariety'
 import {
   db,
   vendors,
@@ -2472,9 +2473,8 @@ export const appRouter = router({
   // Invoice number generation
   invoiceNumber: invoiceNumberRouter,
 
-  // TODO: Re-enable after fixing imports
   // Vendor variety management
-  // vendorVariety: vendorVarietyRouter,
+  vendorVariety: vendorVarietyRouter,
 
   // Health check and system monitoring
   health: healthRouter,
