@@ -48,6 +48,12 @@ const userSchema = z.object({
 
 const appleVarietySchema = z.object({
   name: z.string().min(1, "Name is required"),
+  ciderCategory: z.string().optional(),
+  tannin: z.string().optional(),
+  acid: z.string().optional(),
+  sugarBrix: z.string().optional(),
+  harvestWindow: z.string().optional(),
+  varietyNotes: z.string().optional(),
 })
 
 const renameVarietySchema = z.object({
