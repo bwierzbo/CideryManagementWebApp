@@ -4,6 +4,8 @@ import { auditRouter } from './audit'
 import { healthRouter } from './health'
 import { invoiceNumberRouter } from './invoiceNumber'
 import { pressRunRouter } from './pressRun'
+import { vendorVarietyRouter } from './vendorVariety'
+import { varietiesRouter } from './varieties'
 import {
   db,
   vendors,
@@ -23,9 +25,10 @@ import {
   applePressRuns,
   applePressRunLoads
 } from 'db'
-import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
+import { eq, and, desc, asc, sql, isNull, ne } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, bushelsToKg } from 'lib'
+import { ensureVendorVariety } from '../lib/dbChecks'
 
 export const appRouter = router({
   // Basic health check
@@ -315,6 +318,17 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         try {
           return await db.transaction(async (tx) => {
+            // Validate vendor-variety relationships for all items
+            for (const item of input.items) {
+              const isValidVariety = await ensureVendorVariety(input.vendorId, item.appleVarietyId)
+              if (!isValidVariety) {
+                throw new TRPCError({
+                  code: 'BAD_REQUEST',
+                  message: 'This vendor is not configured for the selected variety. Please link the variety to the vendor first.'
+                })
+              }
+            }
+
             // Calculate total cost and convert units
             let totalCost = 0
             const processedItems = []
@@ -569,6 +583,20 @@ export const appRouter = router({
 
             // Update items if provided
             if (input.items) {
+              // Validate vendor-variety relationships for all new items
+              const finalVendorId = input.vendorId || existingPurchase[0].vendorId
+              if (finalVendorId) {
+                for (const item of input.items) {
+                  const isValidVariety = await ensureVendorVariety(finalVendorId, item.appleVarietyId)
+                  if (!isValidVariety) {
+                    throw new TRPCError({
+                      code: 'BAD_REQUEST',
+                      message: 'This vendor is not configured for the selected variety. Please link the variety to the vendor first.'
+                    })
+                  }
+                }
+              }
+
               // Remove existing items (soft delete)
               await tx
                 .update(purchaseItems)
@@ -1934,73 +1962,8 @@ export const appRouter = router({
       }),
   }),
 
-  // Apple Varieties management
-  appleVariety: router({
-    list: publicProcedure.query(async () => {
-      try {
-        const varietyList = await db
-          .select()
-          .from(appleVarieties)
-          .where(isNull(appleVarieties.deletedAt))
-          .orderBy(appleVarieties.name)
-
-        return {
-          appleVarieties: varietyList,
-          count: varietyList.length,
-        }
-      } catch (error) {
-        console.error('Error listing apple varieties:', error)
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list apple varieties'
-        })
-      }
-    }),
-
-    create: createRbacProcedure('create', 'appleVariety')
-      .input(z.object({
-        name: z.string().min(1, 'Name is required'),
-        description: z.string().optional(),
-        typicalBrix: z.number().min(0).max(30).optional(),
-        notes: z.string().optional(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        try {
-          const newVariety = await db
-            .insert(appleVarieties)
-            .values({
-              name: input.name,
-              description: input.description,
-              typicalBrix: input.typicalBrix?.toString(),
-              notes: input.notes,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .returning()
-
-          // Publish audit event
-          await publishCreateEvent(
-            'apple_varieties',
-            newVariety[0].id,
-            { varietyId: newVariety[0].id, name: input.name },
-            ctx.session?.user?.id,
-            'Apple variety created via API'
-          )
-
-          return {
-            success: true,
-            appleVariety: newVariety[0],
-            message: `Apple variety "${input.name}" created successfully`,
-          }
-        } catch (error) {
-          console.error('Error creating apple variety:', error)
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Failed to create apple variety'
-          })
-        }
-      }),
-  }),
+  // Apple Varieties management - comprehensive CRUD with new enriched fields
+  appleVariety: varietiesRouter,
 
   // Vessel management
   vessel: router({
@@ -2025,14 +1988,253 @@ export const appRouter = router({
       }
     }),
 
+    create: createRbacProcedure('create', 'vessel')
+      .input(z.object({
+        name: z.string().optional(),
+        capacityL: z.number().positive('Capacity must be positive'),
+        capacityUnit: z.enum(['L', 'gal']).default('L'),
+        material: z.enum(['stainless_steel', 'plastic']).optional(),
+        jacketed: z.enum(['yes', 'no']).optional(),
+        location: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          // Auto-generate tank name if not provided
+          let finalName = input.name
+          if (!finalName) {
+            const existingVessels = await db
+              .select({ name: vessels.name })
+              .from(vessels)
+              .where(and(
+                isNull(vessels.deletedAt),
+                sql`${vessels.name} ~ '^Tank [0-9]+$'`
+              ))
+              .orderBy(vessels.name)
+
+            const tankNumbers = existingVessels
+              .map(v => parseInt(v.name?.match(/Tank (\d+)/)?.[1] || '0'))
+              .filter(num => !isNaN(num))
+
+            const nextNumber = tankNumbers.length === 0 ? 1 : Math.max(...tankNumbers) + 1
+            finalName = `Tank ${nextNumber}`
+          }
+
+          // Convert capacity to canonical liters if needed
+          let capacityInLiters = input.capacityL
+          if (input.capacityUnit === 'gal') {
+            capacityInLiters = input.capacityL * 3.78541
+          }
+
+          const newVessel = await db
+            .insert(vessels)
+            .values({
+              name: finalName,
+              type: 'storage', // Temporary default value until migration is applied
+              capacityL: capacityInLiters.toString(),
+              capacityUnit: input.capacityUnit,
+              material: input.material,
+              jacketed: input.jacketed,
+              location: input.location,
+              notes: input.notes,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning()
+
+          // Audit logging
+          await publishCreateEvent(
+            'vessels',
+            newVessel[0].id,
+            { vesselId: newVessel[0].id, name: finalName },
+            ctx.session?.user?.id,
+            'Vessel created via API'
+          )
+
+          return {
+            success: true,
+            vessel: newVessel[0],
+            message: `Vessel "${finalName}" created successfully`,
+          }
+        } catch (error) {
+          console.error('Error creating vessel:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to create vessel'
+          })
+        }
+      }),
+
+    update: createRbacProcedure('update', 'vessel')
+      .input(z.object({
+        id: z.string().uuid(),
+        name: z.string().optional(),
+        capacityL: z.number().positive('Capacity must be positive').optional(),
+        capacityUnit: z.enum(['L', 'gal']).optional(),
+        material: z.enum(['stainless_steel', 'plastic']).optional(),
+        jacketed: z.enum(['yes', 'no']).optional(),
+        status: z.enum(['available', 'in_use', 'cleaning', 'maintenance']).optional(),
+        location: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const existing = await db
+            .select()
+            .from(vessels)
+            .where(and(eq(vessels.id, input.id), isNull(vessels.deletedAt)))
+            .limit(1)
+
+          if (!existing.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Vessel not found'
+            })
+          }
+
+          const updateData: any = { updatedAt: new Date() }
+
+          if (input.name !== undefined) updateData.name = input.name
+          if (input.capacityL !== undefined) {
+            let capacityInLiters = input.capacityL
+            if (input.capacityUnit === 'gal') {
+              capacityInLiters = input.capacityL * 3.78541
+            }
+            updateData.capacityL = capacityInLiters.toString()
+          }
+          if (input.capacityUnit !== undefined) updateData.capacityUnit = input.capacityUnit
+          if (input.material !== undefined) updateData.material = input.material
+          if (input.jacketed !== undefined) updateData.jacketed = input.jacketed
+          if (input.status !== undefined) updateData.status = input.status
+          if (input.location !== undefined) updateData.location = input.location
+          if (input.notes !== undefined) updateData.notes = input.notes
+
+          const updatedVessel = await db
+            .update(vessels)
+            .set(updateData)
+            .where(eq(vessels.id, input.id))
+            .returning()
+
+          // Audit logging
+          await publishUpdateEvent(
+            'vessels',
+            input.id,
+            existing[0],
+            updateData,
+            ctx.session?.user?.id,
+            'Vessel updated via API'
+          )
+
+          return {
+            success: true,
+            vessel: updatedVessel[0],
+            message: `Vessel "${updatedVessel[0].name || 'Unknown'}" updated successfully`,
+          }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error updating vessel:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to update vessel'
+          })
+        }
+      }),
+
+    delete: createRbacProcedure('delete', 'vessel')
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const existing = await db
+            .select()
+            .from(vessels)
+            .where(and(eq(vessels.id, input.id), isNull(vessels.deletedAt)))
+            .limit(1)
+
+          if (!existing.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Vessel not found'
+            })
+          }
+
+          // Check if vessel is in use
+          if (existing[0].status === 'in_use') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Cannot delete vessel that is currently in use'
+            })
+          }
+
+          const deletedVessel = await db
+            .update(vessels)
+            .set({
+              deletedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, input.id))
+            .returning()
+
+          // Audit logging
+          await publishDeleteEvent(
+            'vessels',
+            input.id,
+            existing[0],
+            ctx.session?.user?.id,
+            'Vessel deleted via API'
+          )
+
+          return {
+            success: true,
+            message: `Vessel "${existing[0].name || 'Unknown'}" deleted successfully`,
+            vessel: deletedVessel[0],
+          }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error deleting vessel:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to delete vessel'
+          })
+        }
+      }),
+
+    getById: createRbacProcedure('read', 'vessel')
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ input }) => {
+        try {
+          const vessel = await db
+            .select()
+            .from(vessels)
+            .where(and(eq(vessels.id, input.id), isNull(vessels.deletedAt)))
+            .limit(1)
+
+          if (!vessel.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Vessel not found'
+            })
+          }
+
+          return {
+            vessel: vessel[0],
+          }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error getting vessel:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to get vessel'
+          })
+        }
+      }),
+
     liquidMap: createRbacProcedure('list', 'vessel').query(async () => {
       try {
-        // Get vessels with their current batches
+        // Get vessels with their current batches and apple press runs
         const vesselsWithBatches = await db
           .select({
             vesselId: vessels.id,
             vesselName: vessels.name,
-            vesselType: vessels.type,
             vesselCapacityL: vessels.capacityL,
             vesselStatus: vessels.status,
             vesselLocation: vessels.location,
@@ -2040,9 +2242,21 @@ export const appRouter = router({
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
             currentVolumeL: batches.currentVolumeL,
+            // Include apple press run volume when no batch exists
+            applePressRunId: applePressRuns.id,
+            applePressRunVolume: applePressRuns.totalJuiceVolumeL,
           })
           .from(vessels)
-          .leftJoin(batches, and(eq(batches.vesselId, vessels.id), isNull(batches.deletedAt)))
+          .leftJoin(batches, and(
+            eq(batches.vesselId, vessels.id),
+            isNull(batches.deletedAt),
+            eq(batches.status, 'active')
+          ))
+          .leftJoin(applePressRuns, and(
+            eq(applePressRuns.vesselId, vessels.id),
+            isNull(applePressRuns.deletedAt),
+            eq(applePressRuns.status, 'completed')
+          ))
           .where(isNull(vessels.deletedAt))
           .orderBy(vessels.name)
 
@@ -2056,10 +2270,13 @@ export const appRouter = router({
           .leftJoin(packages, eq(packages.id, inventory.packageId))
           .where(and(isNull(inventory.deletedAt), isNull(packages.deletedAt)))
 
-        // Calculate total liquid in cellar
+        // Calculate total liquid in cellar from both batches and apple press runs
         const cellarLiquid = vesselsWithBatches.reduce((total, vessel) => {
+          // Prioritize batch volume if it exists, otherwise use apple press run volume
           if (vessel.currentVolumeL) {
             return total + parseFloat(vessel.currentVolumeL)
+          } else if (vessel.applePressRunVolume) {
+            return total + parseFloat(vessel.applePressRunVolume)
           }
           return total
         }, 0)
@@ -2254,6 +2471,9 @@ export const appRouter = router({
 
   // Invoice number generation
   invoiceNumber: invoiceNumberRouter,
+
+  // Vendor variety management
+  vendorVariety: vendorVarietyRouter,
 
   // Health check and system monitoring
   health: healthRouter,

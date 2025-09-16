@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
+import { trpc } from "@/utils/trpc"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { 
+import {
   Beaker,
   Droplets,
   Thermometer,
@@ -24,7 +25,10 @@ import {
   Clock,
   Waves,
   Zap,
-  ArrowRight
+  ArrowRight,
+  Edit,
+  Trash2,
+  Settings
 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -51,57 +55,229 @@ const transferSchema = z.object({
   notes: z.string().optional(),
 })
 
+const tankSchema = z.object({
+  name: z.string().optional(),
+  capacityL: z.number().positive('Capacity must be positive'),
+  capacityUnit: z.enum(['L', 'gal']).default('L'),
+  material: z.enum(['stainless_steel', 'plastic']).optional(),
+  jacketed: z.enum(['yes', 'no']).optional(),
+  status: z.enum(['available', 'in_use', 'maintenance', 'cleaning']).default('available'),
+  location: z.string().optional(),
+  notes: z.string().optional(),
+})
+
 type MeasurementForm = z.infer<typeof measurementSchema>
 type TransferForm = z.infer<typeof transferSchema>
+type TankForm = z.infer<typeof tankSchema>
+
+function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => void }) {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+    reset
+  } = useForm<TankForm>({
+    resolver: zodResolver(tankSchema),
+    defaultValues: {
+      capacityUnit: 'L',
+    }
+  })
+
+  const utils = trpc.useUtils()
+  const vesselQuery = trpc.vessel.getById.useQuery(
+    { id: vesselId! },
+    { enabled: !!vesselId }
+  )
+
+  const createMutation = trpc.vessel.create.useMutation({
+    onSuccess: () => {
+      utils.vessel.list.invalidate()
+      utils.vessel.liquidMap.invalidate()
+      onClose()
+      reset()
+    }
+  })
+
+  const updateMutation = trpc.vessel.update.useMutation({
+    onSuccess: () => {
+      utils.vessel.list.invalidate()
+      utils.vessel.liquidMap.invalidate()
+      onClose()
+      reset()
+    }
+  })
+
+  // Load existing vessel data for editing
+  React.useEffect(() => {
+    if (vesselQuery.data?.vessel) {
+      const vessel = vesselQuery.data.vessel
+      reset({
+        name: vessel.name || undefined,
+        capacityL: parseFloat(vessel.capacityL),
+        capacityUnit: vessel.capacityUnit as any,
+        material: vessel.material as any,
+        jacketed: vessel.jacketed as any,
+        status: vessel.status as any,
+        location: vessel.location || undefined,
+        notes: vessel.notes || undefined,
+      })
+    }
+  }, [vesselQuery.data, reset])
+
+  const watchedCapacityUnit = watch('capacityUnit')
+
+  const onSubmit = (data: TankForm) => {
+    if (vesselId) {
+      updateMutation.mutate({ id: vesselId, ...data })
+    } else {
+      createMutation.mutate(data)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="name">Tank Name</Label>
+          <Input
+            id="name"
+            placeholder="Leave empty to auto-generate (Tank 1, Tank 2, etc.)"
+            {...register("name")}
+          />
+          {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="capacityL">Size</Label>
+          <Input
+            id="capacityL"
+            type="number"
+            step="0.1"
+            placeholder="1000"
+            {...register("capacityL", { valueAsNumber: true })}
+          />
+          {errors.capacityL && <p className="text-sm text-red-600 mt-1">{errors.capacityL.message}</p>}
+        </div>
+        <div>
+          <Label htmlFor="capacityUnit">Unit</Label>
+          <Select
+            value={watchedCapacityUnit}
+            onValueChange={(value) => setValue("capacityUnit", value as any)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="L">Liters</SelectItem>
+              <SelectItem value="gal">Gallons</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="material">Material</Label>
+          <Select onValueChange={(value) => setValue("material", value as any)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select material" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="stainless_steel">Stainless Steel</SelectItem>
+              <SelectItem value="plastic">Plastic</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="jacketed">Jacketed</Label>
+          <Select onValueChange={(value) => setValue("jacketed", value as any)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select jacketed option" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="yes">Yes</SelectItem>
+              <SelectItem value="no">No</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="status">Status</Label>
+          <Select onValueChange={(value) => setValue("status", value as any)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="available">Available</SelectItem>
+              <SelectItem value="in_use">In Use</SelectItem>
+              <SelectItem value="maintenance">Maintenance</SelectItem>
+              <SelectItem value="cleaning">Cleaning</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div></div>
+      </div>
+
+      <div>
+        <Label htmlFor="location">Location</Label>
+        <Input
+          id="location"
+          placeholder="Building A, Row 1"
+          {...register("location")}
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Input
+          id="notes"
+          placeholder="Additional notes..."
+          {...register("notes")}
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          disabled={createMutation.isPending || updateMutation.isPending}
+        >
+          {createMutation.isPending || updateMutation.isPending
+            ? 'Saving...'
+            : vesselId ? 'Update Tank' : 'Add Tank'
+          }
+        </Button>
+      </div>
+    </form>
+  )
+}
 
 function VesselMap() {
-  // Mock vessel data
-  const vessels = [
-    {
-      id: "V001",
-      name: "Fermenter Tank 1",
-      type: "fermenter",
-      status: "in_use",
-      capacityL: 1000,
-      currentVolumeL: 750,
-      currentBatch: "B-2024-001",
-      temperature: 18.5,
-      location: "Building A, Row 1"
-    },
-    {
-      id: "V002", 
-      name: "Fermenter Tank 2",
-      type: "fermenter",
-      status: "in_use",
-      capacityL: 1500,
-      currentVolumeL: 1200,
-      currentBatch: "B-2024-003",
-      temperature: 16.2,
-      location: "Building A, Row 1"
-    },
-    {
-      id: "V003",
-      name: "Conditioning Tank 1", 
-      type: "conditioning_tank",
-      status: "available",
-      capacityL: 2000,
-      currentVolumeL: 0,
-      currentBatch: null,
-      temperature: 15.0,
-      location: "Building B, Row 1"
-    },
-    {
-      id: "V004",
-      name: "Bright Tank 1",
-      type: "bright_tank", 
-      status: "cleaning",
-      capacityL: 1200,
-      currentVolumeL: 0,
-      currentBatch: null,
-      temperature: 12.0,
-      location: "Building B, Row 2"
+  const [editingVessel, setEditingVessel] = useState<string | null>(null)
+  const [showAddTank, setShowAddTank] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [vesselToDelete, setVesselToDelete] = useState<{id: string, name: string | null} | null>(null)
+
+  const vesselListQuery = trpc.vessel.list.useQuery()
+  const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
+  const utils = trpc.useUtils()
+
+  const deleteMutation = trpc.vessel.delete.useMutation({
+    onSuccess: () => {
+      utils.vessel.list.invalidate()
+      utils.vessel.liquidMap.invalidate()
     }
-  ]
+  })
+
+  const vessels = vesselListQuery.data?.vessels || []
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -123,45 +299,130 @@ function VesselMap() {
     }
   }
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "fermenter": return "bg-purple-100 text-purple-800"
-      case "conditioning_tank": return "bg-blue-100 text-blue-800"
-      case "bright_tank": return "bg-green-100 text-green-800"
-      case "storage": return "bg-gray-100 text-gray-800"
-      default: return "bg-gray-100 text-gray-800"
+
+  const formatMaterial = (material: string | null) => {
+    if (!material) return ''
+    return material.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
+  }
+
+  const formatJacketed = (jacketed: string | null) => {
+    if (!jacketed) return ''
+    return jacketed.charAt(0).toUpperCase() + jacketed.slice(1)
+  }
+
+  const handleDeleteClick = (vesselId: string, vesselName: string | null) => {
+    setVesselToDelete({ id: vesselId, name: vesselName })
+    setDeleteConfirmOpen(true)
+  }
+
+  const handleDeleteConfirm = () => {
+    if (vesselToDelete) {
+      deleteMutation.mutate({ id: vesselToDelete.id })
+      setDeleteConfirmOpen(false)
+      setVesselToDelete(null)
     }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false)
+    setVesselToDelete(null)
+  }
+
+  if (vesselListQuery.isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Beaker className="w-5 h-5 text-blue-600" />
+            Vessel Map
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p>Loading vessels...</p>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Beaker className="w-5 h-5 text-blue-600" />
-          Vessel Map
-        </CardTitle>
-        <CardDescription>Overview of all fermentation and storage vessels</CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Beaker className="w-5 h-5 text-blue-600" />
+              Vessel Map
+            </CardTitle>
+            <CardDescription>Overview of all fermentation and storage vessels</CardDescription>
+          </div>
+          <Dialog open={showAddTank} onOpenChange={setShowAddTank}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Tank
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Add New Tank</DialogTitle>
+                <DialogDescription>
+                  Create a new fermentation or storage vessel
+                </DialogDescription>
+              </DialogHeader>
+              <TankForm onClose={() => setShowAddTank(false)} />
+            </DialogContent>
+          </Dialog>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {vessels.map((vessel) => {
-            const fillPercentage = (vessel.currentVolumeL / vessel.capacityL) * 100
+            const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vessel.id)
+            // Use batch volume if available, otherwise use apple press run volume
+            const currentVolumeL = liquidMapVessel?.currentVolumeL
+              ? parseFloat(liquidMapVessel.currentVolumeL.toString())
+              : liquidMapVessel?.applePressRunVolume
+                ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
+                : 0
+            const capacityL = parseFloat(vessel.capacityL)
+            const fillPercentage = capacityL > 0 ? (currentVolumeL / capacityL) * 100 : 0
+
             return (
-              <div 
-                key={vessel.id} 
+              <div
+                key={vessel.id}
                 className={`border-2 rounded-lg p-4 transition-all hover:shadow-md ${getStatusColor(vessel.status)}`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h3 className="font-semibold text-lg">{vessel.name}</h3>
-                    <p className="text-sm text-gray-600">{vessel.location}</p>
+                    <h3 className="font-semibold text-lg">{vessel.name || 'Unnamed Vessel'}</h3>
+                    <p className="text-sm text-gray-600">{vessel.location || 'No location'}</p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {getStatusIcon(vessel.status)}
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${getTypeColor(vessel.type)}`}>
-                      {vessel.type.replace('_', ' ')}
+                  </div>
+                </div>
+
+                {/* Tank Specifications */}
+                <div className="space-y-2 mb-3 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Capacity:</span>
+                    <span className="font-medium">
+                      {capacityL.toFixed(0)}L
+                      {vessel.capacityUnit === 'gal' && ` (${(capacityL / 3.78541).toFixed(0)} gal)`}
                     </span>
                   </div>
+                  {vessel.material && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Material:</span>
+                      <span className="font-medium">{formatMaterial(vessel.material)}</span>
+                    </div>
+                  )}
+                  {vessel.jacketed && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Jacketed:</span>
+                      <span className="font-medium">{formatJacketed(vessel.jacketed)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Volume Indicator */}
@@ -169,17 +430,17 @@ function VesselMap() {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">Volume</span>
                     <span className="text-sm font-semibold">
-                      {vessel.currentVolumeL}L / {vessel.capacityL}L
+                      {currentVolumeL.toFixed(0)}L / {capacityL.toFixed(0)}L
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div 
+                    <div
                       className={`h-3 rounded-full transition-all ${
                         fillPercentage > 90 ? "bg-red-500" :
                         fillPercentage > 75 ? "bg-yellow-500" :
                         "bg-blue-500"
                       }`}
-                      style={{ width: `${fillPercentage}%` }}
+                      style={{ width: `${Math.min(fillPercentage, 100)}%` }}
                     />
                   </div>
                   <div className="text-right text-xs text-gray-500 mt-1">
@@ -187,50 +448,67 @@ function VesselMap() {
                   </div>
                 </div>
 
-                {/* Details */}
-                <div className="space-y-2 mb-4">
-                  {vessel.currentBatch && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Current Batch:</span>
-                      <span className="text-sm font-medium">{vessel.currentBatch}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600 flex items-center">
-                      <Thermometer className="w-3 h-3 mr-1" />
-                      Temperature:
-                    </span>
-                    <span className="text-sm font-medium">{vessel.temperature}°C</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Status:</span>
-                    <span className={`text-sm font-medium capitalize ${
-                      vessel.status === "available" ? "text-green-600" :
-                      vessel.status === "in_use" ? "text-blue-600" :
-                      vessel.status === "cleaning" ? "text-yellow-600" :
-                      "text-red-600"
-                    }`}>
-                      {vessel.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                </div>
-
                 <div className="flex space-x-2">
-                  <Button size="sm" variant="outline" className="flex-1">
-                    <Eye className="w-3 h-3 mr-1" />
-                    Details
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setEditingVessel(vessel.id)}
+                  >
+                    <Edit className="w-3 h-3 mr-1" />
+                    Edit
                   </Button>
-                  {vessel.status === "in_use" && (
-                    <Button size="sm" variant="outline">
-                      <ArrowRight className="w-3 h-3 mr-1" />
-                      Transfer
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDeleteClick(vessel.id, vessel.name)}
+                    disabled={vessel.status === 'in_use'}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
                 </div>
               </div>
             )
           })}
         </div>
+
+        {/* Edit Tank Dialog */}
+        <Dialog open={!!editingVessel} onOpenChange={(open) => !open && setEditingVessel(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Tank</DialogTitle>
+              <DialogDescription>
+                Update tank specifications and settings
+              </DialogDescription>
+            </DialogHeader>
+            {editingVessel && (
+              <TankForm
+                vesselId={editingVessel}
+                onClose={() => setEditingVessel(null)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Tank</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete "{vesselToDelete?.name || 'Unknown'}"? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end space-x-2 mt-4">
+              <Button variant="outline" onClick={handleDeleteCancel}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteConfirm}>
+                Delete
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   )
