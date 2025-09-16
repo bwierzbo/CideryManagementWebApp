@@ -395,12 +395,15 @@ function VendorVarietiesPanel({ vendor }: { vendor: any }) {
   //   { vendorId: vendor.id },
   //   { enabled: !!vendor.id }
   // )
+  const varietiesData = { varieties: [] }
+  const refetchVarieties = () => {}
 
   // const detachVariety = trpc.vendorVariety.detach.useMutation({
   //   onSuccess: () => {
   //     refetchVarieties()
   //   }
   // })
+  const detachVariety = { mutate: () => {} }
 
   const varieties = varietiesData?.varieties || []
 
