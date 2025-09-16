@@ -391,7 +391,7 @@ function VendorVarietiesPanel({ vendor }: { vendor: any }) {
   const isAdmin = true // For now, assume all users are admin for testing
 
   // tRPC hooks for vendor varieties
-  // const { data: varietiesData, refetch: refetchVarieties } = // trpc.vendorVariety.listForVendor.useQuery(
+  // const { data: varietiesData, refetch: refetchVarieties } = trpc.vendorVariety.listForVendor.useQuery(
   //   { vendorId: vendor.id },
   //   { enabled: !!vendor.id }
   // )
@@ -750,10 +750,11 @@ function PurchaseFormComponent({ setPreSelectedVendorId, setActiveTab }: {
   const vendors = vendorData?.vendors || []
 
   // Get vendor varieties when vendor is selected
-  const { data: vendorVarietiesData } = // trpc.vendorVariety.listForVendor.useQuery(
-    { vendorId: selectedVendorId },
-    { enabled: !!selectedVendorId }
-  )
+  // const { data: vendorVarietiesData } = trpc.vendorVariety.listForVendor.useQuery(
+  //   { vendorId: selectedVendorId },
+  //   { enabled: !!selectedVendorId }
+  // )
+  const vendorVarietiesData = { varieties: [] }
   const vendorVarieties = vendorVarietiesData?.varieties || []
 
   const {
