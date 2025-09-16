@@ -538,20 +538,22 @@ function AddVarietyModal({ vendor, isOpen, onClose, onSuccess }: {
   const [notes, setNotes] = useState('')
 
   // Search varieties with debounced query
-  const { data: searchResults } = // trpc.vendorVariety.search.useQuery(
-    { q: searchQuery, limit: 10 },
-    { enabled: searchQuery.length >= 2 }
-  )
+  // const { data: searchResults } = trpc.vendorVariety.search.useQuery(
+  //   { q: searchQuery, limit: 10 },
+  //   { enabled: searchQuery.length >= 2 }
+  // )
+  const searchResults = { varieties: [] }
 
-  const attachVariety = // trpc.vendorVariety.attach.useMutation({
-    onSuccess: () => {
-      onSuccess()
-      setSearchQuery('')
-      setSelectedVariety(null)
-      setIsCreatingNew(false)
-      setNotes('')
-    }
-  })
+  // const attachVariety = trpc.vendorVariety.attach.useMutation({
+  //   onSuccess: () => {
+  //     onSuccess()
+  //     setSearchQuery('')
+  //     setSelectedVariety(null)
+  //     setIsCreatingNew(false)
+  //     setNotes('')
+  //   }
+  // })
+  const attachVariety = { mutate: () => {} }
 
   const varieties = searchResults?.varieties || []
 
