@@ -119,47 +119,41 @@ export const varietiesRouter = router({
           })
         }
 
-        // TODO: Fix TypeScript error - Drizzle type inference issue
-        throw new TRPCError({
-          code: 'NOT_IMPLEMENTED',
-          message: 'Variety creation temporarily disabled due to TypeScript compilation issue'
-        })
+        const newVariety = await db
+          .insert(appleVarieties)
+          .values({
+            name: input.name,
+            ciderCategory: input.ciderCategory || null,
+            tannin: input.tannin || null,
+            acid: input.acid || null,
+            sugarBrix: input.sugarBrix || null,
+            harvestWindow: input.harvestWindow || null,
+            varietyNotes: input.varietyNotes || null,
+          })
+          .returning()
 
-        // const newVariety = await db
-        //   .insert(appleVarieties)
-        //   .values({
-        //     name: input.name,
-        //     ciderCategory: input.ciderCategory || null,
-        //     tannin: input.tannin || null,
-        //     acid: input.acid || null,
-        //     sugarBrix: input.sugarBrix || null,
-        //     harvestWindow: input.harvestWindow || null,
-        //     varietyNotes: input.varietyNotes || null,
-        //   })
-        //   .returning()
+        // Publish audit event
+        await publishCreateEvent(
+          'apple_varieties',
+          newVariety[0].id,
+          {
+            varietyId: newVariety[0].id,
+            varietyName: input.name,
+            ciderCategory: input.ciderCategory,
+            tannin: input.tannin,
+            acid: input.acid,
+            sugarBrix: input.sugarBrix,
+            harvestWindow: input.harvestWindow,
+          },
+          ctx.session?.user?.id,
+          'Apple variety created via API'
+        )
 
-        // // Publish audit event
-        // await publishCreateEvent(
-        //   'apple_varieties',
-        //   newVariety[0].id,
-        //   {
-        //     varietyId: newVariety[0].id,
-        //     varietyName: input.name,
-        //     ciderCategory: input.ciderCategory,
-        //     tannin: input.tannin,
-        //     acid: input.acid,
-        //     sugarBrix: input.sugarBrix,
-        //     harvestWindow: input.harvestWindow,
-        //   },
-        //   ctx.session?.user?.id,
-        //   'Apple variety created via API'
-        // )
-
-        // return {
-        //   success: true,
-        //   appleVariety: newVariety[0],
-        //   message: `Apple variety "${input.name}" created successfully`,
-        // }
+        return {
+          success: true,
+          appleVariety: newVariety[0],
+          message: `Apple variety "${input.name}" created successfully`,
+        }
       } catch (error) {
         if (error instanceof TRPCError) throw error
         console.error('Error creating apple variety:', error)
