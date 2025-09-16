@@ -383,12 +383,12 @@ function ReferenceValues() {
   const onSubmit = (data: AppleVarietyForm) => {
     createVariety.mutate({
       name: data.name,
-      ciderCategory: undefined,
-      tannin: undefined,
-      acid: undefined,
-      sugarBrix: undefined,
-      harvestWindow: undefined,
-      varietyNotes: undefined
+      ciderCategory: data.ciderCategory || undefined,
+      tannin: data.tannin || undefined,
+      acid: data.acid || undefined,
+      sugarBrix: data.sugarBrix || undefined,
+      harvestWindow: data.harvestWindow || undefined,
+      varietyNotes: data.varietyNotes || undefined
     })
   }
 
