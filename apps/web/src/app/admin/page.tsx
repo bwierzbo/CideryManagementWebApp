@@ -48,12 +48,6 @@ const userSchema = z.object({
 
 const appleVarietySchema = z.object({
   name: z.string().min(1, "Name is required"),
-  ciderCategory: z.string().optional(),
-  tannin: z.string().optional(),
-  acid: z.string().optional(),
-  sugarBrix: z.string().optional(),
-  harvestWindow: z.string().optional(),
-  varietyNotes: z.string().optional(),
 })
 
 const renameVarietySchema = z.object({
@@ -388,13 +382,7 @@ function ReferenceValues() {
 
   const onSubmit = (data: AppleVarietyForm) => {
     createVariety.mutate({
-      name: data.name,
-      ciderCategory: data.ciderCategory || undefined,
-      tannin: data.tannin || undefined,
-      acid: data.acid || undefined,
-      sugarBrix: data.sugarBrix || undefined,
-      harvestWindow: data.harvestWindow || undefined,
-      varietyNotes: data.varietyNotes || undefined
+      name: data.name
     })
   }
 

@@ -118,7 +118,7 @@ export function OfflineFruitLoadForm({
   const {
     data: appleVarieties,
     isLoading: varietiesLoading
-  } = trpc.appleVariety.list.useQuery(undefined, {
+  } = trpc.appleVariety.listAll.useQuery({ includeInactive: false }, {
     enabled: isOnline,
     staleTime: 30 * 60 * 1000, // 30 minutes
     retry: false,
@@ -268,8 +268,19 @@ export function OfflineFruitLoadForm({
     // Set suggested brix from apple variety
     if (appleVarieties) {
       const variety = appleVarieties.appleVarieties.find(v => v.id === purchaseLineItem.appleVarietyId)
-      if (variety?.typicalBrix) {
-        form.setValue('brixMeasured', parseFloat(variety.typicalBrix))
+      if (variety?.sugarBrix) {
+        // Set a default brix value based on the sugar level
+        const brixMap: Record<string, number> = {
+          'high': 14,
+          'medium-high': 12,
+          'medium': 10,
+          'low-medium': 8,
+          'low': 6
+        }
+        const defaultBrix = brixMap[variety.sugarBrix]
+        if (defaultBrix) {
+          form.setValue('brixMeasured', defaultBrix)
+        }
       }
     }
   }

@@ -72,7 +72,7 @@ class CellEditor extends React.Component<{
   columnId: string
   onSave: (value: any) => void
   onCancel: () => void
-  options?: Array<{ value: string; label: string }>
+  options?: ReadonlyArray<{ readonly value: string; readonly label: string }>
 }, { localValue: any }> {
   inputRef = React.createRef<HTMLInputElement>()
   textareaRef = React.createRef<HTMLTextAreaElement>()

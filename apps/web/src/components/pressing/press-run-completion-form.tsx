@@ -163,7 +163,7 @@ export function PressRunCompletionForm({
 
     if (value === '') {
       // Allow clearing the field
-      form.setValue('juiceVolumeL', undefined)
+      form.setValue('juiceVolumeL', 0)
       return
     }
 

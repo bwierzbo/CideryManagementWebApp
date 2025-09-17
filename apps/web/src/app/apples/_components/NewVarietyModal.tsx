@@ -88,7 +88,15 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
   })
 
   const onSubmit = (data: VarietyFormData) => {
-    createVariety.mutate(data)
+    createVariety.mutate({
+      name: data.name,
+      ciderCategory: data.ciderCategory as string | undefined,
+      tannin: data.tannin as string | undefined,
+      acid: data.acid as string | undefined,
+      sugarBrix: data.sugarBrix as string | undefined,
+      harvestWindow: data.harvestWindow as string | undefined,
+      varietyNotes: data.varietyNotes || undefined,
+    })
   }
 
   return (

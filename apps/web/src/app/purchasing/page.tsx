@@ -612,9 +612,6 @@ function AddVarietyModal({ vendor, isOpen, onClose, onSuccess }: {
                   >
                     <Tag className="w-4 h-4 text-green-600" />
                     <span className="font-medium">{variety.name}</span>
-                    {variety.description && (
-                      <span className="text-sm text-gray-500">— {variety.description}</span>
-                    )}
                   </div>
                 ))}
               </div>
@@ -1346,7 +1343,7 @@ function EditPurchaseDialog({ open, onOpenChange, purchase, onSuccess, onError }
     }
   })
   const { data: vendorData } = trpc.vendor.list.useQuery()
-  const { data: varietyData } = trpc.appleVariety.list.useQuery()
+  const { data: varietyData } = trpc.appleVariety.listAll.useQuery({ includeInactive: false })
 
   const vendors = vendorData?.vendors || []
   const varieties = varietyData?.appleVarieties || []
