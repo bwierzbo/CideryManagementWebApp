@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { useSession } from "next-auth/react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
@@ -7,11 +8,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  BarChart3, 
-  Package, 
-  TrendingUp, 
-  Users, 
+import { Input } from "@/components/ui/input"
+import {
+  BarChart3,
+  Package,
+  TrendingUp,
+  Users,
   Clock,
   AlertCircle,
   CheckCircle2,
@@ -31,7 +33,10 @@ import {
   Download,
   Badge as BadgeIcon,
   RefreshCw,
-  Settings
+  Settings,
+  Search,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 
@@ -306,6 +311,239 @@ function LiquidMap() {
             ))}
           </div>
         </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RecentPressRuns() {
+  const { data: session } = useSession()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
+  const { data: pressRunsData, isPending } = trpc.pressRun.list.useQuery({
+    status: 'completed',
+    limit: 100, // Get more items for client-side pagination and search
+    sortBy: 'updated',
+    sortOrder: 'desc'
+  })
+
+  const canView = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'operator'
+
+  const filteredPressRuns = useMemo(() => {
+    if (!pressRunsData?.pressRuns) return []
+
+    const filtered = pressRunsData.pressRuns.filter(pressRun => {
+      const searchLower = searchTerm.toLowerCase()
+      const varietiesText = pressRun.varieties.join(' ').toLowerCase()
+      const vesselText = pressRun.vesselName?.toLowerCase() || ''
+      const dateText = pressRun.endTime ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase() : ''
+
+      return (
+        varietiesText.includes(searchLower) ||
+        vesselText.includes(searchLower) ||
+        dateText.includes(searchLower)
+      )
+    })
+
+    return filtered
+  }, [pressRunsData?.pressRuns, searchTerm])
+
+  const paginatedPressRuns = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    return filteredPressRuns.slice(startIndex, startIndex + itemsPerPage)
+  }, [filteredPressRuns, currentPage, itemsPerPage])
+
+  const totalPages = Math.ceil(filteredPressRuns.length / itemsPerPage)
+
+  if (!canView) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Grape className="w-5 h-5" />
+            Recent Completed Press Runs
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8 text-gray-500">
+            <Settings className="w-8 h-8 mx-auto mb-2" />
+            <p>Access denied</p>
+            <p className="text-sm">You need admin or operator permissions to view press runs</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isPending) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Grape className="w-5 h-5" />
+            Recent Completed Press Runs
+          </CardTitle>
+          <CardDescription>Loading recent press run completions...</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="animate-pulse">
+            <div className="h-10 bg-gray-200 rounded mb-4"></div>
+            <div className="h-64 bg-gray-200 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Grape className="w-5 h-5" />
+              Recent Completed Press Runs
+            </CardTitle>
+            <CardDescription>
+              {filteredPressRuns.length} completed press run{filteredPressRuns.length !== 1 ? 's' : ''}
+              {searchTerm && ` matching "${searchTerm}"`}
+            </CardDescription>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="flex items-center space-x-2 mt-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search by variety, vessel, or date..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value)
+                setCurrentPage(1) // Reset to first page when searching
+              }}
+              className="pl-10"
+            />
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        {filteredPressRuns.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <Grape className="w-8 h-8 mx-auto mb-2" />
+            {searchTerm ? (
+              <>
+                <p>No press runs found for &quot;{searchTerm}&quot;</p>
+                <p className="text-sm">Try adjusting your search terms</p>
+              </>
+            ) : (
+              <>
+                <p>No completed press runs found</p>
+                <p className="text-sm">Completed press runs will appear here</p>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4">
+              {paginatedPressRuns.map((pressRun) => (
+                <div key={pressRun.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-gradient-to-r from-green-100 to-emerald-100 rounded-lg flex items-center justify-center">
+                      <CheckCircle className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">
+                        {pressRun.endTime ? new Date(pressRun.endTime).toLocaleDateString() : 'Recent'}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {pressRun.varieties.length > 0
+                          ? pressRun.varieties.join(', ')
+                          : 'Mixed varieties'
+                        }
+                      </p>
+                      {pressRun.vesselName && (
+                        <p className="text-xs text-gray-500">→ {pressRun.vesselName}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Completed
+                    </span>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {pressRun.loadCount} load{pressRun.loadCount !== 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-gray-900">
+                      {pressRun.totalJuiceVolumeL ? `${parseFloat(pressRun.totalJuiceVolumeL).toFixed(1)}L` : '—'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {pressRun.extractionRatePercent ? `${pressRun.extractionRatePercent.toFixed(1)}%` : 'Juice'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 pt-4 border-t">
+                <div className="text-sm text-gray-600">
+                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredPressRuns.length)} of {filteredPressRuns.length} results
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Previous
+                  </Button>
+
+                  <div className="flex items-center space-x-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(page => {
+                        // Show first page, last page, current page, and pages around current
+                        return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1
+                      })
+                      .map((page, index, array) => (
+                        <div key={page} className="flex items-center">
+                          {index > 0 && array[index - 1] !== page - 1 && (
+                            <span className="px-2 text-gray-400">...</span>
+                          )}
+                          <Button
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(page)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        </div>
+                      ))}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   )
@@ -869,6 +1107,11 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           </div>
+        </div>
+
+        {/* Recent Press Runs */}
+        <div className="mb-8">
+          <RecentPressRuns />
         </div>
           </TabsContent>
 

@@ -320,7 +320,7 @@ function CompletedRunsSection({
               <TrendingUp className="w-8 h-8 mx-auto mb-2" />
               {searchTerm ? (
                 <>
-                  <p>No press runs found for "{searchTerm}"</p>
+                  <p>No press runs found for &quot;{searchTerm}&quot;</p>
                   <p className="text-sm">Try adjusting your search terms</p>
                 </>
               ) : (
