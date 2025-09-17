@@ -130,7 +130,7 @@ function ToastViewport({
   return (
     <div className="fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]">
       {toasts.map((toast) => {
-        const icon = getToastIcon(toast.variant)
+        const icon = getToastIcon(toast.variant || null)
         return (
           <Toast key={toast.id} variant={toast.variant} className="animate-in slide-in-from-top-full duration-300 sm:slide-in-from-bottom-full">
             <div className="flex items-start space-x-3">
