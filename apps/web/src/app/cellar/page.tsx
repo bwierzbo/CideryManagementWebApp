@@ -62,7 +62,6 @@ const tankSchema = z.object({
   capacityUnit: z.enum(['L', 'gal']),
   material: z.enum(['stainless_steel', 'plastic']).optional(),
   jacketed: z.enum(['yes', 'no']).optional(),
-  status: z.enum(['available', 'in_use', 'maintenance', 'cleaning']),
   location: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -83,7 +82,6 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
     resolver: zodResolver(tankSchema),
     defaultValues: {
       capacityUnit: 'L',
-      status: 'available',
     }
   })
 
@@ -121,7 +119,6 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
         capacityUnit: vessel.capacityUnit as any,
         material: vessel.material as any,
         jacketed: vessel.jacketed as any,
-        status: vessel.status as any,
         location: vessel.location || undefined,
         notes: vessel.notes || undefined,
       })
@@ -208,23 +205,6 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="status">Status</Label>
-          <Select onValueChange={(value) => setValue("status", value as any)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="available">Available</SelectItem>
-              <SelectItem value="in_use">In Use</SelectItem>
-              <SelectItem value="maintenance">Maintenance</SelectItem>
-              <SelectItem value="cleaning">Cleaning</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div></div>
-      </div>
 
       <div>
         <Label htmlFor="location">Location</Label>

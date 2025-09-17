@@ -22,13 +22,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Search, ArrowUpDown, Archive, ArchiveRestore } from 'lucide-react'
@@ -226,15 +219,13 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
-  const [includeInactive, setIncludeInactive] = useState(false)
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
   const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<AppleVariety>>>(new Map())
-  const [categoryFilter, setCategoryFilter] = useState<string>('')
 
   const utils = trpc.useUtils()
 
   const { data, isLoading } = trpc.appleVariety.listAll.useQuery({
-    includeInactive,
+    includeInactive: true,
   })
 
   const varieties = data?.appleVarieties || []
@@ -348,10 +339,6 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
             />
           )
         },
-        filterFn: (row, id, value) => {
-          if (!value) return true
-          return row.getValue(id) === value
-        },
       },
       {
         accessorKey: 'tannin',
@@ -456,10 +443,6 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
             {getValue() ? 'Active' : 'Archived'}
           </Badge>
         ),
-        filterFn: (row, id, value) => {
-          if (value === 'all') return true
-          return value === 'active' ? row.getValue(id) : !row.getValue(id)
-        },
       },
       ...(userRole === 'admin' ? [{
         id: 'actions',
@@ -509,13 +492,6 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
     },
   })
 
-  // Update table filter when category filter changes
-  useEffect(() => {
-    const column = table.getColumn('ciderCategory')
-    if (column) {
-      column.setFilterValue(categoryFilter === '__all__' || categoryFilter === '' ? undefined : categoryFilter)
-    }
-  }, [categoryFilter, table])
 
   if (isLoading) {
     return (
@@ -528,39 +504,15 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
 
   return (
     <div className="space-y-4">
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search varieties..."
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <div className="flex gap-2">
-          {/* Use native select to avoid Select component issues */}
-          <select
-            className="w-40 px-3 py-2 border border-input rounded-md bg-background text-sm"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-          >
-            <option value="">All Categories</option>
-            {getCiderCategoryOptions().map((category) => (
-              <option key={category.value} value={category.value}>
-                {category.label}
-              </option>
-            ))}
-          </select>
-          <Button
-            variant={includeInactive ? 'default' : 'outline'}
-            onClick={() => setIncludeInactive(!includeInactive)}
-            size="sm"
-          >
-            {includeInactive ? 'All' : 'Active Only'}
-          </Button>
-        </div>
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Input
+          placeholder="Search varieties..."
+          value={globalFilter}
+          onChange={(e) => setGlobalFilter(e.target.value)}
+          className="pl-10"
+        />
       </div>
 
       {/* Table */}

@@ -32,6 +32,7 @@ export function PressRunCompletion({
   const [completionResult, setCompletionResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
+  const utils = trpc.useUtils()
 
   // Fetch press run details
   const {
@@ -71,6 +72,10 @@ export function PressRunCompletion({
         title: "Success",
         description: result.message || 'Press run completed successfully!',
       })
+
+      // Invalidate vessel queries to update vessel map
+      utils.vessel.list.invalidate()
+      utils.vessel.liquidMap.invalidate()
 
       // Call onComplete callback if provided
       onComplete?.()

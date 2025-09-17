@@ -177,6 +177,13 @@ export function FruitLoadFormWithTRPC({
     }
   }, [editingLoad, purchaseLines])
 
+  // Update form when vendorId prop changes (for auto-fill functionality)
+  useEffect(() => {
+    if (vendorId && !editingLoad) {
+      form.setValue('vendorId', vendorId)
+    }
+  }, [vendorId, editingLoad, form])
+
   // Unit conversion helpers
   const convertWeight = (weight: number, fromUnit: 'lbs' | 'kg', toUnit: 'lbs' | 'kg'): number => {
     if (fromUnit === toUnit) return weight
