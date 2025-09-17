@@ -5,18 +5,13 @@ import { eq, and, isNull, ilike, or, sql, ne } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, zCiderCategory, zIntensity, zHarvestWindow } from 'lib'
 
-// Zod schemas for input validation using shared constants
-const ciderCategorySchema = zCiderCategory.optional()
-const intensitySchema = zIntensity.optional()
-const harvestWindowSchema = zHarvestWindow.optional()
-
 const varietyCreateSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
-  ciderCategory: ciderCategorySchema,
-  tannin: intensitySchema,
-  acid: intensitySchema,
-  sugarBrix: intensitySchema,
-  harvestWindow: harvestWindowSchema,
+  ciderCategory: z.string().optional(),
+  tannin: z.string().optional(),
+  acid: z.string().optional(),
+  sugarBrix: z.string().optional(),
+  harvestWindow: z.string().optional(),
   varietyNotes: z.string().optional(),
 })
 
@@ -24,11 +19,11 @@ const varietyUpdateSchema = z.object({
   id: z.string().uuid('Invalid variety ID'),
   patch: z.object({
     name: z.string().min(1, 'Name is required').max(100, 'Name too long').optional(),
-    ciderCategory: ciderCategorySchema,
-    tannin: intensitySchema,
-    acid: intensitySchema,
-    sugarBrix: intensitySchema,
-    harvestWindow: harvestWindowSchema,
+    ciderCategory: z.string().optional(),
+    tannin: z.string().optional(),
+    acid: z.string().optional(),
+    sugarBrix: z.string().optional(),
+    harvestWindow: z.string().optional(),
     varietyNotes: z.string().optional(),
     isActive: z.boolean().optional(),
   }),
@@ -98,7 +93,7 @@ export const varietiesRouter = router({
     }),
 
   // Create new variety with name uniqueness validation
-  create: createRbacProcedure('create', 'appleVariety')
+  create: createRbacProcedure('create', 'apple_variety')
     .input(varietyCreateSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -165,7 +160,7 @@ export const varietiesRouter = router({
     }),
 
   // Update variety with partial patch support
-  update: createRbacProcedure('update', 'appleVariety')
+  update: createRbacProcedure('update', 'apple_variety')
     .input(varietyUpdateSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -252,7 +247,7 @@ export const varietiesRouter = router({
     }),
 
   // Soft delete (set isActive=false)
-  remove: createRbacProcedure('delete', 'appleVariety')
+  remove: createRbacProcedure('delete', 'apple_variety')
     .input(z.object({ id: z.string().uuid('Invalid variety ID') }))
     .mutation(async ({ input, ctx }) => {
       try {
@@ -308,7 +303,7 @@ export const varietiesRouter = router({
     }),
 
   // Search for typeahead functionality
-  search: createRbacProcedure('list', 'appleVariety')
+  search: createRbacProcedure('list', 'apple_variety')
     .input(z.object({
       q: z.string().min(1, 'Search query is required'),
       limit: z.number().int().min(1).max(50).default(10),

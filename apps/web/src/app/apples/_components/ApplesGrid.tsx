@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -60,11 +60,166 @@ interface AppleVariety {
 interface EditingCell {
   rowId: string
   columnId: string
-  value: any
 }
 
 interface ApplesGridProps {
   userRole: 'admin' | 'operator' | 'viewer'
+}
+
+// Completely isolated cell editor component
+class CellEditor extends React.Component<{
+  value: any
+  columnId: string
+  onSave: (value: any) => void
+  onCancel: () => void
+  options?: Array<{ value: string; label: string }>
+}, { localValue: any }> {
+  inputRef = React.createRef<HTMLInputElement>()
+  textareaRef = React.createRef<HTMLTextAreaElement>()
+
+  constructor(props: any) {
+    super(props)
+    this.state = {
+      localValue: props.value || ''
+    }
+  }
+
+  componentDidMount() {
+    if (this.inputRef.current) {
+      this.inputRef.current.focus()
+    }
+    if (this.textareaRef.current) {
+      this.textareaRef.current.focus()
+    }
+  }
+
+  handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      this.props.onSave(this.state.localValue)
+    } else if (e.key === 'Escape') {
+      this.props.onCancel()
+    }
+  }
+
+  handleSelectChange = (newValue: string) => {
+    const finalValue = newValue === '__clear__' ? null : newValue
+    this.props.onSave(finalValue)
+  }
+
+  render() {
+    const { columnId, options } = this.props
+    const { localValue } = this.state
+
+    // Textarea for notes
+    if (columnId === 'varietyNotes') {
+      return (
+        <Textarea
+          ref={this.textareaRef}
+          value={localValue || ''}
+          onChange={(e) => this.setState({ localValue: e.target.value })}
+          onBlur={() => this.props.onSave(localValue)}
+          onKeyDown={this.handleKeyDown}
+          className="min-h-[80px] w-full"
+        />
+      )
+    }
+
+    // Select dropdown - render directly without state tracking
+    if (options && ['ciderCategory', 'tannin', 'acid', 'sugarBrix', 'harvestWindow'].includes(columnId)) {
+      return (
+        <div className="relative">
+          <select
+            className="w-full px-3 py-2 border border-input rounded-md bg-background"
+            value={localValue || ''}
+            onChange={(e) => this.handleSelectChange(e.target.value)}
+            onBlur={() => this.props.onCancel()}
+            autoFocus
+          >
+            <option value="">Select...</option>
+            <option value="__clear__">Clear</option>
+            {options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )
+    }
+
+    // Regular text input
+    return (
+      <Input
+        ref={this.inputRef}
+        value={localValue || ''}
+        onChange={(e) => this.setState({ localValue: e.target.value })}
+        onBlur={() => this.props.onSave(localValue)}
+        onKeyDown={this.handleKeyDown}
+        className="w-full"
+      />
+    )
+  }
+}
+
+// Editable cell wrapper
+function EditableCell({
+  value,
+  rowId,
+  columnId,
+  userRole,
+  isEditing,
+  onStartEdit,
+  onSave,
+  onCancel,
+}: {
+  value: any
+  rowId: string
+  columnId: string
+  userRole: 'admin' | 'operator' | 'viewer'
+  isEditing: boolean
+  onStartEdit: () => void
+  onSave: (value: any) => void
+  onCancel: () => void
+}) {
+  const getOptions = () => {
+    if (columnId === 'ciderCategory') return getCiderCategoryOptions()
+    if (columnId === 'harvestWindow') return getHarvestWindowOptions()
+    if (['tannin', 'acid', 'sugarBrix'].includes(columnId)) return getIntensityOptions()
+    return undefined
+  }
+
+  const getDisplayValue = () => {
+    if (columnId === 'ciderCategory') return getCiderCategoryLabel(value)
+    if (['tannin', 'acid', 'sugarBrix'].includes(columnId)) return getIntensityLabel(value)
+    if (columnId === 'harvestWindow') return getHarvestWindowLabel(value)
+    return value
+  }
+
+  if (isEditing) {
+    return (
+      <CellEditor
+        value={value}
+        columnId={columnId}
+        options={getOptions()}
+        onSave={onSave}
+        onCancel={onCancel}
+      />
+    )
+  }
+
+  const displayValue = getDisplayValue()
+
+  return (
+    <div
+      onClick={() => userRole !== 'viewer' && onStartEdit()}
+      className={`min-h-[32px] px-2 py-1 rounded cursor-pointer hover:bg-gray-50 ${
+        userRole === 'viewer' ? 'cursor-default' : ''
+      }`}
+    >
+      {displayValue || <span className="text-gray-400">-</span>}
+    </div>
+  )
 }
 
 export function ApplesGrid({ userRole }: ApplesGridProps) {
@@ -74,8 +229,8 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
   const [includeInactive, setIncludeInactive] = useState(false)
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
   const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<AppleVariety>>>(new Map())
+  const [categoryFilter, setCategoryFilter] = useState<string>('')
 
-  const editInputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
   const utils = trpc.useUtils()
 
   const { data, isLoading } = trpc.appleVariety.listAll.useQuery({
@@ -84,7 +239,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
 
   const varieties = data?.appleVarieties || []
 
-  const updateVariety = trpc.appleVariety.update.useMutation({
+  const updateVarietyMutation = trpc.appleVariety.update.useMutation({
     onSuccess: () => {
       utils.appleVariety.listAll.invalidate()
       toast.success('Variety updated successfully')
@@ -106,147 +261,44 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
 
   const debouncedUpdates = useDebounce(pendingUpdates, 500)
 
+  // Process debounced updates - DON'T include mutation as dependency
   useEffect(() => {
     if (debouncedUpdates.size > 0) {
       debouncedUpdates.forEach((updates, varietyId) => {
-        const patch = {
-          name: updates.name,
-          ciderCategory: updates.ciderCategory,
-          tannin: updates.tannin,
-          acid: updates.acid,
-          sugarBrix: updates.sugarBrix,
-          harvestWindow: updates.harvestWindow,
-          varietyNotes: updates.varietyNotes || undefined,
-          isActive: updates.isActive,
-        }
-        updateVariety.mutate({ id: varietyId, patch })
+        const patch: any = {}
+
+        // Only include fields that were actually updated
+        if (updates.name !== undefined) patch.name = updates.name
+        if (updates.ciderCategory !== undefined) patch.ciderCategory = updates.ciderCategory
+        if (updates.tannin !== undefined) patch.tannin = updates.tannin
+        if (updates.acid !== undefined) patch.acid = updates.acid
+        if (updates.sugarBrix !== undefined) patch.sugarBrix = updates.sugarBrix
+        if (updates.harvestWindow !== undefined) patch.harvestWindow = updates.harvestWindow
+        if (updates.varietyNotes !== undefined) patch.varietyNotes = updates.varietyNotes || undefined
+        if (updates.isActive !== undefined) patch.isActive = updates.isActive
+
+        console.log('Sending update:', { id: varietyId, patch })
+        updateVarietyMutation.mutate({ id: varietyId, patch })
       })
       setPendingUpdates(new Map())
     }
-  }, [debouncedUpdates, updateVariety])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedUpdates])
 
-  const handleCellEdit = (rowId: string, columnId: string, value: any) => {
+  const handleCellSave = useCallback((rowId: string, columnId: string, value: any) => {
     if (userRole === 'viewer') return
 
-    const newUpdates = new Map(pendingUpdates)
-    const existing = newUpdates.get(rowId) || {}
-    newUpdates.set(rowId, { ...existing, [columnId]: value })
-    setPendingUpdates(newUpdates)
+    console.log('handleCellSave called:', { rowId, columnId, value })
+
+    setPendingUpdates((prev) => {
+      const newUpdates = new Map(prev)
+      const existing = newUpdates.get(rowId) || {}
+      newUpdates.set(rowId, { ...existing, [columnId]: value })
+      console.log('Updated pendingUpdates:', newUpdates)
+      return newUpdates
+    })
     setEditingCell(null)
-  }
-
-  const EditableCell = ({
-    getValue,
-    row,
-    column,
-    table
-  }: {
-    getValue: () => any
-    row: any
-    column: any
-    table: any
-  }) => {
-    const initialValue = getValue()
-    const [value, setValue] = useState(initialValue)
-    const isEditing = editingCell?.rowId === row.id && editingCell?.columnId === column.id
-
-    useEffect(() => {
-      setValue(initialValue)
-    }, [initialValue])
-
-    useEffect(() => {
-      if (isEditing && editInputRef.current) {
-        editInputRef.current.focus()
-      }
-    }, [isEditing])
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        handleCellEdit(row.id, column.id, value)
-      } else if (e.key === 'Escape') {
-        setValue(initialValue)
-        setEditingCell(null)
-      }
-    }
-
-    const handleBlur = () => {
-      handleCellEdit(row.id, column.id, value)
-    }
-
-    const startEditing = () => {
-      if (userRole === 'viewer') return
-      setEditingCell({ rowId: row.id, columnId: column.id, value: initialValue })
-      setValue(initialValue)
-    }
-
-    if (isEditing) {
-      if (column.id === 'varietyNotes') {
-        return (
-          <Textarea
-            ref={editInputRef as React.RefObject<HTMLTextAreaElement>}
-            value={value || ''}
-            onChange={(e) => setValue(e.target.value)}
-            onBlur={handleBlur}
-            onKeyDown={handleKeyDown}
-            className="min-h-[80px] w-full"
-          />
-        )
-      }
-
-      if (['ciderCategory', 'tannin', 'acid', 'sugarBrix', 'harvestWindow'].includes(column.id)) {
-        const options = column.id === 'ciderCategory' ? getCiderCategoryOptions()
-          : column.id === 'harvestWindow' ? getHarvestWindowOptions()
-          : getIntensityOptions()
-
-        return (
-          <Select
-            value={value || ''}
-            onValueChange={(newValue) => handleCellEdit(row.id, column.id, newValue === '__clear__' ? null : newValue)}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__clear__">Clear</SelectItem>
-              {options.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
-      }
-
-
-      return (
-        <Input
-          ref={editInputRef as React.RefObject<HTMLInputElement>}
-          value={value || ''}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          className="w-full"
-        />
-      )
-    }
-
-    const displayValue = column.id === 'ciderCategory' ? getCiderCategoryLabel(value)
-      : column.id === 'tannin' || column.id === 'acid' || column.id === 'sugarBrix' ? getIntensityLabel(value)
-      : column.id === 'harvestWindow' ? getHarvestWindowLabel(value)
-      : value
-
-    return (
-      <div
-        onClick={startEditing}
-        className={`min-h-[32px] px-2 py-1 rounded cursor-pointer hover:bg-gray-50 ${
-          userRole === 'viewer' ? 'cursor-default' : ''
-        }`}
-      >
-        {displayValue || <span className="text-gray-400">-</span>}
-      </div>
-    )
-  }
+  }, [userRole])
 
   const columns: ColumnDef<AppleVariety>[] = useMemo(
     () => [
@@ -262,12 +314,40 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         ),
-        cell: EditableCell,
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
       },
       {
         accessorKey: 'ciderCategory',
         header: 'Cider Category',
-        cell: EditableCell,
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
         filterFn: (row, id, value) => {
           if (!value) return true
           return row.getValue(id) === value
@@ -276,27 +356,97 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
       {
         accessorKey: 'tannin',
         header: 'Tannin',
-        cell: EditableCell,
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
       },
       {
         accessorKey: 'acid',
         header: 'Acid',
-        cell: EditableCell,
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
       },
       {
         accessorKey: 'sugarBrix',
         header: 'Sugar Level',
-        cell: EditableCell,
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
       },
       {
         accessorKey: 'harvestWindow',
         header: 'Harvest Window',
-        cell: EditableCell,
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
       },
       {
         accessorKey: 'varietyNotes',
         header: 'Notes',
-        cell: EditableCell,
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
       },
       {
         accessorKey: 'isActive',
@@ -340,7 +490,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
         ),
       }] : []),
     ],
-    [userRole, archiveVariety, EditableCell]
+    [userRole, archiveVariety, editingCell, handleCellSave]
   )
 
   const table = useReactTable({
@@ -358,6 +508,14 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
       globalFilter,
     },
   })
+
+  // Update table filter when category filter changes
+  useEffect(() => {
+    const column = table.getColumn('ciderCategory')
+    if (column) {
+      column.setFilterValue(categoryFilter === '__all__' || categoryFilter === '' ? undefined : categoryFilter)
+    }
+  }, [categoryFilter, table])
 
   if (isLoading) {
     return (
@@ -382,26 +540,19 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
           />
         </div>
         <div className="flex gap-2">
-          <Select
-            value={
-              (table.getColumn('ciderCategory')?.getFilterValue() as string) ?? ''
-            }
-            onValueChange={(value) =>
-              table.getColumn('ciderCategory')?.setFilterValue(value === '__all__' ? undefined : value)
-            }
+          {/* Use native select to avoid Select component issues */}
+          <select
+            className="w-40 px-3 py-2 border border-input rounded-md bg-background text-sm"
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
           >
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">All Categories</SelectItem>
-              {getCiderCategoryOptions().map((category) => (
-                <SelectItem key={category.value} value={category.value}>
-                  {category.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="">All Categories</option>
+            {getCiderCategoryOptions().map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
+              </option>
+            ))}
+          </select>
           <Button
             variant={includeInactive ? 'default' : 'outline'}
             onClick={() => setIncludeInactive(!includeInactive)}
