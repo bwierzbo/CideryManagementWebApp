@@ -4,7 +4,7 @@ status: backlog
 created: 2025-09-17T05:24:30Z
 progress: 0%
 prd: .claude/prds/cellartankfunctionality.md
-github: [Will be updated when synced to GitHub]
+github: https://github.com/bwierzbo/CideryManagementWebApp/issues/32
 ---
 
 # Epic: Cellar Tank Functionality
@@ -214,14 +214,14 @@ High-level task categories that will be created:
 The implementation leverages existing infrastructure heavily, minimizing new code while delivering comprehensive tank management functionality. Focus on proven patterns from apple press system ensures reliable delivery within timeline.
 
 ## Tasks Created
-- [ ] 001.md - Database Schema Updates (parallel: true)
-- [ ] 002.md - Tank Status Management (parallel: false, depends on 001)
-- [ ] 003.md - API Integration (parallel: true)
-- [ ] 004.md - Measurement Recording System (parallel: true, depends on 002, 003)
-- [ ] 005.md - Additive Tracking System (parallel: true, depends on 002, 003)
-- [ ] 006.md - Tank Dashboard Integration (parallel: true, depends on 002, 003)
-- [ ] 007.md - Mobile UI Components (parallel: true, depends on 004, 005)
-- [ ] 008.md - Testing & Documentation (parallel: false, depends on 001-007)
+- [ ] #33 - Database Schema Updates (parallel: true)
+- [ ] #34 - Tank Status Management (parallel: false, depends on #33)
+- [ ] #35 - API Integration (parallel: true)
+- [ ] #36 - Measurement Recording System (parallel: true, depends on #34, #35)
+- [ ] #37 - Additive Tracking System (parallel: true, depends on #34, #35)
+- [ ] #38 - Tank Dashboard Integration (parallel: true, depends on #34, #35)
+- [ ] #39 - Mobile UI Components (parallel: true, depends on #36, #37)
+- [ ] #40 - Testing & Documentation (parallel: false, depends on #33-#39)
 
 Total tasks: 8
 Parallel tasks: 6
