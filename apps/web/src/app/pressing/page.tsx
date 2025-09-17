@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { PressRunCompletion } from "@/components/pressing"
 import {
   Play,
@@ -16,10 +17,14 @@ import {
   ArrowRight,
   RefreshCw,
   TrendingUp,
-  Trash2
+  Trash2,
+  Search,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useToast } from "@/components/ui/toast-provider"
 
 interface PressRun {
   id: string
@@ -202,77 +207,249 @@ function ActiveRunsSection({
 
 
 // Mobile-optimized Completed Runs Section
-function CompletedRunsSection() {
-  const recentCompleted: PressRun[] = [
-    {
-      id: "PR-2024-003",
-      startDate: "2024-01-12",
-      totalAppleKg: 1100,
-      varieties: ["Fuji", "Braeburn"],
-      status: "completed",
-      totalJuiceL: 785,
-      yield: "71.4%"
-    },
-    {
-      id: "PR-2024-004",
-      startDate: "2024-01-10",
-      totalAppleKg: 950,
-      varieties: ["Honeycrisp"],
-      status: "completed",
-      totalJuiceL: 652,
-      yield: "68.6%"
-    }
-  ]
+function CompletedRunsSection({
+  onDeletePressRun
+}: {
+  onDeletePressRun: (pressRunId: string) => void
+}) {
+  const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
+  const { data: pressRunsData, isLoading, refetch } = trpc.pressRun.list.useQuery({
+    status: 'completed',
+    limit: 100, // Get more items for client-side pagination and search
+    sortBy: 'updated',
+    sortOrder: 'desc'
+  })
+
+  const filteredPressRuns = useMemo(() => {
+    if (!pressRunsData?.pressRuns) return []
+
+    const filtered = pressRunsData.pressRuns.filter(pressRun => {
+      const searchLower = searchTerm.toLowerCase()
+      const varietiesText = pressRun.varieties.join(' ').toLowerCase()
+      const vesselText = pressRun.vesselName?.toLowerCase() || ''
+      const dateText = pressRun.endTime ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase() : ''
+
+      return (
+        varietiesText.includes(searchLower) ||
+        vesselText.includes(searchLower) ||
+        dateText.includes(searchLower)
+      )
+    })
+
+    return filtered
+  }, [pressRunsData?.pressRuns, searchTerm])
+
+  const paginatedPressRuns = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage
+    return filteredPressRuns.slice(startIndex, startIndex + itemsPerPage)
+  }, [filteredPressRuns, currentPage, itemsPerPage])
+
+  const totalPages = Math.ceil(filteredPressRuns.length / itemsPerPage)
+
+  if (isLoading) {
+    return (
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Recent Completed</h3>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-purple-600 h-8 px-3"
+            onClick={() => refetch()}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+        <Card>
+          <CardContent className="p-6">
+            <div className="animate-pulse">
+              <div className="h-10 bg-gray-200 rounded mb-4"></div>
+              <div className="h-32 bg-gray-200 rounded"></div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="mb-8">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Recent Completed</h3>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">Recent Completed</h3>
+          <p className="text-sm text-gray-600 mt-1">
+            {filteredPressRuns.length} completed press run{filteredPressRuns.length !== 1 ? 's' : ''}
+            {searchTerm && ` matching "${searchTerm}"`}
+          </p>
+        </div>
         <Button
           variant="ghost"
           size="sm"
           className="text-purple-600 h-8 px-3"
+          onClick={() => refetch()}
         >
-          View All
-          <ArrowRight className="w-4 h-4 ml-2" />
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh
         </Button>
       </div>
 
-      <div className="space-y-3">
-        {recentCompleted.map((run) => (
-          <Card key={run.id} className="border border-green-200">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h4 className="font-medium text-gray-900">{run.id}</h4>
-                  <p className="text-sm text-gray-600">{run.startDate}</p>
-                </div>
-                <Badge variant="secondary" className="bg-green-100 text-green-800">
-                  Completed
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <p className="text-xs text-gray-600">Apples</p>
-                  <p className="font-medium text-sm">{run.totalAppleKg} kg</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Juice</p>
-                  <p className="font-medium text-sm">{run.totalJuiceL} L</p>
-                </div>
-                <div className="flex items-center">
-                  <TrendingUp className="w-3 h-3 text-green-600 mr-1" />
-                  <div>
-                    <p className="text-xs text-gray-600">Yield</p>
-                    <p className="font-medium text-sm text-green-600">{run.yield}</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* Search Bar */}
+      <div className="flex items-center space-x-2 mb-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            placeholder="Search by variety, vessel, or date..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setCurrentPage(1) // Reset to first page when searching
+            }}
+            className="pl-10"
+          />
+        </div>
       </div>
+
+      {filteredPressRuns.length === 0 ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center py-8 text-gray-500">
+              <TrendingUp className="w-8 h-8 mx-auto mb-2" />
+              {searchTerm ? (
+                <>
+                  <p>No press runs found for "{searchTerm}"</p>
+                  <p className="text-sm">Try adjusting your search terms</p>
+                </>
+              ) : (
+                <>
+                  <p>No completed press runs found</p>
+                  <p className="text-sm">Completed press runs will appear here</p>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {paginatedPressRuns.map((run) => (
+              <Card key={run.id} className="border border-green-200">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-gray-900">
+                        {run.endTime ? new Date(run.endTime).toLocaleDateString() : 'Recent'}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {run.varieties.length > 0 ? run.varieties.join(', ') : 'Mixed varieties'}
+                      </p>
+                      {run.vesselName && (
+                        <p className="text-xs text-gray-500">→ {run.vesselName}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Badge variant="secondary" className="bg-green-100 text-green-800">
+                        Completed
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDeletePressRun(run.id)
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-600">Apples</p>
+                      <p className="font-medium text-sm">
+                        {run.totalAppleWeightKg ? `${parseFloat(run.totalAppleWeightKg).toFixed(0)} kg` : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600">Juice</p>
+                      <p className="font-medium text-sm">
+                        {run.totalJuiceVolumeL ? `${parseFloat(run.totalJuiceVolumeL).toFixed(1)} L` : '—'}
+                      </p>
+                    </div>
+                    <div className="flex items-center">
+                      <TrendingUp className="w-3 h-3 text-green-600 mr-1" />
+                      <div>
+                        <p className="text-xs text-gray-600">Yield</p>
+                        <p className="font-medium text-sm text-green-600">
+                          {run.extractionRatePercent ? `${run.extractionRatePercent.toFixed(1)}%` : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredPressRuns.length)} of {filteredPressRuns.length} results
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </Button>
+
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(page => {
+                      // Show first page, last page, current page, and pages around current
+                      return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1
+                    })
+                    .map((page, index, array) => (
+                      <div key={page} className="flex items-center">
+                        {index > 0 && array[index - 1] !== page - 1 && (
+                          <span className="px-2 text-gray-400">...</span>
+                        )}
+                        <Button
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                          className="w-8 h-8 p-0"
+                        >
+                          {page}
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -282,37 +459,25 @@ function ActionButtons({ onStartNewRun, isCreating }: { onStartNewRun: () => voi
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 lg:relative lg:bottom-auto lg:border-t-0 lg:p-0 lg:bg-transparent">
       <div className="max-w-7xl mx-auto lg:px-0">
-        <div className="space-y-3 lg:space-y-0 lg:flex lg:space-x-3">
-          {/* Primary Action - Start New Run */}
-          <Button
-            size="lg"
-            className="w-full h-12 bg-amber-600 hover:bg-amber-700 lg:flex-1"
-            onClick={onStartNewRun}
-            disabled={isCreating}
-          >
-            {isCreating ? (
-              <>
-                <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-                Creating Press Run...
-              </>
-            ) : (
-              <>
-                <Plus className="w-5 h-5 mr-2" />
-                Start New Press Run
-              </>
-            )}
-          </Button>
-
-          {/* Secondary Action - View All Runs */}
-          <Button
-            size="lg"
-            variant="outline"
-            className="w-full h-12 lg:flex-1"
-          >
-            <Eye className="w-5 h-5 mr-2" />
-            View All Runs
-          </Button>
-        </div>
+        {/* Primary Action - Start New Run */}
+        <Button
+          size="lg"
+          className="w-full h-12 bg-amber-600 hover:bg-amber-700"
+          onClick={onStartNewRun}
+          disabled={isCreating}
+        >
+          {isCreating ? (
+            <>
+              <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+              Creating Press Run...
+            </>
+          ) : (
+            <>
+              <Plus className="w-5 h-5 mr-2" />
+              Start New Press Run
+            </>
+          )}
+        </Button>
       </div>
       {/* Bottom padding for mobile to prevent content cutoff */}
       <div className="h-4 lg:hidden" />
@@ -325,16 +490,60 @@ export default function PressingPage() {
   const [selectedPressRunId, setSelectedPressRunId] = useState<string | null>(null)
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const [pressRunToCancel, setPressRunToCancel] = useState<string | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [pressRunToDelete, setPressRunToDelete] = useState<string | null>(null)
+  const { toast } = useToast()
 
   // Cancel press run mutation
   const cancelPressRunMutation = trpc.pressRun.cancel.useMutation({
     onSuccess: () => {
+      toast({
+        title: "Press run cancelled",
+        description: "The press run has been successfully cancelled.",
+        variant: "success"
+      })
       // Refresh the page data
       window.location.reload()
     },
     onError: (error) => {
       console.error('Failed to cancel press run:', error)
-      alert('Failed to cancel press run. Please try again.')
+      toast({
+        title: "Error",
+        description: "Failed to cancel press run. Please try again.",
+        variant: "destructive"
+      })
+    }
+  })
+
+  // Delete press run mutation
+  const deletePressRunMutation = trpc.pressRun.delete.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Press run deleted",
+        description: "The press run has been permanently deleted.",
+        variant: "success"
+      })
+      // Refresh the page data
+      window.location.reload()
+    },
+    onError: (error) => {
+      console.error('Failed to delete press run:', error)
+
+      // Check if it's the specific error about completed press runs with juice assigned
+      if (error.message.includes('Cannot delete completed press run with juice assigned to vessel')) {
+        toast({
+          title: "Cannot delete press run",
+          description: "This press run has juice assigned to a vessel. Completed press runs with juice assignments cannot be deleted to maintain production records.",
+          variant: "destructive",
+          duration: 8000 // Longer duration for important message
+        })
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to delete press run. Please try again.",
+          variant: "destructive"
+        })
+      }
     }
   })
 
@@ -362,13 +571,22 @@ export default function PressingPage() {
   const createPressRunMutation = trpc.pressRun.create.useMutation({
     onSuccess: (result) => {
       if (result.success && result.pressRun) {
+        toast({
+          title: "Press run created",
+          description: "New press run started successfully.",
+          variant: "success"
+        })
         // Navigate directly to the press run with addFirstLoad=true
         window.location.href = `/pressing/${result.pressRun.id}?addFirstLoad=true`
       }
     },
     onError: (error) => {
       console.error('Failed to create press run:', error)
-      alert('Failed to create press run. Please try again.')
+      toast({
+        title: "Error",
+        description: "Failed to create press run. Please try again.",
+        variant: "destructive"
+      })
     }
   })
 
@@ -394,6 +612,22 @@ export default function PressingPage() {
       })
     }
     setPressRunToCancel(null)
+    setShowCancelDialog(false)
+  }
+
+  const handleDeleteCompletedPressRun = (pressRunId: string) => {
+    setPressRunToDelete(pressRunId)
+    setShowDeleteDialog(true)
+  }
+
+  const handleConfirmDelete = () => {
+    if (pressRunToDelete) {
+      deletePressRunMutation.mutate({
+        id: pressRunToDelete
+      })
+    }
+    setPressRunToDelete(null)
+    setShowDeleteDialog(false)
   }
 
   // Completion view
@@ -420,7 +654,7 @@ export default function PressingPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 pb-24 lg:pb-8">
+      <main className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 pb-32 lg:pb-8">
         {/* Page Header - Mobile optimized */}
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Pressing</h1>
@@ -438,22 +672,34 @@ export default function PressingPage() {
         />
 
         {/* Recent Completed Runs */}
-        <CompletedRunsSection />
+        <CompletedRunsSection onDeletePressRun={handleDeleteCompletedPressRun} />
 
         {/* Bottom-aligned Action Buttons (Mobile) */}
         <ActionButtons onStartNewRun={handleStartNewRun} isCreating={createPressRunMutation.isPending} />
       </main>
 
-      {/* Confirmation Dialog */}
+      {/* Cancel Confirmation Dialog */}
       <ConfirmDialog
         open={showCancelDialog}
         onOpenChange={setShowCancelDialog}
-        title="Delete Press Run"
-        description="Are you sure you want to delete this press run? This action cannot be undone."
+        title="Cancel Press Run"
+        description="Are you sure you want to cancel this press run? This action cannot be undone."
+        confirmText="Yes, Cancel"
+        cancelText="Keep Running"
+        variant="destructive"
+        onConfirm={handleConfirmCancel}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Completed Press Run"
+        description="Are you sure you want to delete this completed press run? Note: Press runs with juice assigned to vessels cannot be deleted to maintain production records. This will permanently remove all records and cannot be undone."
         confirmText="Yes, Delete"
         cancelText="Cancel"
         variant="destructive"
-        onConfirm={handleConfirmCancel}
+        onConfirm={handleConfirmDelete}
       />
     </div>
   )

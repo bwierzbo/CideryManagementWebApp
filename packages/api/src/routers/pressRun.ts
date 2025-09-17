@@ -1009,11 +1009,20 @@ export const pressRunRouter = router({
             })
           }
 
-          if (existingPressRun[0].status === 'completed') {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: 'Cannot delete completed press run with juice assigned to vessel'
-            })
+          if (existingPressRun[0].status === 'completed' && existingPressRun[0].vesselId) {
+            // Check if vessel still exists
+            const vessel = await tx
+              .select()
+              .from(vessels)
+              .where(and(eq(vessels.id, existingPressRun[0].vesselId), isNull(vessels.deletedAt)))
+              .limit(1)
+
+            if (vessel.length > 0) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'Cannot delete completed press run with juice assigned to vessel'
+              })
+            }
           }
 
           // Soft delete press run and all loads

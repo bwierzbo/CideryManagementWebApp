@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu"
 import {
   Beaker,
   Droplets,
@@ -26,9 +27,9 @@ import {
   Waves,
   Zap,
   ArrowRight,
-  Edit,
   Trash2,
-  Settings
+  Settings,
+  MoreVertical
 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -262,7 +263,6 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
 }
 
 function VesselMap() {
-  const [editingVessel, setEditingVessel] = useState<string | null>(null)
   const [showAddTank, setShowAddTank] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [vesselToDelete, setVesselToDelete] = useState<{id: string, name: string | null} | null>(null)
@@ -272,6 +272,13 @@ function VesselMap() {
   const utils = trpc.useUtils()
 
   const deleteMutation = trpc.vessel.delete.useMutation({
+    onSuccess: () => {
+      utils.vessel.list.invalidate()
+      utils.vessel.liquidMap.invalidate()
+    }
+  })
+
+  const updateStatusMutation = trpc.vessel.update.useMutation({
     onSuccess: () => {
       utils.vessel.list.invalidate()
       utils.vessel.liquidMap.invalidate()
@@ -327,6 +334,13 @@ function VesselMap() {
   const handleDeleteCancel = () => {
     setDeleteConfirmOpen(false)
     setVesselToDelete(null)
+  }
+
+  const handleStatusChange = (vesselId: string, newStatus: string) => {
+    updateStatusMutation.mutate({
+      id: vesselId,
+      status: newStatus as 'available' | 'in_use' | 'cleaning' | 'maintenance'
+    })
   }
 
   if (vesselListQuery.isLoading) {
@@ -450,46 +464,55 @@ function VesselMap() {
                 </div>
 
                 <div className="flex space-x-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setEditingVessel(vessel.id)}
-                  >
-                    <Edit className="w-3 h-3 mr-1" />
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleDeleteClick(vessel.id, vessel.name)}
-                    disabled={vessel.status === 'in_use'}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        <MoreVertical className="w-3 h-3 mr-1" />
+                        Actions
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Set Status</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'available')}
+                        disabled={vessel.status === 'available'}
+                      >
+                        Available
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'cleaning')}
+                        disabled={vessel.status === 'cleaning'}
+                      >
+                        Cleaning
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'maintenance')}
+                        disabled={vessel.status === 'maintenance'}
+                      >
+                        Maintenance
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleDeleteClick(vessel.id, vessel.name)}
+                        disabled={vessel.status === 'in_use'}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             )
           })}
         </div>
 
-        {/* Edit Tank Dialog */}
-        <Dialog open={!!editingVessel} onOpenChange={(open) => !open && setEditingVessel(null)}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Edit Tank</DialogTitle>
-              <DialogDescription>
-                Update tank specifications and settings
-              </DialogDescription>
-            </DialogHeader>
-            {editingVessel && (
-              <TankForm
-                vesselId={editingVessel}
-                onClose={() => setEditingVessel(null)}
-              />
-            )}
-          </DialogContent>
-        </Dialog>
 
         {/* Delete Confirmation Modal */}
         <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

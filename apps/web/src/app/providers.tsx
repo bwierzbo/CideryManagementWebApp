@@ -5,6 +5,7 @@ import { httpBatchLink } from "@trpc/client"
 import { SessionProvider } from "next-auth/react"
 import { useState } from "react"
 import { trpc } from "../utils/trpc"
+import { ToastProvider } from "../components/ui/toast-provider"
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -31,7 +32,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        <QueryClientProvider client={queryClient}>
+          <ToastProvider>{children}</ToastProvider>
+        </QueryClientProvider>
       </trpc.Provider>
     </SessionProvider>
   )
