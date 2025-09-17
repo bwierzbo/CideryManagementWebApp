@@ -221,6 +221,11 @@ export default function PressRunDetailsPage() {
   const totalWeight = pressRun.loads?.reduce((sum, load) => sum + parseFloat(load.appleWeightKg || '0'), 0) || 0
   const totalWeightLbs = totalWeight * 2.20462
 
+  // Auto-fill vendor from last load
+  const lastVendorId = pressRun.loads && pressRun.loads.length > 0
+    ? pressRun.loads[pressRun.loads.length - 1]?.vendorId
+    : undefined
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -341,6 +346,7 @@ export default function PressRunDetailsPage() {
               <CardContent>
                 <FruitLoadFormWithTRPC
                   loadSequence={nextLoadSequence}
+                  vendorId={lastVendorId || undefined}
                   onSubmit={handleAddLoad}
                   onCancel={() => setShowAddLoadForm(false)}
                   isSubmitting={isSubmittingLoad}
