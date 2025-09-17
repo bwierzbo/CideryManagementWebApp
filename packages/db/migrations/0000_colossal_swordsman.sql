@@ -53,6 +53,18 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ CREATE TYPE "vessel_jacketed" AS ENUM('yes', 'no');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "vessel_material" AS ENUM('stainless_steel', 'plastic');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  CREATE TYPE "vessel_status" AS ENUM('available', 'in_use', 'cleaning', 'maintenance');
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -125,7 +137,7 @@ CREATE TABLE IF NOT EXISTS "apple_varieties" (
 	"cider_category" "cider_category_enum",
 	"tannin" "intensity_enum",
 	"acid" "intensity_enum",
-	"sugar_brix" numeric(4, 2),
+	"sugar_brix" "intensity_enum",
 	"harvest_window" "harvest_window_enum",
 	"variety_notes" text,
 	"is_active" boolean DEFAULT true NOT NULL,
@@ -358,9 +370,12 @@ CREATE TABLE IF NOT EXISTS "vendors" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "vessels" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"name" text NOT NULL,
-	"type" "vessel_type" NOT NULL,
+	"name" text,
+	"type" "vessel_type",
 	"capacity_l" numeric(10, 3) NOT NULL,
+	"capacity_unit" "unit" DEFAULT 'L' NOT NULL,
+	"material" "vessel_material",
+	"jacketed" "vessel_jacketed",
 	"status" "vessel_status" DEFAULT 'available' NOT NULL,
 	"location" text,
 	"notes" text,

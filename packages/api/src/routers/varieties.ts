@@ -7,11 +7,11 @@ import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, zCiderCateg
 
 const varietyCreateSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
-  ciderCategory: z.string().optional(),
-  tannin: z.string().optional(),
-  acid: z.string().optional(),
-  sugarBrix: z.string().optional(),
-  harvestWindow: z.string().optional(),
+  ciderCategory: zCiderCategory.optional(),
+  tannin: zIntensity.optional(),
+  acid: zIntensity.optional(),
+  sugarBrix: zIntensity.optional(),
+  harvestWindow: zHarvestWindow.optional(),
   varietyNotes: z.string().optional(),
 })
 
@@ -19,11 +19,11 @@ const varietyUpdateSchema = z.object({
   id: z.string().uuid('Invalid variety ID'),
   patch: z.object({
     name: z.string().min(1, 'Name is required').max(100, 'Name too long').optional(),
-    ciderCategory: z.string().optional(),
-    tannin: z.string().optional(),
-    acid: z.string().optional(),
-    sugarBrix: z.string().optional(),
-    harvestWindow: z.string().optional(),
+    ciderCategory: zCiderCategory.optional(),
+    tannin: zIntensity.optional(),
+    acid: zIntensity.optional(),
+    sugarBrix: zIntensity.optional(),
+    harvestWindow: zHarvestWindow.optional(),
     varietyNotes: z.string().optional(),
     isActive: z.boolean().optional(),
   }),
@@ -114,17 +114,19 @@ export const varietiesRouter = router({
           })
         }
 
+        const values = {
+          name: input.name,
+          ciderCategory: input.ciderCategory || null,
+          tannin: input.tannin || null,
+          acid: input.acid || null,
+          sugarBrix: input.sugarBrix || null,
+          harvestWindow: input.harvestWindow || null,
+          varietyNotes: input.varietyNotes || null,
+        }
+
         const newVariety = await db
           .insert(appleVarieties)
-          .values({
-            name: input.name,
-            ciderCategory: input.ciderCategory || null,
-            tannin: input.tannin || null,
-            acid: input.acid || null,
-            sugarBrix: input.sugarBrix || null,
-            harvestWindow: input.harvestWindow || null,
-            varietyNotes: input.varietyNotes || null,
-          })
+          .values(values as any)
           .returning()
 
         // Publish audit event

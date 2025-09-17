@@ -5,36 +5,8 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1757984271024,
-      "tag": "0000_famous_wolf_cub",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1757984734025,
-      "tag": "0001_talented_jimmy_woo",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1758035442911,
-      "tag": "0002_third_freak",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1758036181600,
-      "tag": "0003_safe_jubilee",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "5",
-      "when": 1758052624622,
-      "tag": "0004_tired_shocker",
+      "when": 1758068498071,
+      "tag": "0000_colossal_swordsman",
       "breakpoints": true
     }
   ]

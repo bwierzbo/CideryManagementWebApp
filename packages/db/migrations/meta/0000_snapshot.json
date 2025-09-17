@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "pg",
-  "id": "329e54bf-7b24-4255-a44c-fa3f8c165537",
+  "id": "7d6882a9-63cc-4249-aa99-e17f9e40af6e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "apple_press_run_loads": {
@@ -556,7 +556,7 @@
         },
         "sugar_brix": {
           "name": "sugar_brix",
-          "type": "numeric(4, 2)",
+          "type": "intensity_enum",
           "primaryKey": false,
           "notNull": false
         },
@@ -2135,19 +2135,38 @@
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "type": {
           "name": "type",
           "type": "vessel_type",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "capacity_l": {
           "name": "capacity_l",
           "type": "numeric(10, 3)",
           "primaryKey": false,
           "notNull": true
+        },
+        "capacity_unit": {
+          "name": "capacity_unit",
+          "type": "unit",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'L'"
+        },
+        "material": {
+          "name": "material",
+          "type": "vessel_material",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "jacketed": {
+          "name": "jacketed",
+          "type": "vessel_jacketed",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -2537,6 +2556,20 @@
       "values": {
         "admin": "admin",
         "operator": "operator"
+      }
+    },
+    "vessel_jacketed": {
+      "name": "vessel_jacketed",
+      "values": {
+        "yes": "yes",
+        "no": "no"
+      }
+    },
+    "vessel_material": {
+      "name": "vessel_material",
+      "values": {
+        "stainless_steel": "stainless_steel",
+        "plastic": "plastic"
       }
     },
     "vessel_status": {
