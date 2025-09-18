@@ -278,6 +278,7 @@ export const cogsItems = pgTable('cogs_items', {
 export const applePressRuns = pgTable('apple_press_runs', {
   // Primary identification
   id: uuid('id').primaryKey().defaultRandom(),
+  pressRunName: text('press_run_name'), // Format: yyyy/mm/dd-##
 
   // Core relationships following existing foreign key patterns
   vendorId: uuid('vendor_id').references(() => vendors.id), // Nullable - vendor determined by loads

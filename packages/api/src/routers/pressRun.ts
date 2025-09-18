@@ -50,6 +50,8 @@ const deleteLoadSchema = z.object({
 
 const finishPressRunSchema = z.object({
   pressRunId: z.string().uuid('Invalid press run ID'),
+  pressRunName: z.string().min(1, 'Press run name is required'),
+  completionDate: z.date().or(z.string().transform(val => new Date(val))),
   vesselId: z.string().uuid('Invalid vessel ID'),
   totalJuiceVolumeL: z.number().positive('Juice volume must be positive'),
   laborHours: z.number().min(0).optional(),
@@ -81,10 +83,11 @@ export const pressRunRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
-          // Create new press run
+          // Create new press run (name will be set when completed)
           const newPressRun = await tx
             .insert(applePressRuns)
             .values({
+              pressRunName: null, // Name will be set when completing the press run
               status: 'in_progress',
               scheduledDate: input.scheduledDate ? input.scheduledDate.toISOString().split('T')[0] : null,
               startTime: input.startTime || new Date(),
@@ -504,9 +507,10 @@ export const pressRunRouter = router({
           const completedPressRun = await tx
             .update(applePressRuns)
             .set({
+              pressRunName: input.pressRunName,
               vesselId: input.vesselId,
               status: 'completed',
-              endTime: new Date(),
+              endTime: input.completionDate,
               totalJuiceVolumeL: input.totalJuiceVolumeL.toString(),
               extractionRate: extractionRate.toString(),
               laborHours: input.laborHours?.toString(),
@@ -592,6 +596,7 @@ export const pressRunRouter = router({
         const pressRunsList = await db
           .select({
             id: applePressRuns.id,
+            pressRunName: applePressRuns.pressRunName,
             vendorId: applePressRuns.vendorId,
             vendorName: vendors.name,
             vesselId: applePressRuns.vesselId,
@@ -710,6 +715,7 @@ export const pressRunRouter = router({
         const pressRunResult = await db
           .select({
             id: applePressRuns.id,
+            pressRunName: applePressRuns.pressRunName,
             vendorId: applePressRuns.vendorId,
             vendorName: vendors.name,
             vendorContactInfo: vendors.contactInfo,

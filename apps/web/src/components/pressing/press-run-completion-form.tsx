@@ -59,6 +59,8 @@ import { trpc } from "@/utils/trpc"
 
 // Completion Form Schema based on task requirements
 const pressRunCompletionSchema = z.object({
+  pressRunName: z.string().min(1, "Press run name is required").max(100, "Name cannot exceed 100 characters"),
+  completionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Please enter a valid date"),
   juiceVolumeL: z.number().min(1, "Juice volume must be at least 1L").max(50000, "Juice volume cannot exceed 50,000L"),
   juiceVolumeUnit: z.enum(['L', 'gal'], { message: "Unit must be L or gal" }),
   vesselId: z.string().uuid("Please select a vessel"),
@@ -107,6 +109,8 @@ export function PressRunCompletionForm({
   const form = useForm<PressRunCompletionForm>({
     resolver: zodResolver(pressRunCompletionSchema),
     defaultValues: {
+      pressRunName: '',
+      completionDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
       juiceVolumeUnit: 'L',
       laborHours: 0,
       workerCount: 1,
@@ -139,6 +143,8 @@ export function PressRunCompletionForm({
 
     const submissionPayload = {
       pressRunId,
+      pressRunName: data.pressRunName,
+      completionDate: new Date(data.completionDate),
       vesselId: data.vesselId,
       totalJuiceVolumeL: canonicalVolumeL,
       laborHours: data.laborHours,
@@ -198,6 +204,62 @@ export function PressRunCompletionForm({
     <div className="space-y-6">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {/* Press Run Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center text-base">
+                <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
+                Press Run Details
+              </CardTitle>
+              <CardDescription>
+                Name this press run and set the completion date
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="pressRunName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Press Run Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., 2024 Fall Harvest, Newton Pippin Batch 1"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Give this press run a descriptive name
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="completionDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Completion Date</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        When was this press run completed?
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Juice Volume Input */}
           <Card>
             <CardHeader>
@@ -479,6 +541,8 @@ export function PressRunCompletionForm({
               <div className="space-y-3">
                 <p>Review the press run completion details:</p>
                 <div className="bg-gray-50 p-3 rounded-md space-y-2 text-sm">
+                  <p><strong>Press Run Name:</strong> {watchedValues.pressRunName}</p>
+                  <p><strong>Completion Date:</strong> {new Date(watchedValues.completionDate).toLocaleDateString()}</p>
                   <p><strong>Juice Volume:</strong> {canonicalVolumeL.toFixed(1)}L</p>
                   <p><strong>Vessel:</strong> {selectedVessel?.name}</p>
                   <p><strong>Extraction Rate:</strong> {yieldPercentage.toFixed(1)}%</p>

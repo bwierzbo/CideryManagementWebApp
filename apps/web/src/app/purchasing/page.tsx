@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select"
+import { ScrollableContainer } from "@/components/ui/scrollable-container"
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import {
@@ -31,13 +33,40 @@ import {
   RefreshCw,
   Apple,
   Tag,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileText
 } from "lucide-react"
 import { bushelsToKg } from "lib"
 import { trpc } from "@/utils/trpc"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+
+// Helper function to download blob as file
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// Helper function to convert base64 to blob
+const base64ToBlob = (base64: string, contentType: string): Blob => {
+  const byteCharacters = atob(base64)
+  const byteNumbers = new Array(byteCharacters.length)
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  }
+  const byteArray = new Uint8Array(byteNumbers)
+  return new Blob([byteArray], { type: contentType })
+}
 
 // Form schemas
 const vendorSchema = z.object({
@@ -462,56 +491,62 @@ function VendorVarietiesPanel({ vendor }: { vendor: any }) {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Desktop view */}
-            <div className="hidden md:block">
-              <div className="flex flex-wrap gap-2">
-                {varieties.map((variety) => (
-                  <div
-                    key={variety.id}
-                    className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-sm"
-                  >
-                    <Tag className="w-3 h-3" />
-                    <span className="font-medium">{variety.name}</span>
-                    {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-4 w-4 p-0 hover:bg-red-100 text-green-600 hover:text-red-600"
-                        onClick={() => handleDetachVariety(variety.id)}
-                        title="Remove variety"
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
+            {/* Desktop and Tablet view */}
+            <div className="hidden sm:block">
+              <ScrollableContainer maxHeight="16rem">
+                <div className="flex flex-wrap gap-2 p-1">
+                  {varieties.map((variety) => (
+                    <div
+                      key={variety.id}
+                      className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-sm flex-shrink-0"
+                    >
+                      <Tag className="w-3 h-3" />
+                      <span className="font-medium">{variety.name}</span>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-4 w-4 p-0 hover:bg-red-100 text-green-600 hover:text-red-600"
+                          onClick={() => handleDetachVariety(variety.id)}
+                          title="Remove variety"
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ScrollableContainer>
             </div>
 
             {/* Mobile view */}
-            <div className="md:hidden space-y-2">
-              {varieties.map((variety) => (
-                <div
-                  key={variety.id}
-                  className="flex items-center justify-between bg-green-50 border border-green-200 px-4 py-3 rounded-lg"
-                >
-                  <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-green-600" />
-                    <span className="font-medium text-green-800">{variety.name}</span>
-                  </div>
-                  {isAdmin && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-100"
-                      onClick={() => handleDetachVariety(variety.id)}
-                      title="Remove variety"
+            <div className="sm:hidden">
+              <ScrollableContainer maxHeight="16rem">
+                <div className="space-y-2 p-1">
+                  {varieties.map((variety) => (
+                    <div
+                      key={variety.id}
+                      className="flex items-center justify-between bg-green-50 border border-green-200 px-4 py-3 rounded-lg"
                     >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-green-600" />
+                        <span className="font-medium text-green-800">{variety.name}</span>
+                      </div>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-100"
+                          onClick={() => handleDetachVariety(variety.id)}
+                          title="Remove variety"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </ScrollableContainer>
             </div>
 
             {varieties.length > 0 && (
@@ -597,23 +632,27 @@ function AddVarietyModal({ vendor, isOpen, onClose, onSuccess }: {
             {varieties.length > 0 && (
               <div className="space-y-1">
                 <Label className="text-sm text-gray-600">Existing varieties:</Label>
-                {varieties.map((variety) => (
-                  <div
-                    key={variety.id}
-                    className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedVariety?.id === variety.id
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => {
-                      setSelectedVariety(variety)
-                      setIsCreatingNew(false)
-                    }}
-                  >
-                    <Tag className="w-4 h-4 text-green-600" />
-                    <span className="font-medium">{variety.name}</span>
+                <ScrollableContainer maxHeight="8rem">
+                  <div className="space-y-1 p-1">
+                    {varieties.map((variety) => (
+                      <div
+                        key={variety.id}
+                        className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedVariety?.id === variety.id
+                            ? 'border-green-500 bg-green-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => {
+                          setSelectedVariety(variety)
+                          setIsCreatingNew(false)
+                        }}
+                      >
+                        <Tag className="w-4 h-4 text-green-600" />
+                        <span className="font-medium">{variety.name}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </ScrollableContainer>
               </div>
             )}
 
@@ -943,13 +982,13 @@ function PurchaseFormComponent({ setPreSelectedVendorId, setActiveTab }: {
                 <SelectTrigger className="h-12">
                   <SelectValue placeholder="Select vendor" />
                 </SelectTrigger>
-                <SelectContent>
+                <ScrollableSelectContent maxHeight="200px">
                   {vendors.map((vendor: any) => (
                     <SelectItem key={vendor.id} value={vendor.id}>
                       {vendor.name}
                     </SelectItem>
                   ))}
-                </SelectContent>
+                </ScrollableSelectContent>
               </Select>
               {errors.vendorId && <p className="text-sm text-red-600 mt-1">{errors.vendorId.message}</p>}
             </div>
@@ -1412,13 +1451,13 @@ function EditPurchaseDialog({ open, onOpenChange, purchase, onSuccess, onError }
               <SelectTrigger>
                 <SelectValue placeholder="Select vendor" />
               </SelectTrigger>
-              <SelectContent>
+              <ScrollableSelectContent maxHeight="200px">
                 {vendors.map((vendor: any) => (
                   <SelectItem key={vendor.id} value={vendor.id}>
                     {vendor.name}
                   </SelectItem>
                 ))}
-              </SelectContent>
+              </ScrollableSelectContent>
             </Select>
           </div>
 
@@ -1483,14 +1522,43 @@ function RecentPurchases() {
   const [notifications, setNotifications] = useState<NotificationType[]>([])
   const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; purchaseId: string | null }>({ show: false, purchaseId: null })
   const [editPurchase, setEditPurchase] = useState<{ show: boolean; purchase: any | null }>({ show: false, purchase: null })
+  const [generatingPdf, setGeneratingPdf] = useState<string | null>(null)
+
+  // Search and pagination state
+  const [searchFilters, setSearchFilters] = useState({
+    vendorId: 'all',
+    startDate: '',
+    endDate: '',
+  })
+  const [currentPage, setCurrentPage] = useState(0)
+  const [sortBy, setSortBy] = useState<'purchaseDate' | 'vendorName' | 'totalCost' | 'createdAt'>('purchaseDate')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const pageSize = 20
 
   const utils = trpc.useUtils()
-  const { data: purchaseData, isLoading, error, refetch } = trpc.purchase.list.useQuery()
+  const { data: purchaseData, isLoading, error, refetch } = trpc.purchase.list.useQuery({
+    vendorId: searchFilters.vendorId !== 'all' ? searchFilters.vendorId : undefined,
+    startDate: searchFilters.startDate ? new Date(searchFilters.startDate) : undefined,
+    endDate: searchFilters.endDate ? new Date(searchFilters.endDate) : undefined,
+    limit: pageSize,
+    offset: currentPage * pageSize,
+    sortBy,
+    sortOrder,
+  })
+
+  // Get vendors for the search filter
+  const { data: vendorData } = trpc.vendor.list.useQuery()
+  const vendors = vendorData?.vendors || []
 
   // Refetch data when the component mounts (tab becomes active)
   useEffect(() => {
     refetch()
   }, [refetch])
+
+  // Reset page when search filters change
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [searchFilters, sortBy, sortOrder])
   const deletePurchase = trpc.purchase.delete.useMutation({
     onSuccess: async () => {
       // Invalidate and refetch purchase list
@@ -1504,7 +1572,44 @@ function RecentPurchases() {
     }
   })
 
+  // PDF generation mutation
+  const generatePurchaseOrderPdf = trpc.pdfReports.generatePurchaseOrderPdf.useMutation({
+    onSuccess: (result) => {
+      if (result.success && result.data) {
+        const blob = base64ToBlob(result.data, result.contentType)
+        downloadBlob(blob, result.filename)
+        addNotification('success', 'PDF Generated', 'Purchase order PDF has been downloaded')
+      }
+      setGeneratingPdf(null)
+    },
+    onError: (error) => {
+      console.error('Failed to generate PDF:', error)
+      addNotification('error', 'PDF Generation Failed', 'Failed to generate purchase order PDF. Please try again.')
+      setGeneratingPdf(null)
+    }
+  })
+
+  const handleGeneratePdf = (purchaseId: string) => {
+    setGeneratingPdf(purchaseId)
+    generatePurchaseOrderPdf.mutate({ purchaseId })
+  }
+
   const purchases = purchaseData?.purchases || []
+  const pagination = purchaseData?.pagination || { total: 0, limit: pageSize, offset: 0, hasMore: false }
+
+  const handleSearchChange = (field: string, value: string) => {
+    setSearchFilters(prev => ({ ...prev, [field]: value }))
+  }
+
+  const clearFilters = () => {
+    setSearchFilters({ vendorId: 'all', startDate: '', endDate: '' })
+    setSortBy('purchaseDate')
+    setSortOrder('desc')
+  }
+
+  const totalPages = Math.ceil(pagination.total / pageSize)
+  const canGoPrevious = currentPage > 0
+  const canGoNext = pagination.hasMore
 
   // Notification helper functions
   const addNotification = (type: 'success' | 'error', title: string, message: string) => {
@@ -1587,29 +1692,108 @@ function RecentPurchases() {
                 <Receipt className="w-5 h-5 text-purple-600" />
                 Recent Purchases
               </CardTitle>
-            <CardDescription>Your latest purchase orders</CardDescription>
+              <CardDescription>
+                {pagination.total > 0
+                  ? `Showing ${currentPage * pageSize + 1}-${Math.min((currentPage + 1) * pageSize, pagination.total)} of ${pagination.total} purchase orders`
+                  : 'No purchase orders found'
+                }
+              </CardDescription>
+            </div>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+                disabled={isLoading}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+                disabled={searchFilters.vendorId === 'all' && !searchFilters.startDate && !searchFilters.endDate}
+              >
+                <X className="w-4 h-4 mr-2" />
+                Clear
+              </Button>
+            </div>
           </div>
-          <div className="flex space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetch()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-            <Button variant="outline" size="sm">
-              <Search className="w-4 h-4 mr-2" />
-              Search
-            </Button>
-            <Button variant="outline" size="sm">
-              <Filter className="w-4 h-4 mr-2" />
-              Filter
-            </Button>
+
+          {/* Search and Filter Controls */}
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Vendor Filter */}
+              <div>
+                <Label htmlFor="vendor-filter">Vendor</Label>
+                <Select
+                  value={searchFilters.vendorId}
+                  onValueChange={(value) => handleSearchChange('vendorId', value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="All vendors" />
+                  </SelectTrigger>
+                  <ScrollableSelectContent maxHeight="200px">
+                    <SelectItem value="all">All vendors</SelectItem>
+                    {vendors.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </ScrollableSelectContent>
+                </Select>
+              </div>
+
+              {/* Start Date Filter */}
+              <div>
+                <Label htmlFor="start-date">Start Date</Label>
+                <Input
+                  id="start-date"
+                  type="date"
+                  value={searchFilters.startDate}
+                  onChange={(e) => handleSearchChange('startDate', e.target.value)}
+                />
+              </div>
+
+              {/* End Date Filter */}
+              <div>
+                <Label htmlFor="end-date">End Date</Label>
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={searchFilters.endDate}
+                  onChange={(e) => handleSearchChange('endDate', e.target.value)}
+                />
+              </div>
+
+              {/* Sort Options */}
+              <div>
+                <Label htmlFor="sort-by">Sort By</Label>
+                <Select
+                  value={`${sortBy}-${sortOrder}`}
+                  onValueChange={(value) => {
+                    const [field, order] = value.split('-') as [typeof sortBy, typeof sortOrder]
+                    setSortBy(field)
+                    setSortOrder(order)
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="purchaseDate-desc">Date (Newest)</SelectItem>
+                    <SelectItem value="purchaseDate-asc">Date (Oldest)</SelectItem>
+                    <SelectItem value="vendorName-asc">Vendor (A-Z)</SelectItem>
+                    <SelectItem value="vendorName-desc">Vendor (Z-A)</SelectItem>
+                    <SelectItem value="totalCost-desc">Cost (High-Low)</SelectItem>
+                    <SelectItem value="totalCost-asc">Cost (Low-High)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
       <CardContent>
         {/* Desktop Table */}
         <div className="hidden md:block">
@@ -1667,6 +1851,20 @@ function RecentPurchases() {
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleGeneratePdf(purchase.id)}
+                          disabled={generatingPdf === purchase.id}
+                          className="text-blue-600 hover:text-blue-700 hover:border-blue-300"
+                          title="Export PDF"
+                        >
+                          {generatingPdf === purchase.id ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1742,6 +1940,20 @@ function RecentPurchases() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => handleGeneratePdf(purchase.id)}
+                        disabled={generatingPdf === purchase.id}
+                        className="text-blue-600 hover:text-blue-700 hover:border-blue-300"
+                        title="Export PDF"
+                      >
+                        {generatingPdf === purchase.id ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => handleEditPurchase(purchase.id)}
                         className="flex-1"
                       >
@@ -1763,6 +1975,56 @@ function RecentPurchases() {
             </div>
           )}
         </div>
+
+        {/* Pagination Controls */}
+        {pagination.total > 0 && (
+          <div className="mt-6 flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Showing {currentPage * pageSize + 1}-{Math.min((currentPage + 1) * pageSize, pagination.total)} of {pagination.total} results
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(0)}
+                disabled={!canGoPrevious}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                First
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage - 1)}
+                disabled={!canGoPrevious}
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </Button>
+              <span className="text-sm text-gray-600 px-2">
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(currentPage + 1)}
+                disabled={!canGoNext}
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(totalPages - 1)}
+                disabled={!canGoNext}
+              >
+                Last
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
 
@@ -1840,13 +2102,13 @@ function VendorVarietiesManagement() {
             <SelectTrigger>
               <SelectValue placeholder="Choose a vendor to manage their varieties..." />
             </SelectTrigger>
-            <SelectContent>
+            <ScrollableSelectContent maxHeight="200px">
               {vendors?.map((vendor) => (
                 <SelectItem key={vendor.id} value={vendor.id}>
                   {vendor.name}
                 </SelectItem>
               ))}
-            </SelectContent>
+            </ScrollableSelectContent>
           </Select>
         </div>
 

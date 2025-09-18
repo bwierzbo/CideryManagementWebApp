@@ -4,6 +4,7 @@ import { auditRouter } from './audit'
 import { healthRouter } from './health'
 import { invoiceNumberRouter } from './invoiceNumber'
 import { pressRunRouter } from './pressRun'
+import { reportsRouter } from './reports'
 import { varietiesRouter } from './varieties'
 import { vendorVarietyRouter } from './vendorVariety'
 import {
@@ -241,63 +242,116 @@ export const appRouter = router({
 
   // Purchase management
   purchase: router({
-    list: createRbacProcedure('list', 'purchase').query(async () => {
-      try {
-        const purchaseList = await db
-          .select({
-            id: purchases.id,
-            vendorId: purchases.vendorId,
-            vendorName: vendors.name,
+    list: createRbacProcedure('list', 'purchase')
+      .input(z.object({
+        vendorId: z.string().uuid().optional(),
+        startDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
+        endDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
+        limit: z.number().int().min(1).max(100).default(20),
+        offset: z.number().int().min(0).default(0),
+        sortBy: z.enum(['purchaseDate', 'vendorName', 'totalCost', 'createdAt']).default('purchaseDate'),
+        sortOrder: z.enum(['asc', 'desc']).default('desc'),
+      }))
+      .query(async ({ input }) => {
+        try {
+          // Build WHERE conditions
+          const conditions = [isNull(purchases.deletedAt)]
+
+          if (input.vendorId) {
+            conditions.push(eq(purchases.vendorId, input.vendorId))
+          }
+
+          if (input.startDate) {
+            conditions.push(sql`${purchases.purchaseDate} >= ${input.startDate.toISOString().split('T')[0]}`)
+          }
+
+          if (input.endDate) {
+            conditions.push(sql`${purchases.purchaseDate} <= ${input.endDate.toISOString().split('T')[0]}`)
+          }
+
+          // Build ORDER BY clause
+          const sortColumn = {
             purchaseDate: purchases.purchaseDate,
-            invoiceNumber: purchases.invoiceNumber,
+            vendorName: vendors.name,
             totalCost: purchases.totalCost,
-            notes: purchases.notes,
             createdAt: purchases.createdAt,
+          }[input.sortBy]
+
+          const orderBy = input.sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
+
+          // Get purchases with pagination
+          const purchaseList = await db
+            .select({
+              id: purchases.id,
+              vendorId: purchases.vendorId,
+              vendorName: vendors.name,
+              purchaseDate: purchases.purchaseDate,
+              invoiceNumber: purchases.invoiceNumber,
+              totalCost: purchases.totalCost,
+              notes: purchases.notes,
+              createdAt: purchases.createdAt,
+            })
+            .from(purchases)
+            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
+            .where(and(...conditions))
+            .orderBy(orderBy, desc(purchases.createdAt))
+            .limit(input.limit)
+            .offset(input.offset)
+
+          // Get total count for pagination
+          const totalCountResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(purchases)
+            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
+            .where(and(...conditions))
+
+          const totalCount = totalCountResult[0]?.count || 0
+
+          // Get purchase items for each purchase to create item summary
+          const purchasesWithItems = await Promise.all(
+            purchaseList.map(async (purchase) => {
+              const items = await db
+                .select({
+                  id: purchaseItems.id,
+                  appleVarietyId: purchaseItems.appleVarietyId,
+                  varietyName: appleVarieties.name,
+                  originalQuantity: purchaseItems.originalQuantity,
+                  originalUnit: purchaseItems.originalUnit,
+                })
+                .from(purchaseItems)
+                .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+                .where(eq(purchaseItems.purchaseId, purchase.id))
+
+              const itemsSummary = items.map(item =>
+                `${item.originalQuantity} ${item.originalUnit} ${item.varietyName}`
+              ).join(', ')
+
+              return {
+                ...purchase,
+                itemsSummary,
+                itemCount: items.length,
+              }
+            })
+          )
+
+          return {
+            purchases: purchasesWithItems,
+            pagination: {
+              total: totalCount,
+              limit: input.limit,
+              offset: input.offset,
+              hasMore: input.offset + purchasesWithItems.length < totalCount,
+            },
+            count: purchasesWithItems.length,
+          }
+        } catch (error) {
+          console.error('Error listing purchases:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to list purchases'
           })
-          .from(purchases)
-          .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
-          .where(isNull(purchases.deletedAt))
-          .orderBy(desc(purchases.purchaseDate), desc(purchases.createdAt))
-
-        // Get purchase items for each purchase to create item summary
-        const purchasesWithItems = await Promise.all(
-          purchaseList.map(async (purchase) => {
-            const items = await db
-              .select({
-                id: purchaseItems.id,
-                appleVarietyId: purchaseItems.appleVarietyId,
-                varietyName: appleVarieties.name,
-                originalQuantity: purchaseItems.originalQuantity,
-                originalUnit: purchaseItems.originalUnit,
-              })
-              .from(purchaseItems)
-              .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
-              .where(eq(purchaseItems.purchaseId, purchase.id))
-
-            const itemsSummary = items.map(item =>
-              `${item.originalQuantity} ${item.originalUnit} ${item.varietyName}`
-            ).join(', ')
-
-            return {
-              ...purchase,
-              itemsSummary,
-              itemCount: items.length,
-            }
-          })
-        )
-
-        return {
-          purchases: purchasesWithItems,
-          count: purchasesWithItems.length,
         }
-      } catch (error) {
-        console.error('Error listing purchases:', error)
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list purchases'
-        })
-      }
-    }),
+      }),
 
     create: createRbacProcedure('create', 'purchase')
       .input(z.object({
@@ -2478,6 +2532,9 @@ export const appRouter = router({
 
   // Health check and system monitoring
   health: healthRouter,
+
+  // PDF report generation
+  pdfReports: reportsRouter,
 
   // Audit logging and reporting
   audit: auditRouter

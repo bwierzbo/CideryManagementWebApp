@@ -161,11 +161,11 @@ export function FruitLoadForm({
   }
 
   const getConvertedWeight = (): { value: number; unit: 'lbs' | 'kg' } => {
-    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'kg' }
-    const oppositeUnit = watchedUnit === 'lbs' ? 'kg' : 'lbs'
+    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'lbs' }
+    // Always show the converted weight in lbs
     return {
-      value: convertWeight(watchedWeight, watchedUnit, oppositeUnit),
-      unit: oppositeUnit
+      value: convertWeight(watchedWeight, watchedUnit, 'lbs'),
+      unit: 'lbs'
     }
   }
 
@@ -266,7 +266,7 @@ export function FruitLoadForm({
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium text-green-600">
-                          {line.availableQuantityKg.toFixed(1)} kg available
+                          {convertWeight(line.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs available
                         </p>
                         <p className="text-xs text-gray-500">
                           ({line.originalQuantity} {line.originalUnit} purchased)

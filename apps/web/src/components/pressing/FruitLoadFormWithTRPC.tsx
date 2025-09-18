@@ -33,6 +33,8 @@ import {
   Trash2
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select"
+import { ScrollableContainer } from "@/components/ui/scrollable-container"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 // Form validation schema
@@ -40,7 +42,7 @@ const fruitLoadSchema = z.object({
   vendorId: z.string().uuid("Please select a vendor"),
   purchaseItemId: z.string().uuid("Please select a purchase line"),
   appleVarietyId: z.string().uuid("Please select an apple variety"),
-  weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000"),
+  weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000").optional(),
   weightUnit: z.enum(['lbs', 'kg'], { message: "Please select a weight unit" }),
   brixMeasured: z.number().min(0).max(30).optional(),
   phMeasured: z.number().min(2).max(5).optional(),
@@ -113,7 +115,7 @@ export function FruitLoadFormWithTRPC({
       purchaseItemId: editingLoad?.purchaseItemId || "",
       appleVarietyId: editingLoad?.appleVarietyId || "",
       weightUnit: editingLoad?.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad?.originalWeightUnit || 'lbs'),
-      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '1') : 1,
+      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '') : undefined,
       brixMeasured: editingLoad?.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
       phMeasured: editingLoad?.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
       appleCondition: editingLoad?.appleCondition || undefined,
@@ -193,11 +195,11 @@ export function FruitLoadFormWithTRPC({
   }
 
   const getConvertedWeight = (): { value: number; unit: 'lbs' | 'kg' } => {
-    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'kg' }
-    const oppositeUnit = watchedUnit === 'lbs' ? 'kg' : 'lbs'
+    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'lbs' }
+    // Always show the converted weight in lbs
     return {
-      value: convertWeight(watchedWeight, watchedUnit, oppositeUnit),
-      unit: oppositeUnit
+      value: convertWeight(watchedWeight, watchedUnit, 'lbs'),
+      unit: 'lbs'
     }
   }
 
@@ -209,6 +211,12 @@ export function FruitLoadFormWithTRPC({
 
   const handleSubmit = (data: FruitLoadFormData) => {
     if (!selectedPurchaseItem || !appleVarieties) {
+      return
+    }
+
+    // Validate weight is provided
+    if (!data.weight || data.weight <= 0) {
+      form.setError('weight', { message: 'Weight is required' })
       return
     }
 
@@ -316,13 +324,13 @@ export function FruitLoadFormWithTRPC({
                       <SelectTrigger className="h-12">
                         <SelectValue placeholder={vendorsLoading ? "Loading vendors..." : "Choose a vendor..."} />
                       </SelectTrigger>
-                      <SelectContent>
+                      <ScrollableSelectContent maxHeight="200px">
                         {vendors?.vendors?.map((vendor) => (
                           <SelectItem key={vendor.id} value={vendor.id}>
                             {vendor.name}
                           </SelectItem>
                         ))}
-                      </SelectContent>
+                      </ScrollableSelectContent>
                     </Select>
                   </FormControl>
                   <FormDescription>
@@ -346,7 +354,7 @@ export function FruitLoadFormWithTRPC({
                       {purchaseLines.summary.totalAvailableItems} available purchase lines
                     </span>
                     <span className="text-blue-800 font-medium">
-                      {purchaseLines.summary.totalAvailableKg.toFixed(1)} kg total
+                      {convertWeight(purchaseLines.summary.totalAvailableKg, 'kg', 'lbs').toFixed(1)} lbs total
                     </span>
                   </div>
                 </div>
@@ -364,47 +372,51 @@ export function FruitLoadFormWithTRPC({
               </div>
 
               {/* Purchase Lines List */}
-              <div className="max-h-60 overflow-y-auto space-y-2 border rounded-lg p-2">
-                {filteredPurchaseLines.length > 0 ? (
-                  filteredPurchaseLines.map((line) => (
-                    <button
-                      key={line.purchaseItemId}
-                      type="button"
-                      onClick={() => handlePurchaseLineSelect(line)}
-                      className={`w-full p-4 text-left rounded-lg border transition-all touch-manipulation min-h-[44px] ${
-                        selectedPurchaseItem?.purchaseItemId === line.purchaseItemId
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-medium text-gray-900">{line.varietyName}</h4>
-                          <p className="text-sm text-gray-600">{line.vendorName}</p>
-                          <p className="text-xs text-gray-500">
-                            {line.originalQuantity} {line.originalUnit} purchased
-                            {line.harvestDate && ` • Harvested ${line.harvestDate}`}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-green-600">
-                            {line.availableQuantityKg.toFixed(1)} kg
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {line.availablePercentage.toFixed(0)}% available
-                          </p>
-                        </div>
+              <div className="border rounded-lg">
+                <ScrollableContainer maxHeight="15rem">
+                  <div className="space-y-2 p-2">
+                    {filteredPurchaseLines.length > 0 ? (
+                      filteredPurchaseLines.map((line) => (
+                        <button
+                          key={line.purchaseItemId}
+                          type="button"
+                          onClick={() => handlePurchaseLineSelect(line)}
+                          className={`w-full p-4 text-left rounded-lg border transition-all touch-manipulation min-h-[44px] ${
+                            selectedPurchaseItem?.purchaseItemId === line.purchaseItemId
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-medium text-gray-900">{line.varietyName}</h4>
+                              <p className="text-sm text-gray-600">{line.vendorName}</p>
+                              <p className="text-xs text-gray-500">
+                                {line.originalQuantity} {line.originalUnit} purchased
+                                {line.harvestDate && ` • Harvested ${line.harvestDate}`}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-medium text-green-600">
+                                {convertWeight(line.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {line.availablePercentage.toFixed(0)}% available
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="text-center py-8">
+                        <Search className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">
+                          {searchQuery ? 'No purchase lines match your search' : 'No available purchase lines'}
+                        </p>
                       </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="text-center py-8">
-                    <Search className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">
-                      {searchQuery ? 'No purchase lines match your search' : 'No available purchase lines'}
-                    </p>
+                    )}
                   </div>
-                )}
+                </ScrollableContainer>
               </div>
 
               {selectedPurchaseItem && (
@@ -443,7 +455,7 @@ export function FruitLoadFormWithTRPC({
                             placeholder="0.0"
                             className="pl-10 h-12 text-lg"
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : 1)}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                           />
                         </div>
                       </FormControl>

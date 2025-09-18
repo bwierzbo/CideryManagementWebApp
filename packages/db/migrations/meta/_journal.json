@@ -15,6 +15,20 @@
       "when": 1758155317628,
       "tag": "0001_shocking_tyrannus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1758165805261,
+      "tag": "0002_daffy_goblin_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1758166110289,
+      "tag": "0003_gifted_mikhail_rasputin",
+      "breakpoints": true
     }
   ]
 }
