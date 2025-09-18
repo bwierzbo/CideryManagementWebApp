@@ -529,7 +529,7 @@ function VesselMap() {
   const handleStatusChange = (vesselId: string, newStatus: string) => {
     updateStatusMutation.mutate({
       id: vesselId,
-      status: newStatus as 'available' | 'in_use' | 'cleaning' | 'maintenance' | 'empty' | 'fermenting' | 'storing' | 'aging'
+      status: newStatus as 'available' | 'in_use' | 'cleaning' | 'maintenance'
     })
   }
 
