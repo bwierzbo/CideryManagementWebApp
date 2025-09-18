@@ -56,7 +56,7 @@ export default function ReportsPage() {
   // Get data using existing tRPC endpoints
   const { data: batches, isLoading: batchesLoading } = trpc.batch.list.useQuery()
   const { data: vendors, isLoading: vendorsLoading } = trpc.vendor.list.useQuery()
-  const { data: purchases } = trpc.purchase.list.useQuery()
+  const { data: purchases } = trpc.purchase.list.useQuery({})
 
   // Get vendors for PDF filtering
   const { data: reportVendors } = trpc.pdfReports.getVendors.useQuery()
