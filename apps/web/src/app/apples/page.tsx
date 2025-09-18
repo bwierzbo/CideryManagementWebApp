@@ -15,7 +15,7 @@ export default function ApplesPage() {
 
   // Check if user has view permissions
   const canView = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
-  const canAdd = userRole === 'admin'
+  const canAdd = userRole === 'admin' || userRole === 'operator'
 
   if (!canView) {
     return (
