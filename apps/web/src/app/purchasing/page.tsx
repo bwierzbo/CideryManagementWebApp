@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select"
+import { ScrollableContainer } from "@/components/ui/scrollable-container"
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import {
@@ -462,56 +464,62 @@ function VendorVarietiesPanel({ vendor }: { vendor: any }) {
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Desktop view */}
-            <div className="hidden md:block">
-              <div className="flex flex-wrap gap-2">
-                {varieties.map((variety) => (
-                  <div
-                    key={variety.id}
-                    className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-sm"
-                  >
-                    <Tag className="w-3 h-3" />
-                    <span className="font-medium">{variety.name}</span>
-                    {isAdmin && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-4 w-4 p-0 hover:bg-red-100 text-green-600 hover:text-red-600"
-                        onClick={() => handleDetachVariety(variety.id)}
-                        title="Remove variety"
-                      >
-                        <X className="w-3 h-3" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </div>
+            {/* Desktop and Tablet view */}
+            <div className="hidden sm:block">
+              <ScrollableContainer maxHeight="16rem">
+                <div className="flex flex-wrap gap-2 p-1">
+                  {varieties.map((variety) => (
+                    <div
+                      key={variety.id}
+                      className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-2 rounded-full text-sm flex-shrink-0"
+                    >
+                      <Tag className="w-3 h-3" />
+                      <span className="font-medium">{variety.name}</span>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-4 w-4 p-0 hover:bg-red-100 text-green-600 hover:text-red-600"
+                          onClick={() => handleDetachVariety(variety.id)}
+                          title="Remove variety"
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </ScrollableContainer>
             </div>
 
             {/* Mobile view */}
-            <div className="md:hidden space-y-2">
-              {varieties.map((variety) => (
-                <div
-                  key={variety.id}
-                  className="flex items-center justify-between bg-green-50 border border-green-200 px-4 py-3 rounded-lg"
-                >
-                  <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-green-600" />
-                    <span className="font-medium text-green-800">{variety.name}</span>
-                  </div>
-                  {isAdmin && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-100"
-                      onClick={() => handleDetachVariety(variety.id)}
-                      title="Remove variety"
+            <div className="sm:hidden">
+              <ScrollableContainer maxHeight="16rem">
+                <div className="space-y-2 p-1">
+                  {varieties.map((variety) => (
+                    <div
+                      key={variety.id}
+                      className="flex items-center justify-between bg-green-50 border border-green-200 px-4 py-3 rounded-lg"
                     >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  )}
+                      <div className="flex items-center gap-2">
+                        <Tag className="w-4 h-4 text-green-600" />
+                        <span className="font-medium text-green-800">{variety.name}</span>
+                      </div>
+                      {isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-100"
+                          onClick={() => handleDetachVariety(variety.id)}
+                          title="Remove variety"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </ScrollableContainer>
             </div>
 
             {varieties.length > 0 && (
@@ -597,23 +605,27 @@ function AddVarietyModal({ vendor, isOpen, onClose, onSuccess }: {
             {varieties.length > 0 && (
               <div className="space-y-1">
                 <Label className="text-sm text-gray-600">Existing varieties:</Label>
-                {varieties.map((variety) => (
-                  <div
-                    key={variety.id}
-                    className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      selectedVariety?.id === variety.id
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    onClick={() => {
-                      setSelectedVariety(variety)
-                      setIsCreatingNew(false)
-                    }}
-                  >
-                    <Tag className="w-4 h-4 text-green-600" />
-                    <span className="font-medium">{variety.name}</span>
+                <ScrollableContainer maxHeight="8rem">
+                  <div className="space-y-1 p-1">
+                    {varieties.map((variety) => (
+                      <div
+                        key={variety.id}
+                        className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedVariety?.id === variety.id
+                            ? 'border-green-500 bg-green-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => {
+                          setSelectedVariety(variety)
+                          setIsCreatingNew(false)
+                        }}
+                      >
+                        <Tag className="w-4 h-4 text-green-600" />
+                        <span className="font-medium">{variety.name}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </ScrollableContainer>
               </div>
             )}
 
@@ -943,13 +955,13 @@ function PurchaseFormComponent({ setPreSelectedVendorId, setActiveTab }: {
                 <SelectTrigger className="h-12">
                   <SelectValue placeholder="Select vendor" />
                 </SelectTrigger>
-                <SelectContent>
+                <ScrollableSelectContent maxHeight="200px">
                   {vendors.map((vendor: any) => (
                     <SelectItem key={vendor.id} value={vendor.id}>
                       {vendor.name}
                     </SelectItem>
                   ))}
-                </SelectContent>
+                </ScrollableSelectContent>
               </Select>
               {errors.vendorId && <p className="text-sm text-red-600 mt-1">{errors.vendorId.message}</p>}
             </div>
@@ -1412,13 +1424,13 @@ function EditPurchaseDialog({ open, onOpenChange, purchase, onSuccess, onError }
               <SelectTrigger>
                 <SelectValue placeholder="Select vendor" />
               </SelectTrigger>
-              <SelectContent>
+              <ScrollableSelectContent maxHeight="200px">
                 {vendors.map((vendor: any) => (
                   <SelectItem key={vendor.id} value={vendor.id}>
                     {vendor.name}
                   </SelectItem>
                 ))}
-              </SelectContent>
+              </ScrollableSelectContent>
             </Select>
           </div>
 
@@ -1840,13 +1852,13 @@ function VendorVarietiesManagement() {
             <SelectTrigger>
               <SelectValue placeholder="Choose a vendor to manage their varieties..." />
             </SelectTrigger>
-            <SelectContent>
+            <ScrollableSelectContent maxHeight="200px">
               {vendors?.map((vendor) => (
                 <SelectItem key={vendor.id} value={vendor.id}>
                   {vendor.name}
                 </SelectItem>
               ))}
-            </SelectContent>
+            </ScrollableSelectContent>
           </Select>
         </div>
 
