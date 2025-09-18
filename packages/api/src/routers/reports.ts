@@ -32,7 +32,7 @@ export const reportsRouter = router({
           where: eq(purchases.id, input.purchaseId),
           with: {
             vendor: true,
-            purchaseItems: {
+            items: {
               with: {
                 appleVariety: true
               }
@@ -99,7 +99,7 @@ export const reportsRouter = router({
           where: and(...conditions),
           with: {
             vendor: true,
-            purchaseItems: {
+            items: {
               with: {
                 appleVariety: true
               },

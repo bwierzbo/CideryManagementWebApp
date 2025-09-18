@@ -1,4 +1,4 @@
-import type PDFDocument from 'pdfkit'
+// Remove PDFDocument import to avoid client-side bundling issues
 
 export interface PdfGenerationOptions {
   format?: 'A4' | 'Letter'

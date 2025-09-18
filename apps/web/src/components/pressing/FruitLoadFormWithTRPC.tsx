@@ -42,7 +42,7 @@ const fruitLoadSchema = z.object({
   vendorId: z.string().uuid("Please select a vendor"),
   purchaseItemId: z.string().uuid("Please select a purchase line"),
   appleVarietyId: z.string().uuid("Please select an apple variety"),
-  weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000"),
+  weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000").optional(),
   weightUnit: z.enum(['lbs', 'kg'], { message: "Please select a weight unit" }),
   brixMeasured: z.number().min(0).max(30).optional(),
   phMeasured: z.number().min(2).max(5).optional(),
@@ -115,7 +115,7 @@ export function FruitLoadFormWithTRPC({
       purchaseItemId: editingLoad?.purchaseItemId || "",
       appleVarietyId: editingLoad?.appleVarietyId || "",
       weightUnit: editingLoad?.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad?.originalWeightUnit || 'lbs'),
-      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '1') : 1,
+      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '') : undefined,
       brixMeasured: editingLoad?.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
       phMeasured: editingLoad?.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
       appleCondition: editingLoad?.appleCondition || undefined,
@@ -195,11 +195,11 @@ export function FruitLoadFormWithTRPC({
   }
 
   const getConvertedWeight = (): { value: number; unit: 'lbs' | 'kg' } => {
-    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'kg' }
-    const oppositeUnit = watchedUnit === 'lbs' ? 'kg' : 'lbs'
+    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'lbs' }
+    // Always show the converted weight in lbs
     return {
-      value: convertWeight(watchedWeight, watchedUnit, oppositeUnit),
-      unit: oppositeUnit
+      value: convertWeight(watchedWeight, watchedUnit, 'lbs'),
+      unit: 'lbs'
     }
   }
 
@@ -211,6 +211,12 @@ export function FruitLoadFormWithTRPC({
 
   const handleSubmit = (data: FruitLoadFormData) => {
     if (!selectedPurchaseItem || !appleVarieties) {
+      return
+    }
+
+    // Validate weight is provided
+    if (!data.weight || data.weight <= 0) {
+      form.setError('weight', { message: 'Weight is required' })
       return
     }
 
@@ -348,7 +354,7 @@ export function FruitLoadFormWithTRPC({
                       {purchaseLines.summary.totalAvailableItems} available purchase lines
                     </span>
                     <span className="text-blue-800 font-medium">
-                      {purchaseLines.summary.totalAvailableKg.toFixed(1)} kg total
+                      {convertWeight(purchaseLines.summary.totalAvailableKg, 'kg', 'lbs').toFixed(1)} lbs total
                     </span>
                   </div>
                 </div>
@@ -392,7 +398,7 @@ export function FruitLoadFormWithTRPC({
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-medium text-green-600">
-                                {line.availableQuantityKg.toFixed(1)} kg
+                                {convertWeight(line.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs
                               </p>
                               <p className="text-xs text-gray-500">
                                 {line.availablePercentage.toFixed(0)}% available
@@ -449,7 +455,7 @@ export function FruitLoadFormWithTRPC({
                             placeholder="0.0"
                             className="pl-10 h-12 text-lg"
                             value={field.value || ""}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : 1)}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                           />
                         </div>
                       </FormControl>

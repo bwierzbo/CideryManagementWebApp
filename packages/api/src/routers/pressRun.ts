@@ -50,6 +50,8 @@ const deleteLoadSchema = z.object({
 
 const finishPressRunSchema = z.object({
   pressRunId: z.string().uuid('Invalid press run ID'),
+  pressRunName: z.string().min(1, 'Press run name is required'),
+  completionDate: z.date().or(z.string().transform(val => new Date(val))),
   vesselId: z.string().uuid('Invalid vessel ID'),
   totalJuiceVolumeL: z.number().positive('Juice volume must be positive'),
   laborHours: z.number().min(0).optional(),
@@ -81,40 +83,11 @@ export const pressRunRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
-          // Generate press run name in yyyy/mm/dd-## format using Pacific timezone
-          const now = input.startTime || new Date()
-
-          // Format date in Pacific timezone without converting back to UTC
-          const pacificDate = now.toLocaleDateString("en-CA", {timeZone: "America/Los_Angeles"}) // YYYY-MM-DD format
-          const dateStr = pacificDate.replace(/-/g, '/')
-
-          // Get count of ACTIVE press runs created on the same Pacific date to determine sequence
-          // Only count non-deleted, active press runs for today's date
-          const targetDate = dateStr.replace(/\//g, '-') // Convert YYYY/MM/DD to YYYY-MM-DD
-          console.log(`Counting press runs for date: ${targetDate}`)
-
-          const existingRunsCount = await tx
-            .select({ count: sql<number>`count(*)::int` })
-            .from(applePressRuns)
-            .where(
-              and(
-                sql`DATE(${applePressRuns.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles') = ${targetDate}`,
-                eq(applePressRuns.status, 'in_progress'),
-                isNull(applePressRuns.deletedAt)
-              )
-            )
-
-          const currentCount = Number(existingRunsCount[0]?.count || 0)
-          const sequenceNumber = currentCount + 1
-          const pressRunName = `${dateStr}-${sequenceNumber.toString().padStart(2, '0')}`
-
-          console.log(`Press run naming debug: Date=${dateStr}, CurrentCount=${currentCount}, SequenceNumber=${sequenceNumber}, PressRunName=${pressRunName}`)
-
-          // Create new press run
+          // Create new press run (name will be set when completed)
           const newPressRun = await tx
             .insert(applePressRuns)
             .values({
-              pressRunName,
+              pressRunName: null, // Name will be set when completing the press run
               status: 'in_progress',
               scheduledDate: input.scheduledDate ? input.scheduledDate.toISOString().split('T')[0] : null,
               startTime: input.startTime || new Date(),
@@ -534,9 +507,10 @@ export const pressRunRouter = router({
           const completedPressRun = await tx
             .update(applePressRuns)
             .set({
+              pressRunName: input.pressRunName,
               vesselId: input.vesselId,
               status: 'completed',
-              endTime: new Date(),
+              endTime: input.completionDate,
               totalJuiceVolumeL: input.totalJuiceVolumeL.toString(),
               extractionRate: extractionRate.toString(),
               laborHours: input.laborHours?.toString(),

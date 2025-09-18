@@ -2,7 +2,7 @@ import type { PurchaseOrderData, DateRangeReportData } from './types'
 
 export function mapPurchaseToOrderData(purchase: any): PurchaseOrderData {
   // Calculate totals
-  const subtotal = purchase.purchaseItems?.reduce((sum: number, item: any) => {
+  const subtotal = purchase.items?.reduce((sum: number, item: any) => {
     const itemTotal = item.quantity * (item.pricePerUnit || 0)
     return sum + itemTotal
   }, 0) || 0
@@ -21,7 +21,7 @@ export function mapPurchaseToOrderData(purchase: any): PurchaseOrderData {
         address: purchase.vendor?.contactInfo?.address
       }
     },
-    items: purchase.purchaseItems?.map((item: any) => ({
+    items: purchase.items?.map((item: any) => ({
       varietyName: item.appleVariety?.name || 'Unknown Variety',
       quantity: item.quantity,
       unit: item.unit,
@@ -46,7 +46,7 @@ export function mapPurchasesToDateRangeData(
 ): DateRangeReportData {
   const totalPurchases = purchases.length
   const totalCost = purchases.reduce((sum, purchase) => {
-    return sum + (purchase.purchaseItems?.reduce((itemSum: number, item: any) => {
+    return sum + (purchase.items?.reduce((itemSum: number, item: any) => {
       return itemSum + (item.quantity * (item.pricePerUnit || 0))
     }, 0) || 0)
   }, 0)
@@ -58,7 +58,7 @@ export function mapPurchasesToDateRangeData(
 
   purchases.forEach(purchase => {
     const vendorName = purchase.vendor?.name || 'Unknown Vendor'
-    const purchaseCost = purchase.purchaseItems?.reduce((sum: number, item: any) => {
+    const purchaseCost = purchase.items?.reduce((sum: number, item: any) => {
       return sum + (item.quantity * (item.pricePerUnit || 0))
     }, 0) || 0
 
@@ -82,13 +82,13 @@ export function mapPurchasesToDateRangeData(
       id: purchase.id,
       date: new Date(purchase.purchaseDate),
       vendorName: purchase.vendor?.name || 'Unknown Vendor',
-      items: purchase.purchaseItems?.map((item: any) => ({
+      items: purchase.items?.map((item: any) => ({
         varietyName: item.appleVariety?.name || 'Unknown Variety',
         quantity: item.quantity,
         unit: item.unit,
         cost: item.quantity * (item.pricePerUnit || 0)
       })) || [],
-      totalCost: purchase.purchaseItems?.reduce((sum: number, item: any) => {
+      totalCost: purchase.items?.reduce((sum: number, item: any) => {
         return sum + (item.quantity * (item.pricePerUnit || 0))
       }, 0) || 0
     })),

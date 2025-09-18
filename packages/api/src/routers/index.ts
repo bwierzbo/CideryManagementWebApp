@@ -2534,7 +2534,7 @@ export const appRouter = router({
   health: healthRouter,
 
   // PDF report generation
-  reports: reportsRouter,
+  pdfReports: reportsRouter,
 
   // Audit logging and reporting
   audit: auditRouter

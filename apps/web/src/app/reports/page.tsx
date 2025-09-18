@@ -22,15 +22,97 @@ import {
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 
+// Helper function to download blob as file
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// Helper function to convert base64 to blob
+const base64ToBlob = (base64: string, contentType: string): Blob => {
+  const byteCharacters = atob(base64)
+  const byteNumbers = new Array(byteCharacters.length)
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i)
+  }
+  const byteArray = new Uint8Array(byteNumbers)
+  return new Blob([byteArray], { type: contentType })
+}
+
 export default function ReportsPage() {
   const { data: session } = useSession()
   const [dateRange, setDateRange] = useState("30")
   const [selectedBatch, setSelectedBatch] = useState("all")
+  const [selectedVendor, setSelectedVendor] = useState("all")
+  const [reportType, setReportType] = useState<'summary' | 'detailed' | 'accounting'>('summary')
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
   // Get data using existing tRPC endpoints
   const { data: batches, isLoading: batchesLoading } = trpc.batch.list.useQuery()
   const { data: vendors, isLoading: vendorsLoading } = trpc.vendor.list.useQuery()
   const { data: purchases } = trpc.purchase.list.useQuery()
+
+  // Get vendors for PDF filtering
+  const { data: reportVendors } = trpc.pdfReports.getVendors.useQuery()
+
+  // PDF generation mutations
+  const generateDateRangeReport = trpc.pdfReports.generateDateRangeReportPdf.useMutation({
+    onSuccess: (result) => {
+      if (result.success && result.data) {
+        const blob = base64ToBlob(result.data, result.contentType)
+        downloadBlob(blob, result.filename)
+      }
+      setIsGeneratingPdf(false)
+    },
+    onError: (error) => {
+      console.error('Failed to generate PDF:', error)
+      alert('Failed to generate PDF report. Please try again.')
+      setIsGeneratingPdf(false)
+    }
+  })
+
+  // Calculate date range
+  const getDateRange = () => {
+    const endDate = new Date()
+    const startDate = new Date()
+
+    switch (dateRange) {
+      case "7":
+        startDate.setDate(endDate.getDate() - 7)
+        break
+      case "30":
+        startDate.setDate(endDate.getDate() - 30)
+        break
+      case "90":
+        startDate.setDate(endDate.getDate() - 90)
+        break
+      case "365":
+        startDate.setFullYear(endDate.getFullYear() - 1)
+        break
+      default:
+        startDate.setDate(endDate.getDate() - 30)
+    }
+
+    return { startDate, endDate }
+  }
+
+  const handleGeneratePdf = () => {
+    setIsGeneratingPdf(true)
+    const { startDate, endDate } = getDateRange()
+
+    generateDateRangeReport.mutate({
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      reportType,
+      vendorId: selectedVendor !== 'all' ? selectedVendor : undefined
+    })
+  }
 
   // Calculate COGS data - simplified for demo
   const batchList = batches?.batches || []
@@ -84,9 +166,14 @@ export default function ReportsPage() {
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" className="flex items-center">
+              <Button
+                variant="outline"
+                className="flex items-center"
+                onClick={handleGeneratePdf}
+                disabled={isGeneratingPdf}
+              >
                 <Download className="w-4 h-4 mr-2" />
-                Export PDF
+                {isGeneratingPdf ? 'Generating...' : 'Export PDF'}
               </Button>
               <Button variant="outline" className="flex items-center">
                 <FileText className="w-4 h-4 mr-2" />
@@ -111,6 +198,37 @@ export default function ReportsPage() {
                     <SelectItem value="30">Last 30 days</SelectItem>
                     <SelectItem value="90">Last 90 days</SelectItem>
                     <SelectItem value="365">Last year</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="lg:w-48">
+                <Label htmlFor="vendor">Vendor Filter</Label>
+                <Select value={selectedVendor} onValueChange={setSelectedVendor}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Vendors</SelectItem>
+                    {reportVendors?.vendors.map((vendor) => (
+                      <SelectItem key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="lg:w-48">
+                <Label htmlFor="reportType">Report Type</Label>
+                <Select value={reportType} onValueChange={(value: 'summary' | 'detailed' | 'accounting') => setReportType(value)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="summary">Summary</SelectItem>
+                    <SelectItem value="detailed">Detailed</SelectItem>
+                    <SelectItem value="accounting">Accounting</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

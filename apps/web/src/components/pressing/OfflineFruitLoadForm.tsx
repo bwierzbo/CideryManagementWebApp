@@ -174,11 +174,11 @@ export function OfflineFruitLoadForm({
   }
 
   const getConvertedWeight = (): { value: number; unit: 'lbs' | 'kg' } => {
-    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'kg' }
-    const oppositeUnit = watchedUnit === 'lbs' ? 'kg' : 'lbs'
+    if (!watchedWeight || !watchedUnit) return { value: 0, unit: 'lbs' }
+    // Always show the converted weight in lbs
     return {
-      value: convertWeight(watchedWeight, watchedUnit, oppositeUnit),
-      unit: oppositeUnit
+      value: convertWeight(watchedWeight, watchedUnit, 'lbs'),
+      unit: 'lbs'
     }
   }
 
@@ -448,7 +448,7 @@ export function OfflineFruitLoadForm({
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-medium text-green-600">
-                            {line.availableQuantityKg.toFixed(1)} kg
+                            {convertWeight(line.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs
                           </p>
                           <p className="text-xs text-gray-500">
                             {line.availablePercentage.toFixed(0)}% available
@@ -596,9 +596,9 @@ export function OfflineFruitLoadForm({
                         <div className="text-sm text-red-800">
                           <p className="font-medium">Insufficient inventory!</p>
                           <p>
-                            Available: {availabilityCheck.availableQuantityKg.toFixed(1)} kg
+                            Available: {convertWeight(availabilityCheck.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs
                             {availabilityCheck.shortfallKg > 0 && (
-                              <> • Shortfall: {availabilityCheck.shortfallKg.toFixed(1)} kg</>
+                              <> • Shortfall: {convertWeight(availabilityCheck.shortfallKg, 'kg', 'lbs').toFixed(1)} lbs</>
                             )}
                           </p>
                         </div>
@@ -618,7 +618,7 @@ export function OfflineFruitLoadForm({
                       <div className="flex items-center space-x-2">
                         <CheckCircle2 className="w-4 h-4 text-green-600" />
                         <span className="text-sm text-green-800">
-                          Inventory available ({availabilityCheck.availableQuantityKg.toFixed(1)} kg total)
+                          Inventory available ({convertWeight(availabilityCheck.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs total)
                         </span>
                       </div>
                     </div>
