@@ -90,19 +90,25 @@ export const pressRunRouter = router({
 
           // Get count of ACTIVE press runs created on the same Pacific date to determine sequence
           // Only count non-deleted, active press runs for today's date
+          const targetDate = dateStr.replace(/\//g, '-') // Convert YYYY/MM/DD to YYYY-MM-DD
+          console.log(`Counting press runs for date: ${targetDate}`)
+
           const existingRunsCount = await tx
-            .select({ count: sql<number>`count(*)` })
+            .select({ count: sql<number>`count(*)::int` })
             .from(applePressRuns)
             .where(
               and(
-                sql`DATE(${applePressRuns.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles') = ${dateStr.replace(/\//g, '-')}`,
+                sql`DATE(${applePressRuns.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles') = ${targetDate}`,
                 eq(applePressRuns.status, 'in_progress'),
                 isNull(applePressRuns.deletedAt)
               )
             )
 
-          const sequenceNumber = (existingRunsCount[0]?.count || 0) + 1
+          const currentCount = Number(existingRunsCount[0]?.count || 0)
+          const sequenceNumber = currentCount + 1
           const pressRunName = `${dateStr}-${sequenceNumber.toString().padStart(2, '0')}`
+
+          console.log(`Press run naming debug: Date=${dateStr}, CurrentCount=${currentCount}, SequenceNumber=${sequenceNumber}, PressRunName=${pressRunName}`)
 
           // Create new press run
           const newPressRun = await tx

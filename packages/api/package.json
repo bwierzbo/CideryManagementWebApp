@@ -20,11 +20,13 @@
     "db": "workspace:^",
     "decimal.js": "^10.4.3",
     "lib": "workspace:^",
+    "pdfkit": "^0.15.0",
     "typescript": "^5.3.0",
     "zod": "^4.1.8"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/pdfkit": "^0.13.4",
     "@vitest/coverage-v8": "^1.0.0",
     "drizzle-orm": "^0.28.6",
     "vitest": "^1.0.0"
