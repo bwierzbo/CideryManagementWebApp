@@ -57,6 +57,7 @@ function ActiveRunsSection({
   // Convert tRPC data to expected format
   const activeRuns = pressRunsData?.pressRuns?.map(run => ({
     id: run.id,
+    pressRunName: run.pressRunName,
     startDate: run.startTime ? new Date(run.startTime).toLocaleDateString() : 'Unknown',
     totalAppleKg: parseFloat(run.totalAppleWeightKg || '0'),
     varieties: run.varieties && run.varieties.length > 0 ? run.varieties : ['No varieties'],
@@ -128,7 +129,7 @@ function ActiveRunsSection({
               {/* Run Header */}
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h4 className="font-semibold text-gray-900">{run.vendorName || `Run ${run.id.slice(0, 8)}`}</h4>
+                  <h4 className="font-semibold text-gray-900">{run.pressRunName || `Run ${run.id.slice(0, 8)}`}</h4>
                   <p className="text-sm text-gray-600">Started {run.startDate}</p>
                 </div>
                 <Badge variant="secondary" className="bg-blue-100 text-blue-800">
@@ -174,8 +175,8 @@ function ActiveRunsSection({
                   className="flex-1 h-10"
                   onClick={() => window.location.href = `/pressing/${run.id}`}
                 >
-                  <Eye className="w-4 h-4 mr-2" />
-                  Details
+                  <Play className="w-4 h-4 mr-2" />
+                  Continue Run
                 </Button>
                 <Button
                   size="sm"
@@ -341,7 +342,7 @@ function CompletedRunsSection({
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex-1">
                       <h4 className="font-medium text-gray-900">
-                        {run.endTime ? new Date(run.endTime).toLocaleDateString() : 'Recent'}
+                        {run.pressRunName || (run.endTime ? new Date(run.endTime).toLocaleDateString() : 'Recent')}
                       </h4>
                       <p className="text-sm text-gray-600">
                         {run.varieties.length > 0 ? run.varieties.join(', ') : 'Mixed varieties'}

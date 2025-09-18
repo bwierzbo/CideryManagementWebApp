@@ -245,7 +245,7 @@ export default function PressRunDetailsPage() {
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                Press Run #{pressRunId.slice(0, 8).toUpperCase()}
+                {pressRun?.pressRun?.pressRunName || `Press Run #${pressRunId.slice(0, 8).toUpperCase()}`}
               </h1>
               <p className="text-gray-600 mt-1">
                 Manage loads and track pressing progress

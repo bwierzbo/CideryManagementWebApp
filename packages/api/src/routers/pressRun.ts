@@ -81,10 +81,34 @@ export const pressRunRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
+          // Generate press run name in yyyy/mm/dd-## format using Pacific timezone
+          const now = input.startTime || new Date()
+
+          // Format date in Pacific timezone without converting back to UTC
+          const pacificDate = now.toLocaleDateString("en-CA", {timeZone: "America/Los_Angeles"}) // YYYY-MM-DD format
+          const dateStr = pacificDate.replace(/-/g, '/')
+
+          // Get count of ACTIVE press runs created on the same Pacific date to determine sequence
+          // Only count non-deleted, active press runs for today's date
+          const existingRunsCount = await tx
+            .select({ count: sql<number>`count(*)` })
+            .from(applePressRuns)
+            .where(
+              and(
+                sql`DATE(${applePressRuns.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Los_Angeles') = ${dateStr.replace(/\//g, '-')}`,
+                eq(applePressRuns.status, 'in_progress'),
+                isNull(applePressRuns.deletedAt)
+              )
+            )
+
+          const sequenceNumber = (existingRunsCount[0]?.count || 0) + 1
+          const pressRunName = `${dateStr}-${sequenceNumber.toString().padStart(2, '0')}`
+
           // Create new press run
           const newPressRun = await tx
             .insert(applePressRuns)
             .values({
+              pressRunName,
               status: 'in_progress',
               scheduledDate: input.scheduledDate ? input.scheduledDate.toISOString().split('T')[0] : null,
               startTime: input.startTime || new Date(),
@@ -592,6 +616,7 @@ export const pressRunRouter = router({
         const pressRunsList = await db
           .select({
             id: applePressRuns.id,
+            pressRunName: applePressRuns.pressRunName,
             vendorId: applePressRuns.vendorId,
             vendorName: vendors.name,
             vesselId: applePressRuns.vesselId,
@@ -710,6 +735,7 @@ export const pressRunRouter = router({
         const pressRunResult = await db
           .select({
             id: applePressRuns.id,
+            pressRunName: applePressRuns.pressRunName,
             vendorId: applePressRuns.vendorId,
             vendorName: vendors.name,
             vendorContactInfo: vendors.contactInfo,
