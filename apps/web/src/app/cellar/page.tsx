@@ -48,6 +48,21 @@ const measurementSchema = z.object({
   notes: z.string().optional(),
 })
 
+const tankMeasurementSchema = z.object({
+  tempC: z.number().min(-10).max(50).optional(),
+  sh: z.number().min(0.990).max(1.200).optional(),
+  ph: z.number().min(2).max(8).optional(),
+  abv: z.number().min(0).max(20).optional(),
+  notes: z.string().optional(),
+})
+
+const tankAdditiveSchema = z.object({
+  additiveType: z.string().min(1, "Additive type is required"),
+  amount: z.number().positive("Amount must be positive"),
+  unit: z.string().min(1, "Unit is required"),
+  notes: z.string().optional(),
+})
+
 const transferSchema = z.object({
   fromBatchId: z.string().uuid("Select source batch"),
   toVesselId: z.string().uuid("Select destination vessel"),
@@ -242,10 +257,197 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
   )
 }
 
+function TankMeasurementForm({ vesselId, onClose }: { vesselId: string; onClose: () => void }) {
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(tankMeasurementSchema)
+  })
+
+  const utils = trpc.useUtils()
+  // TODO: Add tank measurement mutation once API is implemented
+  // const addMeasurementMutation = trpc.tank.addMeasurement.useMutation({
+  //   onSuccess: () => {
+  //     utils.vessel.list.invalidate()
+  //     onClose()
+  //   }
+  // })
+
+  const onSubmit = (data: any) => {
+    console.log('Tank measurement:', { vesselId, ...data })
+    // addMeasurementMutation.mutate({ vesselId, ...data })
+    onClose() // For now, just close the dialog
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="tempC">Temperature (°C)</Label>
+          <Input
+            id="tempC"
+            type="number"
+            step="0.1"
+            placeholder="18.5"
+            {...register("tempC", { valueAsNumber: true })}
+          />
+          {errors.tempC && <p className="text-sm text-red-600">{errors.tempC.message}</p>}
+        </div>
+        <div>
+          <Label htmlFor="sh">Specific Gravity</Label>
+          <Input
+            id="sh"
+            type="number"
+            step="0.001"
+            placeholder="1.055"
+            {...register("sh", { valueAsNumber: true })}
+          />
+          {errors.sh && <p className="text-sm text-red-600">{errors.sh.message}</p>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="ph">pH</Label>
+          <Input
+            id="ph"
+            type="number"
+            step="0.1"
+            placeholder="3.8"
+            {...register("ph", { valueAsNumber: true })}
+          />
+          {errors.ph && <p className="text-sm text-red-600">{errors.ph.message}</p>}
+        </div>
+        <div>
+          <Label htmlFor="abv">ABV (%)</Label>
+          <Input
+            id="abv"
+            type="number"
+            step="0.1"
+            placeholder="6.5"
+            {...register("abv", { valueAsNumber: true })}
+          />
+          {errors.abv && <p className="text-sm text-red-600">{errors.abv.message}</p>}
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Input
+          id="notes"
+          placeholder="Measurement notes..."
+          {...register("notes")}
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit">
+          Add Measurement
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: () => void }) {
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(tankAdditiveSchema)
+  })
+
+  const utils = trpc.useUtils()
+  // TODO: Add tank additive mutation once API is implemented
+  // const addAdditiveMutation = trpc.tank.addAdditive.useMutation({
+  //   onSuccess: () => {
+  //     utils.vessel.list.invalidate()
+  //     onClose()
+  //   }
+  // })
+
+  const onSubmit = (data: any) => {
+    console.log('Tank additive:', { vesselId, ...data })
+    // addAdditiveMutation.mutate({ vesselId, ...data })
+    onClose() // For now, just close the dialog
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div>
+        <Label htmlFor="additiveType">Additive Type</Label>
+        <Select>
+          <SelectTrigger>
+            <SelectValue placeholder="Select additive type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="sulfites">Sulfites</SelectItem>
+            <SelectItem value="nutrients">Nutrients</SelectItem>
+            <SelectItem value="enzymes">Enzymes</SelectItem>
+            <SelectItem value="clarifiers">Clarifiers</SelectItem>
+            <SelectItem value="acids">Acids</SelectItem>
+            <SelectItem value="other">Other</SelectItem>
+          </SelectContent>
+        </Select>
+        {errors.additiveType && <p className="text-sm text-red-600">{errors.additiveType.message}</p>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="amount">Amount</Label>
+          <Input
+            id="amount"
+            type="number"
+            step="0.1"
+            placeholder="10"
+            {...register("amount", { valueAsNumber: true })}
+          />
+          {errors.amount && <p className="text-sm text-red-600">{errors.amount.message}</p>}
+        </div>
+        <div>
+          <Label htmlFor="unit">Unit</Label>
+          <Select>
+            <SelectTrigger>
+              <SelectValue placeholder="Select unit" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="g">grams (g)</SelectItem>
+              <SelectItem value="ml">milliliters (ml)</SelectItem>
+              <SelectItem value="ppm">parts per million (ppm)</SelectItem>
+              <SelectItem value="tsp">teaspoons (tsp)</SelectItem>
+              <SelectItem value="tbsp">tablespoons (tbsp)</SelectItem>
+            </SelectContent>
+          </Select>
+          {errors.unit && <p className="text-sm text-red-600">{errors.unit.message}</p>}
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Input
+          id="notes"
+          placeholder="Additive notes..."
+          {...register("notes")}
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button type="submit">
+          Add Additive
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 function VesselMap() {
   const [showAddTank, setShowAddTank] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [vesselToDelete, setVesselToDelete] = useState<{id: string, name: string | null} | null>(null)
+  const [showMeasurementForm, setShowMeasurementForm] = useState(false)
+  const [showAdditiveForm, setShowAdditiveForm] = useState(false)
+  const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null)
 
   const vesselListQuery = trpc.vessel.list.useQuery()
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
@@ -273,6 +475,10 @@ function VesselMap() {
       case "in_use": return "border-blue-300 bg-blue-50"
       case "cleaning": return "border-yellow-300 bg-yellow-50"
       case "maintenance": return "border-red-300 bg-red-50"
+      case "empty": return "border-gray-300 bg-gray-50"
+      case "fermenting": return "border-purple-300 bg-purple-50"
+      case "storing": return "border-indigo-300 bg-indigo-50"
+      case "aging": return "border-amber-300 bg-amber-50"
       default: return "border-gray-300 bg-gray-50"
     }
   }
@@ -283,6 +489,10 @@ function VesselMap() {
       case "in_use": return <Activity className="w-4 h-4 text-blue-600" />
       case "cleaning": return <RotateCcw className="w-4 h-4 text-yellow-600" />
       case "maintenance": return <AlertTriangle className="w-4 h-4 text-red-600" />
+      case "empty": return <Droplets className="w-4 h-4 text-gray-600" />
+      case "fermenting": return <Beaker className="w-4 h-4 text-purple-600" />
+      case "storing": return <Waves className="w-4 h-4 text-indigo-600" />
+      case "aging": return <Clock className="w-4 h-4 text-amber-600" />
       default: return <Clock className="w-4 h-4 text-gray-600" />
     }
   }
@@ -319,8 +529,18 @@ function VesselMap() {
   const handleStatusChange = (vesselId: string, newStatus: string) => {
     updateStatusMutation.mutate({
       id: vesselId,
-      status: newStatus as 'available' | 'in_use' | 'cleaning' | 'maintenance'
+      status: newStatus as 'available' | 'in_use' | 'cleaning' | 'maintenance' | 'empty' | 'fermenting' | 'storing' | 'aging'
     })
+  }
+
+  const handleTankMeasurement = (vesselId: string) => {
+    setSelectedVesselId(vesselId)
+    setShowMeasurementForm(true)
+  }
+
+  const handleTankAdditive = (vesselId: string) => {
+    setSelectedVesselId(vesselId)
+    setShowAdditiveForm(true)
   }
 
   if (vesselListQuery.isLoading) {
@@ -456,14 +676,48 @@ function VesselMap() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Set Status</DropdownMenuLabel>
+                      <DropdownMenuLabel>Tank Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'available')}
-                        disabled={vessel.status === 'available'}
+                        onClick={() => handleTankMeasurement(vessel.id)}
                       >
-                        Available
+                        <Thermometer className="w-3 h-3 mr-2" />
+                        Add Measurement
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleTankAdditive(vessel.id)}
+                      >
+                        <Droplets className="w-3 h-3 mr-2" />
+                        Add Additive
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Tank Status</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'empty')}
+                        disabled={vessel.status === 'empty'}
+                      >
+                        Empty
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'fermenting')}
+                        disabled={vessel.status === 'fermenting'}
+                      >
+                        Fermenting
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'storing')}
+                        disabled={vessel.status === 'storing'}
+                      >
+                        Storing
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'aging')}
+                        disabled={vessel.status === 'aging'}
+                      >
+                        Aging
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handleStatusChange(vessel.id, 'cleaning')}
                         disabled={vessel.status === 'cleaning'}
@@ -475,6 +729,12 @@ function VesselMap() {
                         disabled={vessel.status === 'maintenance'}
                       >
                         Maintenance
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleStatusChange(vessel.id, 'available')}
+                        disabled={vessel.status === 'available'}
+                      >
+                        Available
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
@@ -511,6 +771,38 @@ function VesselMap() {
                 Delete
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Tank Measurement Form */}
+        <Dialog open={showMeasurementForm} onOpenChange={setShowMeasurementForm}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add Tank Measurement</DialogTitle>
+              <DialogDescription>
+                Record measurement data for this tank
+              </DialogDescription>
+            </DialogHeader>
+            <TankMeasurementForm
+              vesselId={selectedVesselId || ''}
+              onClose={() => setShowMeasurementForm(false)}
+            />
+          </DialogContent>
+        </Dialog>
+
+        {/* Tank Additive Form */}
+        <Dialog open={showAdditiveForm} onOpenChange={setShowAdditiveForm}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add Tank Additive</DialogTitle>
+              <DialogDescription>
+                Record additive addition for this tank
+              </DialogDescription>
+            </DialogHeader>
+            <TankAdditiveForm
+              vesselId={selectedVesselId || ''}
+              onClose={() => setShowAdditiveForm(false)}
+            />
           </DialogContent>
         </Dialog>
       </CardContent>
