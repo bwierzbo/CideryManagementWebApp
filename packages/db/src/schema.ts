@@ -4,7 +4,7 @@ import { relations, sql } from 'drizzle-orm'
 // PostgreSQL Enums
 export const unitEnum = pgEnum('unit', ['kg', 'lb', 'L', 'gal', 'bushel'])
 export const batchStatusEnum = pgEnum('batch_status', ['planned', 'active', 'completed', 'cancelled'])
-export const vesselStatusEnum = pgEnum('vessel_status', ['available', 'in_use', 'cleaning', 'maintenance'])
+export const vesselStatusEnum = pgEnum('vessel_status', ['available', 'in_use', 'cleaning', 'maintenance', 'empty', 'fermenting', 'storing', 'aging'])
 export const vesselTypeEnum = pgEnum('vessel_type', ['fermenter', 'conditioning_tank', 'bright_tank', 'storage'])
 export const vesselMaterialEnum = pgEnum('vessel_material', ['stainless_steel', 'plastic'])
 export const vesselJacketedEnum = pgEnum('vessel_jacketed', ['yes', 'no'])
@@ -459,7 +459,9 @@ export const pressItemsRelations = relations(pressItems, ({ one, many }) => ({
 }))
 
 export const vesselsRelations = relations(vessels, ({ many }) => ({
-  batches: many(batches)
+  batches: many(batches),
+  tankMeasurements: many(tankMeasurements),
+  tankAdditives: many(tankAdditives)
 }))
 
 export const batchesRelations = relations(batches, ({ one, many }) => ({
@@ -579,6 +581,65 @@ export const applePressRunLoadsRelations = relations(applePressRunLoads, ({ one 
   }),
   updatedByUser: one(users, {
     fields: [applePressRunLoads.updatedBy],
+    references: [users.id]
+  })
+}))
+
+// Tank Management Tables
+export const tankMeasurements = pgTable('tank_measurements', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vesselId: uuid('vessel_id').notNull().references(() => vessels.id, { onDelete: 'cascade' }),
+  measurementDate: timestamp('measurement_date').notNull().defaultNow(),
+  tempC: decimal('temp_c', { precision: 5, scale: 2 }),
+  sh: decimal('sh', { precision: 5, scale: 2 }),
+  ph: decimal('ph', { precision: 4, scale: 2 }),
+  abv: decimal('abv', { precision: 5, scale: 2 }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdBy: uuid('created_by').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  vesselIdx: index('tank_measurements_vessel_idx').on(table.vesselId),
+  dateIdx: index('tank_measurements_date_idx').on(table.measurementDate)
+}))
+
+export const tankAdditives = pgTable('tank_additives', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vesselId: uuid('vessel_id').notNull().references(() => vessels.id, { onDelete: 'cascade' }),
+  additiveType: text('additive_type').notNull(),
+  amount: decimal('amount', { precision: 10, scale: 3 }).notNull(),
+  unit: text('unit').notNull(),
+  notes: text('notes'),
+  addedAt: timestamp('added_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdBy: uuid('created_by').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  vesselIdx: index('tank_additives_vessel_idx').on(table.vesselId),
+  addedAtIdx: index('tank_additives_added_at_idx').on(table.addedAt)
+}))
+
+// Tank Relations
+export const tankMeasurementsRelations = relations(tankMeasurements, ({ one }) => ({
+  vessel: one(vessels, {
+    fields: [tankMeasurements.vesselId],
+    references: [vessels.id]
+  }),
+  createdByUser: one(users, {
+    fields: [tankMeasurements.createdBy],
+    references: [users.id]
+  })
+}))
+
+export const tankAdditivesRelations = relations(tankAdditives, ({ one }) => ({
+  vessel: one(vessels, {
+    fields: [tankAdditives.vesselId],
+    references: [vessels.id]
+  }),
+  createdByUser: one(users, {
+    fields: [tankAdditives.createdBy],
     references: [users.id]
   })
 }))

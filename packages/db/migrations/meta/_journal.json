@@ -8,6 +8,13 @@
       "when": 1758068498071,
       "tag": "0000_colossal_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1758155317628,
+      "tag": "0001_shocking_tyrannus",
+      "breakpoints": true
     }
   ]
 }
