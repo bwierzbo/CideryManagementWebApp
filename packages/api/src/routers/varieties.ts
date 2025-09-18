@@ -165,6 +165,7 @@ export const varietiesRouter = router({
   update: createRbacProcedure('update', 'apple_variety')
     .input(varietyUpdateSchema)
     .mutation(async ({ input, ctx }) => {
+      console.log('🔍 Apple variety update called with input:', JSON.stringify(input, null, 2))
       try {
         // Get existing variety for audit trail
         const existingVariety = await db
@@ -240,7 +241,12 @@ export const varietiesRouter = router({
         }
       } catch (error) {
         if (error instanceof TRPCError) throw error
-        console.error('Error updating apple variety:', error)
+        console.error('❌ Error updating apple variety:', error)
+        console.error('Error details:', {
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack
+        })
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to update apple variety'
