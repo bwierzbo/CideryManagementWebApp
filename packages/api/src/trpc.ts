@@ -97,3 +97,12 @@ export const createCustomAuditProcedure = (
   operation: 'create' | 'update' | 'delete' | 'soft_delete' | 'restore',
   dataFetcher?: (recordId: string) => Promise<any>
 ) => protectedProcedure.use(createAuditMiddleware(tableName, operation, dataFetcher))
+
+/**
+ * Create a tRPC caller for testing purposes
+ */
+export const createTRPCCaller = (ctx: Context) => {
+  // Import here to avoid circular dependency
+  const { appRouter } = require('./routers')
+  return appRouter.createCaller(ctx)
+}
