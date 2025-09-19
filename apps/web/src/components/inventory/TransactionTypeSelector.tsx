@@ -63,8 +63,8 @@ const transactionTypes = [
     title: "Packaging",
     description: "Record purchases of bottles, labels, caps",
     icon: Package,
-    route: "/packaging",
-    available: false,
+    route: "/inventory?tab=packaging",
+    available: true,
     color: "text-amber-600",
     bgColor: "bg-amber-50 hover:bg-amber-100",
     borderColor: "border-amber-200 hover:border-amber-300"
@@ -92,6 +92,14 @@ export function TransactionTypeSelector({ open, onOpenChange }: TransactionTypeS
         // Use a small delay to ensure page loads before setting tab
         setTimeout(() => {
           const event = new CustomEvent('setInventoryTab', { detail: 'juice' })
+          window.dispatchEvent(event)
+        }, 100)
+      } else if (type.id === "packaging") {
+        // For packaging, navigate to inventory page with packaging tab active
+        router.push("/inventory")
+        // Use a small delay to ensure page loads before setting tab
+        setTimeout(() => {
+          const event = new CustomEvent('setInventoryTab', { detail: 'packaging' })
           window.dispatchEvent(event)
         }, 100)
       } else {

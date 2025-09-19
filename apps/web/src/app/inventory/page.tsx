@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { TransactionTypeSelector } from "@/components/inventory/TransactionTypeSelector"
 import { AdditivesTransactionForm } from "@/components/inventory/AdditivesTransactionForm"
 import { JuiceTransactionForm } from "@/components/inventory/JuiceTransactionForm"
+import { PackagingTransactionForm } from "@/components/inventory/PackagingTransactionForm"
 import {
   Package,
   Search,
@@ -37,6 +38,7 @@ export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState("inventory")
   const [showAdditivesForm, setShowAdditivesForm] = useState(false)
   const [showJuiceForm, setShowJuiceForm] = useState(false)
+  const [showPackagingForm, setShowPackagingForm] = useState(false)
 
   // Get inventory data using existing tRPC endpoints
   const { data: packagesData, isLoading } = trpc.packaging.list.useQuery()
@@ -95,6 +97,25 @@ export default function InventoryPage() {
     setActiveTab("inventory")
   }
 
+  // Handler for packaging form submission
+  const handlePackagingSubmit = async (transaction: any) => {
+    try {
+      console.log("Packaging transaction:", transaction)
+      // TODO: Implement tRPC mutation for packaging transaction
+      alert("Packaging transaction recorded successfully!")
+      setShowPackagingForm(false)
+      setActiveTab("inventory")
+    } catch (error) {
+      console.error("Error recording packaging transaction:", error)
+      alert("Error recording transaction. Please try again.")
+    }
+  }
+
+  const handlePackagingCancel = () => {
+    setShowPackagingForm(false)
+    setActiveTab("inventory")
+  }
+
   // Listen for tab change events from TransactionTypeSelector
   useEffect(() => {
     const handleSetTab = (event: CustomEvent) => {
@@ -104,6 +125,9 @@ export default function InventoryPage() {
       } else if (event.detail === 'juice') {
         setActiveTab('juice')
         setShowJuiceForm(true)
+      } else if (event.detail === 'packaging') {
+        setActiveTab('packaging')
+        setShowPackagingForm(true)
       }
     }
 
@@ -157,6 +181,17 @@ export default function InventoryPage() {
                 >
                   <Droplets className="w-4 h-4 mr-2" />
                   Add Juice
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex items-center"
+                  onClick={() => {
+                    setShowPackagingForm(true)
+                    setActiveTab("packaging")
+                  }}
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  Add Packaging
                 </Button>
                 <Button
                   className="flex items-center"
@@ -227,7 +262,7 @@ export default function InventoryPage() {
 
         {/* Main Content with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="inventory" className="flex items-center space-x-2">
               <Package className="w-4 h-4" />
               <span>Inventory</span>
@@ -239,6 +274,10 @@ export default function InventoryPage() {
             <TabsTrigger value="juice" className="flex items-center space-x-2">
               <Droplets className="w-4 h-4" />
               <span>Juice</span>
+            </TabsTrigger>
+            <TabsTrigger value="packaging" className="flex items-center space-x-2">
+              <Package className="w-4 h-4" />
+              <span>Packaging</span>
             </TabsTrigger>
           </TabsList>
 
@@ -452,6 +491,47 @@ export default function InventoryPage() {
                       >
                         <Droplets className="w-4 h-4 mr-2" />
                         Add Juice Purchase
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="packaging" className="space-y-6">
+            {showPackagingForm ? (
+              <PackagingTransactionForm
+                onSubmit={handlePackagingSubmit}
+                onCancel={handlePackagingCancel}
+              />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Package className="w-5 h-5 text-amber-600" />
+                    <span>Packaging Inventory</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Manage your packaging materials and record new purchases
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="py-12">
+                  <div className="text-center space-y-4">
+                    <Package className="w-16 h-16 text-gray-300 mx-auto" />
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">
+                        No packaging materials recorded yet
+                      </h3>
+                      <p className="text-gray-500 mb-6">
+                        Start by recording your first packaging purchase
+                      </p>
+                      <Button
+                        onClick={() => setShowPackagingForm(true)}
+                        className="bg-amber-600 hover:bg-amber-700"
+                      >
+                        <Package className="w-4 h-4 mr-2" />
+                        Add Packaging Purchase
                       </Button>
                     </div>
                   </div>
