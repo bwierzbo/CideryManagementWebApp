@@ -22,6 +22,7 @@ export const pressRunStatusEnum = pgEnum('press_run_status', [
 export const ciderCategoryEnum = pgEnum('cider_category_enum', ['sweet', 'bittersweet', 'sharp', 'bittersharp'])
 export const intensityEnum = pgEnum('intensity_enum', ['high', 'medium-high', 'medium', 'low-medium', 'low'])
 export const harvestWindowEnum = pgEnum('harvest_window_enum', ['Late', 'Mid-Late', 'Mid', 'Early-Mid', 'Early'])
+export const materialTypeEnum = pgEnum('material_type', ['apple', 'additive', 'juice', 'packaging'])
 
 // Core Tables
 export const users = pgTable('users', {
@@ -222,6 +223,8 @@ export const inventory = pgTable('inventory', {
   packageId: uuid('package_id').notNull().references(() => packages.id),
   currentBottleCount: integer('current_bottle_count').notNull(),
   reservedBottleCount: integer('reserved_bottle_count').notNull().default(0),
+  materialType: materialTypeEnum('material_type').notNull().default('apple'),
+  metadata: jsonb('metadata').notNull().default('{}'),
   location: text('location'),
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
