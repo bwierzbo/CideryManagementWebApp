@@ -9,73 +9,23 @@ import {
   vendors,
   auditLog
 } from 'db'
-import { eq, and, desc, asc, like, or, isNull, count } from 'drizzle-orm'
+import { eq, and, desc, asc, like, or, isNull, sql } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import {
   inventoryTransactionSchema,
   recordTransactionSchema,
   createInventoryItemSchema,
+  createInventoryTransactionSchema,
   inventoryListSchema,
   inventorySearchSchema,
   materialTypeEnum,
   type InventoryTransaction,
-  type RecordTransactionInput
+  type RecordTransactionInput,
+  type CreateInventoryTransactionInput
 } from '../types/inventory'
+import { InventoryService } from '../services/inventory'
 
-// Event bus for audit logging
-const eventBus = {
-  publish: async (event: string, data: any, userId?: string) => {
-    try {
-      await db.insert(auditLog).values({
-        tableName: event.split('.')[0],
-        recordId: data.inventoryId || '',
-        operation: event.split('.')[1],
-        newData: data,
-        changedBy: userId || null,
-      })
-    } catch (error) {
-      console.error('Failed to publish audit log:', error)
-    }
-  }
-}
-
-// Helper function to validate material-specific transaction data
-const validateTransactionData = (transaction: InventoryTransaction): void => {
-  switch (transaction.materialType) {
-    case 'apple':
-      if (!transaction.appleVarietyId) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Apple variety ID is required for apple transactions'
-        })
-      }
-      break
-    case 'additive':
-      if (!transaction.additiveType || !transaction.additiveName) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Additive type and name are required for additive transactions'
-        })
-      }
-      break
-    case 'juice':
-      if (!transaction.volumeL) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Volume is required for juice transactions'
-        })
-      }
-      break
-    case 'packaging':
-      if (!transaction.packagingType || !transaction.packagingName) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: 'Packaging type and name are required for packaging transactions'
-        })
-      }
-      break
-  }
-}
+// Note: Helper functions moved to InventoryService for better organization and reusability
 
 export const inventoryRouter = router({
   // List inventory items - accessible by both admin and operator
@@ -124,7 +74,7 @@ export const inventoryRouter = router({
         .offset(offset)
 
       const totalCount = await db
-        .select({ count: count() })
+        .select({ count: sql<number>`count(*)` })
         .from(inventory)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
 
@@ -205,96 +155,98 @@ export const inventoryRouter = router({
     }),
 
   // Record inventory transaction - accessible by both admin and operator
-  // Note: This endpoint only records transactions for existing inventory items
-  // Creating new inventory items should be done through dedicated material-specific endpoints
+  // Uses the comprehensive service layer for enhanced validation and business logic
   recordTransaction: createRbacProcedure('create', 'inventory')
+    .input(recordTransactionSchema)
+    .mutation(async ({ input, ctx }) => {
+      return await InventoryService.recordTransaction(input, ctx.session?.user?.id)
+    }),
+
+  // Create new inventory item with material-specific data - accessible by both admin and operator
+  createInventoryItem: createRbacProcedure('create', 'inventory')
+    .input(createInventoryTransactionSchema)
+    .mutation(async ({ input, ctx }) => {
+      // Convert the transaction schema to service parameters
+      const createParams = {
+        materialType: input.materialType,
+        initialQuantity: input.quantityChange,
+        metadata: {
+          transactionData: input
+        },
+        location: (input as any).storageLocation || (input as any).location,
+        notes: input.notes,
+      }
+
+      return await InventoryService.createInventoryItem(
+        createParams,
+        input,
+        ctx.session?.user?.id
+      )
+    }),
+
+  // Bulk transfer items between locations - accessible by both admin and operator
+  bulkTransfer: createRbacProcedure('create', 'inventory')
     .input(z.object({
-      inventoryId: z.string().uuid('Invalid inventory ID'),
-      transactionType: z.enum(['purchase', 'transfer', 'adjustment', 'sale', 'waste']),
-      quantityChange: z.number().int('Quantity change must be an integer'),
-      transactionDate: z.date().default(() => new Date()),
+      inventoryIds: z.array(z.string().uuid()).min(1, 'At least one inventory ID required'),
+      fromLocation: z.string().min(1, 'From location is required'),
+      toLocation: z.string().min(1, 'To location is required'),
       reason: z.string().optional(),
-      notes: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      return await db.transaction(async (tx) => {
-        try {
-          // Validate the inventory item exists
-          const existingItem = await tx
-            .select()
-            .from(inventory)
-            .where(and(
-              eq(inventory.id, input.inventoryId),
-              isNull(inventory.deletedAt)
-            ))
-            .limit(1)
+      return await InventoryService.bulkTransfer(
+        input.inventoryIds,
+        input.fromLocation,
+        input.toLocation,
+        input.reason,
+        ctx.session?.user?.id
+      )
+    }),
 
-          if (!existingItem.length) {
-            throw new TRPCError({
-              code: 'NOT_FOUND',
-              message: 'Inventory item not found'
-            })
-          }
+  // Check stock levels for low inventory - accessible by both admin and operator
+  checkStockLevels: createRbacProcedure('list', 'inventory')
+    .input(z.object({
+      materialType: materialTypeEnum.optional(),
+      location: z.string().optional(),
+      minimumThreshold: z.number().int().positive().default(10),
+    }))
+    .query(async ({ input }) => {
+      return await InventoryService.checkStockLevels(
+        input.materialType,
+        input.location,
+        input.minimumThreshold
+      )
+    }),
 
-          // Check if transaction would result in negative inventory
-          const newCount = existingItem[0].currentBottleCount + input.quantityChange
-          if (newCount < 0) {
-            throw new TRPCError({
-              code: 'BAD_REQUEST',
-              message: `Transaction would result in negative inventory. Current: ${existingItem[0].currentBottleCount}, Change: ${input.quantityChange}`
-            })
-          }
+  // Reserve inventory for upcoming operations - accessible by both admin and operator
+  reserveInventory: createRbacProcedure('create', 'inventory')
+    .input(z.object({
+      inventoryId: z.string().uuid('Invalid inventory ID'),
+      reserveQuantity: z.number().int().positive('Reserve quantity must be positive'),
+      reason: z.string().min(1, 'Reason is required for reservations'),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      return await InventoryService.reserveInventory(
+        input.inventoryId,
+        input.reserveQuantity,
+        input.reason,
+        ctx.session?.user?.id
+      )
+    }),
 
-          // Create the transaction record
-          const newTransaction = await tx
-            .insert(inventoryTransactions)
-            .values({
-              inventoryId: input.inventoryId,
-              transactionType: input.transactionType,
-              quantityChange: input.quantityChange,
-              transactionDate: input.transactionDate,
-              reason: input.reason,
-              notes: input.notes,
-            })
-            .returning()
-
-          // Update inventory count
-          const updatedItem = await tx
-            .update(inventory)
-            .set({
-              currentBottleCount: newCount,
-              updatedAt: new Date(),
-            })
-            .where(eq(inventory.id, input.inventoryId))
-            .returning()
-
-          // Publish audit event
-          await eventBus.publish('inventory.transaction', {
-            inventoryId: input.inventoryId,
-            transactionId: newTransaction[0].id,
-            materialType: existingItem[0].materialType,
-            previousCount: existingItem[0].currentBottleCount,
-            newCount: newCount,
-            change: input.quantityChange,
-            transactionType: input.transactionType,
-          }, ctx.session?.user?.id)
-
-          return {
-            success: true,
-            inventoryItem: updatedItem[0],
-            transaction: newTransaction[0],
-            message: `Inventory transaction recorded successfully. New count: ${newCount}`
-          }
-
-        } catch (error) {
-          if (error instanceof TRPCError) throw error
-          console.error('Error recording inventory transaction:', error)
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'Failed to record inventory transaction'
-          })
-        }
-      })
+  // Release reserved inventory - accessible by both admin and operator
+  releaseReservation: createRbacProcedure('create', 'inventory')
+    .input(z.object({
+      inventoryId: z.string().uuid('Invalid inventory ID'),
+      releaseQuantity: z.number().int().positive('Release quantity must be positive'),
+      reason: z.string().min(1, 'Reason is required for reservation releases'),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      return await InventoryService.releaseReservation(
+        input.inventoryId,
+        input.releaseQuantity,
+        input.reason,
+        ctx.session?.user?.id
+      )
     }),
 
   // Get transaction history for an inventory item - accessible by both admin and operator
@@ -316,7 +268,7 @@ export const inventoryRouter = router({
         .offset(offset)
 
       const totalCount = await db
-        .select({ count: count() })
+        .select({ count: sql<number>`count(*)` })
         .from(inventoryTransactions)
         .where(eq(inventoryTransactions.inventoryId, inventoryId))
 
@@ -337,8 +289,8 @@ export const inventoryRouter = router({
       const summary = await db
         .select({
           materialType: inventory.materialType,
-          totalItems: count(),
-          totalQuantity: count(inventory.currentBottleCount),
+          totalItems: sql<number>`count(*)`,
+          totalQuantity: sql<number>`sum(${inventory.currentBottleCount})`,
         })
         .from(inventory)
         .where(isNull(inventory.deletedAt))
@@ -348,5 +300,20 @@ export const inventoryRouter = router({
         summary,
         totalItems: summary.reduce((acc, item) => acc + (item.totalItems || 0), 0)
       }
+    }),
+
+  // Get transaction summary for inventory items - accessible by both admin and operator
+  getTransactionSummary: createRbacProcedure('read', 'inventory')
+    .input(z.object({
+      inventoryIds: z.array(z.string().uuid()).min(1, 'At least one inventory ID required'),
+      startDate: z.date().optional(),
+      endDate: z.date().optional(),
+    }))
+    .query(async ({ input }) => {
+      return await InventoryService.getTransactionSummary(
+        input.inventoryIds,
+        input.startDate,
+        input.endDate
+      )
     }),
 })

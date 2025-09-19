@@ -84,15 +84,29 @@ export const recordTransactionSchema = z.object({
 })
 
 // Extended transaction schema for creating new inventory items with material-specific data
-export const createInventoryTransactionSchema = inventoryTransactionSchema.extend({
-  quantityChange: z.number().int('Quantity change must be positive for new items').positive(),
-  transactionType: z.literal('purchase'), // Only purchases can create new inventory items
-})
+export const createInventoryTransactionSchema = z.discriminatedUnion('materialType', [
+  appleTransactionSchema.extend({
+    quantityChange: z.number().int('Quantity change must be positive for new items').positive(),
+    transactionType: z.literal('purchase'), // Only purchases can create new inventory items
+  }),
+  additiveTransactionSchema.extend({
+    quantityChange: z.number().int('Quantity change must be positive for new items').positive(),
+    transactionType: z.literal('purchase'), // Only purchases can create new inventory items
+  }),
+  juiceTransactionSchema.extend({
+    quantityChange: z.number().int('Quantity change must be positive for new items').positive(),
+    transactionType: z.literal('purchase'), // Only purchases can create new inventory items
+  }),
+  packagingTransactionSchema.extend({
+    quantityChange: z.number().int('Quantity change must be positive for new items').positive(),
+    transactionType: z.literal('purchase'), // Only purchases can create new inventory items
+  }),
+])
 
 // Input schema for creating new inventory items
 export const createInventoryItemSchema = z.object({
   materialType: materialTypeEnum,
-  metadata: z.record(z.any()).default({}),
+  metadata: z.record(z.string(), z.any()).default({}),
   location: z.string().optional(),
   notes: z.string().optional(),
   // Material-specific fields will be validated in metadata based on materialType

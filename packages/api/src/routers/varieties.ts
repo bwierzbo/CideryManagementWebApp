@@ -243,9 +243,9 @@ export const varietiesRouter = router({
         if (error instanceof TRPCError) throw error
         console.error('❌ Error updating apple variety:', error)
         console.error('Error details:', {
-          message: error?.message,
-          code: error?.code,
-          stack: error?.stack
+          message: error instanceof Error ? error.message : 'Unknown error',
+          code: (error as any)?.code || 'UNKNOWN',
+          stack: error instanceof Error ? error.stack : 'No stack trace'
         })
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
