@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import { TransactionTypeSelector } from "@/components/inventory/TransactionTypeSelector"
 import {
   Package,
   Search,
@@ -28,6 +29,7 @@ export default function InventoryPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [locationFilter, setLocationFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
+  const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false)
 
   // Get inventory data using existing tRPC endpoints
   const { data: packagesData, isLoading } = trpc.packaging.list.useQuery()
@@ -70,7 +72,10 @@ export default function InventoryPage() {
                   <Download className="w-4 h-4 mr-2" />
                   Export
                 </Button>
-                <Button className="flex items-center">
+                <Button
+                  className="flex items-center"
+                  onClick={() => setIsTransactionModalOpen(true)}
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Record Transaction
                 </Button>
@@ -267,6 +272,12 @@ export default function InventoryPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Transaction Type Selector Modal */}
+        <TransactionTypeSelector
+          open={isTransactionModalOpen}
+          onOpenChange={setIsTransactionModalOpen}
+        />
       </div>
     </div>
   )
