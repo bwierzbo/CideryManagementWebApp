@@ -52,8 +52,8 @@ const transactionTypes = [
     title: "Juice",
     description: "Record juice purchases from external sources",
     icon: Droplets,
-    route: "/juice",
-    available: false,
+    route: "/inventory?tab=juice",
+    available: true,
     color: "text-blue-600",
     bgColor: "bg-blue-50 hover:bg-blue-100",
     borderColor: "border-blue-200 hover:border-blue-300"
@@ -84,6 +84,14 @@ export function TransactionTypeSelector({ open, onOpenChange }: TransactionTypeS
         // Use a small delay to ensure page loads before setting tab
         setTimeout(() => {
           const event = new CustomEvent('setInventoryTab', { detail: 'additives' })
+          window.dispatchEvent(event)
+        }, 100)
+      } else if (type.id === "juice") {
+        // For juice, navigate to inventory page with juice tab active
+        router.push("/inventory")
+        // Use a small delay to ensure page loads before setting tab
+        setTimeout(() => {
+          const event = new CustomEvent('setInventoryTab', { detail: 'juice' })
           window.dispatchEvent(event)
         }, 100)
       } else {

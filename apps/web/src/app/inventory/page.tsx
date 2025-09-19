@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { TransactionTypeSelector } from "@/components/inventory/TransactionTypeSelector"
 import { AdditivesTransactionForm } from "@/components/inventory/AdditivesTransactionForm"
+import { JuiceTransactionForm } from "@/components/inventory/JuiceTransactionForm"
 import {
   Package,
   Search,
@@ -22,7 +23,8 @@ import {
   TrendingUp,
   MapPin,
   Calendar,
-  Beaker
+  Beaker,
+  Droplets
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 
@@ -34,6 +36,7 @@ export default function InventoryPage() {
   const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("inventory")
   const [showAdditivesForm, setShowAdditivesForm] = useState(false)
+  const [showJuiceForm, setShowJuiceForm] = useState(false)
 
   // Get inventory data using existing tRPC endpoints
   const { data: packagesData, isLoading } = trpc.packaging.list.useQuery()
@@ -73,12 +76,34 @@ export default function InventoryPage() {
     setActiveTab("inventory")
   }
 
+  // Handler for juice form submission
+  const handleJuiceSubmit = async (transaction: any) => {
+    try {
+      console.log("Juice transaction:", transaction)
+      // TODO: Implement tRPC mutation for juice transaction
+      alert("Juice transaction recorded successfully!")
+      setShowJuiceForm(false)
+      setActiveTab("inventory")
+    } catch (error) {
+      console.error("Error recording juice transaction:", error)
+      alert("Error recording transaction. Please try again.")
+    }
+  }
+
+  const handleJuiceCancel = () => {
+    setShowJuiceForm(false)
+    setActiveTab("inventory")
+  }
+
   // Listen for tab change events from TransactionTypeSelector
   useEffect(() => {
     const handleSetTab = (event: CustomEvent) => {
       if (event.detail === 'additives') {
         setActiveTab('additives')
         setShowAdditivesForm(true)
+      } else if (event.detail === 'juice') {
+        setActiveTab('juice')
+        setShowJuiceForm(true)
       }
     }
 
@@ -121,6 +146,17 @@ export default function InventoryPage() {
                 >
                   <Beaker className="w-4 h-4 mr-2" />
                   Add Additives
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex items-center"
+                  onClick={() => {
+                    setShowJuiceForm(true)
+                    setActiveTab("juice")
+                  }}
+                >
+                  <Droplets className="w-4 h-4 mr-2" />
+                  Add Juice
                 </Button>
                 <Button
                   className="flex items-center"
@@ -191,7 +227,7 @@ export default function InventoryPage() {
 
         {/* Main Content with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="inventory" className="flex items-center space-x-2">
               <Package className="w-4 h-4" />
               <span>Inventory</span>
@@ -199,6 +235,10 @@ export default function InventoryPage() {
             <TabsTrigger value="additives" className="flex items-center space-x-2">
               <Beaker className="w-4 h-4" />
               <span>Additives</span>
+            </TabsTrigger>
+            <TabsTrigger value="juice" className="flex items-center space-x-2">
+              <Droplets className="w-4 h-4" />
+              <span>Juice</span>
             </TabsTrigger>
           </TabsList>
 
@@ -371,6 +411,47 @@ export default function InventoryPage() {
                       >
                         <Beaker className="w-4 h-4 mr-2" />
                         Add Additives Purchase
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="juice" className="space-y-6">
+            {showJuiceForm ? (
+              <JuiceTransactionForm
+                onSubmit={handleJuiceSubmit}
+                onCancel={handleJuiceCancel}
+              />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Droplets className="w-5 h-5 text-blue-600" />
+                    <span>Juice Inventory</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Manage your juice inventory and record new purchases
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="py-12">
+                  <div className="text-center space-y-4">
+                    <Droplets className="w-16 h-16 text-gray-300 mx-auto" />
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">
+                        No juice recorded yet
+                      </h3>
+                      <p className="text-gray-500 mb-6">
+                        Start by recording your first juice purchase
+                      </p>
+                      <Button
+                        onClick={() => setShowJuiceForm(true)}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        <Droplets className="w-4 h-4 mr-2" />
+                        Add Juice Purchase
                       </Button>
                     </div>
                   </div>
