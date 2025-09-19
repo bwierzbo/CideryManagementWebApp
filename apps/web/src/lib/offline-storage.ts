@@ -15,7 +15,7 @@ export const pressRunDraftSchema = z.object({
   loads: z.array(z.object({
     id: z.string(),
     purchaseLineId: z.string(),
-    appleVarietyId: z.string(),
+    fruitVarietyId: z.string(),
     appleVarietyName: z.string(),
     weightKg: z.number(),
     weightUnitEntered: z.enum(['lbs', 'kg']),

@@ -24,6 +24,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
       links: [
         httpBatchLink({
           url: "/api/trpc",
+          headers() {
+            return {
+              'content-type': 'application/json',
+            }
+          },
+          // Force mutations to use POST
+          fetch(url, options) {
+            return fetch(url, {
+              ...options,
+              method: options?.method || 'POST',
+            })
+          },
         }),
       ],
     })

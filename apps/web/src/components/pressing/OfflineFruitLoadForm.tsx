@@ -46,7 +46,7 @@ import {
 // Enhanced form schema with offline status
 const fruitLoadSchema = z.object({
   purchaseItemId: z.string().uuid("Please select a purchase line"),
-  appleVarietyId: z.string().uuid("Please select an apple variety"),
+  fruitVarietyId: z.string().uuid("Please select an apple variety"),
   weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000"),
   weightUnit: z.enum(['lbs', 'kg'], { message: "Please select a weight unit" }),
   brixMeasured: z.number().min(0).max(30).optional(),
@@ -65,7 +65,7 @@ interface OfflineFruitLoadFormProps {
   onSubmit: (load: {
     loadSequence: number
     purchaseItemId: string
-    appleVarietyId: string
+    fruitVarietyId: string
     appleVarietyName: string
     appleWeightKg: number
     originalWeight: number
@@ -118,7 +118,7 @@ export function OfflineFruitLoadForm({
   const {
     data: appleVarieties,
     isLoading: varietiesLoading
-  } = trpc.appleVariety.listAll.useQuery({ includeInactive: false }, {
+  } = trpc.fruitVariety.listAll.useQuery({ includeInactive: false }, {
     enabled: isOnline,
     staleTime: 30 * 60 * 1000, // 30 minutes
     retry: false,
@@ -192,7 +192,7 @@ export function OfflineFruitLoadForm({
   const handleSubmit = useCallback(async (data: FruitLoadFormData) => {
     if (!selectedPurchaseItem || !appleVarieties) return
 
-    const variety = appleVarieties.appleVarieties.find(v => v.id === data.appleVarietyId)
+    const variety = appleVarieties.baseFruitVarieties.find(v => v.id === data.fruitVarietyId)
     const weightKg = data.weightUnit === 'kg' ? data.weight : convertWeight(data.weight, 'lbs', 'kg')
 
     // Convert weight unit to match database enum
@@ -202,7 +202,7 @@ export function OfflineFruitLoadForm({
     const loadData = {
       loadSequence,
       purchaseItemId: data.purchaseItemId,
-      appleVarietyId: data.appleVarietyId,
+      fruitVarietyId: data.fruitVarietyId,
       appleVarietyName: variety?.name || 'Unknown',
       appleWeightKg: weightKg,
       originalWeight: data.weight,
@@ -222,7 +222,7 @@ export function OfflineFruitLoadForm({
     // Save to local draft
     const draftResult = addLoad({
       purchaseLineId: data.purchaseItemId,
-      appleVarietyId: data.appleVarietyId,
+      fruitVarietyId: data.fruitVarietyId,
       appleVarietyName: variety?.name || 'Unknown',
       weightKg: weightKg,
       weightUnitEntered: data.weightUnit,
@@ -263,11 +263,11 @@ export function OfflineFruitLoadForm({
   const handlePurchaseLineSelect = (purchaseLineItem: any) => {
     setSelectedPurchaseItem(purchaseLineItem)
     form.setValue('purchaseItemId', purchaseLineItem.purchaseItemId)
-    form.setValue('appleVarietyId', purchaseLineItem.appleVarietyId)
+    form.setValue('fruitVarietyId', purchaseLineItem.fruitVarietyId)
 
     // Set suggested brix from apple variety
     if (appleVarieties) {
-      const variety = appleVarieties.appleVarieties.find(v => v.id === purchaseLineItem.appleVarietyId)
+      const variety = appleVarieties.baseFruitVarieties.find(v => v.id === purchaseLineItem.fruitVarietyId)
       if (variety?.sugarBrix) {
         // Set a default brix value based on the sugar level
         const brixMap: Record<string, number> = {

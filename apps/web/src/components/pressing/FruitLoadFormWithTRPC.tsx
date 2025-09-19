@@ -41,7 +41,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 const fruitLoadSchema = z.object({
   vendorId: z.string().uuid("Please select a vendor"),
   purchaseItemId: z.string().uuid("Please select a purchase line"),
-  appleVarietyId: z.string().uuid("Please select an apple variety"),
+  fruitVarietyId: z.string().uuid("Please select an apple variety"),
   weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000").optional(),
   weightUnit: z.enum(['lbs', 'kg'], { message: "Please select a weight unit" }),
   brixMeasured: z.number().min(0).max(30).optional(),
@@ -61,7 +61,7 @@ interface FruitLoadFormWithTRPCProps {
     loadSequence: number
     vendorId: string
     purchaseItemId: string
-    appleVarietyId: string
+    fruitVarietyId: string
     appleVarietyName: string
     appleWeightKg: number
     originalWeight: number
@@ -100,7 +100,7 @@ export function FruitLoadFormWithTRPC({
   const {
     data: appleVarieties,
     isLoading: varietiesLoading
-  } = trpc.appleVariety.listAll.useQuery({ includeInactive: false })
+  } = trpc.fruitVariety.listAll.useQuery({ includeInactive: false })
 
   // Availability validation query
   // Note: Removed availability validation - purchase weights are estimates only
@@ -113,7 +113,7 @@ export function FruitLoadFormWithTRPC({
     defaultValues: {
       vendorId: editingLoad?.vendorId || vendorId || "",
       purchaseItemId: editingLoad?.purchaseItemId || "",
-      appleVarietyId: editingLoad?.appleVarietyId || "",
+      fruitVarietyId: editingLoad?.fruitVarietyId || "",
       weightUnit: editingLoad?.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad?.originalWeightUnit || 'lbs'),
       weight: editingLoad ? parseFloat(editingLoad.originalWeight || '') : undefined,
       brixMeasured: editingLoad?.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
@@ -157,7 +157,7 @@ export function FruitLoadFormWithTRPC({
       form.reset({
         vendorId: editingLoad.vendorId || "",
         purchaseItemId: editingLoad.purchaseItemId || "",
-        appleVarietyId: editingLoad.appleVarietyId || "",
+        fruitVarietyId: editingLoad.fruitVarietyId || "",
         weightUnit: editingLoad.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad.originalWeightUnit || 'lbs'),
         weight: editingLoad ? parseFloat(editingLoad.originalWeight || '0') : undefined,
         brixMeasured: editingLoad.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
@@ -220,7 +220,7 @@ export function FruitLoadFormWithTRPC({
       return
     }
 
-    const variety = appleVarieties?.appleVarieties.find(v => v.id === data.appleVarietyId)
+    const variety = appleVarieties?.baseFruitVarieties.find(v => v.id === data.fruitVarietyId)
     const weightKg = data.weightUnit === 'kg' ? data.weight : convertWeight(data.weight, 'lbs', 'kg')
 
     // Convert weight unit to match database enum
@@ -231,7 +231,7 @@ export function FruitLoadFormWithTRPC({
       loadSequence,
       vendorId: data.vendorId,
       purchaseItemId: data.purchaseItemId,
-      appleVarietyId: data.appleVarietyId,
+      fruitVarietyId: data.fruitVarietyId,
       appleVarietyName: variety?.name || 'Unknown',
       appleWeightKg: weightKg,
       originalWeight: data.weight,
@@ -249,7 +249,7 @@ export function FruitLoadFormWithTRPC({
   const handlePurchaseLineSelect = (purchaseLineItem: any) => {
     setSelectedPurchaseItem(purchaseLineItem)
     form.setValue('purchaseItemId', purchaseLineItem.purchaseItemId)
-    form.setValue('appleVarietyId', purchaseLineItem.appleVarietyId)
+    form.setValue('fruitVarietyId', purchaseLineItem.fruitVarietyId)
   }
 
   const handleDeleteClick = () => {

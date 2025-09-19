@@ -219,7 +219,7 @@ async function main() {
       // Purchase 1 items
       {
         purchaseId: seedPurchases[0].id,
-        appleVarietyId: seedVarieties[0].id, // Honeycrisp
+        fruitVarietyId: seedVarieties[0].id, // Honeycrisp
         quantity: '500.0',
         unit: 'kg',
         pricePerUnit: '2.50',
@@ -230,7 +230,7 @@ async function main() {
       },
       {
         purchaseId: seedPurchases[0].id,
-        appleVarietyId: seedVarieties[1].id, // Granny Smith
+        fruitVarietyId: seedVarieties[1].id, // Granny Smith
         quantity: '600.0',
         unit: 'kg',
         pricePerUnit: '2.00',
@@ -242,7 +242,7 @@ async function main() {
       // Purchase 2 items
       {
         purchaseId: seedPurchases[1].id,
-        appleVarietyId: seedVarieties[2].id, // Gala
+        fruitVarietyId: seedVarieties[2].id, // Gala
         quantity: '750.0',
         unit: 'kg',
         pricePerUnit: '1.80',
@@ -253,7 +253,7 @@ async function main() {
       },
       {
         purchaseId: seedPurchases[1].id,
-        appleVarietyId: seedVarieties[3].id, // Fuji
+        fruitVarietyId: seedVarieties[3].id, // Fuji
         quantity: '300.0',
         unit: 'kg',
         pricePerUnit: '1.75',
@@ -265,7 +265,7 @@ async function main() {
       // Purchase 3 items
       {
         purchaseId: seedPurchases[2].id,
-        appleVarietyId: seedVarieties[4].id, // Northern Spy
+        fruitVarietyId: seedVarieties[4].id, // Northern Spy
         quantity: '800.0',
         unit: 'kg',
         pricePerUnit: '2.25',
@@ -276,7 +276,7 @@ async function main() {
       },
       {
         purchaseId: seedPurchases[2].id,
-        appleVarietyId: seedVarieties[5].id, // Rhode Island Greening
+        fruitVarietyId: seedVarieties[5].id, // Rhode Island Greening
         quantity: '650.0',
         unit: 'kg',
         pricePerUnit: '2.15',

@@ -95,3 +95,4 @@ Required for development:
 - `DATABASE_URL` - PostgreSQL connection string
 - `NEXTAUTH_SECRET` - Auth.js secret
 - `NEXTAUTH_URL` - App URL (http://localhost:3000 for dev)
+- stop worrying about ports its me hosting it on a different tab

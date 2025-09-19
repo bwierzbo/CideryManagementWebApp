@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { db, vendorVarieties, appleVarieties, vendors, auditLog } from 'db'
+import { db, vendorVarieties, baseFruitVarieties, vendors, auditLog } from 'db'
 import { eq, and, isNull, ilike, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { ensureVendorVariety, createVendorVariety } from '../lib/dbChecks'
@@ -14,24 +14,24 @@ export const vendorVarietyRouter = router({
       try {
         const varieties = await db
           .select({
-            id: appleVarieties.id,
-            name: appleVarieties.name,
-            isActive: appleVarieties.isActive,
+            id: baseFruitVarieties.id,
+            name: baseFruitVarieties.name,
+            isActive: baseFruitVarieties.isActive,
             vendorVarietyId: vendorVarieties.id,
             notes: vendorVarieties.notes,
             linkedAt: vendorVarieties.createdAt,
           })
           .from(vendorVarieties)
-          .innerJoin(appleVarieties, eq(vendorVarieties.varietyId, appleVarieties.id))
+          .innerJoin(baseFruitVarieties, eq(vendorVarieties.varietyId, baseFruitVarieties.id))
           .where(
             and(
               eq(vendorVarieties.vendorId, input.vendorId),
               isNull(vendorVarieties.deletedAt),
-              isNull(appleVarieties.deletedAt),
-              eq(appleVarieties.isActive, true)
+              isNull(baseFruitVarieties.deletedAt),
+              eq(baseFruitVarieties.isActive, true)
             )
           )
-          .orderBy(appleVarieties.name)
+          .orderBy(baseFruitVarieties.name)
 
         return {
           varieties,
@@ -78,15 +78,15 @@ export const vendorVarietyRouter = router({
           if (isUuid) {
             // It's an ID, verify it exists
             const existingVariety = await tx
-              .select({ id: appleVarieties.id, name: appleVarieties.name })
-              .from(appleVarieties)
-              .where(and(eq(appleVarieties.id, input.varietyNameOrId), isNull(appleVarieties.deletedAt)))
+              .select({ id: baseFruitVarieties.id, name: baseFruitVarieties.name })
+              .from(baseFruitVarieties)
+              .where(and(eq(baseFruitVarieties.id, input.varietyNameOrId), isNull(baseFruitVarieties.deletedAt)))
               .limit(1)
 
             if (!existingVariety.length) {
               throw new TRPCError({
                 code: 'NOT_FOUND',
-                message: 'Apple variety not found'
+                message: 'Fruit variety not found'
               })
             }
 
@@ -95,12 +95,12 @@ export const vendorVarietyRouter = router({
           } else {
             // It's a name, check if variety exists first
             const existingVariety = await tx
-              .select({ id: appleVarieties.id, name: appleVarieties.name })
-              .from(appleVarieties)
+              .select({ id: baseFruitVarieties.id, name: baseFruitVarieties.name })
+              .from(baseFruitVarieties)
               .where(
                 and(
-                  ilike(appleVarieties.name, input.varietyNameOrId.trim()),
-                  isNull(appleVarieties.deletedAt)
+                  ilike(baseFruitVarieties.name, input.varietyNameOrId.trim()),
+                  isNull(baseFruitVarieties.deletedAt)
                 )
               )
               .limit(1)
@@ -112,7 +112,7 @@ export const vendorVarietyRouter = router({
             } else {
               // Create new variety
               const newVariety = await tx
-                .insert(appleVarieties)
+                .insert(baseFruitVarieties)
                 .values({
                   name: input.varietyNameOrId.trim(),
                   isActive: true,
@@ -126,7 +126,7 @@ export const vendorVarietyRouter = router({
 
               // Audit log for variety creation
               await tx.insert(auditLog).values({
-                tableName: 'apple_varieties',
+                tableName: 'base_fruit_varieties',
                 recordId: varietyId,
                 operation: 'create',
                 newData: { varietyId, name: varietyName },
@@ -218,11 +218,11 @@ export const vendorVarietyRouter = router({
             .select({
               id: vendorVarieties.id,
               vendorName: vendors.name,
-              varietyName: appleVarieties.name,
+              varietyName: baseFruitVarieties.name,
             })
             .from(vendorVarieties)
             .leftJoin(vendors, eq(vendorVarieties.vendorId, vendors.id))
-            .leftJoin(appleVarieties, eq(vendorVarieties.varietyId, appleVarieties.id))
+            .leftJoin(baseFruitVarieties, eq(vendorVarieties.varietyId, baseFruitVarieties.id))
             .where(
               and(
                 eq(vendorVarieties.vendorId, input.vendorId),
@@ -288,19 +288,19 @@ export const vendorVarietyRouter = router({
       try {
         const varieties = await db
           .select({
-            id: appleVarieties.id,
-            name: appleVarieties.name,
-            isActive: appleVarieties.isActive,
+            id: baseFruitVarieties.id,
+            name: baseFruitVarieties.name,
+            isActive: baseFruitVarieties.isActive,
           })
-          .from(appleVarieties)
+          .from(baseFruitVarieties)
           .where(
             and(
-              ilike(appleVarieties.name, `%${input.q}%`),
-              isNull(appleVarieties.deletedAt),
-              eq(appleVarieties.isActive, true)
+              ilike(baseFruitVarieties.name, `%${input.q}%`),
+              isNull(baseFruitVarieties.deletedAt),
+              eq(baseFruitVarieties.isActive, true)
             )
           )
-          .orderBy(appleVarieties.name)
+          .orderBy(baseFruitVarieties.name)
           .limit(input.limit)
 
         return {

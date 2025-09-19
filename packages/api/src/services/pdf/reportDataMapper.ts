@@ -22,7 +22,7 @@ export function mapPurchaseToOrderData(purchase: any): PurchaseOrderData {
       }
     },
     items: purchase.items?.map((item: any) => ({
-      varietyName: item.appleVariety?.name || 'Unknown Variety',
+      varietyName: item.fruitVariety?.name || 'Unknown Variety',
       quantity: item.quantity,
       unit: item.unit,
       pricePerUnit: item.pricePerUnit,
@@ -83,7 +83,7 @@ export function mapPurchasesToDateRangeData(
       date: new Date(purchase.purchaseDate),
       vendorName: purchase.vendor?.name || 'Unknown Vendor',
       items: purchase.items?.map((item: any) => ({
-        varietyName: item.appleVariety?.name || 'Unknown Variety',
+        varietyName: item.fruitVariety?.name || 'Unknown Variety',
         quantity: item.quantity,
         unit: item.unit,
         cost: item.quantity * (item.pricePerUnit || 0)

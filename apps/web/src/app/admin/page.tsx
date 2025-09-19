@@ -320,12 +320,12 @@ function ReferenceValues() {
   }
 
   // tRPC hooks
-  const { data: varietiesData, refetch: refetchVarieties } = trpc.appleVariety.listAll.useQuery(
+  const { data: varietiesData, refetch: refetchVarieties } = trpc.fruitVariety.listAll.useQuery(
     { includeInactive: showInactive }
   )
-  const appleVarieties = varietiesData?.appleVarieties || []
+  const appleVarieties = varietiesData?.baseFruitVarieties || []
 
-  const createVariety = trpc.appleVariety.create.useMutation({
+  const createVariety = trpc.fruitVariety.create.useMutation({
     onSuccess: (result) => {
       refetchVarieties()
       setIsAddDialogOpen(false)
@@ -337,7 +337,7 @@ function ReferenceValues() {
     }
   })
 
-  const renameVariety = trpc.appleVariety.update.useMutation({
+  const renameVariety = trpc.fruitVariety.update.useMutation({
     onSuccess: (result) => {
       refetchVarieties()
       setIsRenameDialogOpen(false)
@@ -350,7 +350,7 @@ function ReferenceValues() {
     }
   })
 
-  const setActiveVariety = trpc.appleVariety.update.useMutation({
+  const setActiveVariety = trpc.fruitVariety.update.useMutation({
     onSuccess: (result) => {
       refetchVarieties()
       addNotification('success', 'Status Updated', result.message || 'Status updated successfully')

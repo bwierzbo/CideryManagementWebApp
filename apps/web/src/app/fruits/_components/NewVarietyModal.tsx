@@ -43,6 +43,7 @@ import {
 
 const varietySchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
+  fruitType: z.enum(['apple', 'pear', 'plum']),
   ciderCategory: zCiderCategory.optional(),
   tannin: zIntensity.optional(),
   acid: zIntensity.optional(),
@@ -65,6 +66,7 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
     resolver: zodResolver(varietySchema),
     defaultValues: {
       name: '',
+      fruitType: 'apple',
       ciderCategory: undefined,
       tannin: undefined,
       acid: undefined,
@@ -74,22 +76,23 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
     },
   })
 
-  const createVariety = trpc.appleVariety.create.useMutation({
+  const createVariety = trpc.fruitVariety.create.useMutation({
     onSuccess: () => {
-      toast.success('Apple variety created successfully')
+      toast.success('Fruit variety created successfully')
       form.reset()
       setOpen(false)
-      utils.appleVariety.listAll.invalidate()
+      utils.fruitVariety.listAll.invalidate()
       onSuccess?.()
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to create apple variety')
+      toast.error(error.message || 'Failed to create fruit variety')
     },
   })
 
   const onSubmit = (data: VarietyFormData) => {
     createVariety.mutate({
       name: data.name,
+      fruitType: data.fruitType,
       ciderCategory: data.ciderCategory as string | undefined,
       tannin: data.tannin as string | undefined,
       acid: data.acid as string | undefined,
@@ -122,6 +125,29 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                   <FormControl>
                     <Input placeholder="e.g., Honeycrisp" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="fruitType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Fruit Type *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select fruit type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="apple">🍎 Apple</SelectItem>
+                      <SelectItem value="pear">🍐 Pear</SelectItem>
+                      <SelectItem value="plum">🟣 Plum</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

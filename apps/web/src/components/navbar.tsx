@@ -27,14 +27,14 @@ const navItems = [
     description: "Overview & Analytics"
   },
   {
-    name: "Apples",
-    href: "/apples",
+    name: "Fruits",
+    href: "/fruits",
     icon: Apple,
     description: "Variety Database"
   },
   {
-    name: "Purchasing",
-    href: "/purchasing",
+    name: "Inventory",
+    href: "/inventory",
     icon: ShoppingCart,
     description: "Vendor & Orders"
   },
@@ -55,12 +55,6 @@ const navItems = [
     href: "/packaging", 
     icon: Package,
     description: "Bottling & Canning"
-  },
-  { 
-    name: "Inventory", 
-    href: "/inventory", 
-    icon: Archive,
-    description: "Stock Management"
   },
   {
     name: "Reports",

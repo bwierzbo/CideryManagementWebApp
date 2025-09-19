@@ -21,7 +21,7 @@ import {
   inventory,
   inventoryTransactions,
   vessels,
-  appleVarieties,
+  baseFruitVarieties,
   auditLog,
   applePressRuns,
   applePressRunLoads
@@ -313,13 +313,13 @@ export const appRouter = router({
               const items = await db
                 .select({
                   id: purchaseItems.id,
-                  appleVarietyId: purchaseItems.appleVarietyId,
-                  varietyName: appleVarieties.name,
+                  fruitVarietyId: purchaseItems.fruitVarietyId,
+                  varietyName: baseFruitVarieties.name,
                   originalQuantity: purchaseItems.originalQuantity,
                   originalUnit: purchaseItems.originalUnit,
                 })
                 .from(purchaseItems)
-                .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+                .leftJoin(baseFruitVarieties, eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id))
                 .where(eq(purchaseItems.purchaseId, purchase.id))
 
               const itemsSummary = items.map(item =>
@@ -360,7 +360,7 @@ export const appRouter = router({
         invoiceNumber: z.string().optional(),
         notes: z.string().optional(),
         items: z.array(z.object({
-          appleVarietyId: z.string().uuid('Invalid apple variety ID'),
+          fruitVarietyId: z.string().uuid('Invalid apple variety ID'),
           quantity: z.number().positive('Quantity must be positive'),
           unit: z.enum(['kg', 'lb', 'L', 'gal', 'bushel']),
           pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
@@ -374,7 +374,7 @@ export const appRouter = router({
             // TODO: Re-enable vendor-variety validation after fixing imports
             // Validate vendor-variety relationships for all items
             // for (const item of input.items) {
-            //   const isValidVariety = await ensureVendorVariety(input.vendorId, item.appleVarietyId)
+            //   const isValidVariety = await ensureVendorVariety(input.vendorId, item.fruitVarietyId)
             //   if (!isValidVariety) {
             //     throw new TRPCError({
             //       code: 'BAD_REQUEST',
@@ -501,7 +501,7 @@ export const appRouter = router({
               .values(
                 processedItems.map((item) => ({
                   purchaseId,
-                  appleVarietyId: item.appleVarietyId,
+                  fruitVarietyId: item.fruitVarietyId,
                   quantity: item.quantity.toString(),
                   unit: item.unit,
                   pricePerUnit: item.pricePerUnit ? item.pricePerUnit.toString() : null,
@@ -531,7 +531,7 @@ export const appRouter = router({
               await publishCreateEvent(
                 'purchase_items',
                 item.id,
-                { itemId: item.id, purchaseId, appleVarietyId: item.appleVarietyId },
+                { itemId: item.id, purchaseId, fruitVarietyId: item.fruitVarietyId },
                 ctx.session?.user?.id,
                 'Purchase item created via API'
               )
@@ -598,7 +598,7 @@ export const appRouter = router({
         notes: z.string().optional(),
         items: z.array(z.object({
           id: z.string().uuid().optional(), // For existing items
-          appleVarietyId: z.string().uuid('Invalid apple variety ID'),
+          fruitVarietyId: z.string().uuid('Invalid apple variety ID'),
           quantity: z.number().positive('Quantity must be positive'),
           unit: z.enum(['kg', 'lb', 'L', 'gal', 'bushel']),
           pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
@@ -642,7 +642,7 @@ export const appRouter = router({
               // const finalVendorId = input.vendorId || existingPurchase[0].vendorId
               // if (finalVendorId) {
               //   for (const item of input.items) {
-              //     const isValidVariety = await ensureVendorVariety(finalVendorId, item.appleVarietyId)
+              //     const isValidVariety = await ensureVendorVariety(finalVendorId, item.fruitVarietyId)
               //     if (!isValidVariety) {
               //       throw new TRPCError({
               //         code: 'BAD_REQUEST',
@@ -686,7 +686,7 @@ export const appRouter = router({
 
                 processedItems.push({
                   purchaseId: input.id,
-                  appleVarietyId: item.appleVarietyId,
+                  fruitVarietyId: item.fruitVarietyId,
                   quantity: originalQuantity.toString(),
                   unit: originalUnit,
                   quantityKg: quantityKg?.toString() || null,
@@ -774,7 +774,7 @@ export const appRouter = router({
     available: createRbacProcedure('list', 'purchaseLine')
       .input(z.object({
         vendorId: z.string().uuid().optional(),
-        appleVarietyId: z.string().uuid().optional(),
+        fruitVarietyId: z.string().uuid().optional(),
         limit: z.number().int().min(1).max(100).default(50),
         offset: z.number().int().min(0).default(0),
       }))
@@ -790,8 +790,8 @@ export const appRouter = router({
             conditions.push(eq(purchases.vendorId, input.vendorId))
           }
 
-          if (input.appleVarietyId) {
-            conditions.push(eq(purchaseItems.appleVarietyId, input.appleVarietyId))
+          if (input.fruitVarietyId) {
+            conditions.push(eq(purchaseItems.fruitVarietyId, input.fruitVarietyId))
           }
 
           // Get purchase items with consumed quantities from apple press run loads
@@ -800,8 +800,8 @@ export const appRouter = router({
               // Purchase item details
               purchaseItemId: purchaseItems.id,
               purchaseId: purchaseItems.purchaseId,
-              appleVarietyId: purchaseItems.appleVarietyId,
-              varietyName: appleVarieties.name,
+              fruitVarietyId: purchaseItems.fruitVarietyId,
+              varietyName: baseFruitVarieties.name,
               originalQuantity: purchaseItems.originalQuantity,
               originalUnit: purchaseItems.originalUnit,
               quantityKg: purchaseItems.quantityKg,
@@ -820,14 +820,14 @@ export const appRouter = router({
             .from(purchaseItems)
             .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
             .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
-            .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+            .leftJoin(baseFruitVarieties, eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id))
             .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
             .where(and(...conditions))
             .groupBy(
               purchaseItems.id,
               purchaseItems.purchaseId,
-              purchaseItems.appleVarietyId,
-              appleVarieties.name,
+              purchaseItems.fruitVarietyId,
+              baseFruitVarieties.name,
               purchaseItems.originalQuantity,
               purchaseItems.originalUnit,
               purchaseItems.quantityKg,
@@ -840,7 +840,7 @@ export const appRouter = router({
             )
             .limit(input.limit)
             .offset(input.offset)
-            .orderBy(desc(purchases.purchaseDate), appleVarieties.name)
+            .orderBy(desc(purchases.purchaseDate), baseFruitVarieties.name)
 
           // Filter items that have available quantity and calculate remaining amounts
           const availableInventory = availableItems
@@ -907,13 +907,13 @@ export const appRouter = router({
               purchaseItemId: purchaseItems.id,
               quantityKg: purchaseItems.quantityKg,
               consumedKg: sql<string>`COALESCE(SUM(${applePressRunLoads.appleWeightKg}), 0)`,
-              varietyName: appleVarieties.name,
+              varietyName: baseFruitVarieties.name,
               vendorName: vendors.name,
             })
             .from(purchaseItems)
             .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
             .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
-            .leftJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+            .leftJoin(baseFruitVarieties, eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id))
             .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
             .where(and(
               eq(purchaseItems.id, input.purchaseItemId),
@@ -922,7 +922,7 @@ export const appRouter = router({
             .groupBy(
               purchaseItems.id,
               purchaseItems.quantityKg,
-              appleVarieties.name,
+              baseFruitVarieties.name,
               vendors.name
             )
             .limit(1)
@@ -2018,7 +2018,7 @@ export const appRouter = router({
   }),
 
   // Apple Varieties management - comprehensive CRUD with new enriched fields
-  appleVariety: varietiesRouter,
+  fruitVariety: varietiesRouter,
 
   // Vessel management
   vessel: router({

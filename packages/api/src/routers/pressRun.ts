@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { db, applePressRuns, applePressRunLoads, vendors, vessels, purchaseItems, purchases, appleVarieties, auditLog, users } from 'db'
+import { db, applePressRuns, applePressRunLoads, vendors, vessels, purchaseItems, purchases, baseFruitVarieties, auditLog, users } from 'db'
 import { eq, and, desc, asc, sql, isNull, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent } from 'lib'
@@ -18,7 +18,7 @@ const addLoadSchema = z.object({
   pressRunId: z.string().uuid('Invalid press run ID'),
   vendorId: z.string().uuid('Invalid vendor ID'),
   purchaseItemId: z.string().uuid('Invalid purchase item ID'),
-  appleVarietyId: z.string().uuid('Invalid apple variety ID'),
+  fruitVarietyId: z.string().uuid('Invalid fruit variety ID'),
   appleWeightKg: z.number().positive('Apple weight must be positive'),
   originalWeight: z.number().positive('Original weight must be positive'),
   originalWeightUnit: z.enum(['kg', 'lb', 'bushel']),
@@ -33,7 +33,7 @@ const updateLoadSchema = z.object({
   loadId: z.string().uuid('Invalid load ID'),
   vendorId: z.string().uuid('Invalid vendor ID'),
   purchaseItemId: z.string().uuid('Invalid purchase item ID'),
-  appleVarietyId: z.string().uuid('Invalid apple variety ID'),
+  fruitVarietyId: z.string().uuid('Invalid fruit variety ID'),
   appleWeightKg: z.number().positive('Apple weight must be positive'),
   originalWeight: z.number().positive('Original weight must be positive'),
   originalWeightUnit: z.enum(['kg', 'lb', 'bushel']),
@@ -50,7 +50,6 @@ const deleteLoadSchema = z.object({
 
 const finishPressRunSchema = z.object({
   pressRunId: z.string().uuid('Invalid press run ID'),
-  pressRunName: z.string().min(1, 'Press run name is required'),
   completionDate: z.date().or(z.string().transform(val => new Date(val))),
   vesselId: z.string().uuid('Invalid vessel ID'),
   totalJuiceVolumeL: z.number().positive('Juice volume must be positive'),
@@ -177,14 +176,14 @@ export const pressRunRouter = router({
           // Verify apple variety exists
           const appleVariety = await tx
             .select()
-            .from(appleVarieties)
-            .where(eq(appleVarieties.id, input.appleVarietyId))
+            .from(baseFruitVarieties)
+            .where(eq(baseFruitVarieties.id, input.fruitVarietyId))
             .limit(1)
 
           if (!appleVariety.length) {
             throw new TRPCError({
               code: 'NOT_FOUND',
-              message: 'Apple variety not found'
+              message: 'Fruit variety not found'
             })
           }
 
@@ -204,7 +203,7 @@ export const pressRunRouter = router({
             .values({
               applePressRunId: input.pressRunId,
               purchaseItemId: input.purchaseItemId,
-              appleVarietyId: input.appleVarietyId,
+              fruitVarietyId: input.fruitVarietyId,
               loadSequence: nextSequence,
               appleWeightKg: input.appleWeightKg.toString(),
               originalWeight: input.originalWeight.toString(),
@@ -333,14 +332,14 @@ export const pressRunRouter = router({
           // Verify apple variety exists
           const appleVariety = await tx
             .select()
-            .from(appleVarieties)
-            .where(eq(appleVarieties.id, input.appleVarietyId))
+            .from(baseFruitVarieties)
+            .where(eq(baseFruitVarieties.id, input.fruitVarietyId))
             .limit(1)
 
           if (!appleVariety.length) {
             throw new TRPCError({
               code: 'NOT_FOUND',
-              message: 'Apple variety not found'
+              message: 'Fruit variety not found'
             })
           }
 
@@ -349,7 +348,7 @@ export const pressRunRouter = router({
             .update(applePressRunLoads)
             .set({
               purchaseItemId: input.purchaseItemId,
-              appleVarietyId: input.appleVarietyId,
+              fruitVarietyId: input.fruitVarietyId,
               appleWeightKg: input.appleWeightKg.toString(),
               originalWeight: input.originalWeight.toString(),
               originalWeightUnit: input.originalWeightUnit,
@@ -503,11 +502,43 @@ export const pressRunRouter = router({
             totalLaborCost = input.laborHours * input.laborCostPerHour
           }
 
+          // Generate press run name based on completion date (YYYY-MM-DD-##)
+          const completionDateStr = input.completionDate.toISOString().split('T')[0]
+
+          // Find existing press runs on the same date to determine sequence number
+          const existingRuns = await tx
+            .select({ pressRunName: applePressRuns.pressRunName })
+            .from(applePressRuns)
+            .where(and(
+              sql`${applePressRuns.pressRunName} LIKE ${completionDateStr + '-%'}`,
+              isNull(applePressRuns.deletedAt)
+            ))
+            .orderBy(desc(applePressRuns.pressRunName))
+
+          // Extract the highest sequence number for this date
+          let sequenceNumber = 1
+          if (existingRuns.length > 0) {
+            const pattern = new RegExp(`^${completionDateStr}-(\\d+)$`)
+            for (const run of existingRuns) {
+              if (run.pressRunName) {
+                const match = run.pressRunName.match(pattern)
+                if (match) {
+                  const num = parseInt(match[1], 10)
+                  if (num >= sequenceNumber) {
+                    sequenceNumber = num + 1
+                  }
+                }
+              }
+            }
+          }
+
+          const pressRunName = `${completionDateStr}-${String(sequenceNumber).padStart(2, '0')}`
+
           // Complete the press run
           const completedPressRun = await tx
             .update(applePressRuns)
             .set({
-              pressRunName: input.pressRunName,
+              pressRunName,
               vesselId: input.vesselId,
               status: 'completed',
               endTime: input.completionDate,
@@ -657,15 +688,15 @@ export const pressRunRouter = router({
           const varietiesResult = await db
             .select({
               pressRunId: applePressRunLoads.applePressRunId,
-              varietyName: appleVarieties.name
+              varietyName: baseFruitVarieties.name
             })
             .from(applePressRunLoads)
-            .leftJoin(appleVarieties, eq(applePressRunLoads.appleVarietyId, appleVarieties.id))
+            .leftJoin(baseFruitVarieties, eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id))
             .where(and(
               inArray(applePressRunLoads.applePressRunId, pressRunIds),
               isNull(applePressRunLoads.deletedAt)
             ))
-            .groupBy(applePressRunLoads.applePressRunId, appleVarieties.name)
+            .groupBy(applePressRunLoads.applePressRunId, baseFruitVarieties.name)
 
           pressRunVarieties = varietiesResult.reduce((acc, row) => {
             if (!acc[row.pressRunId]) {
@@ -761,8 +792,8 @@ export const pressRunRouter = router({
           .select({
             id: applePressRunLoads.id,
             purchaseItemId: applePressRunLoads.purchaseItemId,
-            appleVarietyId: applePressRunLoads.appleVarietyId,
-            appleVarietyName: appleVarieties.name,
+            fruitVarietyId: applePressRunLoads.fruitVarietyId,
+            appleVarietyName: baseFruitVarieties.name,
             vendorId: purchases.vendorId,
             loadSequence: applePressRunLoads.loadSequence,
             appleWeightKg: applePressRunLoads.appleWeightKg,
@@ -780,7 +811,7 @@ export const pressRunRouter = router({
             createdAt: applePressRunLoads.createdAt,
           })
           .from(applePressRunLoads)
-          .leftJoin(appleVarieties, eq(applePressRunLoads.appleVarietyId, appleVarieties.id))
+          .leftJoin(baseFruitVarieties, eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id))
           .leftJoin(purchaseItems, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
           .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
           .where(and(

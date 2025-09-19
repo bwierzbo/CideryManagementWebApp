@@ -24,6 +24,13 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Search, ArrowUpDown, Archive, ArchiveRestore } from 'lucide-react'
 import { toast } from 'sonner'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -35,10 +42,12 @@ import {
   getIntensityLabel,
   getHarvestWindowLabel,
 } from 'lib'
+import { SimpleDropdown } from './SimpleDropdown'
 
-interface AppleVariety {
+interface FruitVariety {
   id: string
   name: string
+  fruitType: "apple" | "pear" | "plum"
   isActive: boolean
   ciderCategory: "sweet" | "bittersweet" | "sharp" | "bittersharp" | null
   tannin: "high" | "medium-high" | "medium" | "low-medium" | "low" | null
@@ -55,7 +64,7 @@ interface EditingCell {
   columnId: string
 }
 
-interface ApplesGridProps {
+interface FruitsGridProps {
   userRole: 'admin' | 'operator' | 'viewer'
 }
 
@@ -96,12 +105,22 @@ class CellEditor extends React.Component<{
   }
 
   handleSelectChange = (newValue: string) => {
-    const finalValue = newValue === '__clear__' ? null : newValue
-    this.props.onSave(finalValue)
+    console.log('handleSelectChange called with:', newValue)
+    // Always save the change immediately
+    if (newValue === '__clear__') {
+      console.log('Clearing value')
+      this.props.onSave(null)
+    } else if (newValue === '') {
+      // Don't save empty string
+      console.log('Empty value, not saving')
+    } else {
+      console.log('Saving value:', newValue)
+      this.props.onSave(newValue)
+    }
   }
 
   render() {
-    const { columnId, options } = this.props
+    const { columnId, options, value } = this.props
     const { localValue } = this.state
 
     // Textarea for notes
@@ -118,26 +137,14 @@ class CellEditor extends React.Component<{
       )
     }
 
-    // Select dropdown - render directly without state tracking
-    if (options && ['ciderCategory', 'tannin', 'acid', 'sugarBrix', 'harvestWindow'].includes(columnId)) {
+    // Select dropdown - using SimpleDropdown component
+    if (options && ['fruitType', 'ciderCategory', 'tannin', 'acid', 'sugarBrix', 'harvestWindow'].includes(columnId)) {
       return (
-        <div className="relative">
-          <select
-            className="w-full px-3 py-2 border border-input rounded-md bg-background"
-            value={localValue || ''}
-            onChange={(e) => this.handleSelectChange(e.target.value)}
-            onBlur={() => this.props.onCancel()}
-            autoFocus
-          >
-            <option value="">Select...</option>
-            <option value="__clear__">Clear</option>
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SimpleDropdown
+          value={value}
+          options={options as Array<{ value: string; label: string }>}
+          onSave={this.props.onSave}
+        />
       )
     }
 
@@ -162,6 +169,7 @@ function EditableCell({
   columnId,
   userRole,
   isEditing,
+  isSaving,
   onStartEdit,
   onSave,
   onCancel,
@@ -171,11 +179,24 @@ function EditableCell({
   columnId: string
   userRole: 'admin' | 'operator' | 'viewer'
   isEditing: boolean
+  isSaving?: boolean
   onStartEdit: () => void
   onSave: (value: any) => void
   onCancel: () => void
 }) {
+  const getFruitTypeOptions = () => [
+    { value: 'apple', label: '🍎 Apple' },
+    { value: 'pear', label: '🍐 Pear' },
+    { value: 'plum', label: '🟣 Plum' }
+  ]
+
+  const getFruitTypeLabel = (value: string) => {
+    const option = getFruitTypeOptions().find(opt => opt.value === value)
+    return option ? option.label : value
+  }
+
   const getOptions = () => {
+    if (columnId === 'fruitType') return getFruitTypeOptions()
     if (columnId === 'ciderCategory') return getCiderCategoryOptions()
     if (columnId === 'harvestWindow') return getHarvestWindowOptions()
     if (['tannin', 'acid', 'sugarBrix'].includes(columnId)) return getIntensityOptions()
@@ -183,6 +204,7 @@ function EditableCell({
   }
 
   const getDisplayValue = () => {
+    if (columnId === 'fruitType') return getFruitTypeLabel(value)
     if (columnId === 'ciderCategory') return getCiderCategoryLabel(value)
     if (['tannin', 'acid', 'sugarBrix'].includes(columnId)) return getIntensityLabel(value)
     if (columnId === 'harvestWindow') return getHarvestWindowLabel(value)
@@ -205,44 +227,92 @@ function EditableCell({
 
   return (
     <div
-      onClick={() => userRole !== 'viewer' && onStartEdit()}
-      className={`min-h-[32px] px-2 py-1 rounded cursor-pointer hover:bg-gray-50 ${
-        userRole === 'viewer' ? 'cursor-default' : ''
+      onClick={() => userRole !== 'viewer' && !isSaving && onStartEdit()}
+      className={`min-h-[32px] px-2 py-1 rounded transition-colors ${
+        userRole === 'viewer' || isSaving
+          ? 'cursor-default'
+          : 'cursor-pointer hover:bg-gray-50'
+      } ${
+        isSaving ? 'opacity-60 bg-blue-50' : ''
       }`}
     >
-      {displayValue || <span className="text-gray-400">-</span>}
+      <div className="flex items-center gap-2">
+        {displayValue || <span className="text-gray-400">-</span>}
+        {isSaving && (
+          <div className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        )}
+      </div>
     </div>
   )
 }
 
-export function ApplesGrid({ userRole }: ApplesGridProps) {
+export function FruitsGrid({ userRole }: FruitsGridProps) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
+  const [fruitTypeFilter, setFruitTypeFilter] = useState<string>('all')
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
-  const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<AppleVariety>>>(new Map())
+  const [pendingUpdates, setPendingUpdates] = useState<Map<string, Partial<FruitVariety>>>(new Map())
+  const [savingCells, setSavingCells] = useState<Set<string>>(new Set())
+  const [originalValues, setOriginalValues] = useState<Map<string, any>>(new Map())
 
   const utils = trpc.useUtils()
 
-  const { data, isLoading } = trpc.appleVariety.listAll.useQuery({
+  const { data, isLoading } = trpc.fruitVariety.listAll.useQuery({
     includeInactive: true,
   })
 
-  const varieties = data?.appleVarieties || []
+  const allVarieties = data?.baseFruitVarieties || []
 
-  const updateVarietyMutation = trpc.appleVariety.update.useMutation({
-    onSuccess: () => {
-      utils.appleVariety.listAll.invalidate()
+  // Filter varieties by fruit type
+  const varieties = useMemo(() => {
+    if (fruitTypeFilter === 'all') {
+      return allVarieties
+    }
+    return allVarieties.filter(variety => variety.fruitType === fruitTypeFilter)
+  }, [allVarieties, fruitTypeFilter])
+
+  const updateVarietyMutation = trpc.fruitVariety.update.useMutation({
+    onSuccess: (data, variables) => {
+      utils.fruitVariety.listAll.invalidate()
       toast.success('Variety updated successfully')
+      // Clear saving state for this variety
+      setSavingCells(prev => {
+        const newSet = new Set(prev)
+        const cellKey = `${variables.id}`
+        newSet.delete(cellKey)
+        return newSet
+      })
+      // Clear pending updates for this variety
+      setPendingUpdates(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(variables.id)
+        return newMap
+      })
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       toast.error(error.message || 'Failed to update variety')
+      // Clear saving state
+      setSavingCells(prev => {
+        const newSet = new Set(prev)
+        const cellKey = `${variables.id}`
+        newSet.delete(cellKey)
+        return newSet
+      })
+      // Revert changes by removing from pending updates
+      setPendingUpdates(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(variables.id)
+        return newMap
+      })
+      // Force data refresh to revert UI
+      utils.fruitVariety.listAll.invalidate()
     },
   })
 
-  const archiveVariety = trpc.appleVariety.remove.useMutation({
+  const archiveVariety = trpc.fruitVariety.remove.useMutation({
     onSuccess: () => {
-      utils.appleVariety.listAll.invalidate()
+      utils.fruitVariety.listAll.invalidate()
       toast.success('Variety archived successfully')
     },
     onError: (error) => {
@@ -260,18 +330,22 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
 
         // Only include fields that were actually updated
         if (updates.name !== undefined) patch.name = updates.name
+        if (updates.fruitType !== undefined) patch.fruitType = updates.fruitType
         if (updates.ciderCategory !== undefined) patch.ciderCategory = updates.ciderCategory
         if (updates.tannin !== undefined) patch.tannin = updates.tannin
         if (updates.acid !== undefined) patch.acid = updates.acid
         if (updates.sugarBrix !== undefined) patch.sugarBrix = updates.sugarBrix
         if (updates.harvestWindow !== undefined) patch.harvestWindow = updates.harvestWindow
-        if (updates.varietyNotes !== undefined) patch.varietyNotes = updates.varietyNotes || undefined
+        if (updates.varietyNotes !== undefined) patch.varietyNotes = updates.varietyNotes
         if (updates.isActive !== undefined) patch.isActive = updates.isActive
+
+        // Mark this variety as saving
+        setSavingCells(prev => new Set(prev).add(varietyId))
 
         console.log('Sending update:', { id: varietyId, patch })
         updateVarietyMutation.mutate({ id: varietyId, patch })
       })
-      setPendingUpdates(new Map())
+      // Don't clear pending updates here - let the mutation callbacks handle it
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedUpdates])
@@ -291,7 +365,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
     setEditingCell(null)
   }, [userRole])
 
-  const columns: ColumnDef<AppleVariety>[] = useMemo(
+  const columns: ColumnDef<FruitVariety>[] = useMemo(
     () => [
       {
         accessorKey: 'name',
@@ -314,6 +388,36 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               columnId={columnId}
               userRole={userRole}
               isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
+              onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
+              onSave={(value) => handleCellSave(row.original.id, columnId, value)}
+              onCancel={() => setEditingCell(null)}
+            />
+          )
+        },
+      },
+      {
+        accessorKey: 'fruitType',
+        header: ({ column }) => (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === 'asc')}
+            className="h-8 px-2"
+          >
+            Type
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        ),
+        cell: ({ getValue, row, column }) => {
+          const columnId = (column.columnDef as any).accessorKey || column.id
+          return (
+            <EditableCell
+              value={getValue()}
+              rowId={row.original.id}
+              columnId={columnId}
+              userRole={userRole}
+              isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
               onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
               onSave={(value) => handleCellSave(row.original.id, columnId, value)}
               onCancel={() => setEditingCell(null)}
@@ -333,6 +437,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               columnId={columnId}
               userRole={userRole}
               isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
               onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
               onSave={(value) => handleCellSave(row.original.id, columnId, value)}
               onCancel={() => setEditingCell(null)}
@@ -352,6 +457,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               columnId={columnId}
               userRole={userRole}
               isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
               onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
               onSave={(value) => handleCellSave(row.original.id, columnId, value)}
               onCancel={() => setEditingCell(null)}
@@ -371,6 +477,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               columnId={columnId}
               userRole={userRole}
               isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
               onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
               onSave={(value) => handleCellSave(row.original.id, columnId, value)}
               onCancel={() => setEditingCell(null)}
@@ -390,6 +497,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               columnId={columnId}
               userRole={userRole}
               isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
               onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
               onSave={(value) => handleCellSave(row.original.id, columnId, value)}
               onCancel={() => setEditingCell(null)}
@@ -409,6 +517,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               columnId={columnId}
               userRole={userRole}
               isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
               onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
               onSave={(value) => handleCellSave(row.original.id, columnId, value)}
               onCancel={() => setEditingCell(null)}
@@ -428,6 +537,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               columnId={columnId}
               userRole={userRole}
               isEditing={editingCell?.rowId === row.original.id && editingCell?.columnId === columnId}
+              isSaving={savingCells.has(row.original.id)}
               onStartEdit={() => setEditingCell({ rowId: row.original.id, columnId })}
               onSave={(value) => handleCellSave(row.original.id, columnId, value)}
               onCancel={() => setEditingCell(null)}
@@ -504,15 +614,30 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
 
   return (
     <div className="space-y-4">
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <Input
-          placeholder="Search varieties..."
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          className="pl-10"
-        />
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Search varieties..."
+            value={globalFilter}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="min-w-[160px]">
+          <Select value={fruitTypeFilter} onValueChange={setFruitTypeFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="apple">🍎 Apple</SelectItem>
+              <SelectItem value="pear">🍐 Pear</SelectItem>
+              <SelectItem value="plum">🟣 Plum</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Table */}
@@ -552,7 +677,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
               ) : (
                 <TableRow>
                   <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No apple varieties found.
+                    No fruit varieties found.
                   </TableCell>
                 </TableRow>
               )}
@@ -563,7 +688,7 @@ export function ApplesGrid({ userRole }: ApplesGridProps) {
 
       {/* Results Count */}
       <div className="text-sm text-gray-600">
-        Showing {table.getFilteredRowModel().rows.length} of {varieties.length} varieties
+        Showing {table.getFilteredRowModel().rows.length} of {allVarieties.length} varieties
       </div>
     </div>
   )

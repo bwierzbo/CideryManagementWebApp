@@ -49,14 +49,29 @@ const measurementSchema = z.object({
 })
 
 const tankMeasurementSchema = z.object({
-  tempC: z.number().min(-10).max(50).optional(),
-  sh: z.number().min(0.990).max(1.200).optional(),
-  ph: z.number().min(2).max(8).optional(),
-  abv: z.number().min(0).max(20).optional(),
+  measurementDate: z.string().optional(),
+  temperature: z.preprocess(
+    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional()
+  ),
+  temperatureUnit: z.enum(['celsius', 'fahrenheit']).default('celsius'),
+  sh: z.preprocess(
+    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional()
+  ),
+  ph: z.preprocess(
+    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional()
+  ),
+  ta: z.preprocess(
+    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional()
+  ),
   notes: z.string().optional(),
 })
 
 const tankAdditiveSchema = z.object({
+  additiveDate: z.string().min(1, "Date is required"),
   additiveType: z.string().min(1, "Additive type is required"),
   amount: z.number().positive("Amount must be positive"),
   unit: z.string().min(1, "Unit is required"),
@@ -258,9 +273,15 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
 }
 
 function TankMeasurementForm({ vesselId, onClose }: { vesselId: string; onClose: () => void }) {
-  const { register, handleSubmit, formState: { errors } } = useForm({
-    resolver: zodResolver(tankMeasurementSchema)
+  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm({
+    resolver: zodResolver(tankMeasurementSchema),
+    defaultValues: {
+      measurementDate: new Date().toISOString().slice(0, 16),
+      temperatureUnit: 'celsius',
+    }
   })
+
+  const temperatureUnit = watch('temperatureUnit')
 
   const utils = trpc.useUtils()
   // TODO: Add tank measurement mutation once API is implemented
@@ -278,18 +299,46 @@ function TankMeasurementForm({ vesselId, onClose }: { vesselId: string; onClose:
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <div className="text-center">
+        <p className="text-sm text-gray-600">Record optional measurement data for this tank</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
         <div>
-          <Label htmlFor="tempC">Temperature (°C)</Label>
+          <Label htmlFor="measurementDate">Measurement Date</Label>
           <Input
-            id="tempC"
-            type="number"
-            step="0.1"
-            placeholder="18.5"
-            {...register("tempC", { valueAsNumber: true })}
+            id="measurementDate"
+            type="datetime-local"
+            {...register("measurementDate")}
           />
-          {errors.tempC && <p className="text-sm text-red-600">{errors.tempC.message}</p>}
+          {errors.measurementDate && <p className="text-sm text-red-600">{errors.measurementDate.message}</p>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="temperature">Temperature</Label>
+          <div className="flex gap-2">
+            <Input
+              id="temperature"
+              type="number"
+              step="0.1"
+              placeholder={temperatureUnit === 'celsius' ? "18.5" : "65.3"}
+              {...register("temperature")}
+              className="flex-1"
+            />
+            <Select value={temperatureUnit} onValueChange={(value) => setValue("temperatureUnit", value as any)}>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="celsius">°C</SelectItem>
+                <SelectItem value="fahrenheit">°F</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {errors.temperature && <p className="text-sm text-red-600">{errors.temperature.message}</p>}
         </div>
         <div>
           <Label htmlFor="sh">Specific Gravity</Label>
@@ -298,13 +347,13 @@ function TankMeasurementForm({ vesselId, onClose }: { vesselId: string; onClose:
             type="number"
             step="0.001"
             placeholder="1.055"
-            {...register("sh", { valueAsNumber: true })}
+            {...register("sh")}
           />
           {errors.sh && <p className="text-sm text-red-600">{errors.sh.message}</p>}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="ph">pH</Label>
           <Input
@@ -312,30 +361,32 @@ function TankMeasurementForm({ vesselId, onClose }: { vesselId: string; onClose:
             type="number"
             step="0.1"
             placeholder="3.8"
-            {...register("ph", { valueAsNumber: true })}
+            {...register("ph")}
           />
           {errors.ph && <p className="text-sm text-red-600">{errors.ph.message}</p>}
         </div>
         <div>
-          <Label htmlFor="abv">ABV (%)</Label>
+          <Label htmlFor="ta">TA - Titratable Acid (g/L)</Label>
           <Input
-            id="abv"
+            id="ta"
             type="number"
             step="0.1"
-            placeholder="6.5"
-            {...register("abv", { valueAsNumber: true })}
+            placeholder="5.5"
+            {...register("ta")}
           />
-          {errors.abv && <p className="text-sm text-red-600">{errors.abv.message}</p>}
+          {errors.ta && <p className="text-sm text-red-600">{errors.ta.message}</p>}
         </div>
       </div>
 
-      <div>
-        <Label htmlFor="notes">Notes</Label>
-        <Input
-          id="notes"
-          placeholder="Measurement notes..."
-          {...register("notes")}
-        />
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <Label htmlFor="notes">Notes</Label>
+          <Input
+            id="notes"
+            placeholder="Measurement notes..."
+            {...register("notes")}
+          />
+        </div>
       </div>
 
       <div className="flex justify-end space-x-2">
@@ -351,8 +402,11 @@ function TankMeasurementForm({ vesselId, onClose }: { vesselId: string; onClose:
 }
 
 function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: () => void }) {
-  const { register, handleSubmit, formState: { errors } } = useForm({
-    resolver: zodResolver(tankAdditiveSchema)
+  const { register, handleSubmit, formState: { errors }, setValue } = useForm({
+    resolver: zodResolver(tankAdditiveSchema),
+    defaultValues: {
+      additiveDate: new Date().toISOString().slice(0, 16),
+    }
   })
 
   const utils = trpc.useUtils()
@@ -373,12 +427,23 @@ function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: ()
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div>
+        <Label htmlFor="additiveDate">Additive Date</Label>
+        <Input
+          id="additiveDate"
+          type="datetime-local"
+          {...register("additiveDate")}
+        />
+        {errors.additiveDate && <p className="text-sm text-red-600">{errors.additiveDate.message}</p>}
+      </div>
+
+      <div>
         <Label htmlFor="additiveType">Additive Type</Label>
-        <Select>
+        <Select onValueChange={(value) => setValue("additiveType", value)}>
           <SelectTrigger>
             <SelectValue placeholder="Select additive type" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="fruits">Fruits</SelectItem>
             <SelectItem value="sulfites">Sulfites</SelectItem>
             <SelectItem value="nutrients">Nutrients</SelectItem>
             <SelectItem value="enzymes">Enzymes</SelectItem>
@@ -404,7 +469,7 @@ function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: ()
         </div>
         <div>
           <Label htmlFor="unit">Unit</Label>
-          <Select>
+          <Select onValueChange={(value) => setValue("unit", value)}>
             <SelectTrigger>
               <SelectValue placeholder="Select unit" />
             </SelectTrigger>

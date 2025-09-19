@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { router, protectedProcedure, createRbacProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
-import { db, purchases, purchaseItems, vendors, appleVarieties } from 'db'
+import { db, purchases, purchaseItems, vendors, baseFruitVarieties } from 'db'
 import { eq, and, gte, lte, desc } from 'drizzle-orm'
 import { PdfService } from '../services/pdf/PdfService'
 import { mapPurchaseToOrderData, mapPurchasesToDateRangeData } from '../services/pdf/reportDataMapper'
@@ -34,7 +34,7 @@ export const reportsRouter = router({
             vendor: true,
             items: {
               with: {
-                appleVariety: true
+                fruitVariety: true
               }
             }
           }
@@ -101,9 +101,9 @@ export const reportsRouter = router({
             vendor: true,
             items: {
               with: {
-                appleVariety: true
+                fruitVariety: true
               },
-              where: input.varietyId ? eq(purchaseItems.appleVarietyId, input.varietyId) : undefined
+              where: input.varietyId ? eq(purchaseItems.fruitVarietyId, input.varietyId) : undefined
             }
           },
           orderBy: [desc(purchases.purchaseDate)]
@@ -164,8 +164,8 @@ export const reportsRouter = router({
   // Get available apple varieties for filtering
   getAppleVarieties: protectedProcedure
     .query(async () => {
-      const varieties = await db.query.appleVarieties.findMany({
-        orderBy: [appleVarieties.name]
+      const varieties = await db.query.baseFruitVarieties.findMany({
+        orderBy: [baseFruitVarieties.name]
       })
 
       return {

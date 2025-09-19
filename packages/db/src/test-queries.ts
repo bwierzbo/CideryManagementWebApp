@@ -56,7 +56,7 @@ async function testQueries() {
       .from(purchases)
       .innerJoin(vendors, eq(purchases.vendorId, vendors.id))
       .innerJoin(purchaseItems, eq(purchaseItems.purchaseId, purchases.id))
-      .innerJoin(appleVarieties, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+      .innerJoin(appleVarieties, eq(purchaseItems.fruitVarietyId, appleVarieties.id))
       .orderBy(desc(purchases.purchaseDate))
       .limit(5)
 
@@ -191,7 +191,7 @@ async function testQueries() {
         avgPricePerKg: sql<number>`AVG(${purchaseItems.pricePerUnit})`
       })
       .from(appleVarieties)
-      .innerJoin(purchaseItems, eq(purchaseItems.appleVarietyId, appleVarieties.id))
+      .innerJoin(purchaseItems, eq(purchaseItems.fruitVarietyId, appleVarieties.id))
       .groupBy(appleVarieties.id, appleVarieties.name)
       .orderBy(desc(sql`SUM(${purchaseItems.totalCost})`))
 

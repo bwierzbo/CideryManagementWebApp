@@ -81,12 +81,13 @@ describe('Offline Storage', () => {
 
       const success = offlineStorage.addLoadToDraft(draft.id, {
         purchaseLineId: 'purchase-123',
-        appleVarietyId: 'variety-456',
+        fruitVarietyId: 'variety-456',
         appleVarietyName: 'Honeycrisp',
         weightKg: 50.5,
         weightUnitEntered: 'lbs',
         originalWeight: 111.3,
         originalWeightUnit: 'lb',
+        status: 'pending',
         brixMeasured: 12.5,
         phMeasured: 3.8,
         appleCondition: 'excellent',
@@ -108,12 +109,13 @@ describe('Offline Storage', () => {
 
       offlineStorage.addLoadToDraft(draft.id, {
         purchaseLineId: 'purchase-123',
-        appleVarietyId: 'variety-456',
+        fruitVarietyId: 'variety-456',
         appleVarietyName: 'Honeycrisp',
         weightKg: 50.5,
         weightUnitEntered: 'lbs',
         originalWeight: 111.3,
         originalWeightUnit: 'lb',
+        status: 'pending',
       })
 
       const updatedDraft = offlineStorage.getDraft(draft.id)
@@ -136,22 +138,24 @@ describe('Offline Storage', () => {
 
       offlineStorage.addLoadToDraft(draft.id, {
         purchaseLineId: 'purchase-123',
-        appleVarietyId: 'variety-456',
+        fruitVarietyId: 'variety-456',
         appleVarietyName: 'Honeycrisp',
         weightKg: 50.5,
         weightUnitEntered: 'lbs',
         originalWeight: 111.3,
         originalWeightUnit: 'lb',
+        status: 'pending',
       })
 
       offlineStorage.addLoadToDraft(draft.id, {
         purchaseLineId: 'purchase-456',
-        appleVarietyId: 'variety-789',
+        fruitVarietyId: 'variety-789',
         appleVarietyName: 'Gala',
         weightKg: 30.0,
         weightUnitEntered: 'kg',
         originalWeight: 30.0,
         originalWeightUnit: 'kg',
+        status: 'pending',
       })
 
       let updatedDraft = offlineStorage.getDraft(draft.id)
@@ -305,7 +309,7 @@ describe('Conflict Resolution', () => {
         {
           id: 'load-1',
           purchaseLineId: 'purchase-123',
-          appleVarietyId: 'variety-456',
+          fruitVarietyId: 'variety-456',
           appleVarietyName: 'Honeycrisp',
           weightKg: 50.0,
           weightUnitEntered: 'lbs',
@@ -334,7 +338,7 @@ describe('Conflict Resolution', () => {
         {
           id: 'load-1',
           purchaseItemId: 'purchase-123',
-          appleVarietyId: 'variety-456',
+          fruitVarietyId: 'variety-456',
           appleVarietyName: 'Honeycrisp',
           appleWeightKg: '55.0',
           originalWeight: '121.3',
@@ -469,22 +473,24 @@ describe('Integration Tests', () => {
     // 2. Add loads
     offlineStorage.addLoadToDraft(draft.id, {
       purchaseLineId: 'purchase-123',
-      appleVarietyId: 'variety-456',
+      fruitVarietyId: 'variety-456',
       appleVarietyName: 'Honeycrisp',
       weightKg: 50.5,
       weightUnitEntered: 'lbs',
       originalWeight: 111.3,
       originalWeightUnit: 'lb',
+        status: 'pending',
     })
 
     offlineStorage.addLoadToDraft(draft.id, {
       purchaseLineId: 'purchase-456',
-      appleVarietyId: 'variety-789',
+      fruitVarietyId: 'variety-789',
       appleVarietyName: 'Gala',
       weightKg: 30.0,
       weightUnitEntered: 'kg',
       originalWeight: 30.0,
       originalWeightUnit: 'kg',
+      status: 'pending',
     })
 
     // 3. Verify draft state
@@ -534,13 +540,14 @@ describe('Integration Tests', () => {
       for (let j = 0; j < 5; j++) {
         offlineStorage.addLoadToDraft(draft.id, {
           purchaseLineId: `purchase-${i}-${j}`,
-          appleVarietyId: `variety-${j}`,
+          fruitVarietyId: `variety-${j}`,
           appleVarietyName: `Variety ${j}`,
           weightKg: Math.random() * 100,
           weightUnitEntered: 'kg',
           originalWeight: Math.random() * 100,
           originalWeightUnit: 'kg',
           notes: `Test notes for load ${i}-${j}`.repeat(10), // Make it larger
+          status: 'pending',
         })
       }
     }

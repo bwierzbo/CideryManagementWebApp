@@ -289,7 +289,7 @@ export function useNetworkSync() {
           pressRunId: serverPressRunId,
           vendorId: '', // Will be derived from purchase line
           purchaseItemId: load.purchaseLineId,
-          appleVarietyId: load.appleVarietyId,
+          fruitVarietyId: load.fruitVarietyId,
           appleWeightKg: load.weightKg,
           originalWeight: load.originalWeight,
           originalWeightUnit: load.originalWeightUnit,

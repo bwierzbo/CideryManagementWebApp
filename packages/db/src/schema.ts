@@ -17,8 +17,9 @@ export const pressRunStatusEnum = pgEnum('press_run_status', [
   'completed',    // Finished pressing, juice transferred to vessel
   'cancelled'     // Cancelled press run, resources released
 ])
+export const fruitTypeEnum = pgEnum('fruit_type', ['apple', 'pear', 'plum'])
 
-// Apple variety characteristic enums
+// Fruit variety characteristic enums
 export const ciderCategoryEnum = pgEnum('cider_category_enum', ['sweet', 'bittersweet', 'sharp', 'bittersharp'])
 export const intensityEnum = pgEnum('intensity_enum', ['high', 'medium-high', 'medium', 'low-medium', 'low'])
 export const harvestWindowEnum = pgEnum('harvest_window_enum', ['Late', 'Mid-Late', 'Mid', 'Early-Mid', 'Early'])
@@ -46,10 +47,11 @@ export const vendors = pgTable('vendors', {
   deletedAt: timestamp('deleted_at')
 })
 
-export const appleVarieties = pgTable('apple_varieties', {
+export const baseFruitVarieties = pgTable('base_fruit_varieties', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  // Apple variety characteristics
+  fruitType: fruitTypeEnum('fruit_type').notNull().default('apple'),
+  // Fruit variety characteristics
   ciderCategory: ciderCategoryEnum('cider_category'),
   tannin: intensityEnum('tannin'),
   acid: intensityEnum('acid'),
@@ -62,13 +64,13 @@ export const appleVarieties = pgTable('apple_varieties', {
   deletedAt: timestamp('deleted_at')
 }, (table) => ({
   // Unique constraint on name - case-insensitive will be handled manually
-  nameUniqueIdx: uniqueIndex('apple_varieties_name_unique_idx').on(table.name)
+  nameUniqueIdx: uniqueIndex('base_fruit_varieties_name_unique_idx').on(table.name)
 }))
 
 export const vendorVarieties = pgTable('vendor_varieties', {
   id: uuid('id').primaryKey().defaultRandom(),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id, { onDelete: 'cascade' }),
-  varietyId: uuid('variety_id').notNull().references(() => appleVarieties.id, { onDelete: 'cascade' }),
+  varietyId: uuid('variety_id').notNull().references(() => baseFruitVarieties.id, { onDelete: 'cascade' }),
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -97,7 +99,7 @@ export const purchases = pgTable('purchases', {
 export const purchaseItems = pgTable('purchase_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   purchaseId: uuid('purchase_id').notNull().references(() => purchases.id),
-  appleVarietyId: uuid('apple_variety_id').notNull().references(() => appleVarieties.id),
+  fruitVarietyId: uuid('fruit_variety_id').notNull().references(() => baseFruitVarieties.id),
   quantity: decimal('quantity', { precision: 10, scale: 3 }).notNull(),
   unit: unitEnum('unit').notNull(),
   pricePerUnit: decimal('price_per_unit', { precision: 8, scale: 4 }),
@@ -337,7 +339,7 @@ export const applePressRunLoads = pgTable('apple_press_run_loads', {
   // Core relationships with proper cascade behavior
   applePressRunId: uuid('apple_press_run_id').notNull().references(() => applePressRuns.id, { onDelete: 'cascade' }),
   purchaseItemId: uuid('purchase_item_id').notNull().references(() => purchaseItems.id), // Traceability chain
-  appleVarietyId: uuid('apple_variety_id').notNull().references(() => appleVarieties.id),
+  fruitVarietyId: uuid('fruit_variety_id').notNull().references(() => baseFruitVarieties.id),
 
   // Load sequencing for ordered processing
   loadSequence: integer('load_sequence').notNull(), // Order within press run (1, 2, 3, ...)
@@ -374,7 +376,7 @@ export const applePressRunLoads = pgTable('apple_press_run_loads', {
   // Performance indexes for mobile queries
   applePressRunIdx: index('apple_press_run_loads_apple_press_run_idx').on(table.applePressRunId),
   purchaseItemIdx: index('apple_press_run_loads_purchase_item_idx').on(table.purchaseItemId),
-  varietyIdx: index('apple_press_run_loads_variety_idx').on(table.appleVarietyId),
+  varietyIdx: index('apple_press_run_loads_variety_idx').on(table.fruitVarietyId),
 
   // Composite index for ordered retrieval within press run
   sequenceIdx: index('apple_press_run_loads_sequence_idx').on(table.applePressRunId, table.loadSequence),
@@ -406,7 +408,7 @@ export const vendorsRelations = relations(vendors, ({ many }) => ({
   vendorVarieties: many(vendorVarieties)
 }))
 
-export const appleVarietiesRelations = relations(appleVarieties, ({ many }) => ({
+export const baseFruitVarietiesRelations = relations(baseFruitVarieties, ({ many }) => ({
   purchaseItems: many(purchaseItems),
   vendorVarieties: many(vendorVarieties),
   applePressRunLoads: many(applePressRunLoads)
@@ -417,9 +419,9 @@ export const vendorVarietiesRelations = relations(vendorVarieties, ({ one }) => 
     fields: [vendorVarieties.vendorId],
     references: [vendors.id]
   }),
-  variety: one(appleVarieties, {
+  variety: one(baseFruitVarieties, {
     fields: [vendorVarieties.varietyId],
-    references: [appleVarieties.id]
+    references: [baseFruitVarieties.id]
   })
 }))
 
@@ -436,9 +438,9 @@ export const purchaseItemsRelations = relations(purchaseItems, ({ one, many }) =
     fields: [purchaseItems.purchaseId],
     references: [purchases.id]
   }),
-  appleVariety: one(appleVarieties, {
-    fields: [purchaseItems.appleVarietyId],
-    references: [appleVarieties.id]
+  fruitVariety: one(baseFruitVarieties, {
+    fields: [purchaseItems.fruitVarietyId],
+    references: [baseFruitVarieties.id]
   }),
   pressItems: many(pressItems)
 }))
@@ -570,9 +572,9 @@ export const applePressRunLoadsRelations = relations(applePressRunLoads, ({ one 
     fields: [applePressRunLoads.purchaseItemId],
     references: [purchaseItems.id]
   }),
-  appleVariety: one(appleVarieties, {
-    fields: [applePressRunLoads.appleVarietyId],
-    references: [appleVarieties.id]
+  fruitVariety: one(baseFruitVarieties, {
+    fields: [applePressRunLoads.fruitVarietyId],
+    references: [baseFruitVarieties.id]
   }),
 
   // User attribution relationships
@@ -594,7 +596,7 @@ export const tankMeasurements = pgTable('tank_measurements', {
   tempC: decimal('temp_c', { precision: 5, scale: 2 }),
   sh: decimal('sh', { precision: 5, scale: 2 }),
   ph: decimal('ph', { precision: 4, scale: 2 }),
-  abv: decimal('abv', { precision: 5, scale: 2 }),
+  ta: decimal('ta', { precision: 5, scale: 2 }),
   notes: text('notes'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   createdBy: uuid('created_by').references(() => users.id),
@@ -644,6 +646,10 @@ export const tankAdditivesRelations = relations(tankAdditives, ({ one }) => ({
     references: [users.id]
   })
 }))
+
+// Backward compatibility exports
+export const appleVarieties = baseFruitVarieties
+export const appleVarietiesRelations = baseFruitVarietiesRelations
 
 // Re-export audit schema
 export * from './schema/audit'

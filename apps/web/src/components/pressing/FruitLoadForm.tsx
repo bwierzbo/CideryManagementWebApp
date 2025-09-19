@@ -34,7 +34,7 @@ import {
 // Form validation schema based on task requirements
 const fruitLoadSchema = z.object({
   purchaseItemId: z.string().uuid("Please select a purchase line"),
-  appleVarietyId: z.string().uuid("Please select an apple variety"),
+  fruitVarietyId: z.string().uuid("Please select an apple variety"),
   weight: z.number().min(0.1, "Weight must be at least 0.1").max(10000, "Weight cannot exceed 10,000"),
   weightUnit: z.enum(['lbs', 'kg'], { message: "Please select a weight unit" }),
   brixMeasured: z.number().min(0).max(30).optional(),
@@ -50,7 +50,7 @@ type FruitLoadFormData = z.infer<typeof fruitLoadSchema>
 interface PurchaseLine {
   id: string
   purchaseItemId: string
-  appleVarietyId: string
+  fruitVarietyId: string
   varietyName: string
   vendorName: string
   availableQuantityKg: number
@@ -70,7 +70,7 @@ interface FruitLoadFormProps {
   onSubmit: (load: {
     loadSequence: number
     purchaseItemId: string
-    appleVarietyId: string
+    fruitVarietyId: string
     appleVarietyName: string
     appleWeightKg: number
     originalWeight: number
@@ -100,7 +100,7 @@ export function FruitLoadForm({
     {
       id: "pl-1",
       purchaseItemId: "pi-1",
-      appleVarietyId: "av-1",
+      fruitVarietyId: "av-1",
       varietyName: "Honeycrisp",
       vendorName: "Apple Valley Farm",
       availableQuantityKg: 150.5,
@@ -110,7 +110,7 @@ export function FruitLoadForm({
     {
       id: "pl-2",
       purchaseItemId: "pi-2",
-      appleVarietyId: "av-2",
+      fruitVarietyId: "av-2",
       varietyName: "Gala",
       vendorName: "Apple Valley Farm",
       availableQuantityKg: 200.8,
@@ -120,7 +120,7 @@ export function FruitLoadForm({
     {
       id: "pl-3",
       purchaseItemId: "pi-3",
-      appleVarietyId: "av-3",
+      fruitVarietyId: "av-3",
       varietyName: "Granny Smith",
       vendorName: "Orchard Hills",
       availableQuantityKg: 89.2,
@@ -178,7 +178,7 @@ export function FruitLoadForm({
   const handleSubmit = (data: FruitLoadFormData) => {
     if (!selectedPurchaseLine) return
 
-    const variety = mockAppleVarieties.find(v => v.id === data.appleVarietyId)
+    const variety = mockAppleVarieties.find(v => v.id === data.fruitVarietyId)
     const weightKg = data.weightUnit === 'kg' ? data.weight : convertWeight(data.weight, 'lbs', 'kg')
 
     // Convert weight unit to match database enum
@@ -188,7 +188,7 @@ export function FruitLoadForm({
     onSubmit({
       loadSequence,
       purchaseItemId: data.purchaseItemId,
-      appleVarietyId: data.appleVarietyId,
+      fruitVarietyId: data.fruitVarietyId,
       appleVarietyName: variety?.name || 'Unknown',
       appleWeightKg: weightKg,
       originalWeight: data.weight,
@@ -206,10 +206,10 @@ export function FruitLoadForm({
     if (line) {
       setSelectedPurchaseLine(line)
       form.setValue('purchaseItemId', line.purchaseItemId)
-      form.setValue('appleVarietyId', line.appleVarietyId)
+      form.setValue('fruitVarietyId', line.fruitVarietyId)
 
       // Set suggested brix from apple variety
-      const variety = mockAppleVarieties.find(v => v.id === line.appleVarietyId)
+      const variety = mockAppleVarieties.find(v => v.id === line.fruitVarietyId)
       if (variety?.typicalBrix) {
         form.setValue('brixMeasured', variety.typicalBrix)
       }

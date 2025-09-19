@@ -1,12 +1,14 @@
 import { z } from 'zod'
 import { router, createRbacProcedure, publicProcedure } from '../trpc'
-import { db, appleVarieties, auditLog } from 'db'
+import { db, baseFruitVarieties, auditLog } from 'db'
 import { eq, and, isNull, ilike, or, sql, ne } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
-import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, zCiderCategory, zIntensity, zHarvestWindow } from 'lib'
+import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent } from 'lib'
+import { zCiderCategory, zIntensity, zHarvestWindow } from 'lib/src/apples'
 
 const varietyCreateSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
+  fruitType: z.enum(['apple', 'pear', 'plum']).default('apple'),
   ciderCategory: zCiderCategory.optional(),
   tannin: zIntensity.optional(),
   acid: zIntensity.optional(),
@@ -19,12 +21,13 @@ const varietyUpdateSchema = z.object({
   id: z.string().uuid('Invalid variety ID'),
   patch: z.object({
     name: z.string().min(1, 'Name is required').max(100, 'Name too long').optional(),
-    ciderCategory: zCiderCategory.nullable().optional(),
-    tannin: zIntensity.nullable().optional(),
-    acid: zIntensity.nullable().optional(),
-    sugarBrix: zIntensity.nullable().optional(),
-    harvestWindow: zHarvestWindow.nullable().optional(),
-    varietyNotes: z.string().optional(),
+    fruitType: z.enum(['apple', 'pear', 'plum']).optional(),
+    ciderCategory: z.union([zCiderCategory, z.literal(null)]).optional(),
+    tannin: z.union([zIntensity, z.literal(null)]).optional(),
+    acid: z.union([zIntensity, z.literal(null)]).optional(),
+    sugarBrix: z.union([zIntensity, z.literal(null)]).optional(),
+    harvestWindow: z.union([zHarvestWindow, z.literal(null)]).optional(),
+    varietyNotes: z.union([z.string(), z.literal(null)]).optional(),
     isActive: z.boolean().optional(),
   }),
 })
@@ -33,6 +36,7 @@ const varietyUpdateSchema = z.object({
 const varietyOutputSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
+  fruitType: z.string(),
   isActive: z.boolean(),
   ciderCategory: z.string().nullable(),
   tannin: z.string().nullable(),
@@ -55,39 +59,40 @@ export const varietiesRouter = router({
         const whereConditions = []
 
         if (!input.includeInactive) {
-          whereConditions.push(eq(appleVarieties.isActive, true))
+          whereConditions.push(eq(baseFruitVarieties.isActive, true))
         }
 
         // Always exclude soft-deleted records
-        whereConditions.push(isNull(appleVarieties.deletedAt))
+        whereConditions.push(isNull(baseFruitVarieties.deletedAt))
 
         const varietyList = await db
           .select({
-            id: appleVarieties.id,
-            name: appleVarieties.name,
-            isActive: appleVarieties.isActive,
-            ciderCategory: appleVarieties.ciderCategory,
-            tannin: appleVarieties.tannin,
-            acid: appleVarieties.acid,
-            sugarBrix: appleVarieties.sugarBrix,
-            harvestWindow: appleVarieties.harvestWindow,
-            varietyNotes: appleVarieties.varietyNotes,
-            createdAt: appleVarieties.createdAt,
-            updatedAt: appleVarieties.updatedAt,
+            id: baseFruitVarieties.id,
+            name: baseFruitVarieties.name,
+            fruitType: baseFruitVarieties.fruitType,
+            isActive: baseFruitVarieties.isActive,
+            ciderCategory: baseFruitVarieties.ciderCategory,
+            tannin: baseFruitVarieties.tannin,
+            acid: baseFruitVarieties.acid,
+            sugarBrix: baseFruitVarieties.sugarBrix,
+            harvestWindow: baseFruitVarieties.harvestWindow,
+            varietyNotes: baseFruitVarieties.varietyNotes,
+            createdAt: baseFruitVarieties.createdAt,
+            updatedAt: baseFruitVarieties.updatedAt,
           })
-          .from(appleVarieties)
+          .from(baseFruitVarieties)
           .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
-          .orderBy(appleVarieties.name)
+          .orderBy(baseFruitVarieties.name)
 
         return {
-          appleVarieties: varietyList,
+          baseFruitVarieties: varietyList,
           count: varietyList.length,
         }
       } catch (error) {
-        console.error('Error listing apple varieties:', error)
+        console.error('Error listing fruit varieties:', error)
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list apple varieties'
+          message: 'Failed to list fruit varieties'
         })
       }
     }),
@@ -99,11 +104,11 @@ export const varietiesRouter = router({
       try {
         // Check for duplicate name (case-insensitive)
         const existingVariety = await db
-          .select({ id: appleVarieties.id, name: appleVarieties.name })
-          .from(appleVarieties)
+          .select({ id: baseFruitVarieties.id, name: baseFruitVarieties.name })
+          .from(baseFruitVarieties)
           .where(and(
-            sql`LOWER(${appleVarieties.name}) = LOWER(${input.name})`,
-            isNull(appleVarieties.deletedAt)
+            sql`LOWER(${baseFruitVarieties.name}) = LOWER(${input.name})`,
+            isNull(baseFruitVarieties.deletedAt)
           ))
           .limit(1)
 
@@ -125,13 +130,13 @@ export const varietiesRouter = router({
         }
 
         const newVariety = await db
-          .insert(appleVarieties)
+          .insert(baseFruitVarieties)
           .values(values as any)
           .returning()
 
         // Publish audit event
         await publishCreateEvent(
-          'apple_varieties',
+          'base_fruit_varieties',
           newVariety[0].id,
           {
             varietyId: newVariety[0].id,
@@ -148,7 +153,7 @@ export const varietiesRouter = router({
 
         return {
           success: true,
-          appleVariety: newVariety[0],
+          fruitVariety: newVariety[0],
           message: `Apple variety "${input.name}" created successfully`,
         }
       } catch (error) {
@@ -163,17 +168,27 @@ export const varietiesRouter = router({
 
   // Update variety with partial patch support
   update: createRbacProcedure('update', 'apple_variety')
-    .input(varietyUpdateSchema)
+    .input((input: unknown) => {
+      console.log('🔍 Raw update input:', JSON.stringify(input, null, 2))
+      try {
+        const result = varietyUpdateSchema.parse(input)
+        console.log('✅ Validation passed:', JSON.stringify(result, null, 2))
+        return result
+      } catch (error: any) {
+        console.error('❌ Validation failed:', error.errors)
+        throw error
+      }
+    })
     .mutation(async ({ input, ctx }) => {
-      console.log('🔍 Apple variety update called with input:', JSON.stringify(input, null, 2))
+      console.log('🔍 Apple variety update mutation started')
       try {
         // Get existing variety for audit trail
         const existingVariety = await db
           .select()
-          .from(appleVarieties)
+          .from(baseFruitVarieties)
           .where(and(
-            eq(appleVarieties.id, input.id),
-            isNull(appleVarieties.deletedAt)
+            eq(baseFruitVarieties.id, input.id),
+            isNull(baseFruitVarieties.deletedAt)
           ))
           .limit(1)
 
@@ -187,12 +202,12 @@ export const varietiesRouter = router({
         // Check for name conflicts if name is being changed
         if (input.patch.name && input.patch.name !== existingVariety[0].name) {
           const duplicateVariety = await db
-            .select({ id: appleVarieties.id, name: appleVarieties.name })
-            .from(appleVarieties)
+            .select({ id: baseFruitVarieties.id, name: baseFruitVarieties.name })
+            .from(baseFruitVarieties)
             .where(and(
-              sql`LOWER(${appleVarieties.name}) = LOWER(${input.patch.name})`,
-              ne(appleVarieties.id, input.id),
-              isNull(appleVarieties.deletedAt)
+              sql`LOWER(${baseFruitVarieties.name}) = LOWER(${input.patch.name})`,
+              ne(baseFruitVarieties.id, input.id),
+              isNull(baseFruitVarieties.deletedAt)
             ))
             .limit(1)
 
@@ -210,6 +225,7 @@ export const varietiesRouter = router({
         }
 
         if (input.patch.name !== undefined) updateData.name = input.patch.name
+        if (input.patch.fruitType !== undefined) updateData.fruitType = input.patch.fruitType
         if (input.patch.ciderCategory !== undefined) updateData.ciderCategory = input.patch.ciderCategory
         if (input.patch.tannin !== undefined) updateData.tannin = input.patch.tannin
         if (input.patch.acid !== undefined) updateData.acid = input.patch.acid
@@ -219,14 +235,14 @@ export const varietiesRouter = router({
         if (input.patch.isActive !== undefined) updateData.isActive = input.patch.isActive
 
         const updatedVariety = await db
-          .update(appleVarieties)
+          .update(baseFruitVarieties)
           .set(updateData)
-          .where(eq(appleVarieties.id, input.id))
+          .where(eq(baseFruitVarieties.id, input.id))
           .returning()
 
         // Publish audit event
         await publishUpdateEvent(
-          'apple_varieties',
+          'base_fruit_varieties',
           input.id,
           existingVariety[0],
           updateData,
@@ -236,20 +252,20 @@ export const varietiesRouter = router({
 
         return {
           success: true,
-          appleVariety: updatedVariety[0],
-          message: `Apple variety updated successfully`,
+          fruitVariety: updatedVariety[0],
+          message: `Fruit variety updated successfully`,
         }
       } catch (error) {
         if (error instanceof TRPCError) throw error
-        console.error('❌ Error updating apple variety:', error)
+        console.error('❌ Error updating fruit variety:', error)
         console.error('Error details:', {
-          message: error?.message,
-          code: error?.code,
-          stack: error?.stack
+          message: (error as any)?.message,
+          code: (error as any)?.code,
+          stack: (error as any)?.stack
         })
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to update apple variety'
+          message: 'Failed to update fruit variety'
         })
       }
     }),
@@ -262,10 +278,10 @@ export const varietiesRouter = router({
         // Get existing variety for audit trail
         const existingVariety = await db
           .select()
-          .from(appleVarieties)
+          .from(baseFruitVarieties)
           .where(and(
-            eq(appleVarieties.id, input.id),
-            isNull(appleVarieties.deletedAt)
+            eq(baseFruitVarieties.id, input.id),
+            isNull(baseFruitVarieties.deletedAt)
           ))
           .limit(1)
 
@@ -278,17 +294,17 @@ export const varietiesRouter = router({
 
         // Soft delete by setting isActive to false
         const removedVariety = await db
-          .update(appleVarieties)
+          .update(baseFruitVarieties)
           .set({
             isActive: false,
             updatedAt: new Date(),
           })
-          .where(eq(appleVarieties.id, input.id))
+          .where(eq(baseFruitVarieties.id, input.id))
           .returning()
 
         // Publish audit event
         await publishDeleteEvent(
-          'apple_varieties',
+          'base_fruit_varieties',
           input.id,
           existingVariety[0],
           ctx.session?.user?.id,
@@ -297,7 +313,7 @@ export const varietiesRouter = router({
 
         return {
           success: true,
-          appleVariety: removedVariety[0],
+          fruitVariety: removedVariety[0],
           message: `Apple variety "${existingVariety[0].name}" archived successfully`,
         }
       } catch (error) {
@@ -322,21 +338,21 @@ export const varietiesRouter = router({
 
         const varieties = await db
           .select({
-            id: appleVarieties.id,
-            name: appleVarieties.name,
-            ciderCategory: appleVarieties.ciderCategory,
-            tannin: appleVarieties.tannin,
-            acid: appleVarieties.acid,
-            sugarBrix: appleVarieties.sugarBrix,
-            harvestWindow: appleVarieties.harvestWindow,
+            id: baseFruitVarieties.id,
+            name: baseFruitVarieties.name,
+            ciderCategory: baseFruitVarieties.ciderCategory,
+            tannin: baseFruitVarieties.tannin,
+            acid: baseFruitVarieties.acid,
+            sugarBrix: baseFruitVarieties.sugarBrix,
+            harvestWindow: baseFruitVarieties.harvestWindow,
           })
-          .from(appleVarieties)
+          .from(baseFruitVarieties)
           .where(and(
-            ilike(appleVarieties.name, searchPattern),
-            eq(appleVarieties.isActive, true),
-            isNull(appleVarieties.deletedAt)
+            ilike(baseFruitVarieties.name, searchPattern),
+            eq(baseFruitVarieties.isActive, true),
+            isNull(baseFruitVarieties.deletedAt)
           ))
-          .orderBy(appleVarieties.name)
+          .orderBy(baseFruitVarieties.name)
           .limit(input.limit)
 
         return {
@@ -345,10 +361,10 @@ export const varietiesRouter = router({
           query: input.q,
         }
       } catch (error) {
-        console.error('Error searching apple varieties:', error)
+        console.error('Error searching fruit varieties:', error)
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to search apple varieties'
+          message: 'Failed to search fruit varieties'
         })
       }
     }),
