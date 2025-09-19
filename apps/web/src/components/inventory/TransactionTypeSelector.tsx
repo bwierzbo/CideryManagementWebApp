@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import {
   Apple,
-  Settings,
+  Beaker,
   Droplets,
   Package,
   ArrowRight
@@ -40,9 +40,9 @@ const transactionTypes = [
     id: "additives",
     title: "Additives",
     description: "Record purchases of yeast, nutrients, etc.",
-    icon: Settings,
-    route: "/additives",
-    available: false,
+    icon: Beaker,
+    route: "/inventory?tab=additives",
+    available: true,
     color: "text-purple-600",
     bgColor: "bg-purple-50 hover:bg-purple-100",
     borderColor: "border-purple-200 hover:border-purple-300"
@@ -78,7 +78,17 @@ export function TransactionTypeSelector({ open, onOpenChange }: TransactionTypeS
     if (type.available) {
       // Close modal and navigate to the route
       onOpenChange(false)
-      router.push(type.route)
+      if (type.id === "additives") {
+        // For additives, navigate to inventory page with additives tab active
+        router.push("/inventory")
+        // Use a small delay to ensure page loads before setting tab
+        setTimeout(() => {
+          const event = new CustomEvent('setInventoryTab', { detail: 'additives' })
+          window.dispatchEvent(event)
+        }, 100)
+      } else {
+        router.push(type.route)
+      }
     } else {
       // For now, just show a coming soon message
       // In the future, this could show a toast or more detailed info
