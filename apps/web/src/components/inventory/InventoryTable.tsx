@@ -42,7 +42,7 @@ interface InventoryItem {
   currentBottleCount: number
   reservedBottleCount: number
   materialType: MaterialType
-  metadata: Record<string, any>
+  metadata?: unknown
   location?: string | null
   notes?: string | null
   createdAt: string
@@ -122,7 +122,6 @@ export function InventoryTable({
     refetch: refetchList
   } = trpc.inventory.list.useQuery(apiParams, {
     enabled: !useSearch,
-    keepPreviousData: true,
   })
 
   const {
@@ -132,7 +131,6 @@ export function InventoryTable({
     refetch: refetchSearch
   } = trpc.inventory.search.useQuery(searchParams, {
     enabled: useSearch,
-    keepPreviousData: true,
   })
 
   // Derived state
@@ -219,7 +217,7 @@ export function InventoryTable({
       return `Package ${item.packageId}`
     }
 
-    const { metadata } = item
+    const metadata = (item.metadata as Record<string, any>) || {}
     switch (item.materialType) {
       case 'apple':
         return metadata.additiveName || metadata.appleVarietyId || 'Apple Inventory'
@@ -368,7 +366,7 @@ export function InventoryTable({
                     Last Updated
                   </SortableHeader>
                   <SortableHeader canSort={false} className="w-[50px]">
-                    {/* Actions column */}
+                    Actions
                   </SortableHeader>
                 </TableRow>
               </TableHeader>
