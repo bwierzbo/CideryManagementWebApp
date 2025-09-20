@@ -24,6 +24,7 @@ import {
   Apple
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
+import { handleTransactionError, showSuccess, showLoading } from "@/utils/error-handling"
 
 export default function InventoryPage() {
   const { data: session } = useSession()
@@ -60,6 +61,8 @@ export default function InventoryPage() {
 
   // Handler for additives form submission
   const handleAdditivesSubmit = async (transaction: any) => {
+    const dismissLoading = showLoading("Recording additives purchase...")
+
     try {
       console.log("Additives transaction:", transaction)
 
@@ -85,11 +88,16 @@ export default function InventoryPage() {
       }
 
       await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      dismissLoading()
+      showSuccess(
+        "Additives Purchase Recorded",
+        `Successfully added ${transaction.quantity} ${transaction.unit} of ${transaction.productName} to inventory.`
+      )
       setShowAdditivesForm(false)
       setActiveTab("inventory")
     } catch (error) {
-      console.error("Error recording additives transaction:", error)
-      alert("Error recording transaction. Please try again.")
+      dismissLoading()
+      handleTransactionError(error, "Additives", "Purchase")
     }
   }
 
@@ -100,6 +108,8 @@ export default function InventoryPage() {
 
   // Handler for juice form submission
   const handleJuiceSubmit = async (transaction: any) => {
+    const dismissLoading = showLoading("Recording juice purchase...")
+
     try {
       console.log("Juice transaction:", transaction)
 
@@ -121,11 +131,16 @@ export default function InventoryPage() {
       }
 
       await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      dismissLoading()
+      showSuccess(
+        "Juice Purchase Recorded",
+        `Successfully added ${transaction.volumeL}L of juice to inventory.`
+      )
       setShowJuiceForm(false)
       setActiveTab("inventory")
     } catch (error) {
-      console.error("Error recording juice transaction:", error)
-      alert("Error recording transaction. Please try again.")
+      dismissLoading()
+      handleTransactionError(error, "Juice", "Purchase")
     }
   }
 
@@ -136,6 +151,8 @@ export default function InventoryPage() {
 
   // Handler for packaging form submission
   const handlePackagingSubmit = async (transaction: any) => {
+    const dismissLoading = showLoading("Recording packaging purchase...")
+
     try {
       console.log("Packaging transaction:", transaction)
 
@@ -157,11 +174,16 @@ export default function InventoryPage() {
       }
 
       await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      dismissLoading()
+      showSuccess(
+        "Packaging Purchase Recorded",
+        `Successfully added ${transaction.quantity} ${transaction.unit} of ${transaction.packagingName} to inventory.`
+      )
       setShowPackagingForm(false)
       setActiveTab("inventory")
     } catch (error) {
-      console.error("Error recording packaging transaction:", error)
-      alert("Error recording transaction. Please try again.")
+      dismissLoading()
+      handleTransactionError(error, "Packaging", "Purchase")
     }
   }
 
@@ -172,6 +194,8 @@ export default function InventoryPage() {
 
   // Handler for apple form submission
   const handleAppleSubmit = async (transaction: any) => {
+    const dismissLoading = showLoading("Recording apple purchase...")
+
     try {
       console.log("Apple transaction:", transaction)
 
@@ -193,11 +217,16 @@ export default function InventoryPage() {
       }
 
       await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      dismissLoading()
+      showSuccess(
+        "Apple Purchase Recorded",
+        `Successfully added ${transaction.quantityKg} kg of fresh apples to inventory.`
+      )
       setShowAppleForm(false)
       setActiveTab("inventory")
     } catch (error) {
-      console.error("Error recording apple transaction:", error)
-      alert("Error recording transaction. Please try again.")
+      dismissLoading()
+      handleTransactionError(error, "Apple", "Purchase")
     }
   }
 
