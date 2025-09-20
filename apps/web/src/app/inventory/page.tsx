@@ -11,6 +11,7 @@ import { TransactionTypeSelector } from "@/components/inventory/TransactionTypeS
 import { AdditivesTransactionForm } from "@/components/inventory/AdditivesTransactionForm"
 import { JuiceTransactionForm } from "@/components/inventory/JuiceTransactionForm"
 import { PackagingTransactionForm } from "@/components/inventory/PackagingTransactionForm"
+import { AppleTransactionForm } from "@/components/inventory/AppleTransactionForm"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
 import {
   Package,
@@ -19,7 +20,8 @@ import {
   AlertTriangle,
   TrendingUp,
   Beaker,
-  Droplets
+  Droplets,
+  Apple
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 
@@ -30,6 +32,7 @@ export default function InventoryPage() {
   const [showAdditivesForm, setShowAdditivesForm] = useState(false)
   const [showJuiceForm, setShowJuiceForm] = useState(false)
   const [showPackagingForm, setShowPackagingForm] = useState(false)
+  const [showAppleForm, setShowAppleForm] = useState(false)
 
   // Get inventory data using unified inventory API
   const { data: inventoryData, isLoading } = trpc.inventory.list.useQuery({
@@ -167,6 +170,42 @@ export default function InventoryPage() {
     setActiveTab("inventory")
   }
 
+  // Handler for apple form submission
+  const handleAppleSubmit = async (transaction: any) => {
+    try {
+      console.log("Apple transaction:", transaction)
+
+      // Transform the form data to match the API schema
+      const inventoryTransaction = {
+        materialType: 'apple' as const,
+        transactionType: 'purchase' as const,
+        quantityChange: Math.round(transaction.quantityKg), // Convert to integer
+        transactionDate: new Date(),
+        appleVarietyId: transaction.appleVarietyId,
+        vendorId: transaction.vendorId,
+        quantityKg: transaction.quantityKg,
+        qualityGrade: transaction.qualityGrade,
+        harvestDate: transaction.harvestDate ? new Date(transaction.harvestDate) : undefined,
+        storageLocation: transaction.storageLocation,
+        defectPercentage: transaction.defectPercentage,
+        brixLevel: transaction.brixLevel,
+        notes: transaction.notes
+      }
+
+      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      setShowAppleForm(false)
+      setActiveTab("inventory")
+    } catch (error) {
+      console.error("Error recording apple transaction:", error)
+      alert("Error recording transaction. Please try again.")
+    }
+  }
+
+  const handleAppleCancel = () => {
+    setShowAppleForm(false)
+    setActiveTab("inventory")
+  }
+
   // Listen for tab change events from TransactionTypeSelector
   useEffect(() => {
     const handleSetTab = (event: CustomEvent) => {
@@ -179,6 +218,9 @@ export default function InventoryPage() {
       } else if (event.detail === 'packaging') {
         setActiveTab('packaging')
         setShowPackagingForm(true)
+      } else if (event.detail === 'apple') {
+        setActiveTab('apple')
+        setShowAppleForm(true)
       }
     }
 
@@ -210,6 +252,18 @@ export default function InventoryPage() {
                 <Button variant="outline" size="sm" className="flex items-center">
                   <Download className="w-4 h-4 mr-2" />
                   <span className="hidden sm:inline">Export</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center"
+                  onClick={() => {
+                    setShowAppleForm(true)
+                    setActiveTab("apple")
+                  }}
+                >
+                  <Apple className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Add Apples</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -317,10 +371,14 @@ export default function InventoryPage() {
 
         {/* Main Content with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 lg:space-y-6">
-          <TabsList className="grid w-full grid-cols-4 h-auto">
+          <TabsList className="grid w-full grid-cols-5 h-auto">
             <TabsTrigger value="inventory" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Package className="w-4 h-4" />
               <span className="text-xs lg:text-sm">Inventory</span>
+            </TabsTrigger>
+            <TabsTrigger value="apple" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
+              <Apple className="w-4 h-4" />
+              <span className="text-xs lg:text-sm">Apples</span>
             </TabsTrigger>
             <TabsTrigger value="additives" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Beaker className="w-4 h-4" />
@@ -344,6 +402,48 @@ export default function InventoryPage() {
               itemsPerPage={50}
               className=""
             />
+          </TabsContent>
+
+          <TabsContent value="apple" className="space-y-6">
+            {showAppleForm ? (
+              <AppleTransactionForm
+                onSubmit={handleAppleSubmit}
+                onCancel={handleAppleCancel}
+                isSubmitting={createInventoryItemMutation.isPending}
+              />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Apple className="w-5 h-5 text-red-600" />
+                    <span>Apple Inventory</span>
+                  </CardTitle>
+                  <CardDescription>
+                    Manage your fresh apple inventory and record new purchases
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="py-12">
+                  <div className="text-center space-y-4">
+                    <Apple className="w-16 h-16 text-gray-300 mx-auto" />
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">
+                        No apple inventory recorded yet
+                      </h3>
+                      <p className="text-gray-500 mb-6">
+                        Start by recording your first apple purchase
+                      </p>
+                      <Button
+                        onClick={() => setShowAppleForm(true)}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        <Apple className="w-4 h-4 mr-2" />
+                        Add Apple Purchase
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="additives" className="space-y-6">
