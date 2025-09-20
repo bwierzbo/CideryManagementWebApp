@@ -47,12 +47,41 @@ export default function InventoryPage() {
     return available > 0 && available < 50
   }).length
 
+  // tRPC mutations
+  const createInventoryItemMutation = trpc.inventory.createInventoryItem.useMutation({
+    onSuccess: () => {
+      // Refetch inventory data
+      inventoryData && window.location.reload()
+    }
+  })
+
   // Handler for additives form submission
   const handleAdditivesSubmit = async (transaction: any) => {
     try {
       console.log("Additives transaction:", transaction)
-      // TODO: Implement tRPC mutation for additives transaction
-      alert("Additives transaction recorded successfully!")
+
+      // Transform the form data to match the API schema
+      const inventoryTransaction = {
+        materialType: 'additive' as const,
+        transactionType: 'purchase' as const,
+        quantityChange: Math.round(transaction.quantity), // Convert to integer
+        transactionDate: new Date(),
+        additiveType: transaction.additiveType,
+        additiveName: transaction.productName,
+        quantity: transaction.quantity,
+        unit: transaction.unit as 'kg' | 'g' | 'L' | 'mL' | 'tablets' | 'packets',
+        expirationDate: transaction.expirationDate ? new Date(transaction.expirationDate) : undefined,
+        batchNumber: transaction.lotBatchNumber,
+        storageRequirements: transaction.storageRequirements,
+        notes: [
+          transaction.notes,
+          `Brand: ${transaction.brandManufacturer}`,
+          transaction.unitCost ? `Unit Cost: $${transaction.unitCost}` : undefined,
+          transaction.totalCost ? `Total Cost: $${transaction.totalCost}` : undefined
+        ].filter(Boolean).join(' | ')
+      }
+
+      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
       setShowAdditivesForm(false)
       setActiveTab("inventory")
     } catch (error) {
@@ -70,8 +99,25 @@ export default function InventoryPage() {
   const handleJuiceSubmit = async (transaction: any) => {
     try {
       console.log("Juice transaction:", transaction)
-      // TODO: Implement tRPC mutation for juice transaction
-      alert("Juice transaction recorded successfully!")
+
+      // Transform the form data to match the API schema
+      const inventoryTransaction = {
+        materialType: 'juice' as const,
+        transactionType: 'purchase' as const,
+        quantityChange: Math.round(transaction.volumeL), // Convert to integer
+        transactionDate: new Date(),
+        pressRunId: transaction.pressRunId,
+        vesselId: transaction.vesselId,
+        volumeL: transaction.volumeL,
+        brixLevel: transaction.brixLevel,
+        phLevel: transaction.phLevel,
+        varietyComposition: transaction.varietyComposition,
+        processDate: transaction.processDate ? new Date(transaction.processDate) : undefined,
+        qualityNotes: transaction.qualityNotes,
+        notes: transaction.notes
+      }
+
+      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
       setShowJuiceForm(false)
       setActiveTab("inventory")
     } catch (error) {
@@ -89,8 +135,25 @@ export default function InventoryPage() {
   const handlePackagingSubmit = async (transaction: any) => {
     try {
       console.log("Packaging transaction:", transaction)
-      // TODO: Implement tRPC mutation for packaging transaction
-      alert("Packaging transaction recorded successfully!")
+
+      // Transform the form data to match the API schema
+      const inventoryTransaction = {
+        materialType: 'packaging' as const,
+        transactionType: 'purchase' as const,
+        quantityChange: Math.round(transaction.quantity), // Convert to integer
+        transactionDate: new Date(),
+        packagingType: transaction.packagingType as 'bottle' | 'cap' | 'label' | 'case' | 'shrink_wrap' | 'carton',
+        packagingName: transaction.packagingName,
+        quantity: transaction.quantity,
+        unit: transaction.unit as 'pieces' | 'cases' | 'rolls' | 'sheets',
+        size: transaction.size,
+        color: transaction.color,
+        material: transaction.material,
+        supplier: transaction.supplier,
+        notes: transaction.notes
+      }
+
+      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
       setShowPackagingForm(false)
       setActiveTab("inventory")
     } catch (error) {
@@ -288,6 +351,7 @@ export default function InventoryPage() {
               <AdditivesTransactionForm
                 onSubmit={handleAdditivesSubmit}
                 onCancel={handleAdditivesCancel}
+                isSubmitting={createInventoryItemMutation.isPending}
               />
             ) : (
               <Card>
@@ -329,6 +393,7 @@ export default function InventoryPage() {
               <JuiceTransactionForm
                 onSubmit={handleJuiceSubmit}
                 onCancel={handleJuiceCancel}
+                isSubmitting={createInventoryItemMutation.isPending}
               />
             ) : (
               <Card>
@@ -370,6 +435,7 @@ export default function InventoryPage() {
               <PackagingTransactionForm
                 onSubmit={handlePackagingSubmit}
                 onCancel={handlePackagingCancel}
+                isSubmitting={createInventoryItemMutation.isPending}
               />
             ) : (
               <Card>
