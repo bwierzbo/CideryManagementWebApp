@@ -19,7 +19,8 @@ import {
   Calendar,
   Package,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  X
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
@@ -81,9 +82,10 @@ export function InventoryTable({
     handleSort,
     getSortDirection,
     getSortIcon,
-    sortData
+    sortData,
+    clearAllSort
   } = useTableSorting<SortField>({
-    multiColumn: false,
+    multiColumn: true,
     defaultSort: undefined
   })
 
@@ -238,6 +240,12 @@ export function InventoryTable({
     return direction ? direction : 'none'
   }, [getSortDirection])
 
+  // Get sort index for multi-column sorting display
+  const getSortIndex = useCallback((field: SortField) => {
+    const columnIndex = sortState.columns.findIndex(col => col.field === field)
+    return columnIndex >= 0 ? columnIndex : undefined
+  }, [sortState.columns])
+
   return (
     <div className={cn("space-y-6", className)}>
       {/* Search and Filters */}
@@ -272,9 +280,27 @@ export function InventoryTable({
                 <Package className="w-5 h-5" />
                 Inventory Items
               </CardTitle>
-              <CardDescription>
-                {totalCount > 0 ? `${totalCount} items found` : 'No items found'}
-              </CardDescription>
+              <div className="flex items-center gap-4">
+                <CardDescription>
+                  {totalCount > 0 ? `${totalCount} items found` : 'No items found'}
+                </CardDescription>
+                {sortState.columns.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>
+                      Sorted by {sortState.columns.length} column{sortState.columns.length === 1 ? '' : 's'}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearAllSort}
+                      className="h-6 px-2 py-0 text-xs"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Clear
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
             <Button
               variant="outline"
@@ -300,6 +326,7 @@ export function InventoryTable({
                 <TableRow>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay('materialType')}
+                    sortIndex={getSortIndex('materialType')}
                     onSort={() => handleColumnSort('materialType')}
                   >
                     Type
@@ -309,6 +336,7 @@ export function InventoryTable({
                   </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay('location')}
+                    sortIndex={getSortIndex('location')}
                     onSort={() => handleColumnSort('location')}
                   >
                     Location
@@ -316,6 +344,7 @@ export function InventoryTable({
                   <SortableHeader
                     align="right"
                     sortDirection={getSortDirectionForDisplay('currentBottleCount')}
+                    sortIndex={getSortIndex('currentBottleCount')}
                     onSort={() => handleColumnSort('currentBottleCount')}
                   >
                     Available
@@ -323,6 +352,7 @@ export function InventoryTable({
                   <SortableHeader
                     align="right"
                     sortDirection={getSortDirectionForDisplay('reservedBottleCount')}
+                    sortIndex={getSortIndex('reservedBottleCount')}
                     onSort={() => handleColumnSort('reservedBottleCount')}
                   >
                     Reserved
@@ -332,6 +362,7 @@ export function InventoryTable({
                   </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay('updatedAt')}
+                    sortIndex={getSortIndex('updatedAt')}
                     onSort={() => handleColumnSort('updatedAt')}
                   >
                     Last Updated
