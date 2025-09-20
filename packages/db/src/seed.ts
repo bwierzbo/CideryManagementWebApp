@@ -560,6 +560,15 @@ async function main() {
         bottleCount: 560,
         abvAtPackaging: '5.9',
         notes: 'First packaging run of completed batch'
+      },
+      {
+        batchId: seedBatches[1].id, // Same batch, different bottle size
+        packageDate: new Date('2024-09-27'),
+        volumePackagedL: '15.0',
+        bottleSize: '375ml',
+        bottleCount: 40,
+        abvAtPackaging: '5.9',
+        notes: 'Small format bottles for tasting room'
       }
     ]).returning()
 
@@ -570,8 +579,108 @@ async function main() {
         packageId: seedPackages[0].id,
         currentBottleCount: 485,
         reservedBottleCount: 25,
+        materialType: 'apple',
+        metadata: {
+          abv: 5.9,
+          batchNumber: 'B-2024-002',
+          varietyBlend: ['Gala', 'Fuji'],
+          packageDate: '2024-09-26',
+          expirationDate: '2026-09-26',
+          bottleSize: '750ml',
+          qualityGrade: 'A',
+          fermentationNotes: 'Primary fermentation completed, well-balanced sweetness and acidity',
+          tastingNotes: 'Light golden color with crisp apple flavor and subtle fruitiness'
+        },
         location: 'Warehouse A, Shelf 1-3',
         notes: 'Ready for distribution'
+      },
+      {
+        packageId: seedPackages[1].id,
+        currentBottleCount: 38,
+        reservedBottleCount: 2,
+        materialType: 'apple',
+        metadata: {
+          abv: 5.9,
+          batchNumber: 'B-2024-002',
+          varietyBlend: ['Gala', 'Fuji'],
+          packageDate: '2024-09-27',
+          expirationDate: '2026-09-27',
+          bottleSize: '375ml',
+          qualityGrade: 'A',
+          specialUse: 'tasting room',
+          samplingNotes: 'Perfect portion size for tastings and events'
+        },
+        location: 'Tasting Room Storage',
+        notes: 'Small format for tastings and events'
+      },
+      // Note: The following entries are conceptual examples to demonstrate different material types
+      // In a production system, raw materials would typically have a separate inventory table
+      {
+        packageId: seedPackages[0].id, // Reusing package ID for demo purposes
+        currentBottleCount: 50, // Representing 50 units of additive
+        reservedBottleCount: 0,
+        materialType: 'additive',
+        metadata: {
+          additiveType: 'potassium_metabisulfite',
+          concentration: '10%',
+          supplier: 'Vintner Supply Co.',
+          lotNumber: 'KMS-2024-087',
+          expirationDate: '2025-12-31',
+          applicationRate: '1.5g per 10L',
+          safetyNotes: 'Handle with gloves, avoid inhalation',
+          storageTemperature: 'room temperature',
+          moistureContent: '< 0.5%'
+        },
+        location: 'Chemical Storage Room, Shelf B2',
+        notes: 'Sulfite for preservation and oxidation prevention'
+      },
+      {
+        packageId: seedPackages[1].id, // Reusing package ID for demo purposes
+        currentBottleCount: 200, // Representing 200L of juice
+        reservedBottleCount: 50,
+        materialType: 'juice',
+        metadata: {
+          juiceType: 'apple_blend',
+          varietyComposition: {
+            'Honeycrisp': '60%',
+            'Granny Smith': '40%'
+          },
+          brix: 14.2,
+          ph: 3.8,
+          pressDate: '2024-09-15',
+          expirationDate: '2024-10-15',
+          storageCondition: 'refrigerated',
+          clarification: 'enzyme treated',
+          yeastStrain: 'ready for EC-1118',
+          volumeL: 200
+        },
+        location: 'Cold Storage Tank T-05',
+        notes: 'Fresh pressed juice ready for fermentation'
+      },
+      {
+        packageId: seedPackages[0].id, // Reusing package ID for demo purposes
+        currentBottleCount: 1000, // Representing 1000 bottles
+        reservedBottleCount: 100,
+        materialType: 'packaging',
+        metadata: {
+          packageType: 'glass_bottle',
+          size: '750ml',
+          color: 'antique_green',
+          supplier: 'Premium Glass Solutions',
+          lotNumber: 'PGS-750-AG-2024-Q3',
+          quality: 'food_grade',
+          closureType: 'cork_compatible',
+          orderDate: '2024-08-15',
+          deliveryDate: '2024-09-01',
+          shelfLife: 'indefinite',
+          dimensions: {
+            height: '315mm',
+            diameter: '77mm',
+            weight: '550g'
+          }
+        },
+        location: 'Packaging Warehouse, Aisle C',
+        notes: 'Premium glass bottles for main product line'
       }
     ]).returning()
 
@@ -593,6 +702,38 @@ async function main() {
         transactionDate: new Date('2024-10-01'),
         reason: 'Restaurant order',
         notes: 'Local restaurant wholesale'
+      },
+      {
+        inventoryId: seedInventory[1].id,
+        transactionType: 'sale',
+        quantityChange: -2,
+        transactionDate: new Date('2024-09-29'),
+        reason: 'Tasting room samples',
+        notes: 'Used for customer tastings'
+      },
+      {
+        inventoryId: seedInventory[2].id, // Additive inventory
+        transactionType: 'transfer',
+        quantityChange: -5,
+        transactionDate: new Date('2024-09-20'),
+        reason: 'Production use',
+        notes: 'Used in batch B-2024-003 for stabilization'
+      },
+      {
+        inventoryId: seedInventory[3].id, // Juice inventory
+        transactionType: 'transfer',
+        quantityChange: -50,
+        transactionDate: new Date('2024-09-16'),
+        reason: 'Fermentation start',
+        notes: 'Transferred to fermenter for new batch'
+      },
+      {
+        inventoryId: seedInventory[4].id, // Packaging inventory
+        transactionType: 'transfer',
+        quantityChange: -560,
+        transactionDate: new Date('2024-09-26'),
+        reason: 'Packaging run',
+        notes: 'Used for batch B-2024-002 packaging'
       }
     ])
 
@@ -679,8 +820,9 @@ async function main() {
     console.log(`   • ${seedPressRuns.length} press runs with ${seedPressItems.length} items`)
     console.log(`   • ${seedVessels.length} vessels`)
     console.log(`   • ${seedBatches.length} batches with ingredients and measurements`)
-    console.log(`   • ${seedPackages.length} packages with inventory tracking`)
+    console.log(`   • ${seedPackages.length} packages with ${seedInventory.length} inventory items (apple, additive, juice, packaging)`)
     console.log('   • Complete cost tracking and COGS breakdown')
+    console.log('   • Material type tracking with detailed metadata for inventory management')
 
   } catch (error) {
     console.error('❌ Error seeding database:', error)

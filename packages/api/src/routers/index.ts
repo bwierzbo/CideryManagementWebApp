@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { router, publicProcedure, protectedProcedure, adminProcedure, createRbacProcedure } from '../trpc'
 import { auditRouter } from './audit'
 import { healthRouter } from './health'
+import { inventoryRouter } from './inventory'
 import { invoiceNumberRouter } from './invoiceNumber'
 import { pressRunRouter } from './pressRun'
 import { reportsRouter } from './reports'
@@ -2532,6 +2533,9 @@ export const appRouter = router({
 
   // Health check and system monitoring
   health: healthRouter,
+
+  // Inventory management
+  inventory: inventoryRouter,
 
   // PDF report generation
   pdfReports: reportsRouter,

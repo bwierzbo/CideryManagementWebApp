@@ -29,6 +29,13 @@
       "when": 1758166110289,
       "tag": "0003_gifted_mikhail_rasputin",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1758296527017,
+      "tag": "0004_fresh_paper_doll",
+      "breakpoints": true
     }
   ]
 }
