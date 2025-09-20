@@ -2,15 +2,16 @@ import { db } from './client'
 import {
   users,
   vendors,
-  appleVarieties,
+  baseFruitVarieties,
   vendorVarieties,
   purchases,
   purchaseItems,
   pressRuns,
   pressItems,
   vessels,
+  juiceLots,
   batches,
-  batchIngredients,
+  batchCompositions,
   batchMeasurements,
   packages,
   inventory,
@@ -75,9 +76,9 @@ async function main() {
       }
     ]).returning()
 
-    // Seed apple varieties
-    console.log('🍎 Seeding apple varieties...')
-    const seedVarieties = await db.insert(appleVarieties).values([
+    // Seed fruit varieties
+    console.log('🍎 Seeding fruit varieties...')
+    const seedVarieties = await db.insert(baseFruitVarieties).values([
       {
         name: 'Honeycrisp',
         ciderCategory: 'sweet',
@@ -406,51 +407,46 @@ async function main() {
       }
     ]).returning()
 
+    // Seed juice lots
+    console.log('🧃 Seeding juice lots...')
+    const seedJuiceLots = await db.insert(juiceLots).values([
+      {
+        pressRunId: seedPressRuns[0].id,
+        volumeL: '600.0',
+        brix: '11.5'
+      },
+      {
+        pressRunId: seedPressRuns[1].id,
+        volumeL: '420.0',
+        brix: '12.2'
+      }
+    ]).returning()
+
     // Seed batches
     console.log('🍺 Seeding batches...')
     const seedBatches = await db.insert(batches).values([
       {
-        batchNumber: 'B-2024-001',
+        name: 'B-2024-001',
         status: 'active',
         vesselId: seedVessels[0].id,
-        startDate: new Date('2024-09-10'),
-        targetCompletionDate: new Date('2024-11-10'),
-        initialVolumeL: '600.0',
-        currentVolumeL: '590.0',
-        targetAbv: '6.5',
-        actualAbv: '4.2',
-        notes: 'Honeycrisp/Granny Smith blend - primary fermentation'
+        juiceLotId: seedJuiceLots[0].id,
+        originPressRunId: seedPressRuns[0].id,
+        startDate: new Date('2024-09-10')
       },
       {
-        batchNumber: 'B-2024-002',
-        status: 'completed',
+        name: 'B-2024-002',
+        status: 'packaged',
         vesselId: null,
+        juiceLotId: seedJuiceLots[1].id,
+        originPressRunId: seedPressRuns[1].id,
         startDate: new Date('2024-07-30'),
-        targetCompletionDate: new Date('2024-09-30'),
-        actualCompletionDate: new Date('2024-09-25'),
-        initialVolumeL: '450.0',
-        currentVolumeL: '435.0',
-        targetAbv: '5.8',
-        actualAbv: '5.9',
-        notes: 'Gala/Fuji blend - completed and packaged'
-      },
-      {
-        batchNumber: 'B-2024-003',
-        status: 'active',
-        vesselId: seedVessels[2].id,
-        startDate: new Date('2024-08-05'),
-        targetCompletionDate: new Date('2024-10-05'),
-        initialVolumeL: '750.0',
-        currentVolumeL: '720.0',
-        targetAbv: '7.2',
-        actualAbv: '6.1',
-        notes: 'Heritage blend - secondary fermentation'
+        endDate: new Date('2024-09-25')
       }
     ]).returning()
 
-    // Seed batch ingredients
-    console.log('🥤 Seeding batch ingredients...')
-    await db.insert(batchIngredients).values([
+    // Seed batch compositions
+    console.log('🥤 Seeding batch compositions...')
+    await db.insert(batchCompositions).values([
       // Batch 1 ingredients
       {
         batchId: seedBatches[0].id,

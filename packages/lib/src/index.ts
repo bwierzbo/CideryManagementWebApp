@@ -26,6 +26,12 @@ export * from './calc/financial';
 // Re-export apple-related constants and utilities
 export * from './apples';
 
+// Re-export naming utilities
+export * from './naming/batchName';
+
+// Re-export press domain services
+export * from './press/createBatchesFromPressCompletion';
+
 // Re-export audit service functions
 export {
   generateAuditChecksum,

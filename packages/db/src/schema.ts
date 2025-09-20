@@ -3,7 +3,7 @@ import { relations, sql } from 'drizzle-orm'
 
 // PostgreSQL Enums
 export const unitEnum = pgEnum('unit', ['kg', 'lb', 'L', 'gal', 'bushel'])
-export const batchStatusEnum = pgEnum('batch_status', ['planned', 'active', 'completed', 'cancelled'])
+export const batchStatusEnum = pgEnum('batch_status', ['planned', 'active', 'packaged'])
 export const vesselStatusEnum = pgEnum('vessel_status', ['available', 'in_use', 'cleaning', 'maintenance', 'empty', 'fermenting', 'storing', 'aging'])
 export const vesselTypeEnum = pgEnum('vessel_type', ['fermenter', 'conditioning_tank', 'bright_tank', 'storage'])
 export const vesselMaterialEnum = pgEnum('vessel_material', ['stainless_steel', 'plastic'])
@@ -158,35 +158,62 @@ export const vessels = pgTable('vessels', {
   deletedAt: timestamp('deleted_at')
 })
 
+export const juiceLots = pgTable('juice_lots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pressRunId: uuid('press_run_id').notNull().references(() => pressRuns.id),
+  volumeL: decimal('volume_l', { precision: 10, scale: 3 }).notNull(),
+  brix: decimal('brix', { precision: 5, scale: 2 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  pressRunIdx: index('juice_lots_press_run_idx').on(table.pressRunId)
+}))
+
 export const batches = pgTable('batches', {
   id: uuid('id').primaryKey().defaultRandom(),
-  batchNumber: text('batch_number').notNull().unique(),
-  status: batchStatusEnum('status').notNull().default('planned'),
+  juiceLotId: uuid('juice_lot_id').references(() => juiceLots.id),
   vesselId: uuid('vessel_id').references(() => vessels.id),
-  startDate: timestamp('start_date').notNull(),
-  targetCompletionDate: timestamp('target_completion_date'),
-  actualCompletionDate: timestamp('actual_completion_date'),
-  initialVolumeL: decimal('initial_volume_l', { precision: 10, scale: 3 }).notNull(),
-  currentVolumeL: decimal('current_volume_l', { precision: 10, scale: 3 }).notNull(),
-  targetAbv: decimal('target_abv', { precision: 4, scale: 2 }),
-  actualAbv: decimal('actual_abv', { precision: 4, scale: 2 }),
-  notes: text('notes'),
+  name: text('name').notNull().unique(),
+  status: batchStatusEnum('status').notNull().default('active'),
+  startDate: timestamp('start_date', { withTimezone: true }).notNull().defaultNow(),
+  endDate: timestamp('end_date', { withTimezone: true }),
+  originPressRunId: uuid('origin_press_run_id').references(() => pressRuns.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at')
-})
+}, (table) => ({
+  vesselIdx: index('batches_vessel_idx').on(table.vesselId),
+  statusIdx: index('batches_status_idx').on(table.status),
+  originPressRunIdx: index('batches_origin_press_run_idx').on(table.originPressRunId)
+}))
 
-export const batchIngredients = pgTable('batch_ingredients', {
+export const batchCompositions = pgTable('batch_compositions', {
   id: uuid('id').primaryKey().defaultRandom(),
-  batchId: uuid('batch_id').notNull().references(() => batches.id),
-  pressItemId: uuid('press_item_id').notNull().references(() => pressItems.id),
-  volumeUsedL: decimal('volume_used_l', { precision: 10, scale: 3 }).notNull(),
-  brixAtUse: decimal('brix_at_use', { precision: 4, scale: 2 }),
-  notes: text('notes'),
+  batchId: uuid('batch_id').notNull().references(() => batches.id, { onDelete: 'cascade' }),
+  purchaseItemId: uuid('purchase_item_id').notNull().references(() => purchaseItems.id),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
+  varietyId: uuid('variety_id').notNull().references(() => baseFruitVarieties.id),
+  lotCode: text('lot_code'),
+  inputWeightKg: decimal('input_weight_kg', { precision: 12, scale: 3 }).notNull(),
+  juiceVolumeL: decimal('juice_volume_l', { precision: 12, scale: 3 }).notNull(),
+  fractionOfBatch: decimal('fraction_of_batch', { precision: 8, scale: 6 }).notNull(),
+  materialCost: decimal('material_cost', { precision: 12, scale: 2 }).notNull(),
+  avgBrix: decimal('avg_brix', { precision: 5, scale: 2 }),
+  estSugarKg: decimal('est_sugar_kg', { precision: 12, scale: 3 }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at')
-})
+}, (table) => ({
+  batchCompositionUniqueIdx: uniqueIndex('batch_compositions_batch_purchase_item_unique_idx').on(table.batchId, table.purchaseItemId),
+  batchIdx: index('batch_compositions_batch_idx').on(table.batchId),
+  purchaseItemIdx: index('batch_compositions_purchase_item_idx').on(table.purchaseItemId),
+  // CHECK constraints for data integrity
+  inputWeightKgPositive: sql`CHECK (input_weight_kg >= 0)`,
+  juiceVolumeLPositive: sql`CHECK (juice_volume_l >= 0)`,
+  fractionOfBatchValid: sql`CHECK (fraction_of_batch >= 0 AND fraction_of_batch <= 1)`,
+  materialCostPositive: sql`CHECK (material_cost >= 0)`
+}))
 
 export const batchMeasurements = pgTable('batch_measurements', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -405,12 +432,14 @@ export const auditLog = pgTable('audit_log', {
 // Relations
 export const vendorsRelations = relations(vendors, ({ many }) => ({
   purchases: many(purchases),
-  vendorVarieties: many(vendorVarieties)
+  vendorVarieties: many(vendorVarieties),
+  batchCompositions: many(batchCompositions)
 }))
 
 export const baseFruitVarietiesRelations = relations(baseFruitVarieties, ({ many }) => ({
   purchaseItems: many(purchaseItems),
   vendorVarieties: many(vendorVarieties),
+  batchCompositions: many(batchCompositions),
   applePressRunLoads: many(applePressRunLoads)
 }))
 
@@ -442,11 +471,22 @@ export const purchaseItemsRelations = relations(purchaseItems, ({ one, many }) =
     fields: [purchaseItems.fruitVarietyId],
     references: [baseFruitVarieties.id]
   }),
-  pressItems: many(pressItems)
+  pressItems: many(pressItems),
+  batchCompositions: many(batchCompositions)
 }))
 
 export const pressRunsRelations = relations(pressRuns, ({ many }) => ({
-  items: many(pressItems)
+  items: many(pressItems),
+  juiceLots: many(juiceLots),
+  batchesFromOrigin: many(batches, { relationName: 'originBatches' })
+}))
+
+export const juiceLotsRelations = relations(juiceLots, ({ one, many }) => ({
+  pressRun: one(pressRuns, {
+    fields: [juiceLots.pressRunId],
+    references: [pressRuns.id]
+  }),
+  batches: many(batches)
 }))
 
 export const pressItemsRelations = relations(pressItems, ({ one, many }) => ({
@@ -458,7 +498,7 @@ export const pressItemsRelations = relations(pressItems, ({ one, many }) => ({
     fields: [pressItems.purchaseItemId],
     references: [purchaseItems.id]
   }),
-  batchIngredients: many(batchIngredients)
+  batchCompositions: many(batchCompositions)
 }))
 
 export const vesselsRelations = relations(vessels, ({ many }) => ({
@@ -472,21 +512,37 @@ export const batchesRelations = relations(batches, ({ one, many }) => ({
     fields: [batches.vesselId],
     references: [vessels.id]
   }),
-  ingredients: many(batchIngredients),
+  juiceLot: one(juiceLots, {
+    fields: [batches.juiceLotId],
+    references: [juiceLots.id]
+  }),
+  originPressRun: one(pressRuns, {
+    fields: [batches.originPressRunId],
+    references: [pressRuns.id]
+  }),
+  compositions: many(batchCompositions),
   measurements: many(batchMeasurements),
   packages: many(packages),
   costs: many(batchCosts),
   cogsItems: many(cogsItems)
 }))
 
-export const batchIngredientsRelations = relations(batchIngredients, ({ one }) => ({
+export const batchCompositionsRelations = relations(batchCompositions, ({ one }) => ({
   batch: one(batches, {
-    fields: [batchIngredients.batchId],
+    fields: [batchCompositions.batchId],
     references: [batches.id]
   }),
-  pressItem: one(pressItems, {
-    fields: [batchIngredients.pressItemId],
-    references: [pressItems.id]
+  purchaseItem: one(purchaseItems, {
+    fields: [batchCompositions.purchaseItemId],
+    references: [purchaseItems.id]
+  }),
+  vendor: one(vendors, {
+    fields: [batchCompositions.vendorId],
+    references: [vendors.id]
+  }),
+  variety: one(baseFruitVarieties, {
+    fields: [batchCompositions.varietyId],
+    references: [baseFruitVarieties.id]
   })
 }))
 
