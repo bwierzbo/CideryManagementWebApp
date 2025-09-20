@@ -6,10 +6,10 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { SortableHeader } from '@/components/ui/sortable-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,15 +17,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import {
   MapPin,
   Calendar,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
   Package,
   AlertTriangle,
   ExternalLink
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
+import { useTableSorting } from '@/hooks/useTableSorting'
 import { MaterialTypeIndicator } from './MaterialTypeIndicator'
 import { InventorySearch } from './InventorySearch'
 import { InventoryFilters } from './InventoryFilters'
@@ -52,7 +50,6 @@ interface InventoryItem {
 
 // Table column configuration
 type SortField = 'materialType' | 'location' | 'currentBottleCount' | 'reservedBottleCount' | 'createdAt' | 'updatedAt'
-type SortDirection = 'asc' | 'desc' | null
 
 interface InventoryTableProps {
   showSearch?: boolean
@@ -78,9 +75,17 @@ export function InventoryTable({
     isActive: true
   })
 
-  // Sorting state
-  const [sortField, setSortField] = useState<SortField | null>(null)
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+  // Sorting state using the reusable hook
+  const {
+    sortState,
+    handleSort,
+    getSortDirection,
+    getSortIcon,
+    sortData
+  } = useTableSorting<SortField>({
+    multiColumn: false,
+    defaultSort: undefined
+  })
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0)
@@ -135,28 +140,28 @@ export function InventoryTable({
   const totalCount = useSearch ? searchData?.count || 0 : listData?.pagination?.total || 0
   const hasMore = useSearch ? false : listData?.pagination?.hasMore || false
 
-  // Sort items locally
+  // Sort items using the hook
   const sortedItems = useMemo(() => {
-    if (!sortField || !sortDirection) return items
-
-    return [...items].sort((a, b) => {
-      let aValue: any = a[sortField]
-      let bValue: any = b[sortField]
-
-      // Handle different data types
-      if (sortField === 'createdAt' || sortField === 'updatedAt') {
-        aValue = new Date(aValue).getTime()
-        bValue = new Date(bValue).getTime()
-      } else if (typeof aValue === 'string') {
-        aValue = aValue.toLowerCase()
-        bValue = bValue.toLowerCase()
+    return sortData(items, (item, field) => {
+      // Custom sort value extraction for different field types
+      switch (field) {
+        case 'materialType':
+          return item.materialType
+        case 'location':
+          return item.location || ''
+        case 'currentBottleCount':
+          return item.currentBottleCount
+        case 'reservedBottleCount':
+          return item.reservedBottleCount
+        case 'createdAt':
+          return new Date(item.createdAt)
+        case 'updatedAt':
+          return new Date(item.updatedAt)
+        default:
+          return (item as any)[field]
       }
-
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1
-      return 0
     })
-  }, [items, sortField, sortDirection])
+  }, [items, sortData])
 
   // Event handlers
   const handleSearch: SearchCallback = useCallback((query: string) => {
@@ -169,22 +174,10 @@ export function InventoryTable({
     setCurrentPage(0) // Reset pagination when filtering
   }, [])
 
-  const handleSort = useCallback((field: SortField) => {
-    if (sortField === field) {
-      // Cycle through: asc -> desc -> none
-      if (sortDirection === 'asc') {
-        setSortDirection('desc')
-      } else if (sortDirection === 'desc') {
-        setSortField(null)
-        setSortDirection(null)
-      } else {
-        setSortDirection('asc')
-      }
-    } else {
-      setSortField(field)
-      setSortDirection('asc')
-    }
-  }, [sortField, sortDirection])
+  // Sort handler is provided by the hook
+  const handleColumnSort = useCallback((field: SortField) => {
+    handleSort(field)
+  }, [handleSort])
 
   const handleItemClick = useCallback((item: InventoryItem) => {
     if (onItemClick) {
@@ -239,16 +232,11 @@ export function InventoryTable({
     }
   }
 
-  // Render sort icon
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) {
-      return <ArrowUpDown className="w-4 h-4 opacity-50" />
-    }
-    if (sortDirection === 'asc') {
-      return <ArrowUp className="w-4 h-4" />
-    }
-    return <ArrowDown className="w-4 h-4" />
-  }
+  // Get sort direction for display
+  const getSortDirectionForDisplay = useCallback((field: SortField) => {
+    const direction = getSortDirection(field)
+    return direction ? direction : 'none'
+  }, [getSortDirection])
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -310,54 +298,47 @@ export function InventoryTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead
-                    className="cursor-pointer select-none hover:bg-muted/50"
-                    onClick={() => handleSort('materialType')}
+                  <SortableHeader
+                    sortDirection={getSortDirectionForDisplay('materialType')}
+                    onSort={() => handleColumnSort('materialType')}
                   >
-                    <div className="flex items-center gap-2">
-                      Type
-                      <SortIcon field="materialType" />
-                    </div>
-                  </TableHead>
-                  <TableHead>Item</TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none hover:bg-muted/50"
-                    onClick={() => handleSort('location')}
+                    Type
+                  </SortableHeader>
+                  <SortableHeader canSort={false}>
+                    Item
+                  </SortableHeader>
+                  <SortableHeader
+                    sortDirection={getSortDirectionForDisplay('location')}
+                    onSort={() => handleColumnSort('location')}
                   >
-                    <div className="flex items-center gap-2">
-                      Location
-                      <SortIcon field="location" />
-                    </div>
-                  </TableHead>
-                  <TableHead
-                    className="text-right cursor-pointer select-none hover:bg-muted/50"
-                    onClick={() => handleSort('currentBottleCount')}
+                    Location
+                  </SortableHeader>
+                  <SortableHeader
+                    align="right"
+                    sortDirection={getSortDirectionForDisplay('currentBottleCount')}
+                    onSort={() => handleColumnSort('currentBottleCount')}
                   >
-                    <div className="flex items-center justify-end gap-2">
-                      Available
-                      <SortIcon field="currentBottleCount" />
-                    </div>
-                  </TableHead>
-                  <TableHead
-                    className="text-right cursor-pointer select-none hover:bg-muted/50"
-                    onClick={() => handleSort('reservedBottleCount')}
+                    Available
+                  </SortableHeader>
+                  <SortableHeader
+                    align="right"
+                    sortDirection={getSortDirectionForDisplay('reservedBottleCount')}
+                    onSort={() => handleColumnSort('reservedBottleCount')}
                   >
-                    <div className="flex items-center justify-end gap-2">
-                      Reserved
-                      <SortIcon field="reservedBottleCount" />
-                    </div>
-                  </TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none hover:bg-muted/50"
-                    onClick={() => handleSort('updatedAt')}
+                    Reserved
+                  </SortableHeader>
+                  <SortableHeader canSort={false}>
+                    Status
+                  </SortableHeader>
+                  <SortableHeader
+                    sortDirection={getSortDirectionForDisplay('updatedAt')}
+                    onSort={() => handleColumnSort('updatedAt')}
                   >
-                    <div className="flex items-center gap-2">
-                      Last Updated
-                      <SortIcon field="updatedAt" />
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
+                    Last Updated
+                  </SortableHeader>
+                  <SortableHeader canSort={false} className="w-[50px]">
+                    {/* Actions column */}
+                  </SortableHeader>
                 </TableRow>
               </TableHeader>
               <TableBody>
