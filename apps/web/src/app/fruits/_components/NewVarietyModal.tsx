@@ -93,11 +93,11 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
     createVariety.mutate({
       name: data.name,
       fruitType: data.fruitType,
-      ciderCategory: data.ciderCategory as string | undefined,
-      tannin: data.tannin as string | undefined,
-      acid: data.acid as string | undefined,
-      sugarBrix: data.sugarBrix as string | undefined,
-      harvestWindow: data.harvestWindow as string | undefined,
+      ciderCategory: data.ciderCategory as "sweet" | "bittersweet" | "sharp" | "bittersharp" | undefined,
+      tannin: data.tannin as "high" | "medium" | "low" | "none" | "unknown" | undefined,
+      acid: data.acid as "high" | "medium" | "low" | "none" | "unknown" | undefined,
+      sugarBrix: data.sugarBrix as "high" | "medium" | "low" | "none" | "unknown" | undefined,
+      harvestWindow: data.harvestWindow,
       varietyNotes: data.varietyNotes || undefined,
     })
   }
