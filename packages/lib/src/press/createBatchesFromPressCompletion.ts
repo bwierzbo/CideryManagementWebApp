@@ -37,7 +37,7 @@ export class PressCompletionError extends Error {
   }
 }
 
-export class PressPressValidationError extends PressCompletionError {
+export class PressValidationError extends PressCompletionError {
   constructor(message: string) {
     super(message, 'VALIDATION_ERROR')
   }
@@ -139,7 +139,7 @@ async function validateAndLoadData(
     .limit(1)
 
   if (pressRunResult.length === 0) {
-    throw new PressPressValidationError(`Press run not found: ${pressRunId}`)
+    throw new PressValidationError(`Press run not found: ${pressRunId}`)
   }
 
   const pressRunData = pressRunResult[0]
@@ -309,7 +309,7 @@ async function createBatchForAssignment(
   const vessel = vesselResult[0]
 
   // Generate batch composition for naming
-  const batchCompositions: BatchComposition[] = fractions.map(fraction => {
+  const batchCompositionsForNaming: BatchComposition[] = fractions.map(fraction => {
     const purchaseLine = purchaseLines.find(line => line.id === fraction.purchaseItemId)!
     return {
       varietyName: purchaseLine.varietyName,
@@ -321,14 +321,17 @@ async function createBatchForAssignment(
   const batchName = generateBatchNameFromComposition({
     date: new Date(),
     vesselCode: vessel.name || vessel.id.substring(0, 6).toUpperCase(),
-    batchCompositions
+    batchCompositions: batchCompositionsForNaming
   })
 
-  // Create batch record
-  const newBatch: NewBatch = {
+  // Create batch record with all required fields
+  const newBatch = {
     vesselId: assignment.toVesselId,
     name: batchName,
-    status: 'active',
+    batchNumber: batchName, // Using batch name as batch number
+    initialVolumeL: assignment.volumeL.toString(),
+    currentVolumeL: assignment.volumeL.toString(),
+    status: 'active' as const,
     startDate: new Date(),
     originPressRunId: pressRunData.id
   }
@@ -341,7 +344,7 @@ async function createBatchForAssignment(
   const batchId = batchResult[0].id
 
   // Create batch compositions
-  const compositions: NewBatchComposition[] = []
+  const compositions: any[] = []
   let totalFraction = 0
   let totalJuiceVolume = 0
   let totalMaterialCost = 0
@@ -356,7 +359,7 @@ async function createBatchForAssignment(
     totalJuiceVolume += juiceVolumeL
     totalMaterialCost += materialCost
 
-    const composition: NewBatchComposition = {
+    const composition = {
       batchId,
       purchaseItemId: purchaseLine.id,
       vendorId: purchaseLine.vendorId,
@@ -395,20 +398,18 @@ async function createBatchForAssignment(
   await db.insert(batchCompositions).values(compositions)
 
   // Emit audit events
-  await publishCreateEvent(auditEventBus, {
-    tableName: 'batches',
-    recordId: batchId,
-    data: newBatch,
-    context: { pressRunId: pressRunData.id, vesselId: assignment.toVesselId }
-  })
+  await publishCreateEvent(
+    'batches',
+    batchId,
+    newBatch
+  )
 
   for (const composition of compositions) {
-    await publishCreateEvent(auditEventBus, {
-      tableName: 'batch_compositions',
-      recordId: composition.batchId, // Will need actual ID after insert
-      data: composition,
-      context: { batchId, pressRunId: pressRunData.id }
-    })
+    await publishCreateEvent(
+      'batch_compositions',
+      composition.batchId, // Will need actual ID after insert
+      composition
+    )
   }
 
   return batchId

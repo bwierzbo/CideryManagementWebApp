@@ -598,8 +598,9 @@ export const pressRunRouter = router({
               isNull(applePressRunLoads.deletedAt)
             ))
 
-          // Calculate allocation fractions based on weight
+          // Calculate allocation fractions based on weight and total juice volume
           const totalWeight = loads.reduce((sum, load) => sum + parseFloat(load.appleWeightKg || '0'), 0)
+          const totalJuiceVolumeL = loads.reduce((sum, load) => sum + parseFloat(load.juiceVolumeL || '0'), 0)
 
           // Generate batch composition for naming
           const batchCompositionData: BatchComposition[] = loads.map(load => {
@@ -617,12 +618,15 @@ export const pressRunRouter = router({
             batchCompositions: batchCompositionData
           })
 
-          // Create batch record
+          // Create batch record with all required fields
           const newBatch = await tx
             .insert(batches)
             .values({
               vesselId: input.vesselId,
               name: batchName,
+              batchNumber: batchName, // Using batch name as batch number for now
+              initialVolumeL: totalJuiceVolumeL.toString(),
+              currentVolumeL: totalJuiceVolumeL.toString(),
               status: 'active',
               startDate: new Date(),
               originPressRunId: input.pressRunId

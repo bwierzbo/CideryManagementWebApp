@@ -277,17 +277,15 @@ export function validateVesselState(
 export const vesselStateValidationSchema = z.object({
   id: z.string().uuid('Invalid vessel ID format'),
   name: z.string().min(1, 'Vessel name is required'),
-  status: z.enum(['available', 'in_use', 'cleaning', 'maintenance'], {
-    errorMap: () => ({ message: 'Status must be one of: available, in_use, cleaning, maintenance' })
-  }),
+  status: z.enum(['available', 'in_use', 'cleaning', 'maintenance'] as const)
+    .describe('Status must be one of: available, in_use, cleaning, maintenance'),
   currentVolumeL: z.number()
     .nonnegative('Current volume cannot be negative')
     .optional(),
   capacityL: z.number()
     .positive('Capacity must be greater than 0L'),
-  type: z.enum(['fermenter', 'conditioning_tank', 'bright_tank', 'storage'], {
-    errorMap: () => ({ message: 'Type must be one of: fermenter, conditioning_tank, bright_tank, storage' })
-  })
+  type: z.enum(['fermenter', 'conditioning_tank', 'bright_tank', 'storage'] as const)
+    .describe('Type must be one of: fermenter, conditioning_tank, bright_tank, storage')
 }).refine((data) => {
   // Ensure current volume doesn't exceed capacity
   if (data.currentVolumeL && data.currentVolumeL > data.capacityL) {

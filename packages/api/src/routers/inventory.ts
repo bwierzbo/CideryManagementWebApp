@@ -156,7 +156,11 @@ export const inventoryRouter = router({
           ...additiveItems,
           ...juiceItems,
           ...packagingItems
-        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        ].sort((a, b) => {
+          const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+          const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+          return dateB - dateA
+        })
 
         // Apply pagination to combined results
         const paginatedItems = allItems.slice(offset, offset + limit)
@@ -185,6 +189,7 @@ export const inventoryRouter = router({
         }
       }
 
+      // Unreachable code below - keeping commented for future reference
       // const { materialType, location, isActive, limit, offset } = input
 
       // let query = db
@@ -202,44 +207,44 @@ export const inventoryRouter = router({
       //   })
       //   .from(inventory)
 
-      // Apply filters
-      const conditions = []
+      // // Apply filters
+      // const conditions = []
 
-      if (materialType) {
-        conditions.push(eq(inventory.materialType, materialType))
-      }
+      // if (materialType) {
+      //   conditions.push(eq(inventory.materialType, materialType))
+      // }
 
-      if (location) {
-        conditions.push(like(inventory.location, `%${location}%`))
-      }
+      // if (location) {
+      //   conditions.push(like(inventory.location, `%${location}%`))
+      // }
 
-      if (isActive) {
-        conditions.push(isNull(inventory.deletedAt))
-      }
+      // if (isActive) {
+      //   conditions.push(isNull(inventory.deletedAt))
+      // }
 
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions))
-      }
+      // if (conditions.length > 0) {
+      //   query = query.where(and(...conditions))
+      // }
 
-      const inventoryItems = await query
-        .orderBy(desc(inventory.createdAt))
-        .limit(limit)
-        .offset(offset)
+      // const inventoryItems = await query
+      //   .orderBy(desc(inventory.createdAt))
+      //   .limit(limit)
+      //   .offset(offset)
 
-      const totalCount = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(inventory)
-        .where(conditions.length > 0 ? and(...conditions) : undefined)
+      // const totalCount = await db
+      //   .select({ count: sql<number>`count(*)` })
+      //   .from(inventory)
+      //   .where(conditions.length > 0 ? and(...conditions) : undefined)
 
-      return {
-        items: inventoryItems,
-        pagination: {
-          total: totalCount[0]?.count || 0,
-          limit,
-          offset,
-          hasMore: (totalCount[0]?.count || 0) > offset + limit
-        }
-      }
+      // return {
+      //   items: inventoryItems,
+      //   pagination: {
+      //     total: totalCount[0]?.count || 0,
+      //     limit,
+      //     offset,
+      //     hasMore: (totalCount[0]?.count || 0) > offset + limit
+      //   }
+      // }
     }),
 
   // Get inventory item by ID - accessible by both admin and operator

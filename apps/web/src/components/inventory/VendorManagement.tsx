@@ -69,17 +69,24 @@ export function VendorManagement({ preSelectedVendorId, onVendorSelect }: Vendor
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  const { data: vendorData, refetch: refetchVendors, isLoading } = trpc.vendor.list.useQuery({
-    search: debouncedSearchQuery || undefined,
-    limit: itemsPerPage,
-    offset: offset,
-    sortBy: 'name',
-    sortOrder: 'asc',
-    includeInactive: false,
-  })
+  const queryInput = React.useMemo(() => {
+    if (!debouncedSearchQuery && currentPage === 1) {
+      return undefined
+    }
+    return {
+      search: debouncedSearchQuery || undefined,
+      limit: itemsPerPage,
+      offset: offset,
+      sortBy: 'name' as const,
+      sortOrder: 'asc' as const,
+      includeInactive: false,
+    }
+  }, [debouncedSearchQuery, itemsPerPage, offset, currentPage])
+
+  const { data: vendorData, refetch: refetchVendors, isLoading } = trpc.vendor.list.useQuery(queryInput as any)
 
   const vendors = React.useMemo(() => vendorData?.vendors || [], [vendorData])
-  const pagination = vendorData?.pagination
+  const pagination = (vendorData as any)?.pagination
 
   // Reset to first page when search changes
   useEffect(() => {

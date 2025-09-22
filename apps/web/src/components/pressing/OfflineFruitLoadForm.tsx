@@ -192,7 +192,7 @@ export function OfflineFruitLoadForm({
   const handleSubmit = useCallback(async (data: FruitLoadFormData) => {
     if (!selectedPurchaseItem || !appleVarieties) return
 
-    const variety = appleVarieties.find(v => v.id === data.fruitVarietyId)
+    const variety = appleVarieties?.appleVarieties?.find(v => v.id === data.fruitVarietyId)
     const weightKg = data.weightUnit === 'kg' ? data.weight : convertWeight(data.weight, 'lbs', 'kg')
 
     // Convert weight unit to match database enum
@@ -267,7 +267,7 @@ export function OfflineFruitLoadForm({
 
     // Set suggested brix from apple variety
     if (appleVarieties) {
-      const variety = appleVarieties.baseFruitVarieties.find(v => v.id === purchaseLineItem.fruitVarietyId)
+      const variety = appleVarieties?.appleVarieties?.find(v => v.id === purchaseLineItem.fruitVarietyId)
       if (variety?.sugarBrix) {
         // Set a default brix value based on the sugar level
         const brixMap: Record<string, number> = {
