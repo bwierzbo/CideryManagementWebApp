@@ -13,6 +13,9 @@ import { JuiceTransactionForm } from "@/components/inventory/JuiceTransactionFor
 import { PackagingTransactionForm } from "@/components/inventory/PackagingTransactionForm"
 import { AppleTransactionForm } from "@/components/inventory/AppleTransactionForm"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
+import { BaseFruitTable } from "@/components/inventory/BaseFruitTable"
+import { VendorManagement } from "@/components/inventory/VendorManagement"
+import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable"
 import {
   Package,
   Plus,
@@ -21,7 +24,10 @@ import {
   TrendingUp,
   Beaker,
   Droplets,
-  Apple
+  Apple,
+  Building2,
+  Link,
+  ShoppingCart
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 import { handleTransactionError, showSuccess, showLoading } from "@/utils/error-handling"
@@ -34,22 +40,13 @@ export default function InventoryPage() {
   const [showJuiceForm, setShowJuiceForm] = useState(false)
   const [showPackagingForm, setShowPackagingForm] = useState(false)
   const [showAppleForm, setShowAppleForm] = useState(false)
+  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
 
-  // Get inventory data using unified inventory API
+  // Get inventory data using unified inventory API (minimal data for now)
   const { data: inventoryData, isLoading } = trpc.inventory.list.useQuery({
-    limit: 1000, // Get all for stats calculation
+    limit: 50,
     offset: 0
   })
-  const inventoryItems = inventoryData?.items || []
-
-  // Calculate inventory stats from unified inventory data
-  const totalBottles = inventoryItems.reduce((sum, item) => sum + item.currentBottleCount, 0)
-  const totalReserved = inventoryItems.reduce((sum, item) => sum + item.reservedBottleCount, 0)
-  const uniqueProducts = inventoryItems.length
-  const lowStockCount = inventoryItems.filter(item => {
-    const available = item.currentBottleCount - item.reservedBottleCount
-    return available > 0 && available < 50
-  }).length
 
   // tRPC mutations
   const createInventoryItemMutation = trpc.inventory.createInventoryItem.useMutation({
@@ -220,10 +217,10 @@ export default function InventoryPage() {
       dismissLoading()
       showSuccess(
         "Apple Purchase Recorded",
-        `Successfully added ${transaction.quantityKg} kg of fresh apples to inventory.`
+        `Successfully added ${transaction.quantityKg} kg of base fruit to inventory.`
       )
       setShowAppleForm(false)
-      setActiveTab("inventory")
+      setActiveTab("apple")
     } catch (error) {
       dismissLoading()
       handleTransactionError(error, "Apple", "Purchase")
@@ -232,7 +229,7 @@ export default function InventoryPage() {
 
   const handleAppleCancel = () => {
     setShowAppleForm(false)
-    setActiveTab("inventory")
+    setActiveTab("apple")
   }
 
   // Listen for tab change events from TransactionTypeSelector
@@ -278,58 +275,6 @@ export default function InventoryPage() {
 
             {(session?.user as any)?.role === 'admin' && (
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="flex items-center">
-                  <Download className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Export</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center"
-                  onClick={() => {
-                    setShowAppleForm(true)
-                    setActiveTab("apple")
-                  }}
-                >
-                  <Apple className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Add Apples</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center"
-                  onClick={() => {
-                    setShowAdditivesForm(true)
-                    setActiveTab("additives")
-                  }}
-                >
-                  <Beaker className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Add Additives</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center"
-                  onClick={() => {
-                    setShowJuiceForm(true)
-                    setActiveTab("juice")
-                  }}
-                >
-                  <Droplets className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Add Juice</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex items-center"
-                  onClick={() => {
-                    setShowPackagingForm(true)
-                    setActiveTab("packaging")
-                  }}
-                >
-                  <Package className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Add Packaging</span>
-                </Button>
                 <Button
                   size="sm"
                   className="flex items-center"
@@ -343,71 +288,17 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
-          <Card>
-            <CardContent className="p-4 lg:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Items</p>
-                  <p className="text-2xl lg:text-3xl font-bold text-gray-900">{totalBottles.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500">Current inventory</p>
-                </div>
-                <Package className="w-6 h-6 lg:w-8 lg:h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 lg:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Reserved</p>
-                  <p className="text-2xl lg:text-3xl font-bold text-gray-900">{totalReserved.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500">Pending orders</p>
-                </div>
-                <TrendingUp className="w-6 h-6 lg:w-8 lg:h-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 lg:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Inventory Lines</p>
-                  <p className="text-2xl lg:text-3xl font-bold text-gray-900">{uniqueProducts}</p>
-                  <p className="text-sm text-gray-500">Active products</p>
-                </div>
-                <Package className="w-6 h-6 lg:w-8 lg:h-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4 lg:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Low Stock</p>
-                  <p className="text-2xl lg:text-3xl font-bold text-gray-900">{lowStockCount}</p>
-                  <p className="text-sm text-gray-500">Items below 50 units</p>
-                </div>
-                <AlertTriangle className="w-6 h-6 lg:w-8 lg:h-8 text-amber-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         {/* Main Content with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 lg:space-y-6">
-          <TabsList className="grid w-full grid-cols-5 h-auto">
+          <TabsList className="grid w-full grid-cols-7 h-auto">
             <TabsTrigger value="inventory" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Package className="w-4 h-4" />
               <span className="text-xs lg:text-sm">Inventory</span>
             </TabsTrigger>
             <TabsTrigger value="apple" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Apple className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Apples</span>
+              <span className="text-xs lg:text-sm">Base Fruit</span>
             </TabsTrigger>
             <TabsTrigger value="additives" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Beaker className="w-4 h-4" />
@@ -420,6 +311,14 @@ export default function InventoryPage() {
             <TabsTrigger value="packaging" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Package className="w-4 h-4" />
               <span className="text-xs lg:text-sm">Packaging</span>
+            </TabsTrigger>
+            <TabsTrigger value="vendors" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
+              <Building2 className="w-4 h-4" />
+              <span className="text-xs lg:text-sm">Vendors</span>
+            </TabsTrigger>
+            <TabsTrigger value="purchase-orders" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
+              <ShoppingCart className="w-4 h-4" />
+              <span className="text-xs lg:text-sm">Purchase Orders</span>
             </TabsTrigger>
           </TabsList>
 
@@ -436,42 +335,15 @@ export default function InventoryPage() {
           <TabsContent value="apple" className="space-y-6">
             {showAppleForm ? (
               <AppleTransactionForm
-                onSubmit={handleAppleSubmit}
                 onCancel={handleAppleCancel}
-                isSubmitting={createInventoryItemMutation.isPending}
               />
             ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Apple className="w-5 h-5 text-red-600" />
-                    <span>Apple Inventory</span>
-                  </CardTitle>
-                  <CardDescription>
-                    Manage your fresh apple inventory and record new purchases
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="py-12">
-                  <div className="text-center space-y-4">
-                    <Apple className="w-16 h-16 text-gray-300 mx-auto" />
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        No apple inventory recorded yet
-                      </h3>
-                      <p className="text-gray-500 mb-6">
-                        Start by recording your first apple purchase
-                      </p>
-                      <Button
-                        onClick={() => setShowAppleForm(true)}
-                        className="bg-red-600 hover:bg-red-700"
-                      >
-                        <Apple className="w-4 h-4 mr-2" />
-                        Add Apple Purchase
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <BaseFruitTable
+                showFilters={true}
+                itemsPerPage={50}
+                onAddNew={() => setShowAppleForm(true)}
+                className=""
+              />
             )}
           </TabsContent>
 
@@ -600,6 +472,22 @@ export default function InventoryPage() {
               </Card>
             )}
           </TabsContent>
+
+          <TabsContent value="vendors" className="space-y-6">
+            <VendorManagement
+              preSelectedVendorId={selectedVendorId}
+              onVendorSelect={(vendorId) => setSelectedVendorId(vendorId)}
+            />
+          </TabsContent>
+
+          <TabsContent value="purchase-orders" className="space-y-6">
+            <PurchaseOrdersTable
+              showFilters={true}
+              itemsPerPage={50}
+              className=""
+            />
+          </TabsContent>
+
         </Tabs>
 
         {/* Transaction Type Selector Modal */}

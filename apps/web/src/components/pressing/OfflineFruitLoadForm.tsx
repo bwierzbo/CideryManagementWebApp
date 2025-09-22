@@ -192,7 +192,7 @@ export function OfflineFruitLoadForm({
   const handleSubmit = useCallback(async (data: FruitLoadFormData) => {
     if (!selectedPurchaseItem || !appleVarieties) return
 
-    const variety = appleVarieties.baseFruitVarieties.find(v => v.id === data.fruitVarietyId)
+    const variety = appleVarieties.find(v => v.id === data.fruitVarietyId)
     const weightKg = data.weightUnit === 'kg' ? data.weight : convertWeight(data.weight, 'lbs', 'kg')
 
     // Convert weight unit to match database enum

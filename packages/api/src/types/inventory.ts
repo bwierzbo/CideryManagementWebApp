@@ -10,7 +10,7 @@ const baseTransactionSchema = z.object({
   notes: z.string().optional(),
 })
 
-// Apple transaction - for fresh apple inventory tracking
+// Apple transaction - for base fruit inventory tracking
 const appleTransactionSchema = baseTransactionSchema.extend({
   materialType: z.literal('apple'),
   appleVarietyId: z.string().uuid('Invalid apple variety ID'),

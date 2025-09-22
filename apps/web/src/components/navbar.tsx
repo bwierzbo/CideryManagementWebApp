@@ -27,7 +27,7 @@ const navItems = [
     description: "Overview & Analytics"
   },
   {
-    name: "Fruits",
+    name: "Base Fruits",
     href: "/fruits",
     icon: Apple,
     description: "Variety Database"
@@ -38,11 +38,11 @@ const navItems = [
     icon: ShoppingCart,
     description: "Vendor & Orders"
   },
-  { 
-    name: "Pressing", 
-    href: "/pressing", 
+  {
+    name: "Pressing",
+    href: "/pressing",
     icon: Grape,
-    description: "Apple Processing"
+    description: "Base Fruit Processing"
   },
   { 
     name: "Cellar", 

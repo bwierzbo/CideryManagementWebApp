@@ -27,14 +27,13 @@ interface PressRunCompletionSuccessProps {
     vendorName?: string
     totalJuiceVolumeL: number
     extractionRate: number
-    vesselName?: string
-    vesselId: string
+    createdBatchIds: string[]
     totalAppleWeightKg?: number
     endTime: string
     laborHours?: number
     laborCost?: number
   }
-  onViewJuiceLot: () => void
+  onViewJuiceLot?: () => void
   onStartNewRun: () => void
   onViewPressRun: () => void
   onBackToPressingHome: () => void
@@ -65,7 +64,7 @@ export function PressRunCompletionSuccess({
             Press Run Completed Successfully!
           </CardTitle>
           <CardDescription className="text-green-700">
-            Your apples have been pressed and the juice has been assigned to a fermentation vessel
+            Your apples have been pressed and {completedPressRun.createdBatchIds.length} fermentation batch{completedPressRun.createdBatchIds.length === 1 ? '' : 'es'} {completedPressRun.createdBatchIds.length === 1 ? 'has' : 'have'} been created
           </CardDescription>
         </CardHeader>
       </Card>
@@ -112,10 +111,10 @@ export function PressRunCompletionSuccess({
             <div className="text-center p-4 bg-purple-50 rounded-lg">
               <Beaker className="w-6 h-6 text-purple-600 mx-auto mb-2" />
               <div className="text-sm font-medium text-purple-800 mb-1">
-                Assigned to Vessel
+                Batches Created
               </div>
-              <div className="text-sm text-purple-600">
-                {completedPressRun.vesselName || 'Fermentation Vessel'}
+              <div className="text-lg font-bold text-purple-800">
+                {completedPressRun.createdBatchIds.length}
               </div>
               <Badge variant="outline" className="mt-1 text-xs">
                 Ready for Fermentation
@@ -159,6 +158,31 @@ export function PressRunCompletionSuccess({
                 </span>
               </div>
             )}
+          </div>
+
+          {/* Created Batches */}
+          <Separator />
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-gray-900">Created Batches</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {completedPressRun.createdBatchIds.map((batchId, index) => (
+                <div key={batchId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <div className="text-sm font-medium">Batch {index + 1}</div>
+                    <div className="text-xs text-gray-600 font-mono">{batchId}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.location.href = `/batches/${batchId}`}
+                    className="text-xs"
+                  >
+                    <Eye className="w-3 h-3 mr-1" />
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -216,11 +240,11 @@ export function PressRunCompletionSuccess({
         {/* Primary Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Button
-            onClick={onViewJuiceLot}
+            onClick={() => window.location.href = '/batches'}
             className="h-12 bg-blue-600 hover:bg-blue-700"
           >
             <Beaker className="w-5 h-5 mr-2" />
-            View Juice Lot
+            View All Batches
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
           <Button

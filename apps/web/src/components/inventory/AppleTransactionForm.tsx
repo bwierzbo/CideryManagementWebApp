@@ -1,618 +1,674 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
+import Link from "next/link"
+import { useSession } from "next-auth/react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select"
+import { HarvestDatePicker } from "@/components/ui/harvest-date-picker"
+import {
+  Plus,
+  Trash2,
+  ShoppingCart,
+  CheckCircle,
+  XCircle,
+  X,
+  Apple,
+  ExternalLink
+} from "lucide-react"
+import { trpc } from "@/utils/trpc"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage
-} from "@/components/ui/form"
-import {
-  Apple,
-  Scale,
-  ArrowLeftRight,
-  Loader2,
-  CheckCircle2,
-  AlertCircle,
-  Search,
-  Calendar,
-  Building2,
-  MapPin,
-  Info
-} from "lucide-react"
 
-// Form validation schema based on API apple transaction schema
-const appleTransactionSchema = z.object({
-  vendorId: z.string().uuid("Please select a vendor").optional(),
-  appleVarietyId: z.string().uuid("Please select an apple variety"),
-  quantityKg: z.number().min(0.1, "Quantity must be at least 0.1 kg").max(50000, "Quantity cannot exceed 50,000 kg"),
-  qualityGrade: z.enum(['excellent', 'good', 'fair', 'poor'], {
-    message: "Please select a quality grade"
-  }).optional(),
-  harvestDate: z.string().optional(),
-  storageLocation: z.string().optional(),
-  defectPercentage: z.number().min(0, "Defect percentage must be 0 or positive").max(100, "Defect percentage cannot exceed 100%").optional(),
-  brixLevel: z.number().min(0, "Brix level must be positive").max(30, "Brix level cannot exceed 30").optional(),
-  notes: z.string().optional(),
+// Form schemas - same as original purchasing page
+const purchaseLineSchema = z.object({
+  appleVarietyId: z.string().uuid("Select an apple variety"),
+  quantity: z.number().positive("Quantity must be positive").optional(),
+  unit: z.enum(["kg", "lb", "bushel"]),
+  pricePerUnit: z.number().positive("Price must be positive").optional(),
+  harvestDate: z.date().nullable().optional(),
 })
 
-type AppleTransactionFormData = z.infer<typeof appleTransactionSchema>
+const purchaseSchema = z.object({
+  vendorId: z.string().uuid("Select a vendor"),
+  purchaseDate: z.string().min(1, "Purchase date is required"),
+  globalHarvestDate: z.date().nullable().optional(),
+  notes: z.string().optional(),
+  lines: z.array(purchaseLineSchema).min(1, "At least one apple variety is required"),
+})
 
-// Mock data - will be replaced with tRPC calls
-interface Vendor {
-  id: string
-  name: string
-  contactInfo?: string
-  location?: string
+type PurchaseForm = z.infer<typeof purchaseSchema>
+
+type NotificationType = {
+  id: number
+  type: 'success' | 'error'
+  title: string
+  message: string
 }
-
-interface AppleVariety {
-  id: string
-  name: string
-  ciderCategory: string
-  intensity: string
-  harvestWindow: string
-  description?: string
-}
-
-const qualityGradeOptions = [
-  { value: 'excellent', label: 'Excellent', description: 'Premium quality, minimal defects' },
-  { value: 'good', label: 'Good', description: 'High quality, minor defects' },
-  { value: 'fair', label: 'Fair', description: 'Acceptable quality, some defects' },
-  { value: 'poor', label: 'Poor', description: 'Lower quality, significant defects' }
-]
-
-const storageLocationOptions = [
-  { value: 'cold_storage', label: 'Cold Storage' },
-  { value: 'cellar', label: 'Cellar' },
-  { value: 'warehouse', label: 'Warehouse' },
-  { value: 'receiving_area', label: 'Receiving Area' },
-  { value: 'processing_room', label: 'Processing Room' }
-]
 
 interface AppleTransactionFormProps {
-  onSubmit: (transaction: {
-    vendorId?: string
-    appleVarietyId: string
-    quantityKg: number
-    qualityGrade?: string
-    harvestDate?: string
-    storageLocation?: string
-    defectPercentage?: number
-    brixLevel?: number
-    notes?: string
-  }) => void
+  onSubmit?: (data: any) => void
   onCancel?: () => void
-  isSubmitting?: boolean
 }
 
-export function AppleTransactionForm({
-  onSubmit,
-  onCancel,
-  isSubmitting = false
-}: AppleTransactionFormProps) {
-  const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
-  const [selectedVariety, setSelectedVariety] = useState<AppleVariety | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [varietySearchQuery, setVarietySearchQuery] = useState("")
+export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFormProps) {
+  const { data: session } = useSession()
+  const [globalHarvestDate, setGlobalHarvestDate] = useState<Date | null>(null)
+  const [purchaseDate, setPurchaseDate] = useState<string>("")
+  const [notifications, setNotifications] = useState<NotificationType[]>([])
+  const [selectedVendorId, setSelectedVendorId] = useState<string>("")
+  const [lines, setLines] = useState<Array<{
+    appleVarietyId: string
+    quantity: number | undefined
+    unit: "kg" | "lb" | "bushel"
+    pricePerUnit: number | undefined
+    harvestDate: Date | null | undefined
+    isValid?: boolean
+    validationError?: string
+  }>>([
+    { appleVarietyId: "", quantity: undefined, unit: "lb", pricePerUnit: undefined, harvestDate: undefined, isValid: true }
+  ])
 
-  // Mock vendors - will be replaced with tRPC query
-  const mockVendors: Vendor[] = [
-    {
-      id: "vendor-1",
-      name: "Mountain View Orchards",
-      contactInfo: "contact@mountainview.com",
-      location: "Washington State"
-    },
-    {
-      id: "vendor-2",
-      name: "Valley Apple Farm",
-      contactInfo: "orders@valleyapple.com",
-      location: "New York"
-    },
-    {
-      id: "vendor-3",
-      name: "Heritage Fruit Co.",
-      contactInfo: "sales@heritagefruit.com",
-      location: "Vermont"
-    }
-  ]
+  const addNotification = (type: 'success' | 'error', title: string, message: string) => {
+    const id = Date.now()
+    setNotifications(prev => [...prev, { id, type, title, message }])
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    }, 5000) // Auto-dismiss after 5 seconds
+  }
 
-  // Mock apple varieties - will be replaced with tRPC query
-  const mockVarieties: AppleVariety[] = [
-    {
-      id: "variety-1",
-      name: "Dabinett",
-      ciderCategory: "bittersweet",
-      intensity: "medium-high",
-      harvestWindow: "Mid-Late",
-      description: "Classic English cider apple"
-    },
-    {
-      id: "variety-2",
-      name: "Kingston Black",
-      ciderCategory: "bittersharp",
-      intensity: "high",
-      harvestWindow: "Late",
-      description: "Premium vintage cider apple"
-    },
-    {
-      id: "variety-3",
-      name: "Granny Smith",
-      ciderCategory: "sharp",
-      intensity: "medium",
-      harvestWindow: "Mid",
-      description: "High acid dessert apple"
-    },
-    {
-      id: "variety-4",
-      name: "Gala",
-      ciderCategory: "sweet",
-      intensity: "low",
-      harvestWindow: "Early-Mid",
-      description: "Sweet dessert apple"
-    }
-  ]
+  const removeNotification = (id: number) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
 
-  const form = useForm<AppleTransactionFormData>({
-    resolver: zodResolver(appleTransactionSchema),
+  const { data: vendorData } = trpc.vendor.list.useQuery()
+  const vendors = vendorData?.vendors || []
+
+  // Get vendor varieties when vendor is selected
+  const { data: vendorVarietiesData } = trpc.vendorVariety.listForVendor.useQuery(
+    { vendorId: selectedVendorId },
+    { enabled: !!selectedVendorId }
+  )
+  const vendorVarieties = React.useMemo(() => vendorVarietiesData?.varieties || [], [vendorVarietiesData])
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+    reset
+  } = useForm<PurchaseForm>({
+    resolver: zodResolver(purchaseSchema),
     defaultValues: {
-      quantityKg: undefined,
-      defectPercentage: 0,
-      brixLevel: undefined,
-      notes: ""
+      globalHarvestDate: null,
+      lines: lines
     }
   })
 
-  // Watch for quantity changes to show conversion information
-  const watchedQuantity = form.watch('quantityKg')
-
-  // Unit conversion helpers for display
-  const convertWeight = (weightKg: number): { pounds: number, tons: number } => {
-    return {
-      pounds: weightKg * 2.20462,
-      tons: weightKg / 1000
-    }
+  const handlePurchaseDateChange = (dateString: string) => {
+    setPurchaseDate(dateString)
+    setValue("purchaseDate", dateString)
   }
 
-  // Filter vendors based on search
-  const filteredVendors = mockVendors.filter(vendor =>
-    vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    vendor.location?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
-  // Filter varieties based on search
-  const filteredVarieties = mockVarieties.filter(variety =>
-    variety.name.toLowerCase().includes(varietySearchQuery.toLowerCase()) ||
-    variety.ciderCategory.toLowerCase().includes(varietySearchQuery.toLowerCase())
-  )
-
-  const handleSubmit = (data: AppleTransactionFormData) => {
-    onSubmit({
-      vendorId: data.vendorId || undefined,
-      appleVarietyId: data.appleVarietyId,
-      quantityKg: data.quantityKg,
-      qualityGrade: data.qualityGrade || undefined,
-      harvestDate: data.harvestDate || undefined,
-      storageLocation: data.storageLocation || undefined,
-      defectPercentage: data.defectPercentage || undefined,
-      brixLevel: data.brixLevel || undefined,
-      notes: data.notes || undefined
+  const addLine = () => {
+    // Use global harvest date for new lines if available
+    const harvestDateForNewLine = globalHarvestDate
+    setLines(prevLines => {
+      const newLines = [...prevLines, { appleVarietyId: "", quantity: undefined, unit: "lb" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: harvestDateForNewLine, isValid: true }]
+      setValue("lines", newLines)
+      return newLines
     })
   }
 
-  const handleVendorSelect = (vendorId: string) => {
-    const vendor = mockVendors.find(v => v.id === vendorId)
-    setSelectedVendor(vendor || null)
-    form.setValue('vendorId', vendorId)
+  const handleVendorChange = (newVendorId: string) => {
+    setSelectedVendorId(newVendorId)
+    setValue("vendorId", newVendorId)
+
+    // Validate existing lines against new vendor
+    if (newVendorId && lines.some(line => line.appleVarietyId)) {
+      // We'll validate when vendor varieties are loaded
+      // This will be handled by useEffect
+    }
   }
 
-  const handleVarietySelect = (varietyId: string) => {
-    const variety = mockVarieties.find(v => v.id === varietyId)
-    setSelectedVariety(variety || null)
-    form.setValue('appleVarietyId', varietyId)
+  const validateLines = React.useCallback(() => {
+    if (!selectedVendorId || vendorVarieties.length === 0) return
+
+    const validVarietyIds = new Set(vendorVarieties.map(v => v.id))
+    setLines(prevLines => {
+      const newLines = prevLines.map(line => {
+        if (!line.appleVarietyId) {
+          return { ...line, isValid: true, validationError: undefined }
+        }
+
+        const isValid = validVarietyIds.has(line.appleVarietyId)
+        const newLine = {
+          ...line,
+          isValid,
+          validationError: isValid ? undefined : "This variety is not available for the selected vendor"
+        }
+
+        // Only return new object if something actually changed
+        if (line.isValid !== newLine.isValid || line.validationError !== newLine.validationError) {
+          return newLine
+        }
+        return line
+      })
+
+      // Only update if something actually changed
+      const hasChanges = newLines.some((line, index) =>
+        line.isValid !== prevLines[index].isValid ||
+        line.validationError !== prevLines[index].validationError
+      )
+
+      return hasChanges ? newLines : prevLines
+    })
+  }, [selectedVendorId, vendorVarieties])
+
+  // Validate lines when vendor varieties change
+  React.useEffect(() => {
+    validateLines()
+  }, [validateLines])
+
+  const removeLine = (index: number) => {
+    const newLines = lines.filter((_, i) => i !== index)
+    setLines(newLines)
+    setValue("lines", newLines)
+  }
+
+  const calculateLineTotal = (quantity: number | undefined, price: number | undefined) => {
+    if (!quantity || !price) return "—"
+    return (quantity * price).toFixed(2)
+  }
+
+  const createPurchase = trpc.purchase.create.useMutation({
+    onSuccess: (result) => {
+      addNotification('success', 'Purchase Created Successfully!', `Invoice ${result.purchase.invoiceNumber} has been generated`)
+      // Reset form
+      reset()
+      setLines([{ appleVarietyId: "", quantity: undefined, unit: "lb" as "kg" | "lb" | "bushel", pricePerUnit: undefined, harvestDate: null }])
+      setPurchaseDate("")
+      setGlobalHarvestDate(null)
+      // Call parent onSubmit if provided
+      onSubmit?.(result)
+    },
+    onError: (error) => {
+      addNotification('error', 'Failed to Create Purchase', error.message)
+    }
+  })
+
+  const calculateGrandTotal = () => {
+    const total = lines.reduce((total, line) => {
+      if (!line.quantity || !line.pricePerUnit) return total
+      return total + (line.quantity * line.pricePerUnit)
+    }, 0)
+    return total > 0 ? total.toFixed(2) : "—"
+  }
+
+  const onFormSubmit = (data: PurchaseForm) => {
+    // Check for validation errors before submitting
+    const hasInvalidLines = lines.some(line => line.isValid === false)
+    if (hasInvalidLines) {
+      addNotification('error', 'Invalid Varieties', 'Please fix variety selections that are not available for the selected vendor')
+      return
+    }
+
+    try {
+      // Convert form data to API format
+      const items = data.lines
+        .filter(line => line.appleVarietyId && line.quantity) // Only include complete lines
+        .map(line => ({
+          fruitVarietyId: line.appleVarietyId,
+          quantity: line.quantity!,
+          unit: line.unit as 'kg' | 'lb' | 'L' | 'gal' | 'bushel',
+          pricePerUnit: line.pricePerUnit,
+          harvestDate: line.harvestDate || undefined,
+          notes: undefined // Frontend doesn't have notes per line
+        }))
+
+      if (items.length === 0) {
+        addNotification('error', 'Incomplete Form', 'Please add at least one apple variety with quantity')
+        return
+      }
+
+      // Submit to API
+      createPurchase.mutate({
+        vendorId: data.vendorId,
+        purchaseDate: new Date(data.purchaseDate),
+        notes: data.notes,
+        items: items
+      })
+    } catch (error) {
+      console.error('Error preparing purchase data:', error)
+      addNotification('error', 'Form Error', 'Error preparing purchase data. Please check your inputs.')
+    }
   }
 
   return (
-    <Card className="w-full max-w-4xl mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center space-x-2">
-          <Apple className="w-5 h-5 text-red-600" />
-          <span>Apple Purchase Transaction</span>
-        </CardTitle>
-        <p className="text-sm text-gray-600">
-          Record fresh apple purchases for inventory tracking
-        </p>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            {/* Vendor Selection - Optional */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium flex items-center">
-                <Building2 className="w-4 h-4 mr-2" />
-                Vendor (Optional)
-              </Label>
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <Input
-                    placeholder="Search vendors..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                {searchQuery && filteredVendors.length > 0 && (
-                  <div className="border rounded-md max-h-40 overflow-y-auto">
-                    {filteredVendors.map((vendor) => (
-                      <button
-                        key={vendor.id}
-                        type="button"
-                        onClick={() => handleVendorSelect(vendor.id)}
-                        className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 flex items-center justify-between"
-                      >
-                        <div>
-                          <p className="font-medium">{vendor.name}</p>
-                          <p className="text-sm text-gray-500">{vendor.location}</p>
-                        </div>
-                        {selectedVendor?.id === vendor.id && (
-                          <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedVendor && (
-                  <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-blue-900">{selectedVendor.name}</p>
-                        <p className="text-sm text-blue-700">{selectedVendor.location}</p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedVendor(null)
-                          form.setValue('vendorId', '')
-                          setSearchQuery("")
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Apple Variety Selection - Required */}
-            <div className="space-y-3">
-              <Label className="text-sm font-medium flex items-center">
-                <Apple className="w-4 h-4 mr-2" />
-                Apple Variety *
-              </Label>
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <Input
-                    placeholder="Search apple varieties..."
-                    value={varietySearchQuery}
-                    onChange={(e) => setVarietySearchQuery(e.target.value)}
-                    className="pl-9"
-                  />
-                </div>
-                {varietySearchQuery && filteredVarieties.length > 0 && (
-                  <div className="border rounded-md max-h-40 overflow-y-auto">
-                    {filteredVarieties.map((variety) => (
-                      <button
-                        key={variety.id}
-                        type="button"
-                        onClick={() => handleVarietySelect(variety.id)}
-                        className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 flex items-center justify-between"
-                      >
-                        <div>
-                          <p className="font-medium">{variety.name}</p>
-                          <div className="flex items-center space-x-2 mt-1">
-                            <Badge variant="outline" className="text-xs">
-                              {variety.ciderCategory}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {variety.intensity} intensity
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {variety.harvestWindow}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-gray-500 mt-1">{variety.description}</p>
-                        </div>
-                        {selectedVariety?.id === variety.id && (
-                          <CheckCircle2 className="w-4 h-4 text-green-600" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {selectedVariety && (
-                  <div className="bg-green-50 border border-green-200 rounded p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-green-900">{selectedVariety.name}</p>
-                        <div className="flex items-center space-x-2 mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {selectedVariety.ciderCategory}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {selectedVariety.intensity} intensity
-                          </Badge>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedVariety(null)
-                          form.setValue('appleVarietyId', '')
-                          setVarietySearchQuery("")
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <FormMessage />
-            </div>
-
-            {/* Quantity */}
-            <FormField
-              control={form.control}
-              name="quantityKg"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="flex items-center">
-                    <Scale className="w-4 h-4 mr-2" />
-                    Quantity (kg) *
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.1"
-                      placeholder="Enter quantity in kilograms"
-                      {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                    />
-                  </FormControl>
-                  {watchedQuantity && watchedQuantity > 0 && (
-                    <div className="flex items-center space-x-4 text-sm text-gray-600">
-                      <span>≈ {convertWeight(watchedQuantity).pounds.toFixed(1)} lbs</span>
-                      <span>≈ {convertWeight(watchedQuantity).tons.toFixed(3)} tons</span>
-                    </div>
-                  )}
-                  <FormDescription>
-                    Enter the total weight of apples being received
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Quality Grade */}
-            <FormField
-              control={form.control}
-              name="qualityGrade"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Quality Grade</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select quality grade" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {qualityGradeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          <div className="flex items-center justify-between w-full">
-                            <span className="font-medium">{option.label}</span>
-                            <span className="text-sm text-gray-500 ml-2">{option.description}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Assess overall quality based on appearance and defects
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Optional Fields Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Harvest Date */}
-              <FormField
-                control={form.control}
-                name="harvestDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      Harvest Date
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="date"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      When were these apples harvested?
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Storage Location */}
-              <FormField
-                control={form.control}
-                name="storageLocation"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center">
-                      <MapPin className="w-4 h-4 mr-2" />
-                      Storage Location
-                    </FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select storage location" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {storageLocationOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Where will these apples be stored?
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Quality Metrics Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Defect Percentage */}
-              <FormField
-                control={form.control}
-                name="defectPercentage"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      Defect Percentage
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="100"
-                        placeholder="0.0"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Percentage of apples with defects or damage
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Brix Level */}
-              <FormField
-                control={form.control}
-                name="brixLevel"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center">
-                      <Info className="w-4 h-4 mr-2" />
-                      Brix Level
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max="30"
-                        placeholder="Enter brix level"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Sugar content measurement (°Brix)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Notes */}
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notes</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Additional notes about this apple delivery..."
-                      rows={3}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Optional notes about quality, condition, or special handling requirements
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Form Actions */}
-            <div className="flex items-center justify-end space-x-4 pt-6 border-t">
-              {onCancel && (
-                <Button type="button" variant="outline" onClick={onCancel}>
-                  Cancel
-                </Button>
-              )}
-              <Button type="submit" disabled={isSubmitting} className="bg-red-600 hover:bg-red-700">
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Recording...
-                  </>
+    <>
+      {/* Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {notifications.map((notification) => (
+          <div
+            key={notification.id}
+            className={`
+              min-w-80 max-w-md p-4 rounded-lg shadow-lg border
+              ${notification.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+              }
+            `}
+          >
+            <div className="flex items-start space-x-3">
+              <div className="flex-shrink-0 mt-0.5">
+                {notification.type === 'success' ? (
+                  <CheckCircle className="h-5 w-5 text-green-600" />
                 ) : (
-                  <>
-                    <Apple className="w-4 h-4 mr-2" />
-                    Record Purchase
-                  </>
+                  <XCircle className="h-5 w-5 text-red-600" />
                 )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold">{notification.title}</p>
+                <p className="text-sm mt-1 opacity-90">{notification.message}</p>
+              </div>
+              <button
+                onClick={() => removeNotification(notification.id)}
+                className="flex-shrink-0 ml-4 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShoppingCart className="w-5 h-5 text-green-600" />
+            Record Base Fruit Purchase
+          </CardTitle>
+        <CardDescription>Record a new apple purchase from vendors</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
+          {/* Purchase Header */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <Label htmlFor="vendorId">Vendor</Label>
+              <Select onValueChange={handleVendorChange}>
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="Select vendor" />
+                </SelectTrigger>
+                <ScrollableSelectContent maxHeight="200px">
+                  {vendors.map((vendor: any) => (
+                    <SelectItem key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </SelectItem>
+                  ))}
+                </ScrollableSelectContent>
+              </Select>
+              {errors.vendorId && <p className="text-sm text-red-600 mt-1">{errors.vendorId.message}</p>}
+            </div>
+            <div>
+              <Label htmlFor="purchaseDate">Purchase Date</Label>
+              <Input
+                id="purchaseDate"
+                type="date"
+                value={purchaseDate}
+                onChange={(e) => handlePurchaseDateChange(e.target.value)}
+                className="h-12"
+              />
+              {errors.purchaseDate && <p className="text-sm text-red-600 mt-1">{errors.purchaseDate.message}</p>}
+            </div>
+            <div className="sm:col-span-2 lg:col-span-1">
+              <HarvestDatePicker
+                id="globalHarvestDate"
+                label="Harvest Date (All Varieties)"
+                placeholder="Select harvest date"
+                value={globalHarvestDate}
+                onChange={(date) => {
+                  setGlobalHarvestDate(date)
+                  setValue("globalHarvestDate", date)
+                  // Auto-populate individual harvest dates
+                  setLines(prevLines => {
+                    const newLines = prevLines.map(line => ({ ...line, harvestDate: date }))
+                    // Update form values for each line
+                    newLines.forEach((_, index) => {
+                      setValue(`lines.${index}.harvestDate`, date)
+                    })
+                    return newLines
+                  })
+                }}
+                showClearButton={true}
+                allowFutureDates={true}
+              />
+            </div>
+          </div>
+
+          {/* Purchase Lines */}
+          <div>
+            <div className="mb-4">
+              <h3 className="text-lg font-medium">Apple Varieties</h3>
+            </div>
+
+            <div className="space-y-4">
+              {lines.map((line, index) => (
+                <div key={index} className="border rounded-lg p-4">
+                  {/* Desktop Layout */}
+                  <div className="hidden lg:grid lg:grid-cols-7 gap-4">
+                    <div className="lg:col-span-2">
+                      <Label>Apple Variety</Label>
+                      <Select onValueChange={(value) => {
+                        const newLines = [...lines]
+                        newLines[index].appleVarietyId = value
+                        setLines(newLines)
+                        setValue(`lines.${index}.appleVarietyId`, value)
+                      }}>
+                        <SelectTrigger className="h-10">
+                          <SelectValue placeholder="Select variety" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {vendorVarieties.map((variety: any) => (
+                            <SelectItem key={variety.id} value={variety.id}>
+                              {variety.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {line.validationError && (
+                        <p className="text-sm text-red-600 mt-1">{line.validationError}</p>
+                      )}
+                      {selectedVendorId && vendorVarieties.length === 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Need a new variety? {(session?.user as any)?.role === 'admin' ? (
+                            <>Visit the <Link href="/fruits" className="text-blue-600 hover:underline">Fruits page</Link> to add it.</>
+                          ) : (
+                            'Ask an Admin to add it on the Fruits page.'
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <HarvestDatePicker
+                        id={`harvestDate-${index}`}
+                        label="Harvest Date"
+                        placeholder="Select date"
+                        value={line.harvestDate}
+                        onChange={(date) => {
+                          setLines(prevLines => {
+                            const newLines = [...prevLines]
+                            newLines[index].harvestDate = date
+                            setValue(`lines.${index}.harvestDate`, date)
+                            return newLines
+                          })
+                        }}
+                        showClearButton={true}
+                        allowFutureDates={true}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <Label>Quantity <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={line.quantity || ''}
+                        placeholder="Enter quantity"
+                        className="h-10"
+                        onChange={(e) => {
+                          const newLines = [...lines]
+                          newLines[index].quantity = e.target.value ? parseFloat(e.target.value) : undefined
+                          setLines(newLines)
+                          setValue(`lines.${index}.quantity`, newLines[index].quantity)
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>Unit</Label>
+                      <Select value={line.unit} onValueChange={(value: "kg" | "lb" | "bushel") => {
+                        const newLines = [...lines]
+                        newLines[index].unit = value
+                        setLines(newLines)
+                        setValue(`lines.${index}.unit`, value)
+                      }}>
+                        <SelectTrigger className="h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="lb">lb</SelectItem>
+                          <SelectItem value="kg">kg</SelectItem>
+                          <SelectItem value="bushel">bushel</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Price/Unit <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={line.pricePerUnit || ''}
+                        placeholder="Enter price"
+                        className="h-10"
+                        onChange={(e) => {
+                          const newLines = [...lines]
+                          newLines[index].pricePerUnit = e.target.value ? parseFloat(e.target.value) : undefined
+                          setLines(newLines)
+                          setValue(`lines.${index}.pricePerUnit`, newLines[index].pricePerUnit)
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <div className="w-full">
+                        <Label>Total</Label>
+                        <div className="text-lg font-semibold text-green-600">
+                          ${calculateLineTotal(line.quantity, line.pricePerUnit)}
+                        </div>
+                      </div>
+                      {lines.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeLine(index)}
+                          className="ml-2"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mobile/Tablet Layout */}
+                  <div className="lg:hidden space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-gray-900">Apple Variety #{index + 1}</h4>
+                      {lines.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => removeLine(index)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Apple Variety Selection */}
+                    <div>
+                      <Label>Apple Variety</Label>
+                      <Select onValueChange={(value) => {
+                        const newLines = [...lines]
+                        newLines[index].appleVarietyId = value
+                        setLines(newLines)
+                        setValue(`lines.${index}.appleVarietyId`, value)
+                      }}>
+                        <SelectTrigger className="h-12">
+                          <SelectValue placeholder="Select variety" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {vendorVarieties.map((variety: any) => (
+                            <SelectItem key={variety.id} value={variety.id}>
+                              {variety.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {line.validationError && (
+                        <p className="text-sm text-red-600 mt-1">{line.validationError}</p>
+                      )}
+                      {selectedVendorId && vendorVarieties.length === 0 && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Need a new variety? {(session?.user as any)?.role === 'admin' ? (
+                            <>Visit the <Link href="/fruits" className="text-blue-600 hover:underline">Fruits page</Link> to add it.</>
+                          ) : (
+                            'Ask an Admin to add it on the Fruits page.'
+                          )}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Harvest Date */}
+                    <div>
+                      <HarvestDatePicker
+                        id={`harvestDate-mobile-${index}`}
+                        label="Harvest Date"
+                        placeholder="Select date"
+                        value={line.harvestDate}
+                        onChange={(date) => {
+                          setLines(prevLines => {
+                            const newLines = [...prevLines]
+                            newLines[index].harvestDate = date
+                            setValue(`lines.${index}.harvestDate`, date)
+                            return newLines
+                          })
+                        }}
+                        showClearButton={true}
+                        allowFutureDates={true}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Quantity and Unit in a grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Quantity <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={line.quantity || ''}
+                          placeholder="0.00"
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines]
+                            newLines[index].quantity = e.target.value ? parseFloat(e.target.value) : undefined
+                            setLines(newLines)
+                            setValue(`lines.${index}.quantity`, newLines[index].quantity)
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Unit</Label>
+                        <Select value={line.unit} onValueChange={(value: "kg" | "lb" | "bushel") => {
+                          const newLines = [...lines]
+                          newLines[index].unit = value
+                          setLines(newLines)
+                          setValue(`lines.${index}.unit`, value)
+                        }}>
+                          <SelectTrigger className="h-12">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="lb">lb</SelectItem>
+                            <SelectItem value="kg">kg</SelectItem>
+                            <SelectItem value="bushel">bushel</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Price and Total */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Price/Unit <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={line.pricePerUnit || ''}
+                          placeholder="0.00"
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines]
+                            newLines[index].pricePerUnit = e.target.value ? parseFloat(e.target.value) : undefined
+                            setLines(newLines)
+                            setValue(`lines.${index}.pricePerUnit`, newLines[index].pricePerUnit)
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <Label>Total</Label>
+                        <div className="h-12 flex items-center">
+                          <div className="text-xl font-semibold text-green-600">
+                            {(line.quantity != null && line.quantity > 0) && line.pricePerUnit
+                              ? `$${(line.quantity * line.pricePerUnit).toFixed(2)}`
+                              : <span className="text-gray-400">$—</span>
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add Apple Variety Button - repositioned for mobile UX */}
+            <div className="mt-4">
+              <Button type="button" onClick={addLine} variant="outline" className="w-full md:w-auto">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Apple Variety
               </Button>
             </div>
-          </form>
-        </Form>
+
+            <div className="flex justify-end mt-4">
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Grand Total</p>
+                <p className="text-2xl font-bold text-green-600">${calculateGrandTotal()}</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="notes">Notes</Label>
+            <Input
+              id="notes"
+              {...register("notes")}
+              placeholder="Additional notes..."
+            />
+          </div>
+
+          <div className="flex justify-end space-x-2">
+            {onCancel && (
+              <Button type="button" variant="outline" onClick={onCancel}>
+                Cancel
+              </Button>
+            )}
+            <Button type="submit" disabled={createPurchase.isPending}>
+              {createPurchase.isPending ? "Recording..." : "Record Base Fruit Purchase"}
+            </Button>
+          </div>
+        </form>
       </CardContent>
     </Card>
+    </>
   )
 }

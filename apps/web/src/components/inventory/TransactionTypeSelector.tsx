@@ -27,10 +27,10 @@ interface TransactionTypeSelectorProps {
 const transactionTypes = [
   {
     id: "apples",
-    title: "Apples",
-    description: "Record apple purchases from vendors",
+    title: "Base Fruit",
+    description: "Record base fruit purchases from vendors",
     icon: Apple,
-    route: "/purchasing",
+    route: "/inventory",
     available: true,
     color: "text-green-600",
     bgColor: "bg-green-50 hover:bg-green-100",
@@ -78,7 +78,15 @@ export function TransactionTypeSelector({ open, onOpenChange }: TransactionTypeS
     if (type.available) {
       // Close modal and navigate to the route
       onOpenChange(false)
-      if (type.id === "additives") {
+      if (type.id === "apples") {
+        // For base fruit, navigate to inventory page with apple tab active
+        router.push("/inventory")
+        // Use a small delay to ensure page loads before setting tab
+        setTimeout(() => {
+          const event = new CustomEvent('setInventoryTab', { detail: 'apple' })
+          window.dispatchEvent(event)
+        }, 100)
+      } else if (type.id === "additives") {
         // For additives, navigate to inventory page with additives tab active
         router.push("/inventory")
         // Use a small delay to ensure page loads before setting tab

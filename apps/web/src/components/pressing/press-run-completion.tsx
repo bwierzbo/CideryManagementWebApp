@@ -31,6 +31,7 @@ export function PressRunCompletion({
   const [currentStep, setCurrentStep] = useState<CompletionStep>('loading')
   const [completionResult, setCompletionResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
+  const formDataRef = React.useRef<any>(null)
   const { toast } = useToast()
   const utils = trpc.useUtils()
 
@@ -54,28 +55,31 @@ export function PressRunCompletion({
   }, [pressRunData, pressRunLoading, pressRunError])
 
   // Completion mutation
-  const completePressRunMutation = trpc.pressRun.finish.useMutation({
+  const completePressRunMutation = trpc.pressRun.complete.useMutation({
     onSuccess: (result) => {
+      const originalFormData = formDataRef.current
       setCompletionResult({
-        id: result.pressRun.id,
+        id: result.pressRunId,
         vendorName: pressRunData?.pressRun?.vendorName,
-        totalJuiceVolumeL: parseFloat(result.pressRun.totalJuiceVolumeL || '0'),
-        extractionRate: result.extractionRate / 100, // Convert percentage to decimal
-        vesselName: pressRunData?.pressRun?.vesselName,
-        vesselId: result.pressRun.vesselId || '',
+        totalJuiceVolumeL: originalFormData?.totalJuiceVolumeL || 0,
+        extractionRate: pressRunData?.pressRun?.totalAppleWeightKg
+          ? ((originalFormData?.totalJuiceVolumeL || 0) / parseFloat(pressRunData.pressRun.totalAppleWeightKg)) * 100
+          : 0,
+        createdBatchIds: result.createdBatchIds,
         totalAppleWeightKg: parseFloat(pressRunData?.pressRun?.totalAppleWeightKg || '0'),
-        endTime: result.pressRun.endTime || new Date().toISOString(),
-        laborHours: parseFloat(result.pressRun.laborHours || '0'),
+        endTime: new Date().toISOString(),
+        laborHours: originalFormData?.laborHours || 0,
       })
       setCurrentStep('success')
       toast({
         title: "Success",
-        description: result.message || 'Press run completed successfully!',
+        description: result.message || `Press run completed successfully! Created ${result.createdBatchIds.length} batch(es).`,
       })
 
-      // Invalidate vessel queries to update vessel map
+      // Invalidate vessel and batch queries to update UI
       utils.vessel.list.invalidate()
       utils.vessel.liquidMap.invalidate()
+      utils.pressRun.list.invalidate()
 
       // Call onComplete callback if provided
       onComplete?.()
@@ -93,7 +97,18 @@ export function PressRunCompletion({
   const handleFormSubmission = async (formData: any) => {
     try {
       setError(null)
-      await completePressRunMutation.mutateAsync(formData)
+
+      // Store complete form data for success handler
+      formDataRef.current = formData
+
+      // Extract only the fields needed for the backend API
+      const apiPayload = {
+        pressRunId: formData.pressRunId,
+        assignments: formData.assignments,
+        totalJuiceVolumeL: formData.totalJuiceVolumeL,
+      }
+
+      await completePressRunMutation.mutateAsync(apiPayload)
     } catch (err) {
       // Error is handled by mutation onError
     }
@@ -231,7 +246,7 @@ export function PressRunCompletion({
                 <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
                 <h3 className="font-medium mb-2">Completing Press Run</h3>
                 <p className="text-sm text-gray-600">
-                  Assigning juice to vessel and updating records...
+                  Creating batches and assigning to vessels...
                 </p>
               </div>
             </div>

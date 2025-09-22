@@ -79,9 +79,13 @@ const HarvestDatePicker = React.forwardRef<HTMLInputElement, HarvestDatePickerPr
       }
 
       // Check if future dates are allowed
-      if (!allowFutureDates && selectedDate > new Date()) {
-        onChange?.(null)
-        return
+      if (!allowFutureDates) {
+        const todayAtMidnight = new Date()
+        todayAtMidnight.setHours(23, 59, 59, 999) // End of today
+        if (selectedDate > todayAtMidnight) {
+          onChange?.(null)
+          return
+        }
       }
 
       onChange?.(selectedDate)
@@ -100,8 +104,10 @@ const HarvestDatePicker = React.forwardRef<HTMLInputElement, HarvestDatePickerPr
       }
 
       if (dateValue && !allowFutureDates) {
-        const selectedDate = new Date(dateValue)
-        if (selectedDate > new Date()) {
+        const selectedDate = new Date(dateValue + "T12:00:00")
+        const todayAtMidnight = new Date()
+        todayAtMidnight.setHours(23, 59, 59, 999) // End of today
+        if (selectedDate > todayAtMidnight) {
           return "Harvest date cannot be in the future"
         }
       }

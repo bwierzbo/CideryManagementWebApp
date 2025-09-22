@@ -64,10 +64,10 @@ export interface MaterialTypeInfo {
 export const MATERIAL_TYPE_CONFIG: Record<MaterialType, MaterialTypeInfo> = {
   apple: {
     value: 'apple',
-    label: 'Fresh Fruit',
+    label: 'Base Fruit',
     icon: '🍎',
     color: 'bg-red-100 text-red-800 border-red-200',
-    description: 'Fresh apple varieties for pressing'
+    description: 'Base fruit varieties for pressing'
   },
   additive: {
     value: 'additive',

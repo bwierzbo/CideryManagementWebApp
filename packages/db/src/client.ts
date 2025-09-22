@@ -12,10 +12,26 @@ const isProduction = connectionString.includes('neon.tech') || connectionString.
 // Create connection pool
 const pool = new Pool({
   connectionString,
-  max: 20,
+  max: 25,                    // Increased pool size for better concurrency
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 8000, // Increased from 2s to 8s for cloud databases
+  query_timeout: 15000,       // 15s query timeout
+  keepAlive: true,            // Enable TCP keepalive
+  keepAliveInitialDelayMillis: 10000,
   ssl: isProduction ? { rejectUnauthorized: false } : false,
+})
+
+// Add connection pool monitoring
+pool.on('connect', () => {
+  console.log('✅ New database connection established')
+})
+
+pool.on('error', (err) => {
+  console.error('❌ Database pool error:', err)
+})
+
+pool.on('remove', () => {
+  console.log('🔄 Connection removed from pool')
 })
 
 // Create Drizzle client

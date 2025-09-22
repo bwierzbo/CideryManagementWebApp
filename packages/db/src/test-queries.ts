@@ -73,8 +73,6 @@ async function testQueries() {
         status: batches.status,
         initialVolume: batches.initialVolumeL,
         currentVolume: batches.currentVolumeL,
-        targetAbv: batches.targetAbv,
-        actualAbv: batches.actualAbv,
         startDate: batches.startDate
       })
       .from(batches)
@@ -83,7 +81,7 @@ async function testQueries() {
 
     console.log(`   Active batches (${activeBatches.length}):`)
     activeBatches.forEach(b => {
-      console.log(`   - ${b.batchNumber}: ${b.currentVolume}L (${b.actualAbv || 'TBD'}% ABV)`)
+      console.log(`   - ${b.batchNumber}: ${b.currentVolume}L`)
     })
 
     // Test 5: Inventory availability

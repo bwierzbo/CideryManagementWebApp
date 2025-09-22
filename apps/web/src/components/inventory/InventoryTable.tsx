@@ -15,7 +15,6 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  MapPin,
   Calendar,
   Package,
   AlertTriangle,
@@ -41,7 +40,7 @@ interface InventoryItem {
   packageId?: string | null
   currentBottleCount: number
   reservedBottleCount: number
-  materialType: MaterialType
+  materialType?: MaterialType // TODO: Make required after database migration
   metadata?: unknown
   location?: string | null
   notes?: string | null
@@ -50,7 +49,7 @@ interface InventoryItem {
 }
 
 // Table column configuration
-type SortField = 'materialType' | 'location' | 'currentBottleCount' | 'reservedBottleCount' | 'createdAt' | 'updatedAt'
+type SortField = 'materialType' | 'currentBottleCount' | 'createdAt' | 'updatedAt'
 
 interface InventoryTableProps {
   showSearch?: boolean
@@ -136,23 +135,19 @@ export function InventoryTable({
   // Derived state
   const isLoading = useSearch ? isSearchLoading : isListLoading
   const error = useSearch ? searchError : listError
-  const items = useSearch ? searchData?.items || [] : listData?.items || []
+  const items = useMemo(() => useSearch ? searchData?.items || [] : listData?.items || [], [useSearch, searchData?.items, listData?.items])
   const totalCount = useSearch ? searchData?.count || 0 : listData?.pagination?.total || 0
   const hasMore = useSearch ? false : listData?.pagination?.hasMore || false
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
-    return sortData(items, (item, field) => {
+    return sortData(items, (item: any, field) => {
       // Custom sort value extraction for different field types
       switch (field) {
         case 'materialType':
           return item.materialType
-        case 'location':
-          return item.location || ''
         case 'currentBottleCount':
           return item.currentBottleCount
-        case 'reservedBottleCount':
-          return item.reservedBottleCount
         case 'createdAt':
           return new Date(item.createdAt)
         case 'updatedAt':
@@ -196,19 +191,17 @@ export function InventoryTable({
     }
   }, [useSearch, refetchSearch, refetchList])
 
-  // Get status badge for item
-  const getStatusBadge = (item: InventoryItem) => {
-    const available = item.currentBottleCount - item.reservedBottleCount
+  // Get unit from metadata
+  const getUnit = (item: InventoryItem) => {
+    const metadata = (item.metadata as Record<string, any>) || {}
+    return metadata.unit || 'units'
+  }
 
-    if (available <= 0) {
-      return <Badge variant="destructive">Out of Stock</Badge>
-    } else if (available < 50) {
-      return <Badge variant="destructive">Low Stock</Badge>
-    } else if (item.reservedBottleCount > 0) {
-      return <Badge variant="secondary">Partially Reserved</Badge>
-    } else {
-      return <Badge variant="outline">Available</Badge>
-    }
+  // Get formatted quantity with unit
+  const getQuantityWithUnit = (item: InventoryItem) => {
+    const unit = getUnit(item)
+    const quantity = item.currentBottleCount
+    return `${quantity.toLocaleString()} ${unit}`
   }
 
   // Get display name for item
@@ -220,12 +213,46 @@ export function InventoryTable({
     const metadata = (item.metadata as Record<string, any>) || {}
     switch (item.materialType) {
       case 'apple':
+        // For basefruit purchase items being shown as inventory
+        if (metadata.varietyName && metadata.vendorName) {
+          return `${metadata.varietyName} from ${metadata.vendorName}`
+        }
+        if (metadata.varietyName) {
+          return `${metadata.varietyName} Apples`
+        }
         return metadata.additiveName || metadata.appleVarietyId || 'Apple Inventory'
       case 'additive':
+        // For additive purchase items
+        if (metadata.productName && metadata.brandManufacturer) {
+          return `${metadata.productName} (${metadata.brandManufacturer})`
+        }
+        if (metadata.productName) {
+          return metadata.productName
+        }
+        if (metadata.additiveType) {
+          return `${metadata.additiveType} Additive`
+        }
         return metadata.additiveName || 'Additive Inventory'
       case 'juice':
+        // For juice purchase items
+        if (metadata.varietyName && metadata.juiceType) {
+          return `${metadata.varietyName} ${metadata.juiceType} Juice`
+        }
+        if (metadata.varietyName) {
+          return `${metadata.varietyName} Juice`
+        }
+        if (metadata.juiceType) {
+          return `${metadata.juiceType} Juice`
+        }
         return metadata.vessellId || metadata.pressRunId || 'Juice Inventory'
       case 'packaging':
+        // For packaging purchase items
+        if (metadata.packageType && metadata.size) {
+          return `${metadata.packageType} (${metadata.size})`
+        }
+        if (metadata.packageType) {
+          return metadata.packageType
+        }
         return metadata.packagingName || 'Packaging Inventory'
       default:
         return 'Inventory Item'
@@ -333,30 +360,12 @@ export function InventoryTable({
                     Item
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('location')}
-                    sortIndex={getSortIndex('location')}
-                    onSort={() => handleColumnSort('location')}
-                  >
-                    Location
-                  </SortableHeader>
-                  <SortableHeader
                     align="right"
                     sortDirection={getSortDirectionForDisplay('currentBottleCount')}
                     sortIndex={getSortIndex('currentBottleCount')}
                     onSort={() => handleColumnSort('currentBottleCount')}
                   >
                     Available
-                  </SortableHeader>
-                  <SortableHeader
-                    align="right"
-                    sortDirection={getSortDirectionForDisplay('reservedBottleCount')}
-                    sortIndex={getSortIndex('reservedBottleCount')}
-                    onSort={() => handleColumnSort('reservedBottleCount')}
-                  >
-                    Reserved
-                  </SortableHeader>
-                  <SortableHeader canSort={false}>
-                    Status
                   </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay('updatedAt')}
@@ -377,17 +386,14 @@ export function InventoryTable({
                     <TableRow key={index}>
                       <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-4 w-24 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                     </TableRow>
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                       {searchQuery ? 'No items match your search' : 'No inventory items found'}
                     </TableCell>
                   </TableRow>
@@ -400,7 +406,7 @@ export function InventoryTable({
                     >
                       <TableCell>
                         <MaterialTypeIndicator
-                          materialType={item.materialType}
+                          materialType={item.materialType || 'apple'}
                           variant="compact"
                         />
                       </TableCell>
@@ -416,27 +422,8 @@ export function InventoryTable({
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        {item.location ? (
-                          <div className="flex items-center gap-1 text-sm">
-                            <MapPin className="w-3 h-3 text-muted-foreground" />
-                            <span className="capitalize">{item.location}</span>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
-                        )}
-                      </TableCell>
                       <TableCell className="text-right font-mono">
-                        {(item.currentBottleCount - item.reservedBottleCount).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {item.reservedBottleCount > 0
-                          ? item.reservedBottleCount.toLocaleString()
-                          : '—'
-                        }
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(item)}
+                        {getQuantityWithUnit(item)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">

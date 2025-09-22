@@ -65,9 +65,9 @@ interface Vendor {
 }
 
 const juiceTypeOptions = [
-  { value: 'apple', label: 'Apple', description: 'Fresh apple juice from various varieties' },
-  { value: 'pear', label: 'Pear', description: 'Fresh pear juice from various varieties' },
-  { value: 'grape', label: 'Grape', description: 'Fresh grape juice for blending' },
+  { value: 'apple', label: 'Apple', description: 'Base fruit apple juice from various varieties' },
+  { value: 'pear', label: 'Pear', description: 'Base fruit pear juice from various varieties' },
+  { value: 'grape', label: 'Grape', description: 'Base fruit grape juice for blending' },
   { value: 'mixed', label: 'Mixed', description: 'Blend of different fruit juices' },
   { value: 'other', label: 'Other', description: 'Other fruit juices' }
 ]

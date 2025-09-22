@@ -53,16 +53,24 @@ import {
   CheckCircle2,
   AlertTriangle,
   TrendingUp,
+  Plus,
+  Trash2,
 } from "lucide-react"
 import { gallonsToLiters, litersToGallons, formatUnitConversion } from "lib"
 import { trpc } from "@/utils/trpc"
 
+// Assignment schema for vessel assignments
+const assignmentSchema = z.object({
+  toVesselId: z.string().uuid("Please select a vessel"),
+  volumeL: z.number().min(0.1, "Volume must be at least 0.1L").max(50000, "Volume cannot exceed 50,000L"),
+})
+
 // Completion Form Schema based on task requirements
 const pressRunCompletionSchema = z.object({
   completionDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Please enter a valid date"),
-  juiceVolumeL: z.number().min(1, "Juice volume must be at least 1L").max(50000, "Juice volume cannot exceed 50,000L"),
+  totalJuiceVolumeL: z.number().min(1, "Total juice volume must be at least 1L").max(50000, "Total juice volume cannot exceed 50,000L"),
   juiceVolumeUnit: z.enum(['L', 'gal'], { message: "Unit must be L or gal" }),
-  vesselId: z.string().uuid("Please select a vessel"),
+  assignments: z.array(assignmentSchema).min(1, "At least one vessel assignment is required"),
   laborHours: z.number().min(0, "Labor hours cannot be negative").max(24, "Labor hours cannot exceed 24").optional(),
   workerCount: z.number().int().min(1, "Worker count must be at least 1").max(20, "Worker count cannot exceed 20").optional(),
   notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
@@ -110,6 +118,7 @@ export function PressRunCompletionForm({
     defaultValues: {
       completionDate: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
       juiceVolumeUnit: 'L',
+      assignments: [{ toVesselId: '', volumeL: 0 }],
       laborHours: 0,
       workerCount: 1,
     },
@@ -119,35 +128,28 @@ export function PressRunCompletionForm({
 
   const watchedValues = form.watch()
 
-  const canonicalVolumeL = watchedValues.juiceVolumeL || 0
+  const canonicalVolumeL = watchedValues.totalJuiceVolumeL || 0
+  const assignedVolumeL = watchedValues.assignments?.reduce((sum, assignment) => sum + (assignment.volumeL || 0), 0) || 0
+  const remainingVolumeL = canonicalVolumeL - assignedVolumeL
 
   // Calculate yield percentage
   const totalAppleKg = pressRun?.totalAppleWeightKg || 0
   const yieldPercentage = totalAppleKg > 0 ? (canonicalVolumeL / totalAppleKg) * 100 : 0
 
-  // Get selected vessel info
-  const selectedVessel = availableVessels.find(v => v.id === watchedValues.vesselId)
+  // Get assignments with vessel info
+  const assignmentsWithVessels = watchedValues.assignments?.map(assignment => ({
+    ...assignment,
+    vessel: availableVessels.find(v => v.id === assignment.toVesselId)
+  })) || []
 
   const onSubmit = (data: PressRunCompletionForm) => {
-    // Prepare submission data with all loads
-    const loads = pressRun?.loads?.map(load => ({
-      loadId: load.id,
-      // For now, distribute juice volume equally across loads
-      // In a real implementation, this would be entered per load
-      juiceVolumeL: canonicalVolumeL / (pressRun.loads?.length || 1),
-      originalVolume: canonicalVolumeL / (pressRun.loads?.length || 1),
-      originalVolumeUnit: 'L',
-    })) || []
-
     const submissionPayload = {
       pressRunId,
       completionDate: new Date(data.completionDate),
-      vesselId: data.vesselId,
-      totalJuiceVolumeL: canonicalVolumeL,
+      totalJuiceVolumeL: data.totalJuiceVolumeL,
+      assignments: data.assignments,
       laborHours: data.laborHours,
-      laborCostPerHour: undefined, // Could be added as a field later
       notes: data.notes,
-      loads,
     }
 
     setSubmissionData(submissionPayload)
@@ -166,7 +168,7 @@ export function PressRunCompletionForm({
 
     if (value === '') {
       // Allow clearing the field
-      form.setValue('juiceVolumeL', 0)
+      form.setValue('totalJuiceVolumeL', 0)
       return
     }
 
@@ -176,12 +178,12 @@ export function PressRunCompletionForm({
       const volumeInL = watchedValues.juiceVolumeUnit === 'gal'
         ? gallonsToLiters(numValue)
         : numValue
-      form.setValue('juiceVolumeL', volumeInL)
+      form.setValue('totalJuiceVolumeL', volumeInL)
     }
   }
 
   const handleUnitChange = (newUnit: 'L' | 'gal') => {
-    const currentVolumeL = watchedValues.juiceVolumeL || 0
+    const currentVolumeL = watchedValues.totalJuiceVolumeL || 0
     form.setValue('juiceVolumeUnit', newUnit)
 
     // Only convert if there's a positive value to convert
@@ -194,6 +196,18 @@ export function PressRunCompletionForm({
       setDisplayValue(newDisplayValue)
     } else {
       setDisplayValue('')
+    }
+  }
+
+  const addAssignment = () => {
+    const currentAssignments = watchedValues.assignments || []
+    form.setValue('assignments', [...currentAssignments, { toVesselId: '', volumeL: 0 }])
+  }
+
+  const removeAssignment = (index: number) => {
+    const currentAssignments = watchedValues.assignments || []
+    if (currentAssignments.length > 1) {
+      form.setValue('assignments', currentAssignments.filter((_, i) => i !== index))
     }
   }
 
@@ -249,7 +263,7 @@ export function PressRunCompletionForm({
                 <div className="col-span-2">
                   <FormField
                     control={form.control}
-                    name="juiceVolumeL"
+                    name="totalJuiceVolumeL"
                     render={({ field }) => (
                       <FormItem>
                         <FormControl>
@@ -257,7 +271,7 @@ export function PressRunCompletionForm({
                             type="number"
                             step="0.01"
                             min="0"
-                            placeholder="Enter volume..."
+                            placeholder="Enter total volume..."
                             value={displayValue}
                             onChange={(e) => handleVolumeChange(e.target.value)}
                             className="text-lg h-12"
@@ -320,73 +334,235 @@ export function PressRunCompletionForm({
             </CardContent>
           </Card>
 
-          {/* Vessel Selection */}
+          {/* Vessel Assignments Table */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center text-base">
-                <Beaker className="w-4 h-4 mr-2 text-purple-600" />
-                Vessel Assignment
+              <CardTitle className="flex items-center justify-between text-base">
+                <div className="flex items-center">
+                  <Beaker className="w-4 h-4 mr-2 text-purple-600" />
+                  Vessel Assignments
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addAssignment}
+                  className="h-8 px-3"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Assignment
+                </Button>
               </CardTitle>
+              <CardDescription>
+                Assign juice volumes to available vessels for fermentation
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <FormField
-                control={form.control}
-                name="vesselId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Available Vessels</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="h-12">
-                          <SelectValue placeholder="Select a vessel for fermentation..." />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {vesselsLoading ? (
-                          <SelectItem value="loading" disabled>Loading vessels...</SelectItem>
-                        ) : availableVessels.length === 0 ? (
-                          <SelectItem value="none" disabled>No available vessels</SelectItem>
-                        ) : (
-                          availableVessels.map((vessel) => (
-                            <SelectItem key={vessel.id} value={vessel.id}>
-                              <div className="flex items-center justify-between w-full">
-                                <span>{vessel.name}</span>
-                                <span className="text-xs text-gray-500 ml-2">
-                                  {vessel.capacityL}L • {vessel.type}
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))
+            <CardContent className="space-y-4">
+              {/* Assignment Rows */}
+              <div className="space-y-3">
+                {watchedValues.assignments?.map((assignment, index) => (
+                  <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-lg">
+                    {/* Vessel Selection */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Vessel</Label>
+                      <FormField
+                        control={form.control}
+                        name={`assignments.${index}.toVesselId`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="h-10">
+                                  <SelectValue placeholder="Select vessel..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {vesselsLoading ? (
+                                  <SelectItem value="loading" disabled>Loading vessels...</SelectItem>
+                                ) : availableVessels.length === 0 ? (
+                                  <SelectItem value="none" disabled>No available vessels</SelectItem>
+                                ) : (
+                                  availableVessels.map((vessel) => (
+                                    <SelectItem key={vessel.id} value={vessel.id}>
+                                      <div className="flex items-center justify-between w-full">
+                                        <span>{vessel.name}</span>
+                                        <span className="text-xs text-gray-500 ml-2">
+                                          {vessel.capacityL}L
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))
+                                )}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
                         )}
-                      </SelectContent>
-                    </Select>
-                    <FormDescription>
-                      Choose an available vessel for fermentation
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      />
+                    </div>
 
-              {/* Vessel Capacity Validation */}
-              {selectedVessel && canonicalVolumeL > 0 && (
-                <div className="mt-3">
-                  {parseFloat(selectedVessel.capacityL) < canonicalVolumeL ? (
-                    <div className="bg-red-50 p-3 rounded-md">
-                      <p className="text-sm text-red-800 flex items-center">
-                        <AlertTriangle className="w-4 h-4 mr-1" />
-                        Volume ({canonicalVolumeL.toFixed(1)}L) exceeds vessel capacity ({selectedVessel.capacityL}L)
-                      </p>
+                    {/* Volume Input */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Volume ({watchedValues.juiceVolumeUnit || 'L'})</Label>
+                      <FormField
+                        control={form.control}
+                        name={`assignments.${index}.volumeL`}
+                        render={({ field }) => {
+                          // Convert display value based on selected unit
+                          const displayValue = watchedValues.juiceVolumeUnit === 'gal' && field.value > 0
+                            ? litersToGallons(field.value)
+                            : watchedValues.juiceVolumeUnit === 'gal'
+                            ? ''
+                            : field.value || ''
+
+                          const handleChange = (value: string) => {
+                            const numValue = parseFloat(value) || 0
+                            // Convert back to liters if in gallons
+                            const litersValue = watchedValues.juiceVolumeUnit === 'gal' && numValue > 0
+                              ? gallonsToLiters(numValue)
+                              : watchedValues.juiceVolumeUnit === 'gal'
+                              ? 0
+                              : numValue
+                            field.onChange(litersValue)
+                          }
+
+                          return (
+                            <FormItem>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="Enter volume..."
+                                  value={displayValue}
+                                  onChange={(e) => handleChange(e.target.value)}
+                                  className="h-10"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )
+                        }}
+                      />
                     </div>
-                  ) : (
-                    <div className="bg-green-50 p-3 rounded-md">
-                      <p className="text-sm text-green-800 flex items-center">
-                        <CheckCircle2 className="w-4 h-4 mr-1" />
-                        {selectedVessel.name}: {canonicalVolumeL.toFixed(1)}L / {selectedVessel.capacityL}L capacity
-                        ({((canonicalVolumeL / parseFloat(selectedVessel.capacityL)) * 100).toFixed(1)}% filled)
-                      </p>
+
+                    {/* Actions */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Actions</Label>
+                      <div className="flex items-center gap-2">
+                        {assignmentsWithVessels[index]?.vessel && (
+                          <div className="text-xs text-gray-600 flex-1">
+                            {(() => {
+                              const capacityL = parseFloat(assignmentsWithVessels[index].vessel?.capacityL || '0')
+                              if (watchedValues.juiceVolumeUnit === 'gal' && capacityL > 0) {
+                                return `${litersToGallons(capacityL).toFixed(1)} gal capacity`
+                              } else if (watchedValues.juiceVolumeUnit === 'gal') {
+                                return '0.0 gal capacity'
+                              } else {
+                                return `${assignmentsWithVessels[index].vessel?.capacityL}L capacity`
+                              }
+                            })()}
+                          </div>
+                        )}
+                        {watchedValues.assignments && watchedValues.assignments.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => removeAssignment(index)}
+                            className="h-10 w-10 p-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  )}
+
+                    {/* Capacity Validation for this assignment */}
+                    {assignmentsWithVessels[index]?.vessel && assignment.volumeL > 0 && (
+                      <div className="md:col-span-3 mt-2">
+                        {(() => {
+                          const capacityL = parseFloat(assignmentsWithVessels[index].vessel!.capacityL)
+                          const volumeL = assignment.volumeL
+                          const isGallons = watchedValues.juiceVolumeUnit === 'gal'
+
+                          const displayVolume = isGallons && volumeL > 0 ? litersToGallons(volumeL) : isGallons ? 0 : volumeL
+                          const displayCapacity = isGallons && capacityL > 0 ? litersToGallons(capacityL) : isGallons ? 0 : capacityL
+                          const unit = isGallons ? 'gal' : 'L'
+
+                          if (capacityL < volumeL) {
+                            return (
+                              <div className="bg-red-50 p-2 rounded-md">
+                                <p className="text-sm text-red-800 flex items-center">
+                                  <AlertTriangle className="w-4 h-4 mr-1" />
+                                  Volume ({displayVolume.toFixed(1)}{unit}) exceeds vessel capacity ({displayCapacity.toFixed(1)}{unit})
+                                </p>
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <div className="bg-green-50 p-2 rounded-md">
+                              <p className="text-sm text-green-800 flex items-center">
+                                <CheckCircle2 className="w-4 h-4 mr-1" />
+                                {assignmentsWithVessels[index].vessel!.name}: {displayVolume.toFixed(1)}{unit} / {displayCapacity.toFixed(1)}{unit}
+                                {' '}({((volumeL / capacityL) * 100).toFixed(1)}% filled)
+                              </p>
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Volume Summary */}
+              {canonicalVolumeL > 0 && (
+                <div className="bg-blue-50 p-4 rounded-md space-y-2">
+                  {(() => {
+                    const isGallons = watchedValues.juiceVolumeUnit === 'gal'
+                    const unit = isGallons ? 'gal' : 'L'
+
+                    const displayAvailable = isGallons && canonicalVolumeL > 0 ? litersToGallons(canonicalVolumeL) : isGallons ? 0 : canonicalVolumeL
+                    const displayAssigned = isGallons && assignedVolumeL > 0 ? litersToGallons(assignedVolumeL) : isGallons ? 0 : assignedVolumeL
+                    const displayRemaining = isGallons && Math.abs(remainingVolumeL) > 0 ? litersToGallons(remainingVolumeL) : isGallons ? 0 : remainingVolumeL
+
+                    return (
+                      <>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-blue-800">Total Available:</span>
+                          <span className="font-medium text-blue-900">{displayAvailable.toFixed(1)}{unit}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-blue-800">Assigned:</span>
+                          <span className="font-medium text-blue-900">{displayAssigned.toFixed(1)}{unit}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm border-t border-blue-200 pt-2">
+                          <span className="text-blue-800">Remaining:</span>
+                          <span className={`font-medium ${remainingVolumeL < 0 ? 'text-red-600' : remainingVolumeL > 0.1 ? 'text-yellow-600' : 'text-green-600'}`}>
+                            {displayRemaining.toFixed(1)}{unit}
+                          </span>
+                        </div>
+                        {remainingVolumeL < -0.1 && (
+                          <div className="bg-red-100 p-2 rounded border border-red-200">
+                            <p className="text-sm text-red-800 flex items-center">
+                              <AlertTriangle className="w-4 h-4 mr-1" />
+                              Over-assigned by {Math.abs(displayRemaining).toFixed(1)}{unit}
+                            </p>
+                          </div>
+                        )}
+                        {remainingVolumeL > 0.1 && (
+                          <div className="bg-yellow-100 p-2 rounded border border-yellow-200">
+                            <p className="text-sm text-yellow-800 flex items-center">
+                              <AlertTriangle className="w-4 h-4 mr-1" />
+                              {displayRemaining.toFixed(1)}{unit} not yet assigned
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               )}
             </CardContent>
@@ -487,7 +663,7 @@ export function PressRunCompletionForm({
             <Button
               type="submit"
               className="flex-1 h-12 bg-green-600 hover:bg-green-700"
-              disabled={!form.formState.isValid || !watchedValues.vesselId}
+              disabled={!form.formState.isValid || Math.abs(remainingVolumeL) > 0.1}
             >
               <CheckCircle2 className="w-5 h-5 mr-2" />
               Complete Press Run
@@ -518,8 +694,17 @@ export function PressRunCompletionForm({
                 <div className="bg-gray-50 p-3 rounded-md space-y-2 text-sm">
                   <p><strong>Press Run Name:</strong> {watchedValues.completionDate}-01</p>
                   <p><strong>Completion Date:</strong> {new Date(watchedValues.completionDate).toLocaleDateString()}</p>
-                  <p><strong>Juice Volume:</strong> {canonicalVolumeL.toFixed(1)}L</p>
-                  <p><strong>Vessel:</strong> {selectedVessel?.name}</p>
+                  <p><strong>Total Juice Volume:</strong> {canonicalVolumeL.toFixed(1)}L</p>
+                  <p><strong>Vessel Assignments:</strong></p>
+                  <div className="ml-4 space-y-1">
+                    {assignmentsWithVessels.map((assignment, index) => (
+                      assignment.vessel && assignment.volumeL > 0 && (
+                        <p key={index} className="text-xs">
+                          • {assignment.vessel.name}: {assignment.volumeL.toFixed(1)}L
+                        </p>
+                      )
+                    ))}
+                  </div>
                   <p><strong>Extraction Rate:</strong> {yieldPercentage.toFixed(1)}%</p>
                   {watchedValues.laborHours && (
                     <p><strong>Labor:</strong> {watchedValues.laborHours}h with {watchedValues.workerCount} worker(s)</p>

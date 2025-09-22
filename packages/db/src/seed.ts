@@ -427,6 +427,9 @@ async function main() {
     const seedBatches = await db.insert(batches).values([
       {
         name: 'B-2024-001',
+        batchNumber: 'B-2024-001',
+        initialVolumeL: '500.0',
+        currentVolumeL: '480.0',
         status: 'active',
         vesselId: seedVessels[0].id,
         juiceLotId: seedJuiceLots[0].id,
@@ -435,12 +438,26 @@ async function main() {
       },
       {
         name: 'B-2024-002',
+        batchNumber: 'B-2024-002',
+        initialVolumeL: '350.0',
+        currentVolumeL: '0',
         status: 'packaged',
         vesselId: null,
         juiceLotId: seedJuiceLots[1].id,
         originPressRunId: seedPressRuns[1].id,
         startDate: new Date('2024-07-30'),
         endDate: new Date('2024-09-25')
+      },
+      {
+        name: 'B-2024-003',
+        batchNumber: 'B-2024-003',
+        initialVolumeL: '750.0',
+        currentVolumeL: '740.0',
+        status: 'active',
+        vesselId: seedVessels[2].id,
+        juiceLotId: seedJuiceLots[2].id,
+        originPressRunId: seedPressRuns[2].id,
+        startDate: new Date('2024-07-26')
       }
     ]).returning()
 
@@ -450,47 +467,83 @@ async function main() {
       // Batch 1 ingredients
       {
         batchId: seedBatches[0].id,
-        pressItemId: seedPressItems[0].id, // Honeycrisp juice
-        volumeUsedL: '300.0',
-        brixAtUse: '14.8',
-        notes: 'Base juice for sweetness'
+        purchaseItemId: seedPressItems[0].id, // Using pressItems ID as proxy for purchase
+        vendorId: seedVendors[0].id,
+        varietyId: seedVarieties[0].id, // Honeycrisp
+        lotCode: 'LOT-2024-HC-001',
+        inputWeightKg: '500.0',
+        juiceVolumeL: '300.0',
+        fractionOfBatch: '0.5',
+        materialCost: '450.00',
+        avgBrix: '14.8',
+        estSugarKg: '44.4'
       },
       {
         batchId: seedBatches[0].id,
-        pressItemId: seedPressItems[1].id, // Granny Smith juice
-        volumeUsedL: '300.0',
-        brixAtUse: '12.5',
-        notes: 'Added for acidity balance'
+        purchaseItemId: seedPressItems[1].id, // Using pressItems ID as proxy
+        vendorId: seedVendors[0].id,
+        varietyId: seedVarieties[1].id, // Granny Smith
+        lotCode: 'LOT-2024-GS-001',
+        inputWeightKg: '500.0',
+        juiceVolumeL: '300.0',
+        fractionOfBatch: '0.5',
+        materialCost: '425.00',
+        avgBrix: '12.5',
+        estSugarKg: '37.5'
       },
       // Batch 2 ingredients
       {
         batchId: seedBatches[1].id,
-        pressItemId: seedPressItems[2].id, // Gala juice
-        volumeUsedL: '250.0',
-        brixAtUse: '13.0',
-        notes: 'Mild base for blend'
+        purchaseItemId: seedPressItems[2].id,
+        vendorId: seedVendors[1].id,
+        varietyId: seedVarieties[2].id, // Gala
+        lotCode: 'LOT-2024-GL-001',
+        inputWeightKg: '416.7',
+        juiceVolumeL: '250.0',
+        fractionOfBatch: '0.58',
+        materialCost: '333.36',
+        avgBrix: '13.0',
+        estSugarKg: '32.5'
       },
       {
         batchId: seedBatches[1].id,
-        pressItemId: seedPressItems[3].id, // Fuji juice
-        volumeUsedL: '180.0',
-        brixAtUse: '15.5',
-        notes: 'Added sweetness and complexity'
+        purchaseItemId: seedPressItems[3].id,
+        vendorId: seedVendors[1].id,
+        varietyId: seedVarieties[3].id, // Fuji
+        lotCode: 'LOT-2024-FJ-001',
+        inputWeightKg: '300.0',
+        juiceVolumeL: '180.0',
+        fractionOfBatch: '0.42',
+        materialCost: '270.00',
+        avgBrix: '15.5',
+        estSugarKg: '27.9'
       },
       // Batch 3 ingredients
       {
         batchId: seedBatches[2].id,
-        pressItemId: seedPressItems[4].id, // Northern Spy juice
-        volumeUsedL: '455.0',
-        brixAtUse: '14.2',
-        notes: 'Traditional cider base'
+        purchaseItemId: seedPressItems[4].id,
+        vendorId: seedVendors[2].id,
+        varietyId: seedVarieties[4].id, // Northern Spy
+        lotCode: 'LOT-2024-NS-001',
+        inputWeightKg: '700.0',
+        juiceVolumeL: '455.0',
+        fractionOfBatch: '0.61',
+        materialCost: '840.00',
+        avgBrix: '14.2',
+        estSugarKg: '64.6'
       },
       {
         batchId: seedBatches[2].id,
-        pressItemId: seedPressItems[5].id, // Rhode Island Greening juice
-        volumeUsedL: '295.0',
-        brixAtUse: '12.8',
-        notes: 'Heritage variety character'
+        purchaseItemId: seedPressItems[5].id,
+        vendorId: seedVendors[2].id,
+        varietyId: seedVarieties[5].id, // Rhode Island Greening
+        lotCode: 'LOT-2024-RIG-001',
+        inputWeightKg: '500.0',
+        juiceVolumeL: '295.0',
+        fractionOfBatch: '0.39',
+        materialCost: '700.00',
+        avgBrix: '12.8',
+        estSugarKg: '37.8'
       }
     ])
 

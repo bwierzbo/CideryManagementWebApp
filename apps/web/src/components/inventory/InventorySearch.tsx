@@ -97,7 +97,7 @@ export function InventorySearch({
       const results = searchState.results.map(r => r.item)
       onResultsChange(results)
     }
-  }, [usingOptimizedSearch, searchState?.results, onResultsChange])
+  }, [usingOptimizedSearch, searchState?.results, onResultsChange, searchState])
 
   // Call onSearch when debounced query changes (legacy mode)
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { router, protectedProcedure, createRbacProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
-import { db, purchases, purchaseItems, vendors, baseFruitVarieties } from 'db'
+import { db, basefruitPurchases, basefruitPurchaseItems, vendors, baseFruitVarieties } from 'db'
 import { eq, and, gte, lte, desc } from 'drizzle-orm'
 import { PdfService } from '../services/pdf/PdfService'
 import { mapPurchaseToOrderData, mapPurchasesToDateRangeData } from '../services/pdf/reportDataMapper'
@@ -28,8 +28,8 @@ export const reportsRouter = router({
     .mutation(async ({ input }) => {
       try {
         // Fetch purchase with all related data
-        const purchase = await db.query.purchases.findFirst({
-          where: eq(purchases.id, input.purchaseId),
+        const purchase = await db.query.basefruitPurchases.findFirst({
+          where: eq(basefruitPurchases.id, input.purchaseId),
           with: {
             vendor: true,
             items: {
@@ -86,16 +86,16 @@ export const reportsRouter = router({
       try {
         // Build query conditions
         const conditions = [
-          gte(purchases.purchaseDate, input.startDate),
-          lte(purchases.purchaseDate, input.endDate)
+          gte(basefruitPurchases.purchaseDate, input.startDate),
+          lte(basefruitPurchases.purchaseDate, input.endDate)
         ]
 
         if (input.vendorId) {
-          conditions.push(eq(purchases.vendorId, input.vendorId))
+          conditions.push(eq(basefruitPurchases.vendorId, input.vendorId))
         }
 
-        // Fetch purchases in date range
-        const purchaseList = await db.query.purchases.findMany({
+        // Fetch basefruitPurchases in date range
+        const purchaseList = await db.query.basefruitPurchases.findMany({
           where: and(...conditions),
           with: {
             vendor: true,
@@ -103,10 +103,10 @@ export const reportsRouter = router({
               with: {
                 fruitVariety: true
               },
-              where: input.varietyId ? eq(purchaseItems.fruitVarietyId, input.varietyId) : undefined
+              where: input.varietyId ? eq(basefruitPurchaseItems.fruitVarietyId, input.varietyId) : undefined
             }
           },
-          orderBy: [desc(purchases.purchaseDate)]
+          orderBy: [desc(basefruitPurchases.purchaseDate)]
         })
 
         // Convert to report data format

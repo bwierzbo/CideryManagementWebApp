@@ -262,7 +262,7 @@ export function FruitsGrid({ userRole }: FruitsGridProps) {
     includeInactive: true,
   })
 
-  const allVarieties = data?.appleVarieties || []
+  const allVarieties = useMemo(() => data?.appleVarieties || [], [data])
 
   // Filter varieties by fruit type
   const varieties = useMemo(() => {
@@ -583,7 +583,7 @@ export function FruitsGrid({ userRole }: FruitsGridProps) {
         ),
       }] : []),
     ],
-    [userRole, archiveVariety, editingCell, handleCellSave]
+    [userRole, archiveVariety, editingCell, handleCellSave, savingCells]
   )
 
   const table = useReactTable({

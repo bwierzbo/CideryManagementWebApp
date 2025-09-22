@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { db, applePressRuns, applePressRunLoads, vendors, vessels, purchaseItems, purchases, baseFruitVarieties, auditLog, users } from 'db'
+import { db, applePressRuns, applePressRunLoads, vendors, vessels, basefruitPurchaseItems, basefruitPurchases, baseFruitVarieties, auditLog, users, batches, batchCompositions } from 'db'
 import { eq, and, desc, asc, sql, isNull, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent } from 'lib'
+import { generateBatchNameFromComposition, type BatchComposition } from 'lib'
 
 // Input validation schemas
 const createPressRunSchema = z.object({
@@ -46,6 +47,15 @@ const updateLoadSchema = z.object({
 
 const deleteLoadSchema = z.object({
   loadId: z.string().uuid('Invalid load ID'),
+})
+
+const completeSchema = z.object({
+  pressRunId: z.string().uuid('Invalid press run ID'),
+  assignments: z.array(z.object({
+    toVesselId: z.string().uuid('Invalid vessel ID'),
+    volumeL: z.number().positive('Volume must be positive'),
+  })).min(1, 'At least one vessel assignment is required'),
+  totalJuiceVolumeL: z.number().positive('Total juice volume must be positive').optional(),
 })
 
 const finishPressRunSchema = z.object({
@@ -162,8 +172,8 @@ export const pressRunRouter = router({
           // Verify purchase item exists and has enough quantity
           const purchaseItem = await tx
             .select()
-            .from(purchaseItems)
-            .where(and(eq(purchaseItems.id, input.purchaseItemId), isNull(purchaseItems.deletedAt)))
+            .from(basefruitPurchaseItems)
+            .where(and(eq(basefruitPurchaseItems.id, input.purchaseItemId), isNull(basefruitPurchaseItems.deletedAt)))
             .limit(1)
 
           if (!purchaseItem.length) {
@@ -318,8 +328,8 @@ export const pressRunRouter = router({
           // Verify purchase item exists and has enough quantity
           const purchaseItem = await tx
             .select()
-            .from(purchaseItems)
-            .where(and(eq(purchaseItems.id, input.purchaseItemId), isNull(purchaseItems.deletedAt)))
+            .from(basefruitPurchaseItems)
+            .where(and(eq(basefruitPurchaseItems.id, input.purchaseItemId), isNull(basefruitPurchaseItems.deletedAt)))
             .limit(1)
 
           if (!purchaseItem.length) {
@@ -563,6 +573,83 @@ export const pressRunRouter = router({
             })
             .where(eq(vessels.id, input.vesselId))
 
+          // Create a batch for this press run automatically
+          // Get all loads with vendor and variety information for batch composition
+          const loads = await tx
+            .select({
+              id: applePressRunLoads.id,
+              purchaseItemId: applePressRunLoads.purchaseItemId,
+              vendorId: basefruitPurchases.vendorId,
+              vendorName: vendors.name,
+              fruitVarietyId: applePressRunLoads.fruitVarietyId,
+              varietyName: baseFruitVarieties.name,
+              appleWeightKg: applePressRunLoads.appleWeightKg,
+              juiceVolumeL: applePressRunLoads.juiceVolumeL,
+              brixMeasured: applePressRunLoads.brixMeasured,
+              totalCost: basefruitPurchaseItems.totalCost,
+            })
+            .from(applePressRunLoads)
+            .innerJoin(basefruitPurchaseItems, eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
+            .innerJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+            .innerJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+            .innerJoin(baseFruitVarieties, eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id))
+            .where(and(
+              eq(applePressRunLoads.applePressRunId, input.pressRunId),
+              isNull(applePressRunLoads.deletedAt)
+            ))
+
+          // Calculate allocation fractions based on weight
+          const totalWeight = loads.reduce((sum, load) => sum + parseFloat(load.appleWeightKg || '0'), 0)
+
+          // Generate batch composition for naming
+          const batchCompositionData: BatchComposition[] = loads.map(load => {
+            const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
+            return {
+              varietyName: load.varietyName,
+              fractionOfBatch: fraction
+            }
+          })
+
+          // Generate batch name
+          const batchName = generateBatchNameFromComposition({
+            date: new Date(),
+            vesselCode: vessel[0].name || input.vesselId.substring(0, 6).toUpperCase(),
+            batchCompositions: batchCompositionData
+          })
+
+          // Create batch record
+          const newBatch = await tx
+            .insert(batches)
+            .values({
+              vesselId: input.vesselId,
+              name: batchName,
+              status: 'active',
+              startDate: new Date(),
+              originPressRunId: input.pressRunId
+            })
+            .returning({ id: batches.id })
+
+          const batchId = newBatch[0].id
+
+          // Create batch compositions
+          for (const load of loads) {
+            const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
+            const juiceVolumeL = input.totalJuiceVolumeL * fraction
+            const materialCost = parseFloat(load.totalCost || '0') * fraction
+
+            await tx.insert(batchCompositions).values({
+              batchId,
+              purchaseItemId: load.purchaseItemId,
+              vendorId: load.vendorId,
+              varietyId: load.fruitVarietyId,
+              inputWeightKg: load.appleWeightKg,
+              juiceVolumeL: juiceVolumeL.toString(),
+              fractionOfBatch: fraction.toString(),
+              materialCost: materialCost.toString(),
+              avgBrix: load.brixMeasured,
+            })
+          }
+
           // Publish audit events
           await publishUpdateEvent(
             'apple_press_runs',
@@ -583,8 +670,10 @@ export const pressRunRouter = router({
             success: true,
             pressRun: completedPressRun[0],
             loads: updatedLoads,
+            batchId,
+            batchName,
             extractionRate: Math.round(extractionRate * 10000) / 100, // Convert to percentage with 2 decimals
-            message: `Press run completed: ${input.totalJuiceVolumeL}L juice (${Math.round(extractionRate * 100)}% extraction) assigned to ${vessel[0].name}`,
+            message: `Press run completed: ${input.totalJuiceVolumeL}L juice (${Math.round(extractionRate * 100)}% extraction) assigned to ${vessel[0].name}. Batch ${batchName} created.`,
           }
         })
       } catch (error) {
@@ -593,6 +682,320 @@ export const pressRunRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to finish press run'
+        })
+      }
+    }),
+
+  // Complete press run and create batches - admin/operator only
+  complete: createRbacProcedure('update', 'press_run')
+    .input(completeSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // Verify press run exists
+          const pressRun = await tx
+            .select()
+            .from(applePressRuns)
+            .where(and(eq(applePressRuns.id, input.pressRunId), isNull(applePressRuns.deletedAt)))
+            .limit(1)
+
+          if (!pressRun.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Press run not found'
+            })
+          }
+
+          // Allow both in_progress and completed status
+          // If in_progress, we'll complete it first
+          if (pressRun[0].status !== 'in_progress' && pressRun[0].status !== 'completed') {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Press run must be in progress or completed'
+            })
+          }
+
+          // Check if batches already exist for this press run
+          const existingBatches = await tx
+            .select({ id: batches.id })
+            .from(batches)
+            .where(eq(batches.originPressRunId, input.pressRunId))
+            .limit(1)
+
+          if (existingBatches.length > 0) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Batches already created for this press run'
+            })
+          }
+
+          // If press run is still in_progress, complete it first
+          if (pressRun[0].status === 'in_progress') {
+            // Get total juice volume from loads
+            const loads = await tx
+              .select({ juiceVolumeL: applePressRunLoads.juiceVolumeL })
+              .from(applePressRunLoads)
+              .where(and(
+                eq(applePressRunLoads.applePressRunId, input.pressRunId),
+                isNull(applePressRunLoads.deletedAt)
+              ))
+
+            const totalJuiceVolume = input.totalJuiceVolumeL || loads.reduce((sum, load) =>
+              sum + parseFloat(load.juiceVolumeL || '0'), 0
+            )
+
+            // Generate press run name based on current date (YYYY-MM-DD-##)
+            const completionDateStr = new Date().toISOString().split('T')[0]
+
+            // Find existing press runs on the same date to determine sequence number
+            const existingRuns = await tx
+              .select({ pressRunName: applePressRuns.pressRunName })
+              .from(applePressRuns)
+              .where(and(
+                sql`${applePressRuns.pressRunName} LIKE ${completionDateStr + '-%'}`,
+                isNull(applePressRuns.deletedAt)
+              ))
+              .orderBy(desc(applePressRuns.pressRunName))
+
+            let sequenceNumber = 1
+            if (existingRuns.length > 0) {
+              const pattern = new RegExp(`^${completionDateStr}-(\\d+)$`)
+              for (const run of existingRuns) {
+                if (run.pressRunName) {
+                  const match = run.pressRunName.match(pattern)
+                  if (match) {
+                    const num = parseInt(match[1], 10)
+                    if (num >= sequenceNumber) {
+                      sequenceNumber = num + 1
+                    }
+                  }
+                }
+              }
+            }
+
+            const pressRunName = `${completionDateStr}-${String(sequenceNumber).padStart(2, '0')}`
+
+            // Complete the press run
+            await tx
+              .update(applePressRuns)
+              .set({
+                pressRunName,
+                status: 'completed',
+                endTime: new Date(),
+                totalJuiceVolumeL: totalJuiceVolume.toString(),
+                updatedAt: new Date(),
+              })
+              .where(eq(applePressRuns.id, input.pressRunId))
+          }
+
+          // Validate total assigned volume doesn't exceed available juice
+          const totalAssignedVolume = input.assignments.reduce((sum, a) => sum + a.volumeL, 0)
+
+          // Re-fetch press run to get updated juice volume if it was just completed
+          const updatedPressRun = await tx
+            .select({ totalJuiceVolumeL: applePressRuns.totalJuiceVolumeL })
+            .from(applePressRuns)
+            .where(eq(applePressRuns.id, input.pressRunId))
+            .limit(1)
+
+          const availableVolume = input.totalJuiceVolumeL || parseFloat(updatedPressRun[0].totalJuiceVolumeL || '0')
+
+          if (totalAssignedVolume > availableVolume + 0.001) { // Allow 1mL tolerance
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Total assigned volume (${totalAssignedVolume}L) exceeds available juice (${availableVolume}L)`
+            })
+          }
+
+          // Validate vessels exist and have capacity
+          for (const assignment of input.assignments) {
+            const vessel = await tx
+              .select({ id: vessels.id, capacityL: vessels.capacityL, name: vessels.name })
+              .from(vessels)
+              .where(and(eq(vessels.id, assignment.toVesselId), isNull(vessels.deletedAt)))
+              .limit(1)
+
+            if (!vessel.length) {
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: `Vessel not found: ${assignment.toVesselId}`
+              })
+            }
+
+            const vesselCapacity = parseFloat(vessel[0].capacityL)
+            if (assignment.volumeL > vesselCapacity + 0.001) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: `Assignment volume (${assignment.volumeL}L) exceeds vessel capacity (${vesselCapacity}L) for vessel ${vessel[0].name}`
+              })
+            }
+          }
+
+          // Load press run loads for composition calculation
+          const loads = await tx
+            .select({
+              id: applePressRunLoads.id,
+              purchaseItemId: applePressRunLoads.purchaseItemId,
+              fruitVarietyId: applePressRunLoads.fruitVarietyId,
+              varietyName: baseFruitVarieties.name,
+              appleWeightKg: applePressRunLoads.appleWeightKg,
+              brixMeasured: applePressRunLoads.brixMeasured,
+              vendorId: vendors.id,
+              totalCost: basefruitPurchaseItems.totalCost,
+            })
+            .from(applePressRunLoads)
+            .innerJoin(basefruitPurchaseItems, eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
+            .innerJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+            .innerJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+            .innerJoin(baseFruitVarieties, eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id))
+            .where(and(
+              eq(applePressRunLoads.applePressRunId, input.pressRunId),
+              isNull(applePressRunLoads.deletedAt)
+            ))
+
+          if (loads.length === 0) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'No loads found for press run'
+            })
+          }
+
+          // Calculate allocation fractions based on weight
+          const totalWeight = loads.reduce((sum, load) => sum + parseFloat(load.appleWeightKg || '0'), 0)
+          if (totalWeight <= 0) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Total apple weight must be greater than zero'
+            })
+          }
+
+          const createdBatchIds: string[] = []
+
+          // Create batches for each assignment
+          for (const assignment of input.assignments) {
+            // Get vessel info for batch naming
+            const vessel = await tx
+              .select({ id: vessels.id, name: vessels.name })
+              .from(vessels)
+              .where(eq(vessels.id, assignment.toVesselId))
+              .limit(1)
+
+            const vesselInfo = vessel[0]
+
+            // Generate batch composition for naming
+            const batchCompositionData: BatchComposition[] = loads.map(load => {
+              const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
+              return {
+                varietyName: load.varietyName,
+                fractionOfBatch: fraction
+              }
+            })
+
+            // Generate batch name
+            const batchName = generateBatchNameFromComposition({
+              date: new Date(),
+              vesselCode: vesselInfo.name || vesselInfo.id.substring(0, 6).toUpperCase(),
+              batchCompositions: batchCompositionData
+            })
+
+            // Create batch record
+            const newBatch = await tx
+              .insert(batches)
+              .values({
+                vesselId: assignment.toVesselId,
+                name: batchName,
+                batchNumber: batchName, // Add batch_number for database compatibility
+                initialVolumeL: assignment.volumeL.toString(),
+                currentVolumeL: assignment.volumeL.toString(),
+                status: 'active',
+                startDate: new Date(),
+                originPressRunId: input.pressRunId
+              })
+              .returning({ id: batches.id })
+
+            const batchId = newBatch[0].id
+            createdBatchIds.push(batchId)
+
+            // Create batch compositions
+            let totalFraction = 0
+            let totalJuiceVolume = 0
+            let totalMaterialCost = 0
+
+            for (const load of loads) {
+              const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
+              const juiceVolumeL = assignment.volumeL * fraction
+              const materialCost = parseFloat(load.totalCost || '0') * fraction
+
+              totalFraction += fraction
+              totalJuiceVolume += juiceVolumeL
+              totalMaterialCost += materialCost
+
+              await tx.insert(batchCompositions).values({
+                batchId,
+                purchaseItemId: load.purchaseItemId,
+                vendorId: load.vendorId,
+                varietyId: load.fruitVarietyId,
+                inputWeightKg: load.appleWeightKg,
+                juiceVolumeL: juiceVolumeL.toString(),
+                fractionOfBatch: fraction.toString(),
+                materialCost: materialCost.toString(),
+                avgBrix: load.brixMeasured,
+              })
+
+              // Publish batch composition audit event
+              await publishCreateEvent(
+                'batch_compositions',
+                batchId,
+                {
+                  batchId,
+                  purchaseItemId: load.purchaseItemId,
+                  varietyName: load.varietyName,
+                  juiceVolumeL,
+                  fraction
+                },
+                ctx.session?.user?.id,
+                'Batch composition created from press run'
+              )
+            }
+
+            // Publish batch creation audit event
+            await publishCreateEvent(
+              'batches',
+              batchId,
+              {
+                batchId,
+                name: batchName,
+                vesselId: assignment.toVesselId,
+                pressRunId: input.pressRunId,
+                volumeL: assignment.volumeL
+              },
+              ctx.session?.user?.id,
+              'Batch created from press run completion'
+            )
+          }
+
+          // Publish press completion audit event
+          await publishUpdateEvent(
+            'apple_press_runs',
+            input.pressRunId,
+            pressRun[0],
+            { batchesCreated: true },
+            ctx.session?.user?.id,
+            'Press run completed with batch creation'
+          )
+
+          return {
+            pressRunId: input.pressRunId,
+            createdBatchIds,
+            message: `Press run completed with ${createdBatchIds.length} batches created`
+          }
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        console.error('Error completing press run:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to complete press run'
         })
       }
     }),
@@ -794,7 +1197,7 @@ export const pressRunRouter = router({
             purchaseItemId: applePressRunLoads.purchaseItemId,
             fruitVarietyId: applePressRunLoads.fruitVarietyId,
             appleVarietyName: baseFruitVarieties.name,
-            vendorId: purchases.vendorId,
+            vendorId: basefruitPurchases.vendorId,
             loadSequence: applePressRunLoads.loadSequence,
             appleWeightKg: applePressRunLoads.appleWeightKg,
             originalWeight: applePressRunLoads.originalWeight,
@@ -812,8 +1215,8 @@ export const pressRunRouter = router({
           })
           .from(applePressRunLoads)
           .leftJoin(baseFruitVarieties, eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id))
-          .leftJoin(purchaseItems, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
-          .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
+          .leftJoin(basefruitPurchaseItems, eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
+          .leftJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
           .where(and(
             eq(applePressRunLoads.applePressRunId, input.id),
             isNull(applePressRunLoads.deletedAt)

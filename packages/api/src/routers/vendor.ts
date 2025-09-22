@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
 import { db, vendors, auditLog } from 'db'
-import { eq } from 'drizzle-orm'
+import { eq, ilike, or, and, asc, desc, count } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 
 // Schema for vendor creation/update
@@ -35,19 +35,65 @@ const eventBus = {
 }
 
 export const vendorRouter = router({
-  // List vendors - accessible by both admin and operator
-  list: createRbacProcedure('list', 'vendor').query(async ({ ctx }) => {
-    const vendorList = await db
-      .select()
-      .from(vendors)
-      .where(eq(vendors.isActive, true))
-      .orderBy(vendors.name)
+  // List vendors with search and pagination - accessible by both admin and operator
+  list: createRbacProcedure('list', 'vendor')
+    .input(z.object({
+      search: z.string().optional(),
+      limit: z.number().int().min(1).max(100).default(50),
+      offset: z.number().int().min(0).default(0),
+      sortBy: z.enum(['name', 'createdAt', 'updatedAt']).default('name'),
+      sortOrder: z.enum(['asc', 'desc']).default('asc'),
+      includeInactive: z.boolean().default(false),
+    }).optional().default({}))
+    .query(async ({ input }) => {
+      const { search, limit, offset, sortBy, sortOrder, includeInactive } = input
 
-    return {
-      vendors: vendorList,
-      count: vendorList.length,
-    }
-  }),
+      // Build where condition
+      let whereCondition = includeInactive ? undefined : eq(vendors.isActive, true)
+
+      if (search) {
+        const searchCondition = or(
+          ilike(vendors.name, `%${search}%`),
+          ilike(vendors.contactEmail, `%${search}%`),
+          ilike(vendors.contactPhone, `%${search}%`),
+          ilike(vendors.address, `%${search}%`)
+        )
+        whereCondition = whereCondition
+          ? and(whereCondition, searchCondition)
+          : searchCondition
+      }
+
+      // Build order by
+      const orderByFn = sortOrder === 'asc' ? asc : desc
+      const orderByField = vendors[sortBy as keyof typeof vendors]
+
+      // Get total count
+      const totalCountResult = await db
+        .select({ count: count() })
+        .from(vendors)
+        .where(whereCondition)
+
+      const totalCount = totalCountResult[0]?.count ?? 0
+
+      // Get vendors with pagination
+      const vendorList = await db
+        .select()
+        .from(vendors)
+        .where(whereCondition)
+        .orderBy(orderByFn(orderByField))
+        .limit(limit)
+        .offset(offset)
+
+      return {
+        vendors: vendorList,
+        pagination: {
+          total: totalCount,
+          limit,
+          offset,
+          hasMore: offset + limit < totalCount,
+        },
+      }
+    }),
 
   // Get vendor by ID - accessible by both admin and operator
   getById: createRbacProcedure('read', 'vendor')

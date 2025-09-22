@@ -22,7 +22,7 @@ describe('MaterialTypeIndicator', () => {
 
     const badge = screen.getByTestId('badge')
     expect(badge).toBeInTheDocument()
-    expect(badge).toHaveTextContent('🍎 Fresh Fruit')
+    expect(badge).toHaveTextContent('🍎 Base Fruit')
     expect(badge).toHaveClass('bg-red-100', 'text-red-800', 'border-red-200')
   })
 
@@ -93,7 +93,7 @@ describe('MaterialTypeIndicator', () => {
 
     const badge = screen.getByTestId('badge')
     expect(badge).toHaveAttribute('role', 'status')
-    expect(badge).toHaveAttribute('aria-label', 'Material type: Fresh Fruit')
+    expect(badge).toHaveAttribute('aria-label', 'Material type: Base Fruit')
   })
 
   it('displays correct icons for each material type', () => {
@@ -181,7 +181,7 @@ describe('MaterialTypeIndicator', () => {
     expect(badges).toHaveLength(3)
 
     // Each should maintain its unique styling
-    expect(badges[0]).toHaveTextContent('🍎 Fresh Fruit')
+    expect(badges[0]).toHaveTextContent('🍎 Base Fruit')
     expect(badges[1]).toHaveTextContent('🧪 Additives')
     expect(badges[2]).toHaveTextContent('🧃 Juice')
   })
@@ -210,12 +210,12 @@ describe('MaterialTypeIndicator', () => {
     render(<MaterialTypeIndicator type="apple" iconOnly />)
     let badge = screen.getByTestId('badge')
     expect(badge).toHaveTextContent('🍎')
-    expect(badge.textContent).not.toContain('Fresh Fruit')
+    expect(badge.textContent).not.toContain('Base Fruit')
 
     // Text only mode
     const { rerender } = render(<MaterialTypeIndicator type="apple" textOnly />)
     badge = screen.getByTestId('badge')
-    expect(badge).toHaveTextContent('Fresh Fruit')
+    expect(badge).toHaveTextContent('Base Fruit')
     expect(badge.textContent).not.toContain('🍎')
   })
 
