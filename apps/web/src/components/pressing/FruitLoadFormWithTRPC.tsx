@@ -220,7 +220,7 @@ export function FruitLoadFormWithTRPC({
       return
     }
 
-    const variety = appleVarieties?.baseFruitVarieties.find(v => v.id === data.fruitVarietyId)
+    const variety = appleVarieties?.appleVarieties.find(v => v.id === data.fruitVarietyId)
     const weightKg = data.weightUnit === 'kg' ? data.weight : convertWeight(data.weight, 'lbs', 'kg')
 
     // Convert weight unit to match database enum
