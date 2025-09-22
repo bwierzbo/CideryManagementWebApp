@@ -125,7 +125,7 @@ export default function ReportsPage() {
     const costPerBottle = totalCost / 100 // Simplified bottles estimation
 
     return {
-      batchName: batch.batchNumber,
+      batchName: batch.name,
       appleVariety: "Mixed Varieties", // Simplified for demo
       targetVolume: 50, // Demo value
       fruitCost,
