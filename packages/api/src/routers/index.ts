@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { router, publicProcedure, protectedProcedure, adminProcedure, createRbacProcedure } from '../trpc'
 import { auditRouter } from './audit'
+import { batchRouter } from './batch'
 import { healthRouter } from './health'
 import { inventoryRouter } from './inventory'
 import { invoiceNumberRouter } from './invoiceNumber'
@@ -8,16 +9,20 @@ import { pressRunRouter } from './pressRun'
 import { reportsRouter } from './reports'
 import { varietiesRouter } from './varieties'
 import { vendorVarietyRouter } from './vendorVariety'
+import { additivePurchasesRouter } from './additivePurchases'
+import { juicePurchasesRouter } from './juicePurchases'
+import { packagingPurchasesRouter } from './packagingPurchases'
 import {
   db,
   vendors,
-  purchases,
-  purchaseItems,
+  basefruitPurchases,
+  basefruitPurchaseItems,
   pressRuns,
   pressItems,
   batches,
-  batchIngredients,
+  batchCompositions,
   batchMeasurements,
+  batchTransfers,
   packages,
   inventory,
   inventoryTransactions,
@@ -25,9 +30,10 @@ import {
   baseFruitVarieties,
   auditLog,
   applePressRuns,
-  applePressRunLoads
+  applePressRunLoads,
+  users
 } from 'db'
-import { eq, and, desc, asc, sql, isNull, ne } from 'drizzle-orm'
+import { eq, and, desc, asc, sql, isNull, ne, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, bushelsToKg } from 'lib'
 
@@ -256,72 +262,72 @@ export const appRouter = router({
       .query(async ({ input }) => {
         try {
           // Build WHERE conditions
-          const conditions = [isNull(purchases.deletedAt)]
+          const conditions = [isNull(basefruitPurchases.deletedAt)]
 
           if (input.vendorId) {
-            conditions.push(eq(purchases.vendorId, input.vendorId))
+            conditions.push(eq(basefruitPurchases.vendorId, input.vendorId))
           }
 
           if (input.startDate) {
-            conditions.push(sql`${purchases.purchaseDate} >= ${input.startDate.toISOString().split('T')[0]}`)
+            conditions.push(sql`${basefruitPurchases.purchaseDate} >= ${input.startDate.toISOString().split('T')[0]}`)
           }
 
           if (input.endDate) {
-            conditions.push(sql`${purchases.purchaseDate} <= ${input.endDate.toISOString().split('T')[0]}`)
+            conditions.push(sql`${basefruitPurchases.purchaseDate} <= ${input.endDate.toISOString().split('T')[0]}`)
           }
 
           // Build ORDER BY clause
           const sortColumn = {
-            purchaseDate: purchases.purchaseDate,
+            purchaseDate: basefruitPurchases.purchaseDate,
             vendorName: vendors.name,
-            totalCost: purchases.totalCost,
-            createdAt: purchases.createdAt,
+            totalCost: basefruitPurchases.totalCost,
+            createdAt: basefruitPurchases.createdAt,
           }[input.sortBy]
 
           const orderBy = input.sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
 
-          // Get purchases with pagination
+          // Get basefruitPurchases with pagination
           const purchaseList = await db
             .select({
-              id: purchases.id,
-              vendorId: purchases.vendorId,
+              id: basefruitPurchases.id,
+              vendorId: basefruitPurchases.vendorId,
               vendorName: vendors.name,
-              purchaseDate: purchases.purchaseDate,
-              invoiceNumber: purchases.invoiceNumber,
-              totalCost: purchases.totalCost,
-              notes: purchases.notes,
-              createdAt: purchases.createdAt,
+              purchaseDate: basefruitPurchases.purchaseDate,
+              invoiceNumber: basefruitPurchases.invoiceNumber,
+              totalCost: basefruitPurchases.totalCost,
+              notes: basefruitPurchases.notes,
+              createdAt: basefruitPurchases.createdAt,
             })
-            .from(purchases)
-            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
+            .from(basefruitPurchases)
+            .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
             .where(and(...conditions))
-            .orderBy(orderBy, desc(purchases.createdAt))
+            .orderBy(orderBy, desc(basefruitPurchases.createdAt))
             .limit(input.limit)
             .offset(input.offset)
 
           // Get total count for pagination
           const totalCountResult = await db
             .select({ count: sql<number>`count(*)` })
-            .from(purchases)
-            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
+            .from(basefruitPurchases)
+            .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
             .where(and(...conditions))
 
           const totalCount = totalCountResult[0]?.count || 0
 
           // Get purchase items for each purchase to create item summary
-          const purchasesWithItems = await Promise.all(
+          const basefruitPurchasesWithItems = await Promise.all(
             purchaseList.map(async (purchase) => {
               const items = await db
                 .select({
-                  id: purchaseItems.id,
-                  fruitVarietyId: purchaseItems.fruitVarietyId,
+                  id: basefruitPurchaseItems.id,
+                  fruitVarietyId: basefruitPurchaseItems.fruitVarietyId,
                   varietyName: baseFruitVarieties.name,
-                  originalQuantity: purchaseItems.originalQuantity,
-                  originalUnit: purchaseItems.originalUnit,
+                  originalQuantity: basefruitPurchaseItems.originalQuantity,
+                  originalUnit: basefruitPurchaseItems.originalUnit,
                 })
-                .from(purchaseItems)
-                .leftJoin(baseFruitVarieties, eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id))
-                .where(eq(purchaseItems.purchaseId, purchase.id))
+                .from(basefruitPurchaseItems)
+                .leftJoin(baseFruitVarieties, eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id))
+                .where(eq(basefruitPurchaseItems.purchaseId, purchase.id))
 
               const itemsSummary = items.map(item =>
                 `${item.originalQuantity} ${item.originalUnit} ${item.varietyName}`
@@ -336,20 +342,20 @@ export const appRouter = router({
           )
 
           return {
-            purchases: purchasesWithItems,
+            basefruitPurchases: basefruitPurchasesWithItems,
             pagination: {
               total: totalCount,
               limit: input.limit,
               offset: input.offset,
-              hasMore: input.offset + purchasesWithItems.length < totalCount,
+              hasMore: input.offset + basefruitPurchasesWithItems.length < totalCount,
             },
-            count: purchasesWithItems.length,
+            count: basefruitPurchasesWithItems.length,
           }
         } catch (error) {
-          console.error('Error listing purchases:', error)
+          console.error('Error listing basefruitPurchases:', error)
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
-            message: 'Failed to list purchases'
+            message: 'Failed to list basefruitPurchases'
           })
         }
       }),
@@ -437,16 +443,16 @@ export const appRouter = router({
 
               const maxSequenceResult = await tx
                 .select({
-                  maxInvoice: sql<string>`MAX(${purchases.invoiceNumber})`
+                  maxInvoice: sql<string>`MAX(${basefruitPurchases.invoiceNumber})`
                 })
-                .from(purchases)
+                .from(basefruitPurchases)
                 .where(
                   and(
-                    eq(purchases.vendorId, input.vendorId),
-                    sql`${purchases.purchaseDate} >= ${startOfDay}`,
-                    sql`${purchases.purchaseDate} <= ${endOfDay}`,
-                    eq(purchases.autoGeneratedInvoice, true),
-                    sql`${purchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`
+                    eq(basefruitPurchases.vendorId, input.vendorId),
+                    sql`${basefruitPurchases.purchaseDate} >= ${startOfDay}`,
+                    sql`${basefruitPurchases.purchaseDate} <= ${endOfDay}`,
+                    eq(basefruitPurchases.autoGeneratedInvoice, true),
+                    sql`${basefruitPurchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`
                   )
                 )
 
@@ -468,9 +474,9 @@ export const appRouter = router({
 
               // Verify uniqueness
               const existingInvoice = await tx
-                .select({ id: purchases.id })
-                .from(purchases)
-                .where(eq(purchases.invoiceNumber, finalInvoiceNumber))
+                .select({ id: basefruitPurchases.id })
+                .from(basefruitPurchases)
+                .where(eq(basefruitPurchases.invoiceNumber, finalInvoiceNumber))
                 .limit(1)
 
               if (existingInvoice.length > 0) {
@@ -481,7 +487,7 @@ export const appRouter = router({
 
             // Create the purchase
             const newPurchase = await tx
-              .insert(purchases)
+              .insert(basefruitPurchases)
               .values({
                 vendorId: input.vendorId,
                 purchaseDate: input.purchaseDate,
@@ -498,7 +504,7 @@ export const appRouter = router({
 
             // Create purchase items
             const newItems = await tx
-              .insert(purchaseItems)
+              .insert(basefruitPurchaseItems)
               .values(
                 processedItems.map((item) => ({
                   purchaseId,
@@ -521,7 +527,7 @@ export const appRouter = router({
 
             // Publish audit events
             await publishCreateEvent(
-              'purchases',
+              'basefruitPurchases',
               purchaseId,
               { purchaseId, vendorId: input.vendorId, totalCost, itemCount: input.items.length },
               ctx.session?.user?.id,
@@ -560,8 +566,8 @@ export const appRouter = router({
         try {
           const purchase = await db
             .select()
-            .from(purchases)
-            .where(and(eq(purchases.id, input.id), isNull(purchases.deletedAt)))
+            .from(basefruitPurchases)
+            .where(and(eq(basefruitPurchases.id, input.id), isNull(basefruitPurchases.deletedAt)))
             .limit(1)
 
           if (!purchase.length) {
@@ -573,8 +579,8 @@ export const appRouter = router({
 
           const items = await db
             .select()
-            .from(purchaseItems)
-            .where(and(eq(purchaseItems.purchaseId, input.id), isNull(purchaseItems.deletedAt)))
+            .from(basefruitPurchaseItems)
+            .where(and(eq(basefruitPurchaseItems.purchaseId, input.id), isNull(basefruitPurchaseItems.deletedAt)))
 
           return {
             purchase: purchase[0],
@@ -611,8 +617,8 @@ export const appRouter = router({
         try {
           const existingPurchase = await db
             .select()
-            .from(purchases)
-            .where(and(eq(purchases.id, input.id), isNull(purchases.deletedAt)))
+            .from(basefruitPurchases)
+            .where(and(eq(basefruitPurchases.id, input.id), isNull(basefruitPurchases.deletedAt)))
 
           if (!existingPurchase.length) {
             throw new TRPCError({
@@ -631,9 +637,9 @@ export const appRouter = router({
               if (input.notes !== undefined) updateData.notes = input.notes
 
               await tx
-                .update(purchases)
+                .update(basefruitPurchases)
                 .set(updateData)
-                .where(eq(purchases.id, input.id))
+                .where(eq(basefruitPurchases.id, input.id))
             }
 
             // Update items if provided
@@ -655,9 +661,9 @@ export const appRouter = router({
 
               // Remove existing items (soft delete)
               await tx
-                .update(purchaseItems)
+                .update(basefruitPurchaseItems)
                 .set({ deletedAt: new Date() })
-                .where(eq(purchaseItems.purchaseId, input.id))
+                .where(eq(basefruitPurchaseItems.purchaseId, input.id))
 
               // Add new/updated items
               const processedItems = []
@@ -701,13 +707,13 @@ export const appRouter = router({
                 })
               }
 
-              await tx.insert(purchaseItems).values(processedItems)
+              await tx.insert(basefruitPurchaseItems).values(processedItems)
 
               // Update total cost
               await tx
-                .update(purchases)
+                .update(basefruitPurchases)
                 .set({ totalCost: totalCost.toString() })
-                .where(eq(purchases.id, input.id))
+                .where(eq(basefruitPurchases.id, input.id))
             }
 
             // Audit log
@@ -731,8 +737,8 @@ export const appRouter = router({
         try {
           const existingPurchase = await db
             .select()
-            .from(purchases)
-            .where(and(eq(purchases.id, input.id), isNull(purchases.deletedAt)))
+            .from(basefruitPurchases)
+            .where(and(eq(basefruitPurchases.id, input.id), isNull(basefruitPurchases.deletedAt)))
 
           if (!existingPurchase.length) {
             throw new TRPCError({
@@ -744,15 +750,15 @@ export const appRouter = router({
           // Soft delete the purchase
           await db.transaction(async (tx) => {
             await tx
-              .update(purchases)
+              .update(basefruitPurchases)
               .set({ deletedAt: new Date() })
-              .where(eq(purchases.id, input.id))
+              .where(eq(basefruitPurchases.id, input.id))
 
             // Also soft delete associated purchase items
             await tx
-              .update(purchaseItems)
+              .update(basefruitPurchaseItems)
               .set({ deletedAt: new Date() })
-              .where(eq(purchaseItems.purchaseId, input.id))
+              .where(eq(basefruitPurchaseItems.purchaseId, input.id))
 
             // Audit log
             await publishDeleteEvent('purchase', input.id, {}, ctx.session?.user?.email || 'system')
@@ -783,65 +789,65 @@ export const appRouter = router({
         try {
           // Build WHERE conditions
           const conditions = [
-            isNull(purchaseItems.deletedAt),
-            isNull(purchases.deletedAt),
+            isNull(basefruitPurchaseItems.deletedAt),
+            isNull(basefruitPurchases.deletedAt),
           ]
 
           if (input.vendorId) {
-            conditions.push(eq(purchases.vendorId, input.vendorId))
+            conditions.push(eq(basefruitPurchases.vendorId, input.vendorId))
           }
 
           if (input.fruitVarietyId) {
-            conditions.push(eq(purchaseItems.fruitVarietyId, input.fruitVarietyId))
+            conditions.push(eq(basefruitPurchaseItems.fruitVarietyId, input.fruitVarietyId))
           }
 
           // Get purchase items with consumed quantities from apple press run loads
           const availableItems = await db
             .select({
               // Purchase item details
-              purchaseItemId: purchaseItems.id,
-              purchaseId: purchaseItems.purchaseId,
-              fruitVarietyId: purchaseItems.fruitVarietyId,
+              purchaseItemId: basefruitPurchaseItems.id,
+              purchaseId: basefruitPurchaseItems.purchaseId,
+              fruitVarietyId: basefruitPurchaseItems.fruitVarietyId,
               varietyName: baseFruitVarieties.name,
-              originalQuantity: purchaseItems.originalQuantity,
-              originalUnit: purchaseItems.originalUnit,
-              quantityKg: purchaseItems.quantityKg,
-              harvestDate: purchaseItems.harvestDate,
-              notes: purchaseItems.notes,
+              originalQuantity: basefruitPurchaseItems.originalQuantity,
+              originalUnit: basefruitPurchaseItems.originalUnit,
+              quantityKg: basefruitPurchaseItems.quantityKg,
+              harvestDate: basefruitPurchaseItems.harvestDate,
+              notes: basefruitPurchaseItems.notes,
 
               // Purchase details
-              vendorId: purchases.vendorId,
+              vendorId: basefruitPurchases.vendorId,
               vendorName: vendors.name,
-              purchaseDate: purchases.purchaseDate,
-              invoiceNumber: purchases.invoiceNumber,
+              purchaseDate: basefruitPurchases.purchaseDate,
+              invoiceNumber: basefruitPurchases.invoiceNumber,
 
               // Calculate consumed quantity from apple press run loads
               consumedKg: sql<string>`COALESCE(SUM(${applePressRunLoads.appleWeightKg}), 0)`,
             })
-            .from(purchaseItems)
-            .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
-            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
-            .leftJoin(baseFruitVarieties, eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id))
-            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
+            .from(basefruitPurchaseItems)
+            .leftJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+            .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+            .leftJoin(baseFruitVarieties, eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id))
+            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
             .where(and(...conditions))
             .groupBy(
-              purchaseItems.id,
-              purchaseItems.purchaseId,
-              purchaseItems.fruitVarietyId,
+              basefruitPurchaseItems.id,
+              basefruitPurchaseItems.purchaseId,
+              basefruitPurchaseItems.fruitVarietyId,
               baseFruitVarieties.name,
-              purchaseItems.originalQuantity,
-              purchaseItems.originalUnit,
-              purchaseItems.quantityKg,
-              purchaseItems.harvestDate,
-              purchaseItems.notes,
-              purchases.vendorId,
+              basefruitPurchaseItems.originalQuantity,
+              basefruitPurchaseItems.originalUnit,
+              basefruitPurchaseItems.quantityKg,
+              basefruitPurchaseItems.harvestDate,
+              basefruitPurchaseItems.notes,
+              basefruitPurchases.vendorId,
               vendors.name,
-              purchases.purchaseDate,
-              purchases.invoiceNumber
+              basefruitPurchases.purchaseDate,
+              basefruitPurchases.invoiceNumber
             )
             .limit(input.limit)
             .offset(input.offset)
-            .orderBy(desc(purchases.purchaseDate), baseFruitVarieties.name)
+            .orderBy(desc(basefruitPurchases.purchaseDate), baseFruitVarieties.name)
 
           // Filter items that have available quantity and calculate remaining amounts
           const availableInventory = availableItems
@@ -864,11 +870,11 @@ export const appRouter = router({
           // Get total count for pagination (similar query but count only)
           const countResult = await db
             .select({
-              count: sql<number>`COUNT(DISTINCT ${purchaseItems.id})`
+              count: sql<number>`COUNT(DISTINCT ${basefruitPurchaseItems.id})`
             })
-            .from(purchaseItems)
-            .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
-            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
+            .from(basefruitPurchaseItems)
+            .leftJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
             .where(and(...conditions))
 
           const totalCount = countResult[0]?.count || 0
@@ -905,24 +911,24 @@ export const appRouter = router({
           // Get purchase item with current consumption
           const item = await db
             .select({
-              purchaseItemId: purchaseItems.id,
-              quantityKg: purchaseItems.quantityKg,
+              purchaseItemId: basefruitPurchaseItems.id,
+              quantityKg: basefruitPurchaseItems.quantityKg,
               consumedKg: sql<string>`COALESCE(SUM(${applePressRunLoads.appleWeightKg}), 0)`,
               varietyName: baseFruitVarieties.name,
               vendorName: vendors.name,
             })
-            .from(purchaseItems)
-            .leftJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
-            .leftJoin(vendors, eq(purchases.vendorId, vendors.id))
-            .leftJoin(baseFruitVarieties, eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id))
-            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, purchaseItems.id))
+            .from(basefruitPurchaseItems)
+            .leftJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+            .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+            .leftJoin(baseFruitVarieties, eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id))
+            .leftJoin(applePressRunLoads, eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
             .where(and(
-              eq(purchaseItems.id, input.purchaseItemId),
-              isNull(purchaseItems.deletedAt)
+              eq(basefruitPurchaseItems.id, input.purchaseItemId),
+              isNull(basefruitPurchaseItems.deletedAt)
             ))
             .groupBy(
-              purchaseItems.id,
-              purchaseItems.quantityKg,
+              basefruitPurchaseItems.id,
+              basefruitPurchaseItems.quantityKg,
               baseFruitVarieties.name,
               vendors.name
             )
@@ -1020,8 +1026,8 @@ export const appRouter = router({
               // Verify purchase item exists and has enough quantity
               const purchaseItem = await tx
                 .select()
-                .from(purchaseItems)
-                .where(and(eq(purchaseItems.id, item.purchaseItemId), isNull(purchaseItems.deletedAt)))
+                .from(basefruitPurchaseItems)
+                .where(and(eq(basefruitPurchaseItems.id, item.purchaseItemId), isNull(basefruitPurchaseItems.deletedAt)))
                 .limit(1)
 
               if (!purchaseItem.length) {
@@ -1389,7 +1395,7 @@ export const appRouter = router({
 
             // Create batch ingredients
             const newIngredients = await tx
-              .insert(batchIngredients)
+              .insert(batchCompositions)
               .values(
                 processedItems.map((item) => ({
                   batchId,
@@ -1664,8 +1670,8 @@ export const appRouter = router({
 
           const ingredients = await db
             .select()
-            .from(batchIngredients)
-            .where(and(eq(batchIngredients.batchId, input.id), isNull(batchIngredients.deletedAt)))
+            .from(batchCompositions)
+            .where(and(eq(batchCompositions.batchId, input.id), isNull(batchCompositions.deletedAt)))
 
           const measurements = await db
             .select()
@@ -2337,11 +2343,18 @@ export const appRouter = router({
           return total
         }, 0)
 
+        // Ensure packaged inventory values are valid numbers
+        const packagedData = packagedInventory[0] || { totalBottles: 0, totalVolumeL: 0 }
+        const packagedVolumeL = parseFloat(String(packagedData.totalVolumeL || 0)) || 0
+
         return {
           vessels: vesselsWithBatches,
           cellarLiquidL: cellarLiquid,
-          packagedInventory: packagedInventory[0] || { totalBottles: 0, totalVolumeL: 0 },
-          totalLiquidL: cellarLiquid + (packagedInventory[0]?.totalVolumeL || 0),
+          packagedInventory: {
+            totalBottles: parseInt(String(packagedData.totalBottles || 0)) || 0,
+            totalVolumeL: packagedVolumeL,
+          },
+          totalLiquidL: cellarLiquid + packagedVolumeL,
         }
       } catch (error) {
         console.error('Error getting liquid map:', error)
@@ -2351,6 +2364,323 @@ export const appRouter = router({
         })
       }
     }),
+    transfer: createRbacProcedure('update', 'vessel')
+      .input(z.object({
+        fromVesselId: z.string().uuid('Invalid source vessel ID'),
+        toVesselId: z.string().uuid('Invalid destination vessel ID'),
+        volumeL: z.number().positive('Transfer volume must be positive'),
+        loss: z.number().min(0, 'Loss cannot be negative').optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          return await db.transaction(async (tx) => {
+            // Verify source vessel exists and has liquid
+            const sourceVessel = await tx
+              .select()
+              .from(vessels)
+              .where(and(eq(vessels.id, input.fromVesselId), isNull(vessels.deletedAt)))
+              .limit(1)
+
+            if (!sourceVessel.length) {
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: 'Source vessel not found'
+              })
+            }
+
+            // Verify destination vessel exists and is available
+            const destVessel = await tx
+              .select()
+              .from(vessels)
+              .where(and(eq(vessels.id, input.toVesselId), isNull(vessels.deletedAt)))
+              .limit(1)
+
+            if (!destVessel.length) {
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: 'Destination vessel not found'
+              })
+            }
+
+            if (destVessel[0].status !== 'available') {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: 'Destination vessel is not available'
+              })
+            }
+
+            // Check if destination vessel has enough capacity
+            const destCapacityL = parseFloat(destVessel[0].capacityL || '0')
+            if (input.volumeL > destCapacityL) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: `Transfer volume (${input.volumeL}L) exceeds destination vessel capacity (${destCapacityL}L)`
+              })
+            }
+
+            // Get current batch in source vessel
+            const sourceBatch = await tx
+              .select()
+              .from(batches)
+              .where(and(
+                eq(batches.vesselId, input.fromVesselId),
+                eq(batches.status, 'active'),
+                isNull(batches.deletedAt)
+              ))
+              .limit(1)
+
+            if (!sourceBatch.length) {
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: 'No active batch found in source vessel'
+              })
+            }
+
+            const currentVolumeL = parseFloat(sourceBatch[0].currentVolumeL || '0')
+            const transferVolumeL = input.volumeL + (input.loss || 0)
+
+            if (transferVolumeL > currentVolumeL) {
+              throw new TRPCError({
+                code: 'BAD_REQUEST',
+                message: `Transfer volume plus loss (${transferVolumeL}L) exceeds current batch volume (${currentVolumeL}L)`
+              })
+            }
+
+            // Create new batch in destination vessel
+            const newBatch = await tx
+              .insert(batches)
+              .values({
+                vesselId: input.toVesselId,
+                name: `${sourceBatch[0].name} - Transfer`,
+                batchNumber: `${sourceBatch[0].batchNumber}-T`,
+                initialVolumeL: input.volumeL.toString(),
+                currentVolumeL: input.volumeL.toString(),
+                status: 'active',
+                startDate: new Date(),
+                notes: input.notes || `Transferred from ${sourceVessel[0].name || 'Unknown Vessel'}`,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .returning()
+
+            const remainingVolumeL = currentVolumeL - transferVolumeL
+            let remainingBatch = null
+
+            // Always end the source batch when transferring (regardless of remaining volume)
+            await tx
+              .update(batches)
+              .set({
+                status: 'completed',
+                endDate: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, sourceBatch[0].id))
+
+            // Update destination vessel status to in_use
+            await tx
+              .update(vessels)
+              .set({
+                status: 'in_use',
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, input.toVesselId))
+
+            // If there's remaining volume, create a new batch in the source vessel
+            if (remainingVolumeL > 0) {
+              const newRemainingBatch = await tx
+                .insert(batches)
+                .values({
+                  vesselId: input.fromVesselId,
+                  name: `${sourceBatch[0].name} - Remaining`,
+                  batchNumber: `${sourceBatch[0].batchNumber}-R`,
+                  initialVolumeL: remainingVolumeL.toString(),
+                  currentVolumeL: remainingVolumeL.toString(),
+                  status: 'active',
+                  startDate: new Date(),
+                  notes: `Remaining after transfer to ${destVessel[0].name || 'Unknown Vessel'}`,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .returning()
+
+              remainingBatch = newRemainingBatch[0]
+
+              // Audit logging for new remaining batch
+              await publishCreateEvent(
+                'batches',
+                remainingBatch.id,
+                {
+                  batchId: remainingBatch.id,
+                  vesselId: input.fromVesselId,
+                  volumeL: remainingVolumeL,
+                  remainingFrom: sourceBatch[0].id
+                },
+                ctx.session?.user?.id,
+                'Remaining batch created after transfer via API'
+              )
+            } else {
+              // If source vessel is now empty, set to available
+              await tx
+                .update(vessels)
+                .set({
+                  status: 'available',
+                  updatedAt: new Date(),
+                })
+                .where(eq(vessels.id, input.fromVesselId))
+            }
+
+            // Audit logging for source batch completion
+            await publishUpdateEvent(
+              'batches',
+              sourceBatch[0].id,
+              sourceBatch[0],
+              { status: 'completed', endDate: new Date() },
+              ctx.session?.user?.id,
+              `Batch completed due to transfer to ${destVessel[0].name || 'Unknown Vessel'} via API`
+            )
+
+            // Audit logging for new batch
+            await publishCreateEvent(
+              'batches',
+              newBatch[0].id,
+              {
+                batchId: newBatch[0].id,
+                vesselId: input.toVesselId,
+                volumeL: input.volumeL,
+                transferredFrom: input.fromVesselId
+              },
+              ctx.session?.user?.id,
+              'Batch created from vessel transfer via API'
+            )
+
+            // Record the transfer in batchTransfers table
+            const transferRecord = await tx
+              .insert(batchTransfers)
+              .values({
+                sourceBatchId: sourceBatch[0].id,
+                sourceVesselId: input.fromVesselId,
+                destinationBatchId: newBatch[0].id,
+                destinationVesselId: input.toVesselId,
+                remainingBatchId: remainingBatch?.id || null,
+                volumeTransferredL: input.volumeL.toString(),
+                lossL: (input.loss || 0).toString(),
+                totalVolumeProcessedL: transferVolumeL.toString(),
+                remainingVolumeL: remainingVolumeL > 0 ? remainingVolumeL.toString() : null,
+                notes: input.notes,
+                transferredBy: ctx.session?.user?.id,
+                transferredAt: new Date(),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .returning()
+
+            return {
+              success: true,
+              message: `Successfully transferred ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ''} from ${sourceVessel[0].name || 'Unknown'} to ${destVessel[0].name || 'Unknown'}. Source batch completed${remainingVolumeL > 0 ? `, new remaining batch created with ${remainingVolumeL}L` : ''}.`,
+              completedSourceBatch: {
+                id: sourceBatch[0].id,
+                status: 'completed',
+              },
+              newDestinationBatch: newBatch[0],
+              remainingSourceBatch: remainingBatch,
+              transferRecord: transferRecord[0],
+            }
+          })
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error transferring vessel liquid:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to transfer vessel liquid'
+          })
+        }
+      }),
+    getTransferHistory: createRbacProcedure('read', 'vessel')
+      .input(z.object({
+        vesselId: z.string().uuid().optional(),
+        batchId: z.string().uuid().optional(),
+        limit: z.number().min(1).max(100).default(20),
+        offset: z.number().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        try {
+          let whereClause = and(isNull(batchTransfers.deletedAt))
+
+          if (input.vesselId) {
+            whereClause = and(
+              whereClause,
+              or(
+                eq(batchTransfers.sourceVesselId, input.vesselId),
+                eq(batchTransfers.destinationVesselId, input.vesselId)
+              )
+            )
+          }
+
+          if (input.batchId) {
+            whereClause = and(
+              whereClause,
+              or(
+                eq(batchTransfers.sourceBatchId, input.batchId),
+                eq(batchTransfers.destinationBatchId, input.batchId),
+                eq(batchTransfers.remainingBatchId, input.batchId)
+              )
+            )
+          }
+
+          const transfers = await db
+            .select({
+              id: batchTransfers.id,
+              sourceBatchId: batchTransfers.sourceBatchId,
+              sourceVesselId: batchTransfers.sourceVesselId,
+              sourceVesselName: sql<string>`sv.name`,
+              destinationBatchId: batchTransfers.destinationBatchId,
+              destinationVesselId: batchTransfers.destinationVesselId,
+              destinationVesselName: sql<string>`dv.name`,
+              remainingBatchId: batchTransfers.remainingBatchId,
+              volumeTransferredL: batchTransfers.volumeTransferredL,
+              lossL: batchTransfers.lossL,
+              totalVolumeProcessedL: batchTransfers.totalVolumeProcessedL,
+              remainingVolumeL: batchTransfers.remainingVolumeL,
+              notes: batchTransfers.notes,
+              transferredAt: batchTransfers.transferredAt,
+              transferredBy: batchTransfers.transferredBy,
+              transferredByName: sql<string>`u.name`,
+              sourceBatchName: sql<string>`sb.name`,
+              destinationBatchName: sql<string>`db.name`,
+              remainingBatchName: sql<string>`rb.name`,
+            })
+            .from(batchTransfers)
+            .leftJoin(vessels.alias('sv'), eq(batchTransfers.sourceVesselId, sql`sv.id`))
+            .leftJoin(vessels.alias('dv'), eq(batchTransfers.destinationVesselId, sql`dv.id`))
+            .leftJoin(users.alias('u'), eq(batchTransfers.transferredBy, sql`u.id`))
+            .leftJoin(batches.alias('sb'), eq(batchTransfers.sourceBatchId, sql`sb.id`))
+            .leftJoin(batches.alias('db'), eq(batchTransfers.destinationBatchId, sql`db.id`))
+            .leftJoin(batches.alias('rb'), eq(batchTransfers.remainingBatchId, sql`rb.id`))
+            .where(whereClause)
+            .orderBy(desc(batchTransfers.transferredAt))
+            .limit(input.limit)
+            .offset(input.offset)
+
+          const totalCount = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(batchTransfers)
+            .where(whereClause)
+
+          return {
+            transfers,
+            totalCount: totalCount[0]?.count || 0,
+            limit: input.limit,
+            offset: input.offset,
+          }
+        } catch (error) {
+          console.error('Error getting transfer history:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to get transfer history'
+          })
+        }
+      }),
   }),
 
   // COGS and Reporting
@@ -2541,7 +2871,15 @@ export const appRouter = router({
   pdfReports: reportsRouter,
 
   // Audit logging and reporting
-  audit: auditRouter
+  audit: auditRouter,
+
+  // Batch management and composition details
+  batch: batchRouter,
+
+  // Purchase management for different material types
+  additivePurchases: additivePurchasesRouter,
+  juicePurchases: juicePurchasesRouter,
+  packagingPurchases: packagingPurchasesRouter
 })
 
 export type AppRouter = typeof appRouter

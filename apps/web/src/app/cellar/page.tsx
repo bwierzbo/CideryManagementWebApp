@@ -29,11 +29,13 @@ import {
   ArrowRight,
   Trash2,
   Settings,
-  MoreVertical
+  MoreVertical,
+  FlaskConical
 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { BatchManagementTable } from "@/components/cellar/BatchManagementTable"
 
 // Form schemas
 const measurementSchema = z.object({
@@ -79,10 +81,10 @@ const tankAdditiveSchema = z.object({
 })
 
 const transferSchema = z.object({
-  fromBatchId: z.string().uuid("Select source batch"),
+  fromVesselId: z.string().uuid("Select source vessel"),
   toVesselId: z.string().uuid("Select destination vessel"),
   volumeL: z.number().positive("Volume must be positive"),
-  lossL: z.number().min(0, "Loss cannot be negative").optional(),
+  loss: z.number().min(0, "Loss cannot be negative").optional(),
   notes: z.string().optional(),
 })
 
@@ -506,12 +508,153 @@ function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: ()
   )
 }
 
+function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onClose: () => void }) {
+  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm({
+    resolver: zodResolver(transferSchema),
+    defaultValues: {
+      fromVesselId: fromVesselId,
+      loss: 0,
+    }
+  })
+
+  const vesselListQuery = trpc.vessel.list.useQuery()
+  const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
+  const utils = trpc.useUtils()
+
+  // Get source vessel info
+  const sourceVessel = vesselListQuery.data?.vessels?.find(v => v.id === fromVesselId)
+  const sourceLiquidMap = liquidMapQuery.data?.vessels?.find(v => v.vesselId === fromVesselId)
+  const currentVolumeL = sourceLiquidMap?.currentVolumeL
+    ? parseFloat(sourceLiquidMap.currentVolumeL.toString())
+    : sourceLiquidMap?.applePressRunVolume
+      ? parseFloat(sourceLiquidMap.applePressRunVolume.toString())
+      : 0
+
+  // Get available destination vessels (exclude current vessel and only available ones)
+  const availableVessels = vesselListQuery.data?.vessels?.filter(
+    vessel => vessel.id !== fromVesselId && vessel.status === 'available'
+  ) || []
+
+  const watchedVolumeL = watch('volumeL')
+  const watchedLoss = watch('loss') || 0
+
+  const transferMutation = trpc.vessel.transfer.useMutation({
+    onSuccess: (result) => {
+      utils.vessel.list.invalidate()
+      utils.vessel.liquidMap.invalidate()
+      onClose()
+      // TODO: Show success toast with result.message
+    },
+    onError: (error) => {
+      // TODO: Show error toast with error.message
+      console.error('Transfer failed:', error.message)
+    }
+  })
+
+  const onSubmit = (data: any) => {
+    transferMutation.mutate(data)
+  }
+
+  const remainingVolume = currentVolumeL - (watchedVolumeL || 0) - watchedLoss
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <div className="text-center p-4 bg-blue-50 rounded-lg">
+        <h4 className="font-medium text-blue-900">Transfer from {sourceVessel?.name || 'Unknown'}</h4>
+        <p className="text-sm text-blue-700">Current volume: {currentVolumeL.toFixed(1)}L</p>
+      </div>
+
+      <div>
+        <Label htmlFor="toVesselId">Destination Tank</Label>
+        <Select onValueChange={(value) => setValue("toVesselId", value)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select destination tank" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableVessels.map((vessel) => (
+              <SelectItem key={vessel.id} value={vessel.id}>
+                {vessel.name || 'Unnamed'} ({parseFloat(vessel.capacityL).toFixed(0)}L capacity)
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {errors.toVesselId && <p className="text-sm text-red-600">{errors.toVesselId.message}</p>}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="volumeL">Transfer Volume (L)</Label>
+          <Input
+            id="volumeL"
+            type="number"
+            step="0.1"
+            max={currentVolumeL}
+            placeholder="Amount to transfer"
+            {...register("volumeL", { valueAsNumber: true })}
+          />
+          {errors.volumeL && <p className="text-sm text-red-600">{errors.volumeL.message}</p>}
+        </div>
+        <div>
+          <Label htmlFor="lossL">Loss/Waste (L)</Label>
+          <Input
+            id="lossL"
+            type="number"
+            step="0.1"
+            min="0"
+            placeholder="0"
+            {...register("loss", { valueAsNumber: true })}
+          />
+          {errors.loss && <p className="text-sm text-red-600">{errors.loss.message}</p>}
+        </div>
+      </div>
+
+      {(watchedVolumeL || watchedLoss) && (
+        <div className="p-3 bg-gray-50 rounded-lg">
+          <p className="text-sm">
+            <span className="font-medium">Remaining in source tank:</span>{' '}
+            <span className={remainingVolume < 0 ? 'text-red-600 font-medium' : 'text-gray-700'}>
+              {remainingVolume.toFixed(1)}L
+            </span>
+          </p>
+          {remainingVolume < 0 && (
+            <p className="text-sm text-red-600 mt-1">
+              ⚠️ Transfer volume exceeds available liquid
+            </p>
+          )}
+        </div>
+      )}
+
+      <div>
+        <Label htmlFor="notes">Notes</Label>
+        <Input
+          id="notes"
+          placeholder="Transfer notes..."
+          {...register("notes")}
+        />
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button type="button" variant="outline" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          disabled={remainingVolume < 0 || !watchedVolumeL || watchedVolumeL <= 0}
+        >
+          Transfer Liquid
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 function VesselMap() {
   const [showAddTank, setShowAddTank] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [vesselToDelete, setVesselToDelete] = useState<{id: string, name: string | null} | null>(null)
   const [showMeasurementForm, setShowMeasurementForm] = useState(false)
   const [showAdditiveForm, setShowAdditiveForm] = useState(false)
+  const [showTransferForm, setShowTransferForm] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null)
 
   const vesselListQuery = trpc.vessel.list.useQuery()
@@ -606,6 +749,24 @@ function VesselMap() {
   const handleTankAdditive = (vesselId: string) => {
     setSelectedVesselId(vesselId)
     setShowAdditiveForm(true)
+  }
+
+  const handleTankTransfer = (vesselId: string) => {
+    setSelectedVesselId(vesselId)
+    setShowTransferForm(true)
+  }
+
+  const handleViewBatch = (vesselId: string) => {
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
+    const batchId = liquidMapVessel?.batchId
+
+    if (batchId) {
+      // Navigate to batch details page
+      window.location.href = `/batch/${batchId}`
+    } else {
+      // Show message if no active batch in vessel
+      alert('No active batch found in this vessel')
+    }
   }
 
   if (vesselListQuery.isLoading) {
@@ -755,6 +916,20 @@ function VesselMap() {
                         <Droplets className="w-3 h-3 mr-2" />
                         Add Additive
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleViewBatch(vessel.id)}
+                        disabled={!liquidMapVessel?.batchId}
+                      >
+                        <Eye className="w-3 h-3 mr-2" />
+                        View Batch
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleTankTransfer(vessel.id)}
+                        disabled={currentVolumeL <= 0}
+                      >
+                        <ArrowRight className="w-3 h-3 mr-2" />
+                        Transfer to Another Tank
+                      </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel>Tank Status</DropdownMenuLabel>
                       <DropdownMenuSeparator />
@@ -870,187 +1045,30 @@ function VesselMap() {
             />
           </DialogContent>
         </Dialog>
+
+        {/* Tank Transfer Form */}
+        <Dialog open={showTransferForm} onOpenChange={setShowTransferForm}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Transfer to Another Tank</DialogTitle>
+              <DialogDescription>
+                Move liquid from this tank to another available tank
+              </DialogDescription>
+            </DialogHeader>
+            <TankTransferForm
+              fromVesselId={selectedVesselId || ''}
+              onClose={() => setShowTransferForm(false)}
+            />
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   )
 }
 
 function BatchDetails() {
-  const [selectedBatch, setSelectedBatch] = useState("B-2024-001")
-  
-  // Mock batch data with measurements timeline
-  const batchDetails = {
-    id: "B-2024-001",
-    batchNumber: "B-2024-001", 
-    status: "active",
-    vesselId: "V001",
-    vesselName: "Fermenter Tank 1",
-    startDate: "2024-01-15",
-    initialVolumeL: 750,
-    currentVolumeL: 735,
-    targetAbv: 6.5,
-    actualAbv: 4.2,
-    daysInFermentation: 12,
-    estimatedCompletion: "2024-02-15"
-  }
-
-  // Mock measurement timeline
-  const measurements = [
-    {
-      date: "2024-01-15",
-      day: 0,
-      specificGravity: 1.055,
-      abv: 0.0,
-      ph: 3.8,
-      temperature: 18.5,
-      notes: "Initial measurement"
-    },
-    {
-      date: "2024-01-18", 
-      day: 3,
-      specificGravity: 1.035,
-      abv: 2.6,
-      ph: 3.6,
-      temperature: 19.2,
-      notes: "Active fermentation"
-    },
-    {
-      date: "2024-01-22",
-      day: 7, 
-      specificGravity: 1.015,
-      abv: 5.3,
-      ph: 3.5,
-      temperature: 18.8,
-      notes: "Fermentation slowing"
-    },
-    {
-      date: "2024-01-27",
-      day: 12,
-      specificGravity: 1.008,
-      abv: 6.2,
-      ph: 3.4,
-      temperature: 18.5,
-      notes: "Near completion"
-    }
-  ]
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-purple-600" />
-              Batch Timeline
-            </CardTitle>
-            <CardDescription>Track fermentation progress and measurements</CardDescription>
-          </div>
-          <Select value={selectedBatch} onValueChange={setSelectedBatch}>
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="B-2024-001">B-2024-001</SelectItem>
-              <SelectItem value="B-2024-002">B-2024-002</SelectItem>
-              <SelectItem value="B-2024-003">B-2024-003</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {/* Batch Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 p-4 bg-purple-50 rounded-lg">
-          <div>
-            <p className="text-sm text-gray-600">Status</p>
-            <p className="font-semibold capitalize">{batchDetails.status}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Days in Fermentation</p>
-            <p className="font-semibold">{batchDetails.daysInFermentation} days</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Current Volume</p>
-            <p className="font-semibold">{batchDetails.currentVolumeL}L</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600">Current ABV</p>
-            <p className="font-semibold">{batchDetails.actualAbv}%</p>
-          </div>
-        </div>
-
-        {/* Measurements Timeline */}
-        <div className="space-y-4">
-          <h3 className="font-medium text-lg">Measurement Timeline</h3>
-          
-          {/* Chart visualization (simplified) */}
-          <div className="bg-gray-50 p-4 rounded-lg mb-4">
-            <div className="text-center text-sm text-gray-600 mb-2">
-              Specific Gravity & ABV Progress
-            </div>
-            <div className="h-32 flex items-end justify-between space-x-2">
-              {measurements.map((measurement, index) => (
-                <div key={index} className="flex flex-col items-center flex-1">
-                  <div className="flex flex-col items-center space-y-1">
-                    {/* SG Bar */}
-                    <div 
-                      className="w-6 bg-blue-500 rounded-t"
-                      style={{ height: `${(1.060 - measurement.specificGravity) * 800}px` }}
-                      title={`SG: ${measurement.specificGravity}`}
-                    />
-                    {/* ABV Bar */}
-                    <div 
-                      className="w-6 bg-green-500 rounded-t"
-                      style={{ height: `${measurement.abv * 8}px` }}
-                      title={`ABV: ${measurement.abv}%`}
-                    />
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">Day {measurement.day}</div>
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-center space-x-4 mt-2 text-xs">
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-blue-500 rounded mr-1" />
-                <span>Specific Gravity</span>
-              </div>
-              <div className="flex items-center">
-                <div className="w-3 h-3 bg-green-500 rounded mr-1" />
-                <span>ABV %</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Detailed Measurements Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Day</TableHead>
-                <TableHead>Specific Gravity</TableHead>
-                <TableHead>ABV %</TableHead>
-                <TableHead>pH</TableHead>
-                <TableHead>Temperature</TableHead>
-                <TableHead>Notes</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {measurements.map((measurement, index) => (
-                <TableRow key={index}>
-                  <TableCell>{measurement.date}</TableCell>
-                  <TableCell>{measurement.day}</TableCell>
-                  <TableCell className="font-mono">{measurement.specificGravity}</TableCell>
-                  <TableCell className="font-semibold text-green-600">{measurement.abv}%</TableCell>
-                  <TableCell>{measurement.ph}</TableCell>
-                  <TableCell>{measurement.temperature}°C</TableCell>
-                  <TableCell className="max-w-xs truncate">{measurement.notes}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
-    </Card>
-  )
+  // Replace the mock batch timeline with the full BatchManagementTable component
+  return <BatchManagementTable />
 }
 
 function AddMeasurement() {
@@ -1204,7 +1222,7 @@ function AddMeasurement() {
 }
 
 export default function CellarPage() {
-  const [activeTab, setActiveTab] = useState<"vessels" | "batches" | "measurements">("vessels")
+  const [activeTab, setActiveTab] = useState<"vessels" | "batches">("vessels")
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1223,7 +1241,6 @@ export default function CellarPage() {
           {[
             { key: "vessels", label: "Vessel Map", icon: Beaker },
             { key: "batches", label: "Batch Details", icon: Activity },
-            { key: "measurements", label: "Add Measurement", icon: Plus },
           ].map((tab) => {
             const Icon = tab.icon
             return (
@@ -1247,7 +1264,6 @@ export default function CellarPage() {
         <div className="space-y-8">
           {activeTab === "vessels" && <VesselMap />}
           {activeTab === "batches" && <BatchDetails />}
-          {activeTab === "measurements" && <AddMeasurement />}
         </div>
       </main>
     </div>

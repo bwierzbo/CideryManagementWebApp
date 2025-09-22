@@ -1,0 +1,11 @@
+-- Rename existing purchases tables to basefruit_purchases
+ALTER TABLE purchases RENAME TO basefruit_purchases;
+ALTER TABLE purchase_items RENAME TO basefruit_purchase_items;
+
+-- Update foreign key constraint names
+ALTER TABLE basefruit_purchase_items RENAME CONSTRAINT purchase_items_purchase_id_purchases_id_fk TO basefruit_purchase_items_purchase_id_basefruit_purchases_id_fk;
+ALTER TABLE basefruit_purchase_items RENAME CONSTRAINT purchase_items_apple_variety_id_apple_varieties_id_fk TO basefruit_purchase_items_fruit_variety_id_base_fruit_varieties_id_fk;
+
+-- Update index names
+ALTER INDEX purchase_items_purchase_id_index RENAME TO basefruit_purchase_items_purchase_id_index;
+ALTER INDEX purchase_items_apple_variety_id_index RENAME TO basefruit_purchase_items_fruit_variety_id_index;
