@@ -397,7 +397,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
           <DialogHeader>
             <DialogTitle>Delete Batch</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete batch "{batchToDelete?.name}"? This action
+              Are you sure you want to delete batch &ldquo;{batchToDelete?.name}&rdquo;? This action
               cannot be undone.
             </DialogDescription>
           </DialogHeader>
