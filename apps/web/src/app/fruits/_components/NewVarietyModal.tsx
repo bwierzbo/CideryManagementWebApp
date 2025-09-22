@@ -94,9 +94,9 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
       name: data.name,
       fruitType: data.fruitType,
       ciderCategory: data.ciderCategory as "sweet" | "bittersweet" | "sharp" | "bittersharp" | undefined,
-      tannin: data.tannin as "high" | "medium" | "low" | "none" | "unknown" | undefined,
-      acid: data.acid as "high" | "medium" | "low" | "none" | "unknown" | undefined,
-      sugarBrix: data.sugarBrix as "high" | "medium" | "low" | "none" | "unknown" | undefined,
+      tannin: data.tannin as "high" | "medium-high" | "medium" | "low-medium" | "low" | undefined,
+      acid: data.acid as "high" | "medium-high" | "medium" | "low-medium" | "low" | undefined,
+      sugarBrix: data.sugarBrix as "high" | "medium-high" | "medium" | "low-medium" | "low" | undefined,
       harvestWindow: data.harvestWindow,
       varietyNotes: data.varietyNotes || undefined,
     })
