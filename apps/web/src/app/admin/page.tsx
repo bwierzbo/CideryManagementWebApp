@@ -323,7 +323,7 @@ function ReferenceValues() {
   const { data: varietiesData, refetch: refetchVarieties } = trpc.fruitVariety.listAll.useQuery(
     { includeInactive: showInactive }
   )
-  const appleVarieties = varietiesData?.baseFruitVarieties || []
+  const appleVarieties = varietiesData?.appleVarieties || []
 
   const createVariety = trpc.fruitVariety.create.useMutation({
     onSuccess: (result) => {

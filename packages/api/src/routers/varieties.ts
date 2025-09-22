@@ -65,6 +65,7 @@ export const varietiesRouter = router({
           .select({
             id: appleVarieties.id,
             name: appleVarieties.name,
+            fruitType: appleVarieties.fruitType,
             isActive: appleVarieties.isActive,
             ciderCategory: appleVarieties.ciderCategory,
             tannin: appleVarieties.tannin,
