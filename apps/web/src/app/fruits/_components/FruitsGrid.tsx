@@ -262,7 +262,7 @@ export function FruitsGrid({ userRole }: FruitsGridProps) {
     includeInactive: true,
   })
 
-  const allVarieties = data?.baseFruitVarieties || []
+  const allVarieties = data?.appleVarieties || []
 
   // Filter varieties by fruit type
   const varieties = useMemo(() => {
