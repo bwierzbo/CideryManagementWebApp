@@ -36,6 +36,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { BatchManagementTable } from "@/components/cellar/BatchManagementTable"
+import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal"
 
 // Form schemas
 const measurementSchema = z.object({
@@ -657,6 +658,10 @@ function VesselMap() {
   const [showTransferForm, setShowTransferForm] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null)
 
+  // History modal state
+  const [showBatchHistory, setShowBatchHistory] = useState(false)
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null)
+
   const vesselListQuery = trpc.vessel.list.useQuery()
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
   const utils = trpc.useUtils()
@@ -761,8 +766,9 @@ function VesselMap() {
     const batchId = liquidMapVessel?.batchId
 
     if (batchId) {
-      // Navigate to batch details page
-      window.location.href = `/batch/${batchId}`
+      // Show batch history modal
+      setSelectedBatchId(batchId)
+      setShowBatchHistory(true)
     } else {
       // Show message if no active batch in vessel
       alert('No active batch found in this vessel')
@@ -1061,6 +1067,18 @@ function VesselMap() {
             />
           </DialogContent>
         </Dialog>
+
+        {/* Batch History Modal */}
+        {selectedBatchId && (
+          <BatchHistoryModal
+            batchId={selectedBatchId}
+            open={showBatchHistory}
+            onClose={() => {
+              setShowBatchHistory(false)
+              setSelectedBatchId(null)
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   )
