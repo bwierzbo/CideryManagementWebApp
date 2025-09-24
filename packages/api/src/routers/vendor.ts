@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { db, vendors, auditLog } from 'db'
-import { eq, ilike, or, and, asc, desc, sql, like } from 'drizzle-orm'
+import { db, vendors, auditLog, vendorVarieties, vendorAdditiveVarieties, vendorJuiceVarieties, vendorPackagingVarieties } from 'db'
+import { eq, ilike, or, and, asc, desc, sql, like, exists } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 
 // Schema for vendor creation/update
@@ -339,6 +339,90 @@ export const vendorRouter = router({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to restore vendor'
         })
+      }
+    }),
+
+  // List vendors by variety type - accessible by both admin and operator
+  listByVarietyType: createRbacProcedure('list', 'vendor')
+    .input(z.object({
+      varietyType: z.enum(['baseFruit', 'additive', 'juice', 'packaging']),
+      includeInactive: z.boolean().default(false),
+    }))
+    .query(async ({ input }) => {
+      const { varietyType, includeInactive } = input
+
+      // Build base query
+      let query = db
+        .select({
+          id: vendors.id,
+          name: vendors.name,
+          contactInfo: vendors.contactInfo,
+          isActive: vendors.isActive,
+          createdAt: vendors.createdAt,
+          updatedAt: vendors.updatedAt,
+        })
+        .from(vendors)
+
+      // Add variety type filter using EXISTS subqueries
+      let whereConditions = []
+
+      if (!includeInactive) {
+        whereConditions.push(eq(vendors.isActive, true))
+      }
+
+      // Add variety type specific filter
+      switch (varietyType) {
+        case 'baseFruit':
+          whereConditions.push(
+            exists(
+              db
+                .select({ vendorId: vendorVarieties.vendorId })
+                .from(vendorVarieties)
+                .where(eq(vendorVarieties.vendorId, vendors.id))
+            )
+          )
+          break
+        case 'additive':
+          whereConditions.push(
+            exists(
+              db
+                .select({ vendorId: vendorAdditiveVarieties.vendorId })
+                .from(vendorAdditiveVarieties)
+                .where(eq(vendorAdditiveVarieties.vendorId, vendors.id))
+            )
+          )
+          break
+        case 'juice':
+          whereConditions.push(
+            exists(
+              db
+                .select({ vendorId: vendorJuiceVarieties.vendorId })
+                .from(vendorJuiceVarieties)
+                .where(eq(vendorJuiceVarieties.vendorId, vendors.id))
+            )
+          )
+          break
+        case 'packaging':
+          whereConditions.push(
+            exists(
+              db
+                .select({ vendorId: vendorPackagingVarieties.vendorId })
+                .from(vendorPackagingVarieties)
+                .where(eq(vendorPackagingVarieties.vendorId, vendors.id))
+            )
+          )
+          break
+      }
+
+      const whereCondition = whereConditions.length > 0 ? and(...whereConditions) : undefined
+
+      const results = await query
+        .where(whereCondition)
+        .orderBy(asc(vendors.name))
+
+      return {
+        vendors: results,
+        total: results.length,
       }
     }),
 })

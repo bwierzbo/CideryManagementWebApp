@@ -99,21 +99,23 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
     return () => clearTimeout(timer)
   }, [vendorSearchQuery])
 
-  // Create vendor query input with search
-  const vendorQueryInput = React.useMemo(() => {
-    const trimmedSearch = debouncedVendorSearch.trim()
-    return trimmedSearch ? {
-      search: trimmedSearch,
-      limit: 50,
-      offset: 0,
-      sortBy: 'name' as const,
-      sortOrder: 'asc' as const,
-      includeInactive: false,
-    } : undefined
-  }, [debouncedVendorSearch])
+  // Get vendors that have base fruit varieties only
+  const { data: vendorData } = trpc.vendor.listByVarietyType.useQuery({
+    varietyType: 'baseFruit',
+    includeInactive: false,
+  })
+  const allVendors = vendorData?.vendors || []
 
-  const { data: vendorData } = trpc.vendor.list.useQuery(vendorQueryInput, { enabled: !!vendorQueryInput })
-  const vendors = vendorData?.vendors || []
+  // Filter vendors based on search query
+  const vendors = React.useMemo(() => {
+    if (!debouncedVendorSearch.trim()) {
+      return allVendors
+    }
+    const searchLower = debouncedVendorSearch.toLowerCase()
+    return allVendors.filter(vendor =>
+      vendor.name.toLowerCase().includes(searchLower)
+    )
+  }, [allVendors, debouncedVendorSearch])
 
   // Get vendor varieties when vendor is selected
   const { data: vendorVarietiesData } = trpc.vendorVariety.listForVendor.useQuery(

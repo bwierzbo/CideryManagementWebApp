@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { trpc } from "@/utils/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -57,12 +58,15 @@ const packagingTransactionSchema = z.object({
 
 type PackagingTransactionFormData = z.infer<typeof packagingTransactionSchema>
 
-// Mock data - will be replaced with tRPC calls
 interface Vendor {
   id: string
   name: string
-  contactInfo?: string
-  specializesIn?: string[]
+  contactInfo?: {
+    email?: string
+    phone?: string
+    address?: string
+  }
+  isActive: boolean
 }
 
 const packageTypeOptions = [
@@ -111,27 +115,12 @@ export function PackagingTransactionForm({
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Mock vendors - will be replaced with tRPC query
-  const mockVendors: Vendor[] = [
-    {
-      id: "vendor-1",
-      name: "Pacific Glass Containers",
-      contactInfo: "orders@pacificglass.com",
-      specializesIn: ["bottles", "kegs"]
-    },
-    {
-      id: "vendor-2",
-      name: "Premium Label Co.",
-      contactInfo: "contact@premiumlabel.com",
-      specializesIn: ["labels", "caps", "cases"]
-    },
-    {
-      id: "vendor-3",
-      name: "Universal Packaging",
-      contactInfo: "sales@universalpackaging.com",
-      specializesIn: ["bottles", "cans", "kegs", "cases", "caps", "labels", "corks", "other"]
-    }
-  ]
+  // Fetch vendors that have packaging varieties
+  const { data: vendorData, isLoading: vendorsLoading } = trpc.vendor.listByVarietyType.useQuery({
+    varietyType: 'packaging',
+    includeInactive: false
+  })
+  const vendors = vendorData?.vendors || []
 
   const form = useForm<PackagingTransactionFormData>({
     resolver: zodResolver(packagingTransactionSchema),
@@ -178,7 +167,7 @@ export function PackagingTransactionForm({
   }
 
   // Filter vendors based on search
-  const filteredVendors = mockVendors.filter(vendor =>
+  const filteredVendors = vendors.filter(vendor =>
     vendor.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -201,7 +190,7 @@ export function PackagingTransactionForm({
   }
 
   const handleVendorSelect = (vendorId: string) => {
-    const vendor = mockVendors.find(v => v.id === vendorId)
+    const vendor = vendors.find(v => v.id === vendorId)
     if (vendor) {
       setSelectedVendor(vendor)
       form.setValue('vendorId', vendor.id)

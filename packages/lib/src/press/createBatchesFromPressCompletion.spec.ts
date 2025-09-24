@@ -120,7 +120,7 @@ describe('createBatchesFromPressCompletion', () => {
   })
 
   describe('validation', () => {
-    it('should throw ValidationError when press run does not exist', async () => {
+    it('should throw PressValidationError when press run does not exist', async () => {
       // Mock empty press run result
       mockDb.select = vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
@@ -137,10 +137,10 @@ describe('createBatchesFromPressCompletion', () => {
 
       await expect(
         createBatchesFromPressCompletion(mockDb, 'nonexistent-press-run', assignments)
-      ).rejects.toThrow(ValidationError)
+      ).rejects.toThrow(PressValidationError)
     })
 
-    it('should throw ValidationError when batches already exist for press run', async () => {
+    it('should throw PressValidationError when batches already exist for press run', async () => {
       // Mock press run exists
       mockDb.select = vi.fn()
         .mockReturnValueOnce({
@@ -166,11 +166,11 @@ describe('createBatchesFromPressCompletion', () => {
 
       await expect(
         createBatchesFromPressCompletion(mockDb, testPressRunId, assignments)
-      ).rejects.toThrow(ValidationError)
+      ).rejects.toThrow(PressValidationError)
       expect(mockDb.select).toHaveBeenCalledTimes(2)
     })
 
-    it('should throw ValidationError when total assigned volume exceeds available juice', async () => {
+    it('should throw PressValidationError when total assigned volume exceeds available juice', async () => {
       // Mock press run with 1000L available
       mockDb.select = vi.fn()
         .mockReturnValueOnce({
@@ -196,10 +196,10 @@ describe('createBatchesFromPressCompletion', () => {
 
       await expect(
         createBatchesFromPressCompletion(mockDb, testPressRunId, assignments)
-      ).rejects.toThrow(ValidationError)
+      ).rejects.toThrow(PressValidationError)
     })
 
-    it('should throw ValidationError when vessel does not exist', async () => {
+    it('should throw PressValidationError when vessel does not exist', async () => {
       // Mock press run exists
       mockDb.select = vi.fn()
         .mockReturnValueOnce({
@@ -233,10 +233,10 @@ describe('createBatchesFromPressCompletion', () => {
 
       await expect(
         createBatchesFromPressCompletion(mockDb, testPressRunId, assignments)
-      ).rejects.toThrow(ValidationError)
+      ).rejects.toThrow(PressValidationError)
     })
 
-    it('should throw ValidationError when assignment volume exceeds vessel capacity', async () => {
+    it('should throw PressValidationError when assignment volume exceeds vessel capacity', async () => {
       // Mock press run exists
       mockDb.select = vi.fn()
         .mockReturnValueOnce({
@@ -273,10 +273,10 @@ describe('createBatchesFromPressCompletion', () => {
 
       await expect(
         createBatchesFromPressCompletion(mockDb, testPressRunId, assignments)
-      ).rejects.toThrow(ValidationError)
+      ).rejects.toThrow(PressValidationError)
     })
 
-    it('should throw ValidationError when no purchase lines found', async () => {
+    it('should throw PressValidationError when no purchase lines found', async () => {
       // Mock press run exists
       mockDb.select = vi.fn()
         .mockReturnValueOnce({
@@ -324,7 +324,7 @@ describe('createBatchesFromPressCompletion', () => {
 
       await expect(
         createBatchesFromPressCompletion(mockDb, testPressRunId, assignments)
-      ).rejects.toThrow(ValidationError)
+      ).rejects.toThrow(PressValidationError)
     })
   })
 
@@ -615,7 +615,7 @@ describe('createBatchesFromPressCompletion', () => {
       const result1 = await createBatchesFromPressCompletion(mockDb, testPressRunId, assignments)
       expect(result1.createdBatchIds).toHaveLength(1)
 
-      // Second call - should fail with ValidationError due to existing batches
+      // Second call - should fail with PressValidationError due to existing batches
       mockDb.select = vi.fn()
         .mockReturnValueOnce({
           from: vi.fn().mockReturnValue({
@@ -634,7 +634,7 @@ describe('createBatchesFromPressCompletion', () => {
 
       await expect(
         createBatchesFromPressCompletion(mockDb, testPressRunId, assignments)
-      ).rejects.toThrow(ValidationError)
+      ).rejects.toThrow(PressValidationError)
     })
   })
 

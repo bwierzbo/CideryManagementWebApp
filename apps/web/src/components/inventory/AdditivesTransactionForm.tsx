@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { trpc } from "@/utils/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,12 +55,15 @@ const additivesTransactionSchema = z.object({
 
 type AdditivesTransactionFormData = z.infer<typeof additivesTransactionSchema>
 
-// Mock data - will be replaced with tRPC calls
 interface Vendor {
   id: string
   name: string
-  contactInfo?: string
-  specializesIn?: string[]
+  contactInfo?: {
+    email?: string
+    phone?: string
+    address?: string
+  }
+  isActive: boolean
 }
 
 const additiveTypeOptions = [
@@ -105,27 +109,12 @@ export function AdditivesTransactionForm({
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Mock vendors - will be replaced with tRPC query
-  const mockVendors: Vendor[] = [
-    {
-      id: "vendor-1",
-      name: "BioVita Additives",
-      contactInfo: "contact@biovita.com",
-      specializesIn: ["enzyme", "nutrient"]
-    },
-    {
-      id: "vendor-2",
-      name: "CiderCraft Supplies",
-      contactInfo: "orders@cidercraft.com",
-      specializesIn: ["clarifier", "preservative", "acid"]
-    },
-    {
-      id: "vendor-3",
-      name: "Universal Wine & Cider",
-      contactInfo: "sales@universalwine.com",
-      specializesIn: ["enzyme", "nutrient", "clarifier", "preservative", "acid", "other"]
-    }
-  ]
+  // Fetch vendors that have additive varieties
+  const { data: vendorData, isLoading: vendorsLoading } = trpc.vendor.listByVarietyType.useQuery({
+    varietyType: 'additive',
+    includeInactive: false
+  })
+  const vendors = vendorData?.vendors || []
 
   const form = useForm<AdditivesTransactionFormData>({
     resolver: zodResolver(additivesTransactionSchema),
@@ -174,7 +163,7 @@ export function AdditivesTransactionForm({
   }
 
   // Filter vendors based on search
-  const filteredVendors = mockVendors.filter(vendor =>
+  const filteredVendors = vendors.filter(vendor =>
     vendor.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -196,7 +185,7 @@ export function AdditivesTransactionForm({
   }
 
   const handleVendorSelect = (vendorId: string) => {
-    const vendor = mockVendors.find(v => v.id === vendorId)
+    const vendor = vendors.find(v => v.id === vendorId)
     if (vendor) {
       setSelectedVendor(vendor)
       form.setValue('vendorId', vendor.id)

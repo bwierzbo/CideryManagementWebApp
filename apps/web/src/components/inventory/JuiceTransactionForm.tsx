@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { trpc } from "@/utils/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -56,12 +57,15 @@ const juiceTransactionSchema = z.object({
 
 type JuiceTransactionFormData = z.infer<typeof juiceTransactionSchema>
 
-// Mock data - will be replaced with tRPC calls
 interface Vendor {
   id: string
   name: string
-  contactInfo?: string
-  specializesIn?: string[]
+  contactInfo?: {
+    email?: string
+    phone?: string
+    address?: string
+  }
+  isActive: boolean
 }
 
 const juiceTypeOptions = [
@@ -105,27 +109,12 @@ export function JuiceTransactionForm({
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
 
-  // Mock vendors - will be replaced with tRPC query
-  const mockVendors: Vendor[] = [
-    {
-      id: "vendor-1",
-      name: "Orchard Fresh Juices",
-      contactInfo: "contact@orchardfresh.com",
-      specializesIn: ["apple", "pear"]
-    },
-    {
-      id: "vendor-2",
-      name: "Premium Fruit Co.",
-      contactInfo: "orders@premiumfruit.com",
-      specializesIn: ["grape", "mixed", "other"]
-    },
-    {
-      id: "vendor-3",
-      name: "Valley Juice Suppliers",
-      contactInfo: "sales@valleyjuice.com",
-      specializesIn: ["apple", "pear", "grape", "mixed", "other"]
-    }
-  ]
+  // Fetch vendors that have juice varieties
+  const { data: vendorData, isLoading: vendorsLoading } = trpc.vendor.listByVarietyType.useQuery({
+    varietyType: 'juice',
+    includeInactive: false
+  })
+  const vendors = vendorData?.vendors || []
 
   const form = useForm<JuiceTransactionFormData>({
     resolver: zodResolver(juiceTransactionSchema),
@@ -174,7 +163,7 @@ export function JuiceTransactionForm({
   }
 
   // Filter vendors based on search
-  const filteredVendors = mockVendors.filter(vendor =>
+  const filteredVendors = vendors.filter(vendor =>
     vendor.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -196,7 +185,7 @@ export function JuiceTransactionForm({
   }
 
   const handleVendorSelect = (vendorId: string) => {
-    const vendor = mockVendors.find(v => v.id === vendorId)
+    const vendor = vendors.find(v => v.id === vendorId)
     if (vendor) {
       setSelectedVendor(vendor)
       form.setValue('vendorId', vendor.id)
