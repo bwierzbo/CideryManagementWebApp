@@ -216,7 +216,7 @@ export default function InventoryPage() {
         `Successfully added ${transaction.quantityKg} kg of base fruit to inventory.`
       )
       setShowAppleForm(false)
-      setActiveTab("apple")
+      setActiveTab("inventory")
     } catch (error) {
       dismissLoading()
       handleTransactionError(error, "Apple", "Purchase")
@@ -225,7 +225,7 @@ export default function InventoryPage() {
 
   const handleAppleCancel = () => {
     setShowAppleForm(false)
-    setActiveTab("apple")
+    setActiveTab("inventory")
   }
 
   // Listen for tab change events from TransactionTypeSelector
