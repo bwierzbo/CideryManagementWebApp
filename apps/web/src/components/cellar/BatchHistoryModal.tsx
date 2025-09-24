@@ -24,6 +24,7 @@ import {
   Beaker,
 } from "lucide-react"
 import { format } from "date-fns"
+import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory"
 
 interface BatchHistoryModalProps {
   batchId: string
@@ -69,8 +70,9 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
 
     return (
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="composition">Composition</TabsTrigger>
           <TabsTrigger value="measurements">Measurements</TabsTrigger>
           <TabsTrigger value="additives">Additives</TabsTrigger>
@@ -155,6 +157,10 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="activity" className="space-y-4">
+            <BatchActivityHistory batchId={batchId} />
           </TabsContent>
 
           <TabsContent value="composition" className="space-y-4">

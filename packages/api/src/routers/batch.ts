@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { db, batches, batchCompositions, vendors, baseFruitVarieties, purchaseItems, vessels, batchMeasurements, batchAdditives, applePressRuns, basefruitPurchaseItems, basefruitPurchases } from 'db'
+import { db, batches, batchCompositions, vendors, baseFruitVarieties, purchaseItems, vessels, batchMeasurements, batchAdditives, applePressRuns, basefruitPurchaseItems, basefruitPurchases, batchMergeHistory, batchTransfers } from 'db'
 import { eq, and, isNull, desc, asc, sql, or, like } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 
@@ -45,6 +45,7 @@ const addAdditiveSchema = z.object({
 const updateBatchSchema = z.object({
   batchId: z.string().uuid('Invalid batch ID'),
   status: z.enum(['planned', 'active', 'packaged']).optional(),
+  customName: z.string().optional(),
   endDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
   notes: z.string().optional(),
 })
@@ -213,10 +214,12 @@ export const batchRouter = router({
           .select({
             id: batches.id,
             name: batches.name,
+            customName: batches.customName,
             status: batches.status,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
             vesselCapacity: vessels.capacityL,
+            currentVolumeL: batches.currentVolumeL,
             startDate: batches.startDate,
             endDate: batches.endDate,
             originPressRunId: batches.originPressRunId,
@@ -238,15 +241,18 @@ export const batchRouter = router({
 
         const totalCount = totalCountResult[0]?.count || 0
 
-        // Get current volume for each batch from latest measurement
+        // Get latest measurements for each batch
         const batchIds = batchesList.map(b => b.id)
-        let batchVolumes: Record<string, number> = {}
+        let batchMeasurementsMap: Record<string, any> = {}
 
         if (batchIds.length > 0) {
-          const volumeData = await db
+          const measurementData = await db
             .select({
               batchId: batchMeasurements.batchId,
               volumeL: batchMeasurements.volumeL,
+              specificGravity: batchMeasurements.specificGravity,
+              ph: batchMeasurements.ph,
+              temperature: batchMeasurements.temperature,
               measurementDate: batchMeasurements.measurementDate,
             })
             .from(batchMeasurements)
@@ -256,10 +262,16 @@ export const batchRouter = router({
             ))
             .orderBy(desc(batchMeasurements.measurementDate))
 
-          // Get the latest volume for each batch
-          volumeData.forEach(row => {
-            if (row.volumeL && !batchVolumes[row.batchId]) {
-              batchVolumes[row.batchId] = parseFloat(row.volumeL.toString())
+          // Get the latest measurements for each batch
+          measurementData.forEach(row => {
+            if (!batchMeasurementsMap[row.batchId]) {
+              batchMeasurementsMap[row.batchId] = {
+                volumeL: row.volumeL ? parseFloat(row.volumeL.toString()) : null,
+                specificGravity: row.specificGravity,
+                ph: row.ph,
+                temperature: row.temperature,
+                measurementDate: row.measurementDate
+              }
             }
           })
         }
@@ -269,11 +281,19 @@ export const batchRouter = router({
           const startDate = new Date(batch.startDate)
           const endDate = batch.endDate ? new Date(batch.endDate) : new Date()
           const daysActive = Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))
+          const measurement = batchMeasurementsMap[batch.id] || {}
+
+          // Use batch's currentVolumeL or fall back to latest measurement
+          const currentVolume = batch.currentVolumeL ?
+            parseFloat(batch.currentVolumeL.toString()) :
+            (measurement.volumeL || 0)
 
           return {
             ...batch,
-            currentVolume: batchVolumes[batch.id] || 0,
+            currentVolume,
+            currentVolumeL: batch.currentVolumeL,
             daysActive,
+            latestMeasurement: measurement
           }
         })
 
@@ -586,6 +606,7 @@ export const batchRouter = router({
         }
 
         if (input.status) updateData.status = input.status
+        if (input.customName !== undefined) updateData.customName = input.customName
         if (input.endDate) updateData.endDate = input.endDate
 
         // Update batch
@@ -657,6 +678,269 @@ export const batchRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to delete batch'
+        })
+      }
+    }),
+
+  /**
+   * Get complete batch activity history
+   * Returns all events related to this batch in chronological order
+   */
+  getActivityHistory: createRbacProcedure('read', 'batch')
+    .input(batchIdSchema)
+    .query(async ({ input }) => {
+      try {
+        // Get batch details including creation
+        const batch = await db
+          .select({
+            id: batches.id,
+            name: batches.name,
+            createdAt: batches.startDate,
+            initialVolumeL: batches.initialVolumeL,
+            currentVolumeL: batches.currentVolumeL,
+            status: batches.status,
+            vesselId: batches.vesselId,
+            vesselName: vessels.name,
+            originPressRunId: batches.originPressRunId,
+            pressRunName: applePressRuns.pressRunName
+          })
+          .from(batches)
+          .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+          .leftJoin(applePressRuns, eq(batches.originPressRunId, applePressRuns.id))
+          .where(eq(batches.id, input.batchId))
+          .limit(1)
+
+        if (!batch.length) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Batch not found'
+          })
+        }
+
+        const activities: any[] = []
+
+        // Add batch creation event
+        activities.push({
+          id: `creation-${batch[0].id}`,
+          type: 'creation',
+          timestamp: batch[0].createdAt,
+          description: `Batch created from ${batch[0].pressRunName ? `Press Run ${batch[0].pressRunName}` : 'manual entry'}`,
+          details: batch[0].initialVolumeL || batch[0].vesselName ? {
+            initialVolume: batch[0].initialVolumeL || null,
+            vessel: batch[0].vesselName || null
+          } : {}
+        })
+
+        // Get measurements
+        const measurements = await db
+          .select({
+            id: batchMeasurements.id,
+            measurementDate: batchMeasurements.measurementDate,
+            specificGravity: batchMeasurements.specificGravity,
+            abv: batchMeasurements.abv,
+            ph: batchMeasurements.ph,
+            totalAcidity: batchMeasurements.totalAcidity,
+            temperature: batchMeasurements.temperature,
+            volumeL: batchMeasurements.volumeL,
+            notes: batchMeasurements.notes,
+            takenBy: batchMeasurements.takenBy
+          })
+          .from(batchMeasurements)
+          .where(and(
+            eq(batchMeasurements.batchId, input.batchId),
+            isNull(batchMeasurements.deletedAt)
+          ))
+
+        measurements.forEach(m => {
+          const details = []
+          if (m.specificGravity) details.push(`SG: ${m.specificGravity}`)
+          if (m.abv) details.push(`ABV: ${m.abv}%`)
+          if (m.ph) details.push(`pH: ${m.ph}`)
+          if (m.totalAcidity) details.push(`TA: ${m.totalAcidity}`)
+          if (m.temperature) details.push(`Temp: ${m.temperature}°C`)
+          if (m.volumeL) details.push(`Volume: ${m.volumeL}L`)
+
+          activities.push({
+            id: `measurement-${m.id}`,
+            type: 'measurement',
+            timestamp: m.measurementDate,
+            description: `Measurement taken${m.takenBy ? ` by ${m.takenBy}` : ''}`,
+            details: details.length > 0 || m.notes ? {
+              values: details.length > 0 ? details.join(', ') : null,
+              notes: m.notes || null
+            } : {}
+          })
+        })
+
+        // Get additives
+        const additives = await db
+          .select({
+            id: batchAdditives.id,
+            addedAt: batchAdditives.addedAt,
+            additiveType: batchAdditives.additiveType,
+            additiveName: batchAdditives.additiveName,
+            amount: batchAdditives.amount,
+            unit: batchAdditives.unit,
+            notes: batchAdditives.notes,
+            addedBy: batchAdditives.addedBy
+          })
+          .from(batchAdditives)
+          .where(and(
+            eq(batchAdditives.batchId, input.batchId),
+            isNull(batchAdditives.deletedAt)
+          ))
+
+        additives.forEach(a => {
+          activities.push({
+            id: `additive-${a.id}`,
+            type: 'additive',
+            timestamp: a.addedAt,
+            description: `${a.additiveType} added: ${a.additiveName}`,
+            details: {
+              amount: `${a.amount} ${a.unit}`,
+              addedBy: a.addedBy || null,
+              notes: a.notes || null
+            }
+          })
+        })
+
+        // Get merge history
+        const merges = await db
+          .select({
+            id: batchMergeHistory.id,
+            mergedAt: batchMergeHistory.mergedAt,
+            volumeAddedL: batchMergeHistory.volumeAddedL,
+            targetVolumeBeforeL: batchMergeHistory.targetVolumeBeforeL,
+            targetVolumeAfterL: batchMergeHistory.targetVolumeAfterL,
+            sourceType: batchMergeHistory.sourceType,
+            notes: batchMergeHistory.notes,
+            pressRunName: applePressRuns.pressRunName
+          })
+          .from(batchMergeHistory)
+          .leftJoin(applePressRuns, eq(batchMergeHistory.sourcePressRunId, applePressRuns.id))
+          .where(and(
+            eq(batchMergeHistory.targetBatchId, input.batchId),
+            isNull(batchMergeHistory.deletedAt)
+          ))
+
+        merges.forEach(m => {
+          activities.push({
+            id: `merge-${m.id}`,
+            type: 'merge',
+            timestamp: m.mergedAt,
+            description: `Merged with juice from ${m.sourceType === 'press_run' && m.pressRunName ? `Press Run ${m.pressRunName}` : 'another batch'}`,
+            details: {
+              volumeAdded: `${m.volumeAddedL}L`,
+              volumeChange: `${m.targetVolumeBeforeL}L → ${m.targetVolumeAfterL}L`,
+              notes: m.notes || null
+            }
+          })
+        })
+
+        // Get transfers (as source or destination)
+        const transfers = await db
+          .select({
+            id: batchTransfers.id,
+            transferredAt: batchTransfers.transferredAt,
+            volumeTransferredL: batchTransfers.volumeTransferredL,
+            sourceBatchId: batchTransfers.sourceBatchId,
+            destinationBatchId: batchTransfers.destinationBatchId,
+            sourceBatchName: sql<string>`source_batch.name`.as('sourceBatchName'),
+            destBatchName: sql<string>`dest_batch.name`.as('destBatchName'),
+            sourceVesselName: sql<string>`source_vessel.name`.as('sourceVesselName'),
+            destVesselName: sql<string>`dest_vessel.name`.as('destVesselName'),
+            notes: batchTransfers.notes
+          })
+          .from(batchTransfers)
+          .leftJoin(sql`batches AS source_batch`, sql`source_batch.id = ${batchTransfers.sourceBatchId}`)
+          .leftJoin(sql`batches AS dest_batch`, sql`dest_batch.id = ${batchTransfers.destinationBatchId}`)
+          .leftJoin(sql`vessels AS source_vessel`, sql`source_vessel.id = ${batchTransfers.sourceVesselId}`)
+          .leftJoin(sql`vessels AS dest_vessel`, sql`dest_vessel.id = ${batchTransfers.destinationVesselId}`)
+          .where(and(
+            or(
+              eq(batchTransfers.sourceBatchId, input.batchId),
+              eq(batchTransfers.destinationBatchId, input.batchId)
+            ),
+            isNull(batchTransfers.deletedAt)
+          ))
+
+        transfers.forEach(t => {
+          const isSource = t.sourceBatchId === input.batchId
+          activities.push({
+            id: `transfer-${t.id}`,
+            type: 'transfer',
+            timestamp: t.transferredAt,
+            description: isSource
+              ? `Transferred ${t.volumeTransferredL}L to ${t.destVesselName || 'vessel'}`
+              : `Received ${t.volumeTransferredL}L from ${t.sourceVesselName || 'vessel'}`,
+            details: {
+              volume: `${t.volumeTransferredL}L`,
+              direction: isSource ? 'outgoing' : 'incoming',
+              notes: t.notes || null
+            }
+          })
+        })
+
+        // TODO: Add packaging/bottling events when implemented
+
+        // Sort all activities by timestamp
+        activities.sort((a, b) => {
+          const dateA = new Date(a.timestamp).getTime()
+          const dateB = new Date(b.timestamp).getTime()
+          return dateB - dateA // Most recent first
+        })
+
+        return {
+          batch: batch[0],
+          activities
+        }
+      } catch (error) {
+        console.error('Error fetching batch activity history:', error)
+        if (error instanceof TRPCError) throw error
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch batch activity history'
+        })
+      }
+    }),
+
+  /**
+   * Get batch merge history
+   * Returns array of merge events for this batch
+   */
+  getMergeHistory: createRbacProcedure('read', 'batch')
+    .input(batchIdSchema)
+    .query(async ({ input }) => {
+      try {
+        const mergeHistory = await db
+          .select({
+            id: batchMergeHistory.id,
+            sourcePressRunId: batchMergeHistory.sourcePressRunId,
+            sourceType: batchMergeHistory.sourceType,
+            volumeAddedL: batchMergeHistory.volumeAddedL,
+            targetVolumeBeforeL: batchMergeHistory.targetVolumeBeforeL,
+            targetVolumeAfterL: batchMergeHistory.targetVolumeAfterL,
+            compositionSnapshot: batchMergeHistory.compositionSnapshot,
+            notes: batchMergeHistory.notes,
+            mergedAt: batchMergeHistory.mergedAt,
+            pressRunName: applePressRuns.pressRunName
+          })
+          .from(batchMergeHistory)
+          .leftJoin(applePressRuns, eq(batchMergeHistory.sourcePressRunId, applePressRuns.id))
+          .where(and(
+            eq(batchMergeHistory.targetBatchId, input.batchId),
+            isNull(batchMergeHistory.deletedAt)
+          ))
+          .orderBy(desc(batchMergeHistory.mergedAt))
+
+        return {
+          mergeHistory
+        }
+      } catch (error) {
+        console.error('Error fetching batch merge history:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch batch merge history'
         })
       }
     })

@@ -70,23 +70,26 @@ export function VendorManagement({ preSelectedVendorId, onVendorSelect }: Vendor
   }, [searchQuery])
 
   const queryInput = React.useMemo(() => {
-    if (!debouncedSearchQuery && currentPage === 1) {
-      return undefined
-    }
-    return {
-      search: debouncedSearchQuery || undefined,
+    const trimmedSearch = debouncedSearchQuery.trim()
+    const input = {
+      search: trimmedSearch || undefined,
       limit: itemsPerPage,
       offset: offset,
       sortBy: 'name' as const,
       sortOrder: 'asc' as const,
       includeInactive: false,
     }
-  }, [debouncedSearchQuery, itemsPerPage, offset, currentPage])
 
-  const { data: vendorData, refetch: refetchVendors, isLoading } = trpc.vendor.list.useQuery(queryInput as any)
+    console.log('Frontend query input:', input)
+    return input
+  }, [debouncedSearchQuery, itemsPerPage, offset])
+
+  const { data: vendorData, refetch: refetchVendors, isLoading } = trpc.vendor.list.useQuery(queryInput)
 
   const vendors = React.useMemo(() => vendorData?.vendors || [], [vendorData])
-  const pagination = (vendorData as any)?.pagination
+  const pagination = vendorData?.pagination
+
+  console.log('VendorManagement - vendors count:', vendors.length, 'pagination:', pagination, 'itemsPerPage:', itemsPerPage)
 
   // Reset to first page when search changes
   useEffect(() => {
@@ -455,7 +458,7 @@ export function VendorManagement({ preSelectedVendorId, onVendorSelect }: Vendor
         </div>
 
         {/* Pagination Controls */}
-        {pagination && pagination.total > itemsPerPage && (
+        {pagination && (pagination.total > itemsPerPage || vendors.length > 0) && (
           <div className="mt-6 flex items-center justify-between">
             <div className="text-sm text-gray-700">
               Showing {pagination.offset + 1} to {Math.min(pagination.offset + pagination.limit, pagination.total)} of {pagination.total} vendors

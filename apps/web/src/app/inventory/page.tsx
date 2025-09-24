@@ -14,7 +14,6 @@ import { PackagingTransactionForm } from "@/components/inventory/PackagingTransa
 import { AppleTransactionForm } from "@/components/inventory/AppleTransactionForm"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
 import { BaseFruitTable } from "@/components/inventory/BaseFruitTable"
-import { VendorManagement } from "@/components/inventory/VendorManagement"
 import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable"
 import {
   Package,
@@ -25,8 +24,6 @@ import {
   Beaker,
   Droplets,
   Apple,
-  Building2,
-  Link,
   ShoppingCart
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
@@ -40,7 +37,6 @@ export default function InventoryPage() {
   const [showJuiceForm, setShowJuiceForm] = useState(false)
   const [showPackagingForm, setShowPackagingForm] = useState(false)
   const [showAppleForm, setShowAppleForm] = useState(false)
-  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
 
   // Get inventory data using unified inventory API (minimal data for now)
   const { data: inventoryData, isLoading } = trpc.inventory.list.useQuery({
@@ -291,7 +287,7 @@ export default function InventoryPage() {
 
         {/* Main Content with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 lg:space-y-6">
-          <TabsList className="grid w-full grid-cols-7 h-auto">
+          <TabsList className="grid w-full grid-cols-6 h-auto">
             <TabsTrigger value="inventory" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Package className="w-4 h-4" />
               <span className="text-xs lg:text-sm">Inventory</span>
@@ -311,10 +307,6 @@ export default function InventoryPage() {
             <TabsTrigger value="packaging" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <Package className="w-4 h-4" />
               <span className="text-xs lg:text-sm">Packaging</span>
-            </TabsTrigger>
-            <TabsTrigger value="vendors" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
-              <Building2 className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Vendors</span>
             </TabsTrigger>
             <TabsTrigger value="purchase-orders" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <ShoppingCart className="w-4 h-4" />
@@ -473,12 +465,6 @@ export default function InventoryPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="vendors" className="space-y-6">
-            <VendorManagement
-              preSelectedVendorId={selectedVendorId}
-              onVendorSelect={(vendorId) => setSelectedVendorId(vendorId)}
-            />
-          </TabsContent>
 
           <TabsContent value="purchase-orders" className="space-y-6">
             <PurchaseOrdersTable

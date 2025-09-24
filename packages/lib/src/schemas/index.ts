@@ -14,7 +14,7 @@ export const isoDateStringSchema = z.string().datetime('Invalid ISO date string'
 
 // Unit enum schema
 export const unitSchema = z.enum(['kg', 'lb', 'L', 'gal'], {
-  errorMap: () => ({ message: 'Unit must be one of: kg, lb, L, gal' })
+  message: 'Unit must be one of: kg, lb, L, gal'
 })
 
 // Status enum schemas
@@ -23,6 +23,32 @@ export const vesselStatusSchema = z.enum(['available', 'in_use', 'cleaning', 'ma
 export const vesselTypeSchema = z.enum(['fermenter', 'conditioning_tank', 'bright_tank', 'storage'])
 export const transactionTypeSchema = z.enum(['purchase', 'transfer', 'adjustment', 'sale', 'waste'])
 export const cogsItemTypeSchema = z.enum(['apple_cost', 'labor', 'overhead', 'packaging'])
+
+// Additive type enum schema
+export const additiveTypeSchema = z.enum([
+  'Sugar & Sweeteners',
+  'Flavorings & Adjuncts',
+  'Fermentation Organisms',
+  'Enzymes',
+  'Antioxidants & Antimicrobials',
+  'Tannins & Mouthfeel',
+  'Acids & Bases',
+  'Nutrients',
+  'Stabilizers',
+  'Refining & Clarifying'
+], {
+  message: 'Invalid additive type'
+})
+
+// Packaging item type enum schema
+export const packagingItemTypeSchema = z.enum([
+  'Primary Packaging',
+  'Closures',
+  'Secondary Packaging',
+  'Tertiary Packaging'
+], {
+  message: 'Invalid packaging item type'
+})
 
 // Vendor schemas
 export const vendorContactInfoSchema = z.object({

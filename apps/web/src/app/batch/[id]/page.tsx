@@ -26,8 +26,9 @@ import {
 import { format } from "date-fns"
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm"
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm"
+import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory"
 import { toast } from "@/hooks/use-toast"
-import { Loader2 } from "lucide-react"
+import { Loader2, Activity } from "lucide-react"
 
 export default function BatchDetailsPage() {
   const params = useParams()
@@ -223,6 +224,10 @@ export default function BatchDetailsPage() {
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="activity">
+            <Activity className="w-4 h-4 mr-2" />
+            Activity History
+          </TabsTrigger>
           <TabsTrigger value="composition">Composition</TabsTrigger>
           <TabsTrigger value="measurements">Measurements</TabsTrigger>
           <TabsTrigger value="additives">Additives</TabsTrigger>
@@ -321,6 +326,11 @@ export default function BatchDetailsPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Activity History Tab */}
+        <TabsContent value="activity">
+          <BatchActivityHistory batchId={batchId} />
         </TabsContent>
 
         {/* Composition Tab */}

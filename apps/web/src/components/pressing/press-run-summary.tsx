@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Apple,
   Scale,
@@ -25,6 +26,7 @@ import {
   Package,
   TrendingUp,
   Clock,
+  CheckSquare,
 } from "lucide-react"
 
 interface PressRunSummaryProps {
@@ -45,28 +47,47 @@ interface PressRunSummaryProps {
       brixMeasured?: string
       notes?: string
       vendorId?: string
+      vendorName?: string
+      purchaseItemId?: string
     }>
   }
   showActions?: boolean
+  showInventoryCheckboxes?: boolean
+  depletedPurchaseItems?: Set<string>
+  onPurchaseDepletionChange?: (purchaseItemId: string, isDepleted: boolean) => void
 }
 
-export function PressRunSummary({ pressRun, showActions = false }: PressRunSummaryProps) {
+export function PressRunSummary({
+  pressRun,
+  showActions = false,
+  showInventoryCheckboxes = false,
+  depletedPurchaseItems = new Set<string>(),
+  onPurchaseDepletionChange
+}: PressRunSummaryProps) {
   const totalWeightKg = pressRun.totalAppleWeightKg
   const totalWeightLbs = totalWeightKg * 2.20462
 
+  // Ensure loads is an array
+  const loads = pressRun.loads || []
+
   // Calculate unique vendor count from loads
   const uniqueVendorIds = new Set(
-    pressRun.loads
+    loads
       .map(load => load.vendorId)
       .filter(vendorId => vendorId && vendorId.trim() !== '')
   )
   const vendorCount = uniqueVendorIds.size || 1 // Default to 1 if no vendor IDs found
 
-  // Group loads by variety for summary
-  const varietySummary = pressRun.loads.reduce((acc, load) => {
+  // Group loads by vendor + variety for summary
+  const vendorVarietySummary = loads && loads.length > 0 ? loads.reduce((acc, load) => {
+    const vendor = load.vendorName || pressRun.vendorName || 'Unknown Vendor'
     const variety = load.appleVarietyName
-    if (!acc[variety]) {
-      acc[variety] = {
+    const key = `${vendor}::${variety}`
+
+    if (!acc[key]) {
+      acc[key] = {
+        vendor,
+        variety,
         totalWeightKg: 0,
         totalOriginalWeight: 0,
         originalUnit: load.originalWeightUnit,
@@ -74,34 +95,51 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
         averageBrix: 0,
         brixMeasurements: [] as number[],
         conditions: [] as string[],
+        purchaseItems: [] as Array<{
+          purchaseItemId: string
+          weight: number
+          originalWeight: number
+          originalWeightUnit: string
+        }>,
       }
     }
 
-    acc[variety].totalWeightKg += load.appleWeightKg
-    acc[variety].totalOriginalWeight += load.originalWeight
-    acc[variety].loads += 1
+    acc[key].totalWeightKg += load.appleWeightKg
+    acc[key].totalOriginalWeight += load.originalWeight
+    acc[key].loads += 1
+
+    if (load.purchaseItemId) {
+      acc[key].purchaseItems.push({
+        purchaseItemId: load.purchaseItemId,
+        weight: load.appleWeightKg,
+        originalWeight: load.originalWeight,
+        originalWeightUnit: load.originalWeightUnit,
+      })
+    }
 
     if (load.brixMeasured) {
       const brix = parseFloat(load.brixMeasured)
       if (!isNaN(brix)) {
-        acc[variety].brixMeasurements.push(brix)
+        acc[key].brixMeasurements.push(brix)
       }
     }
 
     if (load.appleCondition) {
-      acc[variety].conditions.push(load.appleCondition)
+      acc[key].conditions.push(load.appleCondition)
     }
 
     return acc
-  }, {} as Record<string, any>)
+  }, {} as Record<string, any>) : {}
 
-  // Calculate averages for variety summary
-  Object.keys(varietySummary).forEach(variety => {
-    const summary = varietySummary[variety]
-    if (summary.brixMeasurements.length > 0) {
-      summary.averageBrix = summary.brixMeasurements.reduce((sum: number, brix: number) => sum + brix, 0) / summary.brixMeasurements.length
-    }
-  })
+  // Calculate averages for vendor+variety summary
+  if (vendorVarietySummary && typeof vendorVarietySummary === 'object') {
+    Object.keys(vendorVarietySummary).forEach(key => {
+      const summary = vendorVarietySummary[key]
+      if (summary && summary.brixMeasurements && summary.brixMeasurements.length > 0) {
+        summary.averageBrix = summary.brixMeasurements.reduce((sum: number, brix: number) => sum + brix, 0) / summary.brixMeasurements.length
+      }
+    })
+  }
 
   const formatCondition = (condition: string) => {
     const conditionColors = {
@@ -148,7 +186,7 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-3 bg-amber-50 rounded-lg">
-              <div className="text-2xl font-bold text-amber-800">{pressRun.loads.length}</div>
+              <div className="text-2xl font-bold text-amber-800">{loads.length}</div>
               <div className="text-sm text-amber-600">Total Loads</div>
             </div>
             <div className="text-center p-3 bg-blue-50 rounded-lg">
@@ -156,8 +194,8 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
               <div className="text-sm text-blue-600">lbs Apples</div>
             </div>
             <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-800">{Object.keys(varietySummary).length}</div>
-              <div className="text-sm text-purple-600">Varieties</div>
+              <div className="text-2xl font-bold text-purple-800">{Object.keys(vendorVarietySummary).length}</div>
+              <div className="text-sm text-purple-600">Vendor/Varieties</div>
             </div>
             <div className="text-center p-3 bg-green-50 rounded-lg">
               <div className="text-2xl font-bold text-green-800">{vendorCount}</div>
@@ -167,20 +205,24 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
         </CardContent>
       </Card>
 
-      {/* Variety Breakdown */}
+      {/* Vendor + Variety Breakdown */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center text-base">
             <Apple className="w-4 h-4 mr-2 text-green-600" />
-            Variety Breakdown
+            Vendor & Variety Breakdown
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {Object.entries(varietySummary).map(([variety, summary]) => (
-              <div key={variety} className="border rounded-lg p-4">
+            {vendorVarietySummary && Object.keys(vendorVarietySummary).length > 0 ? (
+              Object.entries(vendorVarietySummary).map(([key, summary]) => (
+              <div key={key} className="border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-gray-900">{variety}</h4>
+                  <div>
+                    <h4 className="font-medium text-gray-900">{summary.vendor}</h4>
+                    <p className="text-sm text-gray-600">{summary.variety}</p>
+                  </div>
                   <div className="flex items-center gap-2">
                     {summary.averageBrix > 0 && (
                       <Badge variant="outline" className="text-xs">
@@ -225,8 +267,38 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
                     </div>
                   </div>
                 )}
+                {showInventoryCheckboxes && summary.purchaseItems.length > 0 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-xs text-gray-600 mb-2">Purchase Order Lines:</p>
+                    <div className="space-y-2">
+                      {summary.purchaseItems.map((item: any) => (
+                        <div key={item.purchaseItemId} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={depletedPurchaseItems.has(item.purchaseItemId)}
+                              onCheckedChange={(checked) => {
+                                if (onPurchaseDepletionChange) {
+                                  onPurchaseDepletionChange(item.purchaseItemId, checked === true)
+                                }
+                              }}
+                            />
+                            <span className="text-gray-700">
+                              Purchase Item
+                            </span>
+                          </div>
+                          <span className="text-gray-500">
+                            {item.originalWeight.toFixed(1)} {item.originalWeightUnit}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+            ))
+            ) : (
+              <p className="text-center text-gray-500 py-4">No variety data available</p>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -248,12 +320,16 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">Load</TableHead>
+                  <TableHead>Vendor</TableHead>
                   <TableHead>Variety</TableHead>
                   <TableHead>Weight</TableHead>
+                  {showInventoryCheckboxes && (
+                    <TableHead className="text-center">Mark as Depleted</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pressRun.loads
+                {loads
                   .sort((a, b) => a.loadSequence - b.loadSequence)
                   .map((load) => (
                     <TableRow key={load.id}>
@@ -261,11 +337,37 @@ export function PressRunSummary({ pressRun, showActions = false }: PressRunSumma
                         #{load.loadSequence}
                       </TableCell>
                       <TableCell>
+                        {load.vendorName || pressRun.vendorName || 'Unknown'}
+                      </TableCell>
+                      <TableCell>
                         <div className="font-medium">{load.appleVarietyName}</div>
                       </TableCell>
                       <TableCell>
                         {formatWeight(load.appleWeightKg, load.originalWeight, load.originalWeightUnit)}
                       </TableCell>
+                      {showInventoryCheckboxes && (
+                        <TableCell className="text-center">
+                          {load.purchaseItemId ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <Checkbox
+                                checked={depletedPurchaseItems.has(load.purchaseItemId)}
+                                onCheckedChange={(checked) => {
+                                  if (onPurchaseDepletionChange && load.purchaseItemId) {
+                                    onPurchaseDepletionChange(load.purchaseItemId, checked === true)
+                                  }
+                                }}
+                              />
+                              {depletedPurchaseItems.has(load.purchaseItemId) && (
+                                <Badge variant="outline" className="text-xs bg-orange-50">
+                                  Will be depleted
+                                </Badge>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">N/A</span>
+                          )}
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
               </TableBody>

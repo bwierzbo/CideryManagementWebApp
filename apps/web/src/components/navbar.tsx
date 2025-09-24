@@ -15,7 +15,7 @@ import {
   Settings,
   Menu,
   X,
-  Apple
+  Building2
 } from "lucide-react"
 import { useState } from "react"
 
@@ -27,10 +27,10 @@ const navItems = [
     description: "Overview & Analytics"
   },
   {
-    name: "Base Fruits",
-    href: "/fruits",
-    icon: Apple,
-    description: "Variety Database"
+    name: "Vendors",
+    href: "/vendors",
+    icon: Building2,
+    description: "Vendor Database"
   },
   {
     name: "Inventory",

@@ -1,7 +1,7 @@
 ---
 created: 2025-09-13T04:03:23Z
-last_updated: 2025-09-17T02:50:09Z
-version: 1.3
+last_updated: 2025-09-24T02:11:30Z
+version: 1.5
 author: Claude Code PM System
 ---
 
@@ -50,7 +50,19 @@ web/
 │   │   ├── pressing/         # Apple pressing workflow pages
 │   │   │   ├── [id]/         # Dynamic press run detail pages
 │   │   │   └── new/          # New press run creation
+│   │   ├── vendors/          # Vendor management pages
+│   │   ├── batch/            # Batch management pages
+│   │   │   └── [id]/         # Individual batch details
 │   ├── components/           # React components (shadcn/ui based)
+│   │   ├── batch/            # Batch management components
+│   │   ├── cellar/           # Cellar and fermentation components
+│   │   │   ├── AddBatchMeasurementForm.tsx
+│   │   │   ├── BatchHistoryModal.tsx
+│   │   │   └── BatchManagementTable.tsx
+│   │   ├── inventory/        # Inventory management components
+│   │   │   ├── BatchMergeHistory.tsx
+│   │   │   ├── InventoryEditDialog.tsx
+│   │   │   └── InventoryTable.tsx
 │   │   ├── pressing/         # Press run related components
 │   │   │   ├── FruitLoadFormWithTRPC.tsx
 │   │   │   ├── OfflineFruitLoadForm.tsx
@@ -58,6 +70,7 @@ web/
 │   │   │   └── press-run-summary.tsx
 │   │   └── ui/               # shadcn/ui components
 │   │       ├── alert-dialog.tsx
+│   │       ├── checkbox.tsx
 │   │       ├── confirm-dialog.tsx
 │   │       └── progress.tsx
 │   ├── hooks/                # Custom React hooks
@@ -202,4 +215,5 @@ worker/
 
 ## Update History
 
+- 2025-09-23T19:20:45Z: Added batch/, cellar/, and inventory/ component directories, updated UI components with checkbox
 - 2025-09-13T19:24:59Z: Added .claude/epics/ and .claude/prds/ directories for project management system

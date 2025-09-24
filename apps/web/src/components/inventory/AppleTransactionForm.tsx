@@ -19,7 +19,8 @@ import {
   XCircle,
   X,
   Apple,
-  ExternalLink
+  ExternalLink,
+  Search
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 import { useForm } from "react-hook-form"
@@ -63,6 +64,8 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
   const [purchaseDate, setPurchaseDate] = useState<string>("")
   const [notifications, setNotifications] = useState<NotificationType[]>([])
   const [selectedVendorId, setSelectedVendorId] = useState<string>("")
+  const [vendorSearchQuery, setVendorSearchQuery] = useState<string>("")
+  const [debouncedVendorSearch, setDebouncedVendorSearch] = useState<string>("")
   const [lines, setLines] = useState<Array<{
     appleVarietyId: string
     quantity: number | undefined
@@ -87,7 +90,29 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
     setNotifications(prev => prev.filter(n => n.id !== id))
   }
 
-  const { data: vendorData } = trpc.vendor.list.useQuery()
+  // Debounce vendor search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedVendorSearch(vendorSearchQuery)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [vendorSearchQuery])
+
+  // Create vendor query input with search
+  const vendorQueryInput = React.useMemo(() => {
+    const trimmedSearch = debouncedVendorSearch.trim()
+    return trimmedSearch ? {
+      search: trimmedSearch,
+      limit: 50,
+      offset: 0,
+      sortBy: 'name' as const,
+      sortOrder: 'asc' as const,
+      includeInactive: false,
+    } : undefined
+  }, [debouncedVendorSearch])
+
+  const { data: vendorData } = trpc.vendor.list.useQuery(vendorQueryInput, { enabled: !!vendorQueryInput })
   const vendors = vendorData?.vendors || []
 
   // Get vendor varieties when vendor is selected
@@ -303,6 +328,18 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="sm:col-span-2 lg:col-span-1">
               <Label htmlFor="vendorId">Vendor</Label>
+
+              {/* Vendor Search Input */}
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search vendors..."
+                  value={vendorSearchQuery}
+                  onChange={(e) => setVendorSearchQuery(e.target.value)}
+                  className="pl-10 h-10"
+                />
+              </div>
+
               <Select onValueChange={handleVendorChange}>
                 <SelectTrigger className="h-12">
                   <SelectValue placeholder="Select vendor" />

@@ -19,7 +19,10 @@ import {
   Package,
   AlertTriangle,
   ExternalLink,
-  X
+  Edit,
+  MoreVertical,
+  X,
+  Trash2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
@@ -27,6 +30,24 @@ import { useTableSorting } from '@/hooks/useTableSorting'
 import { MaterialTypeIndicator } from './MaterialTypeIndicator'
 import { InventorySearch } from './InventorySearch'
 import { InventoryFilters } from './InventoryFilters'
+import { InventoryEditDialog } from './InventoryEditDialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import type {
   MaterialType,
   InventoryFiltersState,
@@ -68,6 +89,8 @@ export function InventoryTable({
 }: InventoryTableProps) {
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null)
+  const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null)
   const [filters, setFilters] = useState<InventoryFiltersState>({
     materialTypes: [],
     location: 'all',
@@ -130,6 +153,22 @@ export function InventoryTable({
     refetch: refetchSearch
   } = trpc.inventory.search.useQuery(searchParams, {
     enabled: useSearch,
+  })
+
+  // Delete mutation
+  const deleteMutation = trpc.inventory.deleteItem.useMutation({
+    onSuccess: () => {
+      setDeleteItem(null)
+      if (useSearch) {
+        refetchSearch()
+      } else {
+        refetchList()
+      }
+    },
+    onError: (error) => {
+      console.error('Error deleting item:', error)
+      // Handle error (could show toast notification)
+    }
   })
 
   // Derived state
@@ -271,6 +310,26 @@ export function InventoryTable({
     return columnIndex >= 0 ? columnIndex : undefined
   }, [sortState.columns])
 
+  // Helper function to determine item type from ID
+  const getItemType = (id: string): 'basefruit' | 'additive' | 'juice' | 'packaging' => {
+    if (id.startsWith('basefruit-')) return 'basefruit'
+    if (id.startsWith('additive-')) return 'additive'
+    if (id.startsWith('juice-')) return 'juice'
+    if (id.startsWith('packaging-')) return 'packaging'
+    return 'basefruit' // fallback
+  }
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = useCallback(() => {
+    if (deleteItem) {
+      const itemType = getItemType(deleteItem.id)
+      deleteMutation.mutate({
+        id: deleteItem.id,
+        itemType
+      })
+    }
+  }, [deleteItem, deleteMutation])
+
   return (
     <div className={cn("space-y-6", className)}>
       {/* Search and Filters */}
@@ -368,11 +427,11 @@ export function InventoryTable({
                     Available
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('updatedAt')}
-                    sortIndex={getSortIndex('updatedAt')}
-                    onSort={() => handleColumnSort('updatedAt')}
+                    sortDirection={getSortDirectionForDisplay('createdAt')}
+                    sortIndex={getSortIndex('createdAt')}
+                    onSort={() => handleColumnSort('createdAt')}
                   >
-                    Last Updated
+                    Purchase Date
                   </SortableHeader>
                   <SortableHeader canSort={false} className="w-[50px]">
                     Actions
@@ -429,22 +488,54 @@ export function InventoryTable({
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Calendar className="w-3 h-3" />
                           <span>
-                            {new Date(item.updatedAt).toLocaleDateString()}
+                            {new Date(item.createdAt).toLocaleDateString()}
                           </span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleItemClick(item)
-                          }}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditItem(item)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleItemClick(item)
+                              }}
+                            >
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteItem(item)
+                              }}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -481,6 +572,46 @@ export function InventoryTable({
           )}
         </CardContent>
       </Card>
+
+      {/* Edit Dialog */}
+      {editItem && (
+        <InventoryEditDialog
+          open={!!editItem}
+          onClose={() => setEditItem(null)}
+          item={editItem}
+          onSuccess={() => {
+            setEditItem(null)
+            if (useSearch) {
+              refetchSearch()
+            } else {
+              refetchList()
+            }
+          }}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Inventory Item</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteItem ? getItemDisplayName(deleteItem) : ''}"?
+              This action cannot be undone and will permanently remove this item from your inventory.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleteMutation.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

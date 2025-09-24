@@ -1,0 +1,242 @@
+"use client"
+
+import React from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  Activity,
+  Beaker,
+  FlaskConical,
+  Plus,
+  Calendar,
+  ArrowRight,
+  ArrowLeft,
+  Package,
+  AlertCircle,
+  Droplets,
+  TestTube,
+  Thermometer,
+  Scale
+} from "lucide-react"
+import { format } from "date-fns"
+import { trpc } from "@/utils/trpc"
+import { cn } from "@/lib/utils"
+
+interface BatchActivityHistoryProps {
+  batchId: string
+}
+
+const activityIcons = {
+  creation: Beaker,
+  measurement: TestTube,
+  additive: Plus,
+  merge: Droplets,
+  transfer: ArrowRight,
+  bottling: Package
+}
+
+const activityColors = {
+  creation: "bg-green-500/10 text-green-700 border-green-500/20",
+  measurement: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  additive: "bg-purple-500/10 text-purple-700 border-purple-500/20",
+  merge: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+  transfer: "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
+  bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20"
+}
+
+export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
+  const { data, isLoading, error } = trpc.batch.getActivityHistory.useQuery({ batchId })
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-4 w-64 mt-2" />
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex gap-4">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="flex-1">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-4 w-full mt-2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Failed to load batch history
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const activities = data?.activities || []
+  const batch = data?.batch
+
+  if (activities.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-center text-muted-foreground">
+            No activity history available
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Activity className="h-5 w-5" />
+          Activity History
+        </CardTitle>
+        <CardDescription>
+          Complete timeline of all batch events
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="relative">
+          {/* Timeline line */}
+          <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
+
+          <div className="space-y-6">
+            {activities.map((activity, index) => {
+              const Icon = activityIcons[activity.type as keyof typeof activityIcons] || Activity
+              const colorClass = activityColors[activity.type as keyof typeof activityColors] || "bg-gray-500/10 text-gray-700 border-gray-500/20"
+
+              return (
+                <div key={activity.id} className="relative flex gap-4">
+                  {/* Timeline dot */}
+                  <div className={cn(
+                    "relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 bg-background",
+                    colorClass
+                  )}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 pt-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant="outline" className={cn("text-xs", colorClass)}>
+                            {activity.type}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(activity.timestamp), "MMM dd, yyyy 'at' h:mm a")}
+                          </span>
+                        </div>
+
+                        <p className="font-medium text-sm">
+                          {activity.description}
+                        </p>
+
+                        {activity.details && typeof activity.details === 'object' && (
+                          <div className="mt-2 space-y-1">
+                            {activity.details.values && (
+                              <div className="text-sm text-muted-foreground">
+                                {activity.details.values}
+                              </div>
+                            )}
+                            {activity.details.amount && (
+                              <div className="text-sm text-muted-foreground">
+                                Amount: {activity.details.amount}
+                              </div>
+                            )}
+                            {activity.details.volumeAdded && (
+                              <div className="text-sm text-muted-foreground">
+                                Added: {activity.details.volumeAdded}
+                              </div>
+                            )}
+                            {activity.details.volumeChange && (
+                              <div className="text-sm text-muted-foreground">
+                                Volume: {activity.details.volumeChange}
+                              </div>
+                            )}
+                            {activity.details.direction && (
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                                {activity.details.direction === 'incoming' ? (
+                                  <>
+                                    <ArrowLeft className="h-3 w-3" />
+                                    <span>Incoming transfer</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ArrowRight className="h-3 w-3" />
+                                    <span>Outgoing transfer</span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                            {activity.details.notes && (
+                              <div className="text-sm text-muted-foreground italic">
+                                Note: {activity.details.notes}
+                              </div>
+                            )}
+                            {activity.details.initialVolume && (
+                              <div className="text-sm text-muted-foreground">
+                                Initial volume: {activity.details.initialVolume}L{activity.details.vessel ? ` in ${activity.details.vessel}` : ''}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Summary stats */}
+        {batch && (
+          <div className="mt-8 pt-6 border-t">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Current Status:</span>
+                <Badge className="ml-2" variant={batch.status === 'active' ? 'default' : 'secondary'}>
+                  {batch.status}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Current Volume:</span>
+                <span className="ml-2 font-medium">{batch.currentVolumeL}L</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Total Events:</span>
+                <span className="ml-2 font-medium">{activities.length}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Days Active:</span>
+                <span className="ml-2 font-medium">
+                  {Math.floor((new Date().getTime() - new Date(batch.createdAt).getTime()) / (1000 * 60 * 60 * 24))}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

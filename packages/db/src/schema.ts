@@ -24,6 +24,12 @@ export const ciderCategoryEnum = pgEnum('cider_category_enum', ['sweet', 'bitter
 export const intensityEnum = pgEnum('intensity_enum', ['high', 'medium-high', 'medium', 'low-medium', 'low'])
 export const harvestWindowEnum = pgEnum('harvest_window_enum', ['Late', 'Mid-Late', 'Mid', 'Early-Mid', 'Early'])
 export const materialTypeEnum = pgEnum('material_type', ['apple', 'additive', 'juice', 'packaging'])
+export const packagingItemTypeEnum = pgEnum('packaging_item_type', [
+  'Primary Packaging',
+  'Closures',
+  'Secondary Packaging',
+  'Tertiary Packaging'
+])
 
 // Core Tables
 export const users = pgTable('users', {
@@ -84,6 +90,90 @@ export const vendorVarieties = pgTable('vendor_varieties', {
   varietyIdx: index('vendor_varieties_variety_idx').on(table.varietyId)
 }))
 
+// Additive Varieties
+export const additiveVarieties = pgTable('additive_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  itemType: text('item_type').notNull(), // enzyme, nutrient, clarifier, preservative, acid, other
+  isActive: boolean('is_active').notNull().default(true),
+  labelImpact: boolean('label_impact').notNull().default(false),
+  labelImpactNotes: text('label_impact_notes'),
+  allergensVegan: boolean('allergens_vegan').notNull().default(false),
+  allergensVeganNotes: text('allergens_vegan_notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  nameUniqueIdx: uniqueIndex('additive_varieties_name_unique_idx').on(table.name)
+}))
+
+export const vendorAdditiveVarieties = pgTable('vendor_additive_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id, { onDelete: 'cascade' }),
+  varietyId: uuid('variety_id').notNull().references(() => additiveVarieties.id, { onDelete: 'cascade' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  vendorVarietyUniqueIdx: uniqueIndex('vendor_additive_varieties_vendor_variety_unique_idx').on(table.vendorId, table.varietyId),
+  vendorIdx: index('vendor_additive_varieties_vendor_idx').on(table.vendorId),
+  varietyIdx: index('vendor_additive_varieties_variety_idx').on(table.varietyId)
+}))
+
+// Juice Varieties
+export const juiceVarieties = pgTable('juice_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  nameUniqueIdx: uniqueIndex('juice_varieties_name_unique_idx').on(table.name)
+}))
+
+export const vendorJuiceVarieties = pgTable('vendor_juice_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id, { onDelete: 'cascade' }),
+  varietyId: uuid('variety_id').notNull().references(() => juiceVarieties.id, { onDelete: 'cascade' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  vendorVarietyUniqueIdx: uniqueIndex('vendor_juice_varieties_vendor_variety_unique_idx').on(table.vendorId, table.varietyId),
+  vendorIdx: index('vendor_juice_varieties_vendor_idx').on(table.vendorId),
+  varietyIdx: index('vendor_juice_varieties_variety_idx').on(table.varietyId)
+}))
+
+// Packaging Varieties
+export const packagingVarieties = pgTable('packaging_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  itemType: packagingItemTypeEnum('item_type').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  nameUniqueIdx: uniqueIndex('packaging_varieties_name_unique_idx').on(table.name)
+}))
+
+export const vendorPackagingVarieties = pgTable('vendor_packaging_varieties', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  vendorId: uuid('vendor_id').notNull().references(() => vendors.id, { onDelete: 'cascade' }),
+  varietyId: uuid('variety_id').notNull().references(() => packagingVarieties.id, { onDelete: 'cascade' }),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  vendorVarietyUniqueIdx: uniqueIndex('vendor_packaging_varieties_vendor_variety_unique_idx').on(table.vendorId, table.varietyId),
+  vendorIdx: index('vendor_packaging_varieties_vendor_idx').on(table.vendorId),
+  varietyIdx: index('vendor_packaging_varieties_variety_idx').on(table.varietyId)
+}))
+
 export const basefruitPurchases = pgTable('basefruit_purchases', {
   id: uuid('id').primaryKey().defaultRandom(),
   vendorId: uuid('vendor_id').notNull().references(() => vendors.id),
@@ -113,6 +203,11 @@ export const basefruitPurchaseItems = pgTable('basefruit_purchase_items', {
   originalUnit: text('original_unit'),
   originalQuantity: decimal('original_quantity', { precision: 10, scale: 2 }),
   notes: text('notes'),
+  // Track if this purchase line has been fully depleted
+  isDepleted: boolean('is_depleted').default(false),
+  depletedAt: timestamp('depleted_at'),
+  depletedBy: uuid('depleted_by'),
+  depletedInPressRun: uuid('depleted_in_press_run'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   deletedAt: timestamp('deleted_at')
@@ -135,9 +230,11 @@ export const additivePurchases = pgTable('additive_purchases', {
 export const additivePurchaseItems = pgTable('additive_purchase_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   purchaseId: uuid('purchase_id').notNull().references(() => additivePurchases.id),
-  additiveType: text('additive_type').notNull(), // enzyme, nutrient, clarifier, preservative, acid, other
-  brandManufacturer: text('brand_manufacturer').notNull(),
-  productName: text('product_name').notNull(),
+  additiveVarietyId: uuid('additive_variety_id').references(() => additiveVarieties.id),
+  // Legacy fields for backward compatibility - can be removed once migrated
+  additiveType: text('additive_type'), // enzyme, nutrient, clarifier, preservative, acid, other
+  brandManufacturer: text('brand_manufacturer'),
+  productName: text('product_name'),
   quantity: decimal('quantity', { precision: 10, scale: 3 }).notNull(),
   unit: text('unit').notNull(), // g, kg, oz, lb
   lotBatchNumber: text('lot_batch_number'),
@@ -168,7 +265,9 @@ export const juicePurchases = pgTable('juice_purchases', {
 export const juicePurchaseItems = pgTable('juice_purchase_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   purchaseId: uuid('purchase_id').notNull().references(() => juicePurchases.id),
-  juiceType: text('juice_type').notNull(),
+  juiceVarietyId: uuid('juice_variety_id').references(() => juiceVarieties.id),
+  // Legacy fields for backward compatibility - can be removed once migrated
+  juiceType: text('juice_type'),
   varietyName: text('variety_name'),
   volumeL: decimal('volume_l', { precision: 10, scale: 3 }).notNull(),
   brix: decimal('brix', { precision: 5, scale: 2 }),
@@ -198,7 +297,9 @@ export const packagingPurchases = pgTable('packaging_purchases', {
 export const packagingPurchaseItems = pgTable('packaging_purchase_items', {
   id: uuid('id').primaryKey().defaultRandom(),
   purchaseId: uuid('purchase_id').notNull().references(() => packagingPurchases.id),
-  packageType: text('package_type').notNull(), // bottles, cans, kegs, labels, caps
+  packagingVarietyId: uuid('packaging_variety_id').references(() => packagingVarieties.id),
+  // Legacy fields for backward compatibility - can be removed once migrated
+  packageType: text('package_type'), // bottles, cans, kegs, labels, caps
   materialType: text('material_type'), // glass, aluminum, stainless, paper
   size: text('size').notNull(), // 12oz, 16oz, 750ml, 5gal, etc
   quantity: integer('quantity').notNull(),
@@ -268,6 +369,7 @@ export const batches = pgTable('batches', {
   juiceLotId: uuid('juice_lot_id').references(() => juiceLots.id),
   vesselId: uuid('vessel_id').references(() => vessels.id),
   name: text('name').notNull().unique(),
+  customName: text('custom_name'),
   batchNumber: text('batch_number').notNull(),
   initialVolumeL: decimal('initial_volume_l', { precision: 10, scale: 3 }).notNull(),
   currentVolumeL: decimal('current_volume_l', { precision: 10, scale: 3 }),
@@ -573,6 +675,32 @@ export const batchTransfers = pgTable('batch_transfers', {
   transferredAtIdx: index('batch_transfers_transferred_at_idx').on(table.transferredAt)
 }))
 
+// Batch merge history for tracking when batches are combined
+export const batchMergeHistory = pgTable('batch_merge_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  // Target batch that received the merge
+  targetBatchId: uuid('target_batch_id').notNull().references(() => batches.id),
+  // Source information (new juice being added)
+  sourcePressRunId: uuid('source_press_run_id').references(() => applePressRuns.id),
+  sourceType: text('source_type').notNull(), // 'press_run' or 'batch_transfer'
+  // Volume details
+  volumeAddedL: decimal('volume_added_l', { precision: 10, scale: 3 }).notNull(),
+  targetVolumeBeforeL: decimal('target_volume_before_l', { precision: 10, scale: 3 }).notNull(),
+  targetVolumeAfterL: decimal('target_volume_after_l', { precision: 10, scale: 3 }).notNull(),
+  // Composition snapshot at time of merge
+  compositionSnapshot: jsonb('composition_snapshot'), // Store varieties and percentages
+  notes: text('notes'),
+  // Metadata
+  mergedAt: timestamp('merged_at').notNull().defaultNow(),
+  mergedBy: uuid('merged_by').references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  targetBatchIdx: index('batch_merge_history_target_batch_idx').on(table.targetBatchId),
+  sourcePressRunIdx: index('batch_merge_history_source_press_run_idx').on(table.sourcePressRunId),
+  mergedAtIdx: index('batch_merge_history_merged_at_idx').on(table.mergedAt)
+}))
+
 // Relations
 export const vendorsRelations = relations(vendors, ({ many }) => ({
   basefruitPurchases: many(basefruitPurchases),
@@ -580,6 +708,9 @@ export const vendorsRelations = relations(vendors, ({ many }) => ({
   juicePurchases: many(juicePurchases),
   packagingPurchases: many(packagingPurchases),
   vendorVarieties: many(vendorVarieties),
+  vendorAdditiveVarieties: many(vendorAdditiveVarieties),
+  vendorJuiceVarieties: many(vendorJuiceVarieties),
+  vendorPackagingVarieties: many(vendorPackagingVarieties),
   batchCompositions: many(batchCompositions)
 }))
 
@@ -597,6 +728,54 @@ export const vendorVarietiesRelations = relations(vendorVarieties, ({ one }) => 
   variety: one(baseFruitVarieties, {
     fields: [vendorVarieties.varietyId],
     references: [baseFruitVarieties.id]
+  })
+}))
+
+// Additive Variety Relations
+export const additiveVarietiesRelations = relations(additiveVarieties, ({ many }) => ({
+  vendorAdditiveVarieties: many(vendorAdditiveVarieties)
+}))
+
+export const vendorAdditiveVarietiesRelations = relations(vendorAdditiveVarieties, ({ one }) => ({
+  vendor: one(vendors, {
+    fields: [vendorAdditiveVarieties.vendorId],
+    references: [vendors.id]
+  }),
+  variety: one(additiveVarieties, {
+    fields: [vendorAdditiveVarieties.varietyId],
+    references: [additiveVarieties.id]
+  })
+}))
+
+// Juice Variety Relations
+export const juiceVarietiesRelations = relations(juiceVarieties, ({ many }) => ({
+  vendorJuiceVarieties: many(vendorJuiceVarieties)
+}))
+
+export const vendorJuiceVarietiesRelations = relations(vendorJuiceVarieties, ({ one }) => ({
+  vendor: one(vendors, {
+    fields: [vendorJuiceVarieties.vendorId],
+    references: [vendors.id]
+  }),
+  variety: one(juiceVarieties, {
+    fields: [vendorJuiceVarieties.varietyId],
+    references: [juiceVarieties.id]
+  })
+}))
+
+// Packaging Variety Relations
+export const packagingVarietiesRelations = relations(packagingVarieties, ({ many }) => ({
+  vendorPackagingVarieties: many(vendorPackagingVarieties)
+}))
+
+export const vendorPackagingVarietiesRelations = relations(vendorPackagingVarieties, ({ one }) => ({
+  vendor: one(vendors, {
+    fields: [vendorPackagingVarieties.vendorId],
+    references: [vendors.id]
+  }),
+  variety: one(packagingVarieties, {
+    fields: [vendorPackagingVarieties.varietyId],
+    references: [packagingVarieties.id]
   })
 }))
 
@@ -723,7 +902,20 @@ export const batchesRelations = relations(batches, ({ one, many }) => ({
   // Transfer relations
   transfersAsSource: many(batchTransfers, { relationName: 'sourceTransfers' }),
   transfersAsDestination: many(batchTransfers, { relationName: 'destinationTransfers' }),
-  transfersAsRemaining: many(batchTransfers, { relationName: 'remainingTransfers' })
+  transfersAsRemaining: many(batchTransfers, { relationName: 'remainingTransfers' }),
+  // Merge history
+  mergeHistory: many(batchMergeHistory)
+}))
+
+export const batchMergeHistoryRelations = relations(batchMergeHistory, ({ one }) => ({
+  targetBatch: one(batches, {
+    fields: [batchMergeHistory.targetBatchId],
+    references: [batches.id]
+  }),
+  sourcePressRun: one(applePressRuns, {
+    fields: [batchMergeHistory.sourcePressRunId],
+    references: [applePressRuns.id]
+  })
 }))
 
 export const batchCompositionsRelations = relations(batchCompositions, ({ one }) => ({

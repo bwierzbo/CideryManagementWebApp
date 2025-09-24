@@ -1,7 +1,7 @@
 ---
 created: 2025-09-13T04:03:23Z
-last_updated: 2025-09-17T02:50:09Z
-version: 1.3
+last_updated: 2025-09-24T02:11:30Z
+version: 1.5
 author: Claude Code PM System
 ---
 
@@ -9,10 +9,10 @@ author: Claude Code PM System
 
 ## Current Status
 
-**Project Phase**: Active Development - Vendor Auto-Fill & UI Refinements
+**Project Phase**: Active Development - Vendor & Inventory Management
 **Branch**: main
 **Repository**: https://github.com/bwierzbo/CideryManagementWebApp.git
-**Last Commit**: fb6dde1 - Add vendor auto-fill functionality for fruit loads
+**Last Commit**: Working on vendor pagination and inventory UI improvements
 
 ## Recent Work Completed
 
@@ -77,49 +77,64 @@ author: Claude Code PM System
 
 ### Recent Development Focus (September 2025)
 
-**Latest Vendor Auto-Fill Implementation** (fb6dde1):
-- ✅ Added vendor auto-fill functionality for fruit loads
-- ✅ Improved purchase workflow user experience
-- ✅ Enhanced data entry efficiency with smart defaults
+**Batch Management Enhancements** (880bff2, current session):
+- ✅ Implemented "Add Measurement" action in vessel map
+- ✅ Integrated batch measurement form with vessel operations
+- ✅ Added date and time selection for batch measurements
+- ✅ Removed volume field from measurement form (now tracks SG, pH, TA, Temp only)
+- ✅ Updated UI to show "Specific Gravity" instead of "Current SG"
+- ✅ Fixed SG formatting to 3 decimal places (e.g., "1.042" instead of "1.0420")
+- ✅ Connected vessel map actions to batch history modal
 
-**TypeScript & Deployment Stability** (97dda0a, 3b2a877):
-- ✅ Fixed TypeScript compilation errors for Vercel deployment
-- ✅ Resolved ESLint issues preventing production builds
-- ✅ Stabilized continuous deployment pipeline
+**TypeScript & Build Fixes** (d60d413, 0e87842):
+- ✅ Fixed remaining TypeScript build errors
+- ✅ Resolved vessel status type checking issues
+- ✅ Fixed property name consistency across components
+- ✅ Stabilized build process for Vercel deployment
 
-**Enhanced User Experience** (128e59d):
-- ✅ Implemented toast notification system
-- ✅ Improved press run management workflow
-- ✅ Enhanced user feedback throughout application
-
-**RBAC & Apple Varieties Management** (979a63d - c3be23f):
-- ✅ Fixed role-based access control for apple varieties editing
-- ✅ Restored apple variety creation functionality
-- ✅ Improved form schema and data submission handling
-- ✅ Enhanced form validation and error handling
+### Today's Session Work (September 23, 2025)
+- ✅ Fixed vendor pagination implementation
+  - Imported vendorRouter in index.ts to replace dummy implementation
+  - Backend now properly limits results with pagination metadata
+  - Search and pagination working correctly for vendor management
+- ✅ Simplified BaseFruitTable UI
+  - Removed vendor and variety dropdown filters
+  - Kept search functionality for cleaner interface
+  - Fixed runtime errors from removed filter references
+- ✅ Resolved various TypeScript build errors
+- ✅ Updated batch history modal functionality
 
 ### Recent Commits (Last 10)
-- `fb6dde1` - Add vendor auto-fill functionality for fruit loads
-- `97dda0a` - Fix TypeScript error in toast provider
-- `3b2a877` - Fix ESLint errors for Vercel deployment
-- `128e59d` - Add toast notifications and improve press run management
-- `e0eb8dc` - Fix TypeScript compilation errors in varieties router for Vercel deployment
-- `42ebc68` - Fix TypeScript build errors for Vercel deployment
-- `979a63d` - Fix RBAC authentication for apple varieties table editing
-- `1ffcf0c` - Fix apple variety form schema - add optional fields
-- `6a9d528` - Fix apple variety form data submission
-- `c3be23f` - Fix apple variety creation - restore disabled functionality
+- `880bff2` - Update View Batch action in cellar to show history modal
+- `d60d413` - Fix remaining TypeScript build errors
+- `0e87842` - Fix build errors for Vercel deployment
+- `3b443d9` - Fix property name in pressing component
+- `cb5f0b3` - Fix remaining batchNumber reference in reports page
+- `abde189` - Fix batch property name in reports page
+- `5008062` - Remove fruitType from variety creation mutation
+- `2228c2f` - Fix enum type casting with correct intensity values
+- `38a3d2b` - Fix TypeScript type casting in NewVarietyModal
+- `e0b6b65` - Fix property name consistency: Use appleVarieties throughout
 
 ### Current Outstanding Work
 
-**Uncommitted Changes** (5 files pending commit):
-- `apps/web/src/app/apples/_components/ApplesGrid.tsx` - Grid improvements
-- `apps/web/src/app/cellar/page.tsx` - Cellar page enhancements
-- `apps/web/src/app/page.tsx` - Homepage updates
-- `apps/web/src/components/pressing/FruitLoadFormWithTRPC.tsx` - Form optimization
-- `apps/web/src/components/pressing/press-run-completion.tsx` - Workflow improvements
+**Uncommitted Changes** (Multiple files with batch management updates):
+- `apps/web/src/app/cellar/page.tsx` - Vessel map with integrated measurement actions
+- `apps/web/src/components/cellar/AddBatchMeasurementForm.tsx` - Enhanced with datetime input
+- `apps/web/src/components/cellar/BatchManagementTable.tsx` - Updated SG display formatting
+- `apps/web/src/components/cellar/BatchHistoryModal.tsx` - Batch history improvements
+- `packages/api/src/routers/batch.ts` - Batch management API updates
+- `packages/db/src/schema.ts` - Database schema enhancements
+- Plus additional inventory and pressing components
 
-**Branch Status**: 1 commit ahead of origin/main (ready to push)
+**New Files Added**:
+- `apps/web/src/components/batch/` - New batch components directory
+- `apps/web/src/components/inventory/BatchMergeHistory.tsx` - Batch merge history tracking
+- `apps/web/src/components/inventory/InventoryEditDialog.tsx` - Inventory editing dialog
+- `apps/web/src/components/ui/checkbox.tsx` - New UI component
+- Database migrations for batch custom names, merge history, and transfers
+
+**Branch Status**: Working on main branch with uncommitted changes
 
 ## Immediate Next Steps
 
@@ -203,6 +218,7 @@ Multiple development servers running concurrently:
 
 ## Update History
 
+- 2025-09-23T19:20:45Z: Updated to reflect batch management enhancements, measurement form improvements, UI refinements, and current uncommitted work
 - 2025-09-17T02:50:09Z: Major update reflecting latest vendor auto-fill implementation, TypeScript stability fixes, enhanced UX features, and current outstanding work status
 - 2025-09-14T21:40:54Z: Updated to reflect completion of Apple Press epic implementation, including database schema, mobile-first UI, RBAC permissions fixes, and simplified form input workflow
 - 2025-09-13T19:24:59Z: Updated to reflect build system stabilization work, Vercel deployment challenges, UI Pages Auth epic progress, and current development focus on deployment issues

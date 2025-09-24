@@ -13,6 +13,7 @@ export {
 
 // Re-export validation functions and schemas
 export * from './validation';
+export * from './schemas';
 
 // Re-export utility functions
 export * from './utils';

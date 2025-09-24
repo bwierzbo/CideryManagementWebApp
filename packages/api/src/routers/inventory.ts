@@ -60,18 +60,22 @@ export const inventoryRouter = router({
               'vendorName', ${vendors.name},
               'varietyName', ${baseFruitVarieties.name},
               'harvestDate', ${basefruitPurchaseItems.harvestDate},
+              'purchaseDate', ${basefruitPurchases.purchaseDate},
               'unit', ${basefruitPurchaseItems.originalUnit}
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: basefruitPurchaseItems.notes,
-            createdAt: basefruitPurchases.createdAt,
+            createdAt: basefruitPurchases.purchaseDate,
             updatedAt: basefruitPurchases.updatedAt
           })
           .from(basefruitPurchaseItems)
           .leftJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
           .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
           .leftJoin(baseFruitVarieties, eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id))
-          .where(isNull(basefruitPurchaseItems.deletedAt))
+          .where(and(
+            isNull(basefruitPurchaseItems.deletedAt),
+            eq(basefruitPurchaseItems.isDepleted, false)
+          ))
 
         // Additive purchases
         const additiveItems = await db
@@ -91,7 +95,7 @@ export const inventoryRouter = router({
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: additivePurchaseItems.notes,
-            createdAt: additivePurchases.createdAt,
+            createdAt: additivePurchases.purchaseDate,
             updatedAt: additivePurchases.updatedAt
           })
           .from(additivePurchaseItems)
@@ -117,7 +121,7 @@ export const inventoryRouter = router({
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: juicePurchaseItems.notes,
-            createdAt: juicePurchases.createdAt,
+            createdAt: juicePurchases.purchaseDate,
             updatedAt: juicePurchases.updatedAt
           })
           .from(juicePurchaseItems)
@@ -142,7 +146,7 @@ export const inventoryRouter = router({
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: packagingPurchaseItems.notes,
-            createdAt: packagingPurchases.createdAt,
+            createdAt: packagingPurchases.purchaseDate,
             updatedAt: packagingPurchases.updatedAt
           })
           .from(packagingPurchaseItems)
@@ -473,5 +477,211 @@ export const inventoryRouter = router({
         input.startDate,
         input.endDate
       )
+    }),
+
+  // Update base fruit purchase item
+  updateBaseFruitItem: createRbacProcedure('update', 'inventory')
+    .input(z.object({
+      id: z.string().uuid(),
+      originalQuantity: z.number().min(0).optional(),
+      originalUnit: z.enum(['kg', 'lb', 'L', 'gal']).optional(),
+      harvestDate: z.date().optional().nullable(),
+      notes: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { id, harvestDate, originalQuantity, ...updateData } = input
+
+      await db
+        .update(basefruitPurchaseItems)
+        .set({
+          ...updateData,
+          originalQuantity: originalQuantity?.toString(),
+          harvestDate: harvestDate ? harvestDate.toISOString().split('T')[0] : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(basefruitPurchaseItems.id, id))
+
+      // Log audit
+      await db.insert(auditLog).values({
+        tableName: 'basefruit_purchase_items',
+        recordId: id,
+        operation: 'update',
+        changedBy: ctx.session?.user?.id || 'system',
+        newData: updateData,
+      })
+
+      return { success: true }
+    }),
+
+  // Update additive purchase item
+  updateAdditiveItem: createRbacProcedure('update', 'inventory')
+    .input(z.object({
+      id: z.string().uuid(),
+      quantity: z.number().min(0).optional(),
+      unit: z.string().optional(),
+      expirationDate: z.date().optional().nullable(),
+      storageRequirements: z.string().optional().nullable(),
+      notes: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { id, expirationDate, quantity, ...updateData } = input
+
+      await db
+        .update(additivePurchaseItems)
+        .set({
+          ...updateData,
+          quantity: quantity?.toString(),
+          expirationDate: expirationDate ? expirationDate.toISOString().split('T')[0] : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(additivePurchaseItems.id, id))
+
+      // Log audit
+      await db.insert(auditLog).values({
+        tableName: 'additive_purchase_items',
+        recordId: id,
+        operation: 'update',
+        changedBy: ctx.session?.user?.id || 'system',
+        newData: updateData,
+      })
+
+      return { success: true }
+    }),
+
+  // Update juice purchase item
+  updateJuiceItem: createRbacProcedure('update', 'inventory')
+    .input(z.object({
+      id: z.string().uuid(),
+      volumeL: z.number().min(0).optional(),
+      brix: z.number().min(0).max(100).optional().nullable(),
+      containerType: z.string().optional().nullable(),
+      notes: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { id, volumeL, brix, ...updateData } = input
+
+      await db
+        .update(juicePurchaseItems)
+        .set({
+          ...updateData,
+          volumeL: volumeL?.toString(),
+          brix: brix?.toString(),
+          updatedAt: new Date(),
+        })
+        .where(eq(juicePurchaseItems.id, id))
+
+      // Log audit
+      await db.insert(auditLog).values({
+        tableName: 'juice_purchase_items',
+        recordId: id,
+        operation: 'update',
+        changedBy: ctx.session?.user?.id || 'system',
+        newData: updateData,
+      })
+
+      return { success: true }
+    }),
+
+  // Update packaging purchase item
+  updatePackagingItem: createRbacProcedure('update', 'inventory')
+    .input(z.object({
+      id: z.string().uuid(),
+      quantity: z.number().min(0).optional(),
+      notes: z.string().optional().nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { id, quantity, ...updateData } = input
+
+      await db
+        .update(packagingPurchaseItems)
+        .set({
+          ...updateData,
+          quantity,
+          updatedAt: new Date(),
+        })
+        .where(eq(packagingPurchaseItems.id, id))
+
+      // Log audit
+      await db.insert(auditLog).values({
+        tableName: 'packaging_purchase_items',
+        recordId: id,
+        operation: 'update',
+        changedBy: ctx.session?.user?.id || 'system',
+        newData: updateData,
+      })
+
+      return { success: true }
+    }),
+
+  // Delete purchase item (soft delete using deletedAt) - accessible by admin only
+  deleteItem: createRbacProcedure('delete', 'inventory')
+    .input(z.object({
+      id: z.string(),
+      itemType: z.enum(['basefruit', 'additive', 'juice', 'packaging']),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const { id, itemType } = input
+      const actualId = id.startsWith(itemType + '-') ? id.replace(itemType + '-', '') : id
+
+      try {
+        // Soft delete by setting deletedAt timestamp
+        const deletedAt = new Date()
+
+        switch (itemType) {
+          case 'basefruit':
+            await db
+              .update(basefruitPurchaseItems)
+              .set({ deletedAt })
+              .where(eq(basefruitPurchaseItems.id, actualId))
+            break
+
+          case 'additive':
+            await db
+              .update(additivePurchaseItems)
+              .set({ deletedAt })
+              .where(eq(additivePurchaseItems.id, actualId))
+            break
+
+          case 'juice':
+            await db
+              .update(juicePurchaseItems)
+              .set({ deletedAt })
+              .where(eq(juicePurchaseItems.id, actualId))
+            break
+
+          case 'packaging':
+            await db
+              .update(packagingPurchaseItems)
+              .set({ deletedAt })
+              .where(eq(packagingPurchaseItems.id, actualId))
+            break
+
+          default:
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Unsupported item type: ${itemType}`
+            })
+        }
+
+        // Log audit
+        await db.insert(auditLog).values({
+          tableName: `${itemType}_purchase_items`,
+          recordId: actualId,
+          operation: 'delete',
+          changedBy: ctx.session?.user?.id || 'system',
+          newData: { deletedAt },
+        })
+
+        return {
+          success: true,
+          message: `${itemType} item deleted successfully`
+        }
+      } catch (error) {
+        console.error('Error deleting purchase item:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to delete item'
+        })
+      }
     }),
 })

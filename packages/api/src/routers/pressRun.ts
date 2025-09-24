@@ -56,6 +56,7 @@ const completeSchema = z.object({
     volumeL: z.number().positive('Volume must be positive'),
   })).min(1, 'At least one vessel assignment is required'),
   totalJuiceVolumeL: z.number().positive('Total juice volume must be positive').optional(),
+  depletedPurchaseItemIds: z.array(z.string().uuid()).optional(),
 })
 
 const finishPressRunSchema = z.object({
@@ -169,11 +170,15 @@ export const pressRunRouter = router({
             })
           }
 
-          // Verify purchase item exists and has enough quantity
+          // Verify purchase item exists, is not depleted, and has enough quantity
           const purchaseItem = await tx
             .select()
             .from(basefruitPurchaseItems)
-            .where(and(eq(basefruitPurchaseItems.id, input.purchaseItemId), isNull(basefruitPurchaseItems.deletedAt)))
+            .where(and(
+              eq(basefruitPurchaseItems.id, input.purchaseItemId),
+              isNull(basefruitPurchaseItems.deletedAt),
+              eq(basefruitPurchaseItems.isDepleted, false)
+            ))
             .limit(1)
 
           if (!purchaseItem.length) {
@@ -325,11 +330,15 @@ export const pressRunRouter = router({
             })
           }
 
-          // Verify purchase item exists and has enough quantity
+          // Verify purchase item exists, is not depleted, and has enough quantity
           const purchaseItem = await tx
             .select()
             .from(basefruitPurchaseItems)
-            .where(and(eq(basefruitPurchaseItems.id, input.purchaseItemId), isNull(basefruitPurchaseItems.deletedAt)))
+            .where(and(
+              eq(basefruitPurchaseItems.id, input.purchaseItemId),
+              isNull(basefruitPurchaseItems.deletedAt),
+              eq(basefruitPurchaseItems.isDepleted, false)
+            ))
             .limit(1)
 
           if (!purchaseItem.length) {
@@ -835,6 +844,37 @@ export const pressRunRouter = router({
             }
           }
 
+          // Handle purchase item depletion if specified
+          if (input.depletedPurchaseItemIds && input.depletedPurchaseItemIds.length > 0) {
+            await tx
+              .update(basefruitPurchaseItems)
+              .set({
+                isDepleted: true,
+                depletedAt: new Date(),
+                depletedBy: ctx.session?.user?.id,
+                depletedInPressRun: input.pressRunId,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  inArray(basefruitPurchaseItems.id, input.depletedPurchaseItemIds),
+                  eq(basefruitPurchaseItems.isDepleted, false)
+                )
+              )
+
+            // Publish audit events for each depleted item
+            for (const purchaseItemId of input.depletedPurchaseItemIds) {
+              await publishUpdateEvent(
+                'basefruit_purchase_items',
+                purchaseItemId,
+                { isDepleted: false },
+                { isDepleted: true, depletedAt: new Date(), depletedInPressRun: input.pressRunId },
+                ctx.session?.user?.id,
+                'Purchase item marked as depleted during press run completion'
+              )
+            }
+          }
+
           // Load press run loads for composition calculation
           const loads = await tx
             .select({
@@ -1202,6 +1242,7 @@ export const pressRunRouter = router({
             fruitVarietyId: applePressRunLoads.fruitVarietyId,
             appleVarietyName: baseFruitVarieties.name,
             vendorId: basefruitPurchases.vendorId,
+            vendorName: vendors.name,
             loadSequence: applePressRunLoads.loadSequence,
             appleWeightKg: applePressRunLoads.appleWeightKg,
             originalWeight: applePressRunLoads.originalWeight,
@@ -1221,6 +1262,7 @@ export const pressRunRouter = router({
           .leftJoin(baseFruitVarieties, eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id))
           .leftJoin(basefruitPurchaseItems, eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
           .leftJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+          .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
           .where(and(
             eq(applePressRunLoads.applePressRunId, input.id),
             isNull(applePressRunLoads.deletedAt)

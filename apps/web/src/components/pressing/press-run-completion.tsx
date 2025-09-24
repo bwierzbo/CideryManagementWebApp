@@ -31,6 +31,7 @@ export function PressRunCompletion({
   const [currentStep, setCurrentStep] = useState<CompletionStep>('loading')
   const [completionResult, setCompletionResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
+  const [depletedPurchaseItems, setDepletedPurchaseItems] = useState<Set<string>>(new Set())
   const formDataRef = React.useRef<any>(null)
   const { toast } = useToast()
   const utils = trpc.useUtils()
@@ -94,6 +95,18 @@ export function PressRunCompletion({
     },
   })
 
+  const handlePurchaseDepletionChange = (purchaseItemId: string, isDepleted: boolean) => {
+    setDepletedPurchaseItems(prev => {
+      const updated = new Set(prev)
+      if (isDepleted) {
+        updated.add(purchaseItemId)
+      } else {
+        updated.delete(purchaseItemId)
+      }
+      return updated
+    })
+  }
+
   const handleFormSubmission = async (formData: any) => {
     try {
       setError(null)
@@ -106,6 +119,7 @@ export function PressRunCompletion({
         pressRunId: formData.pressRunId,
         assignments: formData.assignments,
         totalJuiceVolumeL: formData.totalJuiceVolumeL,
+        depletedPurchaseItemIds: Array.from(depletedPurchaseItems),
       }
 
       await completePressRunMutation.mutateAsync(apiPayload)
@@ -207,8 +221,13 @@ export function PressRunCompletion({
               appleCondition: load.appleCondition || undefined,
               brixMeasured: load.brixMeasured || undefined,
               notes: load.notes || undefined,
+              purchaseItemId: load.purchaseItemId || undefined,
+              vendorName: load.vendorName || undefined,
             })) || [],
           }}
+          showInventoryCheckboxes={true}
+          depletedPurchaseItems={depletedPurchaseItems}
+          onPurchaseDepletionChange={handlePurchaseDepletionChange}
         />
 
         {/* Completion Form */}

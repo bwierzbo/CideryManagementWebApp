@@ -1,15 +1,17 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
 import { db, vendors, auditLog } from 'db'
-import { eq, ilike, or, and, asc, desc, count } from 'drizzle-orm'
+import { eq, ilike, or, and, asc, desc, sql, like } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 
 // Schema for vendor creation/update
 const vendorSchema = z.object({
   name: z.string().min(1, 'Name is required'),
-  contactEmail: z.string().email().optional(),
-  contactPhone: z.string().optional(),
-  address: z.string().optional(),
+  contactInfo: z.object({
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    address: z.string().optional(),
+  }).optional(),
   isActive: z.boolean().default(true),
 })
 
@@ -44,32 +46,60 @@ export const vendorRouter = router({
       sortBy: z.enum(['name', 'createdAt', 'updatedAt']).default('name'),
       sortOrder: z.enum(['asc', 'desc']).default('asc'),
       includeInactive: z.boolean().default(false),
-    }).optional().default({}))
+    }).default({
+      limit: 50,
+      offset: 0,
+      sortBy: 'name',
+      sortOrder: 'asc',
+      includeInactive: false,
+    }))
     .query(async ({ input }) => {
       const { search, limit, offset, sortBy, sortOrder, includeInactive } = input
 
-      // Build where condition
-      let whereCondition = includeInactive ? undefined : eq(vendors.isActive, true)
+      console.log('Vendor list query input:', { search, limit, offset, sortBy, sortOrder, includeInactive })
 
-      if (search) {
-        const searchCondition = or(
-          ilike(vendors.name, `%${search}%`),
-          ilike(vendors.contactEmail, `%${search}%`),
-          ilike(vendors.contactPhone, `%${search}%`),
-          ilike(vendors.address, `%${search}%`)
-        )
-        whereCondition = whereCondition
-          ? and(whereCondition, searchCondition)
-          : searchCondition
+      // Build where conditions array
+      const whereConditions = []
+
+      if (!includeInactive) {
+        whereConditions.push(eq(vendors.isActive, true))
       }
+
+      if (search && search.trim()) {
+        const searchTerm = `%${search.trim()}%`
+        console.log('Applying search filter with term:', searchTerm)
+
+        // Use ilike for case-insensitive search
+        whereConditions.push(
+          sql`LOWER(${vendors.name}) LIKE LOWER(${searchTerm})`
+        )
+      }
+
+      const whereCondition = whereConditions.length > 0 ? and(...whereConditions) : undefined
+
+      console.log('Where conditions array:', whereConditions)
+      console.log('Final where condition:', whereCondition)
 
       // Build order by
       const orderByFn = sortOrder === 'asc' ? asc : desc
-      const orderByField = vendors[sortBy as keyof typeof vendors]
+      let orderByField
+      switch (sortBy) {
+        case 'name':
+          orderByField = vendors.name
+          break
+        case 'createdAt':
+          orderByField = vendors.createdAt
+          break
+        case 'updatedAt':
+          orderByField = vendors.updatedAt
+          break
+        default:
+          orderByField = vendors.name
+      }
 
       // Get total count
       const totalCountResult = await db
-        .select({ count: count() })
+        .select({ count: sql<number>`cast(count(*) as int)` })
         .from(vendors)
         .where(whereCondition)
 
@@ -83,6 +113,9 @@ export const vendorRouter = router({
         .orderBy(orderByFn(orderByField))
         .limit(limit)
         .offset(offset)
+
+      console.log(`Query returned ${vendorList.length} vendors out of ${totalCount} total`)
+      console.log('Where condition:', whereCondition)
 
       return {
         vendors: vendorList,

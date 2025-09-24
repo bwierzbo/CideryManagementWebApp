@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
+import { eq, type InferInsertModel } from 'drizzle-orm'
 import { type Database } from 'db'
 import {
   pressRuns,
@@ -10,21 +10,23 @@ import {
   baseFruitVarieties,
   vessels,
   batches,
-  batchCompositions,
-  type NewPressRun,
-  type NewPressItem,
-  type NewPurchaseItem,
-  type NewPurchase,
-  type NewVendor,
-  type NewBaseFruitVariety,
-  type NewVessel
+  batchCompositions
 } from 'db/src/schema'
 import {
   createBatchesFromPressCompletion,
-  ValidationError,
+  PressValidationError,
   InvariantError,
   type Assignment
 } from './createBatchesFromPressCompletion'
+
+// Type aliases for insert models
+type NewPressRun = InferInsertModel<typeof pressRuns>
+type NewPressItem = InferInsertModel<typeof pressItems>
+type NewPurchaseItem = InferInsertModel<typeof purchaseItems>
+type NewPurchase = InferInsertModel<typeof purchases>
+type NewVendor = InferInsertModel<typeof vendors>
+type NewBaseFruitVariety = InferInsertModel<typeof baseFruitVarieties>
+type NewVessel = InferInsertModel<typeof vessels>
 
 // Mock database - in a real implementation, you'd use a test database
 const mockDb = {

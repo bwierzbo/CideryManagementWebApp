@@ -20,14 +20,17 @@ export function AddBatchMeasurementForm({
   onSuccess,
   onCancel,
 }: AddBatchMeasurementFormProps) {
-  const [measurementDate, setMeasurementDate] = useState(
-    new Date().toISOString().split('T')[0]
-  )
+  // Initialize with current date and time in local timezone
+  const now = new Date()
+  const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16) // Format: YYYY-MM-DDTHH:mm
+
+  const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime)
   const [specificGravity, setSpecificGravity] = useState("")
   const [ph, setPh] = useState("")
   const [totalAcidity, setTotalAcidity] = useState("")
   const [temperature, setTemperature] = useState("")
-  const [volumeL, setVolumeL] = useState("")
   const [notes, setNotes] = useState("")
 
   const addMeasurement = trpc.batch.addMeasurement.useMutation({
@@ -50,10 +53,10 @@ export function AddBatchMeasurementForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!measurementDate) {
+    if (!measurementDateTime) {
       toast({
         title: "Error",
-        description: "Please select a measurement date",
+        description: "Please select a measurement date and time",
         variant: "destructive",
       })
       return
@@ -61,14 +64,13 @@ export function AddBatchMeasurementForm({
 
     const measurementData: any = {
       batchId,
-      measurementDate: new Date(measurementDate).toISOString(),
+      measurementDate: new Date(measurementDateTime).toISOString(),
     }
 
     if (specificGravity) measurementData.specificGravity = parseFloat(specificGravity)
     if (ph) measurementData.ph = parseFloat(ph)
     if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity)
     if (temperature) measurementData.temperature = parseFloat(temperature)
-    if (volumeL) measurementData.volumeL = parseFloat(volumeL)
     if (notes) measurementData.notes = notes
 
     addMeasurement.mutate(measurementData)
@@ -76,17 +78,20 @@ export function AddBatchMeasurementForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="measurementDate">Measurement Date</Label>
+          <Label htmlFor="measurementDateTime">Measurement Date & Time</Label>
           <Input
-            id="measurementDate"
-            type="date"
-            value={measurementDate}
-            onChange={(e) => setMeasurementDate(e.target.value)}
+            id="measurementDateTime"
+            type="datetime-local"
+            value={measurementDateTime}
+            onChange={(e) => setMeasurementDateTime(e.target.value)}
+            className="w-full"
           />
         </div>
+      </div>
 
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="specificGravity">Specific Gravity</Label>
           <Input
@@ -132,18 +137,6 @@ export function AddBatchMeasurementForm({
             placeholder="20.0"
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="volumeL">Volume (L)</Label>
-          <Input
-            id="volumeL"
-            type="number"
-            step="0.1"
-            placeholder="1000.0"
-            value={volumeL}
-            onChange={(e) => setVolumeL(e.target.value)}
           />
         </div>
       </div>

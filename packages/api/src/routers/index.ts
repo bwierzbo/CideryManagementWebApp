@@ -8,10 +8,14 @@ import { invoiceNumberRouter } from './invoiceNumber'
 import { pressRunRouter } from './pressRun'
 import { reportsRouter } from './reports'
 import { varietiesRouter } from './varieties'
+import { vendorRouter } from './vendor'
 import { vendorVarietyRouter } from './vendorVariety'
 import { additivePurchasesRouter } from './additivePurchases'
 import { juicePurchasesRouter } from './juicePurchases'
 import { packagingPurchasesRouter } from './packagingPurchases'
+import { additiveVarietiesRouter } from './additiveVarieties'
+import { juiceVarietiesRouter } from './juiceVarieties'
+import { packagingVarietiesRouter } from './packagingVarieties'
 import {
   db,
   vendors,
@@ -33,7 +37,7 @@ import {
   applePressRunLoads,
   users
 } from 'db'
-import { eq, and, desc, asc, sql, isNull, ne, or, aliasedTable } from 'drizzle-orm'
+import { eq, and, desc, asc, sql, isNull, ne, or, aliasedTable, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent, publishDeleteEvent, bushelsToKg } from 'lib'
 
@@ -61,7 +65,10 @@ export const appRouter = router({
   }),
 
   // Vendor management with proper RBAC and audit logging
-  vendor: router({
+  vendor: vendorRouter,
+
+  // DEPRECATED: Old inline vendor router - keeping temporarily for reference
+  vendorOld: router({
     list: publicProcedure.query(async () => {
       try {
         const vendorList = await db
@@ -1411,7 +1418,7 @@ export const appRouter = router({
             await tx
               .update(vessels)
               .set({
-                status: 'in_use',
+                status: 'fermenting',
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, input.vesselId))
@@ -1617,7 +1624,7 @@ export const appRouter = router({
             await tx
               .update(vessels)
               .set({
-                status: 'in_use',
+                status: 'fermenting',
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, input.newVesselId))
@@ -2132,7 +2139,7 @@ export const appRouter = router({
         capacityUnit: z.enum(['L', 'gal']).optional(),
         material: z.enum(['stainless_steel', 'plastic']).optional(),
         jacketed: z.enum(['yes', 'no']).optional(),
-        status: z.enum(['available', 'in_use', 'cleaning', 'maintenance']).optional(),
+        status: z.enum(['available', 'in_use', 'cleaning', 'maintenance', 'fermenting', 'storing', 'aging', 'empty']).optional(),
         location: z.string().optional(),
         notes: z.string().optional(),
       }))
@@ -2216,11 +2223,11 @@ export const appRouter = router({
             })
           }
 
-          // Check if vessel is in use
-          if (existing[0].status === 'in_use') {
+          // Check if vessel is in use (including fermenting)
+          if (existing[0].status === 'in_use' || existing[0].status === 'fermenting' || existing[0].status === 'storing' || existing[0].status === 'aging') {
             throw new TRPCError({
               code: 'BAD_REQUEST',
-              message: 'Cannot delete vessel that is currently in use'
+              message: 'Cannot delete vessel that contains liquid or is actively in use'
             })
           }
 
@@ -2301,6 +2308,7 @@ export const appRouter = router({
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
             currentVolumeL: batches.currentVolumeL,
+            batchCustomName: batches.customName,
             // Include apple press run volume when no batch exists
             applePressRunId: applePressRuns.id,
             applePressRunVolume: applePressRuns.totalJuiceVolumeL,
@@ -2318,6 +2326,36 @@ export const appRouter = router({
           ))
           .where(isNull(vessels.deletedAt))
           .orderBy(vessels.name)
+
+        // Get latest measurements for each batch
+        const batchIds = vesselsWithBatches
+          .filter(v => v.batchId)
+          .map(v => v.batchId as string)
+
+        let latestMeasurements = new Map()
+        if (batchIds.length > 0) {
+          const measurementsList = await db
+            .select({
+              batchId: batchMeasurements.batchId,
+              specificGravity: batchMeasurements.specificGravity,
+              ph: batchMeasurements.ph,
+              temperature: batchMeasurements.temperature,
+              measurementDate: batchMeasurements.measurementDate,
+            })
+            .from(batchMeasurements)
+            .where(and(
+              inArray(batchMeasurements.batchId, batchIds),
+              isNull(batchMeasurements.deletedAt)
+            ))
+            .orderBy(desc(batchMeasurements.measurementDate))
+
+          // Group by batch and take the latest
+          for (const m of measurementsList) {
+            if (!latestMeasurements.has(m.batchId)) {
+              latestMeasurements.set(m.batchId, m)
+            }
+          }
+        }
 
         // Get total packaged inventory
         const packagedInventory = await db
@@ -2344,8 +2382,14 @@ export const appRouter = router({
         const packagedData = packagedInventory[0] || { totalBottles: 0, totalVolumeL: 0 }
         const packagedVolumeL = parseFloat(String(packagedData.totalVolumeL || 0)) || 0
 
+        // Combine vessel data with measurements
+        const vesselsWithMeasurements = vesselsWithBatches.map(vessel => ({
+          ...vessel,
+          latestMeasurement: vessel.batchId ? latestMeasurements.get(vessel.batchId) : null
+        }))
+
         return {
-          vessels: vesselsWithBatches,
+          vessels: vesselsWithMeasurements,
           cellarLiquidL: cellarLiquid,
           packagedInventory: {
             totalBottles: parseInt(String(packagedData.totalBottles || 0)) || 0,
@@ -2475,11 +2519,11 @@ export const appRouter = router({
               })
               .where(eq(batches.id, sourceBatch[0].id))
 
-            // Update destination vessel status to in_use
+            // Update destination vessel status to fermenting when volume is added
             await tx
               .update(vessels)
               .set({
-                status: 'in_use',
+                status: 'fermenting',
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, input.toVesselId))
@@ -2517,11 +2561,11 @@ export const appRouter = router({
                 'Remaining batch created after transfer via API'
               )
             } else {
-              // If source vessel is now empty, set to available
+              // If source vessel is now empty, set to cleaning
               await tx
                 .update(vessels)
                 .set({
-                  status: 'available',
+                  status: 'cleaning',
                   updatedAt: new Date(),
                 })
                 .where(eq(vessels.id, input.fromVesselId))
@@ -2683,6 +2727,105 @@ export const appRouter = router({
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to get transfer history'
+          })
+        }
+      }),
+
+    // Purge vessel - delete batch and/or clear completed press runs
+    purge: createRbacProcedure('update', 'vessel')
+      .input(z.object({
+        vesselId: z.string().uuid('Invalid vessel ID'),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          // Find active batch in vessel
+          const activeBatch = await db
+            .select()
+            .from(batches)
+            .where(and(
+              eq(batches.vesselId, input.vesselId),
+              eq(batches.status, 'active'),
+              isNull(batches.deletedAt)
+            ))
+            .limit(1)
+
+          // Find completed press runs in vessel
+          const completedPressRuns = await db
+            .select()
+            .from(applePressRuns)
+            .where(and(
+              eq(applePressRuns.vesselId, input.vesselId),
+              eq(applePressRuns.status, 'completed'),
+              isNull(applePressRuns.deletedAt)
+            ))
+
+          if (!activeBatch.length && !completedPressRuns.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'No liquid found in this vessel'
+            })
+          }
+
+          // Soft delete the batch if it exists
+          if (activeBatch.length) {
+            await db
+              .update(batches)
+              .set({
+                deletedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, activeBatch[0].id))
+
+            // Publish audit event for batch deletion
+            await publishDeleteEvent(
+              'batches',
+              activeBatch[0].id,
+              { batchId: activeBatch[0].id, vesselId: input.vesselId, reason: 'Vessel purged' },
+              ctx.session?.user?.id,
+              'Batch deleted via vessel purge'
+            )
+          }
+
+          // Clear vessel association from completed press runs
+          if (completedPressRuns.length) {
+            for (const pressRun of completedPressRuns) {
+              await db
+                .update(applePressRuns)
+                .set({
+                  vesselId: null,
+                  updatedAt: new Date(),
+                })
+                .where(eq(applePressRuns.id, pressRun.id))
+            }
+          }
+
+          // Update vessel to cleaning (needs cleaning after being emptied)
+          await db
+            .update(vessels)
+            .set({
+              status: 'cleaning',
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, input.vesselId))
+
+          const messages = []
+          if (activeBatch.length) {
+            messages.push(`batch ${activeBatch[0].batchNumber} deleted`)
+          }
+          if (completedPressRuns.length) {
+            messages.push(`${completedPressRuns.length} completed press run(s) cleared`)
+          }
+
+          return {
+            success: true,
+            message: `Vessel purged: ${messages.join(', ')}`,
+          }
+        } catch (error) {
+          if (error instanceof TRPCError) throw error
+          console.error('Error purging vessel:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to purge vessel'
           })
         }
       }),
@@ -2881,7 +3024,12 @@ export const appRouter = router({
   // Purchase management for different material types
   additivePurchases: additivePurchasesRouter,
   juicePurchases: juicePurchasesRouter,
-  packagingPurchases: packagingPurchasesRouter
+  packagingPurchases: packagingPurchasesRouter,
+
+  // Variety management
+  additiveVarieties: additiveVarietiesRouter,
+  juiceVarieties: juiceVarietiesRouter,
+  packagingVarieties: packagingVarietiesRouter
 })
 
 export type AppRouter = typeof appRouter

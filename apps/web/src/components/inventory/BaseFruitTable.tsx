@@ -32,11 +32,31 @@ import {
   Apple,
   Plus,
   Search,
-  Filter
+  Filter,
+  MoreVertical,
+  Edit,
+  Trash2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
 import { useTableSorting } from '@/hooks/useTableSorting'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 // Type for basefruit purchase item from API
 interface BaseFruitPurchaseItem {
@@ -73,9 +93,8 @@ export function BaseFruitTable({
   onAddNew
 }: BaseFruitTableProps) {
   // Filter state
-  const [vendorFilter, setVendorFilter] = useState<string>('all')
-  const [varietyFilter, setVarietyFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [deleteItem, setDeleteItem] = useState<BaseFruitPurchaseItem | null>(null)
 
   // Sorting state using the reusable hook
   const {
@@ -98,12 +117,10 @@ export function BaseFruitTable({
 
   // Calculate API parameters
   const apiParams = useMemo(() => ({
-    vendorName: vendorFilter !== 'all' ? vendorFilter : undefined,
-    varietyName: varietyFilter !== 'all' ? varietyFilter : undefined,
     searchQuery: searchQuery.trim() || undefined,
     limit: itemsPerPage,
     offset: currentPage * itemsPerPage,
-  }), [vendorFilter, varietyFilter, searchQuery, itemsPerPage, currentPage])
+  }), [searchQuery, itemsPerPage, currentPage])
 
   // API queries - using inventory.list for now, will create specialized endpoint later
   const {
@@ -114,6 +131,18 @@ export function BaseFruitTable({
   } = trpc.inventory.list.useQuery({
     limit: itemsPerPage,
     offset: currentPage * itemsPerPage,
+  })
+
+  // Delete mutation
+  const deleteMutation = trpc.inventory.deleteItem.useMutation({
+    onSuccess: () => {
+      setDeleteItem(null)
+      refetch()
+    },
+    onError: (error) => {
+      console.error('Error deleting item:', error)
+      // Handle error (could show toast notification)
+    }
   })
 
   // Filter items to only show apple/basefruit items
@@ -145,14 +174,6 @@ export function BaseFruitTable({
   const filteredItems = useMemo(() => {
     let filtered = baseFruitItems
 
-    if (vendorFilter !== 'all') {
-      filtered = filtered.filter((item: any) => item.vendorName === vendorFilter)
-    }
-
-    if (varietyFilter !== 'all') {
-      filtered = filtered.filter((item: any) => item.varietyName === varietyFilter)
-    }
-
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter((item: any) =>
@@ -163,7 +184,7 @@ export function BaseFruitTable({
     }
 
     return filtered
-  }, [baseFruitItems, vendorFilter, varietyFilter, searchQuery])
+  }, [baseFruitItems, searchQuery])
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
@@ -186,16 +207,6 @@ export function BaseFruitTable({
     })
   }, [filteredItems, sortData])
 
-  // Get unique vendors and varieties for filter dropdowns
-  const uniqueVendors = useMemo(() => {
-    const vendors = [...new Set(baseFruitItems.map((item: any) => item.vendorName))]
-    return vendors.sort()
-  }, [baseFruitItems])
-
-  const uniqueVarieties = useMemo(() => {
-    const varieties = [...new Set(baseFruitItems.map((item: any) => item.varietyName))]
-    return varieties.sort()
-  }, [baseFruitItems])
 
   // Event handlers
   const handleColumnSort = useCallback((field: SortField) => {
@@ -214,6 +225,16 @@ export function BaseFruitTable({
   const handleRefresh = useCallback(() => {
     refetch()
   }, [refetch])
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = useCallback(() => {
+    if (deleteItem) {
+      deleteMutation.mutate({
+        id: deleteItem.id,
+        itemType: 'basefruit'
+      })
+    }
+  }, [deleteItem, deleteMutation])
 
   // Get sort direction for display
   const getSortDirectionForDisplay = useCallback((field: SortField) => {
@@ -259,42 +280,6 @@ export function BaseFruitTable({
                           className="pl-10"
                         />
                       </div>
-                    </div>
-
-                    {/* Vendor Filter */}
-                    <div className="min-w-[200px]">
-                      <Label htmlFor="vendor-filter">Vendor</Label>
-                      <Select value={vendorFilter} onValueChange={setVendorFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All Vendors" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Vendors</SelectItem>
-                          {uniqueVendors.map((vendor: any) => (
-                            <SelectItem key={vendor} value={vendor}>
-                              {vendor}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Variety Filter */}
-                    <div className="min-w-[200px]">
-                      <Label htmlFor="variety-filter">Variety</Label>
-                      <Select value={varietyFilter} onValueChange={setVarietyFilter}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="All Varieties" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Varieties</SelectItem>
-                          {uniqueVarieties.map((variety: any) => (
-                            <SelectItem key={variety} value={variety}>
-                              {variety}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
                     </div>
                   </>
                 )}
@@ -472,17 +457,40 @@ export function BaseFruitTable({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleItemClick(item)
-                          }}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleItemClick(item)
+                              }}
+                            >
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setDeleteItem(item)
+                              }}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -496,7 +504,7 @@ export function BaseFruitTable({
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
                 Showing {sortedItems.length} of {baseFruitItems.length} base fruit purchases
-                {(vendorFilter !== 'all' || varietyFilter !== 'all' || searchQuery.trim()) &&
+                {searchQuery.trim() &&
                   ` (filtered from ${baseFruitItems.length} total)`
                 }
               </div>
@@ -504,6 +512,29 @@ export function BaseFruitTable({
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Base Fruit Purchase</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteItem ? `${deleteItem.varietyName} from ${deleteItem.vendorName}` : ''}"?
+              This action cannot be undone and will permanently remove this purchase from your inventory.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={deleteMutation.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

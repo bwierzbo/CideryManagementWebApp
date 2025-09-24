@@ -74,6 +74,7 @@ const pressRunCompletionSchema = z.object({
   laborHours: z.number().min(0, "Labor hours cannot be negative").max(24, "Labor hours cannot exceed 24").optional(),
   workerCount: z.number().int().min(1, "Worker count must be at least 1").max(20, "Worker count cannot exceed 20").optional(),
   notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
+  depletedInventoryItemIds: z.array(z.string()).optional(),
 })
 
 type PressRunCompletionForm = z.infer<typeof pressRunCompletionSchema>
@@ -141,6 +142,7 @@ export function PressRunCompletionForm({
     ...assignment,
     vessel: availableVessels.find(v => v.id === assignment.toVesselId)
   })) || []
+
 
   const onSubmit = (data: PressRunCompletionForm) => {
     const submissionPayload = {
@@ -213,6 +215,7 @@ export function PressRunCompletionForm({
 
   return (
     <div className="space-y-6">
+
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* Press Run Details */}

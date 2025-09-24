@@ -40,6 +40,11 @@ interface BatchManagementTableProps {
   className?: string
 }
 
+interface EditingState {
+  batchId: string
+  customName: string
+}
+
 export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
@@ -49,6 +54,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [showAdditiveForm, setShowAdditiveForm] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [batchToDelete, setBatchToDelete] = useState<{ id: string; name: string } | null>(null)
+  const [editingBatch, setEditingBatch] = useState<EditingState | null>(null)
 
   const utils = trpc.useUtils()
 
@@ -108,6 +114,16 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
         return "bg-blue-100 text-blue-700 border-blue-300"
       default:
         return "bg-gray-100 text-gray-700 border-gray-300"
+    }
+  }
+
+  const handleSaveCustomName = () => {
+    if (editingBatch) {
+      updateMutation.mutate({
+        batchId: editingBatch.batchId,
+        customName: editingBatch.customName,
+      })
+      setEditingBatch(null)
     }
   }
 
@@ -222,10 +238,12 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Batch Name</TableHead>
-                  <TableHead>Current Vessel</TableHead>
+                  <TableHead>Custom Name</TableHead>
+                  <TableHead>Vessel</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Start Date</TableHead>
-                  <TableHead className="text-right">Days Active</TableHead>
+                  <TableHead className="text-center">Specific Gravity</TableHead>
+                  <TableHead className="text-center">pH</TableHead>
                   <TableHead className="text-right">Volume (L)</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -233,7 +251,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
               <TableBody>
                 {batches.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-gray-500 py-8">
+                    <TableCell colSpan={9} className="text-center text-gray-500 py-8">
                       No batches found
                     </TableCell>
                   </TableRow>
@@ -241,6 +259,49 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                   batches.map((batch) => (
                     <TableRow key={batch.id}>
                       <TableCell className="font-medium">{batch.name}</TableCell>
+                      <TableCell>
+                        {editingBatch?.batchId === batch.id ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={editingBatch.customName}
+                              onChange={(e) => setEditingBatch({ ...editingBatch, customName: e.target.value })}
+                              className="h-8 w-40"
+                              placeholder="Custom name..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveCustomName()
+                                } else if (e.key === 'Escape') {
+                                  setEditingBatch(null)
+                                }
+                              }}
+                              autoFocus
+                            />
+                            <Button
+                              size="sm"
+                              onClick={handleSaveCustomName}
+                              className="h-8 w-8 p-0"
+                            >
+                              ✓
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingBatch(null)}
+                              className="h-8 w-8 p-0"
+                            >
+                              ✕
+                            </Button>
+                          </div>
+                        ) : (
+                          <div
+                            className="cursor-pointer flex items-center gap-1 hover:text-blue-600"
+                            onClick={() => setEditingBatch({ batchId: batch.id, customName: batch.customName || '' })}
+                          >
+                            {batch.customName || <span className="text-gray-400">Click to add</span>}
+                            <Edit2 className="w-3 h-3" />
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         {batch.vesselName || (
                           <span className="text-gray-400">Unassigned</span>
@@ -254,7 +315,14 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                       <TableCell>
                         {format(new Date(batch.startDate), "MMM dd, yyyy")}
                       </TableCell>
-                      <TableCell className="text-right">{batch.daysActive}</TableCell>
+                      <TableCell className="text-center">
+                        {batch.latestMeasurement?.specificGravity
+                          ? Number(batch.latestMeasurement.specificGravity).toFixed(3)
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {batch.latestMeasurement?.ph || "-"}
+                      </TableCell>
                       <TableCell className="text-right">
                         {batch.currentVolume > 0
                           ? batch.currentVolume.toFixed(1)

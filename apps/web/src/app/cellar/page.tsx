@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu"
+import { toast } from "@/hooks/use-toast"
 import {
   Beaker,
   Droplets,
@@ -37,6 +38,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { BatchManagementTable } from "@/components/cellar/BatchManagementTable"
 import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal"
+import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm"
 
 // Form schemas
 const measurementSchema = z.object({
@@ -275,132 +277,23 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
   )
 }
 
-function TankMeasurementForm({ vesselId, onClose }: { vesselId: string; onClose: () => void }) {
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm({
-    resolver: zodResolver(tankMeasurementSchema),
-    defaultValues: {
-      measurementDate: new Date().toISOString().slice(0, 16),
-      temperatureUnit: 'celsius',
-    }
-  })
-
-  const temperatureUnit = watch('temperatureUnit')
-
+function BatchMeasurementFormWrapper({ vesselId, batchId, onClose }: { vesselId: string; batchId: string; onClose: () => void }) {
   const utils = trpc.useUtils()
-  // TODO: Add tank measurement mutation once API is implemented
-  // const addMeasurementMutation = trpc.tank.addMeasurement.useMutation({
-  //   onSuccess: () => {
-  //     utils.vessel.list.invalidate()
-  //     onClose()
-  //   }
-  // })
 
-  const onSubmit = (data: any) => {
-    console.log('Tank measurement:', { vesselId, ...data })
-    // addMeasurementMutation.mutate({ vesselId, ...data })
-    onClose() // For now, just close the dialog
+  const handleSuccess = () => {
+    // Invalidate vessel data to update the measurements shown
+    utils.vessel.liquidMap.invalidate()
+    utils.batch.get.invalidate({ batchId })
+    utils.batch.list.invalidate()
+    onClose()
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      <div className="text-center">
-        <p className="text-sm text-gray-600">Record optional measurement data for this tank</p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4">
-        <div>
-          <Label htmlFor="measurementDate">Measurement Date</Label>
-          <Input
-            id="measurementDate"
-            type="datetime-local"
-            {...register("measurementDate")}
-          />
-          {errors.measurementDate && <p className="text-sm text-red-600">{errors.measurementDate.message}</p>}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="temperature">Temperature</Label>
-          <div className="flex gap-2">
-            <Input
-              id="temperature"
-              type="number"
-              step="0.1"
-              placeholder={temperatureUnit === 'celsius' ? "18.5" : "65.3"}
-              {...register("temperature")}
-              className="flex-1"
-            />
-            <Select value={temperatureUnit} onValueChange={(value) => setValue("temperatureUnit", value as any)}>
-              <SelectTrigger className="w-24">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="celsius">°C</SelectItem>
-                <SelectItem value="fahrenheit">°F</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {errors.temperature && <p className="text-sm text-red-600">{errors.temperature.message}</p>}
-        </div>
-        <div>
-          <Label htmlFor="sh">Specific Gravity</Label>
-          <Input
-            id="sh"
-            type="number"
-            step="0.001"
-            placeholder="1.055"
-            {...register("sh")}
-          />
-          {errors.sh && <p className="text-sm text-red-600">{errors.sh.message}</p>}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="ph">pH</Label>
-          <Input
-            id="ph"
-            type="number"
-            step="0.1"
-            placeholder="3.8"
-            {...register("ph")}
-          />
-          {errors.ph && <p className="text-sm text-red-600">{errors.ph.message}</p>}
-        </div>
-        <div>
-          <Label htmlFor="ta">TA - Titratable Acid (g/L)</Label>
-          <Input
-            id="ta"
-            type="number"
-            step="0.1"
-            placeholder="5.5"
-            {...register("ta")}
-          />
-          {errors.ta && <p className="text-sm text-red-600">{errors.ta.message}</p>}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4">
-        <div>
-          <Label htmlFor="notes">Notes</Label>
-          <Input
-            id="notes"
-            placeholder="Measurement notes..."
-            {...register("notes")}
-          />
-        </div>
-      </div>
-
-      <div className="flex justify-end space-x-2">
-        <Button type="button" variant="outline" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit">
-          Add Measurement
-        </Button>
-      </div>
-    </form>
+    <AddBatchMeasurementForm
+      batchId={batchId}
+      onSuccess={handleSuccess}
+      onCancel={onClose}
+    />
   )
 }
 
@@ -653,10 +546,13 @@ function VesselMap() {
   const [showAddTank, setShowAddTank] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [vesselToDelete, setVesselToDelete] = useState<{id: string, name: string | null} | null>(null)
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
+  const [vesselToPurge, setVesselToPurge] = useState<{id: string, name: string | null} | null>(null)
   const [showMeasurementForm, setShowMeasurementForm] = useState(false)
   const [showAdditiveForm, setShowAdditiveForm] = useState(false)
   const [showTransferForm, setShowTransferForm] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null)
+  const [selectedBatchIdForMeasurement, setSelectedBatchIdForMeasurement] = useState<string | null>(null)
 
   // History modal state
   const [showBatchHistory, setShowBatchHistory] = useState(false)
@@ -670,6 +566,25 @@ function VesselMap() {
     onSuccess: () => {
       utils.vessel.list.invalidate()
       utils.vessel.liquidMap.invalidate()
+    }
+  })
+
+  const purgeMutation = trpc.vessel.purge.useMutation({
+    onSuccess: () => {
+      utils.vessel.list.invalidate()
+      utils.vessel.liquidMap.invalidate()
+      utils.batch.list.invalidate()
+      toast({
+        title: "Tank Purged",
+        description: "The tank has been purged and the batch removed.",
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
     }
   })
 
@@ -739,6 +654,24 @@ function VesselMap() {
     setVesselToDelete(null)
   }
 
+  const handlePurgeTank = (vesselId: string, vesselName: string | null) => {
+    setVesselToPurge({ id: vesselId, name: vesselName })
+    setPurgeConfirmOpen(true)
+  }
+
+  const handlePurgeConfirm = () => {
+    if (vesselToPurge) {
+      purgeMutation.mutate({ vesselId: vesselToPurge.id })
+      setPurgeConfirmOpen(false)
+      setVesselToPurge(null)
+    }
+  }
+
+  const handlePurgeCancel = () => {
+    setPurgeConfirmOpen(false)
+    setVesselToPurge(null)
+  }
+
   const handleStatusChange = (vesselId: string, newStatus: string) => {
     updateStatusMutation.mutate({
       id: vesselId,
@@ -747,7 +680,20 @@ function VesselMap() {
   }
 
   const handleTankMeasurement = (vesselId: string) => {
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
+    const batchId = liquidMapVessel?.batchId
+
+    if (!batchId) {
+      toast({
+        title: "No Batch Found",
+        description: "This vessel doesn't have an active batch. Please add a batch first.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setSelectedVesselId(vesselId)
+    setSelectedBatchIdForMeasurement(batchId)
     setShowMeasurementForm(true)
   }
 
@@ -822,7 +768,7 @@ function VesselMap() {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {vessels.map((vessel) => {
             const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vessel.id)
             // Use batch volume if available, otherwise use apple press run volume
@@ -837,40 +783,56 @@ function VesselMap() {
             return (
               <div
                 key={vessel.id}
-                className={`border-2 rounded-lg p-4 transition-all hover:shadow-md ${getStatusColor(vessel.status)}`}
+                className={`border-2 rounded-lg p-3 sm:p-4 transition-all hover:shadow-md ${getStatusColor(vessel.status)}`}
               >
                 <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold text-lg">{vessel.name || 'Unnamed Vessel'}</h3>
-                    <p className="text-sm text-gray-600">{vessel.location || 'No location'}</p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-base sm:text-lg truncate">{vessel.name || 'Unnamed Vessel'}</h3>
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">{vessel.location || 'No location'}</p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {getStatusIcon(vessel.status)}
                   </div>
                 </div>
 
-                {/* Tank Specifications */}
-                <div className="space-y-2 mb-3 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Capacity:</span>
-                    <span className="font-medium">
-                      {capacityL.toFixed(0)}L
-                      {vessel.capacityUnit === 'gal' && ` (${(capacityL / 3.78541).toFixed(0)} gal)`}
-                    </span>
+                {/* Batch Info */}
+                {liquidMapVessel?.batchId && (
+                  <div className="mb-3 space-y-2">
+                    {/* Custom Name and Batch Number */}
+                    {(liquidMapVessel.batchCustomName || liquidMapVessel.batchNumber) && (
+                      <div className="pb-2 border-b">
+                        {liquidMapVessel.batchCustomName && (
+                          <p className="text-sm font-medium text-gray-900">{liquidMapVessel.batchCustomName}</p>
+                        )}
+                        {liquidMapVessel.batchNumber && (
+                          <p className="text-xs text-gray-600">Batch {liquidMapVessel.batchNumber}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Latest Measurements */}
+                    <div className="space-y-1 text-xs">
+                      {liquidMapVessel.latestMeasurement?.specificGravity && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">SG:</span>
+                          <span className="font-medium">{liquidMapVessel.latestMeasurement.specificGravity}</span>
+                        </div>
+                      )}
+                      {liquidMapVessel.latestMeasurement?.ph && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">pH:</span>
+                          <span className="font-medium">{liquidMapVessel.latestMeasurement.ph}</span>
+                        </div>
+                      )}
+                      {liquidMapVessel.latestMeasurement?.temperature && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Temp:</span>
+                          <span className="font-medium">{liquidMapVessel.latestMeasurement.temperature}°C</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {vessel.material && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Material:</span>
-                      <span className="font-medium">{formatMaterial(vessel.material)}</span>
-                    </div>
-                  )}
-                  {vessel.jacketed && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Jacketed:</span>
-                      <span className="font-medium">{formatJacketed(vessel.jacketed)}</span>
-                    </div>
-                  )}
-                </div>
+                )}
 
                 {/* Volume Indicator */}
                 <div className="mb-3">
@@ -901,17 +863,22 @@ function VesselMap() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="flex-1"
+                        className="flex-1 text-xs sm:text-sm"
                       >
-                        <MoreVertical className="w-3 h-3 mr-1" />
-                        Actions
+                        <MoreVertical className="w-3 h-3 sm:mr-1" />
+                        <span className="hidden sm:inline">Actions</span>
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent
+                      align="end"
+                      className="max-h-[80vh] overflow-y-auto w-56"
+                      sideOffset={5}
+                    >
                       <DropdownMenuLabel>Tank Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handleTankMeasurement(vessel.id)}
+                        disabled={!liquidMapVessel?.batchId}
                       >
                         <Thermometer className="w-3 h-3 mr-2" />
                         Add Measurement
@@ -939,50 +906,76 @@ function VesselMap() {
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel>Tank Status</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'empty')}
-                        disabled={vessel.status === 'empty'}
-                      >
-                        Empty
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'fermenting')}
-                        disabled={vessel.status === 'fermenting'}
-                      >
-                        Fermenting
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'storing')}
-                        disabled={vessel.status === 'storing'}
-                      >
-                        Storing
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'aging')}
-                        disabled={vessel.status === 'aging'}
-                      >
-                        Aging
-                      </DropdownMenuItem>
+                      {vessel.status === 'cleaning' ? (
+                        // When cleaning, only show Available and Maintenance options
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'available')}
+                          >
+                            Available (Cleaning Complete)
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'maintenance')}
+                          >
+                            Maintenance
+                          </DropdownMenuItem>
+                        </>
+                      ) : (
+                        // Show all status options when not in cleaning state
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'empty')}
+                            disabled={vessel.status === 'empty'}
+                          >
+                            Empty
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'fermenting')}
+                            disabled={vessel.status === 'fermenting'}
+                          >
+                            Fermenting
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'storing')}
+                            disabled={vessel.status === 'storing'}
+                          >
+                            Storing
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'aging')}
+                            disabled={vessel.status === 'aging'}
+                          >
+                            Aging
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'cleaning')}
+                          >
+                            Cleaning
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'maintenance')}
+                            disabled={vessel.status === 'maintenance'}
+                          >
+                            Maintenance
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(vessel.id, 'available')}
+                            disabled={vessel.status === 'available'}
+                          >
+                            Available
+                          </DropdownMenuItem>
+                        </>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'cleaning')}
-                        disabled={vessel.status === 'cleaning'}
+                        onClick={() => handlePurgeTank(vessel.id, vessel.name)}
+                        disabled={currentVolumeL <= 0}
+                        className="text-orange-600"
                       >
-                        Cleaning
+                        <Droplets className="w-3 h-3 mr-1" />
+                        Purge Tank
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'maintenance')}
-                        disabled={vessel.status === 'maintenance'}
-                      >
-                        Maintenance
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleStatusChange(vessel.id, 'available')}
-                        disabled={vessel.status === 'available'}
-                      >
-                        Available
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handleDeleteClick(vessel.id, vessel.name)}
                         disabled={vessel.status === 'in_use'}
@@ -1020,19 +1013,51 @@ function VesselMap() {
           </DialogContent>
         </Dialog>
 
-        {/* Tank Measurement Form */}
-        <Dialog open={showMeasurementForm} onOpenChange={setShowMeasurementForm}>
-          <DialogContent className="max-w-md">
+        {/* Purge Tank Confirmation Modal */}
+        <Dialog open={purgeConfirmOpen} onOpenChange={setPurgeConfirmOpen}>
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Tank Measurement</DialogTitle>
+              <DialogTitle>Purge Tank</DialogTitle>
               <DialogDescription>
-                Record measurement data for this tank
+                Are you sure you want to purge &quot;{vesselToPurge?.name || 'Unknown'}&quot;?
+                This will delete the batch currently in the tank and clear all liquid.
+                This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
-            <TankMeasurementForm
-              vesselId={selectedVesselId || ''}
-              onClose={() => setShowMeasurementForm(false)}
-            />
+            <div className="flex justify-end space-x-2 mt-4">
+              <Button variant="outline" onClick={handlePurgeCancel}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handlePurgeConfirm}
+                disabled={purgeMutation.isPending}
+              >
+                {purgeMutation.isPending ? "Purging..." : "Purge Tank"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Batch Measurement Form */}
+        <Dialog open={showMeasurementForm} onOpenChange={setShowMeasurementForm}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Add Batch Measurement</DialogTitle>
+              <DialogDescription>
+                Record measurement data for the batch in this vessel
+              </DialogDescription>
+            </DialogHeader>
+            {selectedBatchIdForMeasurement && (
+              <BatchMeasurementFormWrapper
+                vesselId={selectedVesselId || ''}
+                batchId={selectedBatchIdForMeasurement}
+                onClose={() => {
+                  setShowMeasurementForm(false)
+                  setSelectedBatchIdForMeasurement(null)
+                }}
+              />
+            )}
           </DialogContent>
         </Dialog>
 
