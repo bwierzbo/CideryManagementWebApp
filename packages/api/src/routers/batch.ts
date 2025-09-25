@@ -675,7 +675,7 @@ export const batchRouter = router({
           await db
             .update(vessels)
             .set({
-              status: 'needs_cleaning',
+              status: 'cleaning',
               updatedAt: new Date(),
             })
             .where(eq(vessels.id, batch.vesselId))

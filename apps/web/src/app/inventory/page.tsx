@@ -239,12 +239,10 @@ export default function InventoryPage() {
         invoiceNumber: undefined,
         notes: transaction.notes,
         items: [{
-          appleVarietyId: transaction.appleVarietyId,
-          quantityKg: transaction.quantityKg,
-          pricePerKg: undefined, // Would need to add this field to the form
-          harvestDate: transaction.harvestDate ? new Date(transaction.harvestDate) : undefined,
-          storageLocation: transaction.storageLocation || undefined,
-          brixLevel: transaction.brixLevel || undefined,
+          fruitVarietyId: transaction.appleVarietyId,
+          quantity: transaction.quantityKg,
+          unit: 'kg' as const,
+          pricePerUnit: undefined, // Would need to add this field to the form
           notes: transaction.notes || undefined
         }]
       }

@@ -11,6 +11,7 @@ import { varietiesRouter } from './varieties'
 import { vendorRouter } from './vendor'
 import { vendorVarietyRouter } from './vendorVariety'
 import { additivePurchasesRouter } from './additivePurchases'
+import { baseFruitPurchasesRouter } from './baseFruitPurchases'
 import { juicePurchasesRouter } from './juicePurchases'
 import { packagingPurchasesRouter } from './packagingPurchases'
 import { additiveVarietiesRouter } from './additiveVarieties'
@@ -3268,6 +3269,7 @@ export const appRouter = router({
 
   // Purchase management for different material types
   additivePurchases: additivePurchasesRouter,
+  baseFruitPurchases: baseFruitPurchasesRouter,
   juicePurchases: juicePurchasesRouter,
   packagingPurchases: packagingPurchasesRouter,
 
