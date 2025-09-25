@@ -644,6 +644,25 @@ export const pressRunRouter = router({
 
           const batchId = newBatch[0].id
 
+          // Update vessel status to fermenting when batch is created
+          await tx
+            .update(vessels)
+            .set({
+              status: 'fermenting',
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, input.vesselId))
+
+          // Publish vessel status update audit event
+          await publishUpdateEvent(
+            'vessels',
+            input.vesselId,
+            { status: 'available' },
+            { status: 'fermenting' },
+            ctx.session?.user?.id,
+            'Vessel status changed to fermenting when batch was created from press run completion'
+          )
+
           // Create batch compositions
           for (const load of loads) {
             const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
@@ -960,15 +979,61 @@ export const pressRunRouter = router({
             const batchId = newBatch[0].id
             createdBatchIds.push(batchId)
 
-            // Create batch compositions
+            // Update vessel status to fermenting when batch is created
+            await tx
+              .update(vessels)
+              .set({
+                status: 'fermenting',
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, assignment.toVesselId))
+
+            // Publish vessel status update audit event
+            await publishUpdateEvent(
+              'vessels',
+              assignment.toVesselId,
+              { status: 'available' },
+              { status: 'fermenting' },
+              ctx.session?.user?.id,
+              'Vessel status changed to fermenting when batch was created from press run completion'
+            )
+
+            // Create batch compositions - consolidate loads by purchaseItemId to avoid duplicates
             let totalFraction = 0
             let totalJuiceVolume = 0
             let totalMaterialCost = 0
 
-            for (const load of loads) {
-              const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
+            // Group loads by purchaseItemId to consolidate multiple loads from same purchase
+            const consolidatedLoads = loads.reduce((acc, load) => {
+              const key = load.purchaseItemId
+              if (!acc[key]) {
+                acc[key] = {
+                  purchaseItemId: load.purchaseItemId,
+                  vendorId: load.vendorId,
+                  varietyId: load.fruitVarietyId,
+                  totalAppleWeightKg: 0,
+                  totalCost: 0,
+                  brixMeasurements: [] as (string | null)[]
+                }
+              }
+              acc[key].totalAppleWeightKg += parseFloat(load.appleWeightKg || '0')
+              acc[key].totalCost += parseFloat(load.totalCost || '0')
+              if (load.brixMeasured) {
+                acc[key].brixMeasurements.push(load.brixMeasured)
+              }
+              return acc
+            }, {} as Record<string, any>)
+
+            for (const consolidatedLoad of Object.values(consolidatedLoads)) {
+              const fraction = consolidatedLoad.totalAppleWeightKg / totalWeight
               const juiceVolumeL = assignment.volumeL * fraction
-              const materialCost = parseFloat(load.totalCost || '0') * fraction
+              const materialCost = consolidatedLoad.totalCost * fraction
+
+              // Calculate average brix if available
+              const avgBrix = consolidatedLoad.brixMeasurements.length > 0
+                ? consolidatedLoad.brixMeasurements.reduce((sum: number, brix: string | null) =>
+                    sum + (brix ? parseFloat(brix) : 0), 0) / consolidatedLoad.brixMeasurements.length
+                : null
 
               totalFraction += fraction
               totalJuiceVolume += juiceVolumeL
@@ -976,14 +1041,14 @@ export const pressRunRouter = router({
 
               await tx.insert(batchCompositions).values({
                 batchId,
-                purchaseItemId: load.purchaseItemId,
-                vendorId: load.vendorId,
-                varietyId: load.fruitVarietyId,
-                inputWeightKg: load.appleWeightKg,
+                purchaseItemId: consolidatedLoad.purchaseItemId,
+                vendorId: consolidatedLoad.vendorId,
+                varietyId: consolidatedLoad.varietyId,
+                inputWeightKg: consolidatedLoad.totalAppleWeightKg.toString(),
                 juiceVolumeL: juiceVolumeL.toString(),
                 fractionOfBatch: fraction.toString(),
                 materialCost: materialCost.toString(),
-                avgBrix: load.brixMeasured,
+                avgBrix: avgBrix ? avgBrix.toString() : null,
               })
 
               // Publish batch composition audit event
@@ -992,13 +1057,12 @@ export const pressRunRouter = router({
                 batchId,
                 {
                   batchId,
-                  purchaseItemId: load.purchaseItemId,
-                  varietyName: load.varietyName,
+                  purchaseItemId: consolidatedLoad.purchaseItemId,
                   juiceVolumeL,
                   fraction
                 },
                 ctx.session?.user?.id,
-                'Batch composition created from press run'
+                'Batch composition created from press run completion'
               )
             }
 
@@ -1652,6 +1716,141 @@ export const pressRunRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to delete load'
+        })
+      }
+    }),
+
+  // Get available purchase lines with allocation tracking for a specific press run
+  getAvailablePurchaseLines: createRbacProcedure('read', 'press_run')
+    .input(z.object({
+      pressRunId: z.string().uuid('Invalid press run ID'),
+      vendorId: z.string().uuid().optional(),
+      limit: z.number().int().positive().max(100).default(50),
+      offset: z.number().int().min(0).default(0),
+    }))
+    .query(async ({ input }) => {
+      try {
+        // Verify press run exists
+        const pressRunExists = await db
+          .select({ id: applePressRuns.id })
+          .from(applePressRuns)
+          .where(and(eq(applePressRuns.id, input.pressRunId), isNull(applePressRuns.deletedAt)))
+          .limit(1)
+
+        if (!pressRunExists.length) {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: 'Press run not found'
+          })
+        }
+
+        // Base query for basefruitPurchaseItems with vendor filtering
+        let baseQuery = db
+          .select({
+            purchaseItemId: basefruitPurchaseItems.id,
+            purchaseId: basefruitPurchases.id,
+            vendorId: vendors.id,
+            vendorName: vendors.name,
+            fruitVarietyId: basefruitPurchaseItems.fruitVarietyId,
+            varietyName: baseFruitVarieties.name,
+            quantityKg: basefruitPurchaseItems.quantityKg,
+            originalQuantity: basefruitPurchaseItems.quantity,
+            originalUnit: basefruitPurchaseItems.unit,
+            pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+            totalCost: basefruitPurchaseItems.totalCost,
+            harvestDate: basefruitPurchaseItems.harvestDate,
+            notes: basefruitPurchaseItems.notes,
+          })
+          .from(basefruitPurchaseItems)
+          .innerJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+          .innerJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+          .innerJoin(baseFruitVarieties, eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id))
+          .where(and(
+            isNull(basefruitPurchaseItems.deletedAt),
+            isNull(basefruitPurchases.deletedAt),
+            isNull(vendors.deletedAt),
+            isNull(baseFruitVarieties.deletedAt),
+            input.vendorId ? eq(basefruitPurchases.vendorId, input.vendorId) : sql`1=1`
+          ))
+          .orderBy(desc(basefruitPurchases.purchaseDate), asc(baseFruitVarieties.name))
+          .limit(input.limit)
+          .offset(input.offset)
+
+        const purchaseItems = await baseQuery
+
+        if (purchaseItems.length === 0) {
+          return {
+            items: [],
+            summary: {
+              totalAvailableItems: 0,
+              totalAvailableKg: 0
+            }
+          }
+        }
+
+        // Get allocation data for this press run - sum up all existing loads by purchaseItemId
+        const allocations = await db
+          .select({
+            purchaseItemId: applePressRunLoads.purchaseItemId,
+            allocatedKg: sql<number>`COALESCE(SUM(CAST(${applePressRunLoads.appleWeightKg} AS NUMERIC)), 0)`,
+          })
+          .from(applePressRunLoads)
+          .where(and(
+            eq(applePressRunLoads.applePressRunId, input.pressRunId),
+            isNull(applePressRunLoads.deletedAt),
+            inArray(applePressRunLoads.purchaseItemId, purchaseItems.map(item => item.purchaseItemId))
+          ))
+          .groupBy(applePressRunLoads.purchaseItemId)
+
+        // Create allocation map for quick lookup
+        const allocationMap = new Map()
+        allocations.forEach(alloc => {
+          allocationMap.set(alloc.purchaseItemId, parseFloat(alloc.allocatedKg.toString()))
+        })
+
+        // Transform results to include allocation tracking
+        const itemsWithAllocations = purchaseItems.map(item => {
+          const totalQuantityKg = parseFloat(item.quantityKg || '0')
+          const allocatedKg = allocationMap.get(item.purchaseItemId) || 0
+          const availableQuantityKg = Math.max(0, totalQuantityKg - allocatedKg)
+          const availablePercentage = totalQuantityKg > 0 ? (availableQuantityKg / totalQuantityKg) * 100 : 0
+
+          return {
+            purchaseItemId: item.purchaseItemId,
+            purchaseId: item.purchaseId,
+            vendorId: item.vendorId,
+            vendorName: item.vendorName,
+            fruitVarietyId: item.fruitVarietyId,
+            varietyName: item.varietyName,
+            totalQuantityKg,
+            allocatedQuantityKg: allocatedKg,
+            availableQuantityKg,
+            availablePercentage,
+            originalQuantity: parseFloat(item.originalQuantity || '0'),
+            originalUnit: item.originalUnit,
+            pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : null,
+            totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+            harvestDate: item.harvestDate,
+            notes: item.notes,
+          }
+        })
+
+        // Calculate summary
+        const totalAvailableKg = itemsWithAllocations.reduce((sum, item) => sum + item.availableQuantityKg, 0)
+
+        return {
+          items: itemsWithAllocations,
+          summary: {
+            totalAvailableItems: itemsWithAllocations.filter(item => item.availableQuantityKg > 0).length,
+            totalAvailableKg
+          }
+        }
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        console.error('Error fetching available purchase lines with allocations:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch available purchase lines'
         })
       }
     }),

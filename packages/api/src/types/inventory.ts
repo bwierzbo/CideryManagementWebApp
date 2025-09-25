@@ -5,7 +5,10 @@ export const materialTypeEnum = z.enum(['apple', 'additive', 'juice', 'packaging
 
 // Base transaction schema shared across all transaction types
 const baseTransactionSchema = z.object({
-  transactionDate: z.date().default(() => new Date()),
+  transactionDate: z.union([
+    z.date(),
+    z.string().transform(str => new Date(str))
+  ]).default(() => new Date()),
   reason: z.string().optional(),
   notes: z.string().optional(),
 })
@@ -29,7 +32,7 @@ const additiveTransactionSchema = baseTransactionSchema.extend({
   additiveType: z.string().min(1, 'Additive type is required'),
   additiveName: z.string().min(1, 'Additive name is required'),
   quantity: z.number().positive('Quantity must be positive'),
-  unit: z.enum(['kg', 'g', 'L', 'mL', 'tablets', 'packets']),
+  unit: z.enum(['kg', 'g', 'lb', 'L', 'mL']),
   expirationDate: z.date().optional(),
   batchNumber: z.string().optional(),
   concentration: z.string().optional(), // e.g., "5% solution", "pure"

@@ -37,7 +37,7 @@ import { toast } from "@/hooks/use-toast"
 
 // Schema for base fruit items
 const baseFruitEditSchema = z.object({
-  quantity: z.number().min(0, "Quantity must be positive"),
+  quantity: z.number().int().min(0, "Quantity must be positive"),
   unit: z.enum(["kg", "lb", "L", "gal"]),
   harvestDate: z.date().optional(),
   notes: z.string().optional(),
@@ -45,16 +45,18 @@ const baseFruitEditSchema = z.object({
 
 // Schema for additive items
 const additiveEditSchema = z.object({
-  quantity: z.number().min(0, "Quantity must be positive"),
-  unit: z.string().min(1, "Unit is required"),
-  expirationDate: z.date().optional(),
-  storageRequirements: z.string().optional(),
+  quantity: z.number().int().min(0, "Quantity must be positive"),
+  unit: z.enum(['g', 'kg', 'lb', 'L', 'mL']),
+  unitCost: z.number().min(0, "Unit cost must be positive").optional(),
+  totalCost: z.number().min(0, "Total cost must be positive").optional(),
+  purchaseDate: z.date().optional(),
   notes: z.string().optional(),
 })
 
 // Schema for juice items
 const juiceEditSchema = z.object({
   volumeL: z.number().min(0, "Volume must be positive"),
+  unit: z.enum(['L', 'gal']),
   brix: z.number().min(0).max(100).optional(),
   containerType: z.string().optional(),
   notes: z.string().optional(),
@@ -62,7 +64,8 @@ const juiceEditSchema = z.object({
 
 // Schema for packaging items
 const packagingEditSchema = z.object({
-  quantity: z.number().min(0, "Quantity must be positive"),
+  quantity: z.number().int().min(0, "Quantity must be positive"),
+  unit: z.string().optional(),
   notes: z.string().optional(),
 })
 
@@ -96,23 +99,26 @@ export function InventoryEditDialog({
       z.object({})
     ),
     defaultValues: materialType === 'basefruit' ? {
-      quantity: item?.currentBottleCount || 0,
+      quantity: item?.currentBottleCount || undefined,
       unit: metadata.unit || 'kg',
       harvestDate: metadata.harvestDate ? new Date(metadata.harvestDate) : undefined,
       notes: item?.notes || '',
     } : materialType === 'additive' ? {
-      quantity: item?.currentBottleCount || 0,
-      unit: metadata.unit || '',
-      expirationDate: metadata.expirationDate ? new Date(metadata.expirationDate) : undefined,
-      storageRequirements: metadata.storageRequirements || '',
+      quantity: item?.currentBottleCount || undefined,
+      unit: metadata.unit || 'g',
+      unitCost: parseFloat(metadata.unitCost) || parseFloat(item?.unitCost) || undefined,
+      totalCost: parseFloat(metadata.totalCost) || parseFloat(item?.totalCost) || undefined,
+      purchaseDate: metadata.purchaseDate ? new Date(metadata.purchaseDate) : new Date(),
       notes: item?.notes || '',
     } : materialType === 'juice' ? {
-      volumeL: item?.currentBottleCount || 0,
+      volumeL: item?.currentBottleCount || undefined,
+      unit: metadata.unit || 'L',
       brix: metadata.brix || undefined,
       containerType: metadata.containerType || '',
       notes: item?.notes || '',
     } : materialType === 'packaging' ? {
-      quantity: item?.currentBottleCount || 0,
+      quantity: item?.currentBottleCount || undefined,
+      unit: metadata.unit || metadata.size || 'units',
       notes: item?.notes || '',
     } : {}
   })
@@ -212,8 +218,9 @@ export function InventoryEditDialog({
             id: itemId,
             quantity: values.quantity,
             unit: values.unit,
-            expirationDate: values.expirationDate,
-            storageRequirements: values.storageRequirements,
+            unitCost: values.unitCost,
+            totalCost: values.totalCost,
+            purchaseDate: values.purchaseDate,
             notes: values.notes,
           })
           break
@@ -269,9 +276,10 @@ export function InventoryEditDialog({
                     <FormControl>
                       <Input
                         type="number"
-                        step="0.01"
+                        step="1"
+                        placeholder="0"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                        onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -335,6 +343,129 @@ export function InventoryEditDialog({
                     <FormControl>
                       <Input
                         type="number"
+                        step="1"
+                        placeholder="0"
+                        {...field}
+                        onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="unit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select unit" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="g">Grams (g)</SelectItem>
+                        <SelectItem value="kg">Kilograms (kg)</SelectItem>
+                        <SelectItem value="lb">Pounds (lbs)</SelectItem>
+                        <SelectItem value="L">Liters (L)</SelectItem>
+                        <SelectItem value="mL">Milliliters (mL)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="unitCost"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit Cost ($)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        {...field}
+                        onChange={(e) => {
+                          const value = e.target.value ? parseFloat(e.target.value) : undefined
+                          field.onChange(value)
+                          // Calculate total from unit cost
+                          const quantity = form.getValues('quantity')
+                          if (value && quantity) {
+                            form.setValue('totalCost', parseFloat((value * quantity).toFixed(2)))
+                          }
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="totalCost"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Total Cost ($)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        {...field}
+                        onChange={(e) => {
+                          const value = e.target.value ? parseFloat(e.target.value) : undefined
+                          field.onChange(value)
+                          // Calculate unit cost from total
+                          const quantity = form.getValues('quantity')
+                          if (value && quantity) {
+                            form.setValue('unitCost', parseFloat((value / quantity).toFixed(2)))
+                          }
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="purchaseDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Purchase Date</FormLabel>
+                  <FormControl>
+                    <HarvestDatePicker
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="Select purchase date"
+                      allowFutureDates={false}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )
+
+      case 'juice':
+        return (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="volumeL"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Volume</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
                         step="0.01"
                         {...field}
                         onChange={(e) => field.onChange(parseFloat(e.target.value))}
@@ -350,73 +481,22 @@ export function InventoryEditDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unit</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="e.g., g, ml, packets" />
-                    </FormControl>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select unit" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="L">Liters (L)</SelectItem>
+                        <SelectItem value="gal">Gallons (gal)</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
-            <FormField
-              control={form.control}
-              name="expirationDate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Expiration Date</FormLabel>
-                  <FormControl>
-                    <HarvestDatePicker
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder="Select expiration date"
-                      allowFutureDates={true}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="storageRequirements"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Storage Requirements</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      placeholder="e.g., Store in cool, dry place"
-                      rows={2}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </>
-        )
-
-      case 'juice':
-        return (
-          <>
-            <FormField
-              control={form.control}
-              name="volumeL"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Volume (L)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -428,8 +508,9 @@ export function InventoryEditDialog({
                       <Input
                         type="number"
                         step="0.1"
+                        placeholder="0.0"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                        onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                       />
                     </FormControl>
                     <FormMessage />
@@ -455,24 +536,40 @@ export function InventoryEditDialog({
 
       case 'packaging':
         return (
-          <FormField
-            control={form.control}
-            name="quantity"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Quantity</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    step="1"
-                    {...field}
-                    onChange={(e) => field.onChange(parseInt(e.target.value))}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="quantity"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Quantity</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="1"
+                      placeholder="0"
+                      {...field}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="unit"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Unit</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="e.g., 12oz, 750ml, units" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
         )
 
       default:

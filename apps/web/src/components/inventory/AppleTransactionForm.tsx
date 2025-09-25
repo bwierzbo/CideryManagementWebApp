@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollableSelectContent } from "@/components/ui/scrollable-select"
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker"
+import { Badge } from "@/components/ui/badge"
 import {
   Plus,
   Trash2,
@@ -20,7 +21,9 @@ import {
   X,
   Apple,
   ExternalLink,
-  Search
+  Search,
+  CheckCircle2,
+  Building2
 } from "lucide-react"
 import { trpc } from "@/utils/trpc"
 import { useForm } from "react-hook-form"
@@ -104,10 +107,9 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
     varietyType: 'baseFruit',
     includeInactive: false,
   })
-  const allVendors = vendorData?.vendors || []
-
   // Filter vendors based on search query
   const vendors = React.useMemo(() => {
+    const allVendors = vendorData?.vendors || []
     if (!debouncedVendorSearch.trim()) {
       return allVendors
     }
@@ -115,7 +117,7 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
     return allVendors.filter(vendor =>
       vendor.name.toLowerCase().includes(searchLower)
     )
-  }, [allVendors, debouncedVendorSearch])
+  }, [vendorData?.vendors, debouncedVendorSearch])
 
   // Get vendor varieties when vendor is selected
   const { data: vendorVarietiesData } = trpc.vendorVariety.listForVendor.useQuery(
@@ -326,69 +328,109 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-6">
-          {/* Purchase Header */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="sm:col-span-2 lg:col-span-1">
-              <Label htmlFor="vendorId">Vendor</Label>
+          {/* Purchase Header - Vendor selection stretches across top */}
+          <div className="space-y-4">
+            {/* Vendor Selection - Full width */}
+            <div className="space-y-3">
+              <Label className="text-base font-medium">Select Vendor</Label>
 
-              {/* Vendor Search Input */}
-              <div className="relative mb-2">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   placeholder="Search vendors..."
                   value={vendorSearchQuery}
                   onChange={(e) => setVendorSearchQuery(e.target.value)}
-                  className="pl-10 h-10"
+                  className="pl-10 h-12"
                 />
               </div>
 
-              <Select onValueChange={handleVendorChange}>
-                <SelectTrigger className="h-12">
-                  <SelectValue placeholder="Select vendor" />
-                </SelectTrigger>
-                <ScrollableSelectContent maxHeight="200px">
-                  {vendors.map((vendor: any) => (
-                    <SelectItem key={vendor.id} value={vendor.id}>
-                      {vendor.name}
-                    </SelectItem>
-                  ))}
-                </ScrollableSelectContent>
-              </Select>
+              {/* Vendors List */}
+              <div className="max-h-48 overflow-y-auto space-y-2 border rounded-lg p-2">
+                {vendors.map((vendor: any) => (
+                  <button
+                    key={vendor.id}
+                    type="button"
+                    onClick={() => handleVendorChange(vendor.id)}
+                    className={`w-full p-3 text-left rounded-lg border transition-all ${
+                      selectedVendorId === vendor.id
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-medium text-gray-900">{vendor.name}</h4>
+                        {vendor.contactInfo && (
+                          <p className="text-sm text-gray-600">
+                            {vendor.contactInfo.email || vendor.contactInfo.phone || vendor.contactInfo.address || ''}
+                          </p>
+                        )}
+                        {vendor.specializesIn && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {vendor.specializesIn.map((spec: string) => (
+                              <Badge key={spec} variant="outline" className="text-xs">
+                                {spec}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Building2 className="w-4 h-4 text-gray-400" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {selectedVendorId && vendors.find(v => v.id === selectedVendorId) && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-800">
+                      Selected: {vendors.find(v => v.id === selectedVendorId)?.name}
+                    </span>
+                  </div>
+                </div>
+              )}
               {errors.vendorId && <p className="text-sm text-red-600 mt-1">{errors.vendorId.message}</p>}
             </div>
-            <div>
-              <Label htmlFor="purchaseDate">Purchase Date</Label>
-              <Input
-                id="purchaseDate"
-                type="date"
-                value={purchaseDate}
-                onChange={(e) => handlePurchaseDateChange(e.target.value)}
-                className="h-12"
-              />
-              {errors.purchaseDate && <p className="text-sm text-red-600 mt-1">{errors.purchaseDate.message}</p>}
-            </div>
-            <div className="sm:col-span-2 lg:col-span-1">
-              <HarvestDatePicker
-                id="globalHarvestDate"
-                label="Harvest Date (All Varieties)"
-                placeholder="Select harvest date"
-                value={globalHarvestDate}
-                onChange={(date) => {
-                  setGlobalHarvestDate(date)
-                  setValue("globalHarvestDate", date)
-                  // Auto-populate individual harvest dates
-                  setLines(prevLines => {
-                    const newLines = prevLines.map(line => ({ ...line, harvestDate: date }))
-                    // Update form values for each line
-                    newLines.forEach((_, index) => {
-                      setValue(`lines.${index}.harvestDate`, date)
+
+            {/* Purchase Date and Harvest Date - Below vendor selection */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="purchaseDate">Purchase Date</Label>
+                <Input
+                  id="purchaseDate"
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => handlePurchaseDateChange(e.target.value)}
+                  className="h-12"
+                />
+                {errors.purchaseDate && <p className="text-sm text-red-600 mt-1">{errors.purchaseDate.message}</p>}
+              </div>
+              <div>
+                <HarvestDatePicker
+                  id="globalHarvestDate"
+                  label="Harvest Date (All Varieties)"
+                  placeholder="Select harvest date"
+                  value={globalHarvestDate}
+                  onChange={(date) => {
+                    setGlobalHarvestDate(date)
+                    setValue("globalHarvestDate", date)
+                    // Auto-populate individual harvest dates
+                    setLines(prevLines => {
+                      const newLines = prevLines.map(line => ({ ...line, harvestDate: date }))
+                      // Update form values for each line
+                      newLines.forEach((_, index) => {
+                        setValue(`lines.${index}.harvestDate`, date)
+                      })
+                      return newLines
                     })
-                    return newLines
-                  })
-                }}
-                showClearButton={true}
-                allowFutureDates={true}
-              />
+                  }}
+                  showClearButton={true}
+                  allowFutureDates={true}
+                />
+              </div>
             </div>
           </div>
 

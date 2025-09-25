@@ -17,25 +17,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Calendar,
-  Package,
   AlertTriangle,
   ExternalLink,
   X,
-  Apple,
+  Package,
   Plus,
   Search,
-  Filter,
   MoreVertical,
-  Edit,
-  Trash2
+  Trash2,
+  Boxes
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
@@ -58,43 +49,47 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-// Type for basefruit purchase item from API
-interface BaseFruitPurchaseItem {
+// Type for packaging inventory item from API
+interface PackagingInventoryItem {
   id: string
-  purchaseId: string
-  vendorName: string
-  varietyName: string
-  harvestDate: string | null
-  originalQuantity: number
-  originalUnit: string
-  pricePerUnit: number | null
-  totalCost: number | null
+  packageId: string | null
+  currentBottleCount: number
+  reservedBottleCount: number
+  materialType: string
+  metadata: {
+    purchaseId: string
+    vendorName: string
+    packageType?: string | null
+    materialType?: string | null
+    size?: string
+  }
+  location: string | null
   notes: string | null
   createdAt: string
   updatedAt: string
 }
 
 // Table column configuration
-type SortField = 'varietyName' | 'vendorName' | 'harvestDate' | 'originalQuantity' | 'createdAt'
+type SortField = 'size' | 'vendorName' | 'packageType' | 'quantity' | 'createdAt'
 
-interface BaseFruitTableProps {
+interface PackagingInventoryTableProps {
   showFilters?: boolean
   className?: string
   itemsPerPage?: number
-  onItemClick?: (item: BaseFruitPurchaseItem) => void
+  onItemClick?: (item: PackagingInventoryItem) => void
   onAddNew?: () => void
 }
 
-export function BaseFruitTable({
+export function PackagingInventoryTable({
   showFilters = true,
   className,
   itemsPerPage = 50,
   onItemClick,
   onAddNew
-}: BaseFruitTableProps) {
+}: PackagingInventoryTableProps) {
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>('')
-  const [deleteItem, setDeleteItem] = useState<BaseFruitPurchaseItem | null>(null)
+  const [deleteItem, setDeleteItem] = useState<PackagingInventoryItem | null>(null)
 
   // Sorting state using the reusable hook
   const {
@@ -106,7 +101,7 @@ export function BaseFruitTable({
     clearAllSort
   } = useTableSorting<SortField>({
     multiColumn: false,
-    defaultSort: { field: 'harvestDate', direction: 'desc' }
+    defaultSort: { field: 'createdAt', direction: 'desc' }
   })
 
   // Pagination state
@@ -115,90 +110,71 @@ export function BaseFruitTable({
   // Router for navigation
   const router = useRouter()
 
-  // Calculate API parameters
-  const apiParams = useMemo(() => ({
-    searchQuery: searchQuery.trim() || undefined,
-    limit: itemsPerPage,
-    offset: currentPage * itemsPerPage,
-  }), [searchQuery, itemsPerPage, currentPage])
-
-  // API queries - using inventory.list for now, will create specialized endpoint later
+  // API queries - using inventory.list with materialType filter
   const {
-    data: listData,
+    data: inventoryData,
     isLoading,
     error,
     refetch
   } = trpc.inventory.list.useQuery({
-    limit: itemsPerPage,
-    offset: currentPage * itemsPerPage,
+    limit: 100, // Max allowed by API
+    offset: 0,
   })
 
-  // Delete mutation
-  const deleteMutation = trpc.inventory.deleteItem.useMutation({
-    onSuccess: () => {
-      setDeleteItem(null)
-      refetch()
-    },
-    onError: (error) => {
-      console.error('Error deleting item:', error)
-      // Handle error (could show toast notification)
-    }
-  })
+  // Transform and filter inventory data to show only packaging
+  const packagingItems = useMemo(() => {
+    if (!inventoryData?.items) return []
 
-  // Filter items to only show apple/basefruit items
-  const baseFruitItems = useMemo(() => {
-    if (!listData?.items) return []
+    // Filter for packaging items only
+    const items = inventoryData.items
+      .filter((item: any) => item.materialType === 'packaging')
+      .map((item: any) => ({
+        id: item.id,
+        packageId: item.packageId,
+        currentBottleCount: item.currentBottleCount,
+        reservedBottleCount: item.reservedBottleCount,
+        materialType: item.materialType,
+        metadata: item.metadata || {},
+        location: item.location,
+        notes: item.notes,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
+      } as PackagingInventoryItem))
 
-    return listData.items
-      .filter((item: any) => item.materialType === 'apple')
-      .map((item: any) => {
-        const metadata = (item.metadata as any) || {}
-        return {
-          id: item.id,
-          purchaseId: metadata.purchaseId || '',
-          vendorName: metadata.vendorName || 'Unknown Vendor',
-          varietyName: metadata.varietyName || 'Unknown Variety',
-          harvestDate: metadata.harvestDate || null,
-          originalQuantity: item.currentBottleCount,
-          originalUnit: metadata.unit || 'lb',
-          pricePerUnit: null, // TODO: Add to metadata
-          totalCost: null, // TODO: Add to metadata
-          notes: item.notes,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt
-        } as BaseFruitPurchaseItem
-      })
-  }, [listData])
+    return items
+  }, [inventoryData])
 
   // Apply client-side filtering
   const filteredItems = useMemo(() => {
-    let filtered = baseFruitItems
+    let filtered = packagingItems
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter((item: any) =>
-        item.varietyName.toLowerCase().includes(query) ||
-        item.vendorName.toLowerCase().includes(query) ||
+        (item.metadata?.size?.toLowerCase().includes(query)) ||
+        (item.metadata?.vendorName?.toLowerCase().includes(query)) ||
+        (item.metadata?.packageType && item.metadata.packageType.toLowerCase().includes(query)) ||
+        (item.metadata?.materialType && item.metadata.materialType.toLowerCase().includes(query)) ||
         (item.notes && item.notes.toLowerCase().includes(query))
       )
     }
 
     return filtered
-  }, [baseFruitItems, searchQuery])
+  }, [packagingItems, searchQuery])
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
     return sortData(filteredItems, (item: any, field) => {
       // Custom sort value extraction for different field types
       switch (field) {
-        case 'varietyName':
-          return item.varietyName
+        case 'size':
+          return item.metadata?.size || ''
         case 'vendorName':
-          return item.vendorName
-        case 'harvestDate':
-          return item.harvestDate ? new Date(item.harvestDate) : new Date(0)
-        case 'originalQuantity':
-          return item.originalQuantity
+          return item.metadata?.vendorName || ''
+        case 'packageType':
+          return item.metadata?.packageType || ''
+        case 'quantity':
+          return item.currentBottleCount || 0
         case 'createdAt':
           return new Date(item.createdAt)
         default:
@@ -207,20 +183,17 @@ export function BaseFruitTable({
     })
   }, [filteredItems, sortData])
 
-
   // Event handlers
   const handleColumnSort = useCallback((field: SortField) => {
     handleSort(field)
   }, [handleSort])
 
-  const handleItemClick = useCallback((item: BaseFruitPurchaseItem) => {
+  const handleItemClick = useCallback((item: PackagingInventoryItem) => {
     if (onItemClick) {
       onItemClick(item)
-    } else {
-      // Default navigation to item detail page
-      router.push(`/inventory/${item.id}`)
     }
-  }, [onItemClick, router])
+    // No navigation - just call the handler if provided
+  }, [onItemClick])
 
   const handleRefresh = useCallback(() => {
     refetch()
@@ -229,12 +202,11 @@ export function BaseFruitTable({
   // Handle delete confirmation
   const handleDeleteConfirm = useCallback(() => {
     if (deleteItem) {
-      deleteMutation.mutate({
-        id: deleteItem.id,
-        itemType: 'basefruit'
-      })
+      // TODO: Implement delete functionality
+      console.log('Delete packaging item:', deleteItem.id)
+      setDeleteItem(null)
     }
-  }, [deleteItem, deleteMutation])
+  }, [deleteItem])
 
   // Get sort direction for display
   const getSortDirectionForDisplay = useCallback((field: SortField) => {
@@ -253,8 +225,33 @@ export function BaseFruitTable({
     return new Date(dateString).toLocaleDateString()
   }
 
-  const formatQuantity = (quantity: number, unit: string) => {
-    return `${quantity.toLocaleString()} ${unit}`
+  const formatQuantity = (quantity: number) => {
+    return quantity.toLocaleString()
+  }
+
+  const formatCurrency = (amount: string | null) => {
+    if (!amount) return '—'
+    const value = parseFloat(amount)
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(value)
+  }
+
+  const getPackageTypeBadge = (type: string | null) => {
+    if (!type) return null
+    const colors = {
+      bottle: 'bg-green-100 text-green-800',
+      can: 'bg-blue-100 text-blue-800',
+      keg: 'bg-purple-100 text-purple-800',
+      growler: 'bg-orange-100 text-orange-800',
+      case: 'bg-yellow-100 text-yellow-800',
+      box: 'bg-gray-100 text-gray-800',
+      label: 'bg-pink-100 text-pink-800',
+      cork: 'bg-amber-100 text-amber-800',
+      cap: 'bg-red-100 text-red-800'
+    }
+    return colors[type.toLowerCase() as keyof typeof colors] || 'bg-gray-100 text-gray-800'
   }
 
   return (
@@ -274,7 +271,7 @@ export function BaseFruitTable({
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                         <Input
                           id="search"
-                          placeholder="Search varieties, vendors, or notes..."
+                          placeholder="Search packaging, vendors, types, or notes..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
                           className="pl-10"
@@ -287,9 +284,9 @@ export function BaseFruitTable({
 
               {/* Add Button */}
               {onAddNew && (
-                <Button onClick={onAddNew} className="bg-red-600 hover:bg-red-700">
+                <Button onClick={onAddNew} className="bg-amber-600 hover:bg-amber-700">
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Base Fruit Purchase
+                  Add Packaging Purchase
                 </Button>
               )}
             </div>
@@ -303,12 +300,12 @@ export function BaseFruitTable({
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Apple className="w-5 h-5" />
-                Base Fruit Purchases
+                <Package className="w-5 h-5 text-amber-600" />
+                Packaging Inventory
               </CardTitle>
               <div className="flex items-center gap-4">
                 <CardDescription>
-                  {sortedItems.length > 0 ? `${sortedItems.length} purchases found` : 'No purchases found'}
+                  {sortedItems.length > 0 ? `${sortedItems.length} packaging items found` : 'No packaging items found'}
                 </CardDescription>
                 {sortState.columns.length > 0 && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -342,7 +339,7 @@ export function BaseFruitTable({
           {error && (
             <div className="flex items-center gap-2 p-4 text-red-600 bg-red-50 rounded-lg mb-4">
               <AlertTriangle className="w-4 h-4" />
-              <span>Error loading base fruit purchases: {error.message}</span>
+              <span>Error loading packaging inventory: {error.message}</span>
             </div>
           )}
 
@@ -351,11 +348,11 @@ export function BaseFruitTable({
               <TableHeader>
                 <TableRow>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('varietyName')}
-                    sortIndex={getSortIndex('varietyName')}
-                    onSort={() => handleColumnSort('varietyName')}
+                    sortDirection={getSortDirectionForDisplay('size')}
+                    sortIndex={getSortIndex('size')}
+                    onSort={() => handleColumnSort('size')}
                   >
-                    Fruit Variety
+                    Item
                   </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay('vendorName')}
@@ -365,22 +362,25 @@ export function BaseFruitTable({
                     Vendor
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('harvestDate')}
-                    sortIndex={getSortIndex('harvestDate')}
-                    onSort={() => handleColumnSort('harvestDate')}
+                    sortDirection={getSortDirectionForDisplay('packageType')}
+                    sortIndex={getSortIndex('packageType')}
+                    onSort={() => handleColumnSort('packageType')}
                   >
-                    Harvest Date
+                    Type
                   </SortableHeader>
                   <SortableHeader
                     align="right"
-                    sortDirection={getSortDirectionForDisplay('originalQuantity')}
-                    sortIndex={getSortIndex('originalQuantity')}
-                    onSort={() => handleColumnSort('originalQuantity')}
+                    sortDirection={getSortDirectionForDisplay('quantity')}
+                    sortIndex={getSortIndex('quantity')}
+                    onSort={() => handleColumnSort('quantity')}
                   >
                     Quantity
                   </SortableHeader>
-                  <SortableHeader canSort={false}>
-                    Notes
+                  <SortableHeader canSort={false} align="right">
+                    Unit Cost
+                  </SortableHeader>
+                  <SortableHeader canSort={false} align="right">
+                    Total Cost
                   </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay('createdAt')}
@@ -401,19 +401,20 @@ export function BaseFruitTable({
                     <TableRow key={index}>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                     </TableRow>
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                       {searchQuery
-                        ? 'No purchases match your search criteria'
-                        : 'No base fruit purchases found'}
+                        ? 'No packaging items match your search criteria'
+                        : 'No packaging items found'}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -424,32 +425,36 @@ export function BaseFruitTable({
                       onClick={() => handleItemClick(item)}
                     >
                       <TableCell>
-                        <div className="font-medium">
-                          {item.varietyName}
+                        <div className="flex items-center gap-2">
+                          <Boxes className="w-4 h-4 text-muted-foreground" />
+                          <div className="font-medium">{item.metadata?.size || 'Unknown Size'}</div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          {item.vendorName}
+                          {item.metadata?.vendorName || 'Unknown Vendor'}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Calendar className="w-3 h-3 text-muted-foreground" />
-                          <span>{formatDate(item.harvestDate)}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatQuantity(item.originalQuantity, item.originalUnit)}
-                      </TableCell>
-                      <TableCell>
-                        {item.notes ? (
-                          <div className="text-sm text-muted-foreground line-clamp-1 max-w-[200px]">
-                            {item.notes}
-                          </div>
+                        {item.metadata?.packageType ? (
+                          <Badge
+                            variant="secondary"
+                            className={getPackageTypeBadge(item.metadata.packageType) ?? 'bg-gray-100 text-gray-800'}
+                          >
+                            {item.metadata.packageType}
+                          </Badge>
                         ) : (
                           <span className="text-muted-foreground text-sm">—</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatQuantity(item.currentBottleCount)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        <span className="text-muted-foreground text-sm">—</span>
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        <span className="text-muted-foreground text-sm">—</span>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
@@ -503,9 +508,9 @@ export function BaseFruitTable({
           {sortedItems.length > 0 && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {sortedItems.length} of {baseFruitItems.length} base fruit purchases
+                Showing {sortedItems.length} of {packagingItems.length} packaging items
                 {searchQuery.trim() &&
-                  ` (filtered from ${baseFruitItems.length} total)`
+                  ` (filtered from ${packagingItems.length} total)`
                 }
               </div>
             </div>
@@ -517,20 +522,19 @@ export function BaseFruitTable({
       <AlertDialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Base Fruit Purchase</AlertDialogTitle>
+            <AlertDialogTitle>Delete Packaging Item</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &ldquo;{deleteItem ? `${deleteItem.varietyName} from ${deleteItem.vendorName}` : ''}&rdquo;?
-              This action cannot be undone and will permanently remove this purchase from your inventory.
+              Are you sure you want to delete "{deleteItem ? `${deleteItem.metadata.size || 'item'} from ${deleteItem.metadata.vendorName || 'unknown vendor'}` : ''}"?
+              This action cannot be undone and will permanently remove this packaging item from your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
-              disabled={deleteMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

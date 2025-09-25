@@ -21,6 +21,12 @@ import {
   vendors,
   basefruitPurchases,
   basefruitPurchaseItems,
+  additivePurchases,
+  additivePurchaseItems,
+  juicePurchases,
+  juicePurchaseItems,
+  packagingPurchases,
+  packagingPurchaseItems,
   pressRuns,
   pressItems,
   batches,
@@ -778,6 +784,277 @@ export const appRouter = router({
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: 'Failed to delete purchase'
+          })
+        }
+      }),
+
+    // Unified transaction history endpoint for all purchase types
+    allPurchases: createRbacProcedure('list', 'purchase')
+      .input(z.object({
+        vendorId: z.string().uuid().optional(),
+        materialType: z.enum(['basefruit', 'additives', 'juice', 'packaging', 'all']).default('all'),
+        startDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
+        endDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
+        includeArchived: z.boolean().default(true),
+        limit: z.number().int().min(1).max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+      }))
+      .query(async ({ input }) => {
+        try {
+          const allPurchases = []
+
+          // Query basefruit purchases
+          if (input.materialType === 'all' || input.materialType === 'basefruit') {
+            const conditions = []
+            if (!input.includeArchived) {
+              conditions.push(isNull(basefruitPurchases.deletedAt))
+            }
+            if (input.vendorId) {
+              conditions.push(eq(basefruitPurchases.vendorId, input.vendorId))
+            }
+            if (input.startDate) {
+              conditions.push(sql`${basefruitPurchases.purchaseDate} >= ${input.startDate.toISOString().split('T')[0]}`)
+            }
+            if (input.endDate) {
+              conditions.push(sql`${basefruitPurchases.purchaseDate} <= ${input.endDate.toISOString().split('T')[0]}`)
+            }
+
+            const basefruitResults = await db
+              .select({
+                id: basefruitPurchases.id,
+                vendorId: basefruitPurchases.vendorId,
+                vendorName: vendors.name,
+                purchaseDate: basefruitPurchases.purchaseDate,
+                invoiceNumber: basefruitPurchases.invoiceNumber,
+                totalCost: basefruitPurchases.totalCost,
+                notes: basefruitPurchases.notes,
+                createdAt: basefruitPurchases.createdAt,
+                deletedAt: basefruitPurchases.deletedAt,
+              })
+              .from(basefruitPurchases)
+              .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+              .where(conditions.length > 0 ? and(...conditions) : undefined)
+
+            // Get depletion status for basefruit purchases
+            for (const purchase of basefruitResults) {
+              const items = await db
+                .select({
+                  id: basefruitPurchaseItems.id,
+                  isDepleted: basefruitPurchaseItems.isDepleted,
+                  depletedAt: basefruitPurchaseItems.depletedAt,
+                })
+                .from(basefruitPurchaseItems)
+                .where(eq(basefruitPurchaseItems.purchaseId, purchase.id))
+
+              const totalItems = items.length
+              const depletedItems = items.filter(item => item.isDepleted).length
+
+              let status = 'active'
+              if (purchase.deletedAt) {
+                status = 'archived'
+              } else if (depletedItems === totalItems && totalItems > 0) {
+                status = 'depleted'
+              } else if (depletedItems > 0) {
+                status = 'partially_depleted'
+              }
+
+              allPurchases.push({
+                ...purchase,
+                materialType: 'basefruit' as const,
+                status,
+                totalItems,
+                depletedItems,
+              })
+            }
+          }
+
+          // Query additive purchases
+          if (input.materialType === 'all' || input.materialType === 'additives') {
+            const conditions = []
+            if (!input.includeArchived) {
+              conditions.push(isNull(additivePurchases.deletedAt))
+            }
+            if (input.vendorId) {
+              conditions.push(eq(additivePurchases.vendorId, input.vendorId))
+            }
+            if (input.startDate) {
+              conditions.push(sql`${additivePurchases.purchaseDate} >= ${input.startDate.toISOString().split('T')[0]}`)
+            }
+            if (input.endDate) {
+              conditions.push(sql`${additivePurchases.purchaseDate} <= ${input.endDate.toISOString().split('T')[0]}`)
+            }
+
+            const additiveResults = await db
+              .select({
+                id: additivePurchases.id,
+                vendorId: additivePurchases.vendorId,
+                vendorName: vendors.name,
+                purchaseDate: additivePurchases.purchaseDate,
+                invoiceNumber: additivePurchases.invoiceNumber,
+                totalCost: additivePurchases.totalCost,
+                notes: additivePurchases.notes,
+                createdAt: additivePurchases.createdAt,
+                deletedAt: additivePurchases.deletedAt,
+              })
+              .from(additivePurchases)
+              .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
+              .where(conditions.length > 0 ? and(...conditions) : undefined)
+
+            for (const purchase of additiveResults) {
+              const items = await db
+                .select({ id: additivePurchaseItems.id })
+                .from(additivePurchaseItems)
+                .where(eq(additivePurchaseItems.purchaseId, purchase.id))
+
+              const status = purchase.deletedAt ? 'archived' : 'active'
+
+              allPurchases.push({
+                ...purchase,
+                materialType: 'additives' as const,
+                status,
+                totalItems: items.length,
+                depletedItems: 0,
+              })
+            }
+          }
+
+          // Query juice purchases
+          if (input.materialType === 'all' || input.materialType === 'juice') {
+            const conditions = []
+            if (!input.includeArchived) {
+              conditions.push(isNull(juicePurchases.deletedAt))
+            }
+            if (input.vendorId) {
+              conditions.push(eq(juicePurchases.vendorId, input.vendorId))
+            }
+            if (input.startDate) {
+              conditions.push(sql`${juicePurchases.purchaseDate} >= ${input.startDate.toISOString().split('T')[0]}`)
+            }
+            if (input.endDate) {
+              conditions.push(sql`${juicePurchases.purchaseDate} <= ${input.endDate.toISOString().split('T')[0]}`)
+            }
+
+            const juiceResults = await db
+              .select({
+                id: juicePurchases.id,
+                vendorId: juicePurchases.vendorId,
+                vendorName: vendors.name,
+                purchaseDate: juicePurchases.purchaseDate,
+                invoiceNumber: juicePurchases.invoiceNumber,
+                totalCost: juicePurchases.totalCost,
+                notes: juicePurchases.notes,
+                createdAt: juicePurchases.createdAt,
+                deletedAt: juicePurchases.deletedAt,
+              })
+              .from(juicePurchases)
+              .leftJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
+              .where(conditions.length > 0 ? and(...conditions) : undefined)
+
+            for (const purchase of juiceResults) {
+              const items = await db
+                .select({ id: juicePurchaseItems.id })
+                .from(juicePurchaseItems)
+                .where(eq(juicePurchaseItems.purchaseId, purchase.id))
+
+              const status = purchase.deletedAt ? 'archived' : 'active'
+
+              allPurchases.push({
+                ...purchase,
+                materialType: 'juice' as const,
+                status,
+                totalItems: items.length,
+                depletedItems: 0,
+              })
+            }
+          }
+
+          // Query packaging purchases
+          if (input.materialType === 'all' || input.materialType === 'packaging') {
+            const conditions = []
+            if (!input.includeArchived) {
+              conditions.push(isNull(packagingPurchases.deletedAt))
+            }
+            if (input.vendorId) {
+              conditions.push(eq(packagingPurchases.vendorId, input.vendorId))
+            }
+            if (input.startDate) {
+              conditions.push(sql`${packagingPurchases.purchaseDate} >= ${input.startDate.toISOString().split('T')[0]}`)
+            }
+            if (input.endDate) {
+              conditions.push(sql`${packagingPurchases.purchaseDate} <= ${input.endDate.toISOString().split('T')[0]}`)
+            }
+
+            const packagingResults = await db
+              .select({
+                id: packagingPurchases.id,
+                vendorId: packagingPurchases.vendorId,
+                vendorName: vendors.name,
+                purchaseDate: packagingPurchases.purchaseDate,
+                invoiceNumber: packagingPurchases.invoiceNumber,
+                totalCost: packagingPurchases.totalCost,
+                notes: packagingPurchases.notes,
+                createdAt: packagingPurchases.createdAt,
+                deletedAt: packagingPurchases.deletedAt,
+              })
+              .from(packagingPurchases)
+              .leftJoin(vendors, eq(packagingPurchases.vendorId, vendors.id))
+              .where(conditions.length > 0 ? and(...conditions) : undefined)
+
+            for (const purchase of packagingResults) {
+              const items = await db
+                .select({ id: packagingPurchaseItems.id })
+                .from(packagingPurchaseItems)
+                .where(eq(packagingPurchaseItems.purchaseId, purchase.id))
+
+              const status = purchase.deletedAt ? 'archived' : 'active'
+
+              allPurchases.push({
+                ...purchase,
+                materialType: 'packaging' as const,
+                status,
+                totalItems: items.length,
+                depletedItems: 0,
+              })
+            }
+          }
+
+          // Sort all purchases by date (most recent first)
+          allPurchases.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime())
+
+          // Apply pagination
+          const startIndex = input.offset
+          const endIndex = input.offset + input.limit
+          const paginatedPurchases = allPurchases.slice(startIndex, endIndex)
+
+          return {
+            purchases: paginatedPurchases,
+            pagination: {
+              total: allPurchases.length,
+              limit: input.limit,
+              offset: input.offset,
+              hasMore: endIndex < allPurchases.length,
+            },
+            summary: {
+              totalPurchases: allPurchases.length,
+              byMaterialType: {
+                basefruit: allPurchases.filter(p => p.materialType === 'basefruit').length,
+                additives: allPurchases.filter(p => p.materialType === 'additives').length,
+                juice: allPurchases.filter(p => p.materialType === 'juice').length,
+                packaging: allPurchases.filter(p => p.materialType === 'packaging').length,
+              },
+              byStatus: {
+                active: allPurchases.filter(p => p.status === 'active').length,
+                partially_depleted: allPurchases.filter(p => p.status === 'partially_depleted').length,
+                depleted: allPurchases.filter(p => p.status === 'depleted').length,
+                archived: allPurchases.filter(p => p.status === 'archived').length,
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error listing all purchases:', error)
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Failed to list all purchases'
           })
         }
       }),
@@ -2488,48 +2765,12 @@ export const appRouter = router({
               })
             }
 
-            // Create new batch in destination vessel
-            const newBatch = await tx
-              .insert(batches)
-              .values({
-                vesselId: input.toVesselId,
-                name: `${sourceBatch[0].name} - Transfer`,
-                batchNumber: `${sourceBatch[0].batchNumber}-T`,
-                initialVolumeL: input.volumeL.toString(),
-                currentVolumeL: input.volumeL.toString(),
-                status: 'active',
-                juiceLotId: sourceBatch[0].juiceLotId,
-                originPressRunId: sourceBatch[0].originPressRunId,
-                startDate: new Date(),
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              })
-              .returning()
-
             const remainingVolumeL = currentVolumeL - transferVolumeL
             let remainingBatch = null
 
-            // Always end the source batch when transferring (regardless of remaining volume)
-            await tx
-              .update(batches)
-              .set({
-                status: 'packaged',
-                endDate: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, sourceBatch[0].id))
-
-            // Update destination vessel status to fermenting when volume is added
-            await tx
-              .update(vessels)
-              .set({
-                status: 'fermenting',
-                updatedAt: new Date(),
-              })
-              .where(eq(vessels.id, input.toVesselId))
-
-            // If there's remaining volume, create a new batch in the source vessel
+            // Check if this is a full transfer or partial transfer
             if (remainingVolumeL > 0) {
+              // Partial transfer - create remaining batch in source vessel
               const newRemainingBatch = await tx
                 .insert(batches)
                 .values({
@@ -2539,6 +2780,8 @@ export const appRouter = router({
                   initialVolumeL: remainingVolumeL.toString(),
                   currentVolumeL: remainingVolumeL.toString(),
                   status: 'active',
+                  juiceLotId: sourceBatch[0].juiceLotId,
+                  originPressRunId: sourceBatch[0].originPressRunId,
                   startDate: new Date(),
                   createdAt: new Date(),
                   updatedAt: new Date(),
@@ -2558,10 +2801,10 @@ export const appRouter = router({
                   remainingFrom: sourceBatch[0].id
                 },
                 ctx.session?.user?.id,
-                'Remaining batch created after transfer via API'
+                'Remaining batch created after partial transfer via API'
               )
             } else {
-              // If source vessel is now empty, set to cleaning
+              // Full transfer - source vessel needs cleaning
               await tx
                 .update(vessels)
                 .set({
@@ -2571,28 +2814,34 @@ export const appRouter = router({
                 .where(eq(vessels.id, input.fromVesselId))
             }
 
-            // Audit logging for source batch completion
+            // Move the original batch to the destination vessel
+            const updatedBatch = await tx
+              .update(batches)
+              .set({
+                vesselId: input.toVesselId,
+                currentVolumeL: input.volumeL.toString(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, sourceBatch[0].id))
+              .returning()
+
+            // Update destination vessel status to fermenting
+            await tx
+              .update(vessels)
+              .set({
+                status: 'fermenting',
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, input.toVesselId))
+
+            // Audit logging for batch transfer
             await publishUpdateEvent(
               'batches',
               sourceBatch[0].id,
               sourceBatch[0],
-              { status: 'completed', endDate: new Date() },
+              { vesselId: input.toVesselId, currentVolumeL: input.volumeL.toString() },
               ctx.session?.user?.id,
-              `Batch completed due to transfer to ${destVessel[0].name || 'Unknown Vessel'} via API`
-            )
-
-            // Audit logging for new batch
-            await publishCreateEvent(
-              'batches',
-              newBatch[0].id,
-              {
-                batchId: newBatch[0].id,
-                vesselId: input.toVesselId,
-                volumeL: input.volumeL,
-                transferredFrom: input.fromVesselId
-              },
-              ctx.session?.user?.id,
-              'Batch created from vessel transfer via API'
+              `Batch transferred to ${destVessel[0].name || 'Unknown Vessel'} via API`
             )
 
             // Record the transfer in batchTransfers table
@@ -2601,7 +2850,7 @@ export const appRouter = router({
               .values({
                 sourceBatchId: sourceBatch[0].id,
                 sourceVesselId: input.fromVesselId,
-                destinationBatchId: newBatch[0].id,
+                destinationBatchId: sourceBatch[0].id, // Same batch moved
                 destinationVesselId: input.toVesselId,
                 remainingBatchId: remainingBatch?.id || null,
                 volumeTransferredL: input.volumeL.toString(),
@@ -2618,12 +2867,8 @@ export const appRouter = router({
 
             return {
               success: true,
-              message: `Successfully transferred ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ''} from ${sourceVessel[0].name || 'Unknown'} to ${destVessel[0].name || 'Unknown'}. Source batch completed${remainingVolumeL > 0 ? `, new remaining batch created with ${remainingVolumeL}L` : ''}.`,
-              completedSourceBatch: {
-                id: sourceBatch[0].id,
-                status: 'packaged',
-              },
-              newDestinationBatch: newBatch[0],
+              message: `Successfully transferred ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ''} from ${sourceVessel[0].name || 'Unknown'} to ${destVessel[0].name || 'Unknown'}. Batch moved to new vessel${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL}L` : ''}.`,
+              transferredBatch: updatedBatch[0],
               remainingSourceBatch: remainingBatch,
               transferRecord: transferRecord[0],
             }

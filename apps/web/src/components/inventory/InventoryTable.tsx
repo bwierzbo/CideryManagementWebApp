@@ -216,11 +216,9 @@ export function InventoryTable({
   const handleItemClick = useCallback((item: InventoryItem) => {
     if (onItemClick) {
       onItemClick(item)
-    } else {
-      // Default navigation to item detail page
-      router.push(`/inventory/${item.id}`)
     }
-  }, [onItemClick, router])
+    // No default navigation - clicking on row does nothing unless onItemClick is provided
+  }, [onItemClick])
 
   const handleRefresh = useCallback(() => {
     if (useSearch) {
@@ -253,18 +251,18 @@ export function InventoryTable({
     switch (item.materialType) {
       case 'apple':
         // For basefruit purchase items being shown as inventory
-        if (metadata.varietyName && metadata.vendorName) {
-          return `${metadata.varietyName} from ${metadata.vendorName}`
-        }
         if (metadata.varietyName) {
           return `${metadata.varietyName} Apples`
         }
         return metadata.additiveName || metadata.appleVarietyId || 'Apple Inventory'
       case 'additive':
         // For additive purchase items
-        if (metadata.productName && metadata.brandManufacturer) {
-          return `${metadata.productName} (${metadata.brandManufacturer})`
+        // Check if brandManufacturer is a UUID (36 chars with dashes in specific positions)
+        const isUUID = (str: string) => {
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+          return uuidRegex.test(str)
         }
+
         if (metadata.productName) {
           return metadata.productName
         }
@@ -274,20 +272,20 @@ export function InventoryTable({
         return metadata.additiveName || 'Additive Inventory'
       case 'juice':
         // For juice purchase items
-        if (metadata.varietyName && metadata.juiceType) {
-          return `${metadata.varietyName} ${metadata.juiceType} Juice`
-        }
         if (metadata.varietyName) {
-          return `${metadata.varietyName} Juice`
+          // If varietyName already contains "Juice", don't add it again
+          return metadata.varietyName.toLowerCase().includes('juice')
+            ? metadata.varietyName
+            : `${metadata.varietyName} Juice`
         }
         if (metadata.juiceType) {
           return `${metadata.juiceType} Juice`
         }
         return metadata.vessellId || metadata.pressRunId || 'Juice Inventory'
       case 'packaging':
-        // For packaging purchase items
-        if (metadata.packageType && metadata.size) {
-          return `${metadata.packageType} (${metadata.size})`
+        // For packaging purchase items - just show the size/name
+        if (metadata.size) {
+          return metadata.size
         }
         if (metadata.packageType) {
           return metadata.packageType
@@ -296,6 +294,12 @@ export function InventoryTable({
       default:
         return 'Inventory Item'
     }
+  }
+
+  // Get vendor name from metadata
+  const getVendorName = (item: InventoryItem) => {
+    const metadata = (item.metadata as Record<string, any>) || {}
+    return metadata.vendorName || '-'
   }
 
   // Get sort direction for display
@@ -418,6 +422,9 @@ export function InventoryTable({
                   <SortableHeader canSort={false}>
                     Item
                   </SortableHeader>
+                  <SortableHeader canSort={false}>
+                    Vendor
+                  </SortableHeader>
                   <SortableHeader
                     align="right"
                     sortDirection={getSortDirectionForDisplay('currentBottleCount')}
@@ -445,6 +452,7 @@ export function InventoryTable({
                     <TableRow key={index}>
                       <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell className="text-right"><Skeleton className="h-4 w-24 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
@@ -452,7 +460,7 @@ export function InventoryTable({
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       {searchQuery ? 'No items match your search' : 'No inventory items found'}
                     </TableCell>
                   </TableRow>
@@ -460,8 +468,7 @@ export function InventoryTable({
                   sortedItems.map((item) => (
                     <TableRow
                       key={item.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleItemClick(item)}
+                      className="hover:bg-muted/50"
                     >
                       <TableCell>
                         <MaterialTypeIndicator
@@ -479,6 +486,11 @@ export function InventoryTable({
                               {item.notes}
                             </div>
                           )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {getVendorName(item)}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
@@ -513,15 +525,6 @@ export function InventoryTable({
                             >
                               <Edit className="mr-2 h-4 w-4" />
                               Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleItemClick(item)
-                              }}
-                            >
-                              <ExternalLink className="mr-2 h-4 w-4" />
-                              View Details
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -596,7 +599,7 @@ export function InventoryTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Inventory Item</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteItem ? getItemDisplayName(deleteItem) : ''}"?
+              Are you sure you want to delete &ldquo;{deleteItem ? getItemDisplayName(deleteItem) : ''}&rdquo;?
               This action cannot be undone and will permanently remove this item from your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>

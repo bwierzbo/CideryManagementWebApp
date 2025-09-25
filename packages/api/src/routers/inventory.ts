@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { router, createRbacProcedure } from '../trpc'
+import { router, createRbacProcedure, protectedProcedure } from '../trpc'
 import {
   db,
   inventory,
@@ -13,6 +13,7 @@ import {
   baseFruitVarieties,
   additivePurchases,
   additivePurchaseItems,
+  additiveVarieties,
   juicePurchases,
   juicePurchaseItems,
   packagingPurchases,
@@ -38,7 +39,7 @@ import { InventoryService } from '../services/inventory'
 
 export const inventoryRouter = router({
   // List inventory items - accessible by both admin and operator
-  list: createRbacProcedure('list', 'inventory')
+  list: protectedProcedure
     .input(inventoryListSchema)
     .query(async ({ input }) => {
       // TODO: Temporarily show purchase items as inventory until proper inventory system is ready
@@ -88,10 +89,18 @@ export const inventoryRouter = router({
             metadata: sql<unknown>`json_build_object(
               'purchaseId', ${additivePurchases.id},
               'vendorName', ${vendors.name},
-              'additiveType', ${additivePurchaseItems.additiveType},
+              'varietyName', COALESCE(${additiveVarieties.name}, ${additivePurchaseItems.additiveType}),
+              'varietyType', COALESCE(${additiveVarieties.itemType}, ${additivePurchaseItems.additiveType}),
               'brandManufacturer', ${additivePurchaseItems.brandManufacturer},
-              'productName', ${additivePurchaseItems.productName},
-              'unit', ${additivePurchaseItems.unit}
+              'productName', CASE
+                WHEN ${additivePurchaseItems.productName} LIKE '%(%'
+                THEN TRIM(SUBSTRING(${additivePurchaseItems.productName} FROM 1 FOR POSITION('(' IN ${additivePurchaseItems.productName}) - 1))
+                ELSE ${additivePurchaseItems.productName}
+              END,
+              'unit', ${additivePurchaseItems.unit},
+              'unitCost', ${additivePurchaseItems.pricePerUnit},
+              'totalCost', ${additivePurchaseItems.totalCost},
+              'purchaseDate', ${additivePurchases.purchaseDate}
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: additivePurchaseItems.notes,
@@ -101,6 +110,7 @@ export const inventoryRouter = router({
           .from(additivePurchaseItems)
           .leftJoin(additivePurchases, eq(additivePurchaseItems.purchaseId, additivePurchases.id))
           .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
+          .leftJoin(additiveVarieties, eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id))
           .where(isNull(additivePurchaseItems.deletedAt))
 
         // Juice purchases
@@ -117,7 +127,8 @@ export const inventoryRouter = router({
               'juiceType', ${juicePurchaseItems.juiceType},
               'varietyName', ${juicePurchaseItems.varietyName},
               'brix', ${juicePurchaseItems.brix},
-              'containerType', ${juicePurchaseItems.containerType}
+              'containerType', ${juicePurchaseItems.containerType},
+              'unit', 'L'
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: juicePurchaseItems.notes,
@@ -142,7 +153,8 @@ export const inventoryRouter = router({
               'vendorName', ${vendors.name},
               'packageType', ${packagingPurchaseItems.packageType},
               'materialType', ${packagingPurchaseItems.materialType},
-              'size', ${packagingPurchaseItems.size}
+              'size', ${packagingPurchaseItems.size},
+              'unit', 'units'
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: packagingPurchaseItems.notes,

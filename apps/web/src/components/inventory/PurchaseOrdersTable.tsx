@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
 import { useTableSorting } from '@/hooks/useTableSorting'
 
-// Type for purchase order from API
+// Type for purchase order from unified API
 interface PurchaseOrder {
   id: string
   purchaseDate: string
@@ -46,14 +46,16 @@ interface PurchaseOrder {
   vendorName: string
   totalItems: number
   totalCost: number | null
-  status: 'pending' | 'completed' | 'cancelled'
+  status: 'active' | 'partially_depleted' | 'depleted' | 'archived'
+  materialType: 'basefruit' | 'additives' | 'juice' | 'packaging'
   notes: string | null
   createdAt: string
-  updatedAt: string
+  deletedAt: string | null
+  depletedItems: number
 }
 
 // Table column configuration
-type SortField = 'purchaseDate' | 'vendorName' | 'totalItems' | 'totalCost' | 'status' | 'createdAt'
+type SortField = 'purchaseDate' | 'vendorName' | 'totalItems' | 'totalCost' | 'status' | 'materialType' | 'createdAt'
 
 interface PurchaseOrdersTableProps {
   showFilters?: boolean
@@ -70,6 +72,7 @@ export function PurchaseOrdersTable({
 }: PurchaseOrdersTableProps) {
   // Filter state
   const [vendorFilter, setVendorFilter] = useState<string>('all')
+  const [materialTypeFilter, setMaterialTypeFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
 
@@ -92,63 +95,25 @@ export function PurchaseOrdersTable({
   // Router for navigation
   const router = useRouter()
 
-  // API queries - Create mock data for now since we need to check the actual API
+  // API query using unified purchases endpoint
   const {
-    data: listData,
+    data: purchasesData,
     isLoading,
     error,
     refetch
-  } = trpc.inventory.list.useQuery({
+  } = trpc.purchase.allPurchases.useQuery({
     limit: itemsPerPage,
     offset: currentPage * itemsPerPage,
+    includeArchived: true,
+    materialType: materialTypeFilter === 'all' ? 'all' : materialTypeFilter as any,
+    vendorId: vendorFilter !== 'all' ? vendorFilter : undefined,
   })
 
-  // Create mock purchase orders from basefruit purchase data
-  const purchaseOrders = useMemo(() => {
-    if (!listData?.items) return []
+  const purchaseOrders = purchasesData?.purchases || []
 
-    // Group apple items by purchase ID to create purchase orders
-    const purchaseMap = new Map<string, any>()
-
-    listData.items
-      .filter((item: any) => item.materialType === 'apple')
-      .forEach((item: any) => {
-        const metadata = (item.metadata as any) || {}
-        const purchaseId = metadata.purchaseId
-
-        if (purchaseId) {
-          if (!purchaseMap.has(purchaseId)) {
-            purchaseMap.set(purchaseId, {
-              id: purchaseId,
-              purchaseDate: item.createdAt,
-              vendorId: 'vendor-id',
-              vendorName: metadata.vendorName || 'Unknown Vendor',
-              totalItems: 0,
-              totalCost: 0,
-              status: 'completed' as const,
-              notes: null,
-              createdAt: item.createdAt,
-              updatedAt: item.updatedAt,
-              items: []
-            })
-          }
-
-          const purchase = purchaseMap.get(purchaseId)
-          purchase.totalItems += 1
-          purchase.items.push(item)
-        }
-      })
-
-    return Array.from(purchaseMap.values()) as PurchaseOrder[]
-  }, [listData])
-
-  // Apply client-side filtering
+  // Apply client-side filtering for additional filters not handled by API
   const filteredOrders = useMemo(() => {
     let filtered = purchaseOrders
-
-    if (vendorFilter !== 'all') {
-      filtered = filtered.filter(order => order.vendorName === vendorFilter)
-    }
 
     if (statusFilter !== 'all') {
       filtered = filtered.filter(order => order.status === statusFilter)
@@ -159,12 +124,13 @@ export function PurchaseOrdersTable({
       filtered = filtered.filter(order =>
         order.vendorName.toLowerCase().includes(query) ||
         order.id.toLowerCase().includes(query) ||
-        (order.notes && order.notes.toLowerCase().includes(query))
+        (order.notes && order.notes.toLowerCase().includes(query)) ||
+        order.materialType.toLowerCase().includes(query)
       )
     }
 
     return filtered
-  }, [purchaseOrders, vendorFilter, statusFilter, searchQuery])
+  }, [purchaseOrders, statusFilter, searchQuery])
 
   // Sort orders using the hook
   const sortedOrders = useMemo(() => {
@@ -181,6 +147,8 @@ export function PurchaseOrdersTable({
           return order.totalCost || 0
         case 'status':
           return order.status
+        case 'materialType':
+          return order.materialType
         case 'createdAt':
           return new Date(order.createdAt)
         default:
@@ -245,14 +213,31 @@ export function PurchaseOrdersTable({
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'completed':
-        return <Badge variant="default" className="bg-green-100 text-green-800">Completed</Badge>
-      case 'pending':
-        return <Badge variant="secondary">Pending</Badge>
-      case 'cancelled':
-        return <Badge variant="destructive">Cancelled</Badge>
+      case 'active':
+        return <Badge variant="default" className="bg-green-100 text-green-800">Active</Badge>
+      case 'partially_depleted':
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Partially Used</Badge>
+      case 'depleted':
+        return <Badge variant="secondary" className="bg-orange-100 text-orange-800">Depleted</Badge>
+      case 'archived':
+        return <Badge variant="outline" className="bg-gray-100 text-gray-600">Archived</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const getMaterialTypeBadge = (materialType: string) => {
+    switch (materialType) {
+      case 'basefruit':
+        return <Badge variant="outline" className="bg-red-50 text-red-700">Base Fruit</Badge>
+      case 'additives':
+        return <Badge variant="outline" className="bg-purple-50 text-purple-700">Additives</Badge>
+      case 'juice':
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700">Juice</Badge>
+      case 'packaging':
+        return <Badge variant="outline" className="bg-green-50 text-green-700">Packaging</Badge>
+      default:
+        return <Badge variant="outline">{materialType}</Badge>
     }
   }
 
@@ -297,6 +282,23 @@ export function PurchaseOrdersTable({
                   </Select>
                 </div>
 
+                {/* Material Type Filter */}
+                <div className="min-w-[150px]">
+                  <Label htmlFor="material-type-filter">Material Type</Label>
+                  <Select value={materialTypeFilter} onValueChange={setMaterialTypeFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="basefruit">Base Fruit</SelectItem>
+                      <SelectItem value="additives">Additives</SelectItem>
+                      <SelectItem value="juice">Juice</SelectItem>
+                      <SelectItem value="packaging">Packaging</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Status Filter */}
                 <div className="min-w-[150px]">
                   <Label htmlFor="status-filter">Status</Label>
@@ -306,9 +308,10 @@ export function PurchaseOrdersTable({
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="partially_depleted">Partially Used</SelectItem>
+                      <SelectItem value="depleted">Depleted</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -402,6 +405,13 @@ export function PurchaseOrdersTable({
                     Total Cost
                   </SortableHeader>
                   <SortableHeader
+                    sortDirection={getSortDirectionForDisplay('materialType')}
+                    sortIndex={getSortIndex('materialType')}
+                    onSort={() => handleColumnSort('materialType')}
+                  >
+                    Type
+                  </SortableHeader>
+                  <SortableHeader
                     sortDirection={getSortDirectionForDisplay('status')}
                     sortIndex={getSortIndex('status')}
                     onSort={() => handleColumnSort('status')}
@@ -423,13 +433,14 @@ export function PurchaseOrdersTable({
                       <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                       <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-6 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-6 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                     </TableRow>
                   ))
                 ) : sortedOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      {searchQuery || vendorFilter !== 'all' || statusFilter !== 'all'
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      {searchQuery || vendorFilter !== 'all' || materialTypeFilter !== 'all' || statusFilter !== 'all'
                         ? 'No purchase orders match your search criteria'
                         : 'No purchase orders found'}
                     </TableCell>
@@ -457,6 +468,9 @@ export function PurchaseOrdersTable({
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {formatCurrency(order.totalCost)}
+                      </TableCell>
+                      <TableCell>
+                        {getMaterialTypeBadge(order.materialType)}
                       </TableCell>
                       <TableCell>
                         {getStatusBadge(order.status)}

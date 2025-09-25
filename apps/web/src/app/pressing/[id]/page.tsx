@@ -346,6 +346,7 @@ export default function PressRunDetailsPage() {
               <CardContent>
                 <FruitLoadFormWithTRPC
                   loadSequence={nextLoadSequence}
+                  pressRunId={pressRunId}
                   vendorId={lastVendorId || undefined}
                   onSubmit={handleAddLoad}
                   onCancel={() => setShowAddLoadForm(false)}
@@ -367,6 +368,7 @@ export default function PressRunDetailsPage() {
               <CardContent>
                 <FruitLoadFormWithTRPC
                   loadSequence={editingLoad.loadSequence}
+                  pressRunId={pressRunId}
                   editingLoad={editingLoad}
                   onSubmit={handleUpdateLoad}
                   onCancel={handleCancelEdit}

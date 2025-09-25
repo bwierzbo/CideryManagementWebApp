@@ -14,6 +14,9 @@ import { PackagingTransactionForm } from "@/components/inventory/PackagingTransa
 import { AppleTransactionForm } from "@/components/inventory/AppleTransactionForm"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
 import { BaseFruitTable } from "@/components/inventory/BaseFruitTable"
+import { AdditivesInventoryTable } from "@/components/inventory/AdditivesInventoryTable"
+import { JuiceInventoryTable } from "@/components/inventory/JuiceInventoryTable"
+import { PackagingInventoryTable } from "@/components/inventory/PackagingInventoryTable"
 import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable"
 import {
   Package,
@@ -44,8 +47,30 @@ export default function InventoryPage() {
     offset: 0
   })
 
+  // tRPC context for cache invalidation
+  const utils = trpc.useContext()
+
   // tRPC mutations
-  const createInventoryItemMutation = trpc.inventory.createInventoryItem.useMutation({
+  // Purchase mutations for different material types
+  const createAdditivePurchaseMutation = trpc.additivePurchases.create.useMutation({
+    onSuccess: () => {
+      utils.inventory.list.invalidate()
+    }
+  })
+
+  const createJuicePurchaseMutation = trpc.juicePurchases.create.useMutation({
+    onSuccess: () => {
+      utils.inventory.list.invalidate()
+    }
+  })
+
+  const createPackagingPurchaseMutation = trpc.packagingPurchases.create.useMutation({
+    onSuccess: () => {
+      utils.inventory.list.invalidate()
+    }
+  })
+
+  const createBaseFruitPurchaseMutation = trpc.baseFruitPurchases.create.useMutation({
     onSuccess: () => {
       // Refetch inventory data
       inventoryData && window.location.reload()
@@ -59,35 +84,37 @@ export default function InventoryPage() {
     try {
       console.log("Additives transaction:", transaction)
 
-      // Transform the form data to match the API schema
-      const inventoryTransaction = {
-        materialType: 'additive' as const,
-        transactionType: 'purchase' as const,
-        quantityChange: Math.round(transaction.quantity), // Convert to integer
-        transactionDate: new Date(),
-        additiveType: transaction.additiveType,
-        additiveName: transaction.productName,
-        quantity: transaction.quantity,
-        unit: transaction.unit as 'kg' | 'g' | 'L' | 'mL' | 'tablets' | 'packets',
-        expirationDate: transaction.expirationDate ? new Date(transaction.expirationDate) : undefined,
-        batchNumber: transaction.lotBatchNumber,
-        storageRequirements: transaction.storageRequirements,
-        notes: [
-          transaction.notes,
-          `Brand: ${transaction.brandManufacturer}`,
-          transaction.unitCost ? `Unit Cost: $${transaction.unitCost}` : undefined,
-          transaction.totalCost ? `Total Cost: $${transaction.totalCost}` : undefined
-        ].filter(Boolean).join(' | ')
+      // Create additive purchase with multiple items
+      const purchaseData = {
+        vendorId: transaction.vendorId,
+        purchaseDate: new Date(transaction.purchaseDate),
+        invoiceNumber: undefined,
+        notes: transaction.notes || `Additives purchased from ${transaction.vendorName || 'vendor'}`,
+        items: transaction.items.map((item: any) => ({
+          additiveVarietyId: item.additiveId,
+          brandManufacturer: transaction.vendorName || transaction.vendorId,
+          productName: item.additiveName || 'Unknown Additive',
+          quantity: item.quantity,
+          unit: (item.unit === 'lb' ? 'lb' : item.unit === 'mL' ? 'oz' : item.unit) as 'g' | 'kg' | 'oz' | 'lb',
+          pricePerUnit: item.unitCost,
+          notes: undefined
+        }))
       }
 
-      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      await createAdditivePurchaseMutation.mutateAsync(purchaseData)
       dismissLoading()
+
+      const itemCount = transaction.items.length
+      const itemText = itemCount === 1
+        ? `${transaction.items[0].quantity} ${transaction.items[0].unit} of ${transaction.items[0].additiveName}`
+        : `${itemCount} different additives`
+
       showSuccess(
         "Additives Purchase Recorded",
-        `Successfully added ${transaction.quantity} ${transaction.unit} of ${transaction.productName} to inventory.`
+        `Successfully added ${itemText} to inventory.`
       )
       setShowAdditivesForm(false)
-      setActiveTab("inventory")
+      setActiveTab("additives")
     } catch (error) {
       dismissLoading()
       handleTransactionError(error, "Additives", "Purchase")
@@ -96,7 +123,7 @@ export default function InventoryPage() {
 
   const handleAdditivesCancel = () => {
     setShowAdditivesForm(false)
-    setActiveTab("inventory")
+    setActiveTab("additives")
   }
 
   // Handler for juice form submission
@@ -106,31 +133,37 @@ export default function InventoryPage() {
     try {
       console.log("Juice transaction:", transaction)
 
-      // Transform the form data to match the API schema
-      const inventoryTransaction = {
-        materialType: 'juice' as const,
-        transactionType: 'purchase' as const,
-        quantityChange: Math.round(transaction.volumeL), // Convert to integer
-        transactionDate: new Date(),
-        pressRunId: transaction.pressRunId,
-        vesselId: transaction.vesselId,
-        volumeL: transaction.volumeL,
-        brixLevel: transaction.brixLevel,
-        phLevel: transaction.phLevel,
-        varietyComposition: transaction.varietyComposition,
-        processDate: transaction.processDate ? new Date(transaction.processDate) : undefined,
-        qualityNotes: transaction.qualityNotes,
-        notes: transaction.notes
+      // Create juice purchase with multiple items
+      const purchaseData = {
+        vendorId: transaction.vendorId,
+        purchaseDate: new Date(transaction.purchaseDate),
+        invoiceNumber: undefined,
+        notes: transaction.notes || `Juice purchased from ${transaction.vendorName || 'vendor'}`,
+        items: transaction.items.map((item: any) => ({
+          juiceType: 'blend' as const, // Default type
+          varietyName: item.juiceName || 'Unknown Juice',
+          volumeL: item.unit === 'liters' ? item.volume : item.volume * 3.78541, // Convert gallons to liters
+          brix: item.specificGravity ? ((item.specificGravity - 1) * 1000) / 4 : undefined, // Rough SG to Brix conversion
+          containerType: 'tote' as const,
+          pricePerLiter: item.unitCost ? (item.unit === 'liters' ? item.unitCost : item.unitCost / 3.78541) : undefined,
+          notes: item.ph ? `pH: ${item.ph}` : undefined
+        }))
       }
 
-      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      await createJuicePurchaseMutation.mutateAsync(purchaseData)
       dismissLoading()
+
+      const itemCount = transaction.items.length
+      const itemText = itemCount === 1
+        ? `${transaction.items[0].volume} ${transaction.items[0].unit} of ${transaction.items[0].juiceName}`
+        : `${itemCount} different juices`
+
       showSuccess(
         "Juice Purchase Recorded",
-        `Successfully added ${transaction.volumeL}L of juice to inventory.`
+        `Successfully added ${itemText} to inventory.`
       )
       setShowJuiceForm(false)
-      setActiveTab("inventory")
+      setActiveTab("juice")
     } catch (error) {
       dismissLoading()
       handleTransactionError(error, "Juice", "Purchase")
@@ -139,7 +172,7 @@ export default function InventoryPage() {
 
   const handleJuiceCancel = () => {
     setShowJuiceForm(false)
-    setActiveTab("inventory")
+    setActiveTab("juice")
   }
 
   // Handler for packaging form submission
@@ -149,31 +182,38 @@ export default function InventoryPage() {
     try {
       console.log("Packaging transaction:", transaction)
 
-      // Transform the form data to match the API schema
-      const inventoryTransaction = {
-        materialType: 'packaging' as const,
-        transactionType: 'purchase' as const,
-        quantityChange: Math.round(transaction.quantity), // Convert to integer
-        transactionDate: new Date(),
-        packagingType: transaction.packagingType as 'bottle' | 'cap' | 'label' | 'case' | 'shrink_wrap' | 'carton',
-        packagingName: transaction.packagingName,
-        quantity: transaction.quantity,
-        unit: transaction.unit as 'pieces' | 'cases' | 'rolls' | 'sheets',
-        size: transaction.size,
-        color: transaction.color,
-        material: transaction.material,
-        supplier: transaction.supplier,
-        notes: transaction.notes
+      // Create packaging purchase with multiple items
+      const purchaseData = {
+        vendorId: transaction.vendorId,
+        purchaseDate: new Date(transaction.purchaseDate),
+        invoiceNumber: undefined,
+        notes: transaction.notes || `Packaging purchased from ${transaction.vendorName || 'vendor'}`,
+        items: transaction.items.map((item: any) => ({
+          packagingId: item.packagingId,
+          packagingName: item.packagingName,
+          packagingType: item.packagingType,
+          unitType: item.unitType,
+          quantity: item.quantity,
+          pricePerUnit: item.unitCost,
+          totalCost: item.totalCost,
+          notes: undefined
+        }))
       }
 
-      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      await createPackagingPurchaseMutation.mutateAsync(purchaseData)
       dismissLoading()
+
+      const itemCount = transaction.items.length
+      const itemText = itemCount === 1
+        ? `${transaction.items[0].quantity} ${transaction.items[0].unitType} of ${transaction.items[0].packagingName}`
+        : `${itemCount} different packaging items`
+
       showSuccess(
         "Packaging Purchase Recorded",
-        `Successfully added ${transaction.quantity} ${transaction.unit} of ${transaction.packagingName} to inventory.`
+        `Successfully added ${itemText} to inventory.`
       )
       setShowPackagingForm(false)
-      setActiveTab("inventory")
+      setActiveTab("packaging")
     } catch (error) {
       dismissLoading()
       handleTransactionError(error, "Packaging", "Purchase")
@@ -182,7 +222,7 @@ export default function InventoryPage() {
 
   const handlePackagingCancel = () => {
     setShowPackagingForm(false)
-    setActiveTab("inventory")
+    setActiveTab("packaging")
   }
 
   // Handler for apple form submission
@@ -192,31 +232,31 @@ export default function InventoryPage() {
     try {
       console.log("Apple transaction:", transaction)
 
-      // Transform the form data to match the API schema
-      const inventoryTransaction = {
-        materialType: 'apple' as const,
-        transactionType: 'purchase' as const,
-        quantityChange: Math.round(transaction.quantityKg), // Convert to integer
-        transactionDate: new Date(),
-        appleVarietyId: transaction.appleVarietyId,
+      // Create base fruit purchase
+      const purchaseData = {
         vendorId: transaction.vendorId,
-        quantityKg: transaction.quantityKg,
-        qualityGrade: transaction.qualityGrade,
-        harvestDate: transaction.harvestDate ? new Date(transaction.harvestDate) : undefined,
-        storageLocation: transaction.storageLocation,
-        defectPercentage: transaction.defectPercentage,
-        brixLevel: transaction.brixLevel,
-        notes: transaction.notes
+        purchaseDate: new Date(),
+        invoiceNumber: undefined,
+        notes: transaction.notes,
+        items: [{
+          appleVarietyId: transaction.appleVarietyId,
+          quantityKg: transaction.quantityKg,
+          pricePerKg: undefined, // Would need to add this field to the form
+          harvestDate: transaction.harvestDate ? new Date(transaction.harvestDate) : undefined,
+          storageLocation: transaction.storageLocation || undefined,
+          brixLevel: transaction.brixLevel || undefined,
+          notes: transaction.notes || undefined
+        }]
       }
 
-      await createInventoryItemMutation.mutateAsync(inventoryTransaction)
+      await createBaseFruitPurchaseMutation.mutateAsync(purchaseData)
       dismissLoading()
       showSuccess(
         "Apple Purchase Recorded",
         `Successfully added ${transaction.quantityKg} kg of base fruit to inventory.`
       )
       setShowAppleForm(false)
-      setActiveTab("inventory")
+      setActiveTab("apple")
     } catch (error) {
       dismissLoading()
       handleTransactionError(error, "Apple", "Purchase")
@@ -225,7 +265,7 @@ export default function InventoryPage() {
 
   const handleAppleCancel = () => {
     setShowAppleForm(false)
-    setActiveTab("inventory")
+    setActiveTab("apple")
   }
 
   // Listen for tab change events from TransactionTypeSelector
@@ -310,7 +350,7 @@ export default function InventoryPage() {
             </TabsTrigger>
             <TabsTrigger value="purchase-orders" className="flex items-center justify-center space-x-1 lg:space-x-2 py-2">
               <ShoppingCart className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Purchase Orders</span>
+              <span className="text-xs lg:text-sm">Transaction History</span>
             </TabsTrigger>
           </TabsList>
 
@@ -344,40 +384,15 @@ export default function InventoryPage() {
               <AdditivesTransactionForm
                 onSubmit={handleAdditivesSubmit}
                 onCancel={handleAdditivesCancel}
-                isSubmitting={createInventoryItemMutation.isPending}
+                isSubmitting={createAdditivePurchaseMutation.isPending}
               />
             ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Beaker className="w-5 h-5 text-purple-600" />
-                    <span>Additives Inventory</span>
-                  </CardTitle>
-                  <CardDescription>
-                    Manage your additives inventory and record new purchases
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="py-12">
-                  <div className="text-center space-y-4">
-                    <Beaker className="w-16 h-16 text-gray-300 mx-auto" />
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        No additives recorded yet
-                      </h3>
-                      <p className="text-gray-500 mb-6">
-                        Start by recording your first additives purchase
-                      </p>
-                      <Button
-                        onClick={() => setShowAdditivesForm(true)}
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        <Beaker className="w-4 h-4 mr-2" />
-                        Add Additives Purchase
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <AdditivesInventoryTable
+                showFilters={true}
+                itemsPerPage={50}
+                onAddNew={() => setShowAdditivesForm(true)}
+                className=""
+              />
             )}
           </TabsContent>
 
@@ -386,40 +401,15 @@ export default function InventoryPage() {
               <JuiceTransactionForm
                 onSubmit={handleJuiceSubmit}
                 onCancel={handleJuiceCancel}
-                isSubmitting={createInventoryItemMutation.isPending}
+                isSubmitting={createJuicePurchaseMutation.isPending}
               />
             ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Droplets className="w-5 h-5 text-blue-600" />
-                    <span>Juice Inventory</span>
-                  </CardTitle>
-                  <CardDescription>
-                    Manage your juice inventory and record new purchases
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="py-12">
-                  <div className="text-center space-y-4">
-                    <Droplets className="w-16 h-16 text-gray-300 mx-auto" />
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        No juice recorded yet
-                      </h3>
-                      <p className="text-gray-500 mb-6">
-                        Start by recording your first juice purchase
-                      </p>
-                      <Button
-                        onClick={() => setShowJuiceForm(true)}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        <Droplets className="w-4 h-4 mr-2" />
-                        Add Juice Purchase
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <JuiceInventoryTable
+                showFilters={true}
+                itemsPerPage={50}
+                onAddNew={() => setShowJuiceForm(true)}
+                className=""
+              />
             )}
           </TabsContent>
 
@@ -428,40 +418,15 @@ export default function InventoryPage() {
               <PackagingTransactionForm
                 onSubmit={handlePackagingSubmit}
                 onCancel={handlePackagingCancel}
-                isSubmitting={createInventoryItemMutation.isPending}
+                isSubmitting={createPackagingPurchaseMutation.isPending}
               />
             ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <Package className="w-5 h-5 text-amber-600" />
-                    <span>Packaging Inventory</span>
-                  </CardTitle>
-                  <CardDescription>
-                    Manage your packaging materials and record new purchases
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="py-12">
-                  <div className="text-center space-y-4">
-                    <Package className="w-16 h-16 text-gray-300 mx-auto" />
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">
-                        No packaging materials recorded yet
-                      </h3>
-                      <p className="text-gray-500 mb-6">
-                        Start by recording your first packaging purchase
-                      </p>
-                      <Button
-                        onClick={() => setShowPackagingForm(true)}
-                        className="bg-amber-600 hover:bg-amber-700"
-                      >
-                        <Package className="w-4 h-4 mr-2" />
-                        Add Packaging Purchase
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              <PackagingInventoryTable
+                showFilters={true}
+                itemsPerPage={50}
+                onAddNew={() => setShowPackagingForm(true)}
+                className=""
+              />
             )}
           </TabsContent>
 

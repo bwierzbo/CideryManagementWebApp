@@ -55,6 +55,7 @@ type FruitLoadFormData = z.infer<typeof fruitLoadSchema>
 
 interface FruitLoadFormWithTRPCProps {
   loadSequence: number
+  pressRunId: string // Press run ID for allocation tracking
   vendorId?: string
   editingLoad?: any // The load being edited (if in edit mode)
   onSubmit: (load: {
@@ -79,6 +80,7 @@ interface FruitLoadFormWithTRPCProps {
 
 export function FruitLoadFormWithTRPC({
   loadSequence,
+  pressRunId,
   vendorId,
   editingLoad,
   onSubmit,
@@ -129,13 +131,14 @@ export function FruitLoadFormWithTRPC({
   const watchedWeight = form.watch('weight')
   const watchedUnit = form.watch('weightUnit')
 
-  // Purchase lines query - depends on vendor selection
+  // Purchase lines query with allocation tracking - depends on vendor selection
   const {
     data: purchaseLines,
     isLoading: purchaseLinesLoading,
     error: purchaseLinesError,
     refetch: refetchPurchaseLines
-  } = trpc.purchaseLine.available.useQuery({
+  } = trpc.pressRun.getAvailablePurchaseLines.useQuery({
+    pressRunId,
     vendorId: watchedVendorId || vendorId,
     limit: 50,
     offset: 0
@@ -398,10 +401,15 @@ export function FruitLoadFormWithTRPC({
                             </div>
                             <div className="text-right">
                               <p className="text-sm font-medium text-green-600">
-                                {convertWeight(line.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs
+                                {convertWeight(line.availableQuantityKg, 'kg', 'lbs').toFixed(1)} lbs available
                               </p>
+                              {line.allocatedQuantityKg > 0 && (
+                                <p className="text-xs text-orange-600">
+                                  {convertWeight(line.allocatedQuantityKg, 'kg', 'lbs').toFixed(1)} lbs allocated
+                                </p>
+                              )}
                               <p className="text-xs text-gray-500">
-                                {line.availablePercentage.toFixed(0)}% available
+                                {line.availablePercentage.toFixed(0)}% remaining
                               </p>
                             </div>
                           </div>

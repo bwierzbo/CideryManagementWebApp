@@ -72,11 +72,13 @@ export const packagingPurchasesRouter = router({
       invoiceNumber: z.string().optional(),
       notes: z.string().optional(),
       items: z.array(z.object({
-        packageType: z.enum(['bottles', 'cans', 'kegs', 'labels', 'caps', 'other']),
-        materialType: z.enum(['glass', 'aluminum', 'stainless', 'paper', 'plastic', 'other']).optional(),
-        size: z.string().min(1, 'Size is required'),
+        packagingId: z.string().uuid('Invalid packaging ID'),
+        packagingName: z.string().optional(),
+        packagingType: z.string().optional(),
+        unitType: z.string().optional(),
         quantity: z.number().int().positive('Quantity must be positive'),
         pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
+        totalCost: z.number().positive('Total cost must be positive').optional(),
         notes: z.string().optional(),
       })).min(1, 'At least one item is required'),
     }))
@@ -88,13 +90,18 @@ export const packagingPurchasesRouter = router({
           const processedItems = []
 
           for (const item of input.items) {
-            const itemTotal = item.pricePerUnit ? item.quantity * item.pricePerUnit : 0
+            // Use totalCost if provided, otherwise calculate from unit cost
+            const itemTotal = item.totalCost || (item.pricePerUnit ? item.quantity * item.pricePerUnit : 0)
             totalCost += itemTotal
 
             processedItems.push({
-              ...item,
+              packagingVarietyId: item.packagingId,
+              packageType: item.packagingType || null,
+              size: item.packagingName || 'Unknown',
+              quantity: item.quantity,
               totalCost: itemTotal.toString(),
               pricePerUnit: item.pricePerUnit?.toString() || null,
+              notes: item.notes || null,
             })
           }
 

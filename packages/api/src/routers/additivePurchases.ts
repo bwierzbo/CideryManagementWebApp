@@ -72,7 +72,7 @@ export const additivePurchasesRouter = router({
       invoiceNumber: z.string().optional(),
       notes: z.string().optional(),
       items: z.array(z.object({
-        additiveType: z.enum(['enzyme', 'nutrient', 'clarifier', 'preservative', 'acid', 'other']),
+        additiveVarietyId: z.string().uuid('Invalid additive variety ID'),
         brandManufacturer: z.string().min(1, 'Brand/manufacturer is required'),
         productName: z.string().min(1, 'Product name is required'),
         quantity: z.number().positive('Quantity must be positive'),
@@ -96,7 +96,7 @@ export const additivePurchasesRouter = router({
             totalCost += itemTotal
 
             processedItems.push({
-              additiveType: item.additiveType,
+              additiveVarietyId: item.additiveVarietyId,
               brandManufacturer: item.brandManufacturer,
               productName: item.productName,
               quantity: item.quantity.toString(),

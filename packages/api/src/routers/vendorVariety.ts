@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import { router, createRbacProcedure } from '../trpc'
-import { db, vendorVarieties, baseFruitVarieties, vendors, auditLog } from 'db'
-import { eq, and, isNull, ilike, or } from 'drizzle-orm'
+import { db, vendorVarieties, baseFruitVarieties, vendors, auditLog,
+         vendorAdditiveVarieties, additiveVarieties,
+         vendorJuiceVarieties, juiceVarieties,
+         vendorPackagingVarieties, packagingVarieties } from 'db'
+import { eq, and, isNull, ilike, or, sql } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { ensureVendorVariety, createVendorVariety } from '../lib/dbChecks'
 
@@ -12,7 +15,8 @@ export const vendorVarietyRouter = router({
     }))
     .query(async ({ input }) => {
       try {
-        const varieties = await db
+        // Fetch base fruit varieties
+        const baseFruitVarietiesData = await db
           .select({
             id: baseFruitVarieties.id,
             name: baseFruitVarieties.name,
@@ -20,6 +24,7 @@ export const vendorVarietyRouter = router({
             vendorVarietyId: vendorVarieties.id,
             notes: vendorVarieties.notes,
             linkedAt: vendorVarieties.createdAt,
+            varietyType: sql<string>`'baseFruit'`,
           })
           .from(vendorVarieties)
           .innerJoin(baseFruitVarieties, eq(vendorVarieties.varietyId, baseFruitVarieties.id))
@@ -31,11 +36,89 @@ export const vendorVarietyRouter = router({
               eq(baseFruitVarieties.isActive, true)
             )
           )
-          .orderBy(baseFruitVarieties.name)
+
+        // Fetch additive varieties
+        const additiveVarietiesData = await db
+          .select({
+            id: additiveVarieties.id,
+            name: additiveVarieties.name,
+            isActive: additiveVarieties.isActive,
+            vendorVarietyId: vendorAdditiveVarieties.id,
+            notes: vendorAdditiveVarieties.notes,
+            linkedAt: vendorAdditiveVarieties.createdAt,
+            varietyType: sql<string>`'additive'`,
+            category: additiveVarieties.itemType,
+          })
+          .from(vendorAdditiveVarieties)
+          .innerJoin(additiveVarieties, eq(vendorAdditiveVarieties.varietyId, additiveVarieties.id))
+          .where(
+            and(
+              eq(vendorAdditiveVarieties.vendorId, input.vendorId),
+              isNull(vendorAdditiveVarieties.deletedAt),
+              isNull(additiveVarieties.deletedAt),
+              eq(additiveVarieties.isActive, true)
+            )
+          )
+
+        // Fetch juice varieties
+        const juiceVarietiesData = await db
+          .select({
+            id: juiceVarieties.id,
+            name: juiceVarieties.name,
+            isActive: juiceVarieties.isActive,
+            vendorVarietyId: vendorJuiceVarieties.id,
+            notes: vendorJuiceVarieties.notes,
+            linkedAt: vendorJuiceVarieties.createdAt,
+            varietyType: sql<string>`'juice'`,
+          })
+          .from(vendorJuiceVarieties)
+          .innerJoin(juiceVarieties, eq(vendorJuiceVarieties.varietyId, juiceVarieties.id))
+          .where(
+            and(
+              eq(vendorJuiceVarieties.vendorId, input.vendorId),
+              isNull(vendorJuiceVarieties.deletedAt),
+              isNull(juiceVarieties.deletedAt),
+              eq(juiceVarieties.isActive, true)
+            )
+          )
+
+        // Fetch packaging varieties
+        const packagingVarietiesData = await db
+          .select({
+            id: packagingVarieties.id,
+            name: packagingVarieties.name,
+            isActive: packagingVarieties.isActive,
+            vendorVarietyId: vendorPackagingVarieties.id,
+            notes: vendorPackagingVarieties.notes,
+            linkedAt: vendorPackagingVarieties.createdAt,
+            varietyType: sql<string>`'packaging'`,
+            category: packagingVarieties.itemType,
+          })
+          .from(vendorPackagingVarieties)
+          .innerJoin(packagingVarieties, eq(vendorPackagingVarieties.varietyId, packagingVarieties.id))
+          .where(
+            and(
+              eq(vendorPackagingVarieties.vendorId, input.vendorId),
+              isNull(vendorPackagingVarieties.deletedAt),
+              isNull(packagingVarieties.deletedAt),
+              eq(packagingVarieties.isActive, true)
+            )
+          )
+
+        // Combine all varieties
+        const allVarieties = [
+          ...baseFruitVarietiesData,
+          ...additiveVarietiesData,
+          ...juiceVarietiesData,
+          ...packagingVarietiesData
+        ]
+
+        // Sort by name
+        allVarieties.sort((a, b) => a.name.localeCompare(b.name))
 
         return {
-          varieties,
-          count: varieties.length,
+          varieties: allVarieties,
+          count: allVarieties.length,
         }
       } catch (error) {
         console.error('Error listing vendor varieties:', error)

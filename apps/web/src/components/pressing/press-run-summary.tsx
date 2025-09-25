@@ -95,12 +95,12 @@ export function PressRunSummary({
         averageBrix: 0,
         brixMeasurements: [] as number[],
         conditions: [] as string[],
-        purchaseItems: [] as Array<{
+        purchaseItems: new Map<string, {
           purchaseItemId: string
           weight: number
           originalWeight: number
           originalWeightUnit: string
-        }>,
+        }>(),
       }
     }
 
@@ -109,12 +109,20 @@ export function PressRunSummary({
     acc[key].loads += 1
 
     if (load.purchaseItemId) {
-      acc[key].purchaseItems.push({
-        purchaseItemId: load.purchaseItemId,
-        weight: load.appleWeightKg,
-        originalWeight: load.originalWeight,
-        originalWeightUnit: load.originalWeightUnit,
-      })
+      const existingItem = acc[key].purchaseItems.get(load.purchaseItemId)
+      if (existingItem) {
+        // Consolidate weights for the same purchase item
+        existingItem.weight += load.appleWeightKg
+        existingItem.originalWeight += load.originalWeight
+      } else {
+        // Add new purchase item
+        acc[key].purchaseItems.set(load.purchaseItemId, {
+          purchaseItemId: load.purchaseItemId,
+          weight: load.appleWeightKg,
+          originalWeight: load.originalWeight,
+          originalWeightUnit: load.originalWeightUnit,
+        })
+      }
     }
 
     if (load.brixMeasured) {
@@ -267,12 +275,12 @@ export function PressRunSummary({
                     </div>
                   </div>
                 )}
-                {showInventoryCheckboxes && summary.purchaseItems.length > 0 && (
+                {showInventoryCheckboxes && summary.purchaseItems.size > 0 && (
                   <div className="mt-3 pt-3 border-t">
-                    <p className="text-xs text-gray-600 mb-2">Purchase Order Lines:</p>
+                    <p className="text-xs text-gray-600 mb-2">Mark transaction as depleted and archive:</p>
                     <div className="space-y-2">
-                      {summary.purchaseItems.map((item: any) => (
-                        <div key={item.purchaseItemId} className="flex items-center justify-between text-sm">
+                      {Array.from(summary.purchaseItems.values()).map((item: any, index: number) => (
+                        <div key={`${item.purchaseItemId}-${index}`} className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-2">
                             <Checkbox
                               checked={depletedPurchaseItems.has(item.purchaseItemId)}
@@ -283,7 +291,7 @@ export function PressRunSummary({
                               }}
                             />
                             <span className="text-gray-700">
-                              Purchase Item
+                              {summary.vendor} - {summary.variety}
                             </span>
                           </div>
                           <span className="text-gray-500">
@@ -323,9 +331,6 @@ export function PressRunSummary({
                   <TableHead>Vendor</TableHead>
                   <TableHead>Variety</TableHead>
                   <TableHead>Weight</TableHead>
-                  {showInventoryCheckboxes && (
-                    <TableHead className="text-center">Mark as Depleted</TableHead>
-                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -345,29 +350,6 @@ export function PressRunSummary({
                       <TableCell>
                         {formatWeight(load.appleWeightKg, load.originalWeight, load.originalWeightUnit)}
                       </TableCell>
-                      {showInventoryCheckboxes && (
-                        <TableCell className="text-center">
-                          {load.purchaseItemId ? (
-                            <div className="flex items-center justify-center gap-2">
-                              <Checkbox
-                                checked={depletedPurchaseItems.has(load.purchaseItemId)}
-                                onCheckedChange={(checked) => {
-                                  if (onPurchaseDepletionChange && load.purchaseItemId) {
-                                    onPurchaseDepletionChange(load.purchaseItemId, checked === true)
-                                  }
-                                }}
-                              />
-                              {depletedPurchaseItems.has(load.purchaseItemId) && (
-                                <Badge variant="outline" className="text-xs bg-orange-50">
-                                  Will be depleted
-                                </Badge>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-400">N/A</span>
-                          )}
-                        </TableCell>
-                      )}
                     </TableRow>
                   ))}
               </TableBody>

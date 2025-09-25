@@ -39,6 +39,7 @@ import { z } from "zod"
 import { BatchManagementTable } from "@/components/cellar/BatchManagementTable"
 import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal"
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm"
+import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm"
 
 // Form schemas
 const measurementSchema = z.object({
@@ -75,13 +76,6 @@ const tankMeasurementSchema = z.object({
   notes: z.string().optional(),
 })
 
-const tankAdditiveSchema = z.object({
-  additiveDate: z.string().min(1, "Date is required"),
-  additiveType: z.string().min(1, "Additive type is required"),
-  amount: z.number().positive("Amount must be positive"),
-  unit: z.string().min(1, "Unit is required"),
-  notes: z.string().optional(),
-})
 
 const transferSchema = z.object({
   fromVesselId: z.string().uuid("Select source vessel"),
@@ -298,107 +292,41 @@ function BatchMeasurementFormWrapper({ vesselId, batchId, onClose }: { vesselId:
 }
 
 function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: () => void }) {
-  const { register, handleSubmit, formState: { errors }, setValue } = useForm({
-    resolver: zodResolver(tankAdditiveSchema),
-    defaultValues: {
-      additiveDate: new Date().toISOString().slice(0, 16),
-    }
-  })
-
   const utils = trpc.useUtils()
-  // TODO: Add tank additive mutation once API is implemented
-  // const addAdditiveMutation = trpc.tank.addAdditive.useMutation({
-  //   onSuccess: () => {
-  //     utils.vessel.list.invalidate()
-  //     onClose()
-  //   }
-  // })
+  const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
 
-  const onSubmit = (data: any) => {
-    console.log('Tank additive:', { vesselId, ...data })
-    // addAdditiveMutation.mutate({ vesselId, ...data })
-    onClose() // For now, just close the dialog
+  // Find the batch ID for this vessel
+  const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
+  const batchId = liquidMapVessel?.batchId
+
+  const handleSuccess = () => {
+    utils.vessel.liquidMap.invalidate()
+    utils.batch.getHistory.invalidate({ batchId: batchId! })
+    onClose()
+  }
+
+  if (!batchId) {
+    return (
+      <div className="space-y-4">
+        <div className="text-center py-8 text-gray-500">
+          <p className="text-sm">No active batch found in this vessel.</p>
+          <p className="text-xs mt-2">Additives can only be added to vessels with active batches.</p>
+        </div>
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div>
-        <Label htmlFor="additiveDate">Additive Date</Label>
-        <Input
-          id="additiveDate"
-          type="datetime-local"
-          {...register("additiveDate")}
-        />
-        {errors.additiveDate && <p className="text-sm text-red-600">{errors.additiveDate.message}</p>}
-      </div>
-
-      <div>
-        <Label htmlFor="additiveType">Additive Type</Label>
-        <Select onValueChange={(value) => setValue("additiveType", value)}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select additive type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="fruits">Fruits</SelectItem>
-            <SelectItem value="sulfites">Sulfites</SelectItem>
-            <SelectItem value="nutrients">Nutrients</SelectItem>
-            <SelectItem value="enzymes">Enzymes</SelectItem>
-            <SelectItem value="clarifiers">Clarifiers</SelectItem>
-            <SelectItem value="acids">Acids</SelectItem>
-            <SelectItem value="other">Other</SelectItem>
-          </SelectContent>
-        </Select>
-        {errors.additiveType && <p className="text-sm text-red-600">{errors.additiveType.message}</p>}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="amount">Amount</Label>
-          <Input
-            id="amount"
-            type="number"
-            step="0.1"
-            placeholder="10"
-            {...register("amount", { valueAsNumber: true })}
-          />
-          {errors.amount && <p className="text-sm text-red-600">{errors.amount.message}</p>}
-        </div>
-        <div>
-          <Label htmlFor="unit">Unit</Label>
-          <Select onValueChange={(value) => setValue("unit", value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select unit" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="g">grams (g)</SelectItem>
-              <SelectItem value="ml">milliliters (ml)</SelectItem>
-              <SelectItem value="ppm">parts per million (ppm)</SelectItem>
-              <SelectItem value="tsp">teaspoons (tsp)</SelectItem>
-              <SelectItem value="tbsp">tablespoons (tbsp)</SelectItem>
-            </SelectContent>
-          </Select>
-          {errors.unit && <p className="text-sm text-red-600">{errors.unit.message}</p>}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="notes">Notes</Label>
-        <Input
-          id="notes"
-          placeholder="Additive notes..."
-          {...register("notes")}
-        />
-      </div>
-
-      <div className="flex justify-end space-x-2">
-        <Button type="button" variant="outline" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit">
-          Add Additive
-        </Button>
-      </div>
-    </form>
+    <AddBatchAdditiveForm
+      batchId={batchId}
+      onSuccess={handleSuccess}
+      onCancel={onClose}
+    />
   )
 }
 
@@ -566,6 +494,17 @@ function VesselMap() {
     onSuccess: () => {
       utils.vessel.list.invalidate()
       utils.vessel.liquidMap.invalidate()
+      toast({
+        title: "Success",
+        description: "Tank deleted successfully",
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete tank",
+        variant: "destructive",
+      })
     }
   })
 
@@ -672,10 +611,10 @@ function VesselMap() {
     setVesselToPurge(null)
   }
 
-  const handleStatusChange = (vesselId: string, newStatus: string) => {
+  const handleCleanTank = (vesselId: string) => {
     updateStatusMutation.mutate({
       id: vesselId,
-      status: newStatus as 'available' | 'in_use' | 'cleaning' | 'maintenance'
+      status: 'available'
     })
   }
 
@@ -903,69 +842,14 @@ function VesselMap() {
                         <ArrowRight className="w-3 h-3 mr-2" />
                         Transfer to Another Tank
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuLabel>Tank Status</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {vessel.status === 'cleaning' ? (
-                        // When cleaning, only show Available and Maintenance options
-                        <>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'available')}
-                          >
-                            Available (Cleaning Complete)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'maintenance')}
-                          >
-                            Maintenance
-                          </DropdownMenuItem>
-                        </>
-                      ) : (
-                        // Show all status options when not in cleaning state
-                        <>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'empty')}
-                            disabled={vessel.status === 'empty'}
-                          >
-                            Empty
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'fermenting')}
-                            disabled={vessel.status === 'fermenting'}
-                          >
-                            Fermenting
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'storing')}
-                            disabled={vessel.status === 'storing'}
-                          >
-                            Storing
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'aging')}
-                            disabled={vessel.status === 'aging'}
-                          >
-                            Aging
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'cleaning')}
-                          >
-                            Cleaning
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'maintenance')}
-                            disabled={vessel.status === 'maintenance'}
-                          >
-                            Maintenance
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleStatusChange(vessel.id, 'available')}
-                            disabled={vessel.status === 'available'}
-                          >
-                            Available
-                          </DropdownMenuItem>
-                        </>
+                      {vessel.status === 'cleaning' && (
+                        <DropdownMenuItem
+                          onClick={() => handleCleanTank(vessel.id)}
+                          className="text-green-600"
+                        >
+                          <CheckCircle className="w-3 h-3 mr-2" />
+                          Clean Tank (Mark as Available)
+                        </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
