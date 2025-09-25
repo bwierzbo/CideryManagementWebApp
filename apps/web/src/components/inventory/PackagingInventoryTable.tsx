@@ -524,7 +524,7 @@ export function PackagingInventoryTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Packaging Item</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteItem ? `${deleteItem.metadata.size || 'item'} from ${deleteItem.metadata.vendorName || 'unknown vendor'}` : ''}"?
+              Are you sure you want to delete &ldquo;{deleteItem ? `${deleteItem.metadata.size || 'item'} from ${deleteItem.metadata.vendorName || 'unknown vendor'}` : ''}&rdquo;?
               This action cannot be undone and will permanently remove this packaging item from your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>

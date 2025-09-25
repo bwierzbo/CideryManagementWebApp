@@ -110,10 +110,11 @@ export function AdditivesTransactionForm({ onSubmit, onCancel, isSubmitting = fa
     varietyType: 'additive',
     includeInactive: false,
   })
-  const allVendors = vendorData?.vendors || []
+  
 
   // Filter vendors based on search query
   const vendors = React.useMemo(() => {
+    const allVendors = vendorData?.vendors || []
     if (!debouncedVendorSearch.trim()) {
       return allVendors
     }
@@ -121,7 +122,7 @@ export function AdditivesTransactionForm({ onSubmit, onCancel, isSubmitting = fa
     return allVendors.filter(vendor =>
       vendor.name.toLowerCase().includes(searchLower)
     )
-  }, [allVendors, debouncedVendorSearch])
+  }, [vendorData?.vendors, debouncedVendorSearch])
 
   // Get vendor additives when vendor is selected
   const { data: vendorAdditivesData } = trpc.vendorVariety.listForVendor.useQuery(

@@ -109,10 +109,9 @@ export function PurchaseOrdersTable({
     vendorId: vendorFilter !== 'all' ? vendorFilter : undefined,
   })
 
-  const purchaseOrders = purchasesData?.purchases || []
-
   // Apply client-side filtering for additional filters not handled by API
   const filteredOrders = useMemo(() => {
+    const purchaseOrders = purchasesData?.purchases || []
     let filtered = purchaseOrders
 
     if (statusFilter !== 'all') {
@@ -130,7 +129,7 @@ export function PurchaseOrdersTable({
     }
 
     return filtered
-  }, [purchaseOrders, statusFilter, searchQuery])
+  }, [purchasesData?.purchases, statusFilter, searchQuery])
 
   // Sort orders using the hook
   const sortedOrders = useMemo(() => {
@@ -159,9 +158,10 @@ export function PurchaseOrdersTable({
 
   // Get unique vendors for filter dropdown
   const uniqueVendors = useMemo(() => {
+    const purchaseOrders = purchasesData?.purchases || []
     const vendors = [...new Set(purchaseOrders.map(order => order.vendorName))]
     return vendors.sort()
-  }, [purchaseOrders])
+  }, [purchasesData?.purchases])
 
   // Event handlers
   const handleColumnSort = useCallback((field: SortField) => {

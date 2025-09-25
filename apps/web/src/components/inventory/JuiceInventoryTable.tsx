@@ -487,7 +487,7 @@ export function JuiceInventoryTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Juice Lot</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteItem ? `${deleteItem.metadata.varietyName ?? 'juice'} from ${deleteItem.metadata.vendorName || 'unknown vendor'}` : ''}"?
+              Are you sure you want to delete &ldquo;{deleteItem ? `${deleteItem.metadata.varietyName ?? 'juice'} from ${deleteItem.metadata.vendorName || 'unknown vendor'}` : ''}&rdquo;?
               This action cannot be undone and will permanently remove this juice lot from your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>

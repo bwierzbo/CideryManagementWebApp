@@ -133,10 +133,9 @@ export function JuiceTransactionForm({
     varietyType: 'juice',
     includeInactive: false,
   })
-  const allVendors = vendorData?.vendors || []
-
   // Filter vendors based on search query
   const vendors = React.useMemo(() => {
+    const allVendors = vendorData?.vendors || []
     if (!debouncedVendorSearch.trim()) {
       return allVendors
     }
@@ -144,7 +143,7 @@ export function JuiceTransactionForm({
     return allVendors.filter(vendor =>
       vendor.name.toLowerCase().includes(searchLower)
     )
-  }, [allVendors, debouncedVendorSearch])
+  }, [vendorData?.vendors, debouncedVendorSearch])
 
   // Get vendor juices when vendor is selected
   const { data: vendorJuicesData } = trpc.vendorVariety.listForVendor.useQuery(

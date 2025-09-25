@@ -178,7 +178,7 @@ export default function BatchManagementPage() {
                 Delete Batch
               </AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete the batch "{selectedBatch?.name}"?
+                Are you sure you want to delete the batch &ldquo;{selectedBatch?.name}&rdquo;?
                 This will permanently remove the batch and all its related data. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>

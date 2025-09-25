@@ -495,7 +495,7 @@ export function AdditivesInventoryTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Additive Item</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteItem ? `${deleteItem.metadata?.productName || 'item'} from ${deleteItem.metadata?.vendorName || 'unknown vendor'}` : ''}"?
+              Are you sure you want to delete &ldquo;{deleteItem ? `${deleteItem.metadata?.productName || 'item'} from ${deleteItem.metadata?.vendorName || 'unknown vendor'}` : ''}&rdquo;?
               This action cannot be undone and will permanently remove this item from your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>

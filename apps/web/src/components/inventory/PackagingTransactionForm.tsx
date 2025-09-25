@@ -127,10 +127,9 @@ export function PackagingTransactionForm({
     varietyType: 'packaging',
     includeInactive: false,
   })
-  const allVendors = vendorData?.vendors || []
-
   // Filter vendors based on search query
   const vendors = React.useMemo(() => {
+    const allVendors = vendorData?.vendors || []
     if (!debouncedVendorSearch.trim()) {
       return allVendors
     }
@@ -138,7 +137,7 @@ export function PackagingTransactionForm({
     return allVendors.filter(vendor =>
       vendor.name.toLowerCase().includes(searchLower)
     )
-  }, [allVendors, debouncedVendorSearch])
+  }, [vendorData?.vendors, debouncedVendorSearch])
 
   // Get vendor packaging when vendor is selected
   const { data: vendorPackagingData } = trpc.vendorVariety.listForVendor.useQuery(
