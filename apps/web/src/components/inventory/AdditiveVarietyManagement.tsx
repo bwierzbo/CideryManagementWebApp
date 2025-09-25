@@ -39,7 +39,7 @@ const ADDITIVE_TYPES = [
 
 const varietySchema = z.object({
   name: z.string().min(1, "Name is required"),
-  itemType: z.enum(ADDITIVE_TYPES, { errorMap: () => ({ message: "Please select a valid additive type" }) }),
+  itemType: z.enum(ADDITIVE_TYPES),
   labelImpact: z.boolean().default(false),
   labelImpactNotes: z.string().optional(),
   allergensVegan: z.boolean().default(false),

@@ -257,7 +257,7 @@ export function AdditivesTransactionForm({ onSubmit, onCancel, isSubmitting = fa
           return {
             additiveId: line.additiveId,
             additiveName: additive?.name || 'Unknown Additive',
-            additiveType: additive?.category || 'other',
+            additiveType: 'other',
             quantity: line.quantity!,
             unit: line.unit,
             unitCost: line.pricePerUnit,
