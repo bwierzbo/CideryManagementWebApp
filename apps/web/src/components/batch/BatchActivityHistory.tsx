@@ -1,8 +1,9 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -13,6 +14,8 @@ import {
   Calendar,
   ArrowRight,
   ArrowLeft,
+  ArrowUp,
+  ArrowDown,
   Package,
   AlertCircle,
   Droplets,
@@ -47,6 +50,7 @@ const activityColors = {
 }
 
 export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
+  const [isReversed, setIsReversed] = useState(false)
   const { data, isLoading, error } = trpc.batch.getActivityHistory.useQuery({ batchId })
 
   if (isLoading) {
@@ -91,6 +95,11 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   const activities = data?.activities || []
   const batch = data?.batch
 
+  // Apply sorting based on toggle state
+  const sortedActivities = isReversed
+    ? [...activities].reverse()
+    : activities
+
   if (activities.length === 0) {
     return (
       <Card>
@@ -106,13 +115,35 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Activity className="h-5 w-5" />
-          Activity History
-        </CardTitle>
-        <CardDescription>
-          Complete timeline of all batch events
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" />
+              Activity History
+            </CardTitle>
+            <CardDescription>
+              Complete timeline of all batch events
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsReversed(!isReversed)}
+            className="flex items-center gap-2"
+          >
+            {isReversed ? (
+              <>
+                <ArrowUp className="h-4 w-4" />
+                Oldest First
+              </>
+            ) : (
+              <>
+                <ArrowDown className="h-4 w-4" />
+                Newest First
+              </>
+            )}
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="relative">
@@ -120,7 +151,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
           <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
 
           <div className="space-y-6">
-            {activities.map((activity, index) => {
+            {sortedActivities.map((activity, index) => {
               const Icon = activityIcons[activity.type as keyof typeof activityIcons] || Activity
               const colorClass = activityColors[activity.type as keyof typeof activityColors] || "bg-gray-500/10 text-gray-700 border-gray-500/20"
 

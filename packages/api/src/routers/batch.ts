@@ -17,6 +17,7 @@ const listBatchesSchema = z.object({
   offset: z.number().int().min(0).default(0),
   sortBy: z.enum(['name', 'startDate', 'status']).default('startDate'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  includeDeleted: z.boolean().default(false),
 })
 
 const addMeasurementSchema = z.object({
@@ -186,7 +187,12 @@ export const batchRouter = router({
     .query(async ({ input = {} }) => {
       try {
         // Build WHERE conditions
-        const conditions = [isNull(batches.deletedAt)]
+        const conditions = []
+
+        // Only exclude deleted batches if includeDeleted is false
+        if (!input.includeDeleted) {
+          conditions.push(isNull(batches.deletedAt))
+        }
 
         if (input.status) {
           conditions.push(eq(batches.status, input.status))
@@ -225,10 +231,11 @@ export const batchRouter = router({
             originPressRunId: batches.originPressRunId,
             createdAt: batches.createdAt,
             updatedAt: batches.updatedAt,
+            deletedAt: batches.deletedAt,
           })
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
-          .where(and(...conditions))
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
           .orderBy(orderBy)
           .limit(input.limit || 50)
           .offset(input.offset || 0)
@@ -237,7 +244,7 @@ export const batchRouter = router({
         const totalCountResult = await db
           .select({ count: sql<number>`count(*)` })
           .from(batches)
-          .where(and(...conditions))
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
 
         const totalCount = totalCountResult[0]?.count || 0
 
@@ -638,9 +645,9 @@ export const batchRouter = router({
     .input(batchIdSchema)
     .mutation(async ({ input }) => {
       try {
-        // Verify batch exists
+        // Verify batch exists and get vessel info
         const existingBatch = await db
-          .select({ status: batches.status })
+          .select({ status: batches.status, vesselId: batches.vesselId })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
           .limit(1)
@@ -652,12 +659,7 @@ export const batchRouter = router({
           })
         }
 
-        if (existingBatch[0].status === 'packaged') {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: 'Cannot delete packaged batch'
-          })
-        }
+        const batch = existingBatch[0]
 
         // Soft delete batch
         await db
@@ -667,6 +669,17 @@ export const batchRouter = router({
             updatedAt: new Date(),
           })
           .where(eq(batches.id, input.batchId))
+
+        // Update vessel status to needs_cleaning if batch was in a vessel
+        if (batch.vesselId) {
+          await db
+            .update(vessels)
+            .set({
+              status: 'needs_cleaning',
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, batch.vesselId))
+        }
 
         return {
           success: true,
@@ -687,7 +700,10 @@ export const batchRouter = router({
    * Returns all events related to this batch in chronological order
    */
   getActivityHistory: createRbacProcedure('read', 'batch')
-    .input(batchIdSchema)
+    .input(batchIdSchema.extend({
+      limit: z.number().min(1).max(100).default(20),
+      offset: z.number().min(0).default(0)
+    }))
     .query(async ({ input }) => {
       try {
         // Get batch details including creation
@@ -865,34 +881,65 @@ export const batchRouter = router({
           ))
 
         transfers.forEach(t => {
-          const isSource = t.sourceBatchId === input.batchId
-          activities.push({
-            id: `transfer-${t.id}`,
-            type: 'transfer',
-            timestamp: t.transferredAt,
-            description: isSource
-              ? `Transferred ${t.volumeTransferredL}L to ${t.destVesselName || 'vessel'}`
-              : `Received ${t.volumeTransferredL}L from ${t.sourceVesselName || 'vessel'}`,
-            details: {
-              volume: `${t.volumeTransferredL}L`,
-              direction: isSource ? 'outgoing' : 'incoming',
-              notes: t.notes || null
-            }
-          })
+          // Check if this is a vessel move (same batch moved) or traditional transfer (different batches)
+          const isSameBatch = t.sourceBatchId === t.destinationBatchId
+          const isThisBatch = t.sourceBatchId === input.batchId || t.destinationBatchId === input.batchId
+
+          if (isSameBatch) {
+            // Vessel move: batch moved from one vessel to another
+            activities.push({
+              id: `transfer-${t.id}`,
+              type: 'transfer',
+              timestamp: t.transferredAt,
+              description: `Moved ${t.volumeTransferredL}L from ${t.sourceVesselName || 'vessel'} to ${t.destVesselName || 'vessel'}`,
+              details: {
+                volume: `${t.volumeTransferredL}L`,
+                fromVessel: t.sourceVesselName || null,
+                toVessel: t.destVesselName || null,
+                notes: t.notes || null
+              }
+            })
+          } else {
+            // Traditional transfer: different batches involved
+            const isSource = t.sourceBatchId === input.batchId
+            activities.push({
+              id: `transfer-${t.id}`,
+              type: 'transfer',
+              timestamp: t.transferredAt,
+              description: isSource
+                ? `Transferred ${t.volumeTransferredL}L to ${t.destVesselName || 'vessel'}`
+                : `Received ${t.volumeTransferredL}L from ${t.sourceVesselName || 'vessel'}`,
+              details: {
+                volume: `${t.volumeTransferredL}L`,
+                direction: isSource ? 'outgoing' : 'incoming',
+                notes: t.notes || null
+              }
+            })
+          }
         })
 
         // TODO: Add packaging/bottling events when implemented
 
-        // Sort all activities by timestamp
+        // Sort all activities by timestamp - true chronological order (oldest to newest)
         activities.sort((a, b) => {
           const dateA = new Date(a.timestamp).getTime()
           const dateB = new Date(b.timestamp).getTime()
-          return dateB - dateA // Most recent first
+          return dateA - dateB // Oldest first (chronological order)
         })
+
+        // Apply pagination
+        const totalActivities = activities.length
+        const paginatedActivities = activities.slice(input.offset, input.offset + input.limit)
 
         return {
           batch: batch[0],
-          activities
+          activities: paginatedActivities,
+          pagination: {
+            total: totalActivities,
+            limit: input.limit,
+            offset: input.offset,
+            hasMore: input.offset + input.limit < totalActivities
+          }
         }
       } catch (error) {
         console.error('Error fetching batch activity history:', error)
