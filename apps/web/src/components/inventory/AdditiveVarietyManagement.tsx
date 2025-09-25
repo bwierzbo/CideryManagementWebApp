@@ -301,17 +301,19 @@ export function AdditiveVarietyManagement() {
                     name="labelImpact"
                     control={control}
                     render={({ field }) => (
-                      field.value && (
-                        <div className="mt-2">
-                          <Label htmlFor="labelImpactNotes">Label Impact Notes</Label>
-                          <Textarea
-                            id="labelImpactNotes"
-                            {...register("labelImpactNotes")}
-                            placeholder="Describe how this additive affects labeling requirements..."
-                            className="mt-1"
-                          />
-                        </div>
-                      )
+                      <>
+                        {field.value ? (
+                          <div className="mt-2">
+                            <Label htmlFor="labelImpactNotes">Label Impact Notes</Label>
+                            <Textarea
+                              id="labelImpactNotes"
+                              {...register("labelImpactNotes")}
+                              placeholder="Describe how this additive affects labeling requirements..."
+                              className="mt-1"
+                            />
+                          </div>
+                        ) : null}
+                      </>
                     )}
                   />
                 </div>
@@ -335,17 +337,19 @@ export function AdditiveVarietyManagement() {
                     name="allergensVegan"
                     control={control}
                     render={({ field }) => (
-                      field.value && (
-                        <div className="mt-2">
-                          <Label htmlFor="allergensVeganNotes">Allergens/Vegan Notes</Label>
-                          <Textarea
-                            id="allergensVeganNotes"
-                            {...register("allergensVeganNotes")}
-                            placeholder="Describe allergen information or vegan considerations..."
-                            className="mt-1"
-                          />
-                        </div>
-                      )
+                      <>
+                        {field.value ? (
+                          <div className="mt-2">
+                            <Label htmlFor="allergensVeganNotes">Allergens/Vegan Notes</Label>
+                            <Textarea
+                              id="allergensVeganNotes"
+                              {...register("allergensVeganNotes")}
+                              placeholder="Describe allergen information or vegan considerations..."
+                              className="mt-1"
+                            />
+                          </div>
+                        ) : null}
+                      </>
                     )}
                   />
                 </div>

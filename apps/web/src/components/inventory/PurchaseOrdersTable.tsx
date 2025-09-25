@@ -43,7 +43,7 @@ interface PurchaseOrder {
   id: string
   purchaseDate: string
   vendorId: string
-  vendorName: string
+  vendorName: string | null
   totalItems: number
   totalCost: number | null
   status: 'active' | 'partially_depleted' | 'depleted' | 'archived'
@@ -112,7 +112,13 @@ export function PurchaseOrdersTable({
   // Apply client-side filtering for additional filters not handled by API
   const filteredOrders = useMemo(() => {
     const purchaseOrders = purchasesData?.purchases || []
-    let filtered = purchaseOrders
+    // Transform the data to ensure correct types
+    const transformedOrders = purchaseOrders.map(order => ({
+      ...order,
+      totalCost: order.totalCost ? parseFloat(order.totalCost) : null,
+      status: order.status as 'active' | 'partially_depleted' | 'depleted' | 'archived'
+    }))
+    let filtered = transformedOrders
 
     if (statusFilter !== 'all') {
       filtered = filtered.filter(order => order.status === statusFilter)
@@ -121,7 +127,7 @@ export function PurchaseOrdersTable({
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(order =>
-        order.vendorName.toLowerCase().includes(query) ||
+        (order.vendorName && order.vendorName.toLowerCase().includes(query)) ||
         order.id.toLowerCase().includes(query) ||
         (order.notes && order.notes.toLowerCase().includes(query)) ||
         order.materialType.toLowerCase().includes(query)
@@ -139,7 +145,7 @@ export function PurchaseOrdersTable({
         case 'purchaseDate':
           return new Date(order.purchaseDate)
         case 'vendorName':
-          return order.vendorName
+          return order.vendorName || ''
         case 'totalItems':
           return order.totalItems
         case 'totalCost':
@@ -159,7 +165,7 @@ export function PurchaseOrdersTable({
   // Get unique vendors for filter dropdown
   const uniqueVendors = useMemo(() => {
     const purchaseOrders = purchasesData?.purchases || []
-    const vendors = [...new Set(purchaseOrders.map(order => order.vendorName))]
+    const vendors = [...new Set(purchaseOrders.map(order => order.vendorName).filter((v): v is string => v !== null))]
     return vendors.sort()
   }, [purchasesData?.purchases])
 
@@ -460,7 +466,7 @@ export function PurchaseOrdersTable({
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">
-                          {order.vendorName}
+                          {order.vendorName || 'Unknown Vendor'}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
@@ -514,9 +520,9 @@ export function PurchaseOrdersTable({
           {sortedOrders.length > 0 && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {sortedOrders.length} of {purchaseOrders.length} purchase orders
+                Showing {sortedOrders.length} of {purchasesData?.purchases?.length || 0} purchase orders
                 {(vendorFilter !== 'all' || statusFilter !== 'all' || searchQuery.trim()) &&
-                  ` (filtered from ${purchaseOrders.length} total)`
+                  ` (filtered from ${purchasesData?.purchases?.length || 0} total)`
                 }
               </div>
             </div>

@@ -218,9 +218,6 @@ export function InventoryEditDialog({
             id: itemId,
             quantity: values.quantity,
             unit: values.unit,
-            unitCost: values.unitCost,
-            totalCost: values.totalCost,
-            purchaseDate: values.purchaseDate,
             notes: values.notes,
           })
           break

@@ -272,7 +272,7 @@ export function PackagingTransactionForm({
           return {
             packagingId: line.packagingId,
             packagingName: packaging?.name || 'Unknown Packaging',
-            packagingType: packaging?.category || 'other',
+            packagingType: 'other',
             quantity: line.quantity!,
             unitType: line.unitType,
             unitCost: line.unitCost,

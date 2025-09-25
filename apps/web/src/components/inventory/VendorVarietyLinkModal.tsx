@@ -256,10 +256,18 @@ function VarietyTabContent({
 
   const detachVariety = getDetachMutation()
 
-  // Get varieties array based on response structure
-  const varieties = config.type === 'baseFruit'
-    ? varietiesData?.varieties || []
-    : varietiesData || []
+  // Get varieties array based on response structure with proper type checking
+  const varieties = (() => {
+    if (!varietiesData) return []
+
+    if (config.type === 'baseFruit') {
+      // For baseFruit, check if varietiesData has a 'varieties' property
+      return (varietiesData as any)?.varieties || []
+    }
+
+    // For other types, varietiesData is the array directly
+    return Array.isArray(varietiesData) ? varietiesData : []
+  })()
 
   const handleDetachVariety = (variety: any) => {
     // For baseFruit, use the variety ID directly
@@ -467,7 +475,12 @@ function AddVarietyModal({
         { enabled: searchQuery.length >= 2 }
       )
     } else {
-      return trpc[varietyConfig.apiName].list.useQuery(
+      // Use type assertion to access dynamic property
+      const apiRouter = (trpc as any)[varietyConfig.apiName]
+      if (!apiRouter?.list) {
+        return { data: null }
+      }
+      return apiRouter.list.useQuery(
         {
           search: searchQuery,
           limit: 10,
@@ -494,14 +507,15 @@ function AddVarietyModal({
           // Show success message
           console.log('Successfully linked variety:', data.message || 'Variety linked successfully')
         },
-        onError: (error) => {
+        onError: (error: any) => {
           console.error('Failed to link variety:', error.message)
           alert(`Failed to link variety: ${error.message}`)
         }
       })
     } else {
-      return trpc[varietyConfig.apiName].linkVendor.useMutation({
-        onSuccess: (data) => {
+      const apiRouter = (trpc as any)[varietyConfig.apiName]
+      return apiRouter?.linkVendor?.useMutation({
+        onSuccess: (data: any) => {
           onSuccess()
           setSearchQuery('')
           setSelectedVariety(null)
@@ -511,7 +525,7 @@ function AddVarietyModal({
           // Show success message
           console.log('Successfully linked variety:', data.message || 'Variety linked successfully')
         },
-        onError: (error) => {
+        onError: (error: any) => {
           console.error('Failed to link variety:', error.message)
           alert(`Failed to link variety: ${error.message}`)
         }
