@@ -36,6 +36,13 @@
       "when": 1758296527017,
       "tag": "0004_fresh_paper_doll",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1727373600000,
+      "tag": "0014_add_inventory_items_table",
+      "breakpoints": true
     }
   ]
 }

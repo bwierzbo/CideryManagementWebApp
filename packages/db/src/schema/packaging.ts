@@ -42,8 +42,8 @@ export const packagingRuns = pgTable('packaging_runs', {
   unitsProduced: integer('units_produced').notNull(),
   volumeTakenL: decimal('volume_taken_l', { precision: 10, scale: 2 }).notNull(),
   lossL: decimal('loss_l', { precision: 10, scale: 2 }).notNull(),
-  // Loss percentage is computed as a generated column
-  lossPercentage: decimal('loss_percentage', { precision: 5, scale: 2 }).generatedAlwaysAs(sql`(loss_l / volume_taken_l * 100)`),
+  // Loss percentage (computed in application logic)
+  lossPercentage: decimal('loss_percentage', { precision: 5, scale: 2 }),
 
   // QA Fields (optional)
   abvAtPackaging: decimal('abv_at_packaging', { precision: 5, scale: 2 }),
@@ -132,7 +132,8 @@ export const packagingRunsRelations = relations(packagingRuns, ({ one, many }) =
   }),
 
   // Child relationships
-  photos: many(packagingRunPhotos)
+  photos: many(packagingRunPhotos),
+  inventoryItems: many(inventoryItems)
 }))
 
 export const packagingRunPhotosRelations = relations(packagingRunPhotos, ({ one }) => ({
@@ -143,5 +144,39 @@ export const packagingRunPhotosRelations = relations(packagingRunPhotos, ({ one 
   uploadedByUser: one(users, {
     fields: [packagingRunPhotos.uploadedBy],
     references: [users.id]
+  })
+}))
+
+// Finished goods inventory for packaged products
+export const inventoryItems = pgTable('inventory_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').references(() => batches.id),
+  lotCode: text('lot_code').unique(),
+  packagingRunId: uuid('packaging_run_id').references(() => packagingRuns.id),
+  packageType: text('package_type'),
+  packageSizeML: integer('package_size_ml'),
+  expirationDate: date('expiration_date'),
+
+  // Standard audit fields
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at')
+}, (table) => ({
+  // Index for lot code lookups as specified in PRD
+  lotCodeIdx: index('idx_inventory_lot_code').on(table.lotCode),
+  batchIdx: index('inventory_items_batch_idx').on(table.batchId),
+  packagingRunIdx: index('inventory_items_packaging_run_idx').on(table.packagingRunId),
+  expirationDateIdx: index('inventory_items_expiration_date_idx').on(table.expirationDate)
+}))
+
+// Inventory items relations
+export const inventoryItemsRelations = relations(inventoryItems, ({ one }) => ({
+  batch: one(batches, {
+    fields: [inventoryItems.batchId],
+    references: [batches.id]
+  }),
+  packagingRun: one(packagingRuns, {
+    fields: [inventoryItems.packagingRunId],
+    references: [packagingRuns.id]
   })
 }))
