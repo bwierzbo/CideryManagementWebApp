@@ -176,26 +176,26 @@ export function QAUpdateModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <BeakerIcon className="w-5 h-5" />
-            Update QA Data
+      <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-4">
+          <DialogTitle className="flex items-center gap-2 text-lg md:text-xl pr-8">
+            <BeakerIcon className="w-5 h-5 flex-shrink-0" />
+            <span className="truncate">Update QA Data</span>
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-sm md:text-base">
             Update quality assurance measurements for {runData?.batchName || 'this packaging run'}
             {runData?.packageType && runData?.packageSizeML && (
-              ` (${runData.packageSizeML}ml ${runData.packageType})`
+              <span className="block sm:inline"> ({runData.packageSizeML}ml {runData.packageType})</span>
             )}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 md:space-y-6">
           {/* Fill Check */}
           <div>
-            <Label htmlFor="fillCheck">Fill Check</Label>
+            <Label htmlFor="fillCheck" className="text-sm md:text-base font-medium">Fill Check</Label>
             <Select onValueChange={(value) => setValue("fillCheck", value as any)}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 md:h-11">
                 <SelectValue placeholder="Select fill check result" />
               </SelectTrigger>
               <SelectContent>
@@ -211,12 +211,13 @@ export function QAUpdateModal({
 
           {/* Fill Variance */}
           <div>
-            <Label htmlFor="fillVarianceMl">Fill Variance (ml)</Label>
+            <Label htmlFor="fillVarianceMl" className="text-sm md:text-base font-medium">Fill Variance (ml)</Label>
             <Input
               id="fillVarianceMl"
               type="number"
               step="0.1"
               placeholder="e.g., -5.2 (underfill) or +3.1 (overfill)"
+              className="h-10 md:h-11 text-base"
               {...register("fillVarianceMl", { valueAsNumber: true })}
             />
             {errors.fillVarianceMl && (
@@ -228,7 +229,7 @@ export function QAUpdateModal({
             {fillVarianceStatus && (
               <div className={`p-3 rounded-lg border mt-2 ${fillVarianceStatus.bg}`}>
                 <div className="flex items-center space-x-2">
-                  <fillVarianceStatus.icon className={`w-4 h-4 ${fillVarianceStatus.color}`} />
+                  <fillVarianceStatus.icon className={`w-4 h-4 ${fillVarianceStatus.color} flex-shrink-0`} />
                   <span className={`text-sm font-medium ${fillVarianceStatus.color}`}>{fillVarianceStatus.message}</span>
                 </div>
               </div>
@@ -237,7 +238,7 @@ export function QAUpdateModal({
 
           {/* ABV at Packaging */}
           <div>
-            <Label htmlFor="abvAtPackaging">ABV at Packaging (%)</Label>
+            <Label htmlFor="abvAtPackaging" className="text-sm md:text-base font-medium">ABV at Packaging (%)</Label>
             <Input
               id="abvAtPackaging"
               type="number"
@@ -245,6 +246,7 @@ export function QAUpdateModal({
               min="0"
               max="100"
               placeholder="e.g., 6.5"
+              className="h-10 md:h-11 text-base"
               {...register("abvAtPackaging", { valueAsNumber: true })}
             />
             {errors.abvAtPackaging && (
@@ -256,7 +258,7 @@ export function QAUpdateModal({
             {abvStatus && (
               <div className={`p-3 rounded-lg border mt-2 ${abvStatus.bg}`}>
                 <div className="flex items-center space-x-2">
-                  <abvStatus.icon className={`w-4 h-4 ${abvStatus.color}`} />
+                  <abvStatus.icon className={`w-4 h-4 ${abvStatus.color} flex-shrink-0`} />
                   <span className={`text-sm font-medium ${abvStatus.color}`}>{abvStatus.message}</span>
                 </div>
               </div>
@@ -265,9 +267,9 @@ export function QAUpdateModal({
 
           {/* Carbonation Level */}
           <div>
-            <Label htmlFor="carbonationLevel">Carbonation Level</Label>
+            <Label htmlFor="carbonationLevel" className="text-sm md:text-base font-medium">Carbonation Level</Label>
             <Select onValueChange={(value) => setValue("carbonationLevel", value as any)}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 md:h-11">
                 <SelectValue placeholder="Select carbonation level" />
               </SelectTrigger>
               <SelectContent>
@@ -283,12 +285,13 @@ export function QAUpdateModal({
 
           {/* Test Method */}
           <div>
-            <Label htmlFor="testMethod">Test Method</Label>
+            <Label htmlFor="testMethod" className="text-sm md:text-base font-medium">Test Method</Label>
             <Input
               id="testMethod"
               type="text"
               placeholder="e.g., Hydrometer, Refractometer, Digital meter"
               maxLength={100}
+              className="h-10 md:h-11 text-base"
               {...register("testMethod")}
             />
             {errors.testMethod && (
@@ -299,10 +302,11 @@ export function QAUpdateModal({
 
           {/* Test Date */}
           <div>
-            <Label htmlFor="testDate">Test Date</Label>
+            <Label htmlFor="testDate" className="text-sm md:text-base font-medium">Test Date</Label>
             <Input
               id="testDate"
               type="datetime-local"
+              className="h-10 md:h-11 text-base"
               {...register("testDate")}
             />
             {errors.testDate && (
@@ -313,12 +317,13 @@ export function QAUpdateModal({
 
           {/* QA Notes */}
           <div>
-            <Label htmlFor="qaNotes">QA Notes</Label>
+            <Label htmlFor="qaNotes" className="text-sm md:text-base font-medium">QA Notes</Label>
             <Textarea
               id="qaNotes"
               placeholder="Quality observations, tasting notes, or other relevant information"
               maxLength={1000}
               rows={4}
+              className="text-base resize-none"
               {...register("qaNotes")}
             />
             {errors.qaNotes && (
@@ -328,13 +333,20 @@ export function QAUpdateModal({
           </div>
 
           {/* Action buttons */}
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting || updateQAMutation.isPending}>
+          <div className="flex flex-col sm:flex-row justify-end gap-2 sm:space-x-2 pt-4 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={isSubmitting || updateQAMutation.isPending}
+              className="w-full sm:w-auto h-10 md:h-11"
+            >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isSubmitting || updateQAMutation.isPending}
+              className="w-full sm:w-auto h-10 md:h-11"
             >
               {isSubmitting || updateQAMutation.isPending ? "Updating..." : "Update QA Data"}
             </Button>

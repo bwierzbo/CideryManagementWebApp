@@ -398,17 +398,17 @@ export function PackagingTable({
   }, [sortedItems, totalCount, handleExportCSV, handleExportSelectedCSV, selectedItems.length, onDataChange])
 
   return (
-    <div className={cn("space-y-6", className)}>
+    <div className={cn("space-y-4 md:space-y-6", className)}>
       {/* Main Table */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
+        <CardHeader className="pb-3 md:pb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
                 <Package className="w-5 h-5" />
-                Packaging Runs
+                <span className="truncate">Packaging Runs</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-sm">
                 {totalCount > 0 ? `${totalCount} packaging runs found` : 'No packaging runs found'}
               </CardDescription>
             </div>
@@ -417,20 +417,133 @@ export function PackagingTable({
               size="sm"
               onClick={handleRefresh}
               disabled={isLoading}
+              className="flex-shrink-0 h-8 md:h-9"
             >
               Refresh
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0 md:p-6">
           {error && (
-            <div className="flex items-center gap-2 p-4 text-red-600 bg-red-50 rounded-lg mb-4">
-              <AlertTriangle className="w-4 h-4" />
-              <span>Error loading packaging runs: {error.message}</span>
+            <div className="flex items-center gap-2 p-3 md:p-4 text-red-600 bg-red-50 rounded-lg mb-4 mx-3 md:mx-0">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm md:text-base">Error loading packaging runs: {error.message}</span>
             </div>
           )}
 
-          <div className="rounded-md border">
+          {/* Mobile Card View */}
+          <div className="block md:hidden">
+            {isLoading ? (
+              <div className="space-y-3 p-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-6 w-16" />
+                    </div>
+                    <Skeleton className="h-4 w-24" />
+                    <div className="flex justify-between">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : sortedItems.length === 0 ? (
+              <div className="text-center py-12 px-3 text-muted-foreground">
+                <Package2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+                <div className="text-lg font-medium">No packaging runs found</div>
+                <div className="text-sm mt-1">Packaging runs will appear here once created</div>
+              </div>
+            ) : (
+              <div className="space-y-3 p-3">
+                {sortedItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="border rounded-lg p-4 space-y-3 hover:bg-muted/30 cursor-pointer transition-colors touch-manipulation select-none"
+                    onClick={() => handleItemClick(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleItemClick(item)
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Calendar className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                          <span className="font-medium text-sm">{formatDate(item.packagedAt)}</span>
+                        </div>
+                        <div className="font-semibold text-base truncate">
+                          {item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}
+                        </div>
+                        <div className="text-sm text-muted-foreground truncate">
+                          {item.vessel.name || `Vessel ${item.vesselId.slice(0, 8)}`}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        <Badge className={cn("text-xs", getStatusColor(item.status))}>
+                          {item.status || 'pending'}
+                        </Badge>
+                        {enableSelection && (
+                          <Checkbox
+                            checked={selectedItems.includes(item.id)}
+                            onCheckedChange={(checked) => handleSelectItem(item.id, !!checked)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Select ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <div className="text-muted-foreground">Package</div>
+                        <div className="font-medium flex items-center gap-1">
+                          <Package className="w-3 h-3" />
+                          {formatPackageSize(item.packageSizeML, item.packageType)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Units</div>
+                        <div className="font-medium font-mono">
+                          {item.unitsProduced.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Loss</div>
+                        <div className={cn("font-medium", getLossColor(item.lossPercentage))}>
+                          {item.lossPercentage.toFixed(1)}%
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleItemClick(item)
+                          }}
+                          className="h-7 px-2 text-xs touch-manipulation min-h-[44px] sm:min-h-[28px]"
+                          aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          View
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block rounded-md border overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -510,8 +623,17 @@ export function PackagingTable({
                   sortedItems.map((item) => (
                     <TableRow
                       key={item.id}
-                      className="hover:bg-muted/50 cursor-pointer"
+                      className="hover:bg-muted/50 cursor-pointer touch-manipulation"
                       onClick={() => handleItemClick(item)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleItemClick(item)
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                     >
                       {enableSelection && (
                         <TableCell>
@@ -573,7 +695,8 @@ export function PackagingTable({
                             e.stopPropagation()
                             handleItemClick(item)
                           }}
-                          className="h-8 px-3"
+                          className="h-8 px-3 touch-manipulation min-h-[44px] sm:min-h-[32px]"
+                          aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                         >
                           <Eye className="h-4 w-4 mr-1" />
                           View
@@ -588,29 +711,33 @@ export function PackagingTable({
 
           {/* Pagination */}
           {!isLoading && data && (
-            <div className="flex items-center justify-between pt-4">
-              <div className="text-sm text-muted-foreground">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 px-3 md:px-0">
+              <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
                 Showing {currentPage * itemsPerPage + 1} to {Math.min((currentPage + 1) * itemsPerPage, totalCount)} of {totalCount} items
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
                   disabled={currentPage === 0}
+                  className="h-8 px-3 text-xs sm:text-sm"
                 >
-                  Previous
+                  <span className="hidden sm:inline">Previous</span>
+                  <span className="sm:hidden">Prev</span>
                 </Button>
-                <span className="text-sm text-muted-foreground px-2">
-                  Page {currentPage + 1}
+                <span className="text-xs sm:text-sm text-muted-foreground px-2 font-medium">
+                  {currentPage + 1}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => p + 1)}
                   disabled={!hasMore}
+                  className="h-8 px-3 text-xs sm:text-sm"
                 >
-                  Next
+                  <span className="hidden sm:inline">Next</span>
+                  <span className="sm:hidden">Next</span>
                 </Button>
               </div>
             </div>

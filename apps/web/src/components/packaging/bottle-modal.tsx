@@ -153,24 +153,25 @@ export function BottleModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Bottle from {vesselName}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pb-4">
+          <DialogTitle className="text-lg md:text-xl truncate pr-8">Bottle from {vesselName}</DialogTitle>
+          <DialogDescription className="text-sm md:text-base">
             Package contents from this vessel. Available volume: {currentVolumeL.toFixed(1)}L
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4 md:space-y-6">
           {/* Volume taken */}
           <div>
-            <Label htmlFor="volumeTakenL">Volume taken (L) *</Label>
+            <Label htmlFor="volumeTakenL" className="text-sm md:text-base font-medium">Volume taken (L) *</Label>
             <Input
               id="volumeTakenL"
               type="number"
               step="0.1"
               max={currentVolumeL}
               placeholder={`Max ${currentVolumeL.toFixed(1)}L available`}
+              className="h-10 md:h-11 text-base"
               {...register("volumeTakenL", { valueAsNumber: true })}
             />
             {errors.volumeTakenL && (
@@ -181,9 +182,9 @@ export function BottleModal({
 
           {/* Package size */}
           <div>
-            <Label htmlFor="packageSizeMl">Package size *</Label>
+            <Label htmlFor="packageSizeMl" className="text-sm md:text-base font-medium">Package size *</Label>
             <Select onValueChange={(value) => setValue("packageSizeMl", parseInt(value))}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 md:h-11">
                 <SelectValue placeholder="Select package size" />
               </SelectTrigger>
               <SelectContent>
@@ -207,12 +208,13 @@ export function BottleModal({
 
           {/* Units produced */}
           <div>
-            <Label htmlFor="unitsProduced">Units produced *</Label>
+            <Label htmlFor="unitsProduced" className="text-sm md:text-base font-medium">Units produced *</Label>
             <Input
               id="unitsProduced"
               type="number"
               min="0"
               placeholder="Number of packages filled"
+              className="h-10 md:h-11 text-base"
               {...register("unitsProduced", { valueAsNumber: true })}
             />
             {errors.unitsProduced && (
@@ -223,17 +225,17 @@ export function BottleModal({
 
           {/* Computed loss display */}
           {volumeTakenL && packageSizeMl && unitsProduced !== undefined && (
-            <div className={`p-4 rounded-lg border ${lossStatus.bg}`}>
+            <div className={`p-3 md:p-4 rounded-lg border ${lossStatus.bg}`}>
               <div className="flex items-center space-x-2 mb-2">
-                <lossStatus.icon className={`w-5 h-5 ${lossStatus.color}`} />
-                <Label className={`font-medium ${lossStatus.color}`}>Computed Loss</Label>
+                <lossStatus.icon className={`w-4 h-4 md:w-5 md:h-5 ${lossStatus.color} flex-shrink-0`} />
+                <Label className={`font-medium ${lossStatus.color} text-sm md:text-base`}>Computed Loss</Label>
               </div>
               <div className="space-y-1">
-                <p className={`text-lg font-semibold ${lossStatus.color}`}>
+                <p className={`text-base md:text-lg font-semibold ${lossStatus.color}`}>
                   {lossL.toFixed(2)}L ({lossPercentage.toFixed(1)}%)
                 </p>
                 <p className={`text-sm ${lossStatus.color}`}>{lossStatus.message}</p>
-                <p className="text-xs text-gray-600">
+                <p className="text-xs text-gray-600 break-words">
                   Formula: {volumeTakenL.toFixed(1)}L taken - ({unitsProduced} × {unitSizeL.toFixed(3)}L)
                 </p>
               </div>
@@ -242,10 +244,11 @@ export function BottleModal({
 
           {/* Date/time */}
           <div>
-            <Label htmlFor="packagedAt">Date/time *</Label>
+            <Label htmlFor="packagedAt" className="text-sm md:text-base font-medium">Date/time *</Label>
             <Input
               id="packagedAt"
               type="datetime-local"
+              className="h-10 md:h-11 text-base"
               {...register("packagedAt")}
             />
             {errors.packagedAt && (
@@ -255,26 +258,39 @@ export function BottleModal({
 
           {/* Notes */}
           <div>
-            <Label htmlFor="notes">Notes (optional)</Label>
+            <Label htmlFor="notes" className="text-sm md:text-base font-medium">Notes (optional)</Label>
             <Textarea
               id="notes"
               placeholder="Any observations about packaging run"
               maxLength={500}
+              className="min-h-[80px] text-base resize-none"
               {...register("notes")}
             />
             <p className="text-xs text-gray-500 mt-1">Max 500 characters</p>
           </div>
 
           {/* Action buttons */}
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting || createPackagingRunMutation.isPending}>
+          <div className="flex flex-col sm:flex-row justify-end gap-2 sm:space-x-2 pt-4 border-t">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={isSubmitting || createPackagingRunMutation.isPending}
+              className="w-full sm:w-auto h-10 md:h-11"
+            >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={isSubmitting || createPackagingRunMutation.isPending || lossL < 0 || !volumeTakenL || !packageSizeMl || unitsProduced === undefined}
+              className="w-full sm:w-auto h-10 md:h-11"
             >
-              {isSubmitting || createPackagingRunMutation.isPending ? "Creating..." : "Complete & Go to /packaging"}
+              <span className="hidden sm:inline">
+                {isSubmitting || createPackagingRunMutation.isPending ? "Creating..." : "Complete & Go to /packaging"}
+              </span>
+              <span className="sm:hidden">
+                {isSubmitting || createPackagingRunMutation.isPending ? "Creating..." : "Complete"}
+              </span>
             </Button>
           </div>
         </form>

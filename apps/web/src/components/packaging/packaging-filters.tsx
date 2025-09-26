@@ -107,11 +107,11 @@ export function PackagingFilters({
   }, [])
 
   return (
-    <Card className={cn("mb-6", className)}>
-      <CardContent className="p-4">
-        <div className="space-y-4">
+    <Card className={cn("mb-4 md:mb-6", className)}>
+      <CardContent className="p-3 md:p-4">
+        <div className="space-y-3 md:space-y-4">
           {/* Top row - Search and Quick Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col gap-3 md:gap-4">
             {/* Batch Search */}
             <div className="flex-1 min-w-0">
               <div className="relative">
@@ -120,23 +120,24 @@ export function PackagingFilters({
                   placeholder="Search batch names..."
                   value={filters.batchSearch}
                   onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 h-9 md:h-10"
                 />
               </div>
             </div>
 
             {/* Quick Actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 flex-shrink-0 h-8 md:h-9"
               >
                 <Filter className="w-4 h-4" />
-                More Filters
+                <span className="hidden sm:inline">More Filters</span>
+                <span className="sm:hidden">Filters</span>
                 {activeFilterCount > 0 && (
-                  <Badge variant="secondary" className="ml-1">
+                  <Badge variant="secondary" className="ml-1 text-xs">
                     {activeFilterCount}
                   </Badge>
                 )}
@@ -147,17 +148,19 @@ export function PackagingFilters({
                 size="sm"
                 onClick={onExportClick}
                 disabled={isExporting || itemCount === 0}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 flex-shrink-0 h-8 md:h-9"
               >
                 {isExporting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Exporting...
+                    <span className="hidden sm:inline">Exporting...</span>
+                    <span className="sm:hidden">Export...</span>
                   </>
                 ) : (
                   <>
                     <Download className="w-4 h-4" />
-                    Export {itemCount > 0 ? `(${itemCount})` : ''}
+                    <span className="hidden sm:inline">Export {itemCount > 0 ? `(${itemCount})` : ''}</span>
+                    <span className="sm:hidden">Export</span>
                   </>
                 )}
               </Button>
@@ -166,8 +169,8 @@ export function PackagingFilters({
 
           {/* Advanced Filters */}
           {showAdvanced && (
-            <div className="border-t pt-4 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="border-t pt-3 md:pt-4 space-y-3 md:space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                 {/* Date From */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">From Date</Label>
@@ -201,7 +204,7 @@ export function PackagingFilters({
                       handleFilterChange('packageSizeML', value === 'all' ? null : parseInt(value))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 md:h-10">
                       <SelectValue placeholder="All sizes" />
                     </SelectTrigger>
                     <SelectContent>
@@ -228,7 +231,7 @@ export function PackagingFilters({
                       handleFilterChange('status', value)
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 md:h-10">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -242,8 +245,8 @@ export function PackagingFilters({
 
               {/* Clear All Button */}
               {activeFilterCount > 0 && (
-                <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={handleClearAll}>
+                <div className="flex justify-center sm:justify-end">
+                  <Button variant="ghost" size="sm" onClick={handleClearAll} className="w-full sm:w-auto">
                     Clear All Filters
                   </Button>
                 </div>
@@ -253,57 +256,68 @@ export function PackagingFilters({
 
           {/* Active Filters Display */}
           {activeFilterCount > 0 && (
-            <div className="flex flex-wrap gap-2 pt-2 border-t">
+            <div className="flex flex-wrap gap-1.5 md:gap-2 pt-2 border-t max-h-24 overflow-y-auto">
               {filters.dateFrom && (
-                <Badge variant="secondary" className="flex items-center gap-1">
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
                   <Calendar className="w-3 h-3" />
-                  From: {filters.dateFrom.toLocaleDateString()}
+                  <span className="hidden sm:inline">From: {filters.dateFrom.toLocaleDateString()}</span>
+                  <span className="sm:hidden">{filters.dateFrom.toLocaleDateString()}</span>
                   <X
-                    className="w-3 h-3 cursor-pointer hover:text-red-500"
+                    className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
                     onClick={() => handleFilterChange('dateFrom', null)}
+                    aria-label="Remove date from filter"
                   />
                 </Badge>
               )}
 
               {filters.dateTo && (
-                <Badge variant="secondary" className="flex items-center gap-1">
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
                   <Calendar className="w-3 h-3" />
-                  To: {filters.dateTo.toLocaleDateString()}
+                  <span className="hidden sm:inline">To: {filters.dateTo.toLocaleDateString()}</span>
+                  <span className="sm:hidden">{filters.dateTo.toLocaleDateString()}</span>
                   <X
-                    className="w-3 h-3 cursor-pointer hover:text-red-500"
+                    className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
                     onClick={() => handleFilterChange('dateTo', null)}
+                    aria-label="Remove date to filter"
                   />
                 </Badge>
               )}
 
               {filters.packageSizeML && (
-                <Badge variant="secondary" className="flex items-center gap-1">
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
                   <Package className="w-3 h-3" />
                   {formatPackageSize(filters.packageSizeML)}
                   <X
-                    className="w-3 h-3 cursor-pointer hover:text-red-500"
+                    className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
                     onClick={() => handleFilterChange('packageSizeML', null)}
+                    aria-label="Remove package size filter"
                   />
                 </Badge>
               )}
 
               {filters.batchSearch.trim() && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Search className="w-3 h-3" />
-                  Search: &quot;{filters.batchSearch}&quot;
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6 max-w-[200px]">
+                  <Search className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate">
+                    <span className="hidden sm:inline">Search: &quot;{filters.batchSearch}&quot;</span>
+                    <span className="sm:hidden">&quot;{filters.batchSearch}&quot;</span>
+                  </span>
                   <X
-                    className="w-3 h-3 cursor-pointer hover:text-red-500"
+                    className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px] flex-shrink-0"
                     onClick={() => handleSearchChange('')}
+                    aria-label="Clear search filter"
                   />
                 </Badge>
               )}
 
               {filters.status !== 'all' && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  Status: {filters.status}
+                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
+                  <span className="hidden sm:inline">Status: {filters.status}</span>
+                  <span className="sm:hidden">{filters.status}</span>
                   <X
-                    className="w-3 h-3 cursor-pointer hover:text-red-500"
+                    className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
                     onClick={() => handleFilterChange('status', 'all')}
+                    aria-label="Remove status filter"
                   />
                 </Badge>
               )}
