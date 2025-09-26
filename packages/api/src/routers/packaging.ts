@@ -12,7 +12,7 @@ import {
 } from 'db'
 import { eq, and, desc, isNull, sql, gte, lte, like, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
-import { publishCreateEvent } from 'lib'
+import { publishCreateEvent, publishUpdateEvent } from 'lib'
 
 // Input validation schemas
 const createFromCellarSchema = z.object({
@@ -474,6 +474,171 @@ export const packagingRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to list packaging runs'
+        })
+      }
+    }),
+
+  /**
+   * Update QA fields for a packaging run
+   * Updates QA-specific fields with validation and audit logging
+   */
+  updateQA: createRbacProcedure('update', 'packaging')
+    .input(z.object({
+      runId: z.string().uuid(),
+      fillCheck: z.enum(['pass', 'fail', 'not_tested']).optional(),
+      fillVarianceMl: z.number().optional(),
+      abvAtPackaging: z.number().min(0).max(100).optional(),
+      carbonationLevel: z.enum(['still', 'petillant', 'sparkling']).optional(),
+      testMethod: z.string().optional(),
+      testDate: z.date().optional(),
+      qaTechnicianId: z.string().uuid().optional(),
+      qaNotes: z.string().optional()
+    }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // 1. Get current packaging run data for audit logging
+          const currentRun = await tx
+            .select({
+              id: packagingRuns.id,
+              batchId: packagingRuns.batchId,
+              fillCheck: packagingRuns.fillCheck,
+              fillVarianceML: packagingRuns.fillVarianceML,
+              abvAtPackaging: packagingRuns.abvAtPackaging,
+              carbonationLevel: packagingRuns.carbonationLevel,
+              testMethod: packagingRuns.testMethod,
+              testDate: packagingRuns.testDate,
+              qaTechnicianId: packagingRuns.qaTechnicianId,
+              qaNotes: packagingRuns.qaNotes,
+              status: packagingRuns.status
+            })
+            .from(packagingRuns)
+            .where(eq(packagingRuns.id, input.runId))
+            .limit(1)
+
+          if (!currentRun.length) {
+            throw new TRPCError({
+              code: 'NOT_FOUND',
+              message: 'Packaging run not found'
+            })
+          }
+
+          const run = currentRun[0]
+
+          // 2. Validate QA technician exists if provided
+          if (input.qaTechnicianId) {
+            const technician = await tx
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.id, input.qaTechnicianId))
+              .limit(1)
+
+            if (!technician.length) {
+              throw new TRPCError({
+                code: 'NOT_FOUND',
+                message: 'QA technician not found'
+              })
+            }
+          }
+
+          // 3. Build update data only for provided fields
+          const updateData: any = {
+            updatedAt: new Date()
+          }
+
+          if (input.fillCheck !== undefined) updateData.fillCheck = input.fillCheck
+          if (input.fillVarianceMl !== undefined) updateData.fillVarianceML = input.fillVarianceMl.toString()
+          if (input.abvAtPackaging !== undefined) updateData.abvAtPackaging = input.abvAtPackaging.toString()
+          if (input.carbonationLevel !== undefined) updateData.carbonationLevel = input.carbonationLevel
+          if (input.testMethod !== undefined) updateData.testMethod = input.testMethod
+          if (input.testDate !== undefined) updateData.testDate = input.testDate
+          if (input.qaTechnicianId !== undefined) updateData.qaTechnicianId = input.qaTechnicianId
+          if (input.qaNotes !== undefined) updateData.qaNotes = input.qaNotes
+
+          // 4. Update the packaging run
+          const updatedRun = await tx
+            .update(packagingRuns)
+            .set(updateData)
+            .where(eq(packagingRuns.id, input.runId))
+            .returning()
+
+          if (!updatedRun.length) {
+            throw new TRPCError({
+              code: 'INTERNAL_SERVER_ERROR',
+              message: 'Failed to update packaging run'
+            })
+          }
+
+          // 5. Prepare audit data - only include changed fields
+          const oldData: Record<string, any> = {}
+          const newData: Record<string, any> = {}
+
+          if (input.fillCheck !== undefined && run.fillCheck !== input.fillCheck) {
+            oldData.fillCheck = run.fillCheck
+            newData.fillCheck = input.fillCheck
+          }
+          if (input.fillVarianceMl !== undefined && parseFloat(run.fillVarianceML?.toString() || '0') !== input.fillVarianceMl) {
+            oldData.fillVarianceMl = parseFloat(run.fillVarianceML?.toString() || '0')
+            newData.fillVarianceMl = input.fillVarianceMl
+          }
+          if (input.abvAtPackaging !== undefined && parseFloat(run.abvAtPackaging?.toString() || '0') !== input.abvAtPackaging) {
+            oldData.abvAtPackaging = parseFloat(run.abvAtPackaging?.toString() || '0')
+            newData.abvAtPackaging = input.abvAtPackaging
+          }
+          if (input.carbonationLevel !== undefined && run.carbonationLevel !== input.carbonationLevel) {
+            oldData.carbonationLevel = run.carbonationLevel
+            newData.carbonationLevel = input.carbonationLevel
+          }
+          if (input.testMethod !== undefined && run.testMethod !== input.testMethod) {
+            oldData.testMethod = run.testMethod
+            newData.testMethod = input.testMethod
+          }
+          if (input.testDate !== undefined && run.testDate?.toISOString() !== input.testDate.toISOString()) {
+            oldData.testDate = run.testDate
+            newData.testDate = input.testDate
+          }
+          if (input.qaTechnicianId !== undefined && run.qaTechnicianId !== input.qaTechnicianId) {
+            oldData.qaTechnicianId = run.qaTechnicianId
+            newData.qaTechnicianId = input.qaTechnicianId
+          }
+          if (input.qaNotes !== undefined && run.qaNotes !== input.qaNotes) {
+            oldData.qaNotes = run.qaNotes
+            newData.qaNotes = input.qaNotes
+          }
+
+          // 6. Publish audit event only if there were actual changes
+          if (Object.keys(newData).length > 0) {
+            await publishUpdateEvent(
+              'packaging_run',
+              input.runId,
+              oldData,
+              newData,
+              ctx.session?.user?.id,
+              'QA fields updated'
+            )
+          }
+
+          // 7. Return the updated run with parsed numbers
+          const result = updatedRun[0]
+          return {
+            id: result.id,
+            fillCheck: result.fillCheck,
+            fillVarianceMl: result.fillVarianceML ? parseFloat(result.fillVarianceML.toString()) : undefined,
+            abvAtPackaging: result.abvAtPackaging ? parseFloat(result.abvAtPackaging.toString()) : undefined,
+            carbonationLevel: result.carbonationLevel,
+            testMethod: result.testMethod,
+            testDate: result.testDate,
+            qaTechnicianId: result.qaTechnicianId,
+            qaNotes: result.qaNotes,
+            updatedAt: result.updatedAt
+          }
+        })
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        console.error('Error updating QA fields:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update QA fields'
         })
       }
     }),
