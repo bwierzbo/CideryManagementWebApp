@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { Filter, X, Calendar, Package, Search, Download } from 'lucide-react'
+import { Filter, X, Calendar, Package, Search, Download, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -149,8 +149,17 @@ export function PackagingFilters({
                 disabled={isExporting || itemCount === 0}
                 className="flex items-center gap-2"
               >
-                <Download className="w-4 h-4" />
-                {isExporting ? 'Exporting...' : `Export ${itemCount > 0 ? `(${itemCount})` : ''}`}
+                {isExporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Export {itemCount > 0 ? `(${itemCount})` : ''}
+                  </>
+                )}
               </Button>
             </div>
           </div>

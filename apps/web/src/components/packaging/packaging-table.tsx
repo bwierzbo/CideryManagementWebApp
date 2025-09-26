@@ -14,12 +14,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Package,
   Eye,
   AlertTriangle,
   Calendar,
-  Package2
+  Package2,
+  Download,
+  Loader2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
@@ -39,6 +42,17 @@ interface PackagingRun {
   lossPercentage: number
   status: 'completed' | 'voided' | null
   createdAt: string
+  // QA fields
+  abvAtPackaging?: number
+  carbonationLevel?: 'still' | 'petillant' | 'sparkling'
+  fillCheck?: 'pass' | 'fail' | 'not_tested'
+  fillVarianceML?: number
+  testMethod?: string
+  testDate?: string
+  qaTechnicianId?: string
+  qaNotes?: string
+  productionNotes?: string
+  // Relations
   batch: {
     id: string
     name: string | null
@@ -47,6 +61,7 @@ interface PackagingRun {
     id: string
     name: string | null
   }
+  qaTechnicianName?: string
 }
 
 // Table column configuration
@@ -63,7 +78,16 @@ interface PackagingTableProps {
     batchSearch?: string
     status?: 'all' | 'completed' | 'voided'
   }
-  onDataChange?: (data: { items: PackagingRun[], count: number, exportCSV: () => void }) => void
+  onDataChange?: (data: {
+    items: PackagingRun[],
+    count: number,
+    exportCSV: () => void,
+    exportSelectedCSV: (selectedIds: string[]) => void,
+    selectedCount: number
+  }) => void
+  enableSelection?: boolean
+  selectedItems?: string[]
+  onSelectionChange?: (selectedIds: string[]) => void
 }
 
 export function PackagingTable({
@@ -71,7 +95,10 @@ export function PackagingTable({
   itemsPerPage = 25,
   onItemClick,
   filters = {},
-  onDataChange
+  onDataChange,
+  enableSelection = false,
+  selectedItems = [],
+  onSelectionChange
 }: PackagingTableProps) {
   // Sorting state using the reusable hook
   const {
@@ -88,6 +115,9 @@ export function PackagingTable({
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0)
+
+  // Export state
+  const [isExporting, setIsExporting] = useState(false)
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -156,6 +186,36 @@ export function PackagingTable({
     })
   }, [data?.runs, sortData])
 
+  // Selection handlers
+  const handleSelectAll = useCallback((checked: boolean) => {
+    if (!enableSelection || !onSelectionChange) return
+
+    if (checked) {
+      const allIds = sortedItems.map(item => item.id)
+      onSelectionChange(allIds)
+    } else {
+      onSelectionChange([])
+    }
+  }, [enableSelection, onSelectionChange, sortedItems])
+
+  const handleSelectItem = useCallback((itemId: string, checked: boolean) => {
+    if (!enableSelection || !onSelectionChange) return
+
+    if (checked) {
+      onSelectionChange([...selectedItems, itemId])
+    } else {
+      onSelectionChange(selectedItems.filter(id => id !== itemId))
+    }
+  }, [enableSelection, onSelectionChange, selectedItems])
+
+  const isAllSelected = useMemo(() => {
+    return enableSelection && sortedItems.length > 0 && sortedItems.every(item => selectedItems.includes(item.id))
+  }, [enableSelection, sortedItems, selectedItems])
+
+  const isIndeterminate = useMemo(() => {
+    return enableSelection && selectedItems.length > 0 && selectedItems.length < sortedItems.length
+  }, [enableSelection, selectedItems.length, sortedItems.length])
+
   // Event handlers
   const handleColumnSort = useCallback((field: SortField) => {
     handleSort(field)
@@ -216,10 +276,22 @@ export function PackagingTable({
     return direction ? direction : 'none'
   }, [getSortDirection])
 
-  // Export CSV functionality
-  const handleExportCSV = useCallback(() => {
-    if (!sortedItems.length) return
+  // Helper function to generate CSV filename with filter parameters
+  const generateFilename = useCallback((prefix: string = 'packaging-runs') => {
+    const date = new Date().toISOString().split('T')[0]
+    const filterParams = []
 
+    if (filters?.batchSearch) filterParams.push(`batch-${filters.batchSearch.slice(0, 10)}`)
+    if (filters?.status && filters.status !== 'all') filterParams.push(`status-${filters.status}`)
+    if (filters?.dateFrom) filterParams.push(`from-${filters.dateFrom.toISOString().split('T')[0]}`)
+    if (filters?.dateTo) filterParams.push(`to-${filters.dateTo.toISOString().split('T')[0]}`)
+
+    const filterSuffix = filterParams.length > 0 ? `-${filterParams.join('-')}` : ''
+    return `${prefix}${filterSuffix}-${date}.csv`
+  }, [filters])
+
+  // Helper function to create CSV content from items
+  const createCSVContent = useCallback((items: PackagingRun[]) => {
     const headers = [
       'Date',
       'Batch Name',
@@ -230,10 +302,21 @@ export function PackagingTable({
       'Volume Taken (L)',
       'Loss (L)',
       'Loss %',
-      'Status'
+      'Status',
+      'ABV at Packaging',
+      'Carbonation Level',
+      'Fill Check',
+      'Fill Variance (mL)',
+      'Test Method',
+      'Test Date',
+      'QA Technician',
+      'QA Notes',
+      'Production Notes',
+      'Created At',
+      'Run ID'
     ]
 
-    const rows = sortedItems.map(item => [
+    const rows = items.map(item => [
       formatDate(item.packagedAt),
       item.batch.name || `Batch ${item.batchId.slice(0, 8)}`,
       item.vessel.name || `Vessel ${item.vesselId.slice(0, 8)}`,
@@ -243,21 +326,63 @@ export function PackagingTable({
       item.volumeTakenL.toString(),
       item.lossL.toFixed(1),
       item.lossPercentage.toFixed(1),
-      item.status || 'pending'
+      item.status || 'pending',
+      item.abvAtPackaging?.toFixed(2) || '',
+      item.carbonationLevel || '',
+      item.fillCheck || '',
+      item.fillVarianceML?.toFixed(1) || '',
+      item.testMethod || '',
+      item.testDate ? formatDate(item.testDate) : '',
+      item.qaTechnicianName || '',
+      item.qaNotes || '',
+      item.productionNotes || '',
+      formatDate(item.createdAt),
+      item.id
     ])
 
-    const csvContent = [headers, ...rows]
+    return [headers, ...rows]
       .map(row => row.map(field => `"${field}"`).join(','))
       .join('\n')
+  }, [formatDate, formatPackageSize])
 
-    const blob = new Blob([csvContent], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `packaging-runs-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [sortedItems, formatDate, formatPackageSize])
+  // Export all visible items
+  const handleExportCSV = useCallback(async () => {
+    if (!sortedItems.length) return
+
+    setIsExporting(true)
+    try {
+      const csvContent = createCSVContent(sortedItems)
+      const blob = new Blob([csvContent], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = generateFilename()
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setIsExporting(false)
+    }
+  }, [sortedItems, createCSVContent, generateFilename])
+
+  // Export selected items
+  const handleExportSelectedCSV = useCallback(async (selectedIds: string[]) => {
+    if (!selectedIds.length) return
+
+    setIsExporting(true)
+    try {
+      const selectedItems = sortedItems.filter(item => selectedIds.includes(item.id))
+      const csvContent = createCSVContent(selectedItems)
+      const blob = new Blob([csvContent], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = generateFilename(`packaging-runs-selected-${selectedIds.length}`)
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setIsExporting(false)
+    }
+  }, [sortedItems, createCSVContent, generateFilename])
 
   // Notify parent of data changes
   useEffect(() => {
@@ -265,10 +390,12 @@ export function PackagingTable({
       onDataChange({
         items: sortedItems,
         count: totalCount,
-        exportCSV: handleExportCSV
+        exportCSV: handleExportCSV,
+        exportSelectedCSV: handleExportSelectedCSV,
+        selectedCount: selectedItems.length
       })
     }
-  }, [sortedItems, totalCount, handleExportCSV, onDataChange])
+  }, [sortedItems, totalCount, handleExportCSV, handleExportSelectedCSV, selectedItems.length, onDataChange])
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -307,6 +434,16 @@ export function PackagingTable({
             <Table>
               <TableHeader>
                 <TableRow>
+                  {enableSelection && (
+                    <SortableHeader canSort={false} className="w-[50px]">
+                      <Checkbox
+                        checked={isAllSelected}
+                        onCheckedChange={handleSelectAll}
+                        indeterminate={isIndeterminate}
+                        aria-label="Select all rows"
+                      />
+                    </SortableHeader>
+                  )}
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay('packagedAt')}
                     onSort={() => handleColumnSort('packagedAt')}
@@ -349,6 +486,7 @@ export function PackagingTable({
                   // Loading skeleton
                   Array.from({ length: 5 }).map((_, index) => (
                     <TableRow key={index}>
+                      {enableSelection && <TableCell><Skeleton className="h-4 w-4" /></TableCell>}
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-28" /></TableCell>
@@ -360,7 +498,7 @@ export function PackagingTable({
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={enableSelection ? 8 : 7} className="text-center py-8 text-muted-foreground">
                       <div className="flex flex-col items-center gap-2">
                         <Package2 className="w-8 h-8 text-muted-foreground/50" />
                         <span>No packaging runs found</span>
@@ -375,6 +513,16 @@ export function PackagingTable({
                       className="hover:bg-muted/50 cursor-pointer"
                       onClick={() => handleItemClick(item)}
                     >
+                      {enableSelection && (
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedItems.includes(item.id)}
+                            onCheckedChange={(checked) => handleSelectItem(item.id, checked)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Select row for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Calendar className="w-3 h-3 text-muted-foreground" />
