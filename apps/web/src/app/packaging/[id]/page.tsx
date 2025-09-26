@@ -569,7 +569,7 @@ export default function PackagingDetailPage() {
                         {photo.uploaderName} • {formatDate(photo.uploadedAt)}
                       </p>
                     </div>
-                  ))
+                  ))}
                 </CardContent>
               </Card>
             )}

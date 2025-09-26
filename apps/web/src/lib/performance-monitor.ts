@@ -180,7 +180,7 @@ export class PerformanceMonitor {
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       const requestId = this.generateRequestId();
-      const url = typeof args[0] === 'string' ? args[0] : args[0].url;
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
       const method = args[1]?.method || 'GET';
 
       const apiRequest: APIRequest = {
@@ -414,8 +414,8 @@ export class PerformanceMonitor {
       // Get basic timing information
       const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
       if (navigation) {
-        metrics.loadTime = navigation.loadEventEnd - navigation.navigationStart;
-        metrics.timeToInteractive = navigation.domInteractive - navigation.navigationStart;
+        metrics.loadTime = navigation.loadEventEnd - navigation.startTime;
+        metrics.timeToInteractive = navigation.domInteractive - navigation.startTime;
       }
 
       // Get paint metrics

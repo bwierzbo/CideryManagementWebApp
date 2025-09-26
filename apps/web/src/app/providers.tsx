@@ -32,33 +32,11 @@ function createOptimizedQueryClient() {
           }
           return failureCount < 3;
         },
-        // Performance monitoring
-        onError: (error) => {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Query error:', error);
-          }
-        },
-        onSuccess: (data, query) => {
-          // Track successful API calls
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Query success:', query.queryKey);
-          }
-        },
+        // Performance monitoring will be handled at the query level
       },
       mutations: {
         // Retry mutations
         retry: 1,
-        // Performance tracking for mutations
-        onError: (error, variables, context) => {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Mutation error:', error);
-          }
-        },
-        onSuccess: (data, variables, context) => {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('Mutation success');
-          }
-        },
       },
     },
   });
