@@ -10,6 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { QAUpdateModal } from '@/components/packaging/qa-update-modal'
+import { AdvancedPDFExport, QuickPDFExport } from '@/components/packaging/packaging-pdf-template'
+import type { PackagingRunPDFData } from '@/lib/pdf-generator'
 import {
   Package,
   Calendar,
@@ -174,6 +176,80 @@ export default function PackagingDetailPage() {
               <Badge className={cn("text-sm", getStatusColor(runData.status))}>
                 {runData.status || 'pending'}
               </Badge>
+              <QuickPDFExport data={{
+                ...runData,
+                qaTechnicianName: runData.qaTechnicianName || undefined,
+                voidedByName: runData.voidedByName || undefined,
+                createdByName: runData.createdByName || undefined,
+                testDate: runData.testDate || undefined,
+                voidedAt: runData.voidedAt || undefined,
+                carbonationLevel: runData.carbonationLevel || undefined,
+                fillCheck: runData.fillCheck || undefined,
+                testMethod: runData.testMethod || undefined,
+                qaNotes: runData.qaNotes || undefined,
+                productionNotes: runData.productionNotes || undefined,
+                voidReason: runData.voidReason || undefined,
+                qaTechnicianId: runData.qaTechnicianId || undefined,
+                voidedBy: runData.voidedBy || undefined,
+                inventory: runData.inventory?.filter(item =>
+                  item.lotCode && item.packageType && item.packageSizeML && item.expirationDate
+                ).map(item => ({
+                  id: item.id,
+                  lotCode: item.lotCode!,
+                  packageType: item.packageType!,
+                  packageSizeML: item.packageSizeML!,
+                  expirationDate: item.expirationDate!,
+                  createdAt: item.createdAt
+                })) || [],
+                photos: runData.photos?.filter(photo =>
+                  photo.photoType
+                ).map(photo => ({
+                  id: photo.id,
+                  photoUrl: photo.photoUrl,
+                  photoType: photo.photoType!,
+                  caption: photo.caption || undefined,
+                  uploadedBy: photo.uploadedBy,
+                  uploadedAt: photo.uploadedAt,
+                  uploaderName: photo.uploaderName || undefined
+                })) || []
+              }} />
+              <AdvancedPDFExport data={{
+                ...runData,
+                qaTechnicianName: runData.qaTechnicianName || undefined,
+                voidedByName: runData.voidedByName || undefined,
+                createdByName: runData.createdByName || undefined,
+                testDate: runData.testDate || undefined,
+                voidedAt: runData.voidedAt || undefined,
+                carbonationLevel: runData.carbonationLevel || undefined,
+                fillCheck: runData.fillCheck || undefined,
+                testMethod: runData.testMethod || undefined,
+                qaNotes: runData.qaNotes || undefined,
+                productionNotes: runData.productionNotes || undefined,
+                voidReason: runData.voidReason || undefined,
+                qaTechnicianId: runData.qaTechnicianId || undefined,
+                voidedBy: runData.voidedBy || undefined,
+                inventory: runData.inventory?.filter(item =>
+                  item.lotCode && item.packageType && item.packageSizeML && item.expirationDate
+                ).map(item => ({
+                  id: item.id,
+                  lotCode: item.lotCode!,
+                  packageType: item.packageType!,
+                  packageSizeML: item.packageSizeML!,
+                  expirationDate: item.expirationDate!,
+                  createdAt: item.createdAt
+                })) || [],
+                photos: runData.photos?.filter(photo =>
+                  photo.photoType
+                ).map(photo => ({
+                  id: photo.id,
+                  photoUrl: photo.photoUrl,
+                  photoType: photo.photoType!,
+                  caption: photo.caption || undefined,
+                  uploadedBy: photo.uploadedBy,
+                  uploadedAt: photo.uploadedAt,
+                  uploaderName: photo.uploaderName || undefined
+                })) || []
+              }} />
               {canUpdateQA && (
                 <Button onClick={() => setQaModalOpen(true)}>
                   <Edit className="w-4 h-4 mr-2" />
@@ -319,27 +395,16 @@ export default function PackagingDetailPage() {
                   </>
                 )}
 
-                {(runData.qaTechnicianName || runData.qaNotes) && (
+                {runData.qaNotes && (
                   <>
                     <Separator />
-                    {runData.qaTechnicianName && (
-                      <div>
-                        <p className="text-sm text-gray-500 flex items-center gap-2">
-                          <User className="w-4 h-4" />
-                          QA Technician
-                        </p>
-                        <p className="font-medium">{runData.qaTechnicianName}</p>
-                      </div>
-                    )}
-                    {runData.qaNotes && (
-                      <div>
-                        <p className="text-sm text-gray-500 flex items-center gap-2">
-                          <FileText className="w-4 h-4" />
-                          QA Notes
-                        </p>
-                        <p className="font-medium whitespace-pre-wrap">{runData.qaNotes}</p>
-                      </div>
-                    )}
+                    <div>
+                      <p className="text-sm text-gray-500 flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        QA Notes
+                      </p>
+                      <p className="font-medium whitespace-pre-wrap">{runData.qaNotes}</p>
+                    </div>
                   </>
                 )}
 
@@ -396,10 +461,10 @@ export default function PackagingDetailPage() {
                     <div key={item.id} className="p-3 border rounded-lg">
                       <p className="font-medium">{item.lotCode}</p>
                       <p className="text-sm text-gray-500">
-                        {formatPackageSize(item.packageSizeML, item.packageType)}
+                        {item.packageSizeML && item.packageType ? formatPackageSize(item.packageSizeML, item.packageType) : 'Unknown size'}
                       </p>
                       <p className="text-sm text-gray-500">
-                        Expires: {new Date(item.expirationDate).toLocaleDateString()}
+                        Expires: {item.expirationDate ? new Date(item.expirationDate).toLocaleDateString() : 'Not set'}
                       </p>
                     </div>
                   ))}

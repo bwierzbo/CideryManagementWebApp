@@ -44,7 +44,7 @@ interface QAUpdateModalProps {
     abvAtPackaging?: number | null
     carbonationLevel?: string | null
     testMethod?: string | null
-    testDate?: Date | null
+    testDate?: string | null
     qaTechnicianName?: string | null
     qaNotes?: string | null
     batchName?: string | null
@@ -94,7 +94,7 @@ export function QAUpdateModal({
         abvAtPackaging: runData.abvAtPackaging || undefined,
         carbonationLevel: runData.carbonationLevel as any || undefined,
         testMethod: runData.testMethod || "",
-        testDate: runData.testDate ? runData.testDate.toISOString().slice(0, 16) : "",
+        testDate: runData.testDate ? new Date(runData.testDate).toISOString().slice(0, 16) : "",
         qaNotes: runData.qaNotes || "",
       })
     }
