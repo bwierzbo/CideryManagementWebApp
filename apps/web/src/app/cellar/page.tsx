@@ -31,7 +31,8 @@ import {
   Trash2,
   Settings,
   MoreVertical,
-  FlaskConical
+  FlaskConical,
+  Wine
 } from "lucide-react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -40,6 +41,7 @@ import { BatchManagementTable } from "@/components/cellar/BatchManagementTable"
 import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal"
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm"
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm"
+import { BottleModal } from "@/components/packaging/bottle-modal"
 
 // Form schemas
 const measurementSchema = z.object({
@@ -486,6 +488,15 @@ function VesselMap() {
   const [showBatchHistory, setShowBatchHistory] = useState(false)
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null)
 
+  // Bottle modal state
+  const [showBottleModal, setShowBottleModal] = useState(false)
+  const [selectedVesselForBottling, setSelectedVesselForBottling] = useState<{
+    id: string
+    name: string
+    batchId: string
+    currentVolumeL: number
+  } | null>(null)
+
   const vesselListQuery = trpc.vessel.list.useQuery()
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
   const utils = trpc.useUtils()
@@ -660,6 +671,59 @@ function VesselMap() {
     }
   }
 
+  const handleBottle = (vesselId: string) => {
+    const vessel = vesselListQuery.data?.vessels?.find(v => v.id === vesselId)
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
+    const batchId = liquidMapVessel?.batchId
+
+    if (!vessel || !batchId) {
+      toast({
+        title: "Cannot Bottle",
+        description: "This vessel doesn't have an active batch.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Calculate current volume (same logic as in vessel cards)
+    const currentVolumeL = liquidMapVessel?.currentVolumeL
+      ? parseFloat(liquidMapVessel.currentVolumeL.toString())
+      : liquidMapVessel?.applePressRunVolume
+        ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
+        : 0
+
+    if (currentVolumeL <= 0) {
+      toast({
+        title: "Cannot Bottle",
+        description: "This vessel is empty.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSelectedVesselForBottling({
+      id: vesselId,
+      name: vessel.name || 'Unnamed Vessel',
+      batchId,
+      currentVolumeL,
+    })
+    setShowBottleModal(true)
+  }
+
+  const handleBottleSubmit = async (data: any) => {
+    // TODO: Implement packaging run creation via tRPC
+    console.log("Bottle submission data:", data)
+
+    toast({
+      title: "Packaging Run Created",
+      description: `Successfully packaged ${data.unitsProduced} units from ${selectedVesselForBottling?.name}`,
+    })
+
+    // Close modal and reset state
+    setShowBottleModal(false)
+    setSelectedVesselForBottling(null)
+  }
+
   if (vesselListQuery.isLoading) {
     return (
       <Card>
@@ -815,6 +879,13 @@ function VesselMap() {
                     >
                       <DropdownMenuLabel>Tank Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleBottle(vessel.id)}
+                        disabled={!liquidMapVessel?.batchId || currentVolumeL <= 0}
+                      >
+                        <Wine className="w-3 h-3 mr-2" />
+                        Bottle
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleTankMeasurement(vessel.id)}
                         disabled={!liquidMapVessel?.batchId}
@@ -986,6 +1057,22 @@ function VesselMap() {
               setShowBatchHistory(false)
               setSelectedBatchId(null)
             }}
+          />
+        )}
+
+        {/* Bottle Modal */}
+        {selectedVesselForBottling && (
+          <BottleModal
+            open={showBottleModal}
+            onClose={() => {
+              setShowBottleModal(false)
+              setSelectedVesselForBottling(null)
+            }}
+            vesselId={selectedVesselForBottling.id}
+            vesselName={selectedVesselForBottling.name}
+            batchId={selectedVesselForBottling.batchId}
+            currentVolumeL={selectedVesselForBottling.currentVolumeL}
+            onSubmit={handleBottleSubmit}
           />
         )}
       </CardContent>
