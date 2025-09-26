@@ -43,15 +43,15 @@ interface PackagingRun {
   status: 'completed' | 'voided' | null
   createdAt: string
   // QA fields
-  abvAtPackaging?: number
-  carbonationLevel?: 'still' | 'petillant' | 'sparkling'
-  fillCheck?: 'pass' | 'fail' | 'not_tested'
-  fillVarianceML?: number
-  testMethod?: string
-  testDate?: string
-  qaTechnicianId?: string
-  qaNotes?: string
-  productionNotes?: string
+  abvAtPackaging?: number | undefined
+  carbonationLevel?: 'still' | 'petillant' | 'sparkling' | null
+  fillCheck?: 'pass' | 'fail' | 'not_tested' | null
+  fillVarianceML?: number | undefined
+  testMethod?: string | null
+  testDate?: string | null
+  qaTechnicianId?: string | null
+  qaNotes?: string | null
+  productionNotes?: string | null
   // Relations
   batch: {
     id: string
@@ -187,7 +187,7 @@ export function PackagingTable({
   }, [data?.runs, sortData])
 
   // Selection handlers
-  const handleSelectAll = useCallback((checked: boolean) => {
+  const handleSelectAll = useCallback((checked: boolean | string) => {
     if (!enableSelection || !onSelectionChange) return
 
     if (checked) {
@@ -439,8 +439,8 @@ export function PackagingTable({
                       <Checkbox
                         checked={isAllSelected}
                         onCheckedChange={handleSelectAll}
-                        indeterminate={isIndeterminate}
                         aria-label="Select all rows"
+                        className={isIndeterminate ? 'data-[state=indeterminate]:bg-primary' : ''}
                       />
                     </SortableHeader>
                   )}
@@ -517,7 +517,7 @@ export function PackagingTable({
                         <TableCell>
                           <Checkbox
                             checked={selectedItems.includes(item.id)}
-                            onCheckedChange={(checked) => handleSelectItem(item.id, checked)}
+                            onCheckedChange={(checked) => handleSelectItem(item.id, !!checked)}
                             onClick={(e) => e.stopPropagation()}
                             aria-label={`Select row for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                           />
