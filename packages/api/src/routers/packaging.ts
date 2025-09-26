@@ -13,6 +13,15 @@ import {
 import { eq, and, desc, isNull, sql, gte, lte, like, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { publishCreateEvent, publishUpdateEvent } from 'lib'
+import {
+  getPackagingRunsOptimized,
+  getBatchPackagingRuns,
+  getPackageSizesCached,
+  getPackagingRunInventory,
+  measureQuery,
+  type CursorPaginationParams,
+  type PackagingRunFilters
+} from 'db/queries/packaging-optimized'
 
 // Input validation schemas
 const createFromCellarSchema = z.object({
@@ -33,8 +42,11 @@ const listPackagingRunsSchema = z.object({
   packageType: z.string().optional(),
   packageSizeML: z.number().optional(),
   status: z.enum(['completed', 'voided']).optional(),
-  limit: z.number().default(50),
-  offset: z.number().default(0)
+  limit: z.number().default(50).max(100), // Cap at 100 for performance
+  offset: z.number().default(0),
+  // Cursor-based pagination (preferred for performance)
+  cursor: z.string().optional(),
+  direction: z.enum(['forward', 'backward']).default('forward')
 })
 
 /**
@@ -324,21 +336,9 @@ export const packagingRouter = router({
 
         const run = packagingRunData[0]
 
-        // Get inventory items for this run
-        const inventory = await db
-          .select({
-            id: inventoryItems.id,
-            lotCode: inventoryItems.lotCode,
-            packageType: inventoryItems.packageType,
-            packageSizeML: inventoryItems.packageSizeML,
-            expirationDate: inventoryItems.expirationDate,
-            createdAt: inventoryItems.createdAt
-          })
-          .from(inventoryItems)
-          .where(and(
-            eq(inventoryItems.packagingRunId, runId),
-            isNull(inventoryItems.deletedAt)
-          ))
+        // Get inventory items for this run (optimized)
+        const inventoryMap = await getPackagingRunInventory([runId])
+        const inventory = inventoryMap.get(runId) || []
 
         // Get photos for this run
         const photos = await db
@@ -386,105 +386,45 @@ export const packagingRouter = router({
     }),
 
   /**
-   * List packaging runs with filters and pagination
+   * List packaging runs with optimized filters and cursor-based pagination
+   * Uses optimized queries with proper index utilization and caching
    */
   list: createRbacProcedure('list', 'packaging')
     .input(listPackagingRunsSchema.optional())
     .query(async ({ input = {} }) => {
       try {
-        // Build WHERE conditions
-        const conditions = []
-
-        if (input.dateFrom) {
-          conditions.push(gte(packagingRuns.packagedAt, input.dateFrom))
+        // Prepare filters for optimized query
+        const filters: PackagingRunFilters = {
+          dateFrom: input.dateFrom,
+          dateTo: input.dateTo,
+          batchId: input.batchId,
+          batchSearch: input.batchSearch,
+          packageType: input.packageType,
+          packageSizeML: input.packageSizeML,
+          status: input.status
         }
 
-        if (input.dateTo) {
-          conditions.push(lte(packagingRuns.packagedAt, input.dateTo))
+        // Prepare pagination parameters
+        const pagination: CursorPaginationParams = {
+          cursor: input.cursor,
+          limit: input.limit,
+          direction: input.direction
         }
 
-        if (input.batchId) {
-          conditions.push(eq(packagingRuns.batchId, input.batchId))
+        // Use optimized query with performance measurement
+        const { result, metrics } = await measureQuery(
+          'list-packaging-runs',
+          () => getPackagingRunsOptimized(filters, pagination)
+        )
+
+        // Log performance metrics for monitoring
+        if (metrics.executionTime > 500) {
+          console.warn(`Packaging list query took ${metrics.executionTime}ms for ${metrics.rowsReturned} rows`)
         }
 
-        if (input.batchSearch) {
-          conditions.push(like(batches.name, `%${input.batchSearch}%`))
-        }
-
-        if (input.packageType) {
-          conditions.push(eq(packagingRuns.packageType, input.packageType as any))
-        }
-
-        if (input.packageSizeML) {
-          conditions.push(eq(packagingRuns.packageSizeML, input.packageSizeML))
-        }
-
-        if (input.status) {
-          conditions.push(eq(packagingRuns.status, input.status as any))
-        }
-
-        // Query packaging runs with batch and vessel info
-        const runs = await db
-          .select({
-            id: packagingRuns.id,
-            batchId: packagingRuns.batchId,
-            vesselId: packagingRuns.vesselId,
-            packagedAt: packagingRuns.packagedAt,
-            packageType: packagingRuns.packageType,
-            packageSizeML: packagingRuns.packageSizeML,
-            unitsProduced: packagingRuns.unitsProduced,
-            volumeTakenL: packagingRuns.volumeTakenL,
-            lossL: packagingRuns.lossL,
-            lossPercentage: packagingRuns.lossPercentage,
-            status: packagingRuns.status,
-            createdAt: packagingRuns.createdAt,
-            // QA fields
-            abvAtPackaging: packagingRuns.abvAtPackaging,
-            carbonationLevel: packagingRuns.carbonationLevel,
-            fillCheck: packagingRuns.fillCheck,
-            fillVarianceML: packagingRuns.fillVarianceML,
-            testMethod: packagingRuns.testMethod,
-            testDate: packagingRuns.testDate,
-            qaTechnicianId: packagingRuns.qaTechnicianId,
-            qaNotes: packagingRuns.qaNotes,
-            productionNotes: packagingRuns.productionNotes,
-            // Relations
-            batchName: batches.name,
-            vesselName: vessels.name,
-            qaTechnicianName: sql<string>`qa_tech.name`.as('qaTechnicianName')
-          })
-          .from(packagingRuns)
-          .leftJoin(batches, eq(packagingRuns.batchId, batches.id))
-          .leftJoin(vessels, eq(packagingRuns.vesselId, vessels.id))
-          .leftJoin(sql`users AS qa_tech`, sql`qa_tech.id = ${packagingRuns.qaTechnicianId}`)
-          .where(conditions.length > 0 ? and(...conditions) : undefined)
-          .orderBy(desc(packagingRuns.packagedAt))
-          .limit(input.limit || 50)
-          .offset(input.offset || 0)
-
-        // Get total count for pagination
-        let totalCountQuery = db
-          .select({ count: sql<number>`count(*)` })
-          .from(packagingRuns)
-
-        // Add batch join if needed for batch search
-        if (input.batchSearch) {
-          totalCountQuery = totalCountQuery.leftJoin(batches, eq(packagingRuns.batchId, batches.id))
-        }
-
-        const totalCountResult = await totalCountQuery
-          .where(conditions.length > 0 ? and(...conditions) : undefined)
-
-        const totalCount = totalCountResult[0]?.count || 0
-
-        // Convert string numbers to numbers and format response
-        const formattedRuns = runs.map(run => ({
+        // Format response for backward compatibility
+        const formattedRuns = result.items.map(run => ({
           ...run,
-          volumeTakenL: parseFloat(run.volumeTakenL?.toString() || '0'),
-          lossL: parseFloat(run.lossL?.toString() || '0'),
-          lossPercentage: parseFloat(run.lossPercentage?.toString() || '0'),
-          abvAtPackaging: run.abvAtPackaging ? parseFloat(run.abvAtPackaging.toString()) : undefined,
-          fillVarianceML: run.fillVarianceML ? parseFloat(run.fillVarianceML.toString()) : undefined,
           batch: {
             id: run.batchId,
             name: run.batchName
@@ -497,8 +437,14 @@ export const packagingRouter = router({
 
         return {
           runs: formattedRuns,
-          total: totalCount,
-          hasMore: (input.offset || 0) + (input.limit || 50) < totalCount
+          total: result.totalCount,
+          hasMore: result.hasNext,
+          // Cursor-based pagination metadata
+          nextCursor: result.nextCursor,
+          previousCursor: result.previousCursor,
+          // Legacy pagination for backward compatibility
+          hasNext: result.hasNext,
+          hasPrevious: result.hasPrevious
         }
       } catch (error) {
         console.error('Error listing packaging runs:', error)
@@ -675,33 +621,63 @@ export const packagingRouter = router({
     }),
 
   /**
-   * Get package sizes for dropdown population
+   * Get package sizes for dropdown population (with caching)
+   * Uses optimized cached query for frequently accessed reference data
    */
   getPackageSizes: createRbacProcedure('read', 'packaging')
     .query(async () => {
       try {
-        const sizes = await db
-          .select({
-            id: packageSizes.id,
-            sizeML: packageSizes.sizeML,
-            sizeOz: packageSizes.sizeOz,
-            displayName: packageSizes.displayName,
-            packageType: packageSizes.packageType,
-            sortOrder: packageSizes.sortOrder
-          })
-          .from(packageSizes)
-          .where(eq(packageSizes.isActive, true))
-          .orderBy(packageSizes.sortOrder, packageSizes.sizeML)
+        // Use cached query for better performance
+        const { result, metrics } = await measureQuery(
+          'get-package-sizes',
+          () => getPackageSizesCached()
+        )
 
-        return sizes.map(size => ({
-          ...size,
-          sizeOz: size.sizeOz ? parseFloat(size.sizeOz.toString()) : undefined
-        }))
+        return result
       } catch (error) {
         console.error('Error getting package sizes:', error)
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: 'Failed to get package sizes'
+        })
+      }
+    }),
+
+  /**
+   * Get packaging runs for specific batches (batch loading)
+   * Optimized for bulk operations and dashboard views
+   */
+  getBatchRuns: createRbacProcedure('read', 'packaging')
+    .input(z.array(z.string().uuid()).max(50)) // Limit batch size
+    .query(async ({ input: batchIds }) => {
+      try {
+        const { result, metrics } = await measureQuery(
+          'get-batch-packaging-runs',
+          () => getBatchPackagingRuns(batchIds)
+        )
+
+        // Convert Map to object for JSON serialization
+        const batchRuns: Record<string, any[]> = {}
+        for (const [batchId, runs] of result.entries()) {
+          batchRuns[batchId] = runs.map(run => ({
+            ...run,
+            batch: {
+              id: run.batchId,
+              name: run.batchName
+            },
+            vessel: {
+              id: run.vesselId,
+              name: run.vesselName
+            }
+          }))
+        }
+
+        return batchRuns
+      } catch (error) {
+        console.error('Error getting batch packaging runs:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to get batch packaging runs'
         })
       }
     })
