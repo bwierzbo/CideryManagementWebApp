@@ -17,18 +17,8 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { AlertTriangle, CheckCircle } from "lucide-react"
-
-// Package size options as per PRD
-const PACKAGE_SIZES = [
-  { value: 355, label: "355ml (12 oz can/bottle)" },
-  { value: 473, label: "473ml (16 oz can)" },
-  { value: 500, label: "500ml bottle" },
-  { value: 750, label: "750ml bottle" },
-  { value: 1000, label: "1L bottle" },
-  { value: 19500, label: "19.5L keg (1/6 barrel)" },
-  { value: 30000, label: "30L keg (1/4 barrel)" },
-  { value: 50000, label: "50L keg (1/2 barrel)" },
-] as const
+import { trpc } from "@/utils/trpc"
+import { toast } from "@/hooks/use-toast"
 
 // Form validation schema
 const bottleFormSchema = z.object({
@@ -48,7 +38,6 @@ interface BottleModalProps {
   vesselName: string
   batchId: string
   currentVolumeL: number
-  onSubmit: (data: BottleFormData & { lossL: number }) => Promise<void>
 }
 
 export function BottleModal({
@@ -58,9 +47,13 @@ export function BottleModal({
   vesselName,
   batchId,
   currentVolumeL,
-  onSubmit,
 }: BottleModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // tRPC queries and mutations
+  const packageSizesQuery = trpc.packaging.getPackageSizes.useQuery()
+  const createPackagingRunMutation = trpc.packaging.createFromCellar.useMutation()
+  const utils = trpc.useUtils()
 
   const {
     register,
@@ -116,10 +109,38 @@ export function BottleModal({
 
     setIsSubmitting(true)
     try {
-      await onSubmit({ ...data, lossL })
+      const result = await createPackagingRunMutation.mutateAsync({
+        batchId,
+        vesselId,
+        packagedAt: new Date(data.packagedAt),
+        packageSizeMl: data.packageSizeMl,
+        unitsProduced: data.unitsProduced,
+        volumeTakenL: data.volumeTakenL,
+        notes: data.notes,
+      })
+
+      // Invalidate relevant queries to refresh data
+      utils.vessel.liquidMap.invalidate()
+      utils.batch.list.invalidate()
+
+      // Show success toast with option to view packaging run
+      toast({
+        title: "Packaging Run Created",
+        description: `Successfully packaged ${data.unitsProduced} units from ${vesselName}. Loss: ${result.lossL.toFixed(2)}L (${result.lossPercentage.toFixed(1)}%)`,
+      })
+
+      console.log("Packaging run created:", result)
       onClose()
     } catch (error) {
       console.error("Failed to create packaging run:", error)
+
+      // Show error toast with specific error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      toast({
+        title: "Failed to Create Packaging Run",
+        description: errorMessage,
+        variant: "destructive",
+      })
     } finally {
       setIsSubmitting(false)
     }
@@ -166,11 +187,17 @@ export function BottleModal({
                 <SelectValue placeholder="Select package size" />
               </SelectTrigger>
               <SelectContent>
-                {PACKAGE_SIZES.map((size) => (
-                  <SelectItem key={size.value} value={size.value.toString()}>
-                    {size.label}
-                  </SelectItem>
-                ))}
+                {packageSizesQuery.isLoading ? (
+                  <SelectItem value="" disabled>Loading package sizes...</SelectItem>
+                ) : packageSizesQuery.data?.length ? (
+                  packageSizesQuery.data.map((size) => (
+                    <SelectItem key={size.id} value={size.sizeML.toString()}>
+                      {size.displayName}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="" disabled>No package sizes available</SelectItem>
+                )}
               </SelectContent>
             </Select>
             {errors.packageSizeMl && (
@@ -240,14 +267,14 @@ export function BottleModal({
 
           {/* Action buttons */}
           <div className="flex justify-end space-x-2 pt-4">
-            <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
+            <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting || createPackagingRunMutation.isPending}>
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || lossL < 0 || !volumeTakenL || !packageSizeMl || unitsProduced === undefined}
+              disabled={isSubmitting || createPackagingRunMutation.isPending || lossL < 0 || !volumeTakenL || !packageSizeMl || unitsProduced === undefined}
             >
-              {isSubmitting ? "Creating..." : "Complete & Go to /packaging"}
+              {isSubmitting || createPackagingRunMutation.isPending ? "Creating..." : "Complete & Go to /packaging"}
             </Button>
           </div>
         </form>

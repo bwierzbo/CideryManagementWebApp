@@ -710,19 +710,6 @@ function VesselMap() {
     setShowBottleModal(true)
   }
 
-  const handleBottleSubmit = async (data: any) => {
-    // TODO: Implement packaging run creation via tRPC
-    console.log("Bottle submission data:", data)
-
-    toast({
-      title: "Packaging Run Created",
-      description: `Successfully packaged ${data.unitsProduced} units from ${selectedVesselForBottling?.name}`,
-    })
-
-    // Close modal and reset state
-    setShowBottleModal(false)
-    setSelectedVesselForBottling(null)
-  }
 
   if (vesselListQuery.isLoading) {
     return (
@@ -1072,7 +1059,6 @@ function VesselMap() {
             vesselName={selectedVesselForBottling.name}
             batchId={selectedVesselForBottling.batchId}
             currentVolumeL={selectedVesselForBottling.currentVolumeL}
-            onSubmit={handleBottleSubmit}
           />
         )}
       </CardContent>
