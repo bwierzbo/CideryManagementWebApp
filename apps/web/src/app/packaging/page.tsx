@@ -1,12 +1,54 @@
 "use client"
 
+import { useState, useCallback } from "react"
 import { Navbar } from "@/components/navbar"
 import { PackagingTable } from "@/components/packaging/packaging-table"
+import { PackagingFilters, PackagingFiltersState } from "@/components/packaging/packaging-filters"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 
 
 export default function PackagingPage() {
+  const [filters, setFilters] = useState<PackagingFiltersState>({
+    dateFrom: null,
+    dateTo: null,
+    packageSizeML: null,
+    batchSearch: '',
+    status: 'all'
+  })
+
+  const [isExporting, setIsExporting] = useState(false)
+  const [tableData, setTableData] = useState<{
+    items: any[]
+    count: number
+    exportCSV: () => void
+  }>({
+    items: [],
+    count: 0,
+    exportCSV: () => {}
+  })
+
+  const handleFiltersChange = useCallback((newFilters: PackagingFiltersState) => {
+    setFilters(newFilters)
+  }, [])
+
+  const handleTableDataChange = useCallback((data: {
+    items: any[]
+    count: number
+    exportCSV: () => void
+  }) => {
+    setTableData(data)
+  }, [])
+
+  const handleExport = useCallback(() => {
+    setIsExporting(true)
+    try {
+      tableData.exportCSV()
+    } finally {
+      setIsExporting(false)
+    }
+  }, [tableData])
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -27,8 +69,20 @@ export default function PackagingPage() {
           </div>
         </div>
 
+        {/* Filters */}
+        <PackagingFilters
+          onFiltersChange={handleFiltersChange}
+          onExportClick={handleExport}
+          isExporting={isExporting}
+          initialFilters={filters}
+          itemCount={tableData.count}
+        />
+
         {/* Main Content */}
-        <PackagingTable />
+        <PackagingTable
+          filters={filters}
+          onDataChange={handleTableDataChange}
+        />
       </main>
     </div>
   )

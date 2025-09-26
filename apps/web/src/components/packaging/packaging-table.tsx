@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Table,
@@ -56,12 +56,22 @@ interface PackagingTableProps {
   className?: string
   itemsPerPage?: number
   onItemClick?: (item: PackagingRun) => void
+  filters?: {
+    dateFrom?: Date | null
+    dateTo?: Date | null
+    packageSizeML?: number | null
+    batchSearch?: string
+    status?: 'all' | 'completed' | 'voided'
+  }
+  onDataChange?: (data: { items: PackagingRun[], count: number, exportCSV: () => void }) => void
 }
 
 export function PackagingTable({
   className,
   itemsPerPage = 25,
-  onItemClick
+  onItemClick,
+  filters = {},
+  onDataChange
 }: PackagingTableProps) {
   // Sorting state using the reusable hook
   const {
@@ -79,14 +89,40 @@ export function PackagingTable({
   // Pagination state
   const [currentPage, setCurrentPage] = useState(0)
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(0)
+  }, [filters])
+
   // Router for navigation
   const router = useRouter()
 
   // Calculate API parameters
-  const apiParams = useMemo(() => ({
-    limit: itemsPerPage,
-    offset: currentPage * itemsPerPage,
-  }), [itemsPerPage, currentPage])
+  const apiParams = useMemo(() => {
+    const params: any = {
+      limit: itemsPerPage,
+      offset: currentPage * itemsPerPage,
+    }
+
+    // Add filters if provided
+    if (filters.dateFrom) {
+      params.dateFrom = filters.dateFrom
+    }
+    if (filters.dateTo) {
+      params.dateTo = filters.dateTo
+    }
+    if (filters.packageSizeML) {
+      params.packageSizeML = filters.packageSizeML
+    }
+    if (filters.batchSearch) {
+      params.batchSearch = filters.batchSearch
+    }
+    if (filters.status && filters.status !== 'all') {
+      params.status = filters.status
+    }
+
+    return params
+  }, [itemsPerPage, currentPage, filters])
 
   // API query
   const {
@@ -179,6 +215,60 @@ export function PackagingTable({
     const direction = getSortDirection(field)
     return direction ? direction : 'none'
   }, [getSortDirection])
+
+  // Export CSV functionality
+  const handleExportCSV = useCallback(() => {
+    if (!sortedItems.length) return
+
+    const headers = [
+      'Date',
+      'Batch Name',
+      'Vessel',
+      'Package Type',
+      'Package Size',
+      'Units Produced',
+      'Volume Taken (L)',
+      'Loss (L)',
+      'Loss %',
+      'Status'
+    ]
+
+    const rows = sortedItems.map(item => [
+      formatDate(item.packagedAt),
+      item.batch.name || `Batch ${item.batchId.slice(0, 8)}`,
+      item.vessel.name || `Vessel ${item.vesselId.slice(0, 8)}`,
+      item.packageType,
+      formatPackageSize(item.packageSizeML, item.packageType),
+      item.unitsProduced.toString(),
+      item.volumeTakenL.toString(),
+      item.lossL.toFixed(1),
+      item.lossPercentage.toFixed(1),
+      item.status || 'pending'
+    ])
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(field => `"${field}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `packaging-runs-${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [sortedItems, formatDate, formatPackageSize])
+
+  // Notify parent of data changes
+  useEffect(() => {
+    if (onDataChange) {
+      onDataChange({
+        items: sortedItems,
+        count: totalCount,
+        exportCSV: handleExportCSV
+      })
+    }
+  }, [sortedItems, totalCount, handleExportCSV, onDataChange])
 
   return (
     <div className={cn("space-y-6", className)}>

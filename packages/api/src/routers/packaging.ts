@@ -29,7 +29,9 @@ const listPackagingRunsSchema = z.object({
   dateFrom: z.date().optional(),
   dateTo: z.date().optional(),
   batchId: z.string().uuid().optional(),
+  batchSearch: z.string().optional(),
   packageType: z.string().optional(),
+  packageSizeML: z.number().optional(),
   status: z.enum(['completed', 'voided']).optional(),
   limit: z.number().default(50),
   offset: z.number().default(0)
@@ -405,8 +407,16 @@ export const packagingRouter = router({
           conditions.push(eq(packagingRuns.batchId, input.batchId))
         }
 
+        if (input.batchSearch) {
+          conditions.push(like(batches.name, `%${input.batchSearch}%`))
+        }
+
         if (input.packageType) {
           conditions.push(eq(packagingRuns.packageType, input.packageType as any))
+        }
+
+        if (input.packageSizeML) {
+          conditions.push(eq(packagingRuns.packageSizeML, input.packageSizeML))
         }
 
         if (input.status) {
@@ -441,9 +451,16 @@ export const packagingRouter = router({
           .offset(input.offset || 0)
 
         // Get total count for pagination
-        const totalCountResult = await db
+        let totalCountQuery = db
           .select({ count: sql<number>`count(*)` })
           .from(packagingRuns)
+
+        // Add batch join if needed for batch search
+        if (input.batchSearch) {
+          totalCountQuery = totalCountQuery.leftJoin(batches, eq(packagingRuns.batchId, batches.id))
+        }
+
+        const totalCountResult = await totalCountQuery
           .where(conditions.length > 0 ? and(...conditions) : undefined)
 
         const totalCount = totalCountResult[0]?.count || 0
