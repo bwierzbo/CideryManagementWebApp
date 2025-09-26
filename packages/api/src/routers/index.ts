@@ -2172,41 +2172,161 @@ export const appRouter = router({
       .input(z.object({ id: z.string().uuid() }))
       .query(async ({ input }) => {
         try {
-          const packageData = await db
-            .select()
+          // Get package data with comprehensive batch, vessel, and related information
+          const packageWithDetails = await db
+            .select({
+              // Package data
+              packageId: packages.id,
+              packageDate: packages.packageDate,
+              volumePackagedL: packages.volumePackagedL,
+              bottleSize: packages.bottleSize,
+              bottleCount: packages.bottleCount,
+              abvAtPackaging: packages.abvAtPackaging,
+              packageNotes: packages.notes,
+              packageCreatedAt: packages.createdAt,
+              packageUpdatedAt: packages.updatedAt,
+
+              // Batch data
+              batchId: batches.id,
+              batchName: batches.name,
+              batchCustomName: batches.customName,
+              batchNumber: batches.batchNumber,
+              initialVolumeL: batches.initialVolumeL,
+              currentVolumeL: batches.currentVolumeL,
+              batchStatus: batches.status,
+              batchStartDate: batches.startDate,
+              batchEndDate: batches.endDate,
+              originPressRunId: batches.originPressRunId,
+
+              // Vessel data
+              vesselId: vessels.id,
+              vesselName: vessels.name,
+              vesselCapacityL: vessels.capacityL,
+              vesselMaterial: vessels.material,
+              vesselJacketed: vessels.jacketed,
+              vesselStatus: vessels.status,
+              vesselLocation: vessels.location,
+              vesselNotes: vessels.notes,
+            })
             .from(packages)
-            .where(and(eq(packages.id, input.id), isNull(packages.deletedAt)))
+            .innerJoin(batches, eq(packages.batchId, batches.id))
+            .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+            .where(and(eq(packages.id, input.id), isNull(packages.deletedAt), isNull(batches.deletedAt)))
             .limit(1)
 
-          if (!packageData.length) {
+          if (!packageWithDetails.length) {
             throw new TRPCError({
               code: 'NOT_FOUND',
               message: 'Package not found'
             })
           }
 
+          const packageDetail = packageWithDetails[0]
+
+          // Get QA measurements and testing results for the batch
+          const batchMeasurementsData = await db
+            .select()
+            .from(batchMeasurements)
+            .where(and(eq(batchMeasurements.batchId, packageDetail.batchId), isNull(batchMeasurements.deletedAt)))
+            .orderBy(desc(batchMeasurements.measurementDate))
+
+          // Get batch composition (ingredients/fruit varieties used)
+          const batchCompositionData = await db
+            .select({
+              compositionId: batchCompositions.id,
+              purchaseItemId: batchCompositions.purchaseItemId,
+              inputWeightKg: batchCompositions.inputWeightKg,
+              juiceVolumeL: batchCompositions.juiceVolumeL,
+              fractionOfBatch: batchCompositions.fractionOfBatch,
+              materialCost: batchCompositions.materialCost,
+              varietyId: batchCompositions.varietyId,
+              varietyName: baseFruitVarieties.name,
+              lotCode: batchCompositions.lotCode,
+              avgBrix: batchCompositions.avgBrix,
+              estSugarKg: batchCompositions.estSugarKg,
+            })
+            .from(batchCompositions)
+            .innerJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
+            .where(and(eq(batchCompositions.batchId, packageDetail.batchId), isNull(batchCompositions.deletedAt)))
+
+          // Get inventory data for this package
           const inventoryData = await db
             .select()
             .from(inventory)
             .where(and(eq(inventory.packageId, input.id), isNull(inventory.deletedAt)))
 
+          // Get inventory transactions
           const transactions = await db
             .select()
             .from(inventoryTransactions)
             .where(inventoryData.length > 0 ? eq(inventoryTransactions.inventoryId, inventoryData[0].id) : sql`false`)
             .orderBy(desc(inventoryTransactions.transactionDate))
 
+          // Calculate yield and loss percentages
+          const initialBatchVolumeL = parseFloat(packageDetail.initialVolumeL || '0')
+          const volumePackagedL = parseFloat(packageDetail.volumePackagedL || '0')
+          const yieldPercentage = initialBatchVolumeL > 0 ? (volumePackagedL / initialBatchVolumeL) * 100 : 0
+          const lossPercentage = 100 - yieldPercentage
+
+          // Structure the response data
+          const packageData = {
+            id: packageDetail.packageId,
+            batchId: packageDetail.batchId,
+            packageDate: packageDetail.packageDate,
+            volumePackagedL: packageDetail.volumePackagedL,
+            bottleSize: packageDetail.bottleSize,
+            bottleCount: packageDetail.bottleCount,
+            abvAtPackaging: packageDetail.abvAtPackaging,
+            notes: packageDetail.packageNotes,
+            createdAt: packageDetail.packageCreatedAt,
+            updatedAt: packageDetail.packageUpdatedAt,
+          }
+
+          const batchData = {
+            id: packageDetail.batchId,
+            name: packageDetail.batchName,
+            customName: packageDetail.batchCustomName,
+            batchNumber: packageDetail.batchNumber,
+            initialVolumeL: packageDetail.initialVolumeL,
+            currentVolumeL: packageDetail.currentVolumeL,
+            status: packageDetail.batchStatus,
+            startDate: packageDetail.batchStartDate,
+            endDate: packageDetail.batchEndDate,
+            originPressRunId: packageDetail.originPressRunId,
+          }
+
+          const vesselData = packageDetail.vesselId ? {
+            id: packageDetail.vesselId,
+            name: packageDetail.vesselName,
+            capacityL: packageDetail.vesselCapacityL,
+            material: packageDetail.vesselMaterial,
+            jacketed: packageDetail.vesselJacketed,
+            status: packageDetail.vesselStatus,
+            location: packageDetail.vesselLocation,
+            notes: packageDetail.vesselNotes,
+          } : null
+
           return {
-            package: packageData[0],
+            package: packageData,
+            batch: batchData,
+            vessel: vesselData,
+            batchMeasurements: batchMeasurementsData,
+            batchComposition: batchCompositionData,
             inventory: inventoryData[0] || null,
             transactions,
+            calculatedMetrics: {
+              yieldPercentage: Math.round(yieldPercentage * 100) / 100, // Round to 2 decimal places
+              lossPercentage: Math.round(lossPercentage * 100) / 100,
+              volumePackagedL,
+              initialBatchVolumeL,
+            },
           }
         } catch (error) {
           if (error instanceof TRPCError) throw error
-          console.error('Error getting package:', error)
+          console.error('Error getting package details:', error)
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
-            message: 'Failed to get package'
+            message: 'Failed to get package details'
           })
         }
       }),

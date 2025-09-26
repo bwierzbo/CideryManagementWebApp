@@ -241,6 +241,39 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
     return total > 0 ? total.toFixed(2) : "—"
   }
 
+  const calculateTotalWeight = () => {
+    const weights = lines.reduce((acc, line) => {
+      if (!line.quantity) return acc
+
+      // Convert all units to pounds for consistent display
+      let weightInPounds = 0
+      switch (line.unit) {
+        case 'lb':
+          weightInPounds = line.quantity
+          break
+        case 'kg':
+          weightInPounds = line.quantity * 2.20462 // 1 kg = 2.20462 lbs
+          break
+        case 'bushel':
+          weightInPounds = line.quantity * 42 // 1 bushel of apples ≈ 42 lbs
+          break
+      }
+
+      return {
+        totalPounds: acc.totalPounds + weightInPounds,
+        hasQuantity: true
+      }
+    }, { totalPounds: 0, hasQuantity: false })
+
+    if (!weights.hasQuantity) return "—"
+
+    // Format with commas for readability
+    return weights.totalPounds.toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    })
+  }
+
   const onFormSubmit = (data: PurchaseForm) => {
     // Check for validation errors before submitting
     const hasInvalidLines = lines.some(line => line.isValid === false)
@@ -720,9 +753,13 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
               </Button>
             </div>
 
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-end mt-4 gap-6">
               <div className="text-right">
-                <p className="text-sm text-gray-600">Grand Total</p>
+                <p className="text-sm text-gray-600">Total Weight</p>
+                <p className="text-2xl font-bold text-blue-600">{calculateTotalWeight()} lbs</p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-600">Total Cost</p>
                 <p className="text-2xl font-bold text-green-600">${calculateGrandTotal()}</p>
               </div>
             </div>
