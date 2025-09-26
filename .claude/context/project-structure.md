@@ -1,7 +1,7 @@
 ---
 created: 2025-09-13T04:03:23Z
-last_updated: 2025-09-24T02:11:30Z
-version: 1.5
+last_updated: 2025-09-26T01:28:07Z
+version: 1.6
 author: Claude Code PM System
 ---
 
@@ -16,9 +16,14 @@ cidery-management-app/
 │   ├── epics/                 # Epic and task management
 │   │   ├── applepress/        # Apple Press epic (completed)
 │   │   ├── prd-system-verification/  # System verification epic (completed)
-│   │   └── uipagesauth/       # UI Pages Auth epic (in progress)
+│   │   ├── uipagesauth/       # UI Pages Auth epic (in progress)
+│   │   ├── bottlingcider/     # Bottling Flow epic (created, GitHub #68-76)
+│   │   ├── batchfunctionality/# Batch functionality epic
+│   │   └── cellartankfunctionality/ # Cellar tank epic
 │   ├── prds/                  # Product Requirement Documents
-│   │   └── applepress.md      # Apple Press PRD
+│   │   ├── applepress.md      # Apple Press PRD
+│   │   ├── bottlingcider.md   # Bottling Flow PRD (minimal /cellar modal)
+│   │   └── [9 total PRDs]     # Various feature PRDs
 │   └── scripts/               # PM and automation scripts
 ├── .git/                      # Git repository data
 ├── apps/                      # Application packages
@@ -215,5 +220,6 @@ worker/
 
 ## Update History
 
+- 2025-09-26T01:28:07Z: Added bottlingcider epic and PRD, noted additional epics in directory
 - 2025-09-23T19:20:45Z: Added batch/, cellar/, and inventory/ component directories, updated UI components with checkbox
 - 2025-09-13T19:24:59Z: Added .claude/epics/ and .claude/prds/ directories for project management system
