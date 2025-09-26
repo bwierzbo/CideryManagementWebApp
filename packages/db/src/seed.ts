@@ -19,12 +19,16 @@ import {
   batchCosts,
   cogsItems
 } from './schema'
+import { seedPackageSizes } from './seed/packageSizes'
 import bcrypt from 'bcryptjs'
 
 async function main() {
   console.log('🌱 Seeding database...')
   
   try {
+    // Seed package sizes (reference data first)
+    await seedPackageSizes()
+
     // Seed users
     console.log('👥 Seeding users...')
     const hashedPassword = await bcrypt.hash('admin123', 10)

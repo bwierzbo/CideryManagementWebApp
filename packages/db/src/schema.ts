@@ -1144,3 +1144,6 @@ export const batchIngredients = batchCompositions
 
 // Re-export audit schema
 export * from './schema/audit'
+
+// Re-export packaging schema
+export * from './schema/packaging'
