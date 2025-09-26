@@ -438,13 +438,25 @@ export const packagingRouter = router({
             lossPercentage: packagingRuns.lossPercentage,
             status: packagingRuns.status,
             createdAt: packagingRuns.createdAt,
+            // QA fields
+            abvAtPackaging: packagingRuns.abvAtPackaging,
+            carbonationLevel: packagingRuns.carbonationLevel,
+            fillCheck: packagingRuns.fillCheck,
+            fillVarianceML: packagingRuns.fillVarianceML,
+            testMethod: packagingRuns.testMethod,
+            testDate: packagingRuns.testDate,
+            qaTechnicianId: packagingRuns.qaTechnicianId,
+            qaNotes: packagingRuns.qaNotes,
+            productionNotes: packagingRuns.productionNotes,
             // Relations
             batchName: batches.name,
-            vesselName: vessels.name
+            vesselName: vessels.name,
+            qaTechnicianName: sql<string>`qa_tech.name`.as('qaTechnicianName')
           })
           .from(packagingRuns)
           .leftJoin(batches, eq(packagingRuns.batchId, batches.id))
           .leftJoin(vessels, eq(packagingRuns.vesselId, vessels.id))
+          .leftJoin(sql`users AS qa_tech`, sql`qa_tech.id = ${packagingRuns.qaTechnicianId}`)
           .where(conditions.length > 0 ? and(...conditions) : undefined)
           .orderBy(desc(packagingRuns.packagedAt))
           .limit(input.limit || 50)
@@ -471,6 +483,8 @@ export const packagingRouter = router({
           volumeTakenL: parseFloat(run.volumeTakenL?.toString() || '0'),
           lossL: parseFloat(run.lossL?.toString() || '0'),
           lossPercentage: parseFloat(run.lossPercentage?.toString() || '0'),
+          abvAtPackaging: run.abvAtPackaging ? parseFloat(run.abvAtPackaging.toString()) : undefined,
+          fillVarianceML: run.fillVarianceML ? parseFloat(run.fillVarianceML.toString()) : undefined,
           batch: {
             id: run.batchId,
             name: run.batchName
