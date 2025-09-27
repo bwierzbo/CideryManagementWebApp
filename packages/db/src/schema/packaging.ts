@@ -157,6 +157,10 @@ export const inventoryItems = pgTable('inventory_items', {
   packageSizeML: integer('package_size_ml'),
   expirationDate: date('expiration_date'),
 
+  // Purchase date reference - derived from batch composition data
+  // This represents the weighted average purchase date of raw materials in the batch
+  purchaseDate: date('purchase_date'),
+
   // Standard audit fields
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -166,7 +170,8 @@ export const inventoryItems = pgTable('inventory_items', {
   lotCodeIdx: index('idx_inventory_lot_code').on(table.lotCode),
   batchIdx: index('inventory_items_batch_idx').on(table.batchId),
   packagingRunIdx: index('inventory_items_packaging_run_idx').on(table.packagingRunId),
-  expirationDateIdx: index('inventory_items_expiration_date_idx').on(table.expirationDate)
+  expirationDateIdx: index('inventory_items_expiration_date_idx').on(table.expirationDate),
+  purchaseDateIdx: index('inventory_items_purchase_date_idx').on(table.purchaseDate)
 }))
 
 // Inventory items relations

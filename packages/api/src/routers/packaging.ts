@@ -21,7 +21,7 @@ import {
   measureQuery,
   type CursorPaginationParams,
   type PackagingRunFilters
-} from 'db/queries/packaging-optimized'
+} from 'db'
 
 // Input validation schemas
 const createFromCellarSchema = z.object({
@@ -42,7 +42,7 @@ const listPackagingRunsSchema = z.object({
   packageType: z.string().optional(),
   packageSizeML: z.number().optional(),
   status: z.enum(['completed', 'voided']).optional(),
-  limit: z.number().default(50).max(100), // Cap at 100 for performance
+  limit: z.number().max(100).default(50), // Cap at 100 for performance
   offset: z.number().default(0),
   // Cursor-based pagination (preferred for performance)
   cursor: z.string().optional(),
@@ -407,7 +407,7 @@ export const packagingRouter = router({
         // Prepare pagination parameters
         const pagination: CursorPaginationParams = {
           cursor: input.cursor,
-          limit: input.limit,
+          limit: input.limit || 50,
           direction: input.direction
         }
 

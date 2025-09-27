@@ -127,6 +127,8 @@ export const inventoryRouter = router({
               'juiceType', ${juicePurchaseItems.juiceType},
               'varietyName', ${juicePurchaseItems.varietyName},
               'brix', ${juicePurchaseItems.brix},
+              'specificGravity', ${juicePurchaseItems.specificGravity},
+              'ph', ${juicePurchaseItems.ph},
               'containerType', ${juicePurchaseItems.containerType},
               'unit', 'L'
             )`,
@@ -565,19 +567,20 @@ export const inventoryRouter = router({
     .input(z.object({
       id: z.string().uuid(),
       volumeL: z.number().min(0).optional(),
-      brix: z.number().min(0).max(100).optional().nullable(),
-      containerType: z.string().optional().nullable(),
+      specificGravity: z.number().min(0.9).max(1.2).optional().nullable(),
+      ph: z.number().min(0).max(14).optional().nullable(),
       notes: z.string().optional().nullable(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const { id, volumeL, brix, ...updateData } = input
+      const { id, volumeL, specificGravity, ph, ...updateData } = input
 
       await db
         .update(juicePurchaseItems)
         .set({
           ...updateData,
           volumeL: volumeL?.toString(),
-          brix: brix?.toString(),
+          specificGravity: specificGravity?.toString(),
+          ph: ph?.toString(),
           updatedAt: new Date(),
         })
         .where(eq(juicePurchaseItems.id, id))

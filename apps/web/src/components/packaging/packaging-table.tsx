@@ -169,7 +169,7 @@ export function PackagingTable({
   // Sort items using the hook
   const sortedItems = useMemo(() => {
     const items = data?.runs || []
-    return sortData(items, (item: PackagingRun, field) => {
+    return sortData(items, (item: any, field) => {
       // Custom sort value extraction for different field types
       switch (field) {
         case 'packagedAt':

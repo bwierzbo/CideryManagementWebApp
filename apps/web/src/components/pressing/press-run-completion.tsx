@@ -223,6 +223,10 @@ export function PressRunCompletion({
               notes: load.notes || undefined,
               purchaseItemId: load.purchaseItemId || undefined,
               vendorName: load.vendorName || undefined,
+              vendorId: load.vendorId || undefined,
+              purchaseItemOriginalQuantityKg: parseFloat(load.purchaseItemOriginalQuantityKg || '0') || undefined,
+              purchaseItemOriginalQuantity: parseFloat(load.purchaseItemOriginalQuantity || '0') || undefined,
+              purchaseItemOriginalUnit: load.purchaseItemOriginalUnit || undefined,
             })) || [],
           }}
           showInventoryCheckboxes={true}

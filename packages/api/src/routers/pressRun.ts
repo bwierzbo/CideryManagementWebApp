@@ -823,9 +823,12 @@ export const pressRunRouter = router({
           // Validate total assigned volume doesn't exceed available juice
           const totalAssignedVolume = input.assignments.reduce((sum, a) => sum + a.volumeL, 0)
 
-          // Re-fetch press run to get updated juice volume if it was just completed
+          // Re-fetch press run to get updated juice volume and end time if it was just completed
           const updatedPressRun = await tx
-            .select({ totalJuiceVolumeL: applePressRuns.totalJuiceVolumeL })
+            .select({
+              totalJuiceVolumeL: applePressRuns.totalJuiceVolumeL,
+              endTime: applePressRuns.endTime
+            })
             .from(applePressRuns)
             .where(eq(applePressRuns.id, input.pressRunId))
             .limit(1)
@@ -854,12 +857,39 @@ export const pressRunRouter = router({
               })
             }
 
-            const vesselCapacity = parseFloat(vessel[0].capacityL)
-            if (assignment.volumeL > vesselCapacity + 0.001) {
-              throw new TRPCError({
-                code: 'BAD_REQUEST',
-                message: `Assignment volume (${assignment.volumeL}L) exceeds vessel capacity (${vesselCapacity}L) for vessel ${vessel[0].name}`
+            // Check for existing active batch in vessel
+            const existingBatch = await tx
+              .select({
+                id: batches.id,
+                name: batches.name,
+                currentVolumeL: batches.currentVolumeL
               })
+              .from(batches)
+              .where(and(
+                eq(batches.vesselId, assignment.toVesselId),
+                eq(batches.status, 'active'),
+                isNull(batches.deletedAt)
+              ))
+              .limit(1)
+
+            const vesselCapacity = parseFloat(vessel[0].capacityL)
+            const currentVolume = existingBatch.length > 0
+              ? parseFloat(existingBatch[0].currentVolumeL || '0')
+              : 0
+            const remainingCapacity = vesselCapacity - currentVolume
+
+            if (assignment.volumeL > remainingCapacity + 0.001) {
+              if (existingBatch.length > 0) {
+                throw new TRPCError({
+                  code: 'BAD_REQUEST',
+                  message: `Assignment volume (${assignment.volumeL}L) exceeds remaining capacity (${remainingCapacity.toFixed(1)}L) in vessel ${vessel[0].name}. Current batch: ${existingBatch[0].name} (${currentVolume}L/${vesselCapacity}L)`
+                })
+              } else {
+                throw new TRPCError({
+                  code: 'BAD_REQUEST',
+                  message: `Assignment volume (${assignment.volumeL}L) exceeds vessel capacity (${vesselCapacity}L) for vessel ${vessel[0].name}`
+                })
+              }
             }
           }
 
@@ -934,7 +964,7 @@ export const pressRunRouter = router({
 
           const createdBatchIds: string[] = []
 
-          // Create batches for each assignment
+          // Create or update batches for each assignment
           for (const assignment of input.assignments) {
             // Get vessel info for batch naming
             const vessel = await tx
@@ -945,38 +975,82 @@ export const pressRunRouter = router({
 
             const vesselInfo = vessel[0]
 
-            // Generate batch composition for naming
-            const batchCompositionData: BatchComposition[] = loads.map(load => {
-              const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
-              return {
-                varietyName: load.varietyName,
-                fractionOfBatch: fraction
-              }
-            })
-
-            // Generate batch name
-            const batchName = generateBatchNameFromComposition({
-              date: new Date(),
-              vesselCode: vesselInfo.name || vesselInfo.id.substring(0, 6).toUpperCase(),
-              batchCompositions: batchCompositionData
-            })
-
-            // Create batch record
-            const newBatch = await tx
-              .insert(batches)
-              .values({
-                vesselId: assignment.toVesselId,
-                name: batchName,
-                batchNumber: batchName, // Add batch_number for database compatibility
-                initialVolumeL: assignment.volumeL.toString(),
-                currentVolumeL: assignment.volumeL.toString(),
-                status: 'active',
-                startDate: new Date(),
-                originPressRunId: input.pressRunId
+            // Check for existing active batch in vessel
+            const existingBatch = await tx
+              .select({
+                id: batches.id,
+                name: batches.name,
+                currentVolumeL: batches.currentVolumeL,
+                initialVolumeL: batches.initialVolumeL
               })
-              .returning({ id: batches.id })
+              .from(batches)
+              .where(and(
+                eq(batches.vesselId, assignment.toVesselId),
+                eq(batches.status, 'active'),
+                isNull(batches.deletedAt)
+              ))
+              .limit(1)
 
-            const batchId = newBatch[0].id
+            let batchId: string
+            let batchName: string
+
+            if (existingBatch.length > 0) {
+              // Add to existing batch
+              batchId = existingBatch[0].id
+              batchName = existingBatch[0].name
+              const currentVolume = parseFloat(existingBatch[0].currentVolumeL || '0')
+              const newVolume = currentVolume + assignment.volumeL
+
+              // Update existing batch volume
+              await tx
+                .update(batches)
+                .set({
+                  currentVolumeL: newVolume.toString(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, batchId))
+
+              console.log(`Added ${assignment.volumeL}L to existing batch ${existingBatch[0].name}, new volume: ${newVolume}L`)
+
+            } else {
+              // Create new batch
+              // Generate batch composition for naming
+              const batchCompositionData: BatchComposition[] = loads.map(load => {
+                const fraction = parseFloat(load.appleWeightKg || '0') / totalWeight
+                return {
+                  varietyName: load.varietyName,
+                  fractionOfBatch: fraction
+                }
+              })
+
+              // Use press run completion date for batch start date and naming
+              const pressRunCompletionDate = updatedPressRun[0].endTime || new Date()
+
+              // Generate batch name using completion date
+              batchName = generateBatchNameFromComposition({
+                date: pressRunCompletionDate,
+                vesselCode: vesselInfo.name || vesselInfo.id.substring(0, 6).toUpperCase(),
+                batchCompositions: batchCompositionData
+              })
+
+              // Create batch record
+              const newBatch = await tx
+                .insert(batches)
+                .values({
+                  vesselId: assignment.toVesselId,
+                  name: batchName,
+                  batchNumber: batchName, // Add batch_number for database compatibility
+                  initialVolumeL: assignment.volumeL.toString(),
+                  currentVolumeL: assignment.volumeL.toString(),
+                  status: 'active',
+                  startDate: pressRunCompletionDate,
+                  originPressRunId: input.pressRunId
+                })
+                .returning({ id: batches.id })
+
+              batchId = newBatch[0].id
+            }
+
             createdBatchIds.push(batchId)
 
             // Update vessel status to fermenting when batch is created
@@ -998,7 +1072,7 @@ export const pressRunRouter = router({
               'Vessel status changed to fermenting when batch was created from press run completion'
             )
 
-            // Create batch compositions - consolidate loads by purchaseItemId to avoid duplicates
+            // Handle batch compositions - either create new or merge with existing
             let totalFraction = 0
             let totalJuiceVolume = 0
             let totalMaterialCost = 0
@@ -1024,46 +1098,149 @@ export const pressRunRouter = router({
               return acc
             }, {} as Record<string, any>)
 
-            for (const consolidatedLoad of Object.values(consolidatedLoads)) {
-              const fraction = consolidatedLoad.totalAppleWeightKg / totalWeight
-              const juiceVolumeL = assignment.volumeL * fraction
-              const materialCost = consolidatedLoad.totalCost * fraction
+            if (existingBatch.length > 0) {
+              // For existing batch, we need to merge compositions
+              const currentVolume = parseFloat(existingBatch[0].currentVolumeL || '0')
+              const newTotalVolume = currentVolume + assignment.volumeL
 
-              // Calculate average brix if available
-              const avgBrix = consolidatedLoad.brixMeasurements.length > 0
-                ? consolidatedLoad.brixMeasurements.reduce((sum: number, brix: string | null) =>
-                    sum + (brix ? parseFloat(brix) : 0), 0) / consolidatedLoad.brixMeasurements.length
-                : null
+              // Get existing compositions
+              const existingCompositions = await tx
+                .select()
+                .from(batchCompositions)
+                .where(and(
+                  eq(batchCompositions.batchId, batchId),
+                  isNull(batchCompositions.deletedAt)
+                ))
 
-              totalFraction += fraction
-              totalJuiceVolume += juiceVolumeL
-              totalMaterialCost += materialCost
+              // Update existing compositions with new fractions
+              for (const existingComp of existingCompositions) {
+                const oldVolumeContribution = parseFloat(existingComp.juiceVolumeL || '0')
+                const newFraction = oldVolumeContribution / newTotalVolume
 
-              await tx.insert(batchCompositions).values({
-                batchId,
-                purchaseItemId: consolidatedLoad.purchaseItemId,
-                vendorId: consolidatedLoad.vendorId,
-                varietyId: consolidatedLoad.varietyId,
-                inputWeightKg: consolidatedLoad.totalAppleWeightKg.toString(),
-                juiceVolumeL: juiceVolumeL.toString(),
-                fractionOfBatch: fraction.toString(),
-                materialCost: materialCost.toString(),
-                avgBrix: avgBrix ? avgBrix.toString() : null,
-              })
+                await tx
+                  .update(batchCompositions)
+                  .set({
+                    fractionOfBatch: newFraction.toString(),
+                    updatedAt: new Date()
+                  })
+                  .where(eq(batchCompositions.id, existingComp.id))
+              }
 
-              // Publish batch composition audit event
-              await publishCreateEvent(
-                'batch_compositions',
-                batchId,
-                {
+              // Add new compositions from this press run
+              for (const consolidatedLoad of Object.values(consolidatedLoads)) {
+                const fraction = consolidatedLoad.totalAppleWeightKg / totalWeight
+                const juiceVolumeL = assignment.volumeL * fraction
+                const materialCost = consolidatedLoad.totalCost * fraction
+                const batchFraction = juiceVolumeL / newTotalVolume
+
+                // Calculate average brix if available
+                const avgBrix = consolidatedLoad.brixMeasurements.length > 0
+                  ? consolidatedLoad.brixMeasurements.reduce((sum: number, brix: string | null) =>
+                      sum + (brix ? parseFloat(brix) : 0), 0) / consolidatedLoad.brixMeasurements.length
+                  : null
+
+                totalFraction += batchFraction
+                totalJuiceVolume += juiceVolumeL
+                totalMaterialCost += materialCost
+
+                // Check if this purchase item already exists in the batch
+                const existingPurchaseComp = existingCompositions.find(comp =>
+                  comp.purchaseItemId === consolidatedLoad.purchaseItemId
+                )
+
+                if (existingPurchaseComp) {
+                  // Merge with existing composition
+                  const existingWeight = parseFloat(existingPurchaseComp.inputWeightKg || '0')
+                  const newWeight = existingWeight + consolidatedLoad.totalAppleWeightKg
+                  const existingVolume = parseFloat(existingPurchaseComp.juiceVolumeL || '0')
+                  const newVolume = existingVolume + juiceVolumeL
+                  const existingCost = parseFloat(existingPurchaseComp.materialCost || '0')
+                  const newCost = existingCost + materialCost
+                  const newFraction = newVolume / newTotalVolume
+
+                  await tx
+                    .update(batchCompositions)
+                    .set({
+                      inputWeightKg: newWeight.toString(),
+                      juiceVolumeL: newVolume.toString(),
+                      materialCost: newCost.toString(),
+                      fractionOfBatch: newFraction.toString(),
+                      avgBrix: avgBrix?.toString() || existingPurchaseComp.avgBrix,
+                      updatedAt: new Date()
+                    })
+                    .where(eq(batchCompositions.id, existingPurchaseComp.id))
+                } else {
+                  // Add new composition entry
+                  await tx.insert(batchCompositions).values({
+                    batchId,
+                    purchaseItemId: consolidatedLoad.purchaseItemId,
+                    vendorId: consolidatedLoad.vendorId,
+                    varietyId: consolidatedLoad.varietyId,
+                    inputWeightKg: consolidatedLoad.totalAppleWeightKg.toString(),
+                    juiceVolumeL: juiceVolumeL.toString(),
+                    fractionOfBatch: batchFraction.toString(),
+                    materialCost: materialCost.toString(),
+                    avgBrix: avgBrix ? avgBrix.toString() : null,
+                  })
+
+                  // Publish batch composition audit event
+                  await publishCreateEvent(
+                    'batch_compositions',
+                    batchId,
+                    {
+                      batchId,
+                      purchaseItemId: consolidatedLoad.purchaseItemId,
+                      juiceVolumeL,
+                      fraction: batchFraction
+                    },
+                    ctx.session?.user?.id,
+                    'Batch composition added from press run completion to existing batch'
+                  )
+                }
+              }
+            } else {
+              // For new batch, create compositions normally
+              for (const consolidatedLoad of Object.values(consolidatedLoads)) {
+                const fraction = consolidatedLoad.totalAppleWeightKg / totalWeight
+                const juiceVolumeL = assignment.volumeL * fraction
+                const materialCost = consolidatedLoad.totalCost * fraction
+
+                // Calculate average brix if available
+                const avgBrix = consolidatedLoad.brixMeasurements.length > 0
+                  ? consolidatedLoad.brixMeasurements.reduce((sum: number, brix: string | null) =>
+                      sum + (brix ? parseFloat(brix) : 0), 0) / consolidatedLoad.brixMeasurements.length
+                  : null
+
+                totalFraction += fraction
+                totalJuiceVolume += juiceVolumeL
+                totalMaterialCost += materialCost
+
+                await tx.insert(batchCompositions).values({
                   batchId,
                   purchaseItemId: consolidatedLoad.purchaseItemId,
-                  juiceVolumeL,
-                  fraction
-                },
-                ctx.session?.user?.id,
-                'Batch composition created from press run completion'
-              )
+                  vendorId: consolidatedLoad.vendorId,
+                  varietyId: consolidatedLoad.varietyId,
+                  inputWeightKg: consolidatedLoad.totalAppleWeightKg.toString(),
+                  juiceVolumeL: juiceVolumeL.toString(),
+                  fractionOfBatch: fraction.toString(),
+                  materialCost: materialCost.toString(),
+                  avgBrix: avgBrix ? avgBrix.toString() : null,
+                })
+
+                // Publish batch composition audit event
+                await publishCreateEvent(
+                  'batch_compositions',
+                  batchId,
+                  {
+                    batchId,
+                    purchaseItemId: consolidatedLoad.purchaseItemId,
+                    juiceVolumeL,
+                    fraction
+                  },
+                  ctx.session?.user?.id,
+                  'Batch composition created from press run completion'
+                )
+              }
             }
 
             // Publish batch creation audit event
@@ -1321,6 +1498,10 @@ export const pressRunRouter = router({
             notes: applePressRunLoads.notes,
             pressedAt: applePressRunLoads.pressedAt,
             createdAt: applePressRunLoads.createdAt,
+            // Purchase item original quantities
+            purchaseItemOriginalQuantityKg: basefruitPurchaseItems.quantityKg,
+            purchaseItemOriginalQuantity: basefruitPurchaseItems.quantity,
+            purchaseItemOriginalUnit: basefruitPurchaseItems.unit,
           })
           .from(applePressRunLoads)
           .leftJoin(baseFruitVarieties, eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id))
@@ -1770,6 +1951,7 @@ export const pressRunRouter = router({
             isNull(basefruitPurchases.deletedAt),
             isNull(vendors.deletedAt),
             isNull(baseFruitVarieties.deletedAt),
+            eq(basefruitPurchaseItems.isDepleted, false),
             input.vendorId ? eq(basefruitPurchases.vendorId, input.vendorId) : sql`1=1`
           ))
           .orderBy(desc(basefruitPurchases.purchaseDate), asc(baseFruitVarieties.name))

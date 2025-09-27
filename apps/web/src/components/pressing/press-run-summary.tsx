@@ -49,6 +49,9 @@ interface PressRunSummaryProps {
       vendorId?: string
       vendorName?: string
       purchaseItemId?: string
+      purchaseItemOriginalQuantityKg?: number
+      purchaseItemOriginalQuantity?: number
+      purchaseItemOriginalUnit?: string
     }>
   }
   showActions?: boolean
@@ -78,6 +81,14 @@ export function PressRunSummary({
   )
   const vendorCount = uniqueVendorIds.size || 1 // Default to 1 if no vendor IDs found
 
+  // Calculate unique variety count from loads
+  const uniqueVarieties = new Set(
+    loads
+      .map(load => load.appleVarietyName)
+      .filter(variety => variety && variety.trim() !== '')
+  )
+  const varietyCount = uniqueVarieties.size
+
   // Group loads by vendor + variety for summary
   const vendorVarietySummary = loads && loads.length > 0 ? loads.reduce((acc, load) => {
     const vendor = load.vendorName || pressRun.vendorName || 'Unknown Vendor'
@@ -100,6 +111,9 @@ export function PressRunSummary({
           weight: number
           originalWeight: number
           originalWeightUnit: string
+          originalPurchaseQuantityKg?: number
+          originalPurchaseQuantity?: number
+          originalPurchaseUnit?: string
         }>(),
       }
     }
@@ -114,6 +128,12 @@ export function PressRunSummary({
         // Consolidate weights for the same purchase item
         existingItem.weight += load.appleWeightKg
         existingItem.originalWeight += load.originalWeight
+        // Original purchase quantities should be the same for all loads from the same purchase item
+        if (!existingItem.originalPurchaseQuantityKg && load.purchaseItemOriginalQuantityKg) {
+          existingItem.originalPurchaseQuantityKg = load.purchaseItemOriginalQuantityKg
+          existingItem.originalPurchaseQuantity = load.purchaseItemOriginalQuantity
+          existingItem.originalPurchaseUnit = load.purchaseItemOriginalUnit
+        }
       } else {
         // Add new purchase item
         acc[key].purchaseItems.set(load.purchaseItemId, {
@@ -121,6 +141,9 @@ export function PressRunSummary({
           weight: load.appleWeightKg,
           originalWeight: load.originalWeight,
           originalWeightUnit: load.originalWeightUnit,
+          originalPurchaseQuantityKg: load.purchaseItemOriginalQuantityKg,
+          originalPurchaseQuantity: load.purchaseItemOriginalQuantity,
+          originalPurchaseUnit: load.purchaseItemOriginalUnit,
         })
       }
     }
@@ -192,7 +215,7 @@ export function PressRunSummary({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="text-center p-3 bg-amber-50 rounded-lg">
               <div className="text-2xl font-bold text-amber-800">{loads.length}</div>
               <div className="text-sm text-amber-600">Total Loads</div>
@@ -201,13 +224,17 @@ export function PressRunSummary({
               <div className="text-2xl font-bold text-blue-800">{totalWeightLbs.toFixed(0)}</div>
               <div className="text-sm text-blue-600">lbs Apples</div>
             </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-800">{Object.keys(vendorVarietySummary).length}</div>
-              <div className="text-sm text-purple-600">Vendor/Varieties</div>
-            </div>
             <div className="text-center p-3 bg-green-50 rounded-lg">
               <div className="text-2xl font-bold text-green-800">{vendorCount}</div>
               <div className="text-sm text-green-600">Vendor{vendorCount !== 1 ? 's' : ''}</div>
+            </div>
+            <div className="text-center p-3 bg-purple-50 rounded-lg">
+              <div className="text-2xl font-bold text-purple-800">{varietyCount}</div>
+              <div className="text-sm text-purple-600">Varietie{varietyCount !== 1 ? 's' : 'y'}</div>
+            </div>
+            <div className="text-center p-3 bg-orange-50 rounded-lg">
+              <div className="text-2xl font-bold text-orange-800">{Object.keys(vendorVarietySummary).length}</div>
+              <div className="text-sm text-orange-600">Combinations</div>
             </div>
           </div>
         </CardContent>
@@ -279,26 +306,46 @@ export function PressRunSummary({
                   <div className="mt-3 pt-3 border-t">
                     <p className="text-xs text-gray-600 mb-2">Mark transaction as depleted and archive:</p>
                     <div className="space-y-2">
-                      {Array.from(summary.purchaseItems.values()).map((item: any, index: number) => (
-                        <div key={`${item.purchaseItemId}-${index}`} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <Checkbox
-                              checked={depletedPurchaseItems.has(item.purchaseItemId)}
-                              onCheckedChange={(checked) => {
-                                if (onPurchaseDepletionChange) {
-                                  onPurchaseDepletionChange(item.purchaseItemId, checked === true)
-                                }
-                              }}
-                            />
-                            <span className="text-gray-700">
-                              {summary.vendor} - {summary.variety}
-                            </span>
+                      {Array.from(summary.purchaseItems.values()).map((item: any, index: number) => {
+                        // Calculate estimated remaining weight
+                        const originalKg = item.originalPurchaseQuantityKg || 0
+                        const usedKg = item.weight || 0
+                        const remainingKg = Math.max(0, originalKg - usedKg)
+                        const remainingLbs = remainingKg * 2.20462
+
+                        return (
+                          <div key={`${item.purchaseItemId}-${index}`} className="space-y-2 p-2 bg-gray-50 rounded">
+                            <div className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={depletedPurchaseItems.has(item.purchaseItemId)}
+                                  onCheckedChange={(checked) => {
+                                    if (onPurchaseDepletionChange) {
+                                      onPurchaseDepletionChange(item.purchaseItemId, checked === true)
+                                    }
+                                  }}
+                                />
+                                <span className="text-gray-700">
+                                  {summary.vendor} - {summary.variety}
+                                </span>
+                              </div>
+                              <span className="text-gray-500">
+                                Used: {item.originalWeight.toFixed(1)} {item.originalWeightUnit}
+                              </span>
+                            </div>
+                            {item.originalPurchaseQuantityKg && (
+                              <div className="text-xs text-gray-600 grid grid-cols-2 gap-2">
+                                <div>
+                                  <span className="font-medium">Original:</span> {item.originalPurchaseQuantity?.toFixed(1)} {item.originalPurchaseUnit}
+                                </div>
+                                <div>
+                                  <span className="font-medium text-green-700">Remaining:</span> {remainingKg.toFixed(1)} kg ({remainingLbs.toFixed(0)} lbs)
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <span className="text-gray-500">
-                            {item.originalWeight.toFixed(1)} {item.originalWeightUnit}
-                          </span>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}

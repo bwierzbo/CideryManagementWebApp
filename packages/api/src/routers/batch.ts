@@ -47,6 +47,7 @@ const updateBatchSchema = z.object({
   batchId: z.string().uuid('Invalid batch ID'),
   status: z.enum(['planned', 'active', 'packaged']).optional(),
   customName: z.string().optional(),
+  startDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
   endDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
   notes: z.string().optional(),
 })
@@ -614,6 +615,7 @@ export const batchRouter = router({
 
         if (input.status) updateData.status = input.status
         if (input.customName !== undefined) updateData.customName = input.customName
+        if (input.startDate) updateData.startDate = input.startDate
         if (input.endDate) updateData.endDate = input.endDate
 
         // Update batch

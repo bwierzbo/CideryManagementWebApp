@@ -26,7 +26,8 @@ import {
   Search,
   MoreVertical,
   Trash2,
-  Thermometer
+  Thermometer,
+  Edit
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { trpc } from '@/utils/trpc'
@@ -48,6 +49,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { InventoryEditDialog } from '@/components/inventory/InventoryEditDialog'
+import { toast } from '@/hooks/use-toast'
 
 // Type for juice inventory item from API
 interface JuiceInventoryItem {
@@ -89,6 +92,7 @@ export function JuiceInventoryTable({
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [deleteItem, setDeleteItem] = useState<JuiceInventoryItem | null>(null)
+  const [editItem, setEditItem] = useState<JuiceInventoryItem | null>(null)
 
   // Sorting state using the reusable hook
   const {
@@ -118,6 +122,26 @@ export function JuiceInventoryTable({
   } = trpc.inventory.list.useQuery({
     limit: 100, // Max allowed by API
     offset: 0,
+  })
+
+  // Delete mutation
+  const deleteMutation = trpc.inventory.deleteItem.useMutation({
+    onSuccess: () => {
+      setDeleteItem(null)
+      refetch()
+      toast({
+        title: "Success",
+        description: "Juice item deleted successfully",
+      })
+    },
+    onError: (error) => {
+      console.error('Delete failed:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete juice item",
+        variant: "destructive",
+      })
+    }
   })
 
   // Transform and filter inventory data to show only juice
@@ -197,11 +221,14 @@ export function JuiceInventoryTable({
   // Handle delete confirmation
   const handleDeleteConfirm = useCallback(() => {
     if (deleteItem) {
-      // TODO: Implement delete functionality
-      console.log('Delete juice item:', deleteItem.id)
-      setDeleteItem(null)
+      // Extract the actual juice purchase item ID from the composite ID
+      const [materialType, itemId] = deleteItem.id.split('-')
+      deleteMutation.mutate({
+        id: deleteItem.id,
+        itemType: materialType as 'juice'
+      })
     }
-  }, [deleteItem])
+  }, [deleteItem, deleteMutation])
 
   // Get sort direction for display
   const getSortDirectionForDisplay = useCallback((field: SortField) => {
@@ -410,14 +437,18 @@ export function JuiceInventoryTable({
                         {formatVolume(item.currentBottleCount)}
                       </TableCell>
                       <TableCell>
-                        {convertBrixToSG(item.metadata?.brix) ? (
-                          <span className="font-mono text-sm">{convertBrixToSG(item.metadata?.brix)}</span>
+                        {item.metadata?.specificGravity ? (
+                          <span className="font-mono text-sm">{parseFloat(item.metadata.specificGravity).toFixed(3)}</span>
                         ) : (
                           <span className="text-muted-foreground text-sm">—</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        <span className="text-muted-foreground text-sm">—</span>
+                        {item.metadata?.ph ? (
+                          <span className="font-mono text-sm">{parseFloat(item.metadata.ph).toFixed(1)}</span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
@@ -437,6 +468,15 @@ export function JuiceInventoryTable({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditItem(item)
+                              }}
+                            >
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -495,13 +535,37 @@ export function JuiceInventoryTable({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
+              disabled={deleteMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
-              Delete
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Dialog */}
+      {editItem && (
+        <InventoryEditDialog
+          open={!!editItem}
+          onClose={() => setEditItem(null)}
+          item={{
+            id: editItem.id,
+            materialType: editItem.materialType,
+            metadata: editItem.metadata,
+            currentBottleCount: editItem.currentBottleCount,
+            reservedBottleCount: editItem.reservedBottleCount,
+            location: editItem.location,
+            notes: editItem.notes,
+            createdAt: editItem.createdAt,
+            updatedAt: editItem.updatedAt
+          }}
+          onSuccess={() => {
+            refetch()
+            setEditItem(null)
+          }}
+        />
+      )}
     </div>
   )
 }

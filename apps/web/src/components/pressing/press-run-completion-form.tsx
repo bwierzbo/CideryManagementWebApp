@@ -106,12 +106,12 @@ export function PressRunCompletionForm({
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [submissionData, setSubmissionData] = useState<any>(null)
 
-  // Fetch available vessels
-  const { data: vesselsData, isLoading: vesselsLoading } = trpc.vessel.list.useQuery()
+  // Fetch vessels with batch information
+  const { data: vesselsData, isLoading: vesselsLoading } = trpc.vessel.listWithBatches.useQuery()
 
-  // Get available vessels only
+  // Get all vessels with remaining capacity
   const availableVessels = vesselsData?.vessels?.filter(
-    vessel => vessel.status === 'available'
+    vessel => vessel.isAvailable
   ) || []
 
   const form = useForm<PressRunCompletionForm>({
@@ -387,11 +387,18 @@ export function PressRunCompletionForm({
                                 ) : (
                                   availableVessels.map((vessel) => (
                                     <SelectItem key={vessel.id} value={vessel.id}>
-                                      <div className="flex items-center justify-between w-full">
-                                        <span>{vessel.name}</span>
-                                        <span className="text-xs text-gray-500 ml-2">
-                                          {vessel.capacityL}L
-                                        </span>
+                                      <div className="flex flex-col items-start w-full">
+                                        <div className="flex items-center justify-between w-full">
+                                          <span className="font-medium">{vessel.name}</span>
+                                          <span className="text-xs text-gray-500 ml-2">
+                                            {vessel.remainingCapacityL}L / {vessel.capacityL}L
+                                          </span>
+                                        </div>
+                                        {vessel.currentBatch && (
+                                          <div className="text-xs text-blue-600 mt-1">
+                                            Current: {vessel.currentBatch.name} ({vessel.currentBatch.currentVolumeL}L)
+                                          </div>
+                                        )}
                                       </div>
                                     </SelectItem>
                                   ))
@@ -456,13 +463,16 @@ export function PressRunCompletionForm({
                         {assignmentsWithVessels[index]?.vessel && (
                           <div className="text-xs text-gray-600 flex-1">
                             {(() => {
-                              const capacityL = parseFloat(assignmentsWithVessels[index].vessel?.capacityL || '0')
-                              if (watchedValues.juiceVolumeUnit === 'gal' && capacityL > 0) {
-                                return `${litersToGallons(capacityL).toFixed(1)} gal capacity`
-                              } else if (watchedValues.juiceVolumeUnit === 'gal') {
-                                return '0.0 gal capacity'
+                              const vessel = assignmentsWithVessels[index].vessel
+                              const remainingL = parseFloat(vessel?.remainingCapacityL || '0')
+                              const totalL = parseFloat(vessel?.capacityL || '0')
+
+                              if (watchedValues.juiceVolumeUnit === 'gal') {
+                                const remainingGal = remainingL > 0 ? litersToGallons(remainingL) : 0
+                                const totalGal = totalL > 0 ? litersToGallons(totalL) : 0
+                                return `${remainingGal.toFixed(1)}/${totalGal.toFixed(1)} gal available`
                               } else {
-                                return `${assignmentsWithVessels[index].vessel?.capacityL}L capacity`
+                                return `${remainingL.toFixed(1)}/${totalL.toFixed(1)}L available`
                               }
                             })()}
                           </div>
@@ -485,20 +495,28 @@ export function PressRunCompletionForm({
                     {assignmentsWithVessels[index]?.vessel && assignment.volumeL > 0 && (
                       <div className="md:col-span-3 mt-2">
                         {(() => {
-                          const capacityL = parseFloat(assignmentsWithVessels[index].vessel!.capacityL)
+                          const vessel = assignmentsWithVessels[index].vessel!
+                          const remainingL = parseFloat(vessel.remainingCapacityL)
+                          const totalL = parseFloat(vessel.capacityL)
                           const volumeL = assignment.volumeL
                           const isGallons = watchedValues.juiceVolumeUnit === 'gal'
 
                           const displayVolume = isGallons && volumeL > 0 ? litersToGallons(volumeL) : isGallons ? 0 : volumeL
-                          const displayCapacity = isGallons && capacityL > 0 ? litersToGallons(capacityL) : isGallons ? 0 : capacityL
+                          const displayRemaining = isGallons && remainingL > 0 ? litersToGallons(remainingL) : isGallons ? 0 : remainingL
+                          const displayTotal = isGallons && totalL > 0 ? litersToGallons(totalL) : isGallons ? 0 : totalL
                           const unit = isGallons ? 'gal' : 'L'
 
-                          if (capacityL < volumeL) {
+                          if (remainingL < volumeL) {
                             return (
                               <div className="bg-red-50 p-2 rounded-md">
                                 <p className="text-sm text-red-800 flex items-center">
                                   <AlertTriangle className="w-4 h-4 mr-1" />
-                                  Volume ({displayVolume.toFixed(1)}{unit}) exceeds vessel capacity ({displayCapacity.toFixed(1)}{unit})
+                                  Volume ({displayVolume.toFixed(1)}{unit}) exceeds remaining capacity ({displayRemaining.toFixed(1)}{unit})
+                                  {vessel.currentBatch && (
+                                    <span className="ml-1">
+                                      - Current batch: {vessel.currentBatch.name}
+                                    </span>
+                                  )}
                                 </p>
                               </div>
                             )

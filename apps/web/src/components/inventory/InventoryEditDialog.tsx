@@ -57,8 +57,8 @@ const additiveEditSchema = z.object({
 const juiceEditSchema = z.object({
   volumeL: z.number().min(0, "Volume must be positive"),
   unit: z.enum(['L', 'gal']),
-  brix: z.number().min(0).max(100).optional(),
-  containerType: z.string().optional(),
+  specificGravity: z.number().min(0.9).max(1.2).optional(),
+  ph: z.number().min(0).max(14).optional(),
   notes: z.string().optional(),
 })
 
@@ -113,8 +113,8 @@ export function InventoryEditDialog({
     } : materialType === 'juice' ? {
       volumeL: item?.currentBottleCount || undefined,
       unit: metadata.unit || 'L',
-      brix: metadata.brix || undefined,
-      containerType: metadata.containerType || '',
+      specificGravity: metadata.specificGravity ? parseFloat(metadata.specificGravity) : undefined,
+      ph: metadata.ph ? parseFloat(metadata.ph) : undefined,
       notes: item?.notes || '',
     } : materialType === 'packaging' ? {
       quantity: item?.currentBottleCount || undefined,
@@ -225,8 +225,8 @@ export function InventoryEditDialog({
           await updateJuice.mutateAsync({
             id: itemId,
             volumeL: values.volumeL,
-            brix: values.brix,
-            containerType: values.containerType,
+            specificGravity: values.specificGravity,
+            ph: values.ph,
             notes: values.notes,
           })
           break
@@ -497,15 +497,15 @@ export function InventoryEditDialog({
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
-                name="brix"
+                name="specificGravity"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Brix (°Bx)</FormLabel>
+                    <FormLabel>SG (Specific Gravity)</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
-                        step="0.1"
-                        placeholder="0.0"
+                        step="0.001"
+                        placeholder="1.000"
                         {...field}
                         onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
                       />
@@ -516,12 +516,18 @@ export function InventoryEditDialog({
               />
               <FormField
                 control={form.control}
-                name="containerType"
+                name="ph"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Container Type</FormLabel>
+                    <FormLabel>pH</FormLabel>
                     <FormControl>
-                      <Input {...field} placeholder="e.g., IBC Tote, Drum" />
+                      <Input
+                        type="number"
+                        step="0.1"
+                        placeholder="3.5"
+                        {...field}
+                        onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

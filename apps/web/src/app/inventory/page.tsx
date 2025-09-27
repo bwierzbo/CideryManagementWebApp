@@ -139,15 +139,22 @@ export default function InventoryPage() {
         purchaseDate: new Date(transaction.purchaseDate),
         invoiceNumber: undefined,
         notes: transaction.notes || `Juice purchased from ${transaction.vendorName || 'vendor'}`,
-        items: transaction.items.map((item: any) => ({
-          juiceType: 'blend' as const, // Default type
-          varietyName: item.juiceName || 'Unknown Juice',
-          volumeL: item.unit === 'liters' ? item.volume : item.volume * 3.78541, // Convert gallons to liters
-          brix: item.specificGravity ? ((item.specificGravity - 1) * 1000) / 4 : undefined, // Rough SG to Brix conversion
-          containerType: 'tote' as const,
-          pricePerLiter: item.unitCost ? (item.unit === 'liters' ? item.unitCost : item.unitCost / 3.78541) : undefined,
-          notes: item.ph ? `pH: ${item.ph}` : undefined
-        }))
+        items: transaction.items.map((item: any) => {
+          // More robust unit checking - handle both 'liters'/'liter' and 'L'
+          const isLiters = item.unit === 'liters' || item.unit === 'liter' || item.unit === 'L' || item.unit?.toLowerCase() === 'liters'
+          const volumeL = isLiters ? item.volume : item.volume * 3.78541
+
+          return {
+            juiceType: 'blend' as const, // Default type
+            varietyName: item.juiceName || 'Unknown Juice',
+            volumeL: volumeL,
+            brix: item.specificGravity ? ((item.specificGravity - 1) * 1000) / 4 : undefined, // Rough SG to Brix conversion
+            ph: item.ph, // Use the new pH field directly
+            specificGravity: item.specificGravity, // Use the new SG field directly
+            pricePerLiter: item.unitCost ? (isLiters ? item.unitCost : item.unitCost / 3.78541) : undefined,
+            notes: undefined // pH and SG now have their own fields
+          }
+        })
       }
 
       await createJuicePurchaseMutation.mutateAsync(purchaseData)
@@ -235,23 +242,31 @@ export default function InventoryPage() {
       // Create base fruit purchase
       const purchaseData = {
         vendorId: transaction.vendorId,
-        purchaseDate: new Date(),
+        purchaseDate: new Date(transaction.purchaseDate),
         invoiceNumber: undefined,
         notes: transaction.notes,
-        items: [{
-          fruitVarietyId: transaction.appleVarietyId,
-          quantity: transaction.quantityKg,
-          unit: 'kg' as const,
-          pricePerUnit: undefined, // Would need to add this field to the form
-          notes: transaction.notes || undefined
-        }]
+        items: transaction.items.map((item: any) => ({
+          fruitVarietyId: item.fruitVarietyId,
+          quantity: item.quantity,
+          unit: item.unit,
+          pricePerUnit: item.pricePerUnit,
+          harvestDate: item.harvestDate,
+          notes: item.notes
+        }))
       }
 
       await createBaseFruitPurchaseMutation.mutateAsync(purchaseData)
       dismissLoading()
+
+      const itemCount = transaction.items.length
+      const totalQuantity = transaction.items.reduce((sum: number, item: any) => sum + item.quantity, 0)
+      const itemText = itemCount === 1
+        ? `${transaction.items[0].quantity} ${transaction.items[0].unit} of base fruit`
+        : `${itemCount} different base fruit varieties (${totalQuantity} total units)`
+
       showSuccess(
-        "Apple Purchase Recorded",
-        `Successfully added ${transaction.quantityKg} kg of base fruit to inventory.`
+        "Base Fruit Purchase Recorded",
+        `Successfully added ${itemText} to inventory.`
       )
       setShowAppleForm(false)
       setActiveTab("apple")
@@ -365,6 +380,7 @@ export default function InventoryPage() {
           <TabsContent value="apple" className="space-y-6">
             {showAppleForm ? (
               <AppleTransactionForm
+                onSubmit={handleAppleSubmit}
                 onCancel={handleAppleCancel}
               />
             ) : (

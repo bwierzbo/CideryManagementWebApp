@@ -4,6 +4,7 @@ import React, { useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { trpc } from "@/utils/trpc"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +23,9 @@ import {
   TrendingUp,
   Package,
   ArrowRightLeft,
+  Edit3,
+  Check,
+  X,
 } from "lucide-react"
 import { format } from "date-fns"
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm"
@@ -37,8 +41,28 @@ export default function BatchDetailsPage() {
 
   const [showMeasurementForm, setShowMeasurementForm] = useState(false)
   const [showAdditiveForm, setShowAdditiveForm] = useState(false)
+  const [isEditingStartDate, setIsEditingStartDate] = useState(false)
+  const [editStartDate, setEditStartDate] = useState("")
 
   const utils = trpc.useUtils()
+
+  // Batch update mutation
+  const updateBatchMutation = trpc.batch.update.useMutation({
+    onSuccess: () => {
+      utils.batch.get.invalidate({ batchId })
+      toast({
+        title: "Success",
+        description: "Batch updated successfully",
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    },
+  })
 
   // Fetch batch data
   const { data: batch, isLoading: batchLoading, error: batchError } = trpc.batch.get.useQuery({
@@ -79,6 +103,32 @@ export default function BatchDetailsPage() {
     const start = new Date(startDate)
     const end = endDate ? new Date(endDate) : new Date()
     return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+  }
+
+  const handleStartDateEdit = () => {
+    if (batch) {
+      setEditStartDate(format(new Date(batch.startDate), "yyyy-MM-dd"))
+      setIsEditingStartDate(true)
+    }
+  }
+
+  const handleStartDateSave = async () => {
+    if (!editStartDate) return
+
+    try {
+      await updateBatchMutation.mutateAsync({
+        batchId,
+        startDate: new Date(editStartDate),
+      })
+      setIsEditingStartDate(false)
+    } catch (error) {
+      // Error is handled by mutation onError
+    }
+  }
+
+  const handleStartDateCancel = () => {
+    setIsEditingStartDate(false)
+    setEditStartDate("")
   }
 
   const isLoading = batchLoading || historyLoading || compositionLoading || transfersLoading
@@ -248,10 +298,51 @@ export default function BatchDetailsPage() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-gray-600">Start Date</label>
-                    <div className="text-lg font-medium">
-                      {format(new Date(batch.startDate), "MMM dd, yyyy")}
-                    </div>
+                    <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                      Start Date
+                      {!isEditingStartDate && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={handleStartDateEdit}
+                        >
+                          <Edit3 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </label>
+                    {isEditingStartDate ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={editStartDate}
+                          onChange={(e) => setEditStartDate(e.target.value)}
+                          className="text-sm"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={handleStartDateSave}
+                          disabled={updateBatchMutation.isPending}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={handleStartDateCancel}
+                          disabled={updateBatchMutation.isPending}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="text-lg font-medium">
+                        {format(new Date(batch.startDate), "MMM dd, yyyy")}
+                      </div>
+                    )}
                   </div>
                   {batch.endDate && (
                     <div>

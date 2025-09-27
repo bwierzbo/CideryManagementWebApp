@@ -36,7 +36,7 @@ export interface PackagingRunListItem {
   volumeTakenL: number
   lossL: number
   lossPercentage: number
-  status: string
+  status: string | null
   createdAt: Date
   // QA summary fields
   fillCheck: string | null
@@ -74,7 +74,7 @@ export interface PaginatedResult<T> {
  * Enhanced pagination query builder with cursor support
  * Uses packaged_at + id as composite cursor for stable pagination
  */
-export function withCursorPagination<T extends PgSelect>(
+export function withCursorPagination<T extends PgSelect<any, any, any>>(
   qb: T,
   params: CursorPaginationParams
 ) {

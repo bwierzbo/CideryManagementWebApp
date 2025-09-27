@@ -262,7 +262,7 @@ export function PurchaseOrdersTable({
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <Input
                       id="search"
-                      placeholder="Search purchase orders, vendors..."
+                      placeholder="Search transactions, vendors..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
@@ -334,7 +334,7 @@ export function PurchaseOrdersTable({
             <div>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="w-5 h-5" />
-                Purchase Orders
+                Transaction History
               </CardTitle>
               <div className="flex items-center gap-4">
                 <CardDescription>
@@ -447,8 +447,8 @@ export function PurchaseOrdersTable({
                   <TableRow>
                     <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       {searchQuery || vendorFilter !== 'all' || materialTypeFilter !== 'all' || statusFilter !== 'all'
-                        ? 'No purchase orders match your search criteria'
-                        : 'No purchase orders found'}
+                        ? 'No transactions match your search criteria'
+                        : 'No transactions found'}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -520,7 +520,7 @@ export function PurchaseOrdersTable({
           {sortedOrders.length > 0 && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {sortedOrders.length} of {purchasesData?.purchases?.length || 0} purchase orders
+                Showing {sortedOrders.length} of {purchasesData?.purchases?.length || 0} transactions
                 {(vendorFilter !== 'all' || statusFilter !== 'all' || searchQuery.trim()) &&
                   ` (filtered from ${purchasesData?.purchases?.length || 0} total)`
                 }

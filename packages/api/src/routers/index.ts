@@ -2008,6 +2008,72 @@ export const appRouter = router({
       }
     }),
 
+    listWithBatches: createRbacProcedure('list', 'vessel').query(async () => {
+      try {
+        // Get all vessels with their current active batches
+        const vesselsWithBatches = await db
+          .select({
+            id: vessels.id,
+            name: vessels.name,
+            capacityL: vessels.capacityL,
+            status: vessels.status,
+            material: vessels.material,
+            location: vessels.location,
+            // Batch information (if exists)
+            batchId: batches.id,
+            batchName: batches.name,
+            currentVolumeL: batches.currentVolumeL,
+            batchStatus: batches.status,
+          })
+          .from(vessels)
+          .leftJoin(
+            batches,
+            and(
+              eq(vessels.id, batches.vesselId),
+              eq(batches.status, 'active'),
+              isNull(batches.deletedAt)
+            )
+          )
+          .where(isNull(vessels.deletedAt))
+          .orderBy(vessels.name)
+
+        // Calculate remaining capacity for each vessel
+        const vesselCapacities = vesselsWithBatches.map(vessel => {
+          const capacity = parseFloat(vessel.capacityL)
+          const currentVolume = vessel.currentVolumeL ? parseFloat(vessel.currentVolumeL) : 0
+          const remainingCapacity = capacity - currentVolume
+
+          return {
+            id: vessel.id,
+            name: vessel.name,
+            capacityL: vessel.capacityL,
+            status: vessel.status,
+            material: vessel.material,
+            location: vessel.location,
+            currentBatch: vessel.batchId ? {
+              id: vessel.batchId,
+              name: vessel.batchName,
+              currentVolumeL: vessel.currentVolumeL,
+              status: vessel.batchStatus,
+            } : null,
+            remainingCapacityL: remainingCapacity.toString(),
+            isAvailable: remainingCapacity > 0.1, // Consider available if >0.1L remaining
+          }
+        })
+
+        return {
+          vessels: vesselCapacities,
+          count: vesselCapacities.length,
+        }
+      } catch (error) {
+        console.error('Error listing vessels with batches:', error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to list vessels with batch information'
+        })
+      }
+    }),
+
     create: createRbacProcedure('create', 'vessel')
       .input(z.object({
         name: z.string().optional(),

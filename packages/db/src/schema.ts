@@ -271,6 +271,8 @@ export const juicePurchaseItems = pgTable('juice_purchase_items', {
   varietyName: text('variety_name'),
   volumeL: decimal('volume_l', { precision: 10, scale: 3 }).notNull(),
   brix: decimal('brix', { precision: 5, scale: 2 }),
+  ph: decimal('ph', { precision: 3, scale: 2 }), // pH measurement instead of storing in notes
+  specificGravity: decimal('specific_gravity', { precision: 5, scale: 4 }), // SG measurement
   containerType: text('container_type'), // drum, tote, tank
   pricePerLiter: decimal('price_per_liter', { precision: 8, scale: 4 }),
   totalCost: decimal('total_cost', { precision: 10, scale: 2 }),

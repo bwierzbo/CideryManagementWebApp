@@ -751,7 +751,7 @@ export function JuiceTransactionForm({
                       {/* SG and pH */}
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label>Specific Gravity <span className="text-gray-500 text-sm">(Optional)</span></Label>
+                          <Label>SG <span className="text-gray-500 text-sm">(Optional)</span></Label>
                           <Input
                             type="number"
                             step="0.001"

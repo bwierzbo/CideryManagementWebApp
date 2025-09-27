@@ -300,13 +300,25 @@ export function AppleTransactionForm({ onSubmit, onCancel }: AppleTransactionFor
         return
       }
 
-      // Submit to API
-      createPurchase.mutate({
-        vendorId: data.vendorId,
-        purchaseDate: new Date(data.purchaseDate),
-        notes: data.notes,
-        items: items
-      })
+      // If parent onSubmit is provided, use it instead of direct API call
+      if (onSubmit) {
+        // Prepare data for parent handler
+        const transactionData = {
+          vendorId: data.vendorId,
+          purchaseDate: data.purchaseDate,
+          notes: data.notes,
+          items: items
+        }
+        onSubmit(transactionData)
+      } else {
+        // Fallback to direct API call if no parent handler
+        createPurchase.mutate({
+          vendorId: data.vendorId,
+          purchaseDate: new Date(data.purchaseDate),
+          notes: data.notes,
+          items: items
+        })
+      }
     } catch (error) {
       console.error('Error preparing purchase data:', error)
       addNotification('error', 'Form Error', 'Error preparing purchase data. Please check your inputs.')
