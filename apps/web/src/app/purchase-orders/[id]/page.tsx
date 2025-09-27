@@ -284,8 +284,8 @@ export default function PurchaseOrderDetailPage() {
                   <div className="flex items-center gap-3">
                     <Truck className="w-5 h-5 text-gray-400" />
                     <div>
-                      <p className="text-sm text-gray-600">Vendor</p>
-                      <p className="font-semibold">{purchaseData.purchase.vendorName || 'Unknown'}</p>
+                      <p className="text-sm text-gray-600">Vendor ID</p>
+                      <p className="font-semibold">{purchaseData.purchase.vendorId || 'Unknown'}</p>
                     </div>
                   </div>
 
