@@ -261,12 +261,13 @@ export default function PurchaseOrderDetailPage() {
                       Purchase Overview
                     </CardTitle>
                     <CardDescription>
-                      Order from {purchaseData.purchase.vendorName || 'Unknown Vendor'}
+                      Purchase order details and items
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
-                    {getMaterialTypeBadge(purchaseData.purchase.materialType || 'basefruit')}
-                    {getStatusBadge(purchaseData.purchase.status || 'active')}
+                    <Badge variant="outline">
+                      Base Fruit Purchase
+                    </Badge>
                   </div>
                 </div>
               </CardHeader>
