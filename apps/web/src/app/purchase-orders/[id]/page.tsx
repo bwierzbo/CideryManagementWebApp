@@ -33,12 +33,13 @@ import { trpc } from '@/utils/trpc'
 import { cn } from '@/lib/utils'
 
 interface PurchaseOrderDetailPageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
-export default function PurchaseOrderDetailPage({ params }: PurchaseOrderDetailPageProps) {
+export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderDetailPageProps) {
+  const { id } = await params
   const router = useRouter()
   const [isExporting, setIsExporting] = useState(false)
 
