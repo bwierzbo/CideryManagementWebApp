@@ -46,8 +46,8 @@ export default function PurchaseOrderDetailPage() {
     isLoading,
     error,
     refetch
-  } = trpc.purchase.getById.useQuery(params.id, {
-    enabled: !!params.id
+  } = trpc.purchase.getById.useQuery({ id }, {
+    enabled: !!id
   })
 
   const handleBack = () => {
