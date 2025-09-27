@@ -499,11 +499,14 @@ export function PressRunCompletionForm({
                           const remainingL = parseFloat(vessel.remainingCapacityL)
                           const totalL = parseFloat(vessel.capacityL)
                           const volumeL = assignment.volumeL
+                          const currentBatchVolumeL = vessel.currentBatch && vessel.currentBatch.currentVolumeL ? parseFloat(vessel.currentBatch.currentVolumeL) : 0
+                          const combinedVolumeL = currentBatchVolumeL + volumeL
                           const isGallons = watchedValues.juiceVolumeUnit === 'gal'
 
                           const displayVolume = isGallons && volumeL > 0 ? litersToGallons(volumeL) : isGallons ? 0 : volumeL
                           const displayRemaining = isGallons && remainingL > 0 ? litersToGallons(remainingL) : isGallons ? 0 : remainingL
                           const displayTotal = isGallons && totalL > 0 ? litersToGallons(totalL) : isGallons ? 0 : totalL
+                          const displayCombined = isGallons && combinedVolumeL > 0 ? litersToGallons(combinedVolumeL) : isGallons ? 0 : combinedVolumeL
                           const unit = isGallons ? 'gal' : 'L'
 
                           if (remainingL < volumeL) {
@@ -526,8 +529,13 @@ export function PressRunCompletionForm({
                             <div className="bg-green-50 p-2 rounded-md">
                               <p className="text-sm text-green-800 flex items-center">
                                 <CheckCircle2 className="w-4 h-4 mr-1" />
-                                {assignmentsWithVessels[index].vessel!.name}: {displayVolume.toFixed(1)}{unit} / {displayTotal.toFixed(1)}{unit}
-                                {' '}({((volumeL / totalL) * 100).toFixed(1)}% filled)
+                                {assignmentsWithVessels[index].vessel!.name}: {displayCombined.toFixed(1)}{unit} / {displayTotal.toFixed(1)}{unit}
+                                {' '}({((combinedVolumeL / totalL) * 100).toFixed(1)}% filled)
+                                {vessel.currentBatch && (
+                                  <span className="ml-2 text-xs">
+                                    (Adding {displayVolume.toFixed(1)}{unit} to existing batch)
+                                  </span>
+                                )}
                               </p>
                             </div>
                           )
