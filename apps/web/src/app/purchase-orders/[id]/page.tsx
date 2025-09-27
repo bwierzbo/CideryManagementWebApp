@@ -302,7 +302,7 @@ export default function PurchaseOrderDetailPage() {
                     <div>
                       <p className="text-sm text-gray-600">Total Cost</p>
                       <p className="font-semibold">
-                        {formatCurrency(purchaseData.purchase.totalCost)}
+                        {formatCurrency(parseFloat(purchaseData.purchase.totalCost) || 0)}
                       </p>
                     </div>
                   </div>
