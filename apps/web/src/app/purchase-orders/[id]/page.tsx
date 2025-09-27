@@ -1,6 +1,6 @@
 "use client"
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { useState } from 'react'
 import { Navbar } from '@/components/navbar'
 import { Button } from '@/components/ui/button'
@@ -32,16 +32,13 @@ import {
 import { trpc } from '@/utils/trpc'
 import { cn } from '@/lib/utils'
 
-interface PurchaseOrderDetailPageProps {
-  params: Promise<{
-    id: string
-  }>
-}
-
-export default async function PurchaseOrderDetailPage({ params }: PurchaseOrderDetailPageProps) {
-  const { id } = await params
+export default function PurchaseOrderDetailPage() {
   const router = useRouter()
+  const params = useParams()
   const [isExporting, setIsExporting] = useState(false)
+
+  // Get the ID from params
+  const id = params.id as string
 
   // Fetch purchase order details
   const {
