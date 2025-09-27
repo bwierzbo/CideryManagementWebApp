@@ -526,8 +526,8 @@ export function PressRunCompletionForm({
                             <div className="bg-green-50 p-2 rounded-md">
                               <p className="text-sm text-green-800 flex items-center">
                                 <CheckCircle2 className="w-4 h-4 mr-1" />
-                                {assignmentsWithVessels[index].vessel!.name}: {displayVolume.toFixed(1)}{unit} / {displayCapacity.toFixed(1)}{unit}
-                                {' '}({((volumeL / capacityL) * 100).toFixed(1)}% filled)
+                                {assignmentsWithVessels[index].vessel!.name}: {displayVolume.toFixed(1)}{unit} / {displayTotal.toFixed(1)}{unit}
+                                {' '}({((volumeL / totalL) * 100).toFixed(1)}% filled)
                               </p>
                             </div>
                           )
