@@ -67,7 +67,7 @@ export const queryHints = {
 /**
  * Connection health check for monitoring
  */
-export async function checkConnectionHealth(db: any): Promise<{
+export async function checkConnectionHealth(sql: any): Promise<{
   healthy: boolean
   latency: number
   poolStats?: any
@@ -76,7 +76,7 @@ export async function checkConnectionHealth(db: any): Promise<{
 
   try {
     // Simple query to test connection
-    await db.execute(sql`SELECT 1`)
+    await sql`SELECT 1`
 
     const latency = Date.now() - start
 
