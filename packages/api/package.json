@@ -28,6 +28,8 @@
     "@types/node": "^20.11.0",
     "@vitest/coverage-v8": "^1.0.0",
     "drizzle-orm": "^0.28.6",
+    "msw": "^2.0.0",
+    "msw-trpc": "^2.0.0",
     "vitest": "^1.0.0"
   }
 }

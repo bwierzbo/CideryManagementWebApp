@@ -28,7 +28,8 @@
     "bcryptjs": "^3.0.2",
     "dotenv": "^17.2.2",
     "drizzle-orm": "^0.28.6",
-    "pg": "^8.11.3"
+    "pg": "^8.11.3",
+    "postgres": "^3.4.0"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.5.0",
