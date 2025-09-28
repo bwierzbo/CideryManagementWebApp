@@ -1,0 +1,13 @@
+{
+  "timestamp": "2025-09-28T23:36:27.728Z",
+  "totalSize": 0,
+  "totalSizeKB": 0,
+  "files": [],
+  "packages": {},
+  "chunks": {
+    "main": [],
+    "vendor": [],
+    "dynamic": []
+  },
+  "recommendations": []
+}

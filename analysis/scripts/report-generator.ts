@@ -2,6 +2,11 @@ import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { AssetScanner } from './asset-scanner';
 import { DatabaseScanner } from './db-scanner';
+import { SchemaMapper } from './schema-mapper.js';
+import { DatabaseUsageScanner } from './db-usage-scanner.js';
+import { UnusedElementsAnalyzer } from './unused-elements-analyzer.js';
+import { DriftAnalyzer } from './drift-analyzer.js';
+import { PerformanceAssessor } from './performance-assessor.js';
 
 interface AnalysisReport {
   timestamp: string;
@@ -10,12 +15,21 @@ interface AnalysisReport {
     criticalIssues: number;
     warningIssues: number;
     infoIssues: number;
+    schemaHealthScore: number;
+    performanceScore: number;
+    optimizationPotential: number;
   };
   deadCode: any;
   dependencies: any;
   assets: any;
   database: any;
   circularDeps: any;
+  // Enhanced database analysis
+  schemaMapping: any;
+  usageAnalysis: any;
+  unusedElements: any;
+  driftAnalysis: any;
+  performanceAssessment: any;
 }
 
 interface ReportOptions {
@@ -114,6 +128,56 @@ export class ReportGenerator {
       results.database = { error: String(error) };
     }
 
+    try {
+      // Run schema mapping analysis
+      console.log('🗺️  Running schema mapping analysis...');
+      const schemaMapper = new SchemaMapper(this.rootDir);
+      results.schemaMapping = await schemaMapper.analyze();
+    } catch (error) {
+      console.warn('Schema mapping analysis failed:', error);
+      results.schemaMapping = { error: String(error) };
+    }
+
+    try {
+      // Run usage analysis
+      console.log('🔍 Running database usage analysis...');
+      const usageScanner = new DatabaseUsageScanner(this.rootDir);
+      results.usageAnalysis = await usageScanner.scan();
+    } catch (error) {
+      console.warn('Database usage analysis failed:', error);
+      results.usageAnalysis = { error: String(error) };
+    }
+
+    try {
+      // Run unused elements analysis
+      console.log('🎯 Running unused elements analysis...');
+      const unusedAnalyzer = new UnusedElementsAnalyzer(this.rootDir);
+      results.unusedElements = await unusedAnalyzer.analyze();
+    } catch (error) {
+      console.warn('Unused elements analysis failed:', error);
+      results.unusedElements = { error: String(error) };
+    }
+
+    try {
+      // Run drift analysis
+      console.log('📊 Running drift analysis...');
+      const driftAnalyzer = new DriftAnalyzer(this.rootDir);
+      results.driftAnalysis = await driftAnalyzer.analyze();
+    } catch (error) {
+      console.warn('Drift analysis failed:', error);
+      results.driftAnalysis = { error: String(error) };
+    }
+
+    try {
+      // Run performance assessment
+      console.log('⚡ Running performance assessment...');
+      const performanceAssessor = new PerformanceAssessor(this.rootDir);
+      results.performanceAssessment = await performanceAssessor.assess();
+    } catch (error) {
+      console.warn('Performance assessment failed:', error);
+      results.performanceAssessment = { error: String(error) };
+    }
+
     return results;
   }
 
@@ -183,6 +247,9 @@ export class ReportGenerator {
     let criticalIssues = 0;
     let warningIssues = 0;
     let infoIssues = 0;
+    let schemaHealthScore = 100;
+    let performanceScore = 100;
+    let optimizationPotential = 0;
 
     // Count issues from each analysis tool
     if (results.deadCode && !results.deadCode.error) {
@@ -216,11 +283,38 @@ export class ReportGenerator {
       totalIssues += results.circularDeps.length;
     }
 
+    // Enhanced database analysis metrics
+    if (results.unusedElements && !results.unusedElements.error) {
+      const unusedCount = results.unusedElements.summary?.unusedElements || 0;
+      const highConfidenceUnused = results.unusedElements.summary?.highConfidenceUnused || 0;
+      totalIssues += unusedCount;
+      warningIssues += unusedCount;
+      criticalIssues += highConfidenceUnused;
+    }
+
+    if (results.driftAnalysis && !results.driftAnalysis.error) {
+      schemaHealthScore = results.driftAnalysis.summary?.schemaHealth || 100;
+      const driftIssues = results.driftAnalysis.summary?.criticalDrifts || 0;
+      criticalIssues += driftIssues;
+      totalIssues += driftIssues;
+    }
+
+    if (results.performanceAssessment && !results.performanceAssessment.error) {
+      performanceScore = results.performanceAssessment.summary?.overallHealthScore || 100;
+      optimizationPotential = results.performanceAssessment.summary?.optimizationPotential || 0;
+      const perfCritical = results.performanceAssessment.summary?.criticalIssues || 0;
+      criticalIssues += perfCritical;
+      totalIssues += perfCritical;
+    }
+
     return {
       totalIssues,
       criticalIssues,
       warningIssues,
-      infoIssues
+      infoIssues,
+      schemaHealthScore,
+      performanceScore,
+      optimizationPotential
     };
   }
 
@@ -276,16 +370,22 @@ export class ReportGenerator {
   private generateMarkdownContent(report: AnalysisReport): string {
     const { summary } = report;
 
-    return `# Codebase Analysis Report
+    return `# Comprehensive Codebase Analysis Report
 
 Generated: ${new Date(report.timestamp).toLocaleString()}
 
-## 📊 Summary
+## 📊 Executive Summary
 
 - **Total Issues**: ${summary.totalIssues}
 - **Critical**: ${summary.criticalIssues} 🔴
 - **Warning**: ${summary.warningIssues} 🟡
 - **Info**: ${summary.infoIssues} 🔵
+
+### 🏥 Health Scores
+
+- **Schema Health**: ${summary.schemaHealthScore}/100 ${this.getHealthIcon(summary.schemaHealthScore)}
+- **Performance Score**: ${summary.performanceScore}/100 ${this.getHealthIcon(summary.performanceScore)}
+- **Optimization Potential**: ${summary.optimizationPotential}% 🚀
 
 ## 🗑️ Dead Code Analysis
 
@@ -303,16 +403,40 @@ ${this.formatCircularDepsSection(report.circularDeps)}
 
 ${this.formatAssetSection(report.assets)}
 
-## 🗄️ Database Analysis
+## 🗄️ Basic Database Analysis
 
 ${this.formatDatabaseSection(report.database)}
 
-## 🎯 Recommendations
+## 🗺️ Schema Mapping Analysis
 
-${this.generateRecommendations(report)}
+${this.formatSchemaMappingSection(report.schemaMapping)}
+
+## 🔍 Database Usage Analysis
+
+${this.formatUsageAnalysisSection(report.usageAnalysis)}
+
+## 🎯 Unused Elements Analysis
+
+${this.formatUnusedElementsSection(report.unusedElements)}
+
+## 📊 Schema Drift Analysis
+
+${this.formatDriftAnalysisSection(report.driftAnalysis)}
+
+## ⚡ Performance Assessment
+
+${this.formatPerformanceAssessmentSection(report.performanceAssessment)}
+
+## 💡 Strategic Recommendations
+
+${this.generateEnhancedRecommendations(report)}
+
+## 📋 Action Plan
+
+${this.generateActionPlan(report)}
 
 ---
-*Generated by Cidery Management App Analysis Infrastructure*
+*Generated by Cidery Management App Enhanced Analysis Infrastructure*
 `;
   }
 
@@ -467,13 +591,183 @@ ${this.generateRecommendations(report)}
     return content;
   }
 
-  private generateRecommendations(report: AnalysisReport): string {
-    const recommendations: string[] = [];
+  private getHealthIcon(score: number): string {
+    if (score >= 90) return '🟢';
+    if (score >= 70) return '🟡';
+    if (score >= 50) return '🟠';
+    return '🔴';
+  }
 
-    if (report.summary.criticalIssues > 0) {
-      recommendations.push('🔴 **Critical**: Address circular dependencies and unused dependencies immediately');
+  private formatSchemaMappingSection(schemaMapping: any): string {
+    if (schemaMapping?.error) {
+      return `❌ **Error**: ${schemaMapping.error}`;
     }
 
+    if (!schemaMapping?.analysis) {
+      return '✅ No schema mapping data available.';
+    }
+
+    const { analysis } = schemaMapping;
+
+    let content = `### Schema Mapping Summary\n\n`;
+    content += `- **Total Elements**: ${analysis.totalElements || 0}\n`;
+    content += `- **Used Elements**: ${analysis.usedElements || 0}\n`;
+    content += `- **Usage Confidence**: ${((analysis.usageConfidence || 0) * 100).toFixed(1)}%\n\n`;
+
+    if (analysis.driftIndicators?.length > 0) {
+      content += `### 🚨 Drift Indicators\n\n`;
+      analysis.driftIndicators.forEach((indicator: string) => {
+        content += `- ${indicator}\n`;
+      });
+      content += '\n';
+    }
+
+    return content;
+  }
+
+  private formatUsageAnalysisSection(usageAnalysis: any): string {
+    if (usageAnalysis?.error) {
+      return `❌ **Error**: ${usageAnalysis.error}`;
+    }
+
+    if (!usageAnalysis?.summary) {
+      return '✅ No usage analysis data available.';
+    }
+
+    const { summary } = usageAnalysis;
+
+    let content = `### Usage Analysis Summary\n\n`;
+    content += `- **Total Usages**: ${summary.totalUsages || 0}\n`;
+    content += `- **High Confidence**: ${summary.highConfidenceUsages || 0}\n`;
+    content += `- **Dynamic Queries**: ${summary.dynamicQueries || 0}\n\n`;
+
+    if (summary.potentialOptimizations?.length > 0) {
+      content += `### 💡 Optimization Opportunities\n\n`;
+      summary.potentialOptimizations.forEach((opt: string) => {
+        content += `- ${opt}\n`;
+      });
+      content += '\n';
+    }
+
+    return content;
+  }
+
+  private formatUnusedElementsSection(unusedElements: any): string {
+    if (unusedElements?.error) {
+      return `❌ **Error**: ${unusedElements.error}`;
+    }
+
+    if (!unusedElements?.summary) {
+      return '✅ No unused elements analysis data available.';
+    }
+
+    const { summary } = unusedElements;
+
+    let content = `### Unused Elements Summary\n\n`;
+    content += `- **Total Elements**: ${summary.totalElements || 0}\n`;
+    content += `- **Unused Elements**: ${summary.unusedElements || 0}\n`;
+    content += `- **High Confidence Unused**: ${summary.highConfidenceUnused || 0}\n`;
+    content += `- **Storage Savings**: ${((summary.potentialSavings?.storageBytes || 0) / 1000000).toFixed(1)}MB\n\n`;
+
+    if (unusedElements.recommendations?.immediate?.length > 0) {
+      content += `### 🚀 Immediate Actions\n\n`;
+      unusedElements.recommendations.immediate.slice(0, 5).forEach((item: any) => {
+        content += `- **${item.name}** (${item.type}): ${item.recommendations.action}\n`;
+      });
+      content += '\n';
+    }
+
+    return content;
+  }
+
+  private formatDriftAnalysisSection(driftAnalysis: any): string {
+    if (driftAnalysis?.error) {
+      return `❌ **Error**: ${driftAnalysis.error}`;
+    }
+
+    if (!driftAnalysis?.summary) {
+      return '✅ No drift analysis data available.';
+    }
+
+    const { summary } = driftAnalysis;
+
+    let content = `### Schema Drift Summary\n\n`;
+    content += `- **Schema Health**: ${summary.schemaHealth || 100}/100\n`;
+    content += `- **Total Drifts**: ${summary.totalDrifts || 0}\n`;
+    content += `- **Critical Drifts**: ${summary.criticalDrifts || 0}\n`;
+    content += `- **Evolution Velocity**: ${(summary.evolutionVelocity || 0).toFixed(1)} changes/month\n`;
+    content += `- **Maintenance Burden**: ${summary.maintenanceBurden || 'low'}\n\n`;
+
+    if (driftAnalysis.drifts?.filter((d: any) => d.severity === 'critical').length > 0) {
+      content += `### 🚨 Critical Drifts\n\n`;
+      driftAnalysis.drifts
+        .filter((d: any) => d.severity === 'critical')
+        .slice(0, 5)
+        .forEach((drift: any) => {
+          content += `- **${drift.elementName}** (${drift.elementType}): ${drift.description}\n`;
+        });
+      content += '\n';
+    }
+
+    return content;
+  }
+
+  private formatPerformanceAssessmentSection(performanceAssessment: any): string {
+    if (performanceAssessment?.error) {
+      return `❌ **Error**: ${performanceAssessment.error}`;
+    }
+
+    if (!performanceAssessment?.summary) {
+      return '✅ No performance assessment data available.';
+    }
+
+    const { summary } = performanceAssessment;
+
+    let content = `### Performance Assessment Summary\n\n`;
+    content += `- **Overall Health**: ${summary.overallHealthScore || 100}/100\n`;
+    content += `- **Critical Issues**: ${summary.criticalIssues || 0}\n`;
+    content += `- **Optimization Potential**: ${summary.optimizationPotential || 0}%\n\n`;
+
+    content += `### 💾 Estimated Savings\n\n`;
+    content += `- **Storage**: ${((summary.estimatedSavings?.storage || 0) / 1000000).toFixed(1)}MB\n`;
+    content += `- **Performance**: ${(summary.estimatedSavings?.performance || 0).toFixed(1)}% improvement\n`;
+    content += `- **Maintenance**: ${(summary.estimatedSavings?.maintenance || 0).toFixed(1)} hours/month\n\n`;
+
+    if (performanceAssessment.actionPlan?.quickWins?.length > 0) {
+      content += `### 🚀 Quick Wins\n\n`;
+      performanceAssessment.actionPlan.quickWins.slice(0, 3).forEach((win: any) => {
+        content += `- **${win.description}**: ${win.implementation.effort} effort, ${win.implementation.risk} risk\n`;
+      });
+      content += '\n';
+    }
+
+    return content;
+  }
+
+  private generateEnhancedRecommendations(report: AnalysisReport): string {
+    const recommendations: string[] = [];
+
+    // Critical issues first
+    if (report.summary.criticalIssues > 0) {
+      recommendations.push('🔴 **Critical**: Address circular dependencies and critical drifts immediately');
+    }
+
+    // Schema health issues
+    if (report.summary.schemaHealthScore < 70) {
+      recommendations.push('🏥 **Schema Health**: Schema health is below acceptable levels - implement cleanup strategy');
+    }
+
+    // Performance issues
+    if (report.summary.performanceScore < 70) {
+      recommendations.push('⚡ **Performance**: Performance score indicates need for optimization');
+    }
+
+    // High optimization potential
+    if (report.summary.optimizationPotential > 30) {
+      recommendations.push('🚀 **Optimization**: High optimization potential detected - prioritize performance improvements');
+    }
+
+    // Traditional recommendations
     if (report.assets?.summary?.unusedCount > 0) {
       recommendations.push('🖼️ **Assets**: Remove unused assets to reduce bundle size');
     }
@@ -487,10 +781,71 @@ ${this.generateRecommendations(report)}
     }
 
     if (recommendations.length === 0) {
-      recommendations.push('✅ **Great job!** No major issues detected in the codebase.');
+      recommendations.push('✅ **Excellent!** System is in good health across all metrics.');
     }
 
     return recommendations.map(rec => `- ${rec}`).join('\n');
+  }
+
+  private generateActionPlan(report: AnalysisReport): string {
+    let content = '';
+
+    // Immediate actions
+    const immediateActions: string[] = [];
+
+    if (report.summary.criticalIssues > 0) {
+      immediateActions.push('Address critical schema drifts and circular dependencies');
+    }
+
+    if (report.performanceAssessment?.actionPlan?.quickWins?.length > 0) {
+      immediateActions.push(`Implement ${report.performanceAssessment.actionPlan.quickWins.length} quick performance wins`);
+    }
+
+    if (immediateActions.length > 0) {
+      content += '### 🚨 Immediate (1-2 weeks)\n\n';
+      immediateActions.forEach(action => {
+        content += `- ${action}\n`;
+      });
+      content += '\n';
+    }
+
+    // Medium-term actions
+    const mediumActions: string[] = [];
+
+    if (report.unusedElements?.recommendations?.investigate?.length > 0) {
+      mediumActions.push(`Investigate ${report.unusedElements.recommendations.investigate.length} potentially unused elements`);
+    }
+
+    if (report.summary.schemaHealthScore < 80) {
+      mediumActions.push('Implement schema health improvement plan');
+    }
+
+    if (mediumActions.length > 0) {
+      content += '### 📋 Medium-term (1-3 months)\n\n';
+      mediumActions.forEach(action => {
+        content += `- ${action}\n`;
+      });
+      content += '\n';
+    }
+
+    // Long-term actions
+    const longTermActions = [
+      'Establish continuous monitoring and analysis',
+      'Create automated cleanup processes',
+      'Implement performance regression testing'
+    ];
+
+    content += '### 🎯 Long-term (3-6 months)\n\n';
+    longTermActions.forEach(action => {
+      content += `- ${action}\n`;
+    });
+
+    return content;
+  }
+
+  private generateRecommendations(report: AnalysisReport): string {
+    // Keep the old method for backward compatibility
+    return this.generateEnhancedRecommendations(report);
   }
 }
 
