@@ -38,7 +38,8 @@
     "analysis:deps": "depcheck --config analysis/config/depcheck.json",
     "analysis:circular": "madge --circular apps/web/src packages/*/src",
     "analysis:assets": "tsx analysis/scripts/asset-scanner.ts",
-    "analysis:database": "tsx analysis/scripts/db-scanner.ts"
+    "analysis:database": "tsx analysis/scripts/db-scanner.ts",
+    "analysis:bundle": "tsx analysis/scripts/bundle-analyzer.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",
