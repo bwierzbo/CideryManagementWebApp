@@ -13,7 +13,6 @@ import {
 } from "@/hooks/useOptimizedSearch";
 import type {
   SearchCallback,
-  DebouncedSearchHook,
   MaterialType,
 } from "@/types/inventory";
 import type { SearchableItem } from "@/utils/searchUtils";
@@ -33,34 +32,6 @@ interface InventorySearchProps {
   showPerformanceMetrics?: boolean;
 }
 
-// Custom hook for debounced search functionality
-export function useDebouncedSearch(
-  initialValue: string = "",
-  debounceMs: number = 300,
-): DebouncedSearchHook {
-  const [query, setQuery] = useState(initialValue);
-  const [debouncedQuery, setDebouncedQuery] = useState(initialValue);
-  const [isDebouncing, setIsDebouncing] = useState(false);
-
-  useEffect(() => {
-    setIsDebouncing(true);
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-      setIsDebouncing(false);
-    }, debounceMs);
-
-    return () => {
-      clearTimeout(timer);
-      setIsDebouncing(false);
-    };
-  }, [query, debounceMs]);
-
-  return {
-    debouncedQuery,
-    setQuery,
-    isDebouncing,
-  };
-}
 
 export function InventorySearch({
   onSearch,
