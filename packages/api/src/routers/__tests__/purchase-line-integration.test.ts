@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { appRouter } from '../index'
+import { describe, it, expect, beforeEach } from "vitest";
+import { appRouter } from "../index";
 import {
   db,
   purchases,
@@ -8,308 +8,343 @@ import {
   appleVarieties,
   applePressRunLoads,
   applePressRuns,
-  vessels
-} from 'db'
-import { eq, and } from 'drizzle-orm'
+  vessels,
+} from "db";
+import { eq, and } from "drizzle-orm";
 
 // Test context with admin role for RBAC
 const testContext = {
   session: {
     user: {
-      id: 'test-user-123',
-      email: 'test@example.com',
-      role: 'admin' as const
-    }
-  }
-}
+      id: "test-user-123",
+      email: "test@example.com",
+      role: "admin" as const,
+    },
+  },
+};
 
-describe('Purchase Line Integration for Apple Press', () => {
-  let testVendorId: string
-  let testVendor2Id: string
-  let testAppleVarietyId: string
-  let testAppleVariety2Id: string
-  let testVesselId: string
-  let testPurchaseId: string
-  let testPurchaseItemId: string
+describe("Purchase Line Integration for Apple Press", () => {
+  let testVendorId: string;
+  let testVendor2Id: string;
+  let testAppleVarietyId: string;
+  let testAppleVariety2Id: string;
+  let testVesselId: string;
+  let testPurchaseId: string;
+  let testPurchaseItemId: string;
 
   beforeEach(async () => {
     // Clean up existing test data in proper order
-    await db.delete(applePressRunLoads)
-    await db.delete(applePressRuns)
-    await db.delete(purchaseItems)
-    await db.delete(purchases)
-    await db.delete(vessels)
-    await db.delete(appleVarieties)
-    await db.delete(vendors)
+    await db.delete(applePressRunLoads);
+    await db.delete(applePressRuns);
+    await db.delete(purchaseItems);
+    await db.delete(purchases);
+    await db.delete(vessels);
+    await db.delete(appleVarieties);
+    await db.delete(vendors);
 
     // Create test vendors
-    const vendor1 = await db.insert(vendors).values({
-      name: 'Orchard Farm Co',
-      contactInfo: { email: 'orchard@farm.com', phone: '555-0123' },
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }).returning()
-    testVendorId = vendor1[0].id
+    const vendor1 = await db
+      .insert(vendors)
+      .values({
+        name: "Orchard Farm Co",
+        contactInfo: { email: "orchard@farm.com", phone: "555-0123" },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testVendorId = vendor1[0].id;
 
-    const vendor2 = await db.insert(vendors).values({
-      name: 'Valley Apples LLC',
-      contactInfo: { email: 'valley@apples.com', phone: '555-0456' },
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }).returning()
-    testVendor2Id = vendor2[0].id
+    const vendor2 = await db
+      .insert(vendors)
+      .values({
+        name: "Valley Apples LLC",
+        contactInfo: { email: "valley@apples.com", phone: "555-0456" },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testVendor2Id = vendor2[0].id;
 
     // Create test apple varieties
-    const variety1 = await db.insert(appleVarieties).values({
-      name: 'Honeycrisp',
-      description: 'Sweet and crispy',
-      typicalBrix: '14.5',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }).returning()
-    testAppleVarietyId = variety1[0].id
+    const variety1 = await db
+      .insert(appleVarieties)
+      .values({
+        name: "Honeycrisp",
+        description: "Sweet and crispy",
+        typicalBrix: "14.5",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testAppleVarietyId = variety1[0].id;
 
-    const variety2 = await db.insert(appleVarieties).values({
-      name: 'Granny Smith',
-      description: 'Tart green apples',
-      typicalBrix: '12.0',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }).returning()
-    testAppleVariety2Id = variety2[0].id
+    const variety2 = await db
+      .insert(appleVarieties)
+      .values({
+        name: "Granny Smith",
+        description: "Tart green apples",
+        typicalBrix: "12.0",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testAppleVariety2Id = variety2[0].id;
 
     // Create test vessel
-    const vessel = await db.insert(vessels).values({
-      name: 'Tank A-001',
-      type: 'fermenter',
-      capacityL: '5000.000',
-      status: 'available',
-      location: 'Cellar Bay 1',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }).returning()
-    testVesselId = vessel[0].id
+    const vessel = await db
+      .insert(vessels)
+      .values({
+        name: "Tank A-001",
+        type: "fermenter",
+        capacityL: "5000.000",
+        status: "available",
+        location: "Cellar Bay 1",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testVesselId = vessel[0].id;
 
     // Create test purchase with purchase items
-    const purchase = await db.insert(purchases).values({
-      vendorId: testVendorId,
-      purchaseDate: new Date('2024-03-15T10:00:00Z'),
-      totalCost: '1500.00',
-      invoiceNumber: 'TEST-INV-001',
-      autoGeneratedInvoice: false,
-      notes: 'Test purchase for apple press integration',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }).returning()
-    testPurchaseId = purchase[0].id
+    const purchase = await db
+      .insert(purchases)
+      .values({
+        vendorId: testVendorId,
+        purchaseDate: new Date("2024-03-15T10:00:00Z"),
+        totalCost: "1500.00",
+        invoiceNumber: "TEST-INV-001",
+        autoGeneratedInvoice: false,
+        notes: "Test purchase for apple press integration",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testPurchaseId = purchase[0].id;
 
     // Create test purchase item
-    const purchaseItem = await db.insert(purchaseItems).values({
-      purchaseId: testPurchaseId,
-      appleVarietyId: testAppleVarietyId,
-      quantity: '500.000',
-      unit: 'kg',
-      pricePerUnit: '3.00',
-      totalCost: '1500.00',
-      quantityKg: '500.000', // Canonical storage
-      harvestDate: '2024-03-10',
-      originalUnit: 'kg',
-      originalQuantity: '500.000',
-      notes: 'Premium Honeycrisp apples',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }).returning()
-    testPurchaseItemId = purchaseItem[0].id
-  })
+    const purchaseItem = await db
+      .insert(purchaseItems)
+      .values({
+        purchaseId: testPurchaseId,
+        appleVarietyId: testAppleVarietyId,
+        quantity: "500.000",
+        unit: "kg",
+        pricePerUnit: "3.00",
+        totalCost: "1500.00",
+        quantityKg: "500.000", // Canonical storage
+        harvestDate: "2024-03-10",
+        originalUnit: "kg",
+        originalQuantity: "500.000",
+        notes: "Premium Honeycrisp apples",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .returning();
+    testPurchaseItemId = purchaseItem[0].id;
+  });
 
-  describe('purchaseLine.available endpoint', () => {
-    it('should return available purchase items with no consumption', async () => {
-      const caller = appRouter.createCaller(testContext)
+  describe("purchaseLine.available endpoint", () => {
+    it("should return available purchase items with no consumption", async () => {
+      const caller = appRouter.createCaller(testContext);
 
       const result = await caller.purchaseLine.available({
         limit: 10,
-        offset: 0
-      })
+        offset: 0,
+      });
 
-      expect(result.items).toHaveLength(1)
-      expect(result.pagination.total).toBe(1)
-      expect(result.pagination.hasMore).toBe(false)
-      expect(result.summary.totalAvailableItems).toBe(1)
-      expect(result.summary.totalAvailableKg).toBe(500.0)
+      expect(result.items).toHaveLength(1);
+      expect(result.pagination.total).toBe(1);
+      expect(result.pagination.hasMore).toBe(false);
+      expect(result.summary.totalAvailableItems).toBe(1);
+      expect(result.summary.totalAvailableKg).toBe(500.0);
 
-      const item = result.items[0]
-      expect(item.purchaseItemId).toBe(testPurchaseItemId)
-      expect(item.varietyName).toBe('Honeycrisp')
-      expect(item.vendorName).toBe('Orchard Farm Co')
-      expect(item.totalQuantityKg).toBe(500.0)
-      expect(item.consumedQuantityKg).toBe(0)
-      expect(item.availableQuantityKg).toBe(500.0)
-      expect(item.availablePercentage).toBe(100.0)
-    })
+      const item = result.items[0];
+      expect(item.purchaseItemId).toBe(testPurchaseItemId);
+      expect(item.varietyName).toBe("Honeycrisp");
+      expect(item.vendorName).toBe("Orchard Farm Co");
+      expect(item.totalQuantityKg).toBe(500.0);
+      expect(item.consumedQuantityKg).toBe(0);
+      expect(item.availableQuantityKg).toBe(500.0);
+      expect(item.availablePercentage).toBe(100.0);
+    });
 
-    it('should filter by vendor ID', async () => {
+    it("should filter by vendor ID", async () => {
       // Create purchase item for second vendor
-      const purchase2 = await db.insert(purchases).values({
-        vendorId: testVendor2Id,
-        purchaseDate: new Date('2024-03-16T10:00:00Z'),
-        totalCost: '800.00',
-        invoiceNumber: 'TEST-INV-002',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }).returning()
+      const purchase2 = await db
+        .insert(purchases)
+        .values({
+          vendorId: testVendor2Id,
+          purchaseDate: new Date("2024-03-16T10:00:00Z"),
+          totalCost: "800.00",
+          invoiceNumber: "TEST-INV-002",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
 
       await db.insert(purchaseItems).values({
         purchaseId: purchase2[0].id,
         appleVarietyId: testAppleVariety2Id,
-        quantity: '300.000',
-        unit: 'kg',
-        pricePerUnit: '2.67',
-        totalCost: '800.00',
-        quantityKg: '300.000',
-        harvestDate: '2024-03-12',
-        originalUnit: 'kg',
-        originalQuantity: '300.000',
-        notes: 'Tart Granny Smith apples',
+        quantity: "300.000",
+        unit: "kg",
+        pricePerUnit: "2.67",
+        totalCost: "800.00",
+        quantityKg: "300.000",
+        harvestDate: "2024-03-12",
+        originalUnit: "kg",
+        originalQuantity: "300.000",
+        notes: "Tart Granny Smith apples",
         createdAt: new Date(),
-        updatedAt: new Date()
-      })
+        updatedAt: new Date(),
+      });
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
       // Filter by first vendor
       const result1 = await caller.purchaseLine.available({
         vendorId: testVendorId,
-        limit: 10
-      })
+        limit: 10,
+      });
 
-      expect(result1.items).toHaveLength(1)
-      expect(result1.items[0].vendorName).toBe('Orchard Farm Co')
-      expect(result1.items[0].varietyName).toBe('Honeycrisp')
+      expect(result1.items).toHaveLength(1);
+      expect(result1.items[0].vendorName).toBe("Orchard Farm Co");
+      expect(result1.items[0].varietyName).toBe("Honeycrisp");
 
       // Filter by second vendor
       const result2 = await caller.purchaseLine.available({
         vendorId: testVendor2Id,
-        limit: 10
-      })
+        limit: 10,
+      });
 
-      expect(result2.items).toHaveLength(1)
-      expect(result2.items[0].vendorName).toBe('Valley Apples LLC')
-      expect(result2.items[0].varietyName).toBe('Granny Smith')
-    })
+      expect(result2.items).toHaveLength(1);
+      expect(result2.items[0].vendorName).toBe("Valley Apples LLC");
+      expect(result2.items[0].varietyName).toBe("Granny Smith");
+    });
 
-    it('should filter by apple variety ID', async () => {
+    it("should filter by apple variety ID", async () => {
       // Create another purchase item with different variety
       await db.insert(purchaseItems).values({
         purchaseId: testPurchaseId,
         appleVarietyId: testAppleVariety2Id,
-        quantity: '200.000',
-        unit: 'kg',
-        pricePerUnit: '2.50',
-        totalCost: '500.00',
-        quantityKg: '200.000',
-        harvestDate: '2024-03-11',
-        originalUnit: 'kg',
-        originalQuantity: '200.000',
-        notes: 'Mixed variety purchase',
+        quantity: "200.000",
+        unit: "kg",
+        pricePerUnit: "2.50",
+        totalCost: "500.00",
+        quantityKg: "200.000",
+        harvestDate: "2024-03-11",
+        originalUnit: "kg",
+        originalQuantity: "200.000",
+        notes: "Mixed variety purchase",
         createdAt: new Date(),
-        updatedAt: new Date()
-      })
+        updatedAt: new Date(),
+      });
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
       // Filter by Honeycrisp variety
       const result1 = await caller.purchaseLine.available({
         appleVarietyId: testAppleVarietyId,
-        limit: 10
-      })
+        limit: 10,
+      });
 
-      expect(result1.items).toHaveLength(1)
-      expect(result1.items[0].varietyName).toBe('Honeycrisp')
-      expect(result1.items[0].availableQuantityKg).toBe(500.0)
+      expect(result1.items).toHaveLength(1);
+      expect(result1.items[0].varietyName).toBe("Honeycrisp");
+      expect(result1.items[0].availableQuantityKg).toBe(500.0);
 
       // Filter by Granny Smith variety
       const result2 = await caller.purchaseLine.available({
         appleVarietyId: testAppleVariety2Id,
-        limit: 10
-      })
+        limit: 10,
+      });
 
-      expect(result2.items).toHaveLength(1)
-      expect(result2.items[0].varietyName).toBe('Granny Smith')
-      expect(result2.items[0].availableQuantityKg).toBe(200.0)
-    })
+      expect(result2.items).toHaveLength(1);
+      expect(result2.items[0].varietyName).toBe("Granny Smith");
+      expect(result2.items[0].availableQuantityKg).toBe(200.0);
+    });
 
-    it('should handle pagination correctly', async () => {
+    it("should handle pagination correctly", async () => {
       // Create multiple purchase items
-      const additionalItems = []
+      const additionalItems = [];
       for (let i = 0; i < 5; i++) {
-        const purchase = await db.insert(purchases).values({
-          vendorId: testVendorId,
-          purchaseDate: new Date(`2024-03-${16 + i}T10:00:00Z`),
-          totalCost: '600.00',
-          invoiceNumber: `TEST-INV-00${i + 3}`,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }).returning()
+        const purchase = await db
+          .insert(purchases)
+          .values({
+            vendorId: testVendorId,
+            purchaseDate: new Date(`2024-03-${16 + i}T10:00:00Z`),
+            totalCost: "600.00",
+            invoiceNumber: `TEST-INV-00${i + 3}`,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
 
-        additionalItems.push(await db.insert(purchaseItems).values({
-          purchaseId: purchase[0].id,
-          appleVarietyId: testAppleVarietyId,
-          quantity: '100.000',
-          unit: 'kg',
-          pricePerUnit: '6.00',
-          totalCost: '600.00',
-          quantityKg: '100.000',
-          harvestDate: `2024-03-${15 + i}`,
-          originalUnit: 'kg',
-          originalQuantity: '100.000',
-          notes: `Batch ${i + 1} apples`,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }).returning())
+        additionalItems.push(
+          await db
+            .insert(purchaseItems)
+            .values({
+              purchaseId: purchase[0].id,
+              appleVarietyId: testAppleVarietyId,
+              quantity: "100.000",
+              unit: "kg",
+              pricePerUnit: "6.00",
+              totalCost: "600.00",
+              quantityKg: "100.000",
+              harvestDate: `2024-03-${15 + i}`,
+              originalUnit: "kg",
+              originalQuantity: "100.000",
+              notes: `Batch ${i + 1} apples`,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning(),
+        );
       }
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
       // First page
       const page1 = await caller.purchaseLine.available({
         limit: 3,
-        offset: 0
-      })
+        offset: 0,
+      });
 
-      expect(page1.items).toHaveLength(3)
-      expect(page1.pagination.hasMore).toBe(true)
-      expect(page1.pagination.total).toBe(6) // 1 original + 5 additional
+      expect(page1.items).toHaveLength(3);
+      expect(page1.pagination.hasMore).toBe(true);
+      expect(page1.pagination.total).toBe(6); // 1 original + 5 additional
 
       // Second page
       const page2 = await caller.purchaseLine.available({
         limit: 3,
-        offset: 3
-      })
+        offset: 3,
+      });
 
-      expect(page2.items).toHaveLength(3)
-      expect(page2.pagination.hasMore).toBe(false)
+      expect(page2.items).toHaveLength(3);
+      expect(page2.pagination.hasMore).toBe(false);
 
       // Verify no overlap between pages
-      const page1Ids = page1.items.map(item => item.purchaseItemId)
-      const page2Ids = page2.items.map(item => item.purchaseItemId)
-      const intersection = page1Ids.filter(id => page2Ids.includes(id))
-      expect(intersection).toHaveLength(0)
-    })
+      const page1Ids = page1.items.map((item) => item.purchaseItemId);
+      const page2Ids = page2.items.map((item) => item.purchaseItemId);
+      const intersection = page1Ids.filter((id) => page2Ids.includes(id));
+      expect(intersection).toHaveLength(0);
+    });
 
-    it('should calculate consumed quantities correctly', async () => {
+    it("should calculate consumed quantities correctly", async () => {
       // Create apple press run
-      const pressRun = await db.insert(applePressRuns).values({
-        vendorId: testVendorId,
-        vesselId: testVesselId,
-        status: 'completed',
-        startTime: new Date('2024-03-20T09:00:00Z'),
-        endTime: new Date('2024-03-20T17:00:00Z'),
-        totalAppleWeightKg: '200.000',
-        totalJuiceVolumeL: '130.000',
-        extractionRate: '0.6500',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }).returning()
+      const pressRun = await db
+        .insert(applePressRuns)
+        .values({
+          vendorId: testVendorId,
+          vesselId: testVesselId,
+          status: "completed",
+          startTime: new Date("2024-03-20T09:00:00Z"),
+          endTime: new Date("2024-03-20T17:00:00Z"),
+          totalAppleWeightKg: "200.000",
+          totalJuiceVolumeL: "130.000",
+          extractionRate: "0.6500",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
 
       // Create apple press run load that consumes part of purchase item
       await db.insert(applePressRunLoads).values({
@@ -317,49 +352,52 @@ describe('Purchase Line Integration for Apple Press', () => {
         purchaseItemId: testPurchaseItemId,
         appleVarietyId: testAppleVarietyId,
         loadSequence: 1,
-        appleWeightKg: '200.000', // Consumed 200kg out of 500kg
-        originalWeight: '200.000',
-        originalWeightUnit: 'kg',
-        juiceVolumeL: '130.000',
-        originalVolume: '130.000',
-        originalVolumeUnit: 'L',
-        brixMeasured: '14.2',
-        notes: 'First press load',
-        pressedAt: new Date('2024-03-20T11:30:00Z'),
+        appleWeightKg: "200.000", // Consumed 200kg out of 500kg
+        originalWeight: "200.000",
+        originalWeightUnit: "kg",
+        juiceVolumeL: "130.000",
+        originalVolume: "130.000",
+        originalVolumeUnit: "L",
+        brixMeasured: "14.2",
+        notes: "First press load",
+        pressedAt: new Date("2024-03-20T11:30:00Z"),
         createdAt: new Date(),
-        updatedAt: new Date()
-      })
+        updatedAt: new Date(),
+      });
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
       const result = await caller.purchaseLine.available({
-        limit: 10
-      })
+        limit: 10,
+      });
 
-      expect(result.items).toHaveLength(1)
+      expect(result.items).toHaveLength(1);
 
-      const item = result.items[0]
-      expect(item.totalQuantityKg).toBe(500.0)
-      expect(item.consumedQuantityKg).toBe(200.0)
-      expect(item.availableQuantityKg).toBe(300.0) // 500 - 200
-      expect(item.availablePercentage).toBe(60.0) // 300/500 * 100
-      expect(result.summary.totalAvailableKg).toBe(300.0)
-    })
+      const item = result.items[0];
+      expect(item.totalQuantityKg).toBe(500.0);
+      expect(item.consumedQuantityKg).toBe(200.0);
+      expect(item.availableQuantityKg).toBe(300.0); // 500 - 200
+      expect(item.availablePercentage).toBe(60.0); // 300/500 * 100
+      expect(result.summary.totalAvailableKg).toBe(300.0);
+    });
 
-    it('should exclude fully consumed purchase items', async () => {
+    it("should exclude fully consumed purchase items", async () => {
       // Create apple press run that fully consumes the purchase item
-      const pressRun = await db.insert(applePressRuns).values({
-        vendorId: testVendorId,
-        vesselId: testVesselId,
-        status: 'completed',
-        startTime: new Date('2024-03-20T09:00:00Z'),
-        endTime: new Date('2024-03-20T17:00:00Z'),
-        totalAppleWeightKg: '500.000',
-        totalJuiceVolumeL: '325.000',
-        extractionRate: '0.6500',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }).returning()
+      const pressRun = await db
+        .insert(applePressRuns)
+        .values({
+          vendorId: testVendorId,
+          vesselId: testVesselId,
+          status: "completed",
+          startTime: new Date("2024-03-20T09:00:00Z"),
+          endTime: new Date("2024-03-20T17:00:00Z"),
+          totalAppleWeightKg: "500.000",
+          totalJuiceVolumeL: "325.000",
+          extractionRate: "0.6500",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
 
       // Create apple press run load that fully consumes purchase item
       await db.insert(applePressRunLoads).values({
@@ -367,44 +405,47 @@ describe('Purchase Line Integration for Apple Press', () => {
         purchaseItemId: testPurchaseItemId,
         appleVarietyId: testAppleVarietyId,
         loadSequence: 1,
-        appleWeightKg: '500.000', // Fully consumed
-        originalWeight: '500.000',
-        originalWeightUnit: 'kg',
-        juiceVolumeL: '325.000',
-        originalVolume: '325.000',
-        originalVolumeUnit: 'L',
-        brixMeasured: '14.2',
-        notes: 'Full consumption press load',
-        pressedAt: new Date('2024-03-20T11:30:00Z'),
+        appleWeightKg: "500.000", // Fully consumed
+        originalWeight: "500.000",
+        originalWeightUnit: "kg",
+        juiceVolumeL: "325.000",
+        originalVolume: "325.000",
+        originalVolumeUnit: "L",
+        brixMeasured: "14.2",
+        notes: "Full consumption press load",
+        pressedAt: new Date("2024-03-20T11:30:00Z"),
         createdAt: new Date(),
-        updatedAt: new Date()
-      })
+        updatedAt: new Date(),
+      });
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
       const result = await caller.purchaseLine.available({
-        limit: 10
-      })
+        limit: 10,
+      });
 
-      expect(result.items).toHaveLength(0)
-      expect(result.summary.totalAvailableItems).toBe(0)
-      expect(result.summary.totalAvailableKg).toBe(0)
-    })
+      expect(result.items).toHaveLength(0);
+      expect(result.summary.totalAvailableItems).toBe(0);
+      expect(result.summary.totalAvailableKg).toBe(0);
+    });
 
-    it('should handle multiple loads consuming same purchase item', async () => {
+    it("should handle multiple loads consuming same purchase item", async () => {
       // Create apple press run
-      const pressRun = await db.insert(applePressRuns).values({
-        vendorId: testVendorId,
-        vesselId: testVesselId,
-        status: 'completed',
-        startTime: new Date('2024-03-20T09:00:00Z'),
-        endTime: new Date('2024-03-20T17:00:00Z'),
-        totalAppleWeightKg: '350.000',
-        totalJuiceVolumeL: '227.500',
-        extractionRate: '0.6500',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }).returning()
+      const pressRun = await db
+        .insert(applePressRuns)
+        .values({
+          vendorId: testVendorId,
+          vesselId: testVesselId,
+          status: "completed",
+          startTime: new Date("2024-03-20T09:00:00Z"),
+          endTime: new Date("2024-03-20T17:00:00Z"),
+          totalAppleWeightKg: "350.000",
+          totalJuiceVolumeL: "227.500",
+          extractionRate: "0.6500",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
 
       // Create multiple apple press run loads consuming same purchase item
       await db.insert(applePressRunLoads).values([
@@ -413,296 +454,310 @@ describe('Purchase Line Integration for Apple Press', () => {
           purchaseItemId: testPurchaseItemId,
           appleVarietyId: testAppleVarietyId,
           loadSequence: 1,
-          appleWeightKg: '150.000',
-          originalWeight: '150.000',
-          originalWeightUnit: 'kg',
-          juiceVolumeL: '97.500',
-          originalVolume: '97.500',
-          originalVolumeUnit: 'L',
-          brixMeasured: '14.1',
-          notes: 'First load',
-          pressedAt: new Date('2024-03-20T10:30:00Z'),
+          appleWeightKg: "150.000",
+          originalWeight: "150.000",
+          originalWeightUnit: "kg",
+          juiceVolumeL: "97.500",
+          originalVolume: "97.500",
+          originalVolumeUnit: "L",
+          brixMeasured: "14.1",
+          notes: "First load",
+          pressedAt: new Date("2024-03-20T10:30:00Z"),
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
         },
         {
           applePressRunId: pressRun[0].id,
           purchaseItemId: testPurchaseItemId,
           appleVarietyId: testAppleVarietyId,
           loadSequence: 2,
-          appleWeightKg: '200.000',
-          originalWeight: '200.000',
-          originalWeightUnit: 'kg',
-          juiceVolumeL: '130.000',
-          originalVolume: '130.000',
-          originalVolumeUnit: 'L',
-          brixMeasured: '14.3',
-          notes: 'Second load',
-          pressedAt: new Date('2024-03-20T14:15:00Z'),
+          appleWeightKg: "200.000",
+          originalWeight: "200.000",
+          originalWeightUnit: "kg",
+          juiceVolumeL: "130.000",
+          originalVolume: "130.000",
+          originalVolumeUnit: "L",
+          brixMeasured: "14.3",
+          notes: "Second load",
+          pressedAt: new Date("2024-03-20T14:15:00Z"),
           createdAt: new Date(),
-          updatedAt: new Date()
-        }
-      ])
+          updatedAt: new Date(),
+        },
+      ]);
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
       const result = await caller.purchaseLine.available({
-        limit: 10
-      })
+        limit: 10,
+      });
 
-      expect(result.items).toHaveLength(1)
+      expect(result.items).toHaveLength(1);
 
-      const item = result.items[0]
-      expect(item.totalQuantityKg).toBe(500.0)
-      expect(item.consumedQuantityKg).toBe(350.0) // 150 + 200
-      expect(item.availableQuantityKg).toBe(150.0) // 500 - 350
-      expect(item.availablePercentage).toBe(30.0) // 150/500 * 100
-    })
-  })
+      const item = result.items[0];
+      expect(item.totalQuantityKg).toBe(500.0);
+      expect(item.consumedQuantityKg).toBe(350.0); // 150 + 200
+      expect(item.availableQuantityKg).toBe(150.0); // 500 - 350
+      expect(item.availablePercentage).toBe(30.0); // 150/500 * 100
+    });
+  });
 
-  describe('purchaseLine.validateAvailability endpoint', () => {
-    it('should validate available quantity correctly', async () => {
-      const caller = appRouter.createCaller(testContext)
-
-      const result = await caller.purchaseLine.validateAvailability({
-        purchaseItemId: testPurchaseItemId,
-        requestedQuantityKg: 300.0
-      })
-
-      expect(result.isAvailable).toBe(true)
-      expect(result.availableQuantityKg).toBe(500.0)
-      expect(result.requestedQuantityKg).toBe(300.0)
-      expect(result.shortfallKg).toBe(0)
-      expect(result.totalQuantityKg).toBe(500.0)
-      expect(result.consumedQuantityKg).toBe(0)
-      expect(result.item.varietyName).toBe('Honeycrisp')
-      expect(result.item.vendorName).toBe('Orchard Farm Co')
-    })
-
-    it('should detect insufficient inventory', async () => {
-      const caller = appRouter.createCaller(testContext)
+  describe("purchaseLine.validateAvailability endpoint", () => {
+    it("should validate available quantity correctly", async () => {
+      const caller = appRouter.createCaller(testContext);
 
       const result = await caller.purchaseLine.validateAvailability({
         purchaseItemId: testPurchaseItemId,
-        requestedQuantityKg: 600.0 // More than available 500kg
-      })
+        requestedQuantityKg: 300.0,
+      });
 
-      expect(result.isAvailable).toBe(false)
-      expect(result.availableQuantityKg).toBe(500.0)
-      expect(result.requestedQuantityKg).toBe(600.0)
-      expect(result.shortfallKg).toBe(100.0) // 600 - 500
-      expect(result.totalQuantityKg).toBe(500.0)
-      expect(result.consumedQuantityKg).toBe(0)
-    })
+      expect(result.isAvailable).toBe(true);
+      expect(result.availableQuantityKg).toBe(500.0);
+      expect(result.requestedQuantityKg).toBe(300.0);
+      expect(result.shortfallKg).toBe(0);
+      expect(result.totalQuantityKg).toBe(500.0);
+      expect(result.consumedQuantityKg).toBe(0);
+      expect(result.item.varietyName).toBe("Honeycrisp");
+      expect(result.item.vendorName).toBe("Orchard Farm Co");
+    });
 
-    it('should account for consumed quantities in validation', async () => {
+    it("should detect insufficient inventory", async () => {
+      const caller = appRouter.createCaller(testContext);
+
+      const result = await caller.purchaseLine.validateAvailability({
+        purchaseItemId: testPurchaseItemId,
+        requestedQuantityKg: 600.0, // More than available 500kg
+      });
+
+      expect(result.isAvailable).toBe(false);
+      expect(result.availableQuantityKg).toBe(500.0);
+      expect(result.requestedQuantityKg).toBe(600.0);
+      expect(result.shortfallKg).toBe(100.0); // 600 - 500
+      expect(result.totalQuantityKg).toBe(500.0);
+      expect(result.consumedQuantityKg).toBe(0);
+    });
+
+    it("should account for consumed quantities in validation", async () => {
       // Create apple press run that partially consumes the item
-      const pressRun = await db.insert(applePressRuns).values({
-        vendorId: testVendorId,
-        vesselId: testVesselId,
-        status: 'completed',
-        startTime: new Date('2024-03-20T09:00:00Z'),
-        endTime: new Date('2024-03-20T17:00:00Z'),
-        totalAppleWeightKg: '300.000',
-        totalJuiceVolumeL: '195.000',
-        extractionRate: '0.6500',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }).returning()
+      const pressRun = await db
+        .insert(applePressRuns)
+        .values({
+          vendorId: testVendorId,
+          vesselId: testVesselId,
+          status: "completed",
+          startTime: new Date("2024-03-20T09:00:00Z"),
+          endTime: new Date("2024-03-20T17:00:00Z"),
+          totalAppleWeightKg: "300.000",
+          totalJuiceVolumeL: "195.000",
+          extractionRate: "0.6500",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
 
       await db.insert(applePressRunLoads).values({
         applePressRunId: pressRun[0].id,
         purchaseItemId: testPurchaseItemId,
         appleVarietyId: testAppleVarietyId,
         loadSequence: 1,
-        appleWeightKg: '300.000',
-        originalWeight: '300.000',
-        originalWeightUnit: 'kg',
-        juiceVolumeL: '195.000',
-        originalVolume: '195.000',
-        originalVolumeUnit: 'L',
-        brixMeasured: '14.2',
-        notes: 'Partial consumption',
-        pressedAt: new Date('2024-03-20T11:30:00Z'),
+        appleWeightKg: "300.000",
+        originalWeight: "300.000",
+        originalWeightUnit: "kg",
+        juiceVolumeL: "195.000",
+        originalVolume: "195.000",
+        originalVolumeUnit: "L",
+        brixMeasured: "14.2",
+        notes: "Partial consumption",
+        pressedAt: new Date("2024-03-20T11:30:00Z"),
         createdAt: new Date(),
-        updatedAt: new Date()
-      })
+        updatedAt: new Date(),
+      });
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
       // Request within remaining available (200kg available out of original 500kg)
       const result1 = await caller.purchaseLine.validateAvailability({
         purchaseItemId: testPurchaseItemId,
-        requestedQuantityKg: 150.0
-      })
+        requestedQuantityKg: 150.0,
+      });
 
-      expect(result1.isAvailable).toBe(true)
-      expect(result1.availableQuantityKg).toBe(200.0) // 500 - 300
-      expect(result1.consumedQuantityKg).toBe(300.0)
-      expect(result1.shortfallKg).toBe(0)
+      expect(result1.isAvailable).toBe(true);
+      expect(result1.availableQuantityKg).toBe(200.0); // 500 - 300
+      expect(result1.consumedQuantityKg).toBe(300.0);
+      expect(result1.shortfallKg).toBe(0);
 
       // Request more than remaining available
       const result2 = await caller.purchaseLine.validateAvailability({
         purchaseItemId: testPurchaseItemId,
-        requestedQuantityKg: 250.0
-      })
+        requestedQuantityKg: 250.0,
+      });
 
-      expect(result2.isAvailable).toBe(false)
-      expect(result2.availableQuantityKg).toBe(200.0)
-      expect(result2.consumedQuantityKg).toBe(300.0)
-      expect(result2.shortfallKg).toBe(50.0) // 250 - 200
-    })
+      expect(result2.isAvailable).toBe(false);
+      expect(result2.availableQuantityKg).toBe(200.0);
+      expect(result2.consumedQuantityKg).toBe(300.0);
+      expect(result2.shortfallKg).toBe(50.0); // 250 - 200
+    });
 
-    it('should handle non-existent purchase item', async () => {
-      const caller = appRouter.createCaller(testContext)
+    it("should handle non-existent purchase item", async () => {
+      const caller = appRouter.createCaller(testContext);
 
-      await expect(caller.purchaseLine.validateAvailability({
-        purchaseItemId: '00000000-0000-0000-0000-000000000000',
-        requestedQuantityKg: 100.0
-      })).rejects.toThrow('Purchase item not found')
-    })
+      await expect(
+        caller.purchaseLine.validateAvailability({
+          purchaseItemId: "00000000-0000-0000-0000-000000000000",
+          requestedQuantityKg: 100.0,
+        }),
+      ).rejects.toThrow("Purchase item not found");
+    });
 
-    it('should handle edge case of exactly available quantity', async () => {
-      const caller = appRouter.createCaller(testContext)
+    it("should handle edge case of exactly available quantity", async () => {
+      const caller = appRouter.createCaller(testContext);
 
       const result = await caller.purchaseLine.validateAvailability({
         purchaseItemId: testPurchaseItemId,
-        requestedQuantityKg: 500.0 // Exactly the total available
-      })
+        requestedQuantityKg: 500.0, // Exactly the total available
+      });
 
-      expect(result.isAvailable).toBe(true)
-      expect(result.availableQuantityKg).toBe(500.0)
-      expect(result.requestedQuantityKg).toBe(500.0)
-      expect(result.shortfallKg).toBe(0)
-    })
-  })
+      expect(result.isAvailable).toBe(true);
+      expect(result.availableQuantityKg).toBe(500.0);
+      expect(result.requestedQuantityKg).toBe(500.0);
+      expect(result.shortfallKg).toBe(0);
+    });
+  });
 
-  describe('RBAC Integration', () => {
-    it('should require proper permissions for available endpoint', async () => {
+  describe("RBAC Integration", () => {
+    it("should require proper permissions for available endpoint", async () => {
       const unauthorizedContext = {
         session: {
           user: {
-            id: 'unauthorized-user',
-            email: 'unauthorized@example.com',
-            role: 'viewer' as const // Viewer role should not have 'list' permission on 'purchaseLine'
-          }
-        }
-      }
+            id: "unauthorized-user",
+            email: "unauthorized@example.com",
+            role: "viewer" as const, // Viewer role should not have 'list' permission on 'purchaseLine'
+          },
+        },
+      };
 
-      const caller = appRouter.createCaller(unauthorizedContext)
+      const caller = appRouter.createCaller(unauthorizedContext);
 
       // This should fail due to RBAC - viewer role doesn't have 'list' permission on 'purchaseLine'
       // Note: The exact error depends on RBAC implementation, but it should be unauthorized
-      await expect(caller.purchaseLine.available({})).rejects.toThrow()
-    })
+      await expect(caller.purchaseLine.available({})).rejects.toThrow();
+    });
 
-    it('should require proper permissions for validateAvailability endpoint', async () => {
+    it("should require proper permissions for validateAvailability endpoint", async () => {
       const unauthorizedContext = {
         session: {
           user: {
-            id: 'unauthorized-user',
-            email: 'unauthorized@example.com',
-            role: 'viewer' as const // Viewer role should have 'read' but check specific permissions
-          }
-        }
-      }
+            id: "unauthorized-user",
+            email: "unauthorized@example.com",
+            role: "viewer" as const, // Viewer role should have 'read' but check specific permissions
+          },
+        },
+      };
 
-      const caller = appRouter.createCaller(unauthorizedContext)
+      const caller = appRouter.createCaller(unauthorizedContext);
 
       // This should succeed for viewer role with 'read' permission on 'purchaseLine'
       // Adjusted expectation based on RBAC configuration
       try {
         await caller.purchaseLine.validateAvailability({
           purchaseItemId: testPurchaseItemId,
-          requestedQuantityKg: 100.0
-        })
+          requestedQuantityKg: 100.0,
+        });
         // If it succeeds, viewer has read permission
-        expect(true).toBe(true)
+        expect(true).toBe(true);
       } catch (error) {
         // If it fails, viewer doesn't have read permission
-        expect(error).toBeDefined()
+        expect(error).toBeDefined();
       }
-    })
-  })
+    });
+  });
 
-  describe('Error Handling', () => {
-    it('should handle database errors gracefully', async () => {
-      const caller = appRouter.createCaller(testContext)
+  describe("Error Handling", () => {
+    it("should handle database errors gracefully", async () => {
+      const caller = appRouter.createCaller(testContext);
 
       // Test with invalid UUID format
-      await expect(caller.purchaseLine.available({
-        vendorId: 'invalid-uuid-format'
-      })).rejects.toThrow()
-    })
+      await expect(
+        caller.purchaseLine.available({
+          vendorId: "invalid-uuid-format",
+        }),
+      ).rejects.toThrow();
+    });
 
-    it('should handle SQL injection attempts', async () => {
-      const caller = appRouter.createCaller(testContext)
+    it("should handle SQL injection attempts", async () => {
+      const caller = appRouter.createCaller(testContext);
 
       // Test with SQL injection attempt in optional parameters
-      const maliciousInput = "'; DROP TABLE purchase_items; --"
+      const maliciousInput = "'; DROP TABLE purchase_items; --";
 
       // This should fail validation before reaching the database
-      await expect(caller.purchaseLine.available({
-        // @ts-expect-error Testing malicious input
-        vendorId: maliciousInput
-      })).rejects.toThrow()
-    })
-  })
+      await expect(
+        caller.purchaseLine.available({
+          // @ts-expect-error Testing malicious input
+          vendorId: maliciousInput,
+        }),
+      ).rejects.toThrow();
+    });
+  });
 
-  describe('Performance Tests', () => {
-    it('should handle large dataset pagination efficiently', async () => {
+  describe("Performance Tests", () => {
+    it("should handle large dataset pagination efficiently", async () => {
       // Create many purchase items to test pagination performance
-      const purchasePromises = []
+      const purchasePromises = [];
       for (let i = 0; i < 50; i++) {
         purchasePromises.push(
-          db.insert(purchases).values({
-            vendorId: testVendorId,
-            purchaseDate: new Date(`2024-0${(i % 2) + 1}-${String(i + 1).padStart(2, '0')}T10:00:00Z`),
-            totalCost: '100.00',
-            invoiceNumber: `PERF-TEST-${String(i).padStart(3, '0')}`,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          }).returning()
-        )
+          db
+            .insert(purchases)
+            .values({
+              vendorId: testVendorId,
+              purchaseDate: new Date(
+                `2024-0${(i % 2) + 1}-${String(i + 1).padStart(2, "0")}T10:00:00Z`,
+              ),
+              totalCost: "100.00",
+              invoiceNumber: `PERF-TEST-${String(i).padStart(3, "0")}`,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning(),
+        );
       }
 
-      const purchases = await Promise.all(purchasePromises)
+      const purchases = await Promise.all(purchasePromises);
 
       const itemPromises = purchases.map((purchase, i) =>
         db.insert(purchaseItems).values({
           purchaseId: purchase[0].id,
           appleVarietyId: testAppleVarietyId,
-          quantity: '50.000',
-          unit: 'kg',
-          pricePerUnit: '2.00',
-          totalCost: '100.00',
-          quantityKg: '50.000',
-          harvestDate: `2024-0${(i % 2) + 1}-${String(i + 1).padStart(2, '0')}`,
-          originalUnit: 'kg',
-          originalQuantity: '50.000',
+          quantity: "50.000",
+          unit: "kg",
+          pricePerUnit: "2.00",
+          totalCost: "100.00",
+          quantityKg: "50.000",
+          harvestDate: `2024-0${(i % 2) + 1}-${String(i + 1).padStart(2, "0")}`,
+          originalUnit: "kg",
+          originalQuantity: "50.000",
           notes: `Performance test item ${i}`,
           createdAt: new Date(),
-          updatedAt: new Date()
-        })
-      )
+          updatedAt: new Date(),
+        }),
+      );
 
-      await Promise.all(itemPromises)
+      await Promise.all(itemPromises);
 
-      const caller = appRouter.createCaller(testContext)
+      const caller = appRouter.createCaller(testContext);
 
-      const startTime = Date.now()
+      const startTime = Date.now();
       const result = await caller.purchaseLine.available({
         limit: 20,
-        offset: 0
-      })
-      const endTime = Date.now()
+        offset: 0,
+      });
+      const endTime = Date.now();
 
-      expect(result.items).toHaveLength(20)
-      expect(result.pagination.total).toBe(51) // 1 original + 50 performance test items
-      expect(result.pagination.hasMore).toBe(true)
+      expect(result.items).toHaveLength(20);
+      expect(result.pagination.total).toBe(51); // 1 original + 50 performance test items
+      expect(result.pagination.hasMore).toBe(true);
 
       // Performance assertion - should complete within reasonable time
-      expect(endTime - startTime).toBeLessThan(1000) // Less than 1 second
-    })
-  })
-})
+      expect(endTime - startTime).toBeLessThan(1000); // Less than 1 second
+    });
+  });
+});

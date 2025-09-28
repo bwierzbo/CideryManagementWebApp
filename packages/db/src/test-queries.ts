@@ -1,4 +1,4 @@
-import { db } from './client'
+import { db } from "./client";
 import {
   vendors,
   appleVarieties,
@@ -14,35 +14,40 @@ import {
   inventory,
   batchCosts,
   applePressRuns,
-  applePressRunLoads
-} from './schema'
-import { eq, desc, sql, and, isNull } from 'drizzle-orm'
+  applePressRunLoads,
+} from "./schema";
+import { eq, desc, sql, and, isNull } from "drizzle-orm";
 
 async function testQueries() {
-  console.log('🧪 Testing database queries...')
+  console.log("🧪 Testing database queries...");
 
   try {
     // Test 1: Basic vendor query
-    console.log('\n1. 📦 Testing vendor queries...')
-    const allVendors = await db.select().from(vendors).where(eq(vendors.isActive, true))
-    console.log(`   Found ${allVendors.length} active vendors`)
-    console.log(`   First vendor: ${allVendors[0]?.name}`)
+    console.log("\n1. 📦 Testing vendor queries...");
+    const allVendors = await db
+      .select()
+      .from(vendors)
+      .where(eq(vendors.isActive, true));
+    console.log(`   Found ${allVendors.length} active vendors`);
+    console.log(`   First vendor: ${allVendors[0]?.name}`);
 
     // Test 2: Apple varieties with high sugar content
-    console.log('\n2. 🍎 Testing apple variety queries...')
+    console.log("\n2. 🍎 Testing apple variety queries...");
     const varietiesWithHighSugar = await db
       .select()
       .from(appleVarieties)
       .where(sql`${appleVarieties.sugarBrix} IN ('high', 'medium-high')`)
-      .orderBy(appleVarieties.name)
+      .orderBy(appleVarieties.name);
 
-    console.log(`   Found ${varietiesWithHighSugar.length} varieties with high sugar content`)
-    varietiesWithHighSugar.forEach(v => {
-      console.log(`   - ${v.name}: ${v.sugarBrix} sugar`)
-    })
+    console.log(
+      `   Found ${varietiesWithHighSugar.length} varieties with high sugar content`,
+    );
+    varietiesWithHighSugar.forEach((v) => {
+      console.log(`   - ${v.name}: ${v.sugarBrix} sugar`);
+    });
 
     // Test 3: Complex purchase query with joins
-    console.log('\n3. 💰 Testing purchase queries with joins...')
+    console.log("\n3. 💰 Testing purchase queries with joins...");
     const purchaseDetails = await db
       .select({
         purchaseId: purchases.id,
@@ -51,41 +56,46 @@ async function testQueries() {
         varietyName: appleVarieties.name,
         quantity: purchaseItems.quantity,
         unit: purchaseItems.unit,
-        totalCost: purchaseItems.totalCost
+        totalCost: purchaseItems.totalCost,
       })
       .from(purchases)
       .innerJoin(vendors, eq(purchases.vendorId, vendors.id))
       .innerJoin(purchaseItems, eq(purchaseItems.purchaseId, purchases.id))
-      .innerJoin(appleVarieties, eq(purchaseItems.fruitVarietyId, appleVarieties.id))
+      .innerJoin(
+        appleVarieties,
+        eq(purchaseItems.fruitVarietyId, appleVarieties.id),
+      )
       .orderBy(desc(purchases.purchaseDate))
-      .limit(5)
+      .limit(5);
 
-    console.log(`   Recent purchases:`)
-    purchaseDetails.forEach(p => {
-      console.log(`   - ${p.vendorName}: ${p.quantity} ${p.unit} ${p.varietyName} ($${p.totalCost})`)
-    })
+    console.log(`   Recent purchases:`);
+    purchaseDetails.forEach((p) => {
+      console.log(
+        `   - ${p.vendorName}: ${p.quantity} ${p.unit} ${p.varietyName} ($${p.totalCost})`,
+      );
+    });
 
     // Test 4: Batch status and fermentation progress
-    console.log('\n4. 🍺 Testing batch queries...')
+    console.log("\n4. 🍺 Testing batch queries...");
     const activeBatches = await db
       .select({
         batchNumber: batches.batchNumber,
         status: batches.status,
         initialVolume: batches.initialVolumeL,
         currentVolume: batches.currentVolumeL,
-        startDate: batches.startDate
+        startDate: batches.startDate,
       })
       .from(batches)
-      .where(eq(batches.status, 'active'))
-      .orderBy(batches.startDate)
+      .where(eq(batches.status, "active"))
+      .orderBy(batches.startDate);
 
-    console.log(`   Active batches (${activeBatches.length}):`)
-    activeBatches.forEach(b => {
-      console.log(`   - ${b.batchNumber}: ${b.currentVolume}L`)
-    })
+    console.log(`   Active batches (${activeBatches.length}):`);
+    activeBatches.forEach((b) => {
+      console.log(`   - ${b.batchNumber}: ${b.currentVolume}L`);
+    });
 
     // Test 5: Inventory availability
-    console.log('\n5. 📋 Testing inventory queries...')
+    console.log("\n5. 📋 Testing inventory queries...");
     const availableInventory = await db
       .select({
         batchNumber: batches.batchNumber,
@@ -95,19 +105,21 @@ async function testQueries() {
         reservedBottles: inventory.reservedBottleCount,
         availableBottles: sql<number>`${inventory.currentBottleCount} - ${inventory.reservedBottleCount}`,
         abv: packages.abvAtPackaging,
-        location: inventory.location
+        location: inventory.location,
       })
       .from(inventory)
       .innerJoin(packages, eq(inventory.packageId, packages.id))
-      .innerJoin(batches, eq(packages.batchId, batches.id))
+      .innerJoin(batches, eq(packages.batchId, batches.id));
 
-    console.log(`   Inventory available:`)
-    availableInventory.forEach(i => {
-      console.log(`   - ${i.batchNumber}: ${i.availableBottles} bottles available (${i.bottleSize}, ${i.abv}% ABV)`)
-    })
+    console.log(`   Inventory available:`);
+    availableInventory.forEach((i) => {
+      console.log(
+        `   - ${i.batchNumber}: ${i.availableBottles} bottles available (${i.bottleSize}, ${i.abv}% ABV)`,
+      );
+    });
 
     // Test 6: Cost analysis
-    console.log('\n6. 💲 Testing cost analysis queries...')
+    console.log("\n6. 💲 Testing cost analysis queries...");
     const costAnalysis = await db
       .select({
         batchNumber: batches.batchNumber,
@@ -117,22 +129,24 @@ async function testQueries() {
         appleCost: batchCosts.totalAppleCost,
         laborCost: batchCosts.laborCost,
         overheadCost: batchCosts.overheadCost,
-        packagingCost: batchCosts.packagingCost
+        packagingCost: batchCosts.packagingCost,
       })
       .from(batchCosts)
       .innerJoin(batches, eq(batchCosts.batchId, batches.id))
-      .orderBy(desc(batchCosts.calculatedAt))
+      .orderBy(desc(batchCosts.calculatedAt));
 
-    console.log(`   Cost breakdown:`)
-    costAnalysis.forEach(c => {
-      console.log(`   - ${c.batchNumber}: Total $${c.totalCost} (Apple: $${c.appleCost}, Labor: $${c.laborCost}, Packaging: $${c.packagingCost})`)
+    console.log(`   Cost breakdown:`);
+    costAnalysis.forEach((c) => {
+      console.log(
+        `   - ${c.batchNumber}: Total $${c.totalCost} (Apple: $${c.appleCost}, Labor: $${c.laborCost}, Packaging: $${c.packagingCost})`,
+      );
       if (c.costPerBottle) {
-        console.log(`     Cost per bottle: $${c.costPerBottle}`)
+        console.log(`     Cost per bottle: $${c.costPerBottle}`);
       }
-    })
+    });
 
     // Test 7: Production efficiency metrics
-    console.log('\n7. 📊 Testing production efficiency queries...')
+    console.log("\n7. 📊 Testing production efficiency queries...");
     const pressEfficiency = await db
       .select({
         runDate: pressRuns.runDate,
@@ -146,18 +160,20 @@ async function testQueries() {
              JOIN purchase_items pi ON pit.purchase_item_id = pi.id
              WHERE pit.press_run_id = press_runs.id),
             0
-          )`
+          )`,
       })
       .from(pressRuns)
-      .orderBy(desc(pressRuns.runDate))
+      .orderBy(desc(pressRuns.runDate));
 
-    console.log(`   Press efficiency:`)
-    pressEfficiency.forEach(p => {
-      console.log(`   - ${p.runDate.toDateString()}: ${p.extractionRate} extraction (${p.totalApples}kg → ${p.totalJuice}L)`)
-    })
+    console.log(`   Press efficiency:`);
+    pressEfficiency.forEach((p) => {
+      console.log(
+        `   - ${p.runDate.toDateString()}: ${p.extractionRate} extraction (${p.totalApples}kg → ${p.totalJuice}L)`,
+      );
+    });
 
     // Test 8: Fermentation progress tracking
-    console.log('\n8. 📈 Testing fermentation tracking queries...')
+    console.log("\n8. 📈 Testing fermentation tracking queries...");
     const fermentationProgress = await db
       .select({
         batchNumber: batches.batchNumber,
@@ -166,40 +182,47 @@ async function testQueries() {
         abv: batchMeasurements.abv,
         ph: batchMeasurements.ph,
         temperature: batchMeasurements.temperature,
-        takenBy: batchMeasurements.takenBy
+        takenBy: batchMeasurements.takenBy,
       })
       .from(batchMeasurements)
       .innerJoin(batches, eq(batchMeasurements.batchId, batches.id))
-      .where(eq(batches.status, 'active'))
+      .where(eq(batches.status, "active"))
       .orderBy(desc(batchMeasurements.measurementDate))
-      .limit(10)
+      .limit(10);
 
-    console.log(`   Recent measurements:`)
-    fermentationProgress.forEach(m => {
-      console.log(`   - ${m.batchNumber} (${m.measurementDate.toDateString()}): ${m.abv}% ABV, pH ${m.ph}, SG ${m.specificGravity}`)
-    })
+    console.log(`   Recent measurements:`);
+    fermentationProgress.forEach((m) => {
+      console.log(
+        `   - ${m.batchNumber} (${m.measurementDate.toDateString()}): ${m.abv}% ABV, pH ${m.ph}, SG ${m.specificGravity}`,
+      );
+    });
 
     // Test 9: Apple variety usage and costs
-    console.log('\n9. 🍎💰 Testing variety cost analysis...')
+    console.log("\n9. 🍎💰 Testing variety cost analysis...");
     const varietyCosts = await db
       .select({
         varietyName: appleVarieties.name,
         totalQuantityKg: sql<number>`SUM(${purchaseItems.quantityKg})`,
         totalCost: sql<number>`SUM(${purchaseItems.totalCost})`,
-        avgPricePerKg: sql<number>`AVG(${purchaseItems.pricePerUnit})`
+        avgPricePerKg: sql<number>`AVG(${purchaseItems.pricePerUnit})`,
       })
       .from(appleVarieties)
-      .innerJoin(purchaseItems, eq(purchaseItems.fruitVarietyId, appleVarieties.id))
+      .innerJoin(
+        purchaseItems,
+        eq(purchaseItems.fruitVarietyId, appleVarieties.id),
+      )
       .groupBy(appleVarieties.id, appleVarieties.name)
-      .orderBy(desc(sql`SUM(${purchaseItems.totalCost})`))
+      .orderBy(desc(sql`SUM(${purchaseItems.totalCost})`));
 
-    console.log(`   Variety costs:`)
-    varietyCosts.forEach(v => {
-      console.log(`   - ${v.varietyName}: ${v.totalQuantityKg}kg total, $${v.totalCost} total cost, $${Number(v.avgPricePerKg).toFixed(2)}/kg avg`)
-    })
+    console.log(`   Variety costs:`);
+    varietyCosts.forEach((v) => {
+      console.log(
+        `   - ${v.varietyName}: ${v.totalQuantityKg}kg total, $${v.totalCost} total cost, $${Number(v.avgPricePerKg).toFixed(2)}/kg avg`,
+      );
+    });
 
     // Test 10: Vessel utilization
-    console.log('\n10. 🏺 Testing vessel utilization...')
+    console.log("\n10. 🏺 Testing vessel utilization...");
     const vesselUtilization = await db
       .select({
         vesselName: sql<string>`COALESCE(${vessels.name}, 'Unassigned')`,
@@ -214,40 +237,56 @@ async function testQueries() {
             WHEN ${vessels.capacityL} > 0 
             THEN ROUND((${batches.currentVolumeL} / ${vessels.capacityL}) * 100, 1)
             ELSE 0 
-          END`
+          END`,
       })
       .from(vessels)
-      .leftJoin(batches, and(
-        eq(batches.vesselId, vessels.id),
-        eq(batches.status, 'active')
-      ))
-      .orderBy(vessels.name)
+      .leftJoin(
+        batches,
+        and(eq(batches.vesselId, vessels.id), eq(batches.status, "active")),
+      )
+      .orderBy(vessels.name);
 
-    console.log(`   Vessel utilization:`)
-    vesselUtilization.forEach(v => {
+    console.log(`   Vessel utilization:`);
+    vesselUtilization.forEach((v) => {
       if (v.currentBatch) {
-        console.log(`   - ${v.vesselName} (${v.vesselType}): ${v.utilizationPercent}% used by ${v.currentBatch}`)
+        console.log(
+          `   - ${v.vesselName} (${v.vesselType}): ${v.utilizationPercent}% used by ${v.currentBatch}`,
+        );
       } else {
-        console.log(`   - ${v.vesselName} (${v.vesselType}): Available (${v.vesselStatus})`)
+        console.log(
+          `   - ${v.vesselName} (${v.vesselType}): Available (${v.vesselStatus})`,
+        );
       }
-    })
+    });
 
     // Test 11: ApplePress Mobile Workflow Tables
-    console.log('\n11. 📱 Testing ApplePress mobile workflow tables...')
+    console.log("\n11. 📱 Testing ApplePress mobile workflow tables...");
 
     // Test table existence and basic operations
-    const applePressRunCount = await db.select({ count: sql<number>`count(*)` }).from(applePressRuns)
-    const applePressLoadCount = await db.select({ count: sql<number>`count(*)` }).from(applePressRunLoads)
+    const applePressRunCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(applePressRuns);
+    const applePressLoadCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(applePressRunLoads);
 
-    console.log(`   ApplePress runs table: ✅ (${applePressRunCount[0].count} records)`)
-    console.log(`   ApplePress loads table: ✅ (${applePressLoadCount[0].count} records)`)
+    console.log(
+      `   ApplePress runs table: ✅ (${applePressRunCount[0].count} records)`,
+    );
+    console.log(
+      `   ApplePress loads table: ✅ (${applePressLoadCount[0].count} records)`,
+    );
 
     // Test enum constraint
     try {
-      await db.select().from(applePressRuns).where(eq(applePressRuns.status, 'draft')).limit(1)
-      console.log(`   Status enum constraint: ✅ (draft status queryable)`)
+      await db
+        .select()
+        .from(applePressRuns)
+        .where(eq(applePressRuns.status, "draft"))
+        .limit(1);
+      console.log(`   Status enum constraint: ✅ (draft status queryable)`);
     } catch (error) {
-      console.log(`   Status enum constraint: ❌ (${error})`)
+      console.log(`   Status enum constraint: ❌ (${error})`);
     }
 
     // Test foreign key relationships
@@ -255,38 +294,39 @@ async function testQueries() {
       .select({
         applePressRunId: applePressRuns.id,
         vendorName: vendors.name,
-        vesselName: sql<string>`COALESCE(${vessels.name}, 'No vessel assigned')`
+        vesselName: sql<string>`COALESCE(${vessels.name}, 'No vessel assigned')`,
       })
       .from(applePressRuns)
       .innerJoin(vendors, eq(applePressRuns.vendorId, vendors.id))
       .leftJoin(vessels, eq(applePressRuns.vesselId, vessels.id))
-      .limit(5)
+      .limit(5);
 
-    console.log(`   Foreign key relationships: ✅ (joins working)`)
+    console.log(`   Foreign key relationships: ✅ (joins working)`);
 
     // Test composite indexes
     const indexTest = await db
       .select()
       .from(applePressRuns)
-      .where(and(
-        eq(applePressRuns.status, 'draft'),
-        isNull(applePressRuns.deletedAt)
-      ))
-      .limit(1)
+      .where(
+        and(
+          eq(applePressRuns.status, "draft"),
+          isNull(applePressRuns.deletedAt),
+        ),
+      )
+      .limit(1);
 
-    console.log(`   Composite indexes: ✅ (vendor_status index operational)`)
-    console.log(`   ApplePress tables successfully validated!`)
+    console.log(`   Composite indexes: ✅ (vendor_status index operational)`);
+    console.log(`   ApplePress tables successfully validated!`);
 
-    console.log('\n✅ All database tests completed successfully!')
-    console.log('   • Basic CRUD operations working')
-    console.log('   • Complex joins functioning properly') 
-    console.log('   • Aggregation queries operational')
-    console.log('   • Business logic queries validated')
-    console.log('   • Database relationships intact')
-
+    console.log("\n✅ All database tests completed successfully!");
+    console.log("   • Basic CRUD operations working");
+    console.log("   • Complex joins functioning properly");
+    console.log("   • Aggregation queries operational");
+    console.log("   • Business logic queries validated");
+    console.log("   • Database relationships intact");
   } catch (error) {
-    console.error('❌ Database test failed:', error)
-    throw error
+    console.error("❌ Database test failed:", error);
+    throw error;
   }
 }
 
@@ -294,11 +334,11 @@ async function testQueries() {
 if (require.main === module) {
   testQueries()
     .then(() => {
-      console.log('\n🎉 Database testing completed!')
-      process.exit(0)
+      console.log("\n🎉 Database testing completed!");
+      process.exit(0);
     })
     .catch((error) => {
-      console.error('\n💥 Database testing failed:', error)
-      process.exit(1)
-    })
+      console.error("\n💥 Database testing failed:", error);
+      process.exit(1);
+    });
 }

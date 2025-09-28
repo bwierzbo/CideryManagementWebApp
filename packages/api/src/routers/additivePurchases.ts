@@ -1,24 +1,26 @@
-import { z } from 'zod'
-import { router, createRbacProcedure } from '../trpc'
-import { db, additivePurchases, additivePurchaseItems, vendors } from 'db'
-import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
+import { z } from "zod";
+import { router, createRbacProcedure } from "../trpc";
+import { db, additivePurchases, additivePurchaseItems, vendors } from "db";
+import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 
 export const additivePurchasesRouter = router({
   // List additive purchases
-  list: createRbacProcedure('list', 'purchase')
-    .input(z.object({
-      limit: z.number().int().positive().max(100).default(50),
-      offset: z.number().int().min(0).default(0),
-      vendorId: z.string().uuid().optional(),
-    }))
+  list: createRbacProcedure("list", "purchase")
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+        vendorId: z.string().uuid().optional(),
+      }),
+    )
     .query(async ({ input }) => {
       try {
-        const { limit, offset, vendorId } = input
+        const { limit, offset, vendorId } = input;
 
-        const conditions = [isNull(additivePurchases.deletedAt)]
+        const conditions = [isNull(additivePurchases.deletedAt)];
         if (vendorId) {
-          conditions.push(eq(additivePurchases.vendorId, vendorId))
+          conditions.push(eq(additivePurchases.vendorId, vendorId));
         }
 
         const purchases = await db
@@ -39,12 +41,12 @@ export const additivePurchasesRouter = router({
           .where(and(...conditions))
           .orderBy(desc(additivePurchases.purchaseDate))
           .limit(limit)
-          .offset(offset)
+          .offset(offset);
 
         const totalCount = await db
           .select({ count: sql<number>`count(*)` })
           .from(additivePurchases)
-          .where(and(...conditions))
+          .where(and(...conditions));
 
         return {
           purchases,
@@ -52,48 +54,64 @@ export const additivePurchasesRouter = router({
             total: totalCount[0]?.count || 0,
             limit,
             offset,
-            hasMore: (totalCount[0]?.count || 0) > offset + limit
-          }
-        }
+            hasMore: (totalCount[0]?.count || 0) > offset + limit,
+          },
+        };
       } catch (error) {
-        console.error('Error listing additive purchases:', error)
+        console.error("Error listing additive purchases:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list additive purchases'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to list additive purchases",
+        });
       }
     }),
 
   // Create additive purchase
-  create: createRbacProcedure('create', 'purchase')
-    .input(z.object({
-      vendorId: z.string().uuid('Invalid vendor ID'),
-      purchaseDate: z.date().or(z.string().transform(val => new Date(val))),
-      invoiceNumber: z.string().optional(),
-      notes: z.string().optional(),
-      items: z.array(z.object({
-        additiveVarietyId: z.string().uuid('Invalid additive variety ID'),
-        brandManufacturer: z.string().min(1, 'Brand/manufacturer is required'),
-        productName: z.string().min(1, 'Product name is required'),
-        quantity: z.number().positive('Quantity must be positive'),
-        unit: z.enum(['g', 'kg', 'oz', 'lb']),
-        lotBatchNumber: z.string().optional(),
-        expirationDate: z.date().or(z.string().transform(val => new Date(val))).optional(),
-        storageRequirements: z.string().optional(),
-        pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
+  create: createRbacProcedure("create", "purchase")
+    .input(
+      z.object({
+        vendorId: z.string().uuid("Invalid vendor ID"),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))),
+        invoiceNumber: z.string().optional(),
         notes: z.string().optional(),
-      })).min(1, 'At least one item is required'),
-    }))
+        items: z
+          .array(
+            z.object({
+              additiveVarietyId: z.string().uuid("Invalid additive variety ID"),
+              brandManufacturer: z
+                .string()
+                .min(1, "Brand/manufacturer is required"),
+              productName: z.string().min(1, "Product name is required"),
+              quantity: z.number().positive("Quantity must be positive"),
+              unit: z.enum(["g", "kg", "oz", "lb"]),
+              lotBatchNumber: z.string().optional(),
+              expirationDate: z
+                .date()
+                .or(z.string().transform((val) => new Date(val)))
+                .optional(),
+              storageRequirements: z.string().optional(),
+              pricePerUnit: z
+                .number()
+                .positive("Price per unit must be positive")
+                .optional(),
+              notes: z.string().optional(),
+            }),
+          )
+          .min(1, "At least one item is required"),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
           // Calculate total cost
-          let totalCost = 0
-          const processedItems = []
+          let totalCost = 0;
+          const processedItems = [];
 
           for (const item of input.items) {
-            const itemTotal = item.pricePerUnit ? item.quantity * item.pricePerUnit : 0
-            totalCost += itemTotal
+            const itemTotal = item.pricePerUnit
+              ? item.quantity * item.pricePerUnit
+              : 0;
+            totalCost += itemTotal;
 
             processedItems.push({
               additiveVarietyId: item.additiveVarietyId,
@@ -102,28 +120,30 @@ export const additivePurchasesRouter = router({
               quantity: item.quantity.toString(),
               unit: item.unit,
               lotBatchNumber: item.lotBatchNumber,
-              expirationDate: item.expirationDate ? item.expirationDate.toISOString().split('T')[0] : null,
+              expirationDate: item.expirationDate
+                ? item.expirationDate.toISOString().split("T")[0]
+                : null,
               storageRequirements: item.storageRequirements,
               pricePerUnit: item.pricePerUnit?.toString() || null,
               totalCost: itemTotal.toString(),
               notes: item.notes,
-            })
+            });
           }
 
           // Handle invoice number generation (similar to base fruit purchases)
-          let finalInvoiceNumber = input.invoiceNumber
-          let autoGenerated = false
+          let finalInvoiceNumber = input.invoiceNumber;
+          let autoGenerated = false;
 
           if (!finalInvoiceNumber) {
-            const dateStr = input.purchaseDate.toISOString().split('T')[0]
-            const startOfDay = new Date(input.purchaseDate)
-            startOfDay.setHours(0, 0, 0, 0)
-            const endOfDay = new Date(input.purchaseDate)
-            endOfDay.setHours(23, 59, 59, 999)
+            const dateStr = input.purchaseDate.toISOString().split("T")[0];
+            const startOfDay = new Date(input.purchaseDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(input.purchaseDate);
+            endOfDay.setHours(23, 59, 59, 999);
 
             const maxSequenceResult = await tx
               .select({
-                maxInvoice: sql<string>`MAX(${additivePurchases.invoiceNumber})`
+                maxInvoice: sql<string>`MAX(${additivePurchases.invoiceNumber})`,
               })
               .from(additivePurchases)
               .where(
@@ -132,25 +152,25 @@ export const additivePurchasesRouter = router({
                   sql`${additivePurchases.purchaseDate} >= ${startOfDay}`,
                   sql`${additivePurchases.purchaseDate} <= ${endOfDay}`,
                   eq(additivePurchases.autoGeneratedInvoice, true),
-                  sql`${additivePurchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`
-                )
-              )
+                  sql`${additivePurchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`,
+                ),
+              );
 
-            let nextSequence = 1
+            let nextSequence = 1;
             if (maxSequenceResult[0]?.maxInvoice) {
-              const parts = maxSequenceResult[0].maxInvoice.split('-')
+              const parts = maxSequenceResult[0].maxInvoice.split("-");
               if (parts.length >= 7) {
-                const sequencePart = parts[parts.length - 1]
-                const currentSeq = parseInt(sequencePart, 10)
+                const sequencePart = parts[parts.length - 1];
+                const currentSeq = parseInt(sequencePart, 10);
                 if (!isNaN(currentSeq)) {
-                  nextSequence = currentSeq + 1
+                  nextSequence = currentSeq + 1;
                 }
               }
             }
 
-            const paddedSequence = nextSequence.toString().padStart(3, '0')
-            finalInvoiceNumber = `${dateStr}-${input.vendorId}-${paddedSequence}-ADD`
-            autoGenerated = true
+            const paddedSequence = nextSequence.toString().padStart(3, "0");
+            finalInvoiceNumber = `${dateStr}-${input.vendorId}-${paddedSequence}-ADD`;
+            autoGenerated = true;
           }
 
           // Create the purchase
@@ -166,9 +186,9 @@ export const additivePurchasesRouter = router({
               createdAt: new Date(),
               updatedAt: new Date(),
             })
-            .returning()
+            .returning();
 
-          const purchaseId = newPurchase[0].id
+          const purchaseId = newPurchase[0].id;
 
           // Create purchase items
           const newItems = await tx
@@ -179,28 +199,28 @@ export const additivePurchasesRouter = router({
                 ...item,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-              }))
+              })),
             )
-            .returning()
+            .returning();
 
           return {
             success: true,
             purchase: newPurchase[0],
             items: newItems,
-            message: 'Additive purchase created successfully'
-          }
-        })
+            message: "Additive purchase created successfully",
+          };
+        });
       } catch (error) {
-        console.error('Error creating additive purchase:', error)
+        console.error("Error creating additive purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to create additive purchase'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create additive purchase",
+        });
       }
     }),
 
   // Get purchase by ID with items
-  getById: createRbacProcedure('read', 'purchase')
+  getById: createRbacProcedure("read", "purchase")
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input }) => {
       try {
@@ -209,26 +229,26 @@ export const additivePurchasesRouter = router({
           with: {
             items: true,
             vendor: true,
-          }
-        })
+          },
+        });
 
         if (!purchase) {
           throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Additive purchase not found'
-          })
+            code: "NOT_FOUND",
+            message: "Additive purchase not found",
+          });
         }
 
-        return { purchase }
+        return { purchase };
       } catch (error) {
         if (error instanceof TRPCError) {
-          throw error
+          throw error;
         }
-        console.error('Error fetching additive purchase:', error)
+        console.error("Error fetching additive purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to fetch additive purchase'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch additive purchase",
+        });
       }
     }),
-})
+});

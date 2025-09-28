@@ -1,21 +1,27 @@
-"use client"
+"use client";
 
-import React, { useState, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { SortableHeader } from '@/components/ui/sortable-header'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+} from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Calendar,
   AlertTriangle,
@@ -27,18 +33,18 @@ import {
   MoreVertical,
   Trash2,
   Thermometer,
-  Edit
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { trpc } from '@/utils/trpc'
-import { useTableSorting } from '@/hooks/useTableSorting'
+  Edit,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { trpc } from "@/utils/trpc";
+import { useTableSorting } from "@/hooks/useTableSorting";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,38 +54,38 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { InventoryEditDialog } from '@/components/inventory/InventoryEditDialog'
-import { toast } from '@/hooks/use-toast'
+} from "@/components/ui/alert-dialog";
+import { InventoryEditDialog } from "@/components/inventory/InventoryEditDialog";
+import { toast } from "@/hooks/use-toast";
 
 // Type for juice inventory item from API
 interface JuiceInventoryItem {
-  id: string
-  packageId: string | null
-  currentBottleCount: number
-  reservedBottleCount: number
-  materialType: string
+  id: string;
+  packageId: string | null;
+  currentBottleCount: number;
+  reservedBottleCount: number;
+  materialType: string;
   metadata: {
-    purchaseId: string
-    vendorName: string
-    varietyName: string | null
-    brix?: string | null
-  }
-  location: string | null
-  notes: string | null
-  createdAt: string
-  updatedAt: string
+    purchaseId: string;
+    vendorName: string;
+    varietyName: string | null;
+    brix?: string | null;
+  };
+  location: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Table column configuration
-type SortField = 'varietyName' | 'vendorName' | 'volumeL' | 'createdAt'
+type SortField = "varietyName" | "vendorName" | "volumeL" | "createdAt";
 
 interface JuiceInventoryTableProps {
-  showFilters?: boolean
-  className?: string
-  itemsPerPage?: number
-  onItemClick?: (item: JuiceInventoryItem) => void
-  onAddNew?: () => void
+  showFilters?: boolean;
+  className?: string;
+  itemsPerPage?: number;
+  onItemClick?: (item: JuiceInventoryItem) => void;
+  onAddNew?: () => void;
 }
 
 export function JuiceInventoryTable({
@@ -87,12 +93,12 @@ export function JuiceInventoryTable({
   className,
   itemsPerPage = 50,
   onItemClick,
-  onAddNew
+  onAddNew,
 }: JuiceInventoryTableProps) {
   // Filter state
-  const [searchQuery, setSearchQuery] = useState<string>('')
-  const [deleteItem, setDeleteItem] = useState<JuiceInventoryItem | null>(null)
-  const [editItem, setEditItem] = useState<JuiceInventoryItem | null>(null)
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [deleteItem, setDeleteItem] = useState<JuiceInventoryItem | null>(null);
+  const [editItem, setEditItem] = useState<JuiceInventoryItem | null>(null);
 
   // Sorting state using the reusable hook
   const {
@@ -101,165 +107,184 @@ export function JuiceInventoryTable({
     getSortDirection,
     getSortIcon,
     sortData,
-    clearAllSort
+    clearAllSort,
   } = useTableSorting<SortField>({
     multiColumn: false,
-    defaultSort: { field: 'createdAt', direction: 'desc' }
-  })
+    defaultSort: { field: "createdAt", direction: "desc" },
+  });
 
   // Pagination state
-  const [currentPage, setCurrentPage] = useState(0)
+  const [currentPage, setCurrentPage] = useState(0);
 
   // Router for navigation
-  const router = useRouter()
+  const router = useRouter();
 
   // API queries - using inventory.list with materialType filter
   const {
     data: inventoryData,
     isLoading,
     error,
-    refetch
+    refetch,
   } = trpc.inventory.list.useQuery({
     limit: 100, // Max allowed by API
     offset: 0,
-  })
+  });
 
   // Delete mutation
   const deleteMutation = trpc.inventory.deleteItem.useMutation({
     onSuccess: () => {
-      setDeleteItem(null)
-      refetch()
+      setDeleteItem(null);
+      refetch();
       toast({
         title: "Success",
         description: "Juice item deleted successfully",
-      })
+      });
     },
     onError: (error) => {
-      console.error('Delete failed:', error)
+      console.error("Delete failed:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to delete juice item",
         variant: "destructive",
-      })
-    }
-  })
+      });
+    },
+  });
 
   // Transform and filter inventory data to show only juice
   const juiceItems = useMemo(() => {
-    if (!inventoryData?.items) return []
+    if (!inventoryData?.items) return [];
 
     // Filter for juice items only
     const items = inventoryData.items
-      .filter((item: any) => item.materialType === 'juice')
-      .map((item: any) => ({
-        id: item.id,
-        packageId: item.packageId,
-        currentBottleCount: item.currentBottleCount,
-        reservedBottleCount: item.reservedBottleCount,
-        materialType: item.materialType,
-        metadata: item.metadata || {},
-        location: item.location,
-        notes: item.notes,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt
-      } as JuiceInventoryItem))
+      .filter((item: any) => item.materialType === "juice")
+      .map(
+        (item: any) =>
+          ({
+            id: item.id,
+            packageId: item.packageId,
+            currentBottleCount: item.currentBottleCount,
+            reservedBottleCount: item.reservedBottleCount,
+            materialType: item.materialType,
+            metadata: item.metadata || {},
+            location: item.location,
+            notes: item.notes,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+          }) as JuiceInventoryItem,
+      );
 
-    return items
-  }, [inventoryData])
+    return items;
+  }, [inventoryData]);
 
   // Apply client-side filtering
   const filteredItems = useMemo(() => {
-    let filtered = juiceItems
+    let filtered = juiceItems;
 
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter((item: any) =>
-        (item.metadata?.varietyName && item.metadata.varietyName.toLowerCase().includes(query)) ||
-        (item.metadata?.vendorName?.toLowerCase().includes(query)) ||
-        (item.notes && item.notes.toLowerCase().includes(query))
-      )
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (item: any) =>
+          (item.metadata?.varietyName &&
+            item.metadata.varietyName.toLowerCase().includes(query)) ||
+          item.metadata?.vendorName?.toLowerCase().includes(query) ||
+          (item.notes && item.notes.toLowerCase().includes(query)),
+      );
     }
 
-    return filtered
-  }, [juiceItems, searchQuery])
+    return filtered;
+  }, [juiceItems, searchQuery]);
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
     return sortData(filteredItems, (item: any, field) => {
       // Custom sort value extraction for different field types
       switch (field) {
-        case 'varietyName':
-          return item.metadata?.varietyName || ''
-        case 'vendorName':
-          return item.metadata?.vendorName || ''
-        case 'volumeL':
-          return item.currentBottleCount || 0
-        case 'createdAt':
-          return new Date(item.createdAt)
+        case "varietyName":
+          return item.metadata?.varietyName || "";
+        case "vendorName":
+          return item.metadata?.vendorName || "";
+        case "volumeL":
+          return item.currentBottleCount || 0;
+        case "createdAt":
+          return new Date(item.createdAt);
         default:
-          return (item as any)[field]
+          return (item as any)[field];
       }
-    })
-  }, [filteredItems, sortData])
+    });
+  }, [filteredItems, sortData]);
 
   // Event handlers
-  const handleColumnSort = useCallback((field: SortField) => {
-    handleSort(field)
-  }, [handleSort])
+  const handleColumnSort = useCallback(
+    (field: SortField) => {
+      handleSort(field);
+    },
+    [handleSort],
+  );
 
-  const handleItemClick = useCallback((item: JuiceInventoryItem) => {
-    if (onItemClick) {
-      onItemClick(item)
-    }
-    // No navigation - just call the handler if provided
-  }, [onItemClick])
+  const handleItemClick = useCallback(
+    (item: JuiceInventoryItem) => {
+      if (onItemClick) {
+        onItemClick(item);
+      }
+      // No navigation - just call the handler if provided
+    },
+    [onItemClick],
+  );
 
   const handleRefresh = useCallback(() => {
-    refetch()
-  }, [refetch])
+    refetch();
+  }, [refetch]);
 
   // Handle delete confirmation
   const handleDeleteConfirm = useCallback(() => {
     if (deleteItem) {
       // Extract the actual juice purchase item ID from the composite ID
-      const [materialType, itemId] = deleteItem.id.split('-')
+      const [materialType, itemId] = deleteItem.id.split("-");
       deleteMutation.mutate({
         id: deleteItem.id,
-        itemType: materialType as 'juice'
-      })
+        itemType: materialType as "juice",
+      });
     }
-  }, [deleteItem, deleteMutation])
+  }, [deleteItem, deleteMutation]);
 
   // Get sort direction for display
-  const getSortDirectionForDisplay = useCallback((field: SortField) => {
-    const direction = getSortDirection(field)
-    return direction ? direction : 'none'
-  }, [getSortDirection])
+  const getSortDirectionForDisplay = useCallback(
+    (field: SortField) => {
+      const direction = getSortDirection(field);
+      return direction ? direction : "none";
+    },
+    [getSortDirection],
+  );
 
   // Get sort index for multi-column sorting display
-  const getSortIndex = useCallback((field: SortField) => {
-    const columnIndex = sortState.columns.findIndex(col => col.field === field)
-    return columnIndex >= 0 ? columnIndex : undefined
-  }, [sortState.columns])
+  const getSortIndex = useCallback(
+    (field: SortField) => {
+      const columnIndex = sortState.columns.findIndex(
+        (col) => col.field === field,
+      );
+      return columnIndex >= 0 ? columnIndex : undefined;
+    },
+    [sortState.columns],
+  );
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '—'
-    return new Date(dateString).toLocaleDateString()
-  }
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString();
+  };
 
   const formatVolume = (volumeL: number) => {
-    return `${volumeL.toLocaleString()} L`
-  }
+    return `${volumeL.toLocaleString()} L`;
+  };
 
   // Convert brix to specific gravity
   const convertBrixToSG = (brix: string | null) => {
-    if (!brix) return null
-    const brixValue = parseFloat(brix)
-    if (isNaN(brixValue)) return null
+    if (!brix) return null;
+    const brixValue = parseFloat(brix);
+    if (isNaN(brixValue)) return null;
     // Rough conversion: SG ≈ 1 + (Brix / 258.6)
-    const sg = 1 + (brixValue / 258.6)
-    return sg.toFixed(3)
-  }
+    const sg = 1 + brixValue / 258.6;
+    return sg.toFixed(3);
+  };
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -291,7 +316,10 @@ export function JuiceInventoryTable({
 
               {/* Add Button */}
               {onAddNew && (
-                <Button onClick={onAddNew} className="bg-blue-600 hover:bg-blue-700">
+                <Button
+                  onClick={onAddNew}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Juice Purchase
                 </Button>
@@ -312,12 +340,15 @@ export function JuiceInventoryTable({
               </CardTitle>
               <div className="flex items-center gap-4">
                 <CardDescription>
-                  {sortedItems.length > 0 ? `${sortedItems.length} juice lots found` : 'No juice lots found'}
+                  {sortedItems.length > 0
+                    ? `${sortedItems.length} juice lots found`
+                    : "No juice lots found"}
                 </CardDescription>
                 {sortState.columns.length > 0 && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span>
-                      Sorted by {sortState.columns[0]?.field} ({sortState.columns[0]?.direction})
+                      Sorted by {sortState.columns[0]?.field} (
+                      {sortState.columns[0]?.direction})
                     </span>
                     <Button
                       variant="ghost"
@@ -355,37 +386,33 @@ export function JuiceInventoryTable({
               <TableHeader>
                 <TableRow>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('varietyName')}
-                    sortIndex={getSortIndex('varietyName')}
-                    onSort={() => handleColumnSort('varietyName')}
+                    sortDirection={getSortDirectionForDisplay("varietyName")}
+                    sortIndex={getSortIndex("varietyName")}
+                    onSort={() => handleColumnSort("varietyName")}
                   >
                     Variety
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('vendorName')}
-                    sortIndex={getSortIndex('vendorName')}
-                    onSort={() => handleColumnSort('vendorName')}
+                    sortDirection={getSortDirectionForDisplay("vendorName")}
+                    sortIndex={getSortIndex("vendorName")}
+                    onSort={() => handleColumnSort("vendorName")}
                   >
                     Vendor
                   </SortableHeader>
                   <SortableHeader
                     align="right"
-                    sortDirection={getSortDirectionForDisplay('volumeL')}
-                    sortIndex={getSortIndex('volumeL')}
-                    onSort={() => handleColumnSort('volumeL')}
+                    sortDirection={getSortDirectionForDisplay("volumeL")}
+                    sortIndex={getSortIndex("volumeL")}
+                    onSort={() => handleColumnSort("volumeL")}
                   >
                     Volume
                   </SortableHeader>
-                  <SortableHeader canSort={false}>
-                    SG
-                  </SortableHeader>
-                  <SortableHeader canSort={false}>
-                    pH
-                  </SortableHeader>
+                  <SortableHeader canSort={false}>SG</SortableHeader>
+                  <SortableHeader canSort={false}>pH</SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('createdAt')}
-                    sortIndex={getSortIndex('createdAt')}
-                    onSort={() => handleColumnSort('createdAt')}
+                    sortDirection={getSortDirectionForDisplay("createdAt")}
+                    sortIndex={getSortIndex("createdAt")}
+                    onSort={() => handleColumnSort("createdAt")}
                   >
                     Purchase Date
                   </SortableHeader>
@@ -399,21 +426,38 @@ export function JuiceInventoryTable({
                   // Loading skeleton
                   Array.from({ length: 5 }).map((_, index) => (
                     <TableRow key={index}>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-28" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-20 ml-auto" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-12" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-12" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    <TableCell
+                      colSpan={7}
+                      className="text-center py-8 text-muted-foreground"
+                    >
                       {searchQuery
-                        ? 'No juice lots match your search criteria'
-                        : 'No juice lots found'}
+                        ? "No juice lots match your search criteria"
+                        : "No juice lots found"}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -425,12 +469,12 @@ export function JuiceInventoryTable({
                     >
                       <TableCell>
                         <div className="font-medium">
-                          {item.metadata?.varietyName ?? 'Unknown Variety'}
+                          {item.metadata?.varietyName ?? "Unknown Variety"}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          {item.metadata?.vendorName || 'Unknown Vendor'}
+                          {item.metadata?.vendorName || "Unknown Vendor"}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
@@ -438,16 +482,26 @@ export function JuiceInventoryTable({
                       </TableCell>
                       <TableCell>
                         {item.metadata?.specificGravity ? (
-                          <span className="font-mono text-sm">{parseFloat(item.metadata.specificGravity).toFixed(3)}</span>
+                          <span className="font-mono text-sm">
+                            {parseFloat(item.metadata.specificGravity).toFixed(
+                              3,
+                            )}
+                          </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground text-sm">
+                            —
+                          </span>
                         )}
                       </TableCell>
                       <TableCell>
                         {item.metadata?.ph ? (
-                          <span className="font-mono text-sm">{parseFloat(item.metadata.ph).toFixed(1)}</span>
+                          <span className="font-mono text-sm">
+                            {parseFloat(item.metadata.ph).toFixed(1)}
+                          </span>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground text-sm">
+                            —
+                          </span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -470,8 +524,8 @@ export function JuiceInventoryTable({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={(e) => {
-                                e.stopPropagation()
-                                setEditItem(item)
+                                e.stopPropagation();
+                                setEditItem(item);
                               }}
                             >
                               <Edit className="mr-2 h-4 w-4" />
@@ -479,8 +533,8 @@ export function JuiceInventoryTable({
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={(e) => {
-                                e.stopPropagation()
-                                handleItemClick(item)
+                                e.stopPropagation();
+                                handleItemClick(item);
                               }}
                             >
                               <ExternalLink className="mr-2 h-4 w-4" />
@@ -489,8 +543,8 @@ export function JuiceInventoryTable({
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => {
-                                e.stopPropagation()
-                                setDeleteItem(item)
+                                e.stopPropagation();
+                                setDeleteItem(item);
                               }}
                               className="text-red-600 focus:text-red-600"
                             >
@@ -513,8 +567,7 @@ export function JuiceInventoryTable({
               <div className="text-sm text-muted-foreground">
                 Showing {sortedItems.length} of {juiceItems.length} juice lots
                 {searchQuery.trim() &&
-                  ` (filtered from ${juiceItems.length} total)`
-                }
+                  ` (filtered from ${juiceItems.length} total)`}
               </div>
             </div>
           )}
@@ -522,13 +575,20 @@ export function JuiceInventoryTable({
       </Card>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
+      <AlertDialog
+        open={!!deleteItem}
+        onOpenChange={(open) => !open && setDeleteItem(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Juice Lot</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &ldquo;{deleteItem ? `${deleteItem.metadata.varietyName ?? 'juice'} from ${deleteItem.metadata.vendorName || 'unknown vendor'}` : ''}&rdquo;?
-              This action cannot be undone and will permanently remove this juice lot from your inventory.
+              Are you sure you want to delete &ldquo;
+              {deleteItem
+                ? `${deleteItem.metadata.varietyName ?? "juice"} from ${deleteItem.metadata.vendorName || "unknown vendor"}`
+                : ""}
+              &rdquo;? This action cannot be undone and will permanently remove
+              this juice lot from your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -538,7 +598,7 @@ export function JuiceInventoryTable({
               disabled={deleteMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -558,14 +618,14 @@ export function JuiceInventoryTable({
             location: editItem.location,
             notes: editItem.notes,
             createdAt: editItem.createdAt,
-            updatedAt: editItem.updatedAt
+            updatedAt: editItem.updatedAt,
           }}
           onSuccess={() => {
-            refetch()
-            setEditItem(null)
+            refetch();
+            setEditItem(null);
           }}
         />
       )}
     </div>
-  )
+  );
 }

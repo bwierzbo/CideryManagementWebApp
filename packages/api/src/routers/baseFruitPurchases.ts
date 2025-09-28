@@ -1,24 +1,32 @@
-import { z } from 'zod'
-import { router, createRbacProcedure } from '../trpc'
-import { db, basefruitPurchases, basefruitPurchaseItems, vendors, baseFruitVarieties } from 'db'
-import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
+import { z } from "zod";
+import { router, createRbacProcedure } from "../trpc";
+import {
+  db,
+  basefruitPurchases,
+  basefruitPurchaseItems,
+  vendors,
+  baseFruitVarieties,
+} from "db";
+import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 
 export const baseFruitPurchasesRouter = router({
   // List base fruit purchases
-  list: createRbacProcedure('list', 'purchase')
-    .input(z.object({
-      limit: z.number().int().positive().max(100).default(50),
-      offset: z.number().int().min(0).default(0),
-      vendorId: z.string().uuid().optional(),
-    }))
+  list: createRbacProcedure("list", "purchase")
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+        vendorId: z.string().uuid().optional(),
+      }),
+    )
     .query(async ({ input }) => {
       try {
-        const { limit, offset, vendorId } = input
+        const { limit, offset, vendorId } = input;
 
-        const conditions = [isNull(basefruitPurchases.deletedAt)]
+        const conditions = [isNull(basefruitPurchases.deletedAt)];
         if (vendorId) {
-          conditions.push(eq(basefruitPurchases.vendorId, vendorId))
+          conditions.push(eq(basefruitPurchases.vendorId, vendorId));
         }
 
         const purchases = await db
@@ -39,12 +47,12 @@ export const baseFruitPurchasesRouter = router({
           .where(and(...conditions))
           .orderBy(desc(basefruitPurchases.purchaseDate))
           .limit(limit)
-          .offset(offset)
+          .offset(offset);
 
         const totalCount = await db
           .select({ count: sql<number>`count(*)` })
           .from(basefruitPurchases)
-          .where(and(...conditions))
+          .where(and(...conditions));
 
         return {
           purchases,
@@ -53,39 +61,48 @@ export const baseFruitPurchasesRouter = router({
             hasNextPage: offset + limit < totalCount[0].count,
             hasPreviousPage: offset > 0,
           },
-        }
+        };
       } catch (error) {
-        console.error('Error fetching base fruit purchases:', error)
+        console.error("Error fetching base fruit purchases:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to fetch base fruit purchases',
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch base fruit purchases",
+        });
       }
     }),
 
   // Create base fruit purchase
-  create: createRbacProcedure('create', 'purchase')
-    .input(z.object({
-      vendorId: z.string().uuid('Invalid vendor ID'),
-      purchaseDate: z.date().or(z.string().transform(val => new Date(val))),
-      invoiceNumber: z.string().optional(),
-      notes: z.string().optional(),
-      items: z.array(z.object({
-        fruitVarietyId: z.string().uuid('Invalid fruit variety ID'),
-        quantity: z.number().positive('Quantity must be positive'),
-        unit: z.enum(['kg', 'lb', 'L', 'gal', 'bushel']),
-        pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
+  create: createRbacProcedure("create", "purchase")
+    .input(
+      z.object({
+        vendorId: z.string().uuid("Invalid vendor ID"),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))),
+        invoiceNumber: z.string().optional(),
         notes: z.string().optional(),
-      })).min(1, 'At least one item is required'),
-    }))
+        items: z
+          .array(
+            z.object({
+              fruitVarietyId: z.string().uuid("Invalid fruit variety ID"),
+              quantity: z.number().positive("Quantity must be positive"),
+              unit: z.enum(["kg", "lb", "L", "gal", "bushel"]),
+              pricePerUnit: z
+                .number()
+                .positive("Price per unit must be positive")
+                .optional(),
+              notes: z.string().optional(),
+            }),
+          )
+          .min(1, "At least one item is required"),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
           // Calculate total cost
           const totalCostNum = input.items.reduce((sum, item) => {
-            return sum + (item.pricePerUnit || 0) * item.quantity
-          }, 0)
-          const totalCost = totalCostNum.toString()
+            return sum + (item.pricePerUnit || 0) * item.quantity;
+          }, 0);
+          const totalCost = totalCostNum.toString();
 
           // Create purchase
           const newPurchase = await tx
@@ -98,13 +115,13 @@ export const baseFruitPurchasesRouter = router({
               autoGeneratedInvoice: !input.invoiceNumber,
               notes: input.notes,
             })
-            .returning()
+            .returning();
 
           if (!newPurchase[0]) {
             throw new TRPCError({
-              code: 'INTERNAL_SERVER_ERROR',
-              message: 'Failed to create base fruit purchase',
-            })
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Failed to create base fruit purchase",
+            });
           }
 
           // Create purchase items
@@ -120,34 +137,36 @@ export const baseFruitPurchasesRouter = router({
                   pricePerUnit: item.pricePerUnit?.toString(),
                   notes: item.notes,
                 })
-                .returning()
+                .returning();
 
-              return newItem[0]
-            })
-          )
+              return newItem[0];
+            }),
+          );
 
           return {
             success: true,
             purchase: newPurchase[0],
             items: purchaseItems,
             message: `Created base fruit purchase with ${purchaseItems.length} items`,
-          }
-        })
+          };
+        });
       } catch (error) {
-        console.error('Error creating base fruit purchase:', error)
-        if (error instanceof TRPCError) throw error
+        console.error("Error creating base fruit purchase:", error);
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to create base fruit purchase',
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create base fruit purchase",
+        });
       }
     }),
 
   // Get purchase by ID
-  getById: createRbacProcedure('read', 'purchase')
-    .input(z.object({
-      purchaseId: z.string().uuid('Invalid purchase ID'),
-    }))
+  getById: createRbacProcedure("read", "purchase")
+    .input(
+      z.object({
+        purchaseId: z.string().uuid("Invalid purchase ID"),
+      }),
+    )
     .query(async ({ input }) => {
       try {
         const purchase = await db
@@ -165,17 +184,19 @@ export const baseFruitPurchasesRouter = router({
           })
           .from(basefruitPurchases)
           .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
-          .where(and(
-            eq(basefruitPurchases.id, input.purchaseId),
-            isNull(basefruitPurchases.deletedAt)
-          ))
-          .limit(1)
+          .where(
+            and(
+              eq(basefruitPurchases.id, input.purchaseId),
+              isNull(basefruitPurchases.deletedAt),
+            ),
+          )
+          .limit(1);
 
         if (!purchase[0]) {
           throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Base fruit purchase not found',
-          })
+            code: "NOT_FOUND",
+            message: "Base fruit purchase not found",
+          });
         }
 
         // Get purchase items
@@ -192,28 +213,33 @@ export const baseFruitPurchasesRouter = router({
             updatedAt: basefruitPurchaseItems.updatedAt,
           })
           .from(basefruitPurchaseItems)
-          .leftJoin(baseFruitVarieties, eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id))
-          .where(eq(basefruitPurchaseItems.purchaseId, purchase[0].id))
+          .leftJoin(
+            baseFruitVarieties,
+            eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+          )
+          .where(eq(basefruitPurchaseItems.purchaseId, purchase[0].id));
 
         return {
           ...purchase[0],
           items,
-        }
+        };
       } catch (error) {
-        if (error instanceof TRPCError) throw error
-        console.error('Error fetching base fruit purchase:', error)
+        if (error instanceof TRPCError) throw error;
+        console.error("Error fetching base fruit purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to fetch base fruit purchase',
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch base fruit purchase",
+        });
       }
     }),
 
   // Delete purchase (soft delete)
-  delete: createRbacProcedure('delete', 'purchase')
-    .input(z.object({
-      purchaseId: z.string().uuid('Invalid purchase ID'),
-    }))
+  delete: createRbacProcedure("delete", "purchase")
+    .input(
+      z.object({
+        purchaseId: z.string().uuid("Invalid purchase ID"),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
@@ -221,37 +247,39 @@ export const baseFruitPurchasesRouter = router({
           const existingPurchase = await tx
             .select({ id: basefruitPurchases.id })
             .from(basefruitPurchases)
-            .where(and(
-              eq(basefruitPurchases.id, input.purchaseId),
-              isNull(basefruitPurchases.deletedAt)
-            ))
-            .limit(1)
+            .where(
+              and(
+                eq(basefruitPurchases.id, input.purchaseId),
+                isNull(basefruitPurchases.deletedAt),
+              ),
+            )
+            .limit(1);
 
           if (!existingPurchase[0]) {
             throw new TRPCError({
-              code: 'NOT_FOUND',
-              message: 'Base fruit purchase not found or already deleted',
-            })
+              code: "NOT_FOUND",
+              message: "Base fruit purchase not found or already deleted",
+            });
           }
 
           // Soft delete the purchase
           await tx
             .update(basefruitPurchases)
             .set({ deletedAt: new Date() })
-            .where(eq(basefruitPurchases.id, input.purchaseId))
+            .where(eq(basefruitPurchases.id, input.purchaseId));
 
           return {
             success: true,
-            message: 'Base fruit purchase deleted successfully',
-          }
-        })
+            message: "Base fruit purchase deleted successfully",
+          };
+        });
       } catch (error) {
-        if (error instanceof TRPCError) throw error
-        console.error('Error deleting base fruit purchase:', error)
+        if (error instanceof TRPCError) throw error;
+        console.error("Error deleting base fruit purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to delete base fruit purchase',
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete base fruit purchase",
+        });
       }
     }),
-})
+});

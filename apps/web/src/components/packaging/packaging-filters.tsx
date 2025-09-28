@@ -1,42 +1,56 @@
-"use client"
+"use client";
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react'
-import { Filter, X, Calendar, Package, Search, Download, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
-import { HarvestDatePicker } from '@/components/ui/harvest-date-picker'
-import { cn } from '@/lib/utils'
-import { trpc } from '@/utils/trpc'
-import { useDebounce } from '@/hooks/useDebounce'
+import React, { useState, useCallback, useEffect, useMemo } from "react";
+import {
+  Filter,
+  X,
+  Calendar,
+  Package,
+  Search,
+  Download,
+  Loader2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
+import { cn } from "@/lib/utils";
+import { trpc } from "@/utils/trpc";
+import { useDebounce } from "@/hooks/useDebounce";
 
 export interface PackagingFiltersState {
-  dateFrom: Date | null
-  dateTo: Date | null
-  packageSizeML: number | null
-  batchSearch: string
-  status: 'all' | 'completed' | 'voided'
+  dateFrom: Date | null;
+  dateTo: Date | null;
+  packageSizeML: number | null;
+  batchSearch: string;
+  status: "all" | "completed" | "voided";
 }
 
 export interface PackagingFiltersProps {
-  onFiltersChange: (filters: PackagingFiltersState) => void
-  onExportClick: () => void
-  initialFilters?: Partial<PackagingFiltersState>
-  className?: string
-  isExporting?: boolean
-  itemCount?: number
+  onFiltersChange: (filters: PackagingFiltersState) => void;
+  onExportClick: () => void;
+  initialFilters?: Partial<PackagingFiltersState>;
+  className?: string;
+  isExporting?: boolean;
+  itemCount?: number;
 }
 
 const defaultFilters: PackagingFiltersState = {
   dateFrom: null,
   dateTo: null,
   packageSizeML: null,
-  batchSearch: '',
-  status: 'all'
-}
+  batchSearch: "",
+  status: "all",
+};
 
 export function PackagingFilters({
   onFiltersChange,
@@ -44,67 +58,71 @@ export function PackagingFilters({
   initialFilters = {},
   className,
   isExporting = false,
-  itemCount = 0
+  itemCount = 0,
 }: PackagingFiltersProps) {
   const [filters, setFilters] = useState<PackagingFiltersState>({
     ...defaultFilters,
-    ...initialFilters
-  })
+    ...initialFilters,
+  });
 
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Debounce batch search to avoid excessive API calls
-  const debouncedBatchSearch = useDebounce(filters.batchSearch, 300)
+  const debouncedBatchSearch = useDebounce(filters.batchSearch, 300);
 
   // Get package sizes for dropdown
-  const { data: packageSizes, isLoading: isLoadingPackageSizes } = trpc.packaging.getPackageSizes.useQuery()
+  const { data: packageSizes, isLoading: isLoadingPackageSizes } =
+    trpc.packaging.getPackageSizes.useQuery();
 
   // Update filters when debounced search changes
   useEffect(() => {
     if (debouncedBatchSearch !== filters.batchSearch) {
-      const newFilters = { ...filters, batchSearch: debouncedBatchSearch }
-      setFilters(newFilters)
-      onFiltersChange(newFilters)
+      const newFilters = { ...filters, batchSearch: debouncedBatchSearch };
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
     }
-  }, [debouncedBatchSearch, filters, onFiltersChange])
+  }, [debouncedBatchSearch, filters, onFiltersChange]);
 
   // Handle immediate filter changes (non-search)
-  const handleFilterChange = useCallback((key: keyof PackagingFiltersState, value: any) => {
-    const newFilters = { ...filters, [key]: value }
-    setFilters(newFilters)
-    onFiltersChange(newFilters)
-  }, [filters, onFiltersChange])
+  const handleFilterChange = useCallback(
+    (key: keyof PackagingFiltersState, value: any) => {
+      const newFilters = { ...filters, [key]: value };
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
+    },
+    [filters, onFiltersChange],
+  );
 
   // Handle search input change (immediate state update, debounced API call)
   const handleSearchChange = useCallback((value: string) => {
-    setFilters(prev => ({ ...prev, batchSearch: value }))
-  }, [])
+    setFilters((prev) => ({ ...prev, batchSearch: value }));
+  }, []);
 
   // Clear all filters
   const handleClearAll = useCallback(() => {
-    setFilters(defaultFilters)
-    onFiltersChange(defaultFilters)
-    setShowAdvanced(false)
-  }, [onFiltersChange])
+    setFilters(defaultFilters);
+    onFiltersChange(defaultFilters);
+    setShowAdvanced(false);
+  }, [onFiltersChange]);
 
   // Calculate active filter count
   const activeFilterCount = useMemo(() => {
-    let count = 0
-    if (filters.dateFrom) count++
-    if (filters.dateTo) count++
-    if (filters.packageSizeML) count++
-    if (filters.batchSearch.trim()) count++
-    if (filters.status !== 'all') count++
-    return count
-  }, [filters])
+    let count = 0;
+    if (filters.dateFrom) count++;
+    if (filters.dateTo) count++;
+    if (filters.packageSizeML) count++;
+    if (filters.batchSearch.trim()) count++;
+    if (filters.status !== "all") count++;
+    return count;
+  }, [filters]);
 
   // Format package size display
   const formatPackageSize = useCallback((sizeML: number) => {
     if (sizeML >= 1000) {
-      return `${sizeML / 1000}L`
+      return `${sizeML / 1000}L`;
     }
-    return `${sizeML}ml`
-  }, [])
+    return `${sizeML}ml`;
+  }, []);
 
   return (
     <Card className={cn("mb-4 md:mb-6", className)}>
@@ -159,7 +177,9 @@ export function PackagingFilters({
                 ) : (
                   <>
                     <Download className="w-4 h-4" />
-                    <span className="hidden sm:inline">Export {itemCount > 0 ? `(${itemCount})` : ''}</span>
+                    <span className="hidden sm:inline">
+                      Export {itemCount > 0 ? `(${itemCount})` : ""}
+                    </span>
                     <span className="sm:hidden">Export</span>
                   </>
                 )}
@@ -176,7 +196,7 @@ export function PackagingFilters({
                   <Label className="text-sm font-medium">From Date</Label>
                   <HarvestDatePicker
                     value={filters.dateFrom}
-                    onChange={(date) => handleFilterChange('dateFrom', date)}
+                    onChange={(date) => handleFilterChange("dateFrom", date)}
                     placeholder="Start date"
                     allowFutureDates={true}
                     showClearButton={true}
@@ -188,7 +208,7 @@ export function PackagingFilters({
                   <Label className="text-sm font-medium">To Date</Label>
                   <HarvestDatePicker
                     value={filters.dateTo}
-                    onChange={(date) => handleFilterChange('dateTo', date)}
+                    onChange={(date) => handleFilterChange("dateTo", date)}
                     placeholder="End date"
                     allowFutureDates={true}
                     showClearButton={true}
@@ -199,9 +219,12 @@ export function PackagingFilters({
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Package Size</Label>
                   <Select
-                    value={filters.packageSizeML?.toString() || 'all'}
+                    value={filters.packageSizeML?.toString() || "all"}
                     onValueChange={(value) =>
-                      handleFilterChange('packageSizeML', value === 'all' ? null : parseInt(value))
+                      handleFilterChange(
+                        "packageSizeML",
+                        value === "all" ? null : parseInt(value),
+                      )
                     }
                   >
                     <SelectTrigger className="h-9 md:h-10">
@@ -210,10 +233,15 @@ export function PackagingFilters({
                     <SelectContent>
                       <SelectItem value="all">All Sizes</SelectItem>
                       {isLoadingPackageSizes ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                        <SelectItem value="loading" disabled>
+                          Loading...
+                        </SelectItem>
                       ) : (
                         packageSizes?.map((size) => (
-                          <SelectItem key={size.id} value={size.sizeML.toString()}>
+                          <SelectItem
+                            key={size.id}
+                            value={size.sizeML.toString()}
+                          >
                             {formatPackageSize(size.sizeML)} {size.packageType}
                           </SelectItem>
                         ))
@@ -227,8 +255,8 @@ export function PackagingFilters({
                   <Label className="text-sm font-medium">Status</Label>
                   <Select
                     value={filters.status}
-                    onValueChange={(value: 'all' | 'completed' | 'voided') =>
-                      handleFilterChange('status', value)
+                    onValueChange={(value: "all" | "completed" | "voided") =>
+                      handleFilterChange("status", value)
                     }
                   >
                     <SelectTrigger className="h-9 md:h-10">
@@ -246,7 +274,12 @@ export function PackagingFilters({
               {/* Clear All Button */}
               {activeFilterCount > 0 && (
                 <div className="flex justify-center sm:justify-end">
-                  <Button variant="ghost" size="sm" onClick={handleClearAll} className="w-full sm:w-auto">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearAll}
+                    className="w-full sm:w-auto"
+                  >
                     Clear All Filters
                   </Button>
                 </div>
@@ -258,65 +291,94 @@ export function PackagingFilters({
           {activeFilterCount > 0 && (
             <div className="flex flex-wrap gap-1.5 md:gap-2 pt-2 border-t max-h-24 overflow-y-auto">
               {filters.dateFrom && (
-                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1 text-xs h-6"
+                >
                   <Calendar className="w-3 h-3" />
-                  <span className="hidden sm:inline">From: {filters.dateFrom.toLocaleDateString()}</span>
-                  <span className="sm:hidden">{filters.dateFrom.toLocaleDateString()}</span>
+                  <span className="hidden sm:inline">
+                    From: {filters.dateFrom.toLocaleDateString()}
+                  </span>
+                  <span className="sm:hidden">
+                    {filters.dateFrom.toLocaleDateString()}
+                  </span>
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
-                    onClick={() => handleFilterChange('dateFrom', null)}
+                    onClick={() => handleFilterChange("dateFrom", null)}
                     aria-label="Remove date from filter"
                   />
                 </Badge>
               )}
 
               {filters.dateTo && (
-                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1 text-xs h-6"
+                >
                   <Calendar className="w-3 h-3" />
-                  <span className="hidden sm:inline">To: {filters.dateTo.toLocaleDateString()}</span>
-                  <span className="sm:hidden">{filters.dateTo.toLocaleDateString()}</span>
+                  <span className="hidden sm:inline">
+                    To: {filters.dateTo.toLocaleDateString()}
+                  </span>
+                  <span className="sm:hidden">
+                    {filters.dateTo.toLocaleDateString()}
+                  </span>
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
-                    onClick={() => handleFilterChange('dateTo', null)}
+                    onClick={() => handleFilterChange("dateTo", null)}
                     aria-label="Remove date to filter"
                   />
                 </Badge>
               )}
 
               {filters.packageSizeML && (
-                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1 text-xs h-6"
+                >
                   <Package className="w-3 h-3" />
                   {formatPackageSize(filters.packageSizeML)}
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
-                    onClick={() => handleFilterChange('packageSizeML', null)}
+                    onClick={() => handleFilterChange("packageSizeML", null)}
                     aria-label="Remove package size filter"
                   />
                 </Badge>
               )}
 
               {filters.batchSearch.trim() && (
-                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6 max-w-[200px]">
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1 text-xs h-6 max-w-[200px]"
+                >
                   <Search className="w-3 h-3 flex-shrink-0" />
                   <span className="truncate">
-                    <span className="hidden sm:inline">Search: &quot;{filters.batchSearch}&quot;</span>
-                    <span className="sm:hidden">&quot;{filters.batchSearch}&quot;</span>
+                    <span className="hidden sm:inline">
+                      Search: &quot;{filters.batchSearch}&quot;
+                    </span>
+                    <span className="sm:hidden">
+                      &quot;{filters.batchSearch}&quot;
+                    </span>
                   </span>
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px] flex-shrink-0"
-                    onClick={() => handleSearchChange('')}
+                    onClick={() => handleSearchChange("")}
                     aria-label="Clear search filter"
                   />
                 </Badge>
               )}
 
-              {filters.status !== 'all' && (
-                <Badge variant="secondary" className="flex items-center gap-1 text-xs h-6">
-                  <span className="hidden sm:inline">Status: {filters.status}</span>
+              {filters.status !== "all" && (
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1 text-xs h-6"
+                >
+                  <span className="hidden sm:inline">
+                    Status: {filters.status}
+                  </span>
                   <span className="sm:hidden">{filters.status}</span>
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
-                    onClick={() => handleFilterChange('status', 'all')}
+                    onClick={() => handleFilterChange("status", "all")}
                     aria-label="Remove status filter"
                   />
                 </Badge>
@@ -326,20 +388,20 @@ export function PackagingFilters({
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 // Simple version for basic use cases
 export interface SimplePackagingFiltersProps {
-  onSearchChange: (search: string) => void
-  searchValue?: string
-  className?: string
+  onSearchChange: (search: string) => void;
+  searchValue?: string;
+  className?: string;
 }
 
 export function SimplePackagingFilters({
   onSearchChange,
-  searchValue = '',
-  className
+  searchValue = "",
+  className,
 }: SimplePackagingFiltersProps) {
   return (
     <div className={cn("flex items-center gap-2", className)}>
@@ -353,5 +415,5 @@ export function SimplePackagingFilters({
         />
       </div>
     </div>
-  )
+  );
 }

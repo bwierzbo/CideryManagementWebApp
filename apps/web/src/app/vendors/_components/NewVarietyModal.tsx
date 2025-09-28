@@ -1,18 +1,18 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { trpc } from '@/utils/trpc'
-import { Button } from '@/components/ui/button'
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { trpc } from "@/utils/trpc";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -20,18 +20,18 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { Plus } from 'lucide-react'
-import { toast } from 'sonner'
+} from "@/components/ui/select";
+import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import {
   getCiderCategoryOptions,
   getIntensityOptions,
@@ -39,67 +39,90 @@ import {
   zCiderCategory,
   zIntensity,
   zHarvestWindow,
-} from 'lib'
+} from "lib";
 
 const varietySchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
-  fruitType: z.enum(['apple', 'pear', 'plum']),
+  name: z.string().min(1, "Name is required").max(100),
+  fruitType: z.enum(["apple", "pear", "plum"]),
   ciderCategory: zCiderCategory.optional(),
   tannin: zIntensity.optional(),
   acid: zIntensity.optional(),
   sugarBrix: zIntensity.optional(),
   harvestWindow: zHarvestWindow.optional(),
   varietyNotes: z.string().max(1000).optional(),
-})
+});
 
-type VarietyFormData = z.infer<typeof varietySchema>
+type VarietyFormData = z.infer<typeof varietySchema>;
 
 interface NewVarietyModalProps {
-  onSuccess?: () => void
+  onSuccess?: () => void;
 }
 
 export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
-  const [open, setOpen] = useState(false)
-  const utils = trpc.useUtils()
+  const [open, setOpen] = useState(false);
+  const utils = trpc.useUtils();
 
   const form = useForm<VarietyFormData>({
     resolver: zodResolver(varietySchema),
     defaultValues: {
-      name: '',
-      fruitType: 'apple',
+      name: "",
+      fruitType: "apple",
       ciderCategory: undefined,
       tannin: undefined,
       acid: undefined,
       sugarBrix: undefined,
       harvestWindow: undefined,
-      varietyNotes: '',
+      varietyNotes: "",
     },
-  })
+  });
 
   const createVariety = trpc.fruitVariety.create.useMutation({
     onSuccess: () => {
-      toast.success('Fruit variety created successfully')
-      form.reset()
-      setOpen(false)
-      utils.fruitVariety.listAll.invalidate()
-      onSuccess?.()
+      toast.success("Fruit variety created successfully");
+      form.reset();
+      setOpen(false);
+      utils.fruitVariety.listAll.invalidate();
+      onSuccess?.();
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to create fruit variety')
+      toast.error(error.message || "Failed to create fruit variety");
     },
-  })
+  });
 
   const onSubmit = (data: VarietyFormData) => {
     createVariety.mutate({
       name: data.name,
-      ciderCategory: data.ciderCategory as "sweet" | "bittersweet" | "sharp" | "bittersharp" | undefined,
-      tannin: data.tannin as "high" | "medium-high" | "medium" | "low-medium" | "low" | undefined,
-      acid: data.acid as "high" | "medium-high" | "medium" | "low-medium" | "low" | undefined,
-      sugarBrix: data.sugarBrix as "high" | "medium-high" | "medium" | "low-medium" | "low" | undefined,
+      ciderCategory: data.ciderCategory as
+        | "sweet"
+        | "bittersweet"
+        | "sharp"
+        | "bittersharp"
+        | undefined,
+      tannin: data.tannin as
+        | "high"
+        | "medium-high"
+        | "medium"
+        | "low-medium"
+        | "low"
+        | undefined,
+      acid: data.acid as
+        | "high"
+        | "medium-high"
+        | "medium"
+        | "low-medium"
+        | "low"
+        | undefined,
+      sugarBrix: data.sugarBrix as
+        | "high"
+        | "medium-high"
+        | "medium"
+        | "low-medium"
+        | "low"
+        | undefined,
       harvestWindow: data.harvestWindow,
       varietyNotes: data.varietyNotes || undefined,
-    })
-  }
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -159,7 +182,10 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Cider Category</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value as string}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value as string}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select category" />
@@ -167,7 +193,10 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                       </FormControl>
                       <SelectContent>
                         {getCiderCategoryOptions().map((category) => (
-                          <SelectItem key={category.value} value={category.value}>
+                          <SelectItem
+                            key={category.value}
+                            value={category.value}
+                          >
                             {category.label}
                           </SelectItem>
                         ))}
@@ -184,7 +213,10 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Harvest Window</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value as string}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value as string}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select window" />
@@ -209,7 +241,10 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tannin Level</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value as string}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value as string}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select level" />
@@ -234,7 +269,10 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Acid Level</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value as string}>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value as string}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select level" />
@@ -260,7 +298,10 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Sugar Level</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value as string}>
+                  <Select
+                    onValueChange={field.onChange}
+                    value={field.value as string}
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select level" />
@@ -307,12 +348,12 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                 Cancel
               </Button>
               <Button type="submit" disabled={createVariety.isPending}>
-                {createVariety.isPending ? 'Creating...' : 'Create Variety'}
+                {createVariety.isPending ? "Creating..." : "Create Variety"}
               </Button>
             </div>
           </form>
         </Form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

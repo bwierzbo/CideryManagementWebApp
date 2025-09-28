@@ -1,18 +1,25 @@
-"use client"
+"use client";
 
-import React from "react"
-import { trpc } from "@/utils/trpc"
+import React from "react";
+import { trpc } from "@/utils/trpc";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Calendar,
   Droplets,
@@ -22,27 +29,31 @@ import {
   TrendingUp,
   Activity,
   Beaker,
-} from "lucide-react"
-import { format } from "date-fns"
-import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory"
+} from "lucide-react";
+import { format } from "date-fns";
+import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 
 interface BatchHistoryModalProps {
-  batchId: string
-  open: boolean
-  onClose: () => void
+  batchId: string;
+  open: boolean;
+  onClose: () => void;
 }
 
-export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalProps) {
+export function BatchHistoryModal({
+  batchId,
+  open,
+  onClose,
+}: BatchHistoryModalProps) {
   const { data, isLoading, error } = trpc.batch.getHistory.useQuery(
     { batchId },
-    { enabled: open }
-  )
+    { enabled: open },
+  );
 
-  if (!open) return null
+  if (!open) return null;
 
   const renderContent = () => {
     if (isLoading) {
-      return <div className="text-center py-8">Loading batch history...</div>
+      return <div className="text-center py-8">Loading batch history...</div>;
     }
 
     if (error) {
@@ -50,23 +61,25 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
         <div className="text-center py-8 text-red-600">
           Error loading batch history: {error.message}
         </div>
-      )
+      );
     }
 
     if (!data) {
-      return <div className="text-center py-8">No data available</div>
+      return <div className="text-center py-8">No data available</div>;
     }
 
-    const { batch, origin, composition, measurements, additives } = data
+    const { batch, origin, composition, measurements, additives } = data;
 
     // Prepare measurement data for chart
-    const chartData = measurements.map((m, index) => ({
-      day: measurements.length - index,
-      sg: m.specificGravity || 0,
-      abv: m.abv || 0,
-      ph: m.ph || 0,
-      date: format(new Date(m.measurementDate), "MMM dd"),
-    })).reverse()
+    const chartData = measurements
+      .map((m, index) => ({
+        day: measurements.length - index,
+        sg: m.specificGravity || 0,
+        abv: m.abv || 0,
+        ph: m.ph || 0,
+        date: format(new Date(m.measurementDate), "MMM dd"),
+      }))
+      .reverse();
 
     return (
       <Tabs defaultValue="overview" className="w-full">
@@ -92,21 +105,29 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-600">Batch ID</p>
-                    <p className="font-semibold font-mono text-sm">{batch.name}</p>
+                    <p className="font-semibold font-mono text-sm">
+                      {batch.name}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Batch Name</p>
-                    <p className="font-semibold">{batch.customName || <span className="text-gray-400 font-normal">No name set</span>}</p>
+                    <p className="font-semibold">
+                      {batch.customName || (
+                        <span className="text-gray-400 font-normal">
+                          No name set
+                        </span>
+                      )}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Status</p>
-                    <Badge className="mt-1">
-                      {batch.status}
-                    </Badge>
+                    <Badge className="mt-1">{batch.status}</Badge>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Current Vessel</p>
-                    <p className="font-semibold">{batch.vesselName || "Unassigned"}</p>
+                    <p className="font-semibold">
+                      {batch.vesselName || "Unassigned"}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Start Date</p>
@@ -131,7 +152,9 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <p className="text-sm text-gray-600">Press Run</p>
-                      <p className="font-semibold">{origin.pressRunName || "N/A"}</p>
+                      <p className="font-semibold">
+                        {origin.pressRunName || "N/A"}
+                      </p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Total Apples</p>
@@ -220,7 +243,10 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                     </div>
                     <div className="h-32 flex items-end justify-between space-x-2">
                       {chartData.map((data, index) => (
-                        <div key={index} className="flex flex-col items-center flex-1">
+                        <div
+                          key={index}
+                          className="flex flex-col items-center flex-1"
+                        >
                           <div className="flex flex-col items-center space-y-1">
                             <div
                               className="w-6 bg-green-500 rounded-t"
@@ -233,7 +259,9 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                               title={`pH: ${data.ph}`}
                             />
                           </div>
-                          <div className="text-xs text-gray-500 mt-1">{data.date}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {data.date}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -275,7 +303,10 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                   <TableBody>
                     {measurements.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-gray-500">
+                        <TableCell
+                          colSpan={7}
+                          className="text-center text-gray-500"
+                        >
                           No measurements recorded
                         </TableCell>
                       </TableRow>
@@ -283,7 +314,10 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                       measurements.map((m) => (
                         <TableRow key={m.id}>
                           <TableCell>
-                            {format(new Date(m.measurementDate), "MMM dd, yyyy")}
+                            {format(
+                              new Date(m.measurementDate),
+                              "MMM dd, yyyy",
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {m.specificGravity?.toFixed(3) || "-"}
@@ -336,7 +370,10 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
                   <TableBody>
                     {additives.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-gray-500">
+                        <TableCell
+                          colSpan={7}
+                          className="text-center text-gray-500"
+                        >
                           No additives recorded
                         </TableCell>
                       </TableRow>
@@ -364,8 +401,8 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
           </TabsContent>
         </div>
       </Tabs>
-    )
-  }
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
@@ -379,5 +416,5 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
         {renderContent()}
       </DialogContent>
     </Dialog>
-  )
+  );
 }

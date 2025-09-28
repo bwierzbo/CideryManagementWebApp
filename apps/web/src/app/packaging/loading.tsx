@@ -1,6 +1,6 @@
-import { Skeleton } from "@/components/ui/skeleton"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Navbar } from "@/components/navbar"
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Navbar } from "@/components/navbar";
 
 /**
  * Loading component for packaging routes
@@ -119,13 +119,15 @@ export default function PackagingLoading() {
           <Card className="bg-blue-50 border-blue-200 shadow-lg">
             <CardContent className="p-3 flex items-center gap-2">
               <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
-              <span className="text-sm text-blue-700 font-medium">Loading packaging data...</span>
+              <span className="text-sm text-blue-700 font-medium">
+                Loading packaging data...
+              </span>
             </CardContent>
           </Card>
         </div>
       </main>
     </div>
-  )
+  );
 }
 
 /**
@@ -171,7 +173,7 @@ export function PackagingCardSkeleton() {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 /**
@@ -197,7 +199,7 @@ export function PackagingTableRowSkeleton() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -227,5 +229,5 @@ export function PackagingFiltersSkeleton() {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }

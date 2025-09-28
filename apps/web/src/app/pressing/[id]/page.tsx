@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter, useParams, useSearchParams } from "next/navigation"
-import { Navbar } from "@/components/navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { FruitLoadFormWithTRPC } from "@/components/pressing/FruitLoadFormWithTRPC"
-import { trpc } from "@/utils/trpc"
-import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useState, useEffect } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { FruitLoadFormWithTRPC } from "@/components/pressing/FruitLoadFormWithTRPC";
+import { trpc } from "@/utils/trpc";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   ArrowLeft,
   Plus,
@@ -24,101 +24,101 @@ import {
   Edit3,
   Trash2,
   X,
-  TrendingUp
-} from "lucide-react"
+  TrendingUp,
+} from "lucide-react";
 
 export default function PressRunDetailsPage() {
-  const router = useRouter()
-  const params = useParams()
-  const searchParams = useSearchParams()
-  const pressRunId = params.id as string
+  const router = useRouter();
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const pressRunId = params.id as string;
 
   // Check if we should show the add load form immediately (for first load)
-  const shouldAddFirstLoad = searchParams.get('addFirstLoad') === 'true'
+  const shouldAddFirstLoad = searchParams.get("addFirstLoad") === "true";
 
-  const [showAddLoadForm, setShowAddLoadForm] = useState(shouldAddFirstLoad)
-  const [isSubmittingLoad, setIsSubmittingLoad] = useState(false)
-  const [isCancelling, setIsCancelling] = useState(false)
-  const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [editingLoad, setEditingLoad] = useState<any>(null)
-  const [isUpdatingLoad, setIsUpdatingLoad] = useState(false)
-  const [isDeletingLoad, setIsDeletingLoad] = useState(false)
+  const [showAddLoadForm, setShowAddLoadForm] = useState(shouldAddFirstLoad);
+  const [isSubmittingLoad, setIsSubmittingLoad] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [editingLoad, setEditingLoad] = useState<any>(null);
+  const [isUpdatingLoad, setIsUpdatingLoad] = useState(false);
+  const [isDeletingLoad, setIsDeletingLoad] = useState(false);
 
   // Get tRPC context for cache invalidation
-  const utils = trpc.useContext()
+  const utils = trpc.useContext();
 
   // Get press run details
   const {
     data: pressRun,
     isLoading,
     error,
-    refetch
-  } = trpc.pressRun.get.useQuery({ id: pressRunId })
+    refetch,
+  } = trpc.pressRun.get.useQuery({ id: pressRunId });
 
   // Add load mutation
   const addLoadMutation = trpc.pressRun.addLoad.useMutation({
     onSuccess: () => {
-      setIsSubmittingLoad(false)
-      setShowAddLoadForm(false)
-      refetch() // Refresh press run data
+      setIsSubmittingLoad(false);
+      setShowAddLoadForm(false);
+      refetch(); // Refresh press run data
       // Invalidate press runs list cache to update the pressing page
-      utils.pressRun.list.invalidate()
+      utils.pressRun.list.invalidate();
     },
     onError: (error) => {
-      setIsSubmittingLoad(false)
-      console.error('Failed to add load:', error)
-      alert('Failed to add load. Please try again.')
-    }
-  })
+      setIsSubmittingLoad(false);
+      console.error("Failed to add load:", error);
+      alert("Failed to add load. Please try again.");
+    },
+  });
 
   // Update load mutation
   const updateLoadMutation = trpc.pressRun.updateLoad.useMutation({
     onSuccess: () => {
-      setIsUpdatingLoad(false)
-      setEditingLoad(null)
-      refetch() // Refresh press run data
+      setIsUpdatingLoad(false);
+      setEditingLoad(null);
+      refetch(); // Refresh press run data
       // Invalidate press runs list cache to update the pressing page
-      utils.pressRun.list.invalidate()
+      utils.pressRun.list.invalidate();
     },
     onError: (error) => {
-      setIsUpdatingLoad(false)
-      console.error('Failed to update load:', error)
-      alert('Failed to update load. Please try again.')
-    }
-  })
+      setIsUpdatingLoad(false);
+      console.error("Failed to update load:", error);
+      alert("Failed to update load. Please try again.");
+    },
+  });
 
   // Cancel press run mutation
   const cancelPressRunMutation = trpc.pressRun.cancel.useMutation({
     onSuccess: () => {
-      setIsCancelling(false)
+      setIsCancelling(false);
       // Navigate back to pressing home
-      router.push('/pressing')
+      router.push("/pressing");
     },
     onError: (error) => {
-      setIsCancelling(false)
-      console.error('Failed to cancel press run:', error)
-      alert('Failed to cancel press run. Please try again.')
-    }
-  })
+      setIsCancelling(false);
+      console.error("Failed to cancel press run:", error);
+      alert("Failed to cancel press run. Please try again.");
+    },
+  });
 
   // Delete load mutation
   const deleteLoadMutation = trpc.pressRun.deleteLoad.useMutation({
     onSuccess: () => {
-      setIsDeletingLoad(false)
-      setEditingLoad(null)
-      refetch() // Refresh press run data
+      setIsDeletingLoad(false);
+      setEditingLoad(null);
+      refetch(); // Refresh press run data
       // Invalidate press runs list cache to update the pressing page
-      utils.pressRun.list.invalidate()
+      utils.pressRun.list.invalidate();
     },
     onError: (error) => {
-      setIsDeletingLoad(false)
-      console.error('Failed to delete load:', error)
-      alert('Failed to delete load. Please try again.')
-    }
-  })
+      setIsDeletingLoad(false);
+      console.error("Failed to delete load:", error);
+      alert("Failed to delete load. Please try again.");
+    },
+  });
 
   const handleAddLoad = async (loadData: any) => {
-    setIsSubmittingLoad(true)
+    setIsSubmittingLoad(true);
 
     addLoadMutation.mutate({
       pressRunId,
@@ -133,11 +133,11 @@ export default function PressRunDetailsPage() {
       appleCondition: loadData.appleCondition,
       defectPercentage: loadData.defectPercentage,
       notes: loadData.notes,
-    })
-  }
+    });
+  };
 
   const handleUpdateLoad = async (loadData: any) => {
-    setIsUpdatingLoad(true)
+    setIsUpdatingLoad(true);
 
     updateLoadMutation.mutate({
       loadId: editingLoad.id,
@@ -152,43 +152,43 @@ export default function PressRunDetailsPage() {
       appleCondition: loadData.appleCondition,
       defectPercentage: loadData.defectPercentage,
       notes: loadData.notes,
-    })
-  }
+    });
+  };
 
   const handleEditLoad = (load: any) => {
-    setEditingLoad(load)
-    setShowAddLoadForm(false) // Hide add form if it's open
-  }
+    setEditingLoad(load);
+    setShowAddLoadForm(false); // Hide add form if it's open
+  };
 
   const handleCancelEdit = () => {
-    setEditingLoad(null)
-  }
+    setEditingLoad(null);
+  };
 
   const handleDeleteLoad = async (loadId: string) => {
-    setIsDeletingLoad(true)
-    deleteLoadMutation.mutate({ loadId })
-  }
+    setIsDeletingLoad(true);
+    deleteLoadMutation.mutate({ loadId });
+  };
 
   const handleBack = () => {
-    router.push('/pressing')
-  }
+    router.push("/pressing");
+  };
 
   const handleComplete = () => {
     // Navigate to completion form
-    router.push(`/pressing/${pressRunId}/complete`)
-  }
+    router.push(`/pressing/${pressRunId}/complete`);
+  };
 
   const handleCancel = () => {
-    setShowCancelDialog(true)
-  }
+    setShowCancelDialog(true);
+  };
 
   const handleConfirmCancel = () => {
-    setIsCancelling(true)
+    setIsCancelling(true);
     cancelPressRunMutation.mutate({
       id: pressRunId,
-      reason: 'User requested cancellation from details page'
-    })
-  }
+      reason: "User requested cancellation from details page",
+    });
+  };
 
   if (isLoading) {
     return (
@@ -201,7 +201,7 @@ export default function PressRunDetailsPage() {
           </div>
         </main>
       </div>
-    )
+    );
   }
 
   if (error || !pressRun) {
@@ -210,22 +210,29 @@ export default function PressRunDetailsPage() {
         <Navbar />
         <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
           <div className="text-center py-12">
-            <p className="text-red-600 mb-4">Failed to load press run details</p>
+            <p className="text-red-600 mb-4">
+              Failed to load press run details
+            </p>
             <Button onClick={handleBack}>Back to Pressing</Button>
           </div>
         </main>
       </div>
-    )
+    );
   }
 
-  const nextLoadSequence = (pressRun.loads?.length || 0) + 1
-  const totalWeight = pressRun.loads?.reduce((sum, load) => sum + parseFloat(load.appleWeightKg || '0'), 0) || 0
-  const totalWeightLbs = totalWeight * 2.20462
+  const nextLoadSequence = (pressRun.loads?.length || 0) + 1;
+  const totalWeight =
+    pressRun.loads?.reduce(
+      (sum, load) => sum + parseFloat(load.appleWeightKg || "0"),
+      0,
+    ) || 0;
+  const totalWeightLbs = totalWeight * 2.20462;
 
   // Auto-fill vendor from last load
-  const lastVendorId = pressRun.loads && pressRun.loads.length > 0
-    ? pressRun.loads[pressRun.loads.length - 1]?.vendorId
-    : undefined
+  const lastVendorId =
+    pressRun.loads && pressRun.loads.length > 0
+      ? pressRun.loads[pressRun.loads.length - 1]?.vendorId
+      : undefined;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -234,11 +241,7 @@ export default function PressRunDetailsPage() {
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 pb-24">
         {/* Header */}
         <div className="mb-6">
-          <Button
-            variant="ghost"
-            onClick={handleBack}
-            className="mb-4 -ml-2"
-          >
+          <Button variant="ghost" onClick={handleBack} className="mb-4 -ml-2">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Pressing
           </Button>
@@ -246,7 +249,8 @@ export default function PressRunDetailsPage() {
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-                {pressRun?.pressRun?.pressRunName || `Press Run #${pressRunId.slice(0, 8).toUpperCase()}`}
+                {pressRun?.pressRun?.pressRunName ||
+                  `Press Run #${pressRunId.slice(0, 8).toUpperCase()}`}
               </h1>
               <p className="text-gray-600 mt-1">
                 Manage loads and track pressing progress
@@ -256,16 +260,20 @@ export default function PressRunDetailsPage() {
               <Badge
                 variant="secondary"
                 className={
-                  pressRun?.pressRun?.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
-                  pressRun?.pressRun?.status === 'completed' ? 'bg-green-100 text-green-800' :
-                  'bg-gray-100 text-gray-800'
+                  pressRun?.pressRun?.status === "in_progress"
+                    ? "bg-blue-100 text-blue-800"
+                    : pressRun?.pressRun?.status === "completed"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-gray-100 text-gray-800"
                 }
               >
-                {pressRun?.pressRun?.status === 'in_progress' ? 'In Progress' :
-                 pressRun?.pressRun?.status === 'completed' ? 'Completed' :
-                 pressRun?.pressRun?.status}
+                {pressRun?.pressRun?.status === "in_progress"
+                  ? "In Progress"
+                  : pressRun?.pressRun?.status === "completed"
+                    ? "Completed"
+                    : pressRun?.pressRun?.status}
               </Badge>
-              {pressRun?.pressRun?.status === 'in_progress' && (
+              {pressRun?.pressRun?.status === "in_progress" && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -303,17 +311,21 @@ export default function PressRunDetailsPage() {
                 <Apple className="w-4 h-4 text-gray-500 mr-2" />
                 <div>
                   <p className="text-sm text-gray-600">Loads</p>
-                  <p className="font-medium">{pressRun.loads?.length || 0} added</p>
+                  <p className="font-medium">
+                    {pressRun.loads?.length || 0} added
+                  </p>
                 </div>
               </div>
-              {pressRun?.pressRun?.status === 'completed' && (
+              {pressRun?.pressRun?.status === "completed" && (
                 <>
                   <div className="flex items-center">
                     <Beaker className="w-4 h-4 text-gray-500 mr-2" />
                     <div>
                       <p className="text-sm text-gray-600">Juice Volume</p>
                       <p className="font-medium">
-                        {pressRun.pressRun.totalJuiceVolumeL ? `${parseFloat(pressRun.pressRun.totalJuiceVolumeL).toFixed(1)}L` : 'N/A'}
+                        {pressRun.pressRun.totalJuiceVolumeL
+                          ? `${parseFloat(pressRun.pressRun.totalJuiceVolumeL).toFixed(1)}L`
+                          : "N/A"}
                       </p>
                     </div>
                   </div>
@@ -322,30 +334,38 @@ export default function PressRunDetailsPage() {
                     <div>
                       <p className="text-sm text-gray-600">Extraction Rate</p>
                       <p className="font-medium">
-                        {pressRun.pressRun.extractionRate ? `${(parseFloat(pressRun.pressRun.extractionRate) * 100).toFixed(1)}%` : 'N/A'}
+                        {pressRun.pressRun.extractionRate
+                          ? `${(parseFloat(pressRun.pressRun.extractionRate) * 100).toFixed(1)}%`
+                          : "N/A"}
                       </p>
                     </div>
                   </div>
                 </>
               )}
             </div>
-            {pressRun?.pressRun?.status === 'completed' && pressRun?.pressRun?.endTime && (
-              <div className="pt-2 border-t">
-                <div className="flex items-center">
-                  <CheckCircle2 className="w-4 h-4 text-green-600 mr-2" />
-                  <div>
-                    <p className="text-sm text-gray-600">Completed On</p>
-                    <p className="font-medium">{new Date(pressRun.pressRun.endTime).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}</p>
+            {pressRun?.pressRun?.status === "completed" &&
+              pressRun?.pressRun?.endTime && (
+                <div className="pt-2 border-t">
+                  <div className="flex items-center">
+                    <CheckCircle2 className="w-4 h-4 text-green-600 mr-2" />
+                    <div>
+                      <p className="text-sm text-gray-600">Completed On</p>
+                      <p className="font-medium">
+                        {new Date(pressRun.pressRun.endTime).toLocaleDateString(
+                          "en-US",
+                          {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          },
+                        )}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {pressRun?.pressRun?.notes && (
               <>
@@ -363,7 +383,7 @@ export default function PressRunDetailsPage() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Fruit Loads</h3>
-            {!showAddLoadForm && pressRun?.pressRun?.status !== 'completed' && (
+            {!showAddLoadForm && pressRun?.pressRun?.status !== "completed" && (
               <Button
                 onClick={() => setShowAddLoadForm(true)}
                 className="bg-amber-600 hover:bg-amber-700"
@@ -426,27 +446,34 @@ export default function PressRunDetailsPage() {
                 <Card
                   key={load.id || index}
                   className={`transition-all ${
-                    pressRun?.pressRun?.status === 'completed'
-                      ? ''
-                      : 'cursor-pointer hover:shadow-md ' + (editingLoad?.id === load.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50')
+                    pressRun?.pressRun?.status === "completed"
+                      ? ""
+                      : "cursor-pointer hover:shadow-md " +
+                        (editingLoad?.id === load.id
+                          ? "ring-2 ring-blue-500 bg-blue-50"
+                          : "hover:bg-gray-50")
                   }`}
-                  onClick={pressRun?.pressRun?.status === 'completed' ? undefined : () => handleEditLoad(load)}
+                  onClick={
+                    pressRun?.pressRun?.status === "completed"
+                      ? undefined
+                      : () => handleEditLoad(load)
+                  }
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <h4 className="font-semibold text-gray-900 flex items-center">
                           Load #{load.loadSequence || index + 1}
-                          {pressRun?.pressRun?.status !== 'completed' && (
+                          {pressRun?.pressRun?.status !== "completed" && (
                             <Edit3 className="w-4 h-4 ml-2 text-gray-400" />
                           )}
                         </h4>
                         <p className="text-sm text-gray-600">
-                          {load.appleVarietyName || 'Unknown Variety'}
+                          {load.appleVarietyName || "Unknown Variety"}
                         </p>
                       </div>
                       <Badge variant="outline">
-                        {parseFloat(load.appleWeightKg || '0').toFixed(1)} kg
+                        {parseFloat(load.appleWeightKg || "0").toFixed(1)} kg
                       </Badge>
                     </div>
 
@@ -466,13 +493,17 @@ export default function PressRunDetailsPage() {
                       {load.appleCondition && (
                         <div>
                           <p className="text-gray-600">Condition</p>
-                          <p className="font-medium capitalize">{load.appleCondition}</p>
+                          <p className="font-medium capitalize">
+                            {load.appleCondition}
+                          </p>
                         </div>
                       )}
                       {load.defectPercentage && (
                         <div>
                           <p className="text-gray-600">Defects</p>
-                          <p className="font-medium">{load.defectPercentage}%</p>
+                          <p className="font-medium">
+                            {load.defectPercentage}%
+                          </p>
                         </div>
                       )}
                     </div>
@@ -496,7 +527,7 @@ export default function PressRunDetailsPage() {
                 <p className="text-gray-600 mb-4">
                   Add fruit loads to start processing apples for this press run
                 </p>
-                {pressRun?.pressRun?.status === 'in_progress' && (
+                {pressRun?.pressRun?.status === "in_progress" && (
                   <Button
                     onClick={() => setShowAddLoadForm(true)}
                     className="bg-amber-600 hover:bg-amber-700"
@@ -511,20 +542,21 @@ export default function PressRunDetailsPage() {
         </div>
 
         {/* Action Buttons */}
-        {pressRun?.pressRun?.status === 'in_progress' && (pressRun.loads?.length || 0) > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 lg:relative lg:bottom-auto lg:border-t-0 lg:p-0 lg:bg-transparent">
-            <div className="max-w-7xl mx-auto">
-              <Button
-                onClick={handleComplete}
-                size="lg"
-                className="w-full h-12 bg-green-600 hover:bg-green-700 lg:w-auto"
-              >
-                <CheckCircle2 className="h-5 w-5 mr-2" />
-                Complete Press Run
-              </Button>
+        {pressRun?.pressRun?.status === "in_progress" &&
+          (pressRun.loads?.length || 0) > 0 && (
+            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 lg:relative lg:bottom-auto lg:border-t-0 lg:p-0 lg:bg-transparent">
+              <div className="max-w-7xl mx-auto">
+                <Button
+                  onClick={handleComplete}
+                  size="lg"
+                  className="w-full h-12 bg-green-600 hover:bg-green-700 lg:w-auto"
+                >
+                  <CheckCircle2 className="h-5 w-5 mr-2" />
+                  Complete Press Run
+                </Button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Confirmation Dialog */}
         <ConfirmDialog
@@ -539,5 +571,5 @@ export default function PressRunDetailsPage() {
         />
       </main>
     </div>
-  )
+  );
 }

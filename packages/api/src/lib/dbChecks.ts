@@ -1,6 +1,6 @@
-import { db } from 'db'
-import { vendorVarieties } from 'db/src/schema'
-import { eq, and, isNull } from 'drizzle-orm'
+import { db } from "db";
+import { vendorVarieties } from "db/src/schema";
+import { eq, and, isNull } from "drizzle-orm";
 
 /**
  * Validates that a given vendor-variety combination exists in the vendor_varieties table
@@ -19,7 +19,10 @@ import { eq, and, isNull } from 'drizzle-orm'
  * }
  * ```
  */
-export async function ensureVendorVariety(vendorId: string, varietyId: string): Promise<boolean> {
+export async function ensureVendorVariety(
+  vendorId: string,
+  varietyId: string,
+): Promise<boolean> {
   try {
     const relationship = await db
       .select({ id: vendorVarieties.id })
@@ -28,16 +31,16 @@ export async function ensureVendorVariety(vendorId: string, varietyId: string): 
         and(
           eq(vendorVarieties.vendorId, vendorId),
           eq(vendorVarieties.varietyId, varietyId),
-          isNull(vendorVarieties.deletedAt) // Only active relationships
-        )
+          isNull(vendorVarieties.deletedAt), // Only active relationships
+        ),
       )
-      .limit(1)
+      .limit(1);
 
-    return relationship.length > 0
+    return relationship.length > 0;
   } catch (error) {
     // Log the error but return false for safety
-    console.error('Error checking vendor-variety relationship:', error)
-    return false
+    console.error("Error checking vendor-variety relationship:", error);
+    return false;
   }
 }
 
@@ -62,14 +65,14 @@ export async function getVendorVarieties(vendorId: string): Promise<string[]> {
       .where(
         and(
           eq(vendorVarieties.vendorId, vendorId),
-          isNull(vendorVarieties.deletedAt) // Only active relationships
-        )
-      )
+          isNull(vendorVarieties.deletedAt), // Only active relationships
+        ),
+      );
 
-    return varieties.map(v => v.varietyId)
+    return varieties.map((v) => v.varietyId);
   } catch (error) {
-    console.error('Error fetching vendor varieties:', error)
-    return []
+    console.error("Error fetching vendor varieties:", error);
+    return [];
   }
 }
 
@@ -90,28 +93,26 @@ export async function getVendorVarieties(vendorId: string): Promise<string[]> {
 export async function createVendorVariety(
   vendorId: string,
   varietyId: string,
-  notes?: string
+  notes?: string,
 ): Promise<boolean> {
   try {
     // Check if relationship already exists
-    const exists = await ensureVendorVariety(vendorId, varietyId)
+    const exists = await ensureVendorVariety(vendorId, varietyId);
     if (exists) {
-      return false // Already exists
+      return false; // Already exists
     }
 
-    await db
-      .insert(vendorVarieties)
-      .values({
-        vendorId,
-        varietyId,
-        notes: notes || undefined,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      })
+    await db.insert(vendorVarieties).values({
+      vendorId,
+      varietyId,
+      notes: notes || undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
-    return true
+    return true;
   } catch (error) {
-    console.error('Error creating vendor-variety relationship:', error)
-    return false
+    console.error("Error creating vendor-variety relationship:", error);
+    return false;
   }
 }

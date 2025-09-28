@@ -3,19 +3,19 @@
  */
 
 export interface BatchComposition {
-  varietyName: string
-  fractionOfBatch: number
+  varietyName: string;
+  fractionOfBatch: number;
 }
 
 export interface GenerateBatchNameOptions {
-  date: Date
-  vesselCode: string
-  primaryVariety?: string
-  sequence?: string
+  date: Date;
+  vesselCode: string;
+  primaryVariety?: string;
+  sequence?: string;
 }
 
 export interface BatchCompositionInput {
-  batchCompositions: BatchComposition[]
+  batchCompositions: BatchComposition[];
 }
 
 /**
@@ -34,15 +34,17 @@ export interface BatchCompositionInput {
  * // Returns: "2025-09-19_TK03_GRAV_A"
  */
 export function generateBatchName(opts: GenerateBatchNameOptions): string {
-  const { date, vesselCode, primaryVariety, sequence = 'A' } = opts
+  const { date, vesselCode, primaryVariety, sequence = "A" } = opts;
 
   // Format date as YYYY-MM-DD
-  const dateStr = date.toISOString().split('T')[0]
+  const dateStr = date.toISOString().split("T")[0];
 
   // Determine variety component
-  const varietyCode = primaryVariety ? generateVarietyCode(primaryVariety) : 'BLEND'
+  const varietyCode = primaryVariety
+    ? generateVarietyCode(primaryVariety)
+    : "BLEND";
 
-  return `${dateStr}_${vesselCode}_${varietyCode}_${sequence}`
+  return `${dateStr}_${vesselCode}_${varietyCode}_${sequence}`;
 }
 
 /**
@@ -58,33 +60,36 @@ export function generateBatchName(opts: GenerateBatchNameOptions): string {
  * generateVarietyCode('Golden Delicious') // Returns: "GODE"
  */
 export function generateVarietyCode(varietyName: string): string {
-  if (!varietyName || typeof varietyName !== 'string') {
-    return 'UNKN'
+  if (!varietyName || typeof varietyName !== "string") {
+    return "UNKN";
   }
 
-  const cleaned = varietyName.trim().toUpperCase()
+  const cleaned = varietyName.trim().toUpperCase();
 
-  if (cleaned === '') {
-    return 'UNKN'
+  if (cleaned === "") {
+    return "UNKN";
   }
 
   // Handle multi-word varieties by taking first letter of each word
-  const words = cleaned.split(/\s+/).filter(word => word.length > 0)
+  const words = cleaned.split(/\s+/).filter((word) => word.length > 0);
 
   if (words.length === 0) {
-    return 'UNKN'
+    return "UNKN";
   } else if (words.length === 1) {
     // Single word: take first 4 characters
-    return words[0].substring(0, 4)
+    return words[0].substring(0, 4);
   } else if (words.length === 2) {
     // Two words: take first 2 chars from each word
-    return words[0].substring(0, 2) + words[1].substring(0, 2)
+    return words[0].substring(0, 2) + words[1].substring(0, 2);
   } else if (words.length === 3) {
     // Three words: Take first char from first two words, then first 2 chars from third
-    return words[0].charAt(0) + words[1].charAt(0) + words[2].substring(0, 2)
+    return words[0].charAt(0) + words[1].charAt(0) + words[2].substring(0, 2);
   } else {
     // Four or more words: take first char from first 4 words
-    return words.slice(0, 4).map(word => word.charAt(0)).join('')
+    return words
+      .slice(0, 4)
+      .map((word) => word.charAt(0))
+      .join("");
   }
 }
 
@@ -104,34 +109,36 @@ export function generateVarietyCode(varietyName: string): string {
  * })
  * // Returns: "Gravenstein"
  */
-export function selectPrimaryVariety(input: BatchCompositionInput): string | undefined {
-  const { batchCompositions } = input
+export function selectPrimaryVariety(
+  input: BatchCompositionInput,
+): string | undefined {
+  const { batchCompositions } = input;
 
   if (!batchCompositions || batchCompositions.length === 0) {
-    return undefined
+    return undefined;
   }
 
   if (batchCompositions.length === 1) {
-    return batchCompositions[0].varietyName
+    return batchCompositions[0].varietyName;
   }
 
   // Find variety with highest fraction
-  let maxFraction = 0
-  let primaryVariety: string | undefined
+  let maxFraction = 0;
+  let primaryVariety: string | undefined;
 
   for (const composition of batchCompositions) {
     if (composition.fractionOfBatch > maxFraction) {
-      maxFraction = composition.fractionOfBatch
-      primaryVariety = composition.varietyName
+      maxFraction = composition.fractionOfBatch;
+      primaryVariety = composition.varietyName;
     }
   }
 
   // If the primary variety doesn't dominate significantly (less than 60%), consider it a blend
   if (maxFraction < 0.6) {
-    return undefined
+    return undefined;
   }
 
-  return primaryVariety
+  return primaryVariety;
 }
 
 /**
@@ -142,12 +149,13 @@ export function selectPrimaryVariety(input: BatchCompositionInput): string | und
  * @returns Formatted batch name
  */
 export function generateBatchNameFromComposition(
-  opts: Omit<GenerateBatchNameOptions, 'primaryVariety'> & BatchCompositionInput
+  opts: Omit<GenerateBatchNameOptions, "primaryVariety"> &
+    BatchCompositionInput,
 ): string {
-  const primaryVariety = selectPrimaryVariety(opts)
+  const primaryVariety = selectPrimaryVariety(opts);
 
   return generateBatchName({
     ...opts,
-    primaryVariety
-  })
+    primaryVariety,
+  });
 }

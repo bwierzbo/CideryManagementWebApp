@@ -1,29 +1,43 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useSession } from 'next-auth/react'
-import { Navbar } from '@/components/navbar'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
-import { Building2, Settings, Apple, Beaker, Package, Grape } from 'lucide-react'
-import { VendorManagement } from '@/components/inventory/VendorManagement'
-import { AdditiveVarietyManagement } from '@/components/inventory/AdditiveVarietyManagement'
-import { JuiceVarietyManagement } from '@/components/inventory/JuiceVarietyManagement'
-import { PackagingVarietyManagement } from '@/components/inventory/PackagingVarietyManagement'
-import { FruitsGrid } from './_components/FruitsGrid'
-import { NewVarietyModal } from './_components/NewVarietyModal'
+import { useState } from "react";
+import { useSession } from "next-auth/react";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import {
+  Building2,
+  Settings,
+  Apple,
+  Beaker,
+  Package,
+  Grape,
+} from "lucide-react";
+import { VendorManagement } from "@/components/inventory/VendorManagement";
+import { AdditiveVarietyManagement } from "@/components/inventory/AdditiveVarietyManagement";
+import { JuiceVarietyManagement } from "@/components/inventory/JuiceVarietyManagement";
+import { PackagingVarietyManagement } from "@/components/inventory/PackagingVarietyManagement";
+import { FruitsGrid } from "./_components/FruitsGrid";
+import { NewVarietyModal } from "./_components/NewVarietyModal";
 
 export default function VendorsPage() {
-  const { data: session } = useSession()
-  const userRole = (session?.user as any)?.role || 'viewer'
-  const [activeTab, setActiveTab] = useState('vendors')
-  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null)
+  const { data: session } = useSession();
+  const userRole = (session?.user as any)?.role || "viewer";
+  const [activeTab, setActiveTab] = useState("vendors");
+  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
 
   // Check if user has view permissions
-  const canView = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
-  const canAdd = userRole === 'admin' || userRole === 'operator'
+  const canView =
+    userRole === "admin" || userRole === "operator" || userRole === "viewer";
+  const canAdd = userRole === "admin" || userRole === "operator";
 
   if (!canView) {
     return (
@@ -41,13 +55,15 @@ export default function VendorsPage() {
               <div className="text-center py-8 text-gray-500">
                 <Settings className="w-8 h-8 mx-auto mb-2" />
                 <p>Access denied</p>
-                <p className="text-sm">You need appropriate permissions to view vendor management</p>
+                <p className="text-sm">
+                  You need appropriate permissions to view vendor management
+                </p>
               </div>
             </CardContent>
           </Card>
         </main>
       </div>
-    )
+    );
   }
 
   return (
@@ -71,7 +87,9 @@ export default function VendorsPage() {
               {session?.user && (
                 <div className="text-right">
                   <p className="text-sm text-gray-500">Your Role</p>
-                  <Badge variant={userRole === 'admin' ? 'default' : 'secondary'}>
+                  <Badge
+                    variant={userRole === "admin" ? "default" : "secondary"}
+                  >
                     {userRole}
                   </Badge>
                 </div>
@@ -81,25 +99,44 @@ export default function VendorsPage() {
         </div>
 
         {/* Main Content with Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-6"
+        >
           <TabsList className="grid w-full grid-cols-5 h-auto">
-            <TabsTrigger value="vendors" className="flex items-center justify-center space-x-2 py-2">
+            <TabsTrigger
+              value="vendors"
+              className="flex items-center justify-center space-x-2 py-2"
+            >
               <Building2 className="w-4 h-4" />
               <span className="text-sm">Vendors</span>
             </TabsTrigger>
-            <TabsTrigger value="base-fruit" className="flex items-center justify-center space-x-2 py-2">
+            <TabsTrigger
+              value="base-fruit"
+              className="flex items-center justify-center space-x-2 py-2"
+            >
               <Apple className="w-4 h-4" />
               <span className="text-sm">Base Fruit</span>
             </TabsTrigger>
-            <TabsTrigger value="additives" className="flex items-center justify-center space-x-2 py-2">
+            <TabsTrigger
+              value="additives"
+              className="flex items-center justify-center space-x-2 py-2"
+            >
               <Beaker className="w-4 h-4" />
               <span className="text-sm">Additives</span>
             </TabsTrigger>
-            <TabsTrigger value="packaging" className="flex items-center justify-center space-x-2 py-2">
+            <TabsTrigger
+              value="packaging"
+              className="flex items-center justify-center space-x-2 py-2"
+            >
               <Package className="w-4 h-4" />
               <span className="text-sm">Packaging</span>
             </TabsTrigger>
-            <TabsTrigger value="juice" className="flex items-center justify-center space-x-2 py-2">
+            <TabsTrigger
+              value="juice"
+              className="flex items-center justify-center space-x-2 py-2"
+            >
               <Grape className="w-4 h-4" />
               <span className="text-sm">Juice</span>
             </TabsTrigger>
@@ -122,8 +159,11 @@ export default function VendorsPage() {
                       Base Fruit Varieties
                     </CardTitle>
                     <CardDescription>
-                      Manage fruit variety characteristics and vendor associations.
-                      {userRole === 'viewer' ? ' View-only access.' : ' Click any cell to edit inline.'}
+                      Manage fruit variety characteristics and vendor
+                      associations.
+                      {userRole === "viewer"
+                        ? " View-only access."
+                        : " Click any cell to edit inline."}
                     </CardDescription>
                   </div>
                   {canAdd && <NewVarietyModal />}
@@ -149,5 +189,5 @@ export default function VendorsPage() {
         </Tabs>
       </main>
     </div>
-  )
+  );
 }

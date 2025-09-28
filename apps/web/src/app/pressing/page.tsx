@@ -1,13 +1,19 @@
-"use client"
+"use client";
 
-import { useState, useMemo } from "react"
-import { useRouter } from "next/navigation"
-import { Navbar } from "@/components/navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { PressRunCompletion } from "@/components/pressing"
+import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { PressRunCompletion } from "@/components/pressing";
 import {
   Play,
   CheckCircle2,
@@ -21,60 +27,69 @@ import {
   Trash2,
   Search,
   ChevronLeft,
-  ChevronRight
-} from "lucide-react"
-import { trpc } from "@/utils/trpc"
-import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { useToast } from "@/components/ui/toast-provider"
+  ChevronRight,
+} from "lucide-react";
+import { trpc } from "@/utils/trpc";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast-provider";
 
 interface PressRun {
-  id: string
-  startDate: string
-  totalAppleKg: number
-  varieties: string[]
-  status: "in_progress" | "completed"
-  duration?: string
-  estimatedCompletion?: string
-  totalJuiceL?: number
-  yield?: string
+  id: string;
+  startDate: string;
+  totalAppleKg: number;
+  varieties: string[];
+  status: "in_progress" | "completed";
+  duration?: string;
+  estimatedCompletion?: string;
+  totalJuiceL?: number;
+  yield?: string;
 }
 
-type ViewMode = 'home' | 'completion'
-
+type ViewMode = "home" | "completion";
 
 // Mobile-optimized Active Runs Section
 function ActiveRunsSection({
   onCompletePressRun,
-  onCancelPressRun
+  onCancelPressRun,
 }: {
-  onCompletePressRun: (pressRunId: string) => void
-  onCancelPressRun: (pressRunId: string) => void
+  onCompletePressRun: (pressRunId: string) => void;
+  onCancelPressRun: (pressRunId: string) => void;
 }) {
-  const { data: pressRunsData, isLoading, refetch } = trpc.pressRun.list.useQuery({
-    status: 'in_progress',
+  const {
+    data: pressRunsData,
+    isLoading,
+    refetch,
+  } = trpc.pressRun.list.useQuery({
+    status: "in_progress",
     limit: 10,
-  })
+  });
 
   // Convert tRPC data to expected format
-  const activeRuns = pressRunsData?.pressRuns?.map(run => ({
-    id: run.id,
-    pressRunName: run.pressRunName,
-    startDate: run.startTime ? new Date(run.startTime).toLocaleDateString() : 'Unknown',
-    totalAppleKg: parseFloat(run.totalAppleWeightKg || '0'),
-    varieties: run.varieties && run.varieties.length > 0 ? run.varieties : ['No varieties'],
-    status: run.status as "in_progress" | "completed",
-    duration: run.startTime ? calculateDuration(run.startTime) : 'Unknown',
-    loadCount: run.loadCount || 0,
-    vendorName: run.vendorName,
-  })) || []
+  const activeRuns =
+    pressRunsData?.pressRuns?.map((run) => ({
+      id: run.id,
+      pressRunName: run.pressRunName,
+      startDate: run.startTime
+        ? new Date(run.startTime).toLocaleDateString()
+        : "Unknown",
+      totalAppleKg: parseFloat(run.totalAppleWeightKg || "0"),
+      varieties:
+        run.varieties && run.varieties.length > 0
+          ? run.varieties
+          : ["No varieties"],
+      status: run.status as "in_progress" | "completed",
+      duration: run.startTime ? calculateDuration(run.startTime) : "Unknown",
+      loadCount: run.loadCount || 0,
+      vendorName: run.vendorName,
+    })) || [];
 
   function calculateDuration(startTime: string): string {
-    const start = new Date(startTime)
-    const now = new Date()
-    const diffMs = now.getTime() - start.getTime()
-    const hours = Math.floor(diffMs / (1000 * 60 * 60))
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-    return `${hours}h ${minutes}m`
+    const start = new Date(startTime);
+    const now = new Date();
+    const diffMs = now.getTime() - start.getTime();
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
   }
 
   if (isLoading) {
@@ -83,11 +98,13 @@ function ActiveRunsSection({
         <CardContent className="p-6">
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-sm text-gray-600">Loading active press runs...</p>
+            <p className="text-sm text-gray-600">
+              Loading active press runs...
+            </p>
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (activeRuns.length === 0) {
@@ -98,14 +115,16 @@ function ActiveRunsSection({
             <div className="bg-gray-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
               <Clock className="w-8 h-8 text-gray-400" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Active Press Runs</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No Active Press Runs
+            </h3>
             <p className="text-sm text-gray-600 mb-6 max-w-sm mx-auto">
               Start a new press run to begin processing apples into juice
             </p>
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -125,15 +144,25 @@ function ActiveRunsSection({
 
       <div className="space-y-3">
         {activeRuns.map((run) => (
-          <Card key={run.id} className="border border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50">
+          <Card
+            key={run.id}
+            className="border border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50"
+          >
             <CardContent className="p-4">
               {/* Run Header */}
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h4 className="font-semibold text-gray-900">{run.pressRunName || `Run ${run.id.slice(0, 8)}`}</h4>
-                  <p className="text-sm text-gray-600">Started {run.startDate}</p>
+                  <h4 className="font-semibold text-gray-900">
+                    {run.pressRunName || `Run ${run.id.slice(0, 8)}`}
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    Started {run.startDate}
+                  </p>
                 </div>
-                <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                <Badge
+                  variant="secondary"
+                  className="bg-blue-100 text-blue-800"
+                >
                   In Progress
                 </Badge>
               </div>
@@ -151,7 +180,9 @@ function ActiveRunsSection({
                   <Clock className="w-4 h-4 text-gray-500 mr-2" />
                   <div>
                     <p className="text-xs text-gray-600">Loads</p>
-                    <p className="font-medium text-sm">{run.loadCount || 0} processed</p>
+                    <p className="font-medium text-sm">
+                      {run.loadCount || 0} processed
+                    </p>
                   </div>
                 </div>
               </div>
@@ -174,7 +205,7 @@ function ActiveRunsSection({
                   size="sm"
                   variant="outline"
                   className="flex-1 h-10"
-                  onClick={() => window.location.href = `/pressing/${run.id}`}
+                  onClick={() => (window.location.href = `/pressing/${run.id}`)}
                 >
                   <Play className="w-4 h-4 mr-2" />
                   Continue Run
@@ -192,8 +223,8 @@ function ActiveRunsSection({
                   variant="ghost"
                   className="h-10 w-10 p-0 text-red-600 hover:bg-red-50"
                   onClick={(e) => {
-                    e.stopPropagation()
-                    onCancelPressRun(run.id)
+                    e.stopPropagation();
+                    onCancelPressRun(run.id);
                   }}
                 >
                   <Trash2 className="w-4 h-4" />
@@ -204,59 +235,66 @@ function ActiveRunsSection({
         ))}
       </div>
     </div>
-  )
+  );
 }
-
 
 // Mobile-optimized Completed Runs Section
 function CompletedRunsSection({
-  onDeletePressRun
+  onDeletePressRun,
 }: {
-  onDeletePressRun: (pressRunId: string) => void
+  onDeletePressRun: (pressRunId: string) => void;
 }) {
-  const router = useRouter()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-  const { data: pressRunsData, isLoading, refetch } = trpc.pressRun.list.useQuery({
-    status: 'completed',
+  const {
+    data: pressRunsData,
+    isLoading,
+    refetch,
+  } = trpc.pressRun.list.useQuery({
+    status: "completed",
     limit: 100, // Get more items for client-side pagination and search
-    sortBy: 'updated',
-    sortOrder: 'desc'
-  })
+    sortBy: "updated",
+    sortOrder: "desc",
+  });
 
   const filteredPressRuns = useMemo(() => {
-    if (!pressRunsData?.pressRuns) return []
+    if (!pressRunsData?.pressRuns) return [];
 
-    const filtered = pressRunsData.pressRuns.filter(pressRun => {
-      const searchLower = searchTerm.toLowerCase()
-      const varietiesText = pressRun.varieties.join(' ').toLowerCase()
-      const vesselText = pressRun.vesselName?.toLowerCase() || ''
-      const dateText = pressRun.endTime ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase() : ''
+    const filtered = pressRunsData.pressRuns.filter((pressRun) => {
+      const searchLower = searchTerm.toLowerCase();
+      const varietiesText = pressRun.varieties.join(" ").toLowerCase();
+      const vesselText = pressRun.vesselName?.toLowerCase() || "";
+      const dateText = pressRun.endTime
+        ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase()
+        : "";
 
       return (
         varietiesText.includes(searchLower) ||
         vesselText.includes(searchLower) ||
         dateText.includes(searchLower)
-      )
-    })
+      );
+    });
 
-    return filtered
-  }, [pressRunsData?.pressRuns, searchTerm])
+    return filtered;
+  }, [pressRunsData?.pressRuns, searchTerm]);
 
   const paginatedPressRuns = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    return filteredPressRuns.slice(startIndex, startIndex + itemsPerPage)
-  }, [filteredPressRuns, currentPage, itemsPerPage])
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredPressRuns.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredPressRuns, currentPage, itemsPerPage]);
 
-  const totalPages = Math.ceil(filteredPressRuns.length / itemsPerPage)
+  const totalPages = Math.ceil(filteredPressRuns.length / itemsPerPage);
 
   if (isLoading) {
     return (
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Recent Completed</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Recent Completed
+          </h3>
           <Button
             variant="ghost"
             size="sm"
@@ -276,16 +314,19 @@ function CompletedRunsSection({
           </CardContent>
         </Card>
       </div>
-    )
+    );
   }
 
   return (
     <div className="mb-8">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Recent Completed</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Recent Completed
+          </h3>
           <p className="text-sm text-gray-600 mt-1">
-            {filteredPressRuns.length} completed press run{filteredPressRuns.length !== 1 ? 's' : ''}
+            {filteredPressRuns.length} completed press run
+            {filteredPressRuns.length !== 1 ? "s" : ""}
             {searchTerm && ` matching "${searchTerm}"`}
           </p>
         </div>
@@ -308,8 +349,8 @@ function CompletedRunsSection({
             placeholder="Search by variety, vessel, or date..."
             value={searchTerm}
             onChange={(e) => {
-              setSearchTerm(e.target.value)
-              setCurrentPage(1) // Reset to first page when searching
+              setSearchTerm(e.target.value);
+              setCurrentPage(1); // Reset to first page when searching
             }}
             className="pl-10"
           />
@@ -329,8 +370,13 @@ function CompletedRunsSection({
               ) : (
                 <>
                   <p>No completed press runs found</p>
-                  <p className="text-sm">Completed press runs will appear here</p>
-                  <p className="text-xs text-gray-400 mt-2">Debug: {pressRunsData?.pressRuns?.length || 0} total completed runs loaded</p>
+                  <p className="text-sm">
+                    Completed press runs will appear here
+                  </p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Debug: {pressRunsData?.pressRuns?.length || 0} total
+                    completed runs loaded
+                  </p>
                 </>
               )}
             </div>
@@ -347,28 +393,38 @@ function CompletedRunsSection({
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    router.push(`/pressing/${run.id}`)
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push(`/pressing/${run.id}`);
                   }
                 }}
-                aria-label={`View press run details for ${run.pressRunName || (run.endTime ? new Date(run.endTime).toLocaleDateString() : 'Recent')}`}
+                aria-label={`View press run details for ${run.pressRunName || (run.endTime ? new Date(run.endTime).toLocaleDateString() : "Recent")}`}
               >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex-1">
                       <h4 className="font-medium text-gray-900">
-                        {run.pressRunName || (run.endTime ? new Date(run.endTime).toLocaleDateString() : 'Recent')}
+                        {run.pressRunName ||
+                          (run.endTime
+                            ? new Date(run.endTime).toLocaleDateString()
+                            : "Recent")}
                       </h4>
                       <p className="text-sm text-gray-600">
-                        {run.varieties.length > 0 ? run.varieties.join(', ') : 'Mixed varieties'}
+                        {run.varieties.length > 0
+                          ? run.varieties.join(", ")
+                          : "Mixed varieties"}
                       </p>
                       {run.vesselName && (
-                        <p className="text-xs text-gray-500">→ {run.vesselName}</p>
+                        <p className="text-xs text-gray-500">
+                          → {run.vesselName}
+                        </p>
                       )}
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Badge variant="secondary" className="bg-green-100 text-green-800">
+                      <Badge
+                        variant="secondary"
+                        className="bg-green-100 text-green-800"
+                      >
                         Completed
                       </Badge>
                       <Button
@@ -376,8 +432,8 @@ function CompletedRunsSection({
                         size="sm"
                         className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50 border-blue-200"
                         onClick={(e) => {
-                          e.stopPropagation()
-                          router.push(`/pressing/${run.id}`)
+                          e.stopPropagation();
+                          router.push(`/pressing/${run.id}`);
                         }}
                         title="View press run details"
                       >
@@ -388,8 +444,8 @@ function CompletedRunsSection({
                         size="sm"
                         className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
                         onClick={(e) => {
-                          e.stopPropagation()
-                          onDeletePressRun(run.id)
+                          e.stopPropagation();
+                          onDeletePressRun(run.id);
                         }}
                         title="Delete press run"
                       >
@@ -402,13 +458,17 @@ function CompletedRunsSection({
                     <div>
                       <p className="text-xs text-gray-600">Apples</p>
                       <p className="font-medium text-sm">
-                        {run.totalAppleWeightKg ? `${parseFloat(run.totalAppleWeightKg).toFixed(0)} kg` : '—'}
+                        {run.totalAppleWeightKg
+                          ? `${parseFloat(run.totalAppleWeightKg).toFixed(0)} kg`
+                          : "—"}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-600">Juice</p>
                       <p className="font-medium text-sm">
-                        {run.totalJuiceVolumeL ? `${parseFloat(run.totalJuiceVolumeL).toFixed(1)} L` : '—'}
+                        {run.totalJuiceVolumeL
+                          ? `${parseFloat(run.totalJuiceVolumeL).toFixed(1)} L`
+                          : "—"}
                       </p>
                     </div>
                     <div className="flex items-center">
@@ -416,7 +476,9 @@ function CompletedRunsSection({
                       <div>
                         <p className="text-xs text-gray-600">Yield</p>
                         <p className="font-medium text-sm text-green-600">
-                          {run.extractionRatePercent ? `${run.extractionRatePercent.toFixed(1)}%` : '—'}
+                          {run.extractionRatePercent
+                            ? `${run.extractionRatePercent.toFixed(1)}%`
+                            : "—"}
                         </p>
                       </div>
                     </div>
@@ -429,8 +491,8 @@ function CompletedRunsSection({
                       size="sm"
                       className="text-green-700 border-green-600 hover:bg-green-600 hover:text-white"
                       onClick={(e) => {
-                        e.stopPropagation()
-                        router.push(`/pressing/${run.id}`)
+                        e.stopPropagation();
+                        router.push(`/pressing/${run.id}`);
                       }}
                       data-testid="view-press-run"
                     >
@@ -446,13 +508,17 @@ function CompletedRunsSection({
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-6 pt-4 border-t">
               <div className="text-sm text-gray-600">
-                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredPressRuns.length)} of {filteredPressRuns.length} results
+                Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                {Math.min(currentPage * itemsPerPage, filteredPressRuns.length)}{" "}
+                of {filteredPressRuns.length} results
               </div>
               <div className="flex items-center space-x-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.max(1, prev - 1))
+                  }
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -461,9 +527,13 @@ function CompletedRunsSection({
 
                 <div className="flex items-center space-x-1">
                   {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(page => {
+                    .filter((page) => {
                       // Show first page, last page, current page, and pages around current
-                      return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1
+                      return (
+                        page === 1 ||
+                        page === totalPages ||
+                        Math.abs(page - currentPage) <= 1
+                      );
                     })
                     .map((page, index, array) => (
                       <div key={page} className="flex items-center">
@@ -485,7 +555,9 @@ function CompletedRunsSection({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                  }
                   disabled={currentPage === totalPages}
                 >
                   Next
@@ -497,11 +569,17 @@ function CompletedRunsSection({
         </>
       )}
     </div>
-  )
+  );
 }
 
 // Mobile-optimized Action Buttons - Bottom aligned for thumb access
-function ActionButtons({ onStartNewRun, isCreating }: { onStartNewRun: () => void, isCreating: boolean }) {
+function ActionButtons({
+  onStartNewRun,
+  isCreating,
+}: {
+  onStartNewRun: () => void;
+  isCreating: boolean;
+}) {
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 lg:relative lg:bottom-auto lg:border-t-0 lg:p-0 lg:bg-transparent">
       <div className="max-w-7xl mx-auto lg:px-0">
@@ -528,18 +606,20 @@ function ActionButtons({ onStartNewRun, isCreating }: { onStartNewRun: () => voi
       {/* Bottom padding for mobile to prevent content cutoff */}
       <div className="h-4 lg:hidden" />
     </div>
-  )
+  );
 }
 
 export default function PressingPage() {
-  const router = useRouter()
-  const [viewMode, setViewMode] = useState<ViewMode>('home')
-  const [selectedPressRunId, setSelectedPressRunId] = useState<string | null>(null)
-  const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [pressRunToCancel, setPressRunToCancel] = useState<string | null>(null)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [pressRunToDelete, setPressRunToDelete] = useState<string | null>(null)
-  const { toast } = useToast()
+  const router = useRouter();
+  const [viewMode, setViewMode] = useState<ViewMode>("home");
+  const [selectedPressRunId, setSelectedPressRunId] = useState<string | null>(
+    null,
+  );
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [pressRunToCancel, setPressRunToCancel] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [pressRunToDelete, setPressRunToDelete] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Cancel press run mutation
   const cancelPressRunMutation = trpc.pressRun.cancel.useMutation({
@@ -547,20 +627,20 @@ export default function PressingPage() {
       toast({
         title: "Press run cancelled",
         description: "The press run has been successfully cancelled.",
-        variant: "success"
-      })
+        variant: "success",
+      });
       // Refresh the page data
-      window.location.reload()
+      window.location.reload();
     },
     onError: (error) => {
-      console.error('Failed to cancel press run:', error)
+      console.error("Failed to cancel press run:", error);
       toast({
         title: "Error",
         description: "Failed to cancel press run. Please try again.",
-        variant: "destructive"
-      })
-    }
-  })
+        variant: "destructive",
+      });
+    },
+  });
 
   // Delete press run mutation
   const deletePressRunMutation = trpc.pressRun.delete.useMutation({
@@ -568,51 +648,56 @@ export default function PressingPage() {
       toast({
         title: "Press run deleted",
         description: "The press run has been permanently deleted.",
-        variant: "success"
-      })
+        variant: "success",
+      });
       // Refresh the page data
-      window.location.reload()
+      window.location.reload();
     },
     onError: (error) => {
-      console.error('Failed to delete press run:', error)
+      console.error("Failed to delete press run:", error);
 
       // Check if it's the specific error about completed press runs with juice assigned
-      if (error.message.includes('Cannot delete completed press run with juice assigned to vessel')) {
+      if (
+        error.message.includes(
+          "Cannot delete completed press run with juice assigned to vessel",
+        )
+      ) {
         toast({
           title: "Cannot delete press run",
-          description: "This press run has juice assigned to a vessel. Completed press runs with juice assignments cannot be deleted to maintain production records.",
+          description:
+            "This press run has juice assigned to a vessel. Completed press runs with juice assignments cannot be deleted to maintain production records.",
           variant: "destructive",
-          duration: 8000 // Longer duration for important message
-        })
+          duration: 8000, // Longer duration for important message
+        });
       } else {
         toast({
           title: "Error",
           description: "Failed to delete press run. Please try again.",
-          variant: "destructive"
-        })
+          variant: "destructive",
+        });
       }
-    }
-  })
+    },
+  });
 
   const handleCompletePressRun = (pressRunId: string) => {
-    setSelectedPressRunId(pressRunId)
-    setViewMode('completion')
-  }
+    setSelectedPressRunId(pressRunId);
+    setViewMode("completion");
+  };
 
   const handleBackToHome = () => {
-    setSelectedPressRunId(null)
-    setViewMode('home')
-  }
+    setSelectedPressRunId(null);
+    setViewMode("home");
+  };
 
   const handleCompletionFinished = () => {
-    setSelectedPressRunId(null)
-    setViewMode('home')
-  }
+    setSelectedPressRunId(null);
+    setViewMode("home");
+  };
 
   const handleViewJuiceLot = (vesselId: string) => {
     // Navigate to batch/fermentation view
-    window.location.href = `/fermentation/vessels/${vesselId}`
-  }
+    window.location.href = `/fermentation/vessels/${vesselId}`;
+  };
 
   // Create press run mutation
   const createPressRunMutation = trpc.pressRun.create.useMutation({
@@ -621,64 +706,63 @@ export default function PressingPage() {
         toast({
           title: "Press run created",
           description: "New press run started successfully.",
-          variant: "success"
-        })
+          variant: "success",
+        });
         // Navigate directly to the press run with addFirstLoad=true
-        window.location.href = `/pressing/${result.pressRun.id}?addFirstLoad=true`
+        window.location.href = `/pressing/${result.pressRun.id}?addFirstLoad=true`;
       }
     },
     onError: (error) => {
-      console.error('Failed to create press run:', error)
+      console.error("Failed to create press run:", error);
       toast({
         title: "Error",
         description: "Failed to create press run. Please try again.",
-        variant: "destructive"
-      })
-    }
-  })
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleStartNewRun = () => {
     // Create press run directly and navigate to the details page
     createPressRunMutation.mutate({
       startTime: new Date(),
       notes: undefined,
-    })
-  }
-
+    });
+  };
 
   const handleCancelPressRun = (pressRunId: string) => {
-    setPressRunToCancel(pressRunId)
-    setShowCancelDialog(true)
-  }
+    setPressRunToCancel(pressRunId);
+    setShowCancelDialog(true);
+  };
 
   const handleConfirmCancel = () => {
     if (pressRunToCancel) {
       cancelPressRunMutation.mutate({
         id: pressRunToCancel,
-        reason: 'User requested cancellation from main page'
-      })
+        reason: "User requested cancellation from main page",
+      });
     }
-    setPressRunToCancel(null)
-    setShowCancelDialog(false)
-  }
+    setPressRunToCancel(null);
+    setShowCancelDialog(false);
+  };
 
   const handleDeleteCompletedPressRun = (pressRunId: string) => {
-    setPressRunToDelete(pressRunId)
-    setShowDeleteDialog(true)
-  }
+    setPressRunToDelete(pressRunId);
+    setShowDeleteDialog(true);
+  };
 
   const handleConfirmDelete = () => {
     if (pressRunToDelete) {
       deletePressRunMutation.mutate({
-        id: pressRunToDelete
-      })
+        id: pressRunToDelete,
+      });
     }
-    setPressRunToDelete(null)
-    setShowDeleteDialog(false)
-  }
+    setPressRunToDelete(null);
+    setShowDeleteDialog(false);
+  };
 
   // Completion view
-  if (viewMode === 'completion' && selectedPressRunId) {
+  if (viewMode === "completion" && selectedPressRunId) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
@@ -693,7 +777,7 @@ export default function PressingPage() {
           />
         </main>
       </div>
-    )
+    );
   }
 
   // Home view
@@ -704,13 +788,13 @@ export default function PressingPage() {
       <main className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 pb-32 lg:pb-8">
         {/* Page Header - Mobile optimized */}
         <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Pressing</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+            Pressing
+          </h1>
           <p className="text-gray-600 mt-1 text-sm sm:text-base">
             Process apples into juice and manage pressing operations
           </p>
         </div>
-
-
 
         {/* Active Runs */}
         <ActiveRunsSection
@@ -719,10 +803,15 @@ export default function PressingPage() {
         />
 
         {/* Recent Completed Runs */}
-        <CompletedRunsSection onDeletePressRun={handleDeleteCompletedPressRun} />
+        <CompletedRunsSection
+          onDeletePressRun={handleDeleteCompletedPressRun}
+        />
 
         {/* Bottom-aligned Action Buttons (Mobile) */}
-        <ActionButtons onStartNewRun={handleStartNewRun} isCreating={createPressRunMutation.isPending} />
+        <ActionButtons
+          onStartNewRun={handleStartNewRun}
+          isCreating={createPressRunMutation.isPending}
+        />
       </main>
 
       {/* Cancel Confirmation Dialog */}
@@ -749,5 +838,5 @@ export default function PressingPage() {
         onConfirm={handleConfirmDelete}
       />
     </div>
-  )
+  );
 }

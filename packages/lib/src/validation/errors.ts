@@ -12,10 +12,10 @@ export class ValidationError extends Error {
     code: string,
     message: string,
     userMessage: string,
-    details: Record<string, any> = {}
+    details: Record<string, any> = {},
   ) {
     super(message);
-    this.name = 'ValidationError';
+    this.name = "ValidationError";
     this.code = code;
     this.userMessage = userMessage;
     this.details = details;
@@ -23,51 +23,79 @@ export class ValidationError extends Error {
 }
 
 export class TransferValidationError extends ValidationError {
-  constructor(message: string, userMessage: string, details: Record<string, any> = {}) {
-    super('TRANSFER_VALIDATION_ERROR', message, userMessage, details);
-    this.name = 'TransferValidationError';
+  constructor(
+    message: string,
+    userMessage: string,
+    details: Record<string, any> = {},
+  ) {
+    super("TRANSFER_VALIDATION_ERROR", message, userMessage, details);
+    this.name = "TransferValidationError";
   }
 }
 
 export class VolumeValidationError extends ValidationError {
-  constructor(message: string, userMessage: string, details: Record<string, any> = {}) {
-    super('VOLUME_VALIDATION_ERROR', message, userMessage, details);
-    this.name = 'VolumeValidationError';
+  constructor(
+    message: string,
+    userMessage: string,
+    details: Record<string, any> = {},
+  ) {
+    super("VOLUME_VALIDATION_ERROR", message, userMessage, details);
+    this.name = "VolumeValidationError";
   }
 }
 
 export class QuantityValidationError extends ValidationError {
-  constructor(message: string, userMessage: string, details: Record<string, any> = {}) {
-    super('QUANTITY_VALIDATION_ERROR', message, userMessage, details);
-    this.name = 'QuantityValidationError';
+  constructor(
+    message: string,
+    userMessage: string,
+    details: Record<string, any> = {},
+  ) {
+    super("QUANTITY_VALIDATION_ERROR", message, userMessage, details);
+    this.name = "QuantityValidationError";
   }
 }
 
 export class PackagingValidationError extends ValidationError {
-  constructor(message: string, userMessage: string, details: Record<string, any> = {}) {
-    super('PACKAGING_VALIDATION_ERROR', message, userMessage, details);
-    this.name = 'PackagingValidationError';
+  constructor(
+    message: string,
+    userMessage: string,
+    details: Record<string, any> = {},
+  ) {
+    super("PACKAGING_VALIDATION_ERROR", message, userMessage, details);
+    this.name = "PackagingValidationError";
   }
 }
 
 export class MeasurementValidationError extends ValidationError {
-  constructor(message: string, userMessage: string, details: Record<string, any> = {}) {
-    super('MEASUREMENT_VALIDATION_ERROR', message, userMessage, details);
-    this.name = 'MeasurementValidationError';
+  constructor(
+    message: string,
+    userMessage: string,
+    details: Record<string, any> = {},
+  ) {
+    super("MEASUREMENT_VALIDATION_ERROR", message, userMessage, details);
+    this.name = "MeasurementValidationError";
   }
 }
 
 export class VesselStateValidationError extends ValidationError {
-  constructor(message: string, userMessage: string, details: Record<string, any> = {}) {
-    super('VESSEL_STATE_VALIDATION_ERROR', message, userMessage, details);
-    this.name = 'VesselStateValidationError';
+  constructor(
+    message: string,
+    userMessage: string,
+    details: Record<string, any> = {},
+  ) {
+    super("VESSEL_STATE_VALIDATION_ERROR", message, userMessage, details);
+    this.name = "VesselStateValidationError";
   }
 }
 
 export class PermissionValidationError extends ValidationError {
-  constructor(message: string, userMessage: string, details: Record<string, any> = {}) {
-    super('PERMISSION_VALIDATION_ERROR', message, userMessage, details);
-    this.name = 'PermissionValidationError';
+  constructor(
+    message: string,
+    userMessage: string,
+    details: Record<string, any> = {},
+  ) {
+    super("PERMISSION_VALIDATION_ERROR", message, userMessage, details);
+    this.name = "PermissionValidationError";
   }
 }
 
@@ -75,28 +103,40 @@ export class PermissionValidationError extends ValidationError {
  * Helper function to create standardized validation error responses
  */
 export function createValidationError(
-  type: 'transfer' | 'volume' | 'quantity' | 'packaging' | 'measurement' | 'vessel_state' | 'permission',
+  type:
+    | "transfer"
+    | "volume"
+    | "quantity"
+    | "packaging"
+    | "measurement"
+    | "vessel_state"
+    | "permission",
   message: string,
   userMessage: string,
-  details: Record<string, any> = {}
+  details: Record<string, any> = {},
 ): ValidationError {
   switch (type) {
-    case 'transfer':
+    case "transfer":
       return new TransferValidationError(message, userMessage, details);
-    case 'volume':
+    case "volume":
       return new VolumeValidationError(message, userMessage, details);
-    case 'quantity':
+    case "quantity":
       return new QuantityValidationError(message, userMessage, details);
-    case 'packaging':
+    case "packaging":
       return new PackagingValidationError(message, userMessage, details);
-    case 'measurement':
+    case "measurement":
       return new MeasurementValidationError(message, userMessage, details);
-    case 'vessel_state':
+    case "vessel_state":
       return new VesselStateValidationError(message, userMessage, details);
-    case 'permission':
+    case "permission":
       return new PermissionValidationError(message, userMessage, details);
     default:
-      return new ValidationError('VALIDATION_ERROR', message, userMessage, details);
+      return new ValidationError(
+        "VALIDATION_ERROR",
+        message,
+        userMessage,
+        details,
+      );
   }
 }
 
@@ -117,5 +157,5 @@ export function extractUserMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return 'An unexpected error occurred';
+  return "An unexpected error occurred";
 }

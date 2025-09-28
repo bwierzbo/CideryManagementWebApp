@@ -1,39 +1,39 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter, useParams } from "next/navigation"
-import { Navbar } from "@/components/navbar"
-import { PressRunCompletion } from "@/components/pressing"
+import { useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Navbar } from "@/components/navbar";
+import { PressRunCompletion } from "@/components/pressing";
 
 export default function PressRunCompletePage() {
-  const router = useRouter()
-  const params = useParams()
-  const pressRunId = params.id as string
+  const router = useRouter();
+  const params = useParams();
+  const pressRunId = params.id as string;
 
   const handleComplete = () => {
     // Navigate back to pressing home
-    router.push('/pressing')
-  }
+    router.push("/pressing");
+  };
 
   const handleCancel = () => {
     // Go back to press run details
-    router.push(`/pressing/${pressRunId}`)
-  }
+    router.push(`/pressing/${pressRunId}`);
+  };
 
   const handleViewJuiceLot = (vesselId: string) => {
     // Navigate to vessel/fermentation view
-    window.location.href = `/fermentation/vessels/${vesselId}`
-  }
+    window.location.href = `/fermentation/vessels/${vesselId}`;
+  };
 
   const handleStartNewRun = () => {
     // Navigate to new press run
-    router.push('/pressing/new')
-  }
+    router.push("/pressing/new");
+  };
 
   const handleBackToPressingHome = () => {
     // Navigate back to pressing home
-    router.push('/pressing')
-  }
+    router.push("/pressing");
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -49,5 +49,5 @@ export default function PressRunCompletePage() {
         />
       </main>
     </div>
-  )
+  );
 }

@@ -7,6 +7,7 @@ This package contains the complete database schema and setup for the Cidery Mana
 ### 1. Get Your Neon Connection String
 
 From your Vercel dashboard or Neon console, copy your database connection string. It should look like:
+
 ```
 postgresql://username:password@ep-example-123456.us-east-1.aws.neon.tech/neondb?sslmode=require
 ```
@@ -14,6 +15,7 @@ postgresql://username:password@ep-example-123456.us-east-1.aws.neon.tech/neondb?
 ### 2. Configure Environment Variables
 
 Update `.env.local` in the project root:
+
 ```bash
 # Replace with your actual Neon database URL
 DATABASE_URL="postgresql://username:password@ep-example-123456.us-east-1.aws.neon.tech/neondb?sslmode=require"
@@ -40,6 +42,7 @@ pnpm --filter db run db:test
 ## 📁 Database Schema Overview
 
 ### Core Tables
+
 - **vendors** - Apple suppliers with contact information
 - **apple_varieties** - Different apple types with Brix values
 - **purchases** - Purchase records from vendors
@@ -58,6 +61,7 @@ pnpm --filter db run db:test
 - **audit_log** - Complete change history
 
 ### Key Features
+
 - ✅ **UUID primary keys** with pgcrypto
 - ✅ **Soft deletes** throughout
 - ✅ **Canonical unit storage** (kg for weight, L for volume)
@@ -88,18 +92,24 @@ pnpm --filter db run db:reset         # Reset and reseed database
 ## 🔧 Troubleshooting
 
 ### Connection Issues
+
 If you get connection errors:
+
 1. Verify your `DATABASE_URL` is correct
 2. Ensure your Neon database is running
 3. Check that SSL is enabled in your connection string (`?sslmode=require`)
 
 ### SSL/TLS Issues
+
 The client is configured to handle Neon's SSL requirements automatically. The connection will use SSL when:
-- URL contains `neon.tech` 
+
+- URL contains `neon.tech`
 - URL contains `sslmode=require`
 
 ### Migration Issues
+
 If tables already exist:
+
 ```bash
 # Force reset the database
 pnpm --filter db run db:reset
@@ -108,6 +118,7 @@ pnpm --filter db run db:reset
 ## 📊 Sample Data Included
 
 The seed data includes:
+
 - **3 vendors** (Mountain View Orchards, Sunrise Apple Farm, Heritage Fruit Co.)
 - **6 apple varieties** (Honeycrisp, Granny Smith, Gala, Fuji, Northern Spy, Rhode Island Greening)
 - **3 purchases** with realistic pricing and quantities
@@ -122,13 +133,13 @@ The seed data includes:
 Once set up, import the database client in your web app:
 
 ```typescript
-import { db, vendors, batches } from 'db'
+import { db, vendors, batches } from "db";
 
 // Query vendors
 const activeVendors = await db
   .select()
   .from(vendors)
-  .where(eq(vendors.isActive, true))
+  .where(eq(vendors.isActive, true));
 ```
 
 The `db` package is already configured in your workspace and ready to import into your Next.js app.

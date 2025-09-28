@@ -48,46 +48,49 @@ The offline capability system consists of:
 ### 1. Local Storage Persistence
 
 **Auto-save every 30 seconds:**
+
 - Press run metadata (vendor, notes, timestamps)
 - All fruit load entries with complete data
 - Draft status tracking (draft → syncing → synced → error)
 - Automatic cleanup of synced drafts after 48 hours
 
 **Storage Schema:**
+
 ```typescript
 interface PressRunDraft {
-  id: string
-  vendorId: string
-  vendorName?: string
-  status: 'draft' | 'syncing' | 'synced' | 'error'
-  startTime: string
-  loads: PressRunLoadDraft[]
-  lastModified: string
-  syncAttempts: number
-  notes?: string
-  totalAppleWeightKg: number
+  id: string;
+  vendorId: string;
+  vendorName?: string;
+  status: "draft" | "syncing" | "synced" | "error";
+  startTime: string;
+  loads: PressRunLoadDraft[];
+  lastModified: string;
+  syncAttempts: number;
+  notes?: string;
+  totalAppleWeightKg: number;
 }
 
 interface PressRunLoadDraft {
-  id: string
-  purchaseLineId: string
-  appleVarietyId: string
-  appleVarietyName: string
-  weightKg: number
-  weightUnitEntered: 'lbs' | 'kg'
-  originalWeight: number
-  originalWeightUnit: 'kg' | 'lb' | 'bushel'
-  brixMeasured?: number
-  phMeasured?: number
-  appleCondition?: 'excellent' | 'good' | 'fair' | 'poor'
-  defectPercentage?: number
-  notes?: string
-  status: 'pending' | 'confirmed' | 'error'
-  loadSequence: number
+  id: string;
+  purchaseLineId: string;
+  appleVarietyId: string;
+  appleVarietyName: string;
+  weightKg: number;
+  weightUnitEntered: "lbs" | "kg";
+  originalWeight: number;
+  originalWeightUnit: "kg" | "lb" | "bushel";
+  brixMeasured?: number;
+  phMeasured?: number;
+  appleCondition?: "excellent" | "good" | "fair" | "poor";
+  defectPercentage?: number;
+  notes?: string;
+  status: "pending" | "confirmed" | "error";
+  loadSequence: number;
 }
 ```
 
 **Storage Quotas:**
+
 - Maximum 50MB storage usage
 - Maximum 100 drafts retained
 - Storage quota monitoring with user notifications
@@ -96,18 +99,21 @@ interface PressRunLoadDraft {
 ### 2. Service Worker Implementation
 
 **PWA Features:**
+
 - Standalone app installation capability
 - App shortcuts for common actions
 - Offline page fallback
 - Resource versioning and cache invalidation
 
 **Caching Strategy:**
+
 - **Static Assets**: Cache-first (HTML, CSS, JS, images)
 - **API Endpoints**: Network-first with cache fallback
 - **Pressing Pages**: Cache-first with network update
 - **Critical Data**: Always cached (apple varieties, vessel lists)
 
 **Background Sync:**
+
 - Automatic sync registration when offline operations occur
 - Retry logic with exponential backoff
 - Sync progress notifications
@@ -116,33 +122,36 @@ interface PressRunLoadDraft {
 ### 3. Background Synchronization
 
 **Automatic Sync Triggers:**
+
 - Network connectivity restoration
 - Browser focus events
 - Manual refresh requests
 - Periodic sync intervals (when supported)
 
 **Sync Process:**
+
 ```typescript
 // 1. Create press run on server
 const pressRun = await createPressRun({
   vendorId: draft.vendorId,
   startTime: draft.startTime,
   notes: draft.notes,
-})
+});
 
 // 2. Add all loads sequentially
 for (const load of draft.loads) {
   await addLoad({
     pressRunId: pressRun.id,
-    ...load
-  })
+    ...load,
+  });
 }
 
 // 3. Update draft status
-draft.status = 'synced'
+draft.status = "synced";
 ```
 
 **Conflict Resolution:**
+
 - Server timestamp comparison
 - Field-level conflict detection
 - Automatic merge strategies
@@ -151,18 +160,21 @@ draft.status = 'synced'
 ### 4. Resume Functionality
 
 **Draft Display:**
+
 - Visual distinction between draft and active press runs
 - Time since last modification
 - Load count and total weight preview
 - Sync status indicators
 
 **State Restoration:**
+
 - Complete form state recovery
 - Sequence number continuity
 - Quality measurements preserved
 - Notes and observations maintained
 
 **Resume Process:**
+
 1. User selects draft from pressing page
 2. Navigate to resume interface
 3. All data pre-populated in forms
@@ -172,18 +184,21 @@ draft.status = 'synced'
 ### 5. Optimistic UI Updates
 
 **Immediate Feedback:**
+
 - Fruit loads appear instantly when added
 - Visual confirmation with status badges
 - Offline/online indicators
 - Auto-save status display
 
 **Error Handling:**
+
 - Rollback mechanism for failed operations
 - Clear error messages and retry options
 - Visual distinction between confirmed and pending operations
 - Batch operation support
 
 **Status Indicators:**
+
 - ✅ Confirmed (successfully synced)
 - 🔄 Pending (waiting for sync)
 - ⚠️ Error (sync failed, retry needed)
@@ -192,19 +207,21 @@ draft.status = 'synced'
 ### 6. Network Detection
 
 **Real-time Status:**
+
 - Online/offline status monitoring
 - Connection quality indicators
 - Sync opportunity detection
 - Adaptive UI behavior
 
 **Network Events:**
+
 ```typescript
 // Automatic detection
-window.addEventListener('online', handleOnlineEvent)
-window.addEventListener('offline', handleOfflineEvent)
+window.addEventListener("online", handleOnlineEvent);
+window.addEventListener("offline", handleOfflineEvent);
 
 // Manual sync trigger
-const syncResult = await syncAllDrafts()
+const syncResult = await syncAllDrafts();
 ```
 
 ## Usage Examples
@@ -213,16 +230,16 @@ const syncResult = await syncAllDrafts()
 
 ```typescript
 // 1. Create draft (works offline)
-const { createDraft } = usePressRunDrafts()
-const result = createDraft('vendor-123', 'Orchard ABC')
+const { createDraft } = usePressRunDrafts();
+const result = createDraft("vendor-123", "Orchard ABC");
 
 // 2. Add loads (immediate feedback)
-const { addLoad } = usePressRunDraft(result.draftId)
+const { addLoad } = usePressRunDraft(result.draftId);
 await addLoad({
-  purchaseLineId: 'purchase-456',
-  appleVarietyId: 'variety-789',
+  purchaseLineId: "purchase-456",
+  appleVarietyId: "variety-789",
   // ... other fields
-})
+});
 
 // 3. Automatic sync when online
 // No additional code needed - happens automatically
@@ -232,10 +249,10 @@ await addLoad({
 
 ```typescript
 // 1. Get available drafts
-const { drafts } = usePressRunDrafts()
+const { drafts } = usePressRunDrafts();
 
 // 2. Load specific draft
-const { draft } = usePressRunDraft(selectedDraftId)
+const { draft } = usePressRunDraft(selectedDraftId);
 
 // 3. Continue working
 // All state restored automatically
@@ -245,8 +262,8 @@ const { draft } = usePressRunDraft(selectedDraftId)
 
 ```typescript
 // Automatic resolution (most cases)
-const { syncDraft } = useNetworkSync()
-const result = await syncDraft(draft)
+const { syncDraft } = useNetworkSync();
+const result = await syncDraft(draft);
 
 // Manual resolution (when needed)
 if (result.requiresManualReview) {
@@ -287,6 +304,7 @@ Comprehensive test coverage includes:
 - **Edge Cases**: Data corruption, storage limits, concurrent conflicts
 
 Run tests:
+
 ```bash
 pnpm test offline-functionality.test.ts
 ```
@@ -294,12 +312,14 @@ pnpm test offline-functionality.test.ts
 ## Browser Support
 
 **Minimum Requirements:**
+
 - Service Worker: Chrome 45+, Firefox 44+, Safari 11.1+
 - Local Storage: Universal support
 - Background Sync: Chrome 49+, Firefox 81+ (fallback for others)
 - PWA Features: Chrome 57+, Firefox 58+, Safari 11.1+
 
 **Graceful Degradation:**
+
 - Core functionality works without Service Worker
 - Background sync falls back to manual sync
 - PWA features optional enhancement
@@ -307,18 +327,21 @@ pnpm test offline-functionality.test.ts
 ## Performance Considerations
 
 **Storage Efficiency:**
+
 - JSON compression for large drafts
 - Lazy loading of draft details
 - Automatic cleanup of old data
 - Storage quota monitoring
 
 **Network Optimization:**
+
 - Batch sync operations
 - Delta sync for large datasets
 - Compression for API payloads
 - Request deduplication
 
 **Memory Management:**
+
 - Event listener cleanup
 - Timer cancellation
 - Cache size limits
@@ -327,12 +350,14 @@ pnpm test offline-functionality.test.ts
 ## Security Considerations
 
 **Data Protection:**
+
 - No sensitive data in local storage
 - Automatic cleanup of synced data
 - User-initiated data clearing
 - No authentication tokens cached
 
 **Sync Security:**
+
 - Server-side validation of all synced data
 - Audit logging for conflict resolutions
 - User attribution for manual resolutions
@@ -343,18 +368,21 @@ pnpm test offline-functionality.test.ts
 ### Common Issues
 
 **Sync Failures:**
+
 1. Check network connectivity
 2. Verify server availability
 3. Review conflict resolution requirements
 4. Check storage quotas
 
 **Storage Issues:**
+
 1. Clear browser cache
 2. Reset application data
 3. Check available storage space
 4. Review quota settings
 
 **PWA Installation:**
+
 1. Ensure HTTPS connection
 2. Check manifest.json validity
 3. Verify Service Worker registration
@@ -363,26 +391,29 @@ pnpm test offline-functionality.test.ts
 ### Debug Tools
 
 **Local Storage Inspector:**
+
 ```typescript
 // View all drafts
-console.log(offlineStorage.getAllDrafts())
+console.log(offlineStorage.getAllDrafts());
 
 // Check storage info
-console.log(offlineStorage.getStorageInfo())
+console.log(offlineStorage.getStorageInfo());
 
 // View sync queue
-console.log(offlineStorage.getSyncQueue())
+console.log(offlineStorage.getSyncQueue());
 ```
 
 **Network Status:**
+
 ```typescript
-const { isOnline, syncing } = useNetworkSync()
-console.log('Online:', isOnline, 'Syncing:', syncing)
+const { isOnline, syncing } = useNetworkSync();
+console.log("Online:", isOnline, "Syncing:", syncing);
 ```
 
 ## Future Enhancements
 
 **Planned Features:**
+
 - IndexedDB migration for larger storage
 - Real-time collaboration conflict detection
 - Advanced sync scheduling
@@ -390,6 +421,7 @@ console.log('Online:', isOnline, 'Syncing:', syncing)
 - Cross-device draft synchronization
 
 **Performance Improvements:**
+
 - Web Workers for large data processing
 - Streaming sync for big datasets
 - Advanced caching strategies

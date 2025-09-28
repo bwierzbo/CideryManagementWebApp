@@ -1,12 +1,32 @@
-"use client"
+"use client";
 
-import React, { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Plus,
   Edit,
@@ -15,120 +35,127 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-} from "lucide-react"
-import { trpc } from "@/utils/trpc"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
+} from "lucide-react";
+import { trpc } from "@/utils/trpc";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 const varietySchema = z.object({
   name: z.string().min(1, "Name is required"),
-})
+});
 
-type VarietyForm = z.infer<typeof varietySchema>
+type VarietyForm = z.infer<typeof varietySchema>;
 
 export function JuiceVarietyManagement() {
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [editingVariety, setEditingVariety] = useState<any>(null)
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingVariety, setEditingVariety] = useState<any>(null);
 
   // Search and pagination state
-  const [searchQuery, setSearchQuery] = useState("")
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Calculate pagination offset
-  const offset = (currentPage - 1) * itemsPerPage
+  const offset = (currentPage - 1) * itemsPerPage;
 
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery)
-    }, 300)
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
 
-    return () => clearTimeout(timer)
-  }, [searchQuery])
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const queryInput = React.useMemo(() => {
     return {
       search: debouncedSearchQuery || undefined,
       limit: itemsPerPage,
       offset: offset,
-      sortBy: 'name' as const,
-      sortOrder: 'asc' as const,
+      sortBy: "name" as const,
+      sortOrder: "asc" as const,
       includeInactive: false,
-    }
-  }, [debouncedSearchQuery, itemsPerPage, offset])
+    };
+  }, [debouncedSearchQuery, itemsPerPage, offset]);
 
-  const { data: varietyData, refetch: refetchVarieties, isLoading } = trpc.juiceVarieties.list.useQuery(queryInput)
+  const {
+    data: varietyData,
+    refetch: refetchVarieties,
+    isLoading,
+  } = trpc.juiceVarieties.list.useQuery(queryInput);
 
-  const varieties = React.useMemo(() => varietyData?.varieties || [], [varietyData])
-  const pagination = varietyData?.pagination
+  const varieties = React.useMemo(
+    () => varietyData?.varieties || [],
+    [varietyData],
+  );
+  const pagination = varietyData?.pagination;
 
   // Reset to first page when search changes
   useEffect(() => {
-    setCurrentPage(1)
-  }, [debouncedSearchQuery])
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
 
   const createVariety = trpc.juiceVarieties.create.useMutation({
     onSuccess: () => {
-      refetchVarieties()
-      setIsAddDialogOpen(false)
-      reset()
-    }
-  })
+      refetchVarieties();
+      setIsAddDialogOpen(false);
+      reset();
+    },
+  });
 
   const updateVariety = trpc.juiceVarieties.update.useMutation({
     onSuccess: () => {
-      refetchVarieties()
-      setIsEditDialogOpen(false)
-      setEditingVariety(null)
-      reset()
-    }
-  })
+      refetchVarieties();
+      setIsEditDialogOpen(false);
+      setEditingVariety(null);
+      reset();
+    },
+  });
 
   const deleteVariety = trpc.juiceVarieties.delete.useMutation({
-    onSuccess: () => refetchVarieties()
-  })
+    onSuccess: () => refetchVarieties(),
+  });
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-    reset
+    reset,
   } = useForm<VarietyForm>({
-    resolver: zodResolver(varietySchema)
-  })
+    resolver: zodResolver(varietySchema),
+  });
 
   const onSubmit = (data: VarietyForm) => {
     if (editingVariety) {
-      updateVariety.mutate({ ...data, id: editingVariety.id, isActive: true })
+      updateVariety.mutate({ ...data, id: editingVariety.id, isActive: true });
     } else {
-      createVariety.mutate(data)
+      createVariety.mutate(data);
     }
-  }
+  };
 
   const handleEdit = (variety: any) => {
-    setEditingVariety(variety)
+    setEditingVariety(variety);
     reset({
       name: variety.name,
-    })
-    setIsEditDialogOpen(true)
-  }
+    });
+    setIsEditDialogOpen(true);
+  };
 
   const handleAddNew = () => {
-    setEditingVariety(null)
-    reset()
-    setIsAddDialogOpen(true)
-  }
+    setEditingVariety(null);
+    reset();
+    setIsAddDialogOpen(true);
+  };
 
   const handleCloseDialog = () => {
-    setIsAddDialogOpen(false)
-    setIsEditDialogOpen(false)
-    setEditingVariety(null)
-    reset()
-  }
+    setIsAddDialogOpen(false);
+    setIsEditDialogOpen(false);
+    setEditingVariety(null);
+    reset();
+  };
 
   return (
     <Card>
@@ -139,12 +166,17 @@ export function JuiceVarietyManagement() {
               <Grape className="w-5 h-5 text-green-600" />
               Juice Varieties
             </CardTitle>
-            <CardDescription>Manage juice types and varieties for your cidery</CardDescription>
+            <CardDescription>
+              Manage juice types and varieties for your cidery
+            </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
-              if (!open) handleCloseDialog()
-            }}>
+            <Dialog
+              open={isAddDialogOpen || isEditDialogOpen}
+              onOpenChange={(open) => {
+                if (!open) handleCloseDialog();
+              }}
+            >
               <DialogTrigger asChild>
                 <Button onClick={handleAddNew}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -169,16 +201,23 @@ export function JuiceVarietyManagement() {
           </div>
         </div>
 
-        <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
-          if (!open) handleCloseDialog()
-        }}>
+        <Dialog
+          open={isAddDialogOpen || isEditDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) handleCloseDialog();
+          }}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingVariety ? 'Edit Juice Variety' : 'Add New Juice Variety'}</DialogTitle>
+              <DialogTitle>
+                {editingVariety
+                  ? "Edit Juice Variety"
+                  : "Add New Juice Variety"}
+              </DialogTitle>
               <DialogDescription>
                 {editingVariety
-                  ? 'Update juice variety information.'
-                  : 'Create a new juice variety to track in purchases.'}
+                  ? "Update juice variety information."
+                  : "Create a new juice variety to track in purchases."}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -189,17 +228,31 @@ export function JuiceVarietyManagement() {
                   {...register("name")}
                   placeholder="e.g., Apple Concentrate, Grape Juice, Pear Blend"
                 />
-                {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
+                {errors.name && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.name.message}
+                  </p>
+                )}
               </div>
               <div className="flex justify-end space-x-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseDialog}
+                >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createVariety.isPending || updateVariety.isPending}>
+                <Button
+                  type="submit"
+                  disabled={createVariety.isPending || updateVariety.isPending}
+                >
                   {editingVariety
-                    ? (updateVariety.isPending ? "Updating..." : "Update Variety")
-                    : (createVariety.isPending ? "Creating..." : "Create Variety")
-                  }
+                    ? updateVariety.isPending
+                      ? "Updating..."
+                      : "Update Variety"
+                    : createVariety.isPending
+                      ? "Creating..."
+                      : "Create Variety"}
                 </Button>
               </div>
             </form>
@@ -218,13 +271,14 @@ export function JuiceVarietyManagement() {
           <div className="text-center py-8">
             <Grape className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {searchQuery ? 'No juice varieties found' : 'No juice varieties yet'}
+              {searchQuery
+                ? "No juice varieties found"
+                : "No juice varieties yet"}
             </h3>
             <p className="text-gray-500">
               {searchQuery
                 ? `No juice varieties match "${searchQuery}". Try a different search term.`
-                : 'Start by adding your first juice variety to track in purchases.'
-              }
+                : "Start by adding your first juice variety to track in purchases."}
             </p>
           </div>
         )}
@@ -243,13 +297,17 @@ export function JuiceVarietyManagement() {
               <TableBody>
                 {varieties.map((variety: any) => (
                   <TableRow key={variety.id} className="hover:bg-gray-50">
-                    <TableCell className="font-medium">{variety.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {variety.name}
+                    </TableCell>
                     <TableCell>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        variety.isActive
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                          variety.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
                         {variety.isActive ? "Active" : "Inactive"}
                       </span>
                     </TableCell>
@@ -266,7 +324,9 @@ export function JuiceVarietyManagement() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => deleteVariety.mutate({ id: variety.id })}
+                          onClick={() =>
+                            deleteVariety.mutate({ id: variety.id })
+                          }
                           title="Delete variety"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -288,12 +348,16 @@ export function JuiceVarietyManagement() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h3 className="font-medium text-gray-900">{variety.name}</h3>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-2 ${
-                        variety.isActive
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}>
+                      <h3 className="font-medium text-gray-900">
+                        {variety.name}
+                      </h3>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-2 ${
+                          variety.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
                         {variety.isActive ? "Active" : "Inactive"}
                       </span>
                     </div>
@@ -327,7 +391,9 @@ export function JuiceVarietyManagement() {
         {pagination && pagination.total > itemsPerPage && (
           <div className="mt-6 flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              Showing {pagination.offset + 1} to {Math.min(pagination.offset + pagination.limit, pagination.total)} of {pagination.total} varieties
+              Showing {pagination.offset + 1} to{" "}
+              {Math.min(pagination.offset + pagination.limit, pagination.total)}{" "}
+              of {pagination.total} varieties
             </div>
             <div className="flex items-center space-x-2">
               <Button
@@ -340,7 +406,8 @@ export function JuiceVarietyManagement() {
                 Previous
               </Button>
               <span className="text-sm text-gray-700">
-                Page {currentPage} of {Math.ceil(pagination.total / itemsPerPage)}
+                Page {currentPage} of{" "}
+                {Math.ceil(pagination.total / itemsPerPage)}
               </span>
               <Button
                 variant="outline"
@@ -356,5 +423,5 @@ export function JuiceVarietyManagement() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

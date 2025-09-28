@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   generateAuditChecksum,
   validateAuditIntegrity,
@@ -7,479 +7,503 @@ import {
   createAuditLogEntry,
   validateAuditSnapshot,
   extractChangedFields,
-  generateChangeSummary
-} from '../../audit/service'
-import type { AuditSnapshot, AuditLogEntry, AuditContext } from '../../audit/service'
+  generateChangeSummary,
+} from "../../audit/service";
+import type {
+  AuditSnapshot,
+  AuditLogEntry,
+  AuditContext,
+} from "../../audit/service";
 
-describe('Audit Service', () => {
-  describe('generateAuditChecksum', () => {
-    it('should generate consistent checksums for identical data', () => {
-      const auditEntry: Omit<AuditLogEntry, 'checksum'> = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'create',
-        newData: { name: 'John Doe', email: 'john@example.com' },
-        changedBy: 'user1',
-        changedAt: new Date('2024-01-01T10:00:00Z'),
-        auditVersion: '1.0'
-      }
+describe("Audit Service", () => {
+  describe("generateAuditChecksum", () => {
+    it("should generate consistent checksums for identical data", () => {
+      const auditEntry: Omit<AuditLogEntry, "checksum"> = {
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "create",
+        newData: { name: "John Doe", email: "john@example.com" },
+        changedBy: "user1",
+        changedAt: new Date("2024-01-01T10:00:00Z"),
+        auditVersion: "1.0",
+      };
 
-      const checksum1 = generateAuditChecksum(auditEntry)
-      const checksum2 = generateAuditChecksum(auditEntry)
+      const checksum1 = generateAuditChecksum(auditEntry);
+      const checksum2 = generateAuditChecksum(auditEntry);
 
-      expect(checksum1).toBe(checksum2)
-      expect(checksum1).toHaveLength(64) // SHA-256 hex length
-    })
+      expect(checksum1).toBe(checksum2);
+      expect(checksum1).toHaveLength(64); // SHA-256 hex length
+    });
 
-    it('should generate different checksums for different data', () => {
-      const baseEntry: Omit<AuditLogEntry, 'checksum'> = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'create',
-        newData: { name: 'John Doe', email: 'john@example.com' },
-        changedBy: 'user1',
-        changedAt: new Date('2024-01-01T10:00:00Z'),
-        auditVersion: '1.0'
-      }
+    it("should generate different checksums for different data", () => {
+      const baseEntry: Omit<AuditLogEntry, "checksum"> = {
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "create",
+        newData: { name: "John Doe", email: "john@example.com" },
+        changedBy: "user1",
+        changedAt: new Date("2024-01-01T10:00:00Z"),
+        auditVersion: "1.0",
+      };
 
       const modifiedEntry = {
         ...baseEntry,
-        recordId: '456e7890-e89b-12d3-a456-426614174001' // Changed recordId to ensure different checksum
-      }
+        recordId: "456e7890-e89b-12d3-a456-426614174001", // Changed recordId to ensure different checksum
+      };
 
-      const checksum1 = generateAuditChecksum(baseEntry)
-      const checksum2 = generateAuditChecksum(modifiedEntry)
+      const checksum1 = generateAuditChecksum(baseEntry);
+      const checksum2 = generateAuditChecksum(modifiedEntry);
 
-      expect(checksum1).not.toBe(checksum2)
-    })
-  })
+      expect(checksum1).not.toBe(checksum2);
+    });
+  });
 
-  describe('validateAuditIntegrity', () => {
-    it('should validate audit entry with correct checksum', () => {
-      const auditEntryWithoutChecksum: Omit<AuditLogEntry, 'checksum'> = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'create',
-        newData: { name: 'John Doe', email: 'john@example.com' },
-        changedBy: 'user1',
-        changedAt: new Date('2024-01-01T10:00:00Z'),
-        auditVersion: '1.0'
-      }
+  describe("validateAuditIntegrity", () => {
+    it("should validate audit entry with correct checksum", () => {
+      const auditEntryWithoutChecksum: Omit<AuditLogEntry, "checksum"> = {
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "create",
+        newData: { name: "John Doe", email: "john@example.com" },
+        changedBy: "user1",
+        changedAt: new Date("2024-01-01T10:00:00Z"),
+        auditVersion: "1.0",
+      };
 
-      const checksum = generateAuditChecksum(auditEntryWithoutChecksum)
+      const checksum = generateAuditChecksum(auditEntryWithoutChecksum);
       const auditEntry: AuditLogEntry = {
         ...auditEntryWithoutChecksum,
-        checksum
-      }
+        checksum,
+      };
 
-      expect(validateAuditIntegrity(auditEntry)).toBe(true)
-    })
+      expect(validateAuditIntegrity(auditEntry)).toBe(true);
+    });
 
-    it('should reject audit entry with incorrect checksum', () => {
+    it("should reject audit entry with incorrect checksum", () => {
       const auditEntry: AuditLogEntry = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'create',
-        newData: { name: 'John Doe', email: 'john@example.com' },
-        changedBy: 'user1',
-        changedAt: new Date('2024-01-01T10:00:00Z'),
-        auditVersion: '1.0',
-        checksum: 'invalid_checksum'
-      }
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "create",
+        newData: { name: "John Doe", email: "john@example.com" },
+        changedBy: "user1",
+        changedAt: new Date("2024-01-01T10:00:00Z"),
+        auditVersion: "1.0",
+        checksum: "invalid_checksum",
+      };
 
-      expect(validateAuditIntegrity(auditEntry)).toBe(false)
-    })
+      expect(validateAuditIntegrity(auditEntry)).toBe(false);
+    });
 
-    it('should reject audit entry without checksum', () => {
+    it("should reject audit entry without checksum", () => {
       const auditEntry = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'create',
-        newData: { name: 'John Doe', email: 'john@example.com' },
-        changedBy: 'user1',
-        changedAt: new Date('2024-01-01T10:00:00Z'),
-        auditVersion: '1.0'
-      } as AuditLogEntry
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "create",
+        newData: { name: "John Doe", email: "john@example.com" },
+        changedBy: "user1",
+        changedAt: new Date("2024-01-01T10:00:00Z"),
+        auditVersion: "1.0",
+      } as AuditLogEntry;
 
-      expect(validateAuditIntegrity(auditEntry)).toBe(false)
-    })
-  })
+      expect(validateAuditIntegrity(auditEntry)).toBe(false);
+    });
+  });
 
-  describe('generateDataDiff', () => {
-    it('should generate create diff for new data', () => {
-      const newData = { name: 'John Doe', email: 'john@example.com' }
-      const diff = generateDataDiff(undefined, newData)
-
-      expect(diff).toEqual({
-        __type: 'create',
-        added: newData
-      })
-    })
-
-    it('should generate delete diff for removed data', () => {
-      const oldData = { name: 'John Doe', email: 'john@example.com' }
-      const diff = generateDataDiff(oldData, undefined)
+  describe("generateDataDiff", () => {
+    it("should generate create diff for new data", () => {
+      const newData = { name: "John Doe", email: "john@example.com" };
+      const diff = generateDataDiff(undefined, newData);
 
       expect(diff).toEqual({
-        __type: 'delete',
-        removed: oldData
-      })
-    })
+        __type: "create",
+        added: newData,
+      });
+    });
 
-    it('should generate update diff for changed data', () => {
-      const oldData = { name: 'John Doe', email: 'john@example.com', age: 30 }
-      const newData = { name: 'John Smith', email: 'john@example.com', age: 31 }
+    it("should generate delete diff for removed data", () => {
+      const oldData = { name: "John Doe", email: "john@example.com" };
+      const diff = generateDataDiff(oldData, undefined);
 
-      const diff = generateDataDiff(oldData, newData)
+      expect(diff).toEqual({
+        __type: "delete",
+        removed: oldData,
+      });
+    });
 
-      expect(diff).toBeDefined()
+    it("should generate update diff for changed data", () => {
+      const oldData = { name: "John Doe", email: "john@example.com", age: 30 };
+      const newData = {
+        name: "John Smith",
+        email: "john@example.com",
+        age: 31,
+      };
+
+      const diff = generateDataDiff(oldData, newData);
+
+      expect(diff).toBeDefined();
       // The exact diff format depends on the json-diff library implementation
-    })
+    });
 
-    it('should return null for no data', () => {
-      const diff = generateDataDiff(undefined, undefined)
-      expect(diff).toBeNull()
-    })
-  })
+    it("should return null for no data", () => {
+      const diff = generateDataDiff(undefined, undefined);
+      expect(diff).toBeNull();
+    });
+  });
 
-  describe('sanitizeAuditData', () => {
-    it('should redact sensitive fields', () => {
+  describe("sanitizeAuditData", () => {
+    it("should redact sensitive fields", () => {
       const data = {
-        name: 'John Doe',
-        email: 'john@example.com',
-        passwordHash: 'secret123',
-        token: 'abc123',
-        apiKey: 'key123',
-        normalField: 'normal'
-      }
+        name: "John Doe",
+        email: "john@example.com",
+        passwordHash: "secret123",
+        token: "abc123",
+        apiKey: "key123",
+        normalField: "normal",
+      };
 
-      const sanitized = sanitizeAuditData(data)
+      const sanitized = sanitizeAuditData(data);
 
       expect(sanitized).toEqual({
-        name: 'John Doe',
-        email: 'john@example.com',
-        passwordHash: '[REDACTED]',
-        token: '[REDACTED]',
-        apiKey: '[REDACTED]',
-        normalField: 'normal'
-      })
-    })
+        name: "John Doe",
+        email: "john@example.com",
+        passwordHash: "[REDACTED]",
+        token: "[REDACTED]",
+        apiKey: "[REDACTED]",
+        normalField: "normal",
+      });
+    });
 
-    it('should handle data without sensitive fields', () => {
+    it("should handle data without sensitive fields", () => {
       const data = {
-        name: 'John Doe',
-        email: 'john@example.com',
-        age: 30
-      }
+        name: "John Doe",
+        email: "john@example.com",
+        age: 30,
+      };
 
-      const sanitized = sanitizeAuditData(data)
+      const sanitized = sanitizeAuditData(data);
 
-      expect(sanitized).toEqual(data)
-      expect(sanitized).not.toBe(data) // Should be a copy
-    })
-  })
+      expect(sanitized).toEqual(data);
+      expect(sanitized).not.toBe(data); // Should be a copy
+    });
+  });
 
-  describe('createAuditLogEntry', () => {
-    it('should create complete audit log entry for create operation', () => {
+  describe("createAuditLogEntry", () => {
+    it("should create complete audit log entry for create operation", () => {
       const context: AuditContext = {
-        userId: 'user123',
-        userEmail: 'user@example.com',
-        reason: 'User registration'
-      }
+        userId: "user123",
+        userEmail: "user@example.com",
+        reason: "User registration",
+      };
 
       const snapshot: AuditSnapshot = {
-        operation: 'create',
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        newData: { name: 'John Doe', email: 'john@example.com' },
+        operation: "create",
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        newData: { name: "John Doe", email: "john@example.com" },
         context,
-        timestamp: new Date('2024-01-01T10:00:00Z')
-      }
+        timestamp: new Date("2024-01-01T10:00:00Z"),
+      };
 
-      const auditEntry = createAuditLogEntry(snapshot)
+      const auditEntry = createAuditLogEntry(snapshot);
 
       expect(auditEntry).toEqual({
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'create',
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "create",
         oldData: undefined,
-        newData: { name: 'John Doe', email: 'john@example.com' },
+        newData: { name: "John Doe", email: "john@example.com" },
         diffData: {
-          __type: 'create',
-          added: { name: 'John Doe', email: 'john@example.com' }
+          __type: "create",
+          added: { name: "John Doe", email: "john@example.com" },
         },
-        changedBy: 'user123',
-        changedByEmail: 'user@example.com',
-        changedAt: new Date('2024-01-01T10:00:00Z'),
-        reason: 'User registration',
+        changedBy: "user123",
+        changedByEmail: "user@example.com",
+        changedAt: new Date("2024-01-01T10:00:00Z"),
+        reason: "User registration",
         ipAddress: undefined,
         userAgent: undefined,
         sessionId: undefined,
-        auditVersion: '1.0',
-        checksum: expect.any(String)
-      })
+        auditVersion: "1.0",
+        checksum: expect.any(String),
+      });
 
-      expect(auditEntry.checksum).toHaveLength(64)
-    })
+      expect(auditEntry.checksum).toHaveLength(64);
+    });
 
-    it('should create audit log entry for update operation', () => {
+    it("should create audit log entry for update operation", () => {
       const context: AuditContext = {
-        userId: 'user123',
-        userEmail: 'user@example.com',
-        ipAddress: '192.168.1.1'
-      }
+        userId: "user123",
+        userEmail: "user@example.com",
+        ipAddress: "192.168.1.1",
+      };
 
       const snapshot: AuditSnapshot = {
-        operation: 'update',
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        oldData: { name: 'John Doe', email: 'john@example.com' },
-        newData: { name: 'John Smith', email: 'john@example.com' },
-        context
-      }
+        operation: "update",
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        oldData: { name: "John Doe", email: "john@example.com" },
+        newData: { name: "John Smith", email: "john@example.com" },
+        context,
+      };
 
-      const auditEntry = createAuditLogEntry(snapshot)
+      const auditEntry = createAuditLogEntry(snapshot);
 
-      expect(auditEntry.operation).toBe('update')
-      expect(auditEntry.oldData).toEqual({ name: 'John Doe', email: 'john@example.com' })
-      expect(auditEntry.newData).toEqual({ name: 'John Smith', email: 'john@example.com' })
-      expect(auditEntry.ipAddress).toBe('192.168.1.1')
-      expect(auditEntry.diffData).toBeDefined()
-      expect(auditEntry.checksum).toHaveLength(64)
-    })
+      expect(auditEntry.operation).toBe("update");
+      expect(auditEntry.oldData).toEqual({
+        name: "John Doe",
+        email: "john@example.com",
+      });
+      expect(auditEntry.newData).toEqual({
+        name: "John Smith",
+        email: "john@example.com",
+      });
+      expect(auditEntry.ipAddress).toBe("192.168.1.1");
+      expect(auditEntry.diffData).toBeDefined();
+      expect(auditEntry.checksum).toHaveLength(64);
+    });
 
-    it('should sanitize sensitive data in audit log', () => {
+    it("should sanitize sensitive data in audit log", () => {
       const snapshot: AuditSnapshot = {
-        operation: 'create',
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
+        operation: "create",
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
         newData: {
-          name: 'John Doe',
-          email: 'john@example.com',
-          passwordHash: 'secret123'
-        }
-      }
+          name: "John Doe",
+          email: "john@example.com",
+          passwordHash: "secret123",
+        },
+      };
 
-      const auditEntry = createAuditLogEntry(snapshot)
+      const auditEntry = createAuditLogEntry(snapshot);
 
       expect(auditEntry.newData).toEqual({
-        name: 'John Doe',
-        email: 'john@example.com',
-        passwordHash: '[REDACTED]'
-      })
-    })
-  })
+        name: "John Doe",
+        email: "john@example.com",
+        passwordHash: "[REDACTED]",
+      });
+    });
+  });
 
-  describe('validateAuditSnapshot', () => {
-    it('should validate correct create snapshot', () => {
+  describe("validateAuditSnapshot", () => {
+    it("should validate correct create snapshot", () => {
       const snapshot: AuditSnapshot = {
-        operation: 'create',
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        newData: { name: 'John Doe', email: 'john@example.com' }
-      }
+        operation: "create",
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        newData: { name: "John Doe", email: "john@example.com" },
+      };
 
-      const validation = validateAuditSnapshot(snapshot)
+      const validation = validateAuditSnapshot(snapshot);
 
-      expect(validation.valid).toBe(true)
-      expect(validation.errors).toHaveLength(0)
-    })
+      expect(validation.valid).toBe(true);
+      expect(validation.errors).toHaveLength(0);
+    });
 
-    it('should validate correct update snapshot', () => {
+    it("should validate correct update snapshot", () => {
       const snapshot: AuditSnapshot = {
-        operation: 'update',
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        oldData: { name: 'John Doe', email: 'john@example.com' },
-        newData: { name: 'John Smith', email: 'john@example.com' }
-      }
+        operation: "update",
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        oldData: { name: "John Doe", email: "john@example.com" },
+        newData: { name: "John Smith", email: "john@example.com" },
+      };
 
-      const validation = validateAuditSnapshot(snapshot)
+      const validation = validateAuditSnapshot(snapshot);
 
-      expect(validation.valid).toBe(true)
-      expect(validation.errors).toHaveLength(0)
-    })
+      expect(validation.valid).toBe(true);
+      expect(validation.errors).toHaveLength(0);
+    });
 
-    it('should reject snapshot with missing required fields', () => {
+    it("should reject snapshot with missing required fields", () => {
       const snapshot: Partial<AuditSnapshot> = {
-        operation: 'create'
-      }
+        operation: "create",
+      };
 
-      const validation = validateAuditSnapshot(snapshot as AuditSnapshot)
+      const validation = validateAuditSnapshot(snapshot as AuditSnapshot);
 
-      expect(validation.valid).toBe(false)
-      expect(validation.errors).toContain('tableName is required')
-      expect(validation.errors).toContain('recordId is required')
-    })
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toContain("tableName is required");
+      expect(validation.errors).toContain("recordId is required");
+    });
 
-    it('should reject create snapshot without newData', () => {
+    it("should reject create snapshot without newData", () => {
       const snapshot: AuditSnapshot = {
-        operation: 'create',
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000'
-      }
+        operation: "create",
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+      };
 
-      const validation = validateAuditSnapshot(snapshot)
+      const validation = validateAuditSnapshot(snapshot);
 
-      expect(validation.valid).toBe(false)
-      expect(validation.errors).toContain('newData is required for create operations')
-    })
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toContain(
+        "newData is required for create operations",
+      );
+    });
 
-    it('should reject update snapshot without oldData or newData', () => {
+    it("should reject update snapshot without oldData or newData", () => {
       const snapshot: AuditSnapshot = {
-        operation: 'update',
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000'
-      }
+        operation: "update",
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+      };
 
-      const validation = validateAuditSnapshot(snapshot)
+      const validation = validateAuditSnapshot(snapshot);
 
-      expect(validation.valid).toBe(false)
-      expect(validation.errors).toContain('oldData is required for update operations')
-      expect(validation.errors).toContain('newData is required for update operations')
-    })
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toContain(
+        "oldData is required for update operations",
+      );
+      expect(validation.errors).toContain(
+        "newData is required for update operations",
+      );
+    });
 
-    it('should reject invalid operation type', () => {
+    it("should reject invalid operation type", () => {
       const snapshot = {
-        operation: 'invalid_operation' as any,
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000'
-      } as AuditSnapshot
+        operation: "invalid_operation" as any,
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+      } as AuditSnapshot;
 
-      const validation = validateAuditSnapshot(snapshot)
+      const validation = validateAuditSnapshot(snapshot);
 
-      expect(validation.valid).toBe(false)
-      expect(validation.errors).toContain('operation must be one of: create, update, delete, soft_delete, restore')
-    })
-  })
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).toContain(
+        "operation must be one of: create, update, delete, soft_delete, restore",
+      );
+    });
+  });
 
-  describe('extractChangedFields', () => {
-    it('should extract fields from create diff', () => {
+  describe("extractChangedFields", () => {
+    it("should extract fields from create diff", () => {
       const diffData = {
-        __type: 'create',
-        added: { name: 'John Doe', email: 'john@example.com', age: 30 }
-      }
+        __type: "create",
+        added: { name: "John Doe", email: "john@example.com", age: 30 },
+      };
 
-      const fields = extractChangedFields(diffData)
+      const fields = extractChangedFields(diffData);
 
-      expect(fields).toEqual(['age', 'email', 'name'])
-    })
+      expect(fields).toEqual(["age", "email", "name"]);
+    });
 
-    it('should extract fields from delete diff', () => {
+    it("should extract fields from delete diff", () => {
       const diffData = {
-        __type: 'delete',
-        removed: { name: 'John Doe', email: 'john@example.com' }
-      }
+        __type: "delete",
+        removed: { name: "John Doe", email: "john@example.com" },
+      };
 
-      const fields = extractChangedFields(diffData)
+      const fields = extractChangedFields(diffData);
 
-      expect(fields).toEqual(['email', 'name'])
-    })
+      expect(fields).toEqual(["email", "name"]);
+    });
 
-    it('should extract fields from standard diff', () => {
+    it("should extract fields from standard diff", () => {
       const diffData = {
-        name: ['John Doe', 'John Smith'],
+        name: ["John Doe", "John Smith"],
         age: [30, 31],
-        email: 'john@example.com' // unchanged
-      }
+        email: "john@example.com", // unchanged
+      };
 
-      const fields = extractChangedFields(diffData)
+      const fields = extractChangedFields(diffData);
 
-      expect(fields).toEqual(['age', 'email', 'name'])
-    })
+      expect(fields).toEqual(["age", "email", "name"]);
+    });
 
-    it('should return empty array for invalid diff data', () => {
-      expect(extractChangedFields(null)).toEqual([])
-      expect(extractChangedFields(undefined)).toEqual([])
-      expect(extractChangedFields('invalid')).toEqual([])
-    })
-  })
+    it("should return empty array for invalid diff data", () => {
+      expect(extractChangedFields(null)).toEqual([]);
+      expect(extractChangedFields(undefined)).toEqual([]);
+      expect(extractChangedFields("invalid")).toEqual([]);
+    });
+  });
 
-  describe('generateChangeSummary', () => {
-    it('should generate summary for create operation', () => {
+  describe("generateChangeSummary", () => {
+    it("should generate summary for create operation", () => {
       const auditEntry: AuditLogEntry = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'create',
-        newData: { name: 'John Doe' },
-        diffData: { __type: 'create', added: { name: 'John Doe' } },
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "create",
+        newData: { name: "John Doe" },
+        diffData: { __type: "create", added: { name: "John Doe" } },
         changedAt: new Date(),
-        auditVersion: '1.0'
-      }
+        auditVersion: "1.0",
+      };
 
-      const summary = generateChangeSummary(auditEntry)
+      const summary = generateChangeSummary(auditEntry);
 
-      expect(summary).toBe('Created new users record')
-    })
+      expect(summary).toBe("Created new users record");
+    });
 
-    it('should generate summary for delete operation', () => {
+    it("should generate summary for delete operation", () => {
       const auditEntry: AuditLogEntry = {
-        tableName: 'products',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'delete',
-        oldData: { name: 'Product 1' },
-        diffData: { __type: 'delete', removed: { name: 'Product 1' } },
+        tableName: "products",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "delete",
+        oldData: { name: "Product 1" },
+        diffData: { __type: "delete", removed: { name: "Product 1" } },
         changedAt: new Date(),
-        auditVersion: '1.0'
-      }
+        auditVersion: "1.0",
+      };
 
-      const summary = generateChangeSummary(auditEntry)
+      const summary = generateChangeSummary(auditEntry);
 
-      expect(summary).toBe('Deleted products record')
-    })
+      expect(summary).toBe("Deleted products record");
+    });
 
-    it('should generate summary for update with single field', () => {
+    it("should generate summary for update with single field", () => {
       const auditEntry: AuditLogEntry = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'update',
-        diffData: { name: ['John Doe', 'John Smith'] },
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "update",
+        diffData: { name: ["John Doe", "John Smith"] },
         changedAt: new Date(),
-        auditVersion: '1.0'
-      }
+        auditVersion: "1.0",
+      };
 
-      const summary = generateChangeSummary(auditEntry)
+      const summary = generateChangeSummary(auditEntry);
 
-      expect(summary).toBe('Updated users record: name')
-    })
+      expect(summary).toBe("Updated users record: name");
+    });
 
-    it('should generate summary for update with multiple fields', () => {
+    it("should generate summary for update with multiple fields", () => {
       const auditEntry: AuditLogEntry = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'update',
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "update",
         diffData: {
-          name: ['John Doe', 'John Smith'],
-          email: ['john@old.com', 'john@new.com']
+          name: ["John Doe", "John Smith"],
+          email: ["john@old.com", "john@new.com"],
         },
         changedAt: new Date(),
-        auditVersion: '1.0'
-      }
+        auditVersion: "1.0",
+      };
 
-      const summary = generateChangeSummary(auditEntry)
+      const summary = generateChangeSummary(auditEntry);
 
-      expect(summary).toBe('Updated users record: email, name')
-    })
+      expect(summary).toBe("Updated users record: email, name");
+    });
 
-    it('should generate summary for update with many fields', () => {
+    it("should generate summary for update with many fields", () => {
       const auditEntry: AuditLogEntry = {
-        tableName: 'users',
-        recordId: '123e4567-e89b-12d3-a456-426614174000',
-        operation: 'update',
+        tableName: "users",
+        recordId: "123e4567-e89b-12d3-a456-426614174000",
+        operation: "update",
         diffData: {
-          name: 'changed',
-          email: 'changed',
-          phone: 'changed',
-          address: 'changed',
-          age: 'changed'
+          name: "changed",
+          email: "changed",
+          phone: "changed",
+          address: "changed",
+          age: "changed",
         },
         changedAt: new Date(),
-        auditVersion: '1.0'
-      }
+        auditVersion: "1.0",
+      };
 
-      const summary = generateChangeSummary(auditEntry)
+      const summary = generateChangeSummary(auditEntry);
 
-      expect(summary).toBe('Updated users record: address, age, email and 2 more fields')
-    })
-  })
-})
+      expect(summary).toBe(
+        "Updated users record: address, age, email and 2 more fields",
+      );
+    });
+  });
+});

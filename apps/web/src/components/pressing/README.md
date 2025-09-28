@@ -5,9 +5,11 @@ This directory contains the mobile-first React components for fruit load entry d
 ## Components Overview
 
 ### 1. PressRunManager (`PressRunManager.tsx`)
+
 Main orchestration component that manages the entire press run workflow.
 
 **Key Features:**
+
 - Lists existing press runs with status indicators
 - Handles vendor selection for new press runs
 - Integrates with tRPC API endpoints for press run operations
@@ -15,16 +17,19 @@ Main orchestration component that manages the entire press run workflow.
 - Provides optimistic UI updates with error handling
 
 **Usage:**
-```tsx
-import { PressRunManager } from '@/components/pressing'
 
-<PressRunManager vendorId="optional-vendor-id" />
+```tsx
+import { PressRunManager } from "@/components/pressing";
+
+<PressRunManager vendorId="optional-vendor-id" />;
 ```
 
 ### 2. PressRunWizard (`PressRunWizard.tsx`)
+
 Step-by-step wizard for guiding operators through press run setup and completion.
 
 **Key Features:**
+
 - Three-step workflow: Setup → Loads → Completion
 - Progress indicator with mobile-optimized step navigation
 - Load management with summary statistics
@@ -32,14 +37,17 @@ Step-by-step wizard for guiding operators through press run setup and completion
 - Mobile-first responsive design
 
 **Steps:**
+
 1. **Setup**: Configure press run details
 2. **Loads**: Add fruit loads with integrated form
 3. **Completion**: Review and finalize press run
 
 ### 3. FruitLoadFormWithTRPC (`FruitLoadFormWithTRPC.tsx`)
+
 Production-ready form component with full tRPC integration.
 
 **Key Features:**
+
 - Real-time purchase line inventory validation
 - Weight input with lbs/kg unit conversion (lbs default)
 - Apple variety selection from available purchase lines
@@ -48,12 +56,14 @@ Production-ready form component with full tRPC integration.
 - Comprehensive error handling and loading states
 
 **Form Fields:**
+
 - Purchase line selection with search/filter
 - Weight input with unit toggle
 - Quality measurements (Brix, pH, condition, defect %)
 - Notes for operational observations
 
 ### 4. FruitLoadForm (`FruitLoadForm.tsx`)
+
 Standalone form component with mock data for development/testing.
 
 ## Mobile Optimizations
@@ -84,11 +94,13 @@ Components integrate with the following tRPC endpoints:
 ## Data Flow
 
 1. **Press Run Creation**:
+
    ```
    PressRunManager → Vendor Selection → API Call → PressRunWizard
    ```
 
 2. **Load Addition**:
+
    ```
    PressRunWizard → FruitLoadFormWithTRPC → API Validation → Optimistic Update → API Call
    ```
@@ -115,6 +127,7 @@ Components integrate with the following tRPC endpoints:
 ## Weight Unit Conversion
 
 Built-in conversion system with real-time display:
+
 - **Pounds to Kilograms**: `weight * 0.453592`
 - **Kilograms to Pounds**: `weight * 2.20462`
 - **Display**: Shows both original and converted values
@@ -123,6 +136,7 @@ Built-in conversion system with real-time display:
 ## Form Validation
 
 Using Zod schema validation:
+
 - **Weight**: 0.1 - 10,000 range with decimal precision
 - **Brix**: 0-30° range for sugar content
 - **pH**: 2-5 range for acidity
@@ -132,6 +146,7 @@ Using Zod schema validation:
 ## Testing Integration
 
 Components are designed for comprehensive testing:
+
 - **Unit Tests**: Form validation and conversion logic
 - **Integration Tests**: API interaction patterns
 - **E2E Tests**: Complete workflow testing
@@ -156,6 +171,7 @@ Components are designed for comprehensive testing:
 ## Future Enhancements for Task #27 (Offline Capability)
 
 The components are structured to support offline functionality:
+
 - **Local State**: Component state can be persisted
 - **Optimistic Updates**: Already implemented for offline sync
 - **Error Handling**: Structured for offline/online transitions

@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   BarChart3,
   ShoppingCart,
@@ -15,70 +15,70 @@ import {
   Settings,
   Menu,
   X,
-  Building2
-} from "lucide-react"
-import { useState } from "react"
+  Building2,
+} from "lucide-react";
+import { useState } from "react";
 
 const navItems = [
   {
     name: "Dashboard",
     href: "/dashboard",
     icon: BarChart3,
-    description: "Overview & Analytics"
+    description: "Overview & Analytics",
   },
   {
     name: "Vendors",
     href: "/vendors",
     icon: Building2,
-    description: "Vendor Database"
+    description: "Vendor Database",
   },
   {
     name: "Inventory",
     href: "/inventory",
     icon: ShoppingCart,
-    description: "Vendor & Orders"
+    description: "Vendor & Orders",
   },
   {
     name: "Pressing",
     href: "/pressing",
     icon: Grape,
-    description: "Base Fruit Processing"
+    description: "Base Fruit Processing",
   },
-  { 
-    name: "Cellar", 
-    href: "/cellar", 
+  {
+    name: "Cellar",
+    href: "/cellar",
     icon: Beaker,
-    description: "Fermentation & Aging"
+    description: "Fermentation & Aging",
   },
-  { 
-    name: "Packaging", 
-    href: "/packaging", 
+  {
+    name: "Packaging",
+    href: "/packaging",
     icon: Package,
-    description: "Bottling & Canning"
+    description: "Bottling & Canning",
   },
   {
     name: "Reports",
     href: "/reports",
     icon: FileText,
-    description: "COGS & Analytics"
+    description: "COGS & Analytics",
   },
   {
     name: "Recipes",
     href: "/recipes",
     icon: BookOpen,
-    description: "Recipe Management"
+    description: "Recipe Management",
   },
   {
     name: "Admin",
     href: "/admin",
     icon: Settings,
-    description: "System Settings"
+    description: "System Settings",
   },
-]
+];
 
 export function Navbar() {
-  const pathname = usePathname()
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const pathname = usePathname();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -102,8 +102,8 @@ export function Navbar() {
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center space-x-1">
             {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.href
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
               return (
                 <Link
                   key={item.name}
@@ -112,19 +112,21 @@ export function Navbar() {
                     "flex flex-col items-center px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 group relative",
                     isActive
                       ? "bg-amber-50 text-amber-700 shadow-sm"
-                      : "text-gray-600 hover:text-amber-600 hover:bg-gray-50"
+                      : "text-gray-600 hover:text-amber-600 hover:bg-gray-50",
                   )}
                 >
-                  <Icon className={cn(
-                    "w-5 h-5 mb-1 transition-transform group-hover:scale-110",
-                    isActive ? "text-amber-600" : "text-gray-500"
-                  )} />
+                  <Icon
+                    className={cn(
+                      "w-5 h-5 mb-1 transition-transform group-hover:scale-110",
+                      isActive ? "text-amber-600" : "text-gray-500",
+                    )}
+                  />
                   <span className="font-semibold">{item.name}</span>
                   {isActive && (
                     <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-amber-600 rounded-full" />
                   )}
                 </Link>
-              )
+              );
             })}
           </div>
 
@@ -134,7 +136,11 @@ export function Navbar() {
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-2 rounded-lg text-gray-600 hover:text-amber-600 hover:bg-gray-50 transition-colors"
             >
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {isMobileMenuOpen ? (
+                <X className="w-6 h-6" />
+              ) : (
+                <Menu className="w-6 h-6" />
+              )}
             </button>
           </div>
         </div>
@@ -144,8 +150,8 @@ export function Navbar() {
           <div className="lg:hidden border-t border-gray-200 bg-white">
             <div className="px-2 pt-2 pb-3 space-y-1">
               {navItems.map((item) => {
-                const Icon = item.icon
-                const isActive = pathname === item.href
+                const Icon = item.icon;
+                const isActive = pathname === item.href;
                 return (
                   <Link
                     key={item.name}
@@ -155,24 +161,28 @@ export function Navbar() {
                       "flex items-center px-3 py-3 rounded-lg text-sm font-medium transition-colors",
                       isActive
                         ? "bg-amber-50 text-amber-700 border-l-4 border-amber-600"
-                        : "text-gray-700 hover:text-amber-600 hover:bg-gray-50"
+                        : "text-gray-700 hover:text-amber-600 hover:bg-gray-50",
                     )}
                   >
-                    <Icon className={cn(
-                      "w-5 h-5 mr-3",
-                      isActive ? "text-amber-600" : "text-gray-500"
-                    )} />
+                    <Icon
+                      className={cn(
+                        "w-5 h-5 mr-3",
+                        isActive ? "text-amber-600" : "text-gray-500",
+                      )}
+                    />
                     <div>
                       <div className="font-semibold">{item.name}</div>
-                      <div className="text-xs text-gray-500">{item.description}</div>
+                      <div className="text-xs text-gray-500">
+                        {item.description}
+                      </div>
                     </div>
                   </Link>
-                )
+                );
               })}
             </div>
           </div>
         )}
       </div>
     </nav>
-  )
+  );
 }

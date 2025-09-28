@@ -1,10 +1,10 @@
-"use client"
+"use client";
 
-import React, { useState, useEffect } from "react"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { trpc } from "@/utils/trpc"
+import React, { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { trpc } from "@/utils/trpc";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -20,20 +20,20 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { HarvestDatePicker } from "@/components/ui/harvest-date-picker"
-import { Loader2 } from "lucide-react"
-import { toast } from "@/hooks/use-toast"
+} from "@/components/ui/select";
+import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
+import { Loader2 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 // Schema for base fruit items
 const baseFruitEditSchema = z.object({
@@ -41,39 +41,39 @@ const baseFruitEditSchema = z.object({
   unit: z.enum(["kg", "lb", "L", "gal"]),
   harvestDate: z.date().optional(),
   notes: z.string().optional(),
-})
+});
 
 // Schema for additive items
 const additiveEditSchema = z.object({
   quantity: z.number().int().min(0, "Quantity must be positive"),
-  unit: z.enum(['g', 'kg', 'lb', 'L', 'mL']),
+  unit: z.enum(["g", "kg", "lb", "L", "mL"]),
   unitCost: z.number().min(0, "Unit cost must be positive").optional(),
   totalCost: z.number().min(0, "Total cost must be positive").optional(),
   purchaseDate: z.date().optional(),
   notes: z.string().optional(),
-})
+});
 
 // Schema for juice items
 const juiceEditSchema = z.object({
   volumeL: z.number().min(0, "Volume must be positive"),
-  unit: z.enum(['L', 'gal']),
+  unit: z.enum(["L", "gal"]),
   specificGravity: z.number().min(0.9).max(1.2).optional(),
   ph: z.number().min(0).max(14).optional(),
   notes: z.string().optional(),
-})
+});
 
 // Schema for packaging items
 const packagingEditSchema = z.object({
   quantity: z.number().int().min(0, "Quantity must be positive"),
   unit: z.string().optional(),
   notes: z.string().optional(),
-})
+});
 
 interface InventoryEditDialogProps {
-  open: boolean
-  onClose: () => void
-  item: any // The inventory item to edit
-  onSuccess?: () => void
+  open: boolean;
+  onClose: () => void;
+  item: any; // The inventory item to edit
+  onSuccess?: () => void;
 }
 
 export function InventoryEditDialog({
@@ -82,46 +82,71 @@ export function InventoryEditDialog({
   item,
   onSuccess,
 }: InventoryEditDialogProps) {
-  const utils = trpc.useUtils()
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const utils = trpc.useUtils();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Extract material type and item ID from the composite ID
-  const [materialType, itemId] = item?.id?.split('-') || []
-  const metadata = (item?.metadata || {}) as Record<string, any>
+  const [materialType, itemId] = item?.id?.split("-") || [];
+  const metadata = (item?.metadata || {}) as Record<string, any>;
 
   // Create form based on material type - use any type to handle dynamic forms
   const form = useForm<any>({
     resolver: zodResolver(
-      materialType === 'basefruit' ? baseFruitEditSchema :
-      materialType === 'additive' ? additiveEditSchema :
-      materialType === 'juice' ? juiceEditSchema :
-      materialType === 'packaging' ? packagingEditSchema :
-      z.object({})
+      materialType === "basefruit"
+        ? baseFruitEditSchema
+        : materialType === "additive"
+          ? additiveEditSchema
+          : materialType === "juice"
+            ? juiceEditSchema
+            : materialType === "packaging"
+              ? packagingEditSchema
+              : z.object({}),
     ),
-    defaultValues: materialType === 'basefruit' ? {
-      quantity: item?.currentBottleCount || undefined,
-      unit: metadata.unit || 'kg',
-      harvestDate: metadata.harvestDate ? new Date(metadata.harvestDate) : undefined,
-      notes: item?.notes || '',
-    } : materialType === 'additive' ? {
-      quantity: item?.currentBottleCount || undefined,
-      unit: metadata.unit || 'g',
-      unitCost: parseFloat(metadata.unitCost) || parseFloat(item?.unitCost) || undefined,
-      totalCost: parseFloat(metadata.totalCost) || parseFloat(item?.totalCost) || undefined,
-      purchaseDate: metadata.purchaseDate ? new Date(metadata.purchaseDate) : new Date(),
-      notes: item?.notes || '',
-    } : materialType === 'juice' ? {
-      volumeL: item?.currentBottleCount || undefined,
-      unit: metadata.unit || 'L',
-      specificGravity: metadata.specificGravity ? parseFloat(metadata.specificGravity) : undefined,
-      ph: metadata.ph ? parseFloat(metadata.ph) : undefined,
-      notes: item?.notes || '',
-    } : materialType === 'packaging' ? {
-      quantity: item?.currentBottleCount || undefined,
-      unit: metadata.unit || metadata.size || 'units',
-      notes: item?.notes || '',
-    } : {}
-  })
+    defaultValues:
+      materialType === "basefruit"
+        ? {
+            quantity: item?.currentBottleCount || undefined,
+            unit: metadata.unit || "kg",
+            harvestDate: metadata.harvestDate
+              ? new Date(metadata.harvestDate)
+              : undefined,
+            notes: item?.notes || "",
+          }
+        : materialType === "additive"
+          ? {
+              quantity: item?.currentBottleCount || undefined,
+              unit: metadata.unit || "g",
+              unitCost:
+                parseFloat(metadata.unitCost) ||
+                parseFloat(item?.unitCost) ||
+                undefined,
+              totalCost:
+                parseFloat(metadata.totalCost) ||
+                parseFloat(item?.totalCost) ||
+                undefined,
+              purchaseDate: metadata.purchaseDate
+                ? new Date(metadata.purchaseDate)
+                : new Date(),
+              notes: item?.notes || "",
+            }
+          : materialType === "juice"
+            ? {
+                volumeL: item?.currentBottleCount || undefined,
+                unit: metadata.unit || "L",
+                specificGravity: metadata.specificGravity
+                  ? parseFloat(metadata.specificGravity)
+                  : undefined,
+                ph: metadata.ph ? parseFloat(metadata.ph) : undefined,
+                notes: item?.notes || "",
+              }
+            : materialType === "packaging"
+              ? {
+                  quantity: item?.currentBottleCount || undefined,
+                  unit: metadata.unit || metadata.size || "units",
+                  notes: item?.notes || "",
+                }
+              : {},
+  });
 
   // Update mutations for each type
   const updateBaseFruit = trpc.inventory.updateBaseFruitItem.useMutation({
@@ -129,138 +154,138 @@ export function InventoryEditDialog({
       toast({
         title: "Success",
         description: "Item updated successfully",
-      })
-      utils.inventory.list.invalidate()
-      onSuccess?.()
-      onClose()
+      });
+      utils.inventory.list.invalidate();
+      onSuccess?.();
+      onClose();
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const updateAdditive = trpc.inventory.updateAdditiveItem.useMutation({
     onSuccess: () => {
       toast({
         title: "Success",
         description: "Item updated successfully",
-      })
-      utils.inventory.list.invalidate()
-      onSuccess?.()
-      onClose()
+      });
+      utils.inventory.list.invalidate();
+      onSuccess?.();
+      onClose();
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const updateJuice = trpc.inventory.updateJuiceItem.useMutation({
     onSuccess: () => {
       toast({
         title: "Success",
         description: "Item updated successfully",
-      })
-      utils.inventory.list.invalidate()
-      onSuccess?.()
-      onClose()
+      });
+      utils.inventory.list.invalidate();
+      onSuccess?.();
+      onClose();
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const updatePackaging = trpc.inventory.updatePackagingItem.useMutation({
     onSuccess: () => {
       toast({
         title: "Success",
         description: "Item updated successfully",
-      })
-      utils.inventory.list.invalidate()
-      onSuccess?.()
-      onClose()
+      });
+      utils.inventory.list.invalidate();
+      onSuccess?.();
+      onClose();
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const onSubmit = async (values: any) => {
-    setIsSubmitting(true)
+    setIsSubmitting(true);
     try {
       switch (materialType) {
-        case 'basefruit':
+        case "basefruit":
           await updateBaseFruit.mutateAsync({
             id: itemId,
             originalQuantity: values.quantity,
             originalUnit: values.unit,
             harvestDate: values.harvestDate,
             notes: values.notes,
-          })
-          break
-        case 'additive':
+          });
+          break;
+        case "additive":
           await updateAdditive.mutateAsync({
             id: itemId,
             quantity: values.quantity,
             unit: values.unit,
             notes: values.notes,
-          })
-          break
-        case 'juice':
+          });
+          break;
+        case "juice":
           await updateJuice.mutateAsync({
             id: itemId,
             volumeL: values.volumeL,
             specificGravity: values.specificGravity,
             ph: values.ph,
             notes: values.notes,
-          })
-          break
-        case 'packaging':
+          });
+          break;
+        case "packaging":
           await updatePackaging.mutateAsync({
             id: itemId,
             quantity: values.quantity,
             notes: values.notes,
-          })
-          break
+          });
+          break;
       }
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const getTitle = () => {
     switch (materialType) {
-      case 'basefruit':
-        return `Edit ${metadata.varietyName || 'Base Fruit'} Inventory`
-      case 'additive':
-        return `Edit ${metadata.productName || 'Additive'} Inventory`
-      case 'juice':
-        return `Edit ${metadata.varietyName || 'Juice'} Inventory`
-      case 'packaging':
-        return `Edit ${metadata.packageType || 'Packaging'} Inventory`
+      case "basefruit":
+        return `Edit ${metadata.varietyName || "Base Fruit"} Inventory`;
+      case "additive":
+        return `Edit ${metadata.productName || "Additive"} Inventory`;
+      case "juice":
+        return `Edit ${metadata.varietyName || "Juice"} Inventory`;
+      case "packaging":
+        return `Edit ${metadata.packageType || "Packaging"} Inventory`;
       default:
-        return 'Edit Inventory Item'
+        return "Edit Inventory Item";
     }
-  }
+  };
 
   const renderFormFields = () => {
     switch (materialType) {
-      case 'basefruit':
+      case "basefruit":
         return (
           <>
             <div className="grid grid-cols-2 gap-4">
@@ -276,7 +301,13 @@ export function InventoryEditDialog({
                         step="1"
                         placeholder="0"
                         {...field}
-                        onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value
+                              ? parseInt(e.target.value)
+                              : undefined,
+                          )
+                        }
                       />
                     </FormControl>
                     <FormMessage />
@@ -289,7 +320,10 @@ export function InventoryEditDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unit</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select unit" />
@@ -325,9 +359,9 @@ export function InventoryEditDialog({
               )}
             />
           </>
-        )
+        );
 
-      case 'additive':
+      case "additive":
         return (
           <>
             <div className="grid grid-cols-2 gap-4">
@@ -343,7 +377,13 @@ export function InventoryEditDialog({
                         step="1"
                         placeholder="0"
                         {...field}
-                        onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value
+                              ? parseInt(e.target.value)
+                              : undefined,
+                          )
+                        }
                       />
                     </FormControl>
                     <FormMessage />
@@ -356,7 +396,10 @@ export function InventoryEditDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unit</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select unit" />
@@ -388,12 +431,17 @@ export function InventoryEditDialog({
                         step="0.01"
                         {...field}
                         onChange={(e) => {
-                          const value = e.target.value ? parseFloat(e.target.value) : undefined
-                          field.onChange(value)
+                          const value = e.target.value
+                            ? parseFloat(e.target.value)
+                            : undefined;
+                          field.onChange(value);
                           // Calculate total from unit cost
-                          const quantity = form.getValues('quantity')
+                          const quantity = form.getValues("quantity");
                           if (value && quantity) {
-                            form.setValue('totalCost', parseFloat((value * quantity).toFixed(2)))
+                            form.setValue(
+                              "totalCost",
+                              parseFloat((value * quantity).toFixed(2)),
+                            );
                           }
                         }}
                       />
@@ -414,12 +462,17 @@ export function InventoryEditDialog({
                         step="0.01"
                         {...field}
                         onChange={(e) => {
-                          const value = e.target.value ? parseFloat(e.target.value) : undefined
-                          field.onChange(value)
+                          const value = e.target.value
+                            ? parseFloat(e.target.value)
+                            : undefined;
+                          field.onChange(value);
                           // Calculate unit cost from total
-                          const quantity = form.getValues('quantity')
+                          const quantity = form.getValues("quantity");
                           if (value && quantity) {
-                            form.setValue('unitCost', parseFloat((value / quantity).toFixed(2)))
+                            form.setValue(
+                              "unitCost",
+                              parseFloat((value / quantity).toFixed(2)),
+                            );
                           }
                         }}
                       />
@@ -448,9 +501,9 @@ export function InventoryEditDialog({
               )}
             />
           </>
-        )
+        );
 
-      case 'juice':
+      case "juice":
         return (
           <>
             <div className="grid grid-cols-2 gap-4">
@@ -465,7 +518,9 @@ export function InventoryEditDialog({
                         type="number"
                         step="0.01"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                        onChange={(e) =>
+                          field.onChange(parseFloat(e.target.value))
+                        }
                       />
                     </FormControl>
                     <FormMessage />
@@ -478,7 +533,10 @@ export function InventoryEditDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Unit</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select unit" />
@@ -507,7 +565,13 @@ export function InventoryEditDialog({
                         step="0.001"
                         placeholder="1.000"
                         {...field}
-                        onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value
+                              ? parseFloat(e.target.value)
+                              : undefined,
+                          )
+                        }
                       />
                     </FormControl>
                     <FormMessage />
@@ -526,7 +590,13 @@ export function InventoryEditDialog({
                         step="0.1"
                         placeholder="3.5"
                         {...field}
-                        onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value
+                              ? parseFloat(e.target.value)
+                              : undefined,
+                          )
+                        }
                       />
                     </FormControl>
                     <FormMessage />
@@ -535,9 +605,9 @@ export function InventoryEditDialog({
               />
             </div>
           </>
-        )
+        );
 
-      case 'packaging':
+      case "packaging":
         return (
           <div className="grid grid-cols-2 gap-4">
             <FormField
@@ -552,7 +622,11 @@ export function InventoryEditDialog({
                       step="1"
                       placeholder="0"
                       {...field}
-                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value ? parseInt(e.target.value) : undefined,
+                        )
+                      }
                     />
                   </FormControl>
                   <FormMessage />
@@ -573,12 +647,12 @@ export function InventoryEditDialog({
               )}
             />
           </div>
-        )
+        );
 
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
@@ -615,7 +689,9 @@ export function InventoryEditDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSubmitting && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Save Changes
               </Button>
             </DialogFooter>
@@ -623,5 +699,5 @@ export function InventoryEditDialog({
         </Form>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

@@ -1,21 +1,27 @@
-"use client"
+"use client";
 
-import React, { useState, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { SortableHeader } from '@/components/ui/sortable-header'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+} from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Calendar,
   AlertTriangle,
@@ -26,18 +32,18 @@ import {
   Search,
   MoreVertical,
   Trash2,
-  Boxes
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { trpc } from '@/utils/trpc'
-import { useTableSorting } from '@/hooks/useTableSorting'
+  Boxes,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { trpc } from "@/utils/trpc";
+import { useTableSorting } from "@/hooks/useTableSorting";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,37 +53,42 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+} from "@/components/ui/alert-dialog";
 
 // Type for packaging inventory item from API
 interface PackagingInventoryItem {
-  id: string
-  packageId: string | null
-  currentBottleCount: number
-  reservedBottleCount: number
-  materialType: string
+  id: string;
+  packageId: string | null;
+  currentBottleCount: number;
+  reservedBottleCount: number;
+  materialType: string;
   metadata: {
-    purchaseId: string
-    vendorName: string
-    packageType?: string | null
-    materialType?: string | null
-    size?: string
-  }
-  location: string | null
-  notes: string | null
-  createdAt: string
-  updatedAt: string
+    purchaseId: string;
+    vendorName: string;
+    packageType?: string | null;
+    materialType?: string | null;
+    size?: string;
+  };
+  location: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Table column configuration
-type SortField = 'size' | 'vendorName' | 'packageType' | 'quantity' | 'createdAt'
+type SortField =
+  | "size"
+  | "vendorName"
+  | "packageType"
+  | "quantity"
+  | "createdAt";
 
 interface PackagingInventoryTableProps {
-  showFilters?: boolean
-  className?: string
-  itemsPerPage?: number
-  onItemClick?: (item: PackagingInventoryItem) => void
-  onAddNew?: () => void
+  showFilters?: boolean;
+  className?: string;
+  itemsPerPage?: number;
+  onItemClick?: (item: PackagingInventoryItem) => void;
+  onAddNew?: () => void;
 }
 
 export function PackagingInventoryTable({
@@ -85,11 +96,13 @@ export function PackagingInventoryTable({
   className,
   itemsPerPage = 50,
   onItemClick,
-  onAddNew
+  onAddNew,
 }: PackagingInventoryTableProps) {
   // Filter state
-  const [searchQuery, setSearchQuery] = useState<string>('')
-  const [deleteItem, setDeleteItem] = useState<PackagingInventoryItem | null>(null)
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [deleteItem, setDeleteItem] = useState<PackagingInventoryItem | null>(
+    null,
+  );
 
   // Sorting state using the reusable hook
   const {
@@ -98,161 +111,184 @@ export function PackagingInventoryTable({
     getSortDirection,
     getSortIcon,
     sortData,
-    clearAllSort
+    clearAllSort,
   } = useTableSorting<SortField>({
     multiColumn: false,
-    defaultSort: { field: 'createdAt', direction: 'desc' }
-  })
+    defaultSort: { field: "createdAt", direction: "desc" },
+  });
 
   // Pagination state
-  const [currentPage, setCurrentPage] = useState(0)
+  const [currentPage, setCurrentPage] = useState(0);
 
   // Router for navigation
-  const router = useRouter()
+  const router = useRouter();
 
   // API queries - using inventory.list with materialType filter
   const {
     data: inventoryData,
     isLoading,
     error,
-    refetch
+    refetch,
   } = trpc.inventory.list.useQuery({
     limit: 100, // Max allowed by API
     offset: 0,
-  })
+  });
 
   // Transform and filter inventory data to show only packaging
   const packagingItems = useMemo(() => {
-    if (!inventoryData?.items) return []
+    if (!inventoryData?.items) return [];
 
     // Filter for packaging items only
     const items = inventoryData.items
-      .filter((item: any) => item.materialType === 'packaging')
-      .map((item: any) => ({
-        id: item.id,
-        packageId: item.packageId,
-        currentBottleCount: item.currentBottleCount,
-        reservedBottleCount: item.reservedBottleCount,
-        materialType: item.materialType,
-        metadata: item.metadata || {},
-        location: item.location,
-        notes: item.notes,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt
-      } as PackagingInventoryItem))
+      .filter((item: any) => item.materialType === "packaging")
+      .map(
+        (item: any) =>
+          ({
+            id: item.id,
+            packageId: item.packageId,
+            currentBottleCount: item.currentBottleCount,
+            reservedBottleCount: item.reservedBottleCount,
+            materialType: item.materialType,
+            metadata: item.metadata || {},
+            location: item.location,
+            notes: item.notes,
+            createdAt: item.createdAt,
+            updatedAt: item.updatedAt,
+          }) as PackagingInventoryItem,
+      );
 
-    return items
-  }, [inventoryData])
+    return items;
+  }, [inventoryData]);
 
   // Apply client-side filtering
   const filteredItems = useMemo(() => {
-    let filtered = packagingItems
+    let filtered = packagingItems;
 
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter((item: any) =>
-        (item.metadata?.size?.toLowerCase().includes(query)) ||
-        (item.metadata?.vendorName?.toLowerCase().includes(query)) ||
-        (item.metadata?.packageType && item.metadata.packageType.toLowerCase().includes(query)) ||
-        (item.metadata?.materialType && item.metadata.materialType.toLowerCase().includes(query)) ||
-        (item.notes && item.notes.toLowerCase().includes(query))
-      )
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (item: any) =>
+          item.metadata?.size?.toLowerCase().includes(query) ||
+          item.metadata?.vendorName?.toLowerCase().includes(query) ||
+          (item.metadata?.packageType &&
+            item.metadata.packageType.toLowerCase().includes(query)) ||
+          (item.metadata?.materialType &&
+            item.metadata.materialType.toLowerCase().includes(query)) ||
+          (item.notes && item.notes.toLowerCase().includes(query)),
+      );
     }
 
-    return filtered
-  }, [packagingItems, searchQuery])
+    return filtered;
+  }, [packagingItems, searchQuery]);
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
     return sortData(filteredItems, (item: any, field) => {
       // Custom sort value extraction for different field types
       switch (field) {
-        case 'size':
-          return item.metadata?.size || ''
-        case 'vendorName':
-          return item.metadata?.vendorName || ''
-        case 'packageType':
-          return item.metadata?.packageType || ''
-        case 'quantity':
-          return item.currentBottleCount || 0
-        case 'createdAt':
-          return new Date(item.createdAt)
+        case "size":
+          return item.metadata?.size || "";
+        case "vendorName":
+          return item.metadata?.vendorName || "";
+        case "packageType":
+          return item.metadata?.packageType || "";
+        case "quantity":
+          return item.currentBottleCount || 0;
+        case "createdAt":
+          return new Date(item.createdAt);
         default:
-          return (item as any)[field]
+          return (item as any)[field];
       }
-    })
-  }, [filteredItems, sortData])
+    });
+  }, [filteredItems, sortData]);
 
   // Event handlers
-  const handleColumnSort = useCallback((field: SortField) => {
-    handleSort(field)
-  }, [handleSort])
+  const handleColumnSort = useCallback(
+    (field: SortField) => {
+      handleSort(field);
+    },
+    [handleSort],
+  );
 
-  const handleItemClick = useCallback((item: PackagingInventoryItem) => {
-    if (onItemClick) {
-      onItemClick(item)
-    }
-    // No navigation - just call the handler if provided
-  }, [onItemClick])
+  const handleItemClick = useCallback(
+    (item: PackagingInventoryItem) => {
+      if (onItemClick) {
+        onItemClick(item);
+      }
+      // No navigation - just call the handler if provided
+    },
+    [onItemClick],
+  );
 
   const handleRefresh = useCallback(() => {
-    refetch()
-  }, [refetch])
+    refetch();
+  }, [refetch]);
 
   // Handle delete confirmation
   const handleDeleteConfirm = useCallback(() => {
     if (deleteItem) {
       // TODO: Implement delete functionality
-      console.log('Delete packaging item:', deleteItem.id)
-      setDeleteItem(null)
+      console.log("Delete packaging item:", deleteItem.id);
+      setDeleteItem(null);
     }
-  }, [deleteItem])
+  }, [deleteItem]);
 
   // Get sort direction for display
-  const getSortDirectionForDisplay = useCallback((field: SortField) => {
-    const direction = getSortDirection(field)
-    return direction ? direction : 'none'
-  }, [getSortDirection])
+  const getSortDirectionForDisplay = useCallback(
+    (field: SortField) => {
+      const direction = getSortDirection(field);
+      return direction ? direction : "none";
+    },
+    [getSortDirection],
+  );
 
   // Get sort index for multi-column sorting display
-  const getSortIndex = useCallback((field: SortField) => {
-    const columnIndex = sortState.columns.findIndex(col => col.field === field)
-    return columnIndex >= 0 ? columnIndex : undefined
-  }, [sortState.columns])
+  const getSortIndex = useCallback(
+    (field: SortField) => {
+      const columnIndex = sortState.columns.findIndex(
+        (col) => col.field === field,
+      );
+      return columnIndex >= 0 ? columnIndex : undefined;
+    },
+    [sortState.columns],
+  );
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return '—'
-    return new Date(dateString).toLocaleDateString()
-  }
+    if (!dateString) return "—";
+    return new Date(dateString).toLocaleDateString();
+  };
 
   const formatQuantity = (quantity: number) => {
-    return quantity.toLocaleString()
-  }
+    return quantity.toLocaleString();
+  };
 
   const formatCurrency = (amount: string | null) => {
-    if (!amount) return '—'
-    const value = parseFloat(amount)
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(value)
-  }
+    if (!amount) return "—";
+    const value = parseFloat(amount);
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(value);
+  };
 
   const getPackageTypeBadge = (type: string | null) => {
-    if (!type) return null
+    if (!type) return null;
     const colors = {
-      bottle: 'bg-green-100 text-green-800',
-      can: 'bg-blue-100 text-blue-800',
-      keg: 'bg-purple-100 text-purple-800',
-      growler: 'bg-orange-100 text-orange-800',
-      case: 'bg-yellow-100 text-yellow-800',
-      box: 'bg-gray-100 text-gray-800',
-      label: 'bg-pink-100 text-pink-800',
-      cork: 'bg-amber-100 text-amber-800',
-      cap: 'bg-red-100 text-red-800'
-    }
-    return colors[type.toLowerCase() as keyof typeof colors] || 'bg-gray-100 text-gray-800'
-  }
+      bottle: "bg-green-100 text-green-800",
+      can: "bg-blue-100 text-blue-800",
+      keg: "bg-purple-100 text-purple-800",
+      growler: "bg-orange-100 text-orange-800",
+      case: "bg-yellow-100 text-yellow-800",
+      box: "bg-gray-100 text-gray-800",
+      label: "bg-pink-100 text-pink-800",
+      cork: "bg-amber-100 text-amber-800",
+      cap: "bg-red-100 text-red-800",
+    };
+    return (
+      colors[type.toLowerCase() as keyof typeof colors] ||
+      "bg-gray-100 text-gray-800"
+    );
+  };
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -284,7 +320,10 @@ export function PackagingInventoryTable({
 
               {/* Add Button */}
               {onAddNew && (
-                <Button onClick={onAddNew} className="bg-amber-600 hover:bg-amber-700">
+                <Button
+                  onClick={onAddNew}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Packaging Purchase
                 </Button>
@@ -305,12 +344,15 @@ export function PackagingInventoryTable({
               </CardTitle>
               <div className="flex items-center gap-4">
                 <CardDescription>
-                  {sortedItems.length > 0 ? `${sortedItems.length} packaging items found` : 'No packaging items found'}
+                  {sortedItems.length > 0
+                    ? `${sortedItems.length} packaging items found`
+                    : "No packaging items found"}
                 </CardDescription>
                 {sortState.columns.length > 0 && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span>
-                      Sorted by {sortState.columns[0]?.field} ({sortState.columns[0]?.direction})
+                      Sorted by {sortState.columns[0]?.field} (
+                      {sortState.columns[0]?.direction})
                     </span>
                     <Button
                       variant="ghost"
@@ -348,31 +390,31 @@ export function PackagingInventoryTable({
               <TableHeader>
                 <TableRow>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('size')}
-                    sortIndex={getSortIndex('size')}
-                    onSort={() => handleColumnSort('size')}
+                    sortDirection={getSortDirectionForDisplay("size")}
+                    sortIndex={getSortIndex("size")}
+                    onSort={() => handleColumnSort("size")}
                   >
                     Item
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('vendorName')}
-                    sortIndex={getSortIndex('vendorName')}
-                    onSort={() => handleColumnSort('vendorName')}
+                    sortDirection={getSortDirectionForDisplay("vendorName")}
+                    sortIndex={getSortIndex("vendorName")}
+                    onSort={() => handleColumnSort("vendorName")}
                   >
                     Vendor
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('packageType')}
-                    sortIndex={getSortIndex('packageType')}
-                    onSort={() => handleColumnSort('packageType')}
+                    sortDirection={getSortDirectionForDisplay("packageType")}
+                    sortIndex={getSortIndex("packageType")}
+                    onSort={() => handleColumnSort("packageType")}
                   >
                     Type
                   </SortableHeader>
                   <SortableHeader
                     align="right"
-                    sortDirection={getSortDirectionForDisplay('quantity')}
-                    sortIndex={getSortIndex('quantity')}
-                    onSort={() => handleColumnSort('quantity')}
+                    sortDirection={getSortDirectionForDisplay("quantity")}
+                    sortIndex={getSortIndex("quantity")}
+                    onSort={() => handleColumnSort("quantity")}
                   >
                     Quantity
                   </SortableHeader>
@@ -383,9 +425,9 @@ export function PackagingInventoryTable({
                     Total Cost
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('createdAt')}
-                    sortIndex={getSortIndex('createdAt')}
-                    onSort={() => handleColumnSort('createdAt')}
+                    sortDirection={getSortDirectionForDisplay("createdAt")}
+                    sortIndex={getSortIndex("createdAt")}
+                    onSort={() => handleColumnSort("createdAt")}
                   >
                     Purchase Date
                   </SortableHeader>
@@ -399,22 +441,41 @@ export function PackagingInventoryTable({
                   // Loading skeleton
                   Array.from({ length: 5 }).map((_, index) => (
                     <TableRow key={index}>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-28" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-16 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-16 ml-auto" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-16 ml-auto" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="text-center py-8 text-muted-foreground"
+                    >
                       {searchQuery
-                        ? 'No packaging items match your search criteria'
-                        : 'No packaging items found'}
+                        ? "No packaging items match your search criteria"
+                        : "No packaging items found"}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -427,24 +488,31 @@ export function PackagingInventoryTable({
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Boxes className="w-4 h-4 text-muted-foreground" />
-                          <div className="font-medium">{item.metadata?.size || 'Unknown Size'}</div>
+                          <div className="font-medium">
+                            {item.metadata?.size || "Unknown Size"}
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          {item.metadata?.vendorName || 'Unknown Vendor'}
+                          {item.metadata?.vendorName || "Unknown Vendor"}
                         </div>
                       </TableCell>
                       <TableCell>
                         {item.metadata?.packageType ? (
                           <Badge
                             variant="secondary"
-                            className={getPackageTypeBadge(item.metadata.packageType) ?? 'bg-gray-100 text-gray-800'}
+                            className={
+                              getPackageTypeBadge(item.metadata.packageType) ??
+                              "bg-gray-100 text-gray-800"
+                            }
                           >
                             {item.metadata.packageType}
                           </Badge>
                         ) : (
-                          <span className="text-muted-foreground text-sm">—</span>
+                          <span className="text-muted-foreground text-sm">
+                            —
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="text-right font-mono">
@@ -476,8 +544,8 @@ export function PackagingInventoryTable({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={(e) => {
-                                e.stopPropagation()
-                                handleItemClick(item)
+                                e.stopPropagation();
+                                handleItemClick(item);
                               }}
                             >
                               <ExternalLink className="mr-2 h-4 w-4" />
@@ -486,8 +554,8 @@ export function PackagingInventoryTable({
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => {
-                                e.stopPropagation()
-                                setDeleteItem(item)
+                                e.stopPropagation();
+                                setDeleteItem(item);
                               }}
                               className="text-red-600 focus:text-red-600"
                             >
@@ -508,10 +576,10 @@ export function PackagingInventoryTable({
           {sortedItems.length > 0 && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {sortedItems.length} of {packagingItems.length} packaging items
+                Showing {sortedItems.length} of {packagingItems.length}{" "}
+                packaging items
                 {searchQuery.trim() &&
-                  ` (filtered from ${packagingItems.length} total)`
-                }
+                  ` (filtered from ${packagingItems.length} total)`}
               </div>
             </div>
           )}
@@ -519,13 +587,20 @@ export function PackagingInventoryTable({
       </Card>
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
+      <AlertDialog
+        open={!!deleteItem}
+        onOpenChange={(open) => !open && setDeleteItem(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Packaging Item</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &ldquo;{deleteItem ? `${deleteItem.metadata.size || 'item'} from ${deleteItem.metadata.vendorName || 'unknown vendor'}` : ''}&rdquo;?
-              This action cannot be undone and will permanently remove this packaging item from your inventory.
+              Are you sure you want to delete &ldquo;
+              {deleteItem
+                ? `${deleteItem.metadata.size || "item"} from ${deleteItem.metadata.vendorName || "unknown vendor"}`
+                : ""}
+              &rdquo;? This action cannot be undone and will permanently remove
+              this packaging item from your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -540,5 +615,5 @@ export function PackagingInventoryTable({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }

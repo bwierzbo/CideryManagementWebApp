@@ -1,9 +1,9 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { X, AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { X, AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const toastVariants = cva(
   "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-6 pr-8 shadow-lg transition-all",
@@ -21,8 +21,8 @@ const toastVariants = cva(
     defaultVariants: {
       variant: "default",
     },
-  }
-)
+  },
+);
 
 const Toast = React.forwardRef<
   HTMLDivElement,
@@ -34,9 +34,9 @@ const Toast = React.forwardRef<
       className={cn(toastVariants({ variant }), className)}
       {...props}
     />
-  )
-})
-Toast.displayName = "Toast"
+  );
+});
+Toast.displayName = "Toast";
 
 const ToastAction = React.forwardRef<
   HTMLButtonElement,
@@ -46,12 +46,12 @@ const ToastAction = React.forwardRef<
     ref={ref}
     className={cn(
       "inline-flex h-8 shrink-0 items-center justify-center rounded-md border bg-transparent px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 group-[.destructive]:border-muted/40 group-[.destructive]:hover:border-destructive/30 group-[.destructive]:hover:bg-destructive group-[.destructive]:hover:text-destructive-foreground group-[.destructive]:focus:ring-destructive",
-      className
+      className,
     )}
     {...props}
   />
-))
-ToastAction.displayName = "ToastAction"
+));
+ToastAction.displayName = "ToastAction";
 
 const ToastClose = React.forwardRef<
   HTMLButtonElement,
@@ -61,14 +61,14 @@ const ToastClose = React.forwardRef<
     ref={ref}
     className={cn(
       "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
-      className
+      className,
     )}
     {...props}
   >
     <X className="h-4 w-4" />
   </button>
-))
-ToastClose.displayName = "ToastClose"
+));
+ToastClose.displayName = "ToastClose";
 
 const ToastTitle = React.forwardRef<
   HTMLDivElement,
@@ -79,39 +79,37 @@ const ToastTitle = React.forwardRef<
     className={cn("text-sm font-semibold", className)}
     {...props}
   />
-))
-ToastTitle.displayName = "ToastTitle"
+));
+ToastTitle.displayName = "ToastTitle";
 
 const ToastDescription = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("text-sm opacity-90", className)}
-    {...props}
-  />
-))
-ToastDescription.displayName = "ToastDescription"
+  <div ref={ref} className={cn("text-sm opacity-90", className)} {...props} />
+));
+ToastDescription.displayName = "ToastDescription";
 
-function getToastIcon(variant: "default" | "destructive" | "success" | "warning" | "info" | null) {
+function getToastIcon(
+  variant: "default" | "destructive" | "success" | "warning" | "info" | null,
+) {
   switch (variant) {
     case "destructive":
-      return <XCircle className="h-5 w-5" />
+      return <XCircle className="h-5 w-5" />;
     case "success":
-      return <CheckCircle2 className="h-5 w-5" />
+      return <CheckCircle2 className="h-5 w-5" />;
     case "warning":
-      return <AlertTriangle className="h-5 w-5" />
+      return <AlertTriangle className="h-5 w-5" />;
     case "info":
-      return <Info className="h-5 w-5" />
+      return <Info className="h-5 w-5" />;
     default:
-      return <Info className="h-5 w-5" />
+      return <Info className="h-5 w-5" />;
   }
 }
 
-type ToastProps = React.ComponentPropsWithoutRef<typeof Toast>
+type ToastProps = React.ComponentPropsWithoutRef<typeof Toast>;
 
-type ToastActionElement = React.ReactElement<typeof ToastAction>
+type ToastActionElement = React.ReactElement<typeof ToastAction>;
 
 export {
   type ToastProps,
@@ -122,4 +120,4 @@ export {
   ToastTitle,
   ToastDescription,
   getToastIcon,
-}
+};

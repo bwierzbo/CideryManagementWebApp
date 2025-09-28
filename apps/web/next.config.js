@@ -4,12 +4,12 @@ const nextConfig = {
 
   // Performance optimizations
   experimental: {
-    optimizePackageImports: ['lucide-react', 'date-fns'],
+    optimizePackageImports: ["lucide-react", "date-fns"],
     turbo: {
       rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
+        "*.svg": {
+          loaders: ["@svgr/webpack"],
+          as: "*.js",
         },
       },
     },
@@ -22,55 +22,55 @@ const nextConfig = {
       config.optimization = {
         ...config.optimization,
         splitChunks: {
-          chunks: 'all',
+          chunks: "all",
           cacheGroups: {
             // Separate vendor chunks for better caching
             vendor: {
               test: /[\\/]node_modules[\\/]/,
-              name: 'vendors',
-              chunks: 'all',
+              name: "vendors",
+              chunks: "all",
               enforce: true,
             },
             // Create separate chunks for large libraries
             react: {
               test: /[\\/]node_modules[\\/](react|react-dom)[\\/]/,
-              name: 'react',
-              chunks: 'all',
+              name: "react",
+              chunks: "all",
               enforce: true,
             },
             // UI library chunk
             ui: {
               test: /[\\/]node_modules[\\/](@radix-ui|@headlessui|framer-motion)[\\/]/,
-              name: 'ui-libs',
-              chunks: 'all',
+              name: "ui-libs",
+              chunks: "all",
               enforce: true,
             },
             // Chart/visualization libraries
             charts: {
               test: /[\\/]node_modules[\\/](recharts|d3|chart\.js)[\\/]/,
-              name: 'charts',
-              chunks: 'all',
+              name: "charts",
+              chunks: "all",
               enforce: true,
             },
             // PDF and export libraries
             pdf: {
               test: /[\\/]node_modules[\\/](@react-pdf|jspdf|html2canvas)[\\/]/,
-              name: 'pdf-libs',
-              chunks: 'all',
+              name: "pdf-libs",
+              chunks: "all",
               enforce: true,
             },
             // Utility libraries
             utils: {
               test: /[\\/]node_modules[\\/](lodash|date-fns|clsx|class-variance-authority)[\\/]/,
-              name: 'utils',
-              chunks: 'all',
+              name: "utils",
+              chunks: "all",
               enforce: true,
             },
             // Common application code
             common: {
-              name: 'common',
+              name: "common",
               minChunks: 2,
-              chunks: 'all',
+              chunks: "all",
               enforce: true,
             },
           },
@@ -86,10 +86,10 @@ const nextConfig = {
     config.module.rules.push({
       test: /\.(png|jpe?g|gif|svg)$/,
       use: {
-        loader: 'file-loader',
+        loader: "file-loader",
         options: {
-          publicPath: '/_next/static/images/',
-          outputPath: 'static/images/',
+          publicPath: "/_next/static/images/",
+          outputPath: "static/images/",
         },
       },
     });
@@ -99,7 +99,7 @@ const nextConfig = {
 
   // Image optimization
   images: {
-    formats: ['image/avif', 'image/webp'],
+    formats: ["image/avif", "image/webp"],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     domains: [], // Add your image domains here
@@ -119,16 +119,16 @@ const nextConfig = {
   },
 
   // Generate bundle analyzer in production
-  ...(process.env.ANALYZE === 'true' && {
+  ...(process.env.ANALYZE === "true" && {
     webpack: (config, { dev, isServer }) => {
       if (!dev && !isServer) {
-        const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+        const { BundleAnalyzerPlugin } = require("webpack-bundle-analyzer");
         config.plugins.push(
           new BundleAnalyzerPlugin({
-            analyzerMode: 'static',
-            reportFilename: '../bundle-analysis.html',
+            analyzerMode: "static",
+            reportFilename: "../bundle-analysis.html",
             openAnalyzer: false,
-          })
+          }),
         );
       }
       return config;
@@ -138,9 +138,9 @@ const nextConfig = {
   // Performance monitoring
   generateBuildId: async () => {
     // Use git commit hash for better cache invalidation
-    const { execSync } = require('child_process');
+    const { execSync } = require("child_process");
     try {
-      const commitHash = execSync('git rev-parse HEAD').toString().trim();
+      const commitHash = execSync("git rev-parse HEAD").toString().trim();
       return commitHash.substring(0, 8);
     } catch {
       return null; // Fallback to default
@@ -150,20 +150,20 @@ const nextConfig = {
   // Headers for better caching and security
   headers: async () => [
     {
-      source: '/_next/static/:path*',
+      source: "/_next/static/:path*",
       headers: [
         {
-          key: 'Cache-Control',
-          value: 'public, max-age=31536000, immutable',
+          key: "Cache-Control",
+          value: "public, max-age=31536000, immutable",
         },
       ],
     },
     {
-      source: '/favicon.ico',
+      source: "/favicon.ico",
       headers: [
         {
-          key: 'Cache-Control',
-          value: 'public, max-age=86400',
+          key: "Cache-Control",
+          value: "public, max-age=86400",
         },
       ],
     },
@@ -172,11 +172,11 @@ const nextConfig = {
   // Redirects for better SEO and UX
   redirects: async () => [
     {
-      source: '/packaging/:id/edit',
-      destination: '/packaging/:id',
+      source: "/packaging/:id/edit",
+      destination: "/packaging/:id",
       permanent: true,
     },
   ],
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

@@ -1,21 +1,46 @@
-"use client"
+"use client";
 
-import React, { useState } from "react"
-import { trpc } from "@/utils/trpc"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import React, { useState } from "react";
+import { trpc } from "@/utils/trpc";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
+} from "@/components/ui/dropdown-menu";
 import {
   Eye,
   MoreVertical,
@@ -29,136 +54,139 @@ import {
   Droplets,
   FlaskConical,
   History,
-} from "lucide-react"
-import { format } from "date-fns"
-import { BatchHistoryModal } from "./BatchHistoryModal"
-import { AddBatchMeasurementForm } from "./AddBatchMeasurementForm"
-import { AddBatchAdditiveForm } from "./AddBatchAdditiveForm"
-import { toast } from "@/hooks/use-toast"
+} from "lucide-react";
+import { format } from "date-fns";
+import { BatchHistoryModal } from "./BatchHistoryModal";
+import { AddBatchMeasurementForm } from "./AddBatchMeasurementForm";
+import { AddBatchAdditiveForm } from "./AddBatchAdditiveForm";
+import { toast } from "@/hooks/use-toast";
 
 interface BatchManagementTableProps {
-  className?: string
+  className?: string;
 }
 
 interface EditingState {
-  batchId: string
-  customName: string
+  batchId: string;
+  customName: string;
 }
 
 export function BatchManagementTable({ className }: BatchManagementTableProps) {
-  const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null)
-  const [showHistory, setShowHistory] = useState(false)
-  const [showMeasurementForm, setShowMeasurementForm] = useState(false)
-  const [showAdditiveForm, setShowAdditiveForm] = useState(false)
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [batchToDelete, setBatchToDelete] = useState<{ id: string; name: string } | null>(null)
-  const [editingBatch, setEditingBatch] = useState<EditingState | null>(null)
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showMeasurementForm, setShowMeasurementForm] = useState(false);
+  const [showAdditiveForm, setShowAdditiveForm] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [batchToDelete, setBatchToDelete] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [editingBatch, setEditingBatch] = useState<EditingState | null>(null);
 
-  const utils = trpc.useUtils()
+  const utils = trpc.useUtils();
 
   // Fetch batches
   const { data, isLoading, error } = trpc.batch.list.useQuery({
     search: search || undefined,
-    status: statusFilter !== "all" ? statusFilter as any : undefined,
+    status: statusFilter !== "all" ? (statusFilter as any) : undefined,
     sortBy: "startDate",
     sortOrder: "desc",
-  })
+  });
 
   // Delete mutation
   const deleteMutation = trpc.batch.delete.useMutation({
     onSuccess: () => {
-      utils.batch.list.invalidate()
+      utils.batch.list.invalidate();
       toast({
         title: "Success",
         description: "Batch deleted successfully",
-      })
-      setDeleteConfirmOpen(false)
-      setBatchToDelete(null)
+      });
+      setDeleteConfirmOpen(false);
+      setBatchToDelete(null);
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   // Update batch mutation
   const updateMutation = trpc.batch.update.useMutation({
     onSuccess: () => {
-      utils.batch.list.invalidate()
+      utils.batch.list.invalidate();
       toast({
         title: "Success",
         description: "Batch updated successfully",
-      })
+      });
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "planned":
-        return "bg-gray-100 text-gray-700 border-gray-300"
+        return "bg-gray-100 text-gray-700 border-gray-300";
       case "active":
-        return "bg-green-100 text-green-700 border-green-300"
+        return "bg-green-100 text-green-700 border-green-300";
       case "packaged":
-        return "bg-blue-100 text-blue-700 border-blue-300"
+        return "bg-blue-100 text-blue-700 border-blue-300";
       default:
-        return "bg-gray-100 text-gray-700 border-gray-300"
+        return "bg-gray-100 text-gray-700 border-gray-300";
     }
-  }
+  };
 
   const handleSaveCustomName = () => {
     if (editingBatch) {
       updateMutation.mutate({
         batchId: editingBatch.batchId,
         customName: editingBatch.customName,
-      })
-      setEditingBatch(null)
+      });
+      setEditingBatch(null);
     }
-  }
+  };
 
   const handleDeleteClick = (batch: { id: string; name: string }) => {
-    setBatchToDelete(batch)
-    setDeleteConfirmOpen(true)
-  }
+    setBatchToDelete(batch);
+    setDeleteConfirmOpen(true);
+  };
 
   const handleDeleteConfirm = () => {
     if (batchToDelete) {
-      deleteMutation.mutate({ batchId: batchToDelete.id })
+      deleteMutation.mutate({ batchId: batchToDelete.id });
     }
-  }
+  };
 
   const handleStatusChange = (batchId: string, newStatus: string) => {
     updateMutation.mutate({
       batchId,
       status: newStatus as any,
-    })
-  }
+    });
+  };
 
   const handleViewHistory = (batchId: string) => {
-    setSelectedBatchId(batchId)
-    setShowHistory(true)
-  }
+    setSelectedBatchId(batchId);
+    setShowHistory(true);
+  };
 
   const handleAddMeasurement = (batchId: string) => {
-    setSelectedBatchId(batchId)
-    setShowMeasurementForm(true)
-  }
+    setSelectedBatchId(batchId);
+    setShowMeasurementForm(true);
+  };
 
   const handleAddAdditive = (batchId: string) => {
-    setSelectedBatchId(batchId)
-    setShowAdditiveForm(true)
-  }
+    setSelectedBatchId(batchId);
+    setShowAdditiveForm(true);
+  };
 
   if (isLoading) {
     return (
@@ -170,7 +198,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
           <div className="text-center py-8">Loading batches...</div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (error) {
@@ -185,10 +213,10 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
-  const batches = data?.batches || []
+  const batches = data?.batches || [];
 
   return (
     <>
@@ -242,7 +270,9 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                   <TableHead>Vessel</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Start Date</TableHead>
-                  <TableHead className="text-center">Specific Gravity</TableHead>
+                  <TableHead className="text-center">
+                    Specific Gravity
+                  </TableHead>
                   <TableHead className="text-center">pH</TableHead>
                   <TableHead className="text-right">Volume (L)</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -251,27 +281,37 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
               <TableBody>
                 {batches.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                    <TableCell
+                      colSpan={9}
+                      className="text-center text-gray-500 py-8"
+                    >
                       No batches found
                     </TableCell>
                   </TableRow>
                 ) : (
                   batches.map((batch) => (
                     <TableRow key={batch.id}>
-                      <TableCell className="font-medium font-mono text-sm">{batch.name}</TableCell>
+                      <TableCell className="font-medium font-mono text-sm">
+                        {batch.name}
+                      </TableCell>
                       <TableCell>
                         {editingBatch?.batchId === batch.id ? (
                           <div className="flex items-center gap-2">
                             <Input
                               value={editingBatch.customName}
-                              onChange={(e) => setEditingBatch({ ...editingBatch, customName: e.target.value })}
+                              onChange={(e) =>
+                                setEditingBatch({
+                                  ...editingBatch,
+                                  customName: e.target.value,
+                                })
+                              }
                               className="h-8 w-40"
                               placeholder="Batch name..."
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleSaveCustomName()
-                                } else if (e.key === 'Escape') {
-                                  setEditingBatch(null)
+                                if (e.key === "Enter") {
+                                  handleSaveCustomName();
+                                } else if (e.key === "Escape") {
+                                  setEditingBatch(null);
                                 }
                               }}
                               autoFocus
@@ -295,9 +335,18 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                         ) : (
                           <div
                             className="cursor-pointer flex items-center gap-1 hover:text-blue-600 font-medium"
-                            onClick={() => setEditingBatch({ batchId: batch.id, customName: batch.customName || '' })}
+                            onClick={() =>
+                              setEditingBatch({
+                                batchId: batch.id,
+                                customName: batch.customName || "",
+                              })
+                            }
                           >
-                            {batch.customName || <span className="text-gray-400 font-normal">Click to add batch name</span>}
+                            {batch.customName || (
+                              <span className="text-gray-400 font-normal">
+                                Click to add batch name
+                              </span>
+                            )}
                             <Edit2 className="w-3 h-3" />
                           </div>
                         )}
@@ -317,7 +366,9 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                       </TableCell>
                       <TableCell className="text-center">
                         {batch.latestMeasurement?.specificGravity
-                          ? Number(batch.latestMeasurement.specificGravity).toFixed(3)
+                          ? Number(
+                              batch.latestMeasurement.specificGravity,
+                            ).toFixed(3)
                           : "-"}
                       </TableCell>
                       <TableCell className="text-center">
@@ -357,13 +408,17 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
-                              onClick={() => handleStatusChange(batch.id, "active")}
+                              onClick={() =>
+                                handleStatusChange(batch.id, "active")
+                              }
                               disabled={batch.status === "active"}
                             >
                               Set Active
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => handleStatusChange(batch.id, "packaged")}
+                              onClick={() =>
+                                handleStatusChange(batch.id, "packaged")
+                              }
                               disabled={batch.status === "packaged"}
                             >
                               Set Packaged
@@ -402,15 +457,18 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
           batchId={selectedBatchId}
           open={showHistory}
           onClose={() => {
-            setShowHistory(false)
-            setSelectedBatchId(null)
+            setShowHistory(false);
+            setSelectedBatchId(null);
           }}
         />
       )}
 
       {/* Add Measurement Dialog */}
       {selectedBatchId && showMeasurementForm && (
-        <Dialog open={showMeasurementForm} onOpenChange={setShowMeasurementForm}>
+        <Dialog
+          open={showMeasurementForm}
+          onOpenChange={setShowMeasurementForm}
+        >
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Add Batch Measurement</DialogTitle>
@@ -421,13 +479,13 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
             <AddBatchMeasurementForm
               batchId={selectedBatchId}
               onSuccess={() => {
-                setShowMeasurementForm(false)
-                setSelectedBatchId(null)
-                utils.batch.list.invalidate()
+                setShowMeasurementForm(false);
+                setSelectedBatchId(null);
+                utils.batch.list.invalidate();
               }}
               onCancel={() => {
-                setShowMeasurementForm(false)
-                setSelectedBatchId(null)
+                setShowMeasurementForm(false);
+                setSelectedBatchId(null);
               }}
             />
           </DialogContent>
@@ -447,12 +505,12 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
             <AddBatchAdditiveForm
               batchId={selectedBatchId}
               onSuccess={() => {
-                setShowAdditiveForm(false)
-                setSelectedBatchId(null)
+                setShowAdditiveForm(false);
+                setSelectedBatchId(null);
               }}
               onCancel={() => {
-                setShowAdditiveForm(false)
-                setSelectedBatchId(null)
+                setShowAdditiveForm(false);
+                setSelectedBatchId(null);
               }}
             />
           </DialogContent>
@@ -465,16 +523,16 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
           <DialogHeader>
             <DialogTitle>Delete Batch</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete batch &ldquo;{batchToDelete?.name}&rdquo;? This action
-              cannot be undone.
+              Are you sure you want to delete batch &ldquo;{batchToDelete?.name}
+              &rdquo;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end space-x-2 mt-4">
             <Button
               variant="outline"
               onClick={() => {
-                setDeleteConfirmOpen(false)
-                setBatchToDelete(null)
+                setDeleteConfirmOpen(false);
+                setBatchToDelete(null);
               }}
             >
               Cancel
@@ -490,5 +548,5 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }

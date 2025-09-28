@@ -1,17 +1,50 @@
-"use client"
+"use client";
 
-import React, { useState } from "react"
-import { trpc } from "@/utils/trpc"
-import { Navbar } from "@/components/navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu"
-import { toast } from "@/hooks/use-toast"
+import React, { useState } from "react";
+import { trpc } from "@/utils/trpc";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "@/hooks/use-toast";
 import {
   Beaker,
   Droplets,
@@ -32,53 +65,61 @@ import {
   Settings,
   MoreVertical,
   FlaskConical,
-  Wine
-} from "lucide-react"
-import { litersToGallons, formatVolume, formatVolumeRange, VolumeUnit } from "lib"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { BatchManagementTable } from "@/components/cellar/BatchManagementTable"
-import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal"
-import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm"
-import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm"
-import { BottleModal } from "@/components/packaging/bottle-modal"
+  Wine,
+} from "lucide-react";
+import {
+  litersToGallons,
+  formatVolume,
+  formatVolumeRange,
+  VolumeUnit,
+} from "lib";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { BatchManagementTable } from "@/components/cellar/BatchManagementTable";
+import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal";
+import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
+import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
+import { BottleModal } from "@/components/packaging/bottle-modal";
 
 // Form schemas
 const measurementSchema = z.object({
   batchId: z.string().uuid("Select a batch"),
   measurementDate: z.string().min(1, "Date is required"),
-  specificGravity: z.number().min(0.990).max(1.200),
+  specificGravity: z.number().min(0.99).max(1.2),
   abv: z.number().min(0).max(20).optional(),
   ph: z.number().min(2).max(5).optional(),
   totalAcidity: z.number().min(0).max(20).optional(),
   temperature: z.number().min(0).max(40).optional(),
   volumeL: z.number().positive().optional(),
   notes: z.string().optional(),
-})
+});
 
 const tankMeasurementSchema = z.object({
   measurementDate: z.string().optional(),
   temperature: z.preprocess(
-    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
-    z.number().optional()
+    (val) =>
+      val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional(),
   ),
-  temperatureUnit: z.enum(['celsius', 'fahrenheit']).default('celsius'),
+  temperatureUnit: z.enum(["celsius", "fahrenheit"]).default("celsius"),
   sh: z.preprocess(
-    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
-    z.number().optional()
+    (val) =>
+      val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional(),
   ),
   ph: z.preprocess(
-    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
-    z.number().optional()
+    (val) =>
+      val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional(),
   ),
   ta: z.preprocess(
-    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
-    z.number().optional()
+    (val) =>
+      val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().optional(),
   ),
   notes: z.string().optional(),
-})
-
+});
 
 const transferSchema = z.object({
   fromVesselId: z.string().uuid("Select source vessel"),
@@ -86,70 +127,76 @@ const transferSchema = z.object({
   volumeL: z.number().positive("Volume must be positive"),
   loss: z.number().min(0, "Loss cannot be negative").optional(),
   notes: z.string().optional(),
-})
+});
 
 const tankSchema = z.object({
   name: z.string().optional(),
-  capacityL: z.number().positive('Capacity must be positive'),
-  capacityUnit: z.enum(['L', 'gal']),
-  material: z.enum(['stainless_steel', 'plastic']).optional(),
-  jacketed: z.enum(['yes', 'no']).optional(),
+  capacityL: z.number().positive("Capacity must be positive"),
+  capacityUnit: z.enum(["L", "gal"]),
+  material: z.enum(["stainless_steel", "plastic"]).optional(),
+  jacketed: z.enum(["yes", "no"]).optional(),
   location: z.string().optional(),
   notes: z.string().optional(),
-})
+});
 
-type MeasurementForm = z.infer<typeof measurementSchema>
-type TransferForm = z.infer<typeof transferSchema>
-type TankForm = z.infer<typeof tankSchema>
+type MeasurementForm = z.infer<typeof measurementSchema>;
+type TransferForm = z.infer<typeof transferSchema>;
+type TankForm = z.infer<typeof tankSchema>;
 
-function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => void }) {
+function TankForm({
+  vesselId,
+  onClose,
+}: {
+  vesselId?: string;
+  onClose: () => void;
+}) {
   const {
     register,
     handleSubmit,
     formState: { errors },
     setValue,
     watch,
-    reset
+    reset,
   } = useForm<TankForm>({
     resolver: zodResolver(tankSchema),
     defaultValues: {
-      capacityUnit: 'L',
-    }
-  })
+      capacityUnit: "L",
+    },
+  });
 
-  const utils = trpc.useUtils()
+  const utils = trpc.useUtils();
   const vesselQuery = trpc.vessel.getById.useQuery(
     { id: vesselId! },
-    { enabled: !!vesselId }
-  )
+    { enabled: !!vesselId },
+  );
 
   const createMutation = trpc.vessel.create.useMutation({
     onSuccess: () => {
-      utils.vessel.list.invalidate()
-      utils.vessel.liquidMap.invalidate()
-      onClose()
-      reset()
-    }
-  })
+      utils.vessel.list.invalidate();
+      utils.vessel.liquidMap.invalidate();
+      onClose();
+      reset();
+    },
+  });
 
   const updateMutation = trpc.vessel.update.useMutation({
     onSuccess: () => {
-      utils.vessel.list.invalidate()
-      utils.vessel.liquidMap.invalidate()
-      onClose()
-      reset()
-    }
-  })
+      utils.vessel.list.invalidate();
+      utils.vessel.liquidMap.invalidate();
+      onClose();
+      reset();
+    },
+  });
 
   // Load existing vessel data for editing
   React.useEffect(() => {
     if (vesselQuery.data?.vessel) {
-      const vessel = vesselQuery.data.vessel
-      let displayCapacity = parseFloat(vessel.capacityL)
+      const vessel = vesselQuery.data.vessel;
+      let displayCapacity = parseFloat(vessel.capacityL);
 
       // Convert from liters to gallons for display if unit is gallons
-      if (vessel.capacityUnit === 'gal') {
-        displayCapacity = displayCapacity / 3.78541
+      if (vessel.capacityUnit === "gal") {
+        displayCapacity = displayCapacity / 3.78541;
       }
 
       reset({
@@ -160,31 +207,31 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
         jacketed: vessel.jacketed as any,
         location: vessel.location || undefined,
         notes: vessel.notes || undefined,
-      })
+      });
     }
-  }, [vesselQuery.data, reset])
+  }, [vesselQuery.data, reset]);
 
-  const watchedCapacityUnit = watch('capacityUnit')
+  const watchedCapacityUnit = watch("capacityUnit");
 
   const onSubmit = (data: TankForm) => {
     // Convert capacity to liters if unit is gallons
-    let capacityToSubmit = data.capacityL
-    if (data.capacityUnit === 'gal') {
+    let capacityToSubmit = data.capacityL;
+    if (data.capacityUnit === "gal") {
       // User entered gallons, but we store in liters
-      capacityToSubmit = data.capacityL * 3.78541
+      capacityToSubmit = data.capacityL * 3.78541;
     }
 
     const submitData = {
       ...data,
-      capacityL: capacityToSubmit
-    }
+      capacityL: capacityToSubmit,
+    };
 
     if (vesselId) {
-      updateMutation.mutate({ id: vesselId, ...submitData })
+      updateMutation.mutate({ id: vesselId, ...submitData });
     } else {
-      createMutation.mutate(submitData)
+      createMutation.mutate(submitData);
     }
-  }
+  };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -196,7 +243,9 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
             placeholder="Leave empty to auto-generate (Tank 1, Tank 2, etc.)"
             {...register("name")}
           />
-          {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
+          {errors.name && (
+            <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>
+          )}
         </div>
       </div>
 
@@ -210,7 +259,11 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
             placeholder="1000"
             {...register("capacityL", { valueAsNumber: true })}
           />
-          {errors.capacityL && <p className="text-sm text-red-600 mt-1">{errors.capacityL.message}</p>}
+          {errors.capacityL && (
+            <p className="text-sm text-red-600 mt-1">
+              {errors.capacityL.message}
+            </p>
+          )}
         </div>
         <div>
           <Label htmlFor="capacityUnit">Unit</Label>
@@ -256,7 +309,6 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
         </div>
       </div>
 
-
       <div>
         <Label htmlFor="location">Location</Label>
         <Input
@@ -284,25 +336,34 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
           disabled={createMutation.isPending || updateMutation.isPending}
         >
           {createMutation.isPending || updateMutation.isPending
-            ? 'Saving...'
-            : vesselId ? 'Update Tank' : 'Add Tank'
-          }
+            ? "Saving..."
+            : vesselId
+              ? "Update Tank"
+              : "Add Tank"}
         </Button>
       </div>
     </form>
-  )
+  );
 }
 
-function BatchMeasurementFormWrapper({ vesselId, batchId, onClose }: { vesselId: string; batchId: string; onClose: () => void }) {
-  const utils = trpc.useUtils()
+function BatchMeasurementFormWrapper({
+  vesselId,
+  batchId,
+  onClose,
+}: {
+  vesselId: string;
+  batchId: string;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
 
   const handleSuccess = () => {
     // Invalidate vessel data to update the measurements shown
-    utils.vessel.liquidMap.invalidate()
-    utils.batch.get.invalidate({ batchId })
-    utils.batch.list.invalidate()
-    onClose()
-  }
+    utils.vessel.liquidMap.invalidate();
+    utils.batch.get.invalidate({ batchId });
+    utils.batch.list.invalidate();
+    onClose();
+  };
 
   return (
     <AddBatchMeasurementForm
@@ -310,29 +371,39 @@ function BatchMeasurementFormWrapper({ vesselId, batchId, onClose }: { vesselId:
       onSuccess={handleSuccess}
       onCancel={onClose}
     />
-  )
+  );
 }
 
-function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: () => void }) {
-  const utils = trpc.useUtils()
-  const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
+function TankAdditiveForm({
+  vesselId,
+  onClose,
+}: {
+  vesselId: string;
+  onClose: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
 
   // Find the batch ID for this vessel
-  const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
-  const batchId = liquidMapVessel?.batchId
+  const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+    (v) => v.vesselId === vesselId,
+  );
+  const batchId = liquidMapVessel?.batchId;
 
   const handleSuccess = () => {
-    utils.vessel.liquidMap.invalidate()
-    utils.batch.getHistory.invalidate({ batchId: batchId! })
-    onClose()
-  }
+    utils.vessel.liquidMap.invalidate();
+    utils.batch.getHistory.invalidate({ batchId: batchId! });
+    onClose();
+  };
 
   if (!batchId) {
     return (
       <div className="space-y-4">
         <div className="text-center py-8 text-gray-500">
           <p className="text-sm">No active batch found in this vessel.</p>
-          <p className="text-xs mt-2">Additives can only be added to vessels with active batches.</p>
+          <p className="text-xs mt-2">
+            Additives can only be added to vessels with active batches.
+          </p>
         </div>
         <div className="flex justify-end">
           <Button variant="outline" onClick={onClose}>
@@ -340,7 +411,7 @@ function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: ()
           </Button>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -349,68 +420,93 @@ function TankAdditiveForm({ vesselId, onClose }: { vesselId: string; onClose: ()
       onSuccess={handleSuccess}
       onCancel={onClose}
     />
-  )
+  );
 }
 
-function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onClose: () => void }) {
-  const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm({
+function TankTransferForm({
+  fromVesselId,
+  onClose,
+}: {
+  fromVesselId: string;
+  onClose: () => void;
+}) {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm({
     resolver: zodResolver(transferSchema),
     defaultValues: {
       fromVesselId: fromVesselId,
       loss: 0,
-    }
-  })
+    },
+  });
 
-  const vesselListQuery = trpc.vessel.list.useQuery()
-  const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
-  const utils = trpc.useUtils()
+  const vesselListQuery = trpc.vessel.list.useQuery();
+  const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
+  const utils = trpc.useUtils();
 
   const formatVolumeDisplay = (volumeL: number, capacityUnit: string) => {
-    const unit = capacityUnit as VolumeUnit
-    return formatVolume(volumeL, unit)
-  }
+    const unit = capacityUnit as VolumeUnit;
+    return formatVolume(volumeL, unit);
+  };
 
   // Get source vessel info
-  const sourceVessel = vesselListQuery.data?.vessels?.find(v => v.id === fromVesselId)
-  const sourceLiquidMap = liquidMapQuery.data?.vessels?.find(v => v.vesselId === fromVesselId)
+  const sourceVessel = vesselListQuery.data?.vessels?.find(
+    (v) => v.id === fromVesselId,
+  );
+  const sourceLiquidMap = liquidMapQuery.data?.vessels?.find(
+    (v) => v.vesselId === fromVesselId,
+  );
   const currentVolumeL = sourceLiquidMap?.currentVolumeL
     ? parseFloat(sourceLiquidMap.currentVolumeL.toString())
     : sourceLiquidMap?.applePressRunVolume
       ? parseFloat(sourceLiquidMap.applePressRunVolume.toString())
-      : 0
+      : 0;
 
   // Get available destination vessels (exclude current vessel and only available ones)
-  const availableVessels = vesselListQuery.data?.vessels?.filter(
-    vessel => vessel.id !== fromVesselId && vessel.status === 'available'
-  ) || []
+  const availableVessels =
+    vesselListQuery.data?.vessels?.filter(
+      (vessel) => vessel.id !== fromVesselId && vessel.status === "available",
+    ) || [];
 
-  const watchedVolumeL = watch('volumeL')
-  const watchedLoss = watch('loss') || 0
+  const watchedVolumeL = watch("volumeL");
+  const watchedLoss = watch("loss") || 0;
 
   const transferMutation = trpc.vessel.transfer.useMutation({
     onSuccess: (result) => {
-      utils.vessel.list.invalidate()
-      utils.vessel.liquidMap.invalidate()
-      onClose()
+      utils.vessel.list.invalidate();
+      utils.vessel.liquidMap.invalidate();
+      onClose();
       // TODO: Show success toast with result.message
     },
     onError: (error) => {
       // TODO: Show error toast with error.message
-      console.error('Transfer failed:', error.message)
-    }
-  })
+      console.error("Transfer failed:", error.message);
+    },
+  });
 
   const onSubmit = (data: any) => {
-    transferMutation.mutate(data)
-  }
+    transferMutation.mutate(data);
+  };
 
-  const remainingVolume = currentVolumeL - (watchedVolumeL || 0) - watchedLoss
+  const remainingVolume = currentVolumeL - (watchedVolumeL || 0) - watchedLoss;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="text-center p-4 bg-blue-50 rounded-lg">
-        <h4 className="font-medium text-blue-900">Transfer from {sourceVessel?.name || 'Unknown'}</h4>
-        <p className="text-sm text-blue-700">Current volume: {formatVolume(currentVolumeL, sourceVessel?.capacityUnit as VolumeUnit)}</p>
+        <h4 className="font-medium text-blue-900">
+          Transfer from {sourceVessel?.name || "Unknown"}
+        </h4>
+        <p className="text-sm text-blue-700">
+          Current volume:{" "}
+          {formatVolume(
+            currentVolumeL,
+            sourceVessel?.capacityUnit as VolumeUnit,
+          )}
+        </p>
       </div>
 
       <div>
@@ -422,12 +518,19 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
           <SelectContent>
             {availableVessels.map((vessel) => (
               <SelectItem key={vessel.id} value={vessel.id}>
-                {vessel.name || 'Unnamed'} ({formatVolumeDisplay(parseFloat(vessel.capacityL), vessel.capacityUnit)} capacity)
+                {vessel.name || "Unnamed"} (
+                {formatVolumeDisplay(
+                  parseFloat(vessel.capacityL),
+                  vessel.capacityUnit,
+                )}{" "}
+                capacity)
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        {errors.toVesselId && <p className="text-sm text-red-600">{errors.toVesselId.message}</p>}
+        {errors.toVesselId && (
+          <p className="text-sm text-red-600">{errors.toVesselId.message}</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -441,7 +544,9 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
             placeholder="Amount to transfer"
             {...register("volumeL", { valueAsNumber: true })}
           />
-          {errors.volumeL && <p className="text-sm text-red-600">{errors.volumeL.message}</p>}
+          {errors.volumeL && (
+            <p className="text-sm text-red-600">{errors.volumeL.message}</p>
+          )}
         </div>
         <div>
           <Label htmlFor="lossL">Loss/Waste (L)</Label>
@@ -453,16 +558,27 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
             placeholder="0"
             {...register("loss", { valueAsNumber: true })}
           />
-          {errors.loss && <p className="text-sm text-red-600">{errors.loss.message}</p>}
+          {errors.loss && (
+            <p className="text-sm text-red-600">{errors.loss.message}</p>
+          )}
         </div>
       </div>
 
       {(watchedVolumeL || watchedLoss) && (
         <div className="p-3 bg-gray-50 rounded-lg">
           <p className="text-sm">
-            <span className="font-medium">Remaining in source tank:</span>{' '}
-            <span className={remainingVolume < 0 ? 'text-red-600 font-medium' : 'text-gray-700'}>
-              {formatVolume(remainingVolume, sourceVessel?.capacityUnit as VolumeUnit)}
+            <span className="font-medium">Remaining in source tank:</span>{" "}
+            <span
+              className={
+                remainingVolume < 0
+                  ? "text-red-600 font-medium"
+                  : "text-gray-700"
+              }
+            >
+              {formatVolume(
+                remainingVolume,
+                sourceVessel?.capacityUnit as VolumeUnit,
+              )}
             </span>
           </p>
           {remainingVolume < 0 && (
@@ -488,232 +604,267 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
         </Button>
         <Button
           type="submit"
-          disabled={remainingVolume < 0 || !watchedVolumeL || watchedVolumeL <= 0}
+          disabled={
+            remainingVolume < 0 || !watchedVolumeL || watchedVolumeL <= 0
+          }
         >
           Transfer Liquid
         </Button>
       </div>
     </form>
-  )
+  );
 }
 
 function VesselMap() {
-  const [showAddTank, setShowAddTank] = useState(false)
-  const [editingVesselId, setEditingVesselId] = useState<string | null>(null)
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [vesselToDelete, setVesselToDelete] = useState<{id: string, name: string | null} | null>(null)
-  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
-  const [vesselToPurge, setVesselToPurge] = useState<{id: string, name: string | null} | null>(null)
-  const [showMeasurementForm, setShowMeasurementForm] = useState(false)
-  const [showAdditiveForm, setShowAdditiveForm] = useState(false)
-  const [showTransferForm, setShowTransferForm] = useState(false)
-  const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null)
-  const [selectedBatchIdForMeasurement, setSelectedBatchIdForMeasurement] = useState<string | null>(null)
+  const [showAddTank, setShowAddTank] = useState(false);
+  const [editingVesselId, setEditingVesselId] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [vesselToDelete, setVesselToDelete] = useState<{
+    id: string;
+    name: string | null;
+  } | null>(null);
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
+  const [vesselToPurge, setVesselToPurge] = useState<{
+    id: string;
+    name: string | null;
+  } | null>(null);
+  const [showMeasurementForm, setShowMeasurementForm] = useState(false);
+  const [showAdditiveForm, setShowAdditiveForm] = useState(false);
+  const [showTransferForm, setShowTransferForm] = useState(false);
+  const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
+  const [selectedBatchIdForMeasurement, setSelectedBatchIdForMeasurement] =
+    useState<string | null>(null);
 
   // History modal state
-  const [showBatchHistory, setShowBatchHistory] = useState(false)
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null)
+  const [showBatchHistory, setShowBatchHistory] = useState(false);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
 
   // Bottle modal state
-  const [showBottleModal, setShowBottleModal] = useState(false)
+  const [showBottleModal, setShowBottleModal] = useState(false);
   const [selectedVesselForBottling, setSelectedVesselForBottling] = useState<{
-    id: string
-    name: string
-    batchId: string
-    currentVolumeL: number
-  } | null>(null)
+    id: string;
+    name: string;
+    batchId: string;
+    currentVolumeL: number;
+  } | null>(null);
 
-  const vesselListQuery = trpc.vessel.list.useQuery()
-  const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
-  const utils = trpc.useUtils()
+  const vesselListQuery = trpc.vessel.list.useQuery();
+  const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
+  const utils = trpc.useUtils();
 
   const deleteMutation = trpc.vessel.delete.useMutation({
     onSuccess: () => {
-      utils.vessel.list.invalidate()
-      utils.vessel.liquidMap.invalidate()
+      utils.vessel.list.invalidate();
+      utils.vessel.liquidMap.invalidate();
       toast({
         title: "Success",
         description: "Tank deleted successfully",
-      })
+      });
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message || "Failed to delete tank",
         variant: "destructive",
-      })
-    }
-  })
+      });
+    },
+  });
 
   const purgeMutation = trpc.vessel.purge.useMutation({
     onSuccess: () => {
-      utils.vessel.list.invalidate()
-      utils.vessel.liquidMap.invalidate()
-      utils.batch.list.invalidate()
+      utils.vessel.list.invalidate();
+      utils.vessel.liquidMap.invalidate();
+      utils.batch.list.invalidate();
       toast({
         title: "Tank Purged",
         description: "The tank has been purged and the batch removed.",
-      })
+      });
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
-    }
-  })
+      });
+    },
+  });
 
   const updateStatusMutation = trpc.vessel.update.useMutation({
     onSuccess: () => {
-      utils.vessel.list.invalidate()
-      utils.vessel.liquidMap.invalidate()
-    }
-  })
+      utils.vessel.list.invalidate();
+      utils.vessel.liquidMap.invalidate();
+    },
+  });
 
-  const vessels = vesselListQuery.data?.vessels || []
+  const vessels = vesselListQuery.data?.vessels || [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "available": return "border-green-300 bg-green-50"
-      case "in_use": return "border-blue-300 bg-blue-50"
-      case "cleaning": return "border-yellow-300 bg-yellow-50"
-      case "maintenance": return "border-red-300 bg-red-50"
-      case "empty": return "border-gray-300 bg-gray-50"
-      case "fermenting": return "border-purple-300 bg-purple-50"
-      case "storing": return "border-indigo-300 bg-indigo-50"
-      case "aging": return "border-amber-300 bg-amber-50"
-      default: return "border-gray-300 bg-gray-50"
+      case "available":
+        return "border-green-300 bg-green-50";
+      case "in_use":
+        return "border-blue-300 bg-blue-50";
+      case "cleaning":
+        return "border-yellow-300 bg-yellow-50";
+      case "maintenance":
+        return "border-red-300 bg-red-50";
+      case "empty":
+        return "border-gray-300 bg-gray-50";
+      case "fermenting":
+        return "border-purple-300 bg-purple-50";
+      case "storing":
+        return "border-indigo-300 bg-indigo-50";
+      case "aging":
+        return "border-amber-300 bg-amber-50";
+      default:
+        return "border-gray-300 bg-gray-50";
     }
-  }
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "available": return <CheckCircle className="w-4 h-4 text-green-600" />
-      case "in_use": return <Activity className="w-4 h-4 text-blue-600" />
-      case "cleaning": return <RotateCcw className="w-4 h-4 text-yellow-600" />
-      case "maintenance": return <AlertTriangle className="w-4 h-4 text-red-600" />
-      case "empty": return <Droplets className="w-4 h-4 text-gray-600" />
-      case "fermenting": return <Beaker className="w-4 h-4 text-purple-600" />
-      case "storing": return <Waves className="w-4 h-4 text-indigo-600" />
-      case "aging": return <Clock className="w-4 h-4 text-amber-600" />
-      default: return <Clock className="w-4 h-4 text-gray-600" />
+      case "available":
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case "in_use":
+        return <Activity className="w-4 h-4 text-blue-600" />;
+      case "cleaning":
+        return <RotateCcw className="w-4 h-4 text-yellow-600" />;
+      case "maintenance":
+        return <AlertTriangle className="w-4 h-4 text-red-600" />;
+      case "empty":
+        return <Droplets className="w-4 h-4 text-gray-600" />;
+      case "fermenting":
+        return <Beaker className="w-4 h-4 text-purple-600" />;
+      case "storing":
+        return <Waves className="w-4 h-4 text-indigo-600" />;
+      case "aging":
+        return <Clock className="w-4 h-4 text-amber-600" />;
+      default:
+        return <Clock className="w-4 h-4 text-gray-600" />;
     }
-  }
-
+  };
 
   const formatMaterial = (material: string | null) => {
-    if (!material) return ''
-    return material.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
-  }
+    if (!material) return "";
+    return material.replace("_", " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  };
 
   const formatJacketed = (jacketed: string | null) => {
-    if (!jacketed) return ''
-    return jacketed.charAt(0).toUpperCase() + jacketed.slice(1)
-  }
+    if (!jacketed) return "";
+    return jacketed.charAt(0).toUpperCase() + jacketed.slice(1);
+  };
 
   const formatVolumeDisplay = (volumeL: number, capacityUnit: string) => {
-    const unit = capacityUnit as VolumeUnit
-    return formatVolume(volumeL, unit)
-  }
+    const unit = capacityUnit as VolumeUnit;
+    return formatVolume(volumeL, unit);
+  };
 
   const handleDeleteClick = (vesselId: string, vesselName: string | null) => {
-    setVesselToDelete({ id: vesselId, name: vesselName })
-    setDeleteConfirmOpen(true)
-  }
+    setVesselToDelete({ id: vesselId, name: vesselName });
+    setDeleteConfirmOpen(true);
+  };
 
   const handleDeleteConfirm = () => {
     if (vesselToDelete) {
-      deleteMutation.mutate({ id: vesselToDelete.id })
-      setDeleteConfirmOpen(false)
-      setVesselToDelete(null)
+      deleteMutation.mutate({ id: vesselToDelete.id });
+      setDeleteConfirmOpen(false);
+      setVesselToDelete(null);
     }
-  }
+  };
 
   const handleDeleteCancel = () => {
-    setDeleteConfirmOpen(false)
-    setVesselToDelete(null)
-  }
+    setDeleteConfirmOpen(false);
+    setVesselToDelete(null);
+  };
 
   const handlePurgeTank = (vesselId: string, vesselName: string | null) => {
-    setVesselToPurge({ id: vesselId, name: vesselName })
-    setPurgeConfirmOpen(true)
-  }
+    setVesselToPurge({ id: vesselId, name: vesselName });
+    setPurgeConfirmOpen(true);
+  };
 
   const handlePurgeConfirm = () => {
     if (vesselToPurge) {
-      purgeMutation.mutate({ vesselId: vesselToPurge.id })
-      setPurgeConfirmOpen(false)
-      setVesselToPurge(null)
+      purgeMutation.mutate({ vesselId: vesselToPurge.id });
+      setPurgeConfirmOpen(false);
+      setVesselToPurge(null);
     }
-  }
+  };
 
   const handlePurgeCancel = () => {
-    setPurgeConfirmOpen(false)
-    setVesselToPurge(null)
-  }
+    setPurgeConfirmOpen(false);
+    setVesselToPurge(null);
+  };
 
   const handleCleanTank = (vesselId: string) => {
     updateStatusMutation.mutate({
       id: vesselId,
-      status: 'available'
-    })
-  }
+      status: "available",
+    });
+  };
 
   const handleTankMeasurement = (vesselId: string) => {
-    const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
-    const batchId = liquidMapVessel?.batchId
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
 
     if (!batchId) {
       toast({
         title: "No Batch Found",
-        description: "This vessel doesn't have an active batch. Please add a batch first.",
+        description:
+          "This vessel doesn't have an active batch. Please add a batch first.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
-    setSelectedVesselId(vesselId)
-    setSelectedBatchIdForMeasurement(batchId)
-    setShowMeasurementForm(true)
-  }
+    setSelectedVesselId(vesselId);
+    setSelectedBatchIdForMeasurement(batchId);
+    setShowMeasurementForm(true);
+  };
 
   const handleTankAdditive = (vesselId: string) => {
-    setSelectedVesselId(vesselId)
-    setShowAdditiveForm(true)
-  }
+    setSelectedVesselId(vesselId);
+    setShowAdditiveForm(true);
+  };
 
   const handleTankTransfer = (vesselId: string) => {
-    setSelectedVesselId(vesselId)
-    setShowTransferForm(true)
-  }
+    setSelectedVesselId(vesselId);
+    setShowTransferForm(true);
+  };
 
   const handleViewBatch = (vesselId: string) => {
-    const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
-    const batchId = liquidMapVessel?.batchId
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
 
     if (batchId) {
       // Show batch history modal
-      setSelectedBatchId(batchId)
-      setShowBatchHistory(true)
+      setSelectedBatchId(batchId);
+      setShowBatchHistory(true);
     } else {
       // Show message if no active batch in vessel
-      alert('No active batch found in this vessel')
+      alert("No active batch found in this vessel");
     }
-  }
+  };
 
   const handleBottle = (vesselId: string) => {
-    const vessel = vesselListQuery.data?.vessels?.find(v => v.id === vesselId)
-    const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vesselId)
-    const batchId = liquidMapVessel?.batchId
+    const vessel = vesselListQuery.data?.vessels?.find(
+      (v) => v.id === vesselId,
+    );
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
 
     if (!vessel || !batchId) {
       toast({
         title: "Cannot Bottle",
         description: "This vessel doesn't have an active batch.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     // Calculate current volume (same logic as in vessel cards)
@@ -721,26 +872,25 @@ function VesselMap() {
       ? parseFloat(liquidMapVessel.currentVolumeL.toString())
       : liquidMapVessel?.applePressRunVolume
         ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
-        : 0
+        : 0;
 
     if (currentVolumeL <= 0) {
       toast({
         title: "Cannot Bottle",
         description: "This vessel is empty.",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     setSelectedVesselForBottling({
       id: vesselId,
-      name: vessel.name || 'Unnamed Vessel',
+      name: vessel.name || "Unnamed Vessel",
       batchId,
       currentVolumeL,
-    })
-    setShowBottleModal(true)
-  }
-
+    });
+    setShowBottleModal(true);
+  };
 
   if (vesselListQuery.isLoading) {
     return (
@@ -755,7 +905,7 @@ function VesselMap() {
           <p>Loading vessels...</p>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -767,7 +917,9 @@ function VesselMap() {
               <Beaker className="w-5 h-5 text-blue-600" />
               Vessel Map
             </CardTitle>
-            <CardDescription>Overview of all fermentation and storage vessels</CardDescription>
+            <CardDescription>
+              Overview of all fermentation and storage vessels
+            </CardDescription>
           </div>
           <Dialog open={showAddTank} onOpenChange={setShowAddTank}>
             <DialogTrigger asChild>
@@ -791,22 +943,35 @@ function VesselMap() {
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {vessels.map((vessel) => {
-            const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vessel.id)
+            const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+              (v) => v.vesselId === vessel.id,
+            );
 
             // Determine capacity unit from either vessel data or liquidMap data
-            const capacityUnit = vessel.capacityUnit || liquidMapVessel?.vesselCapacityUnit || 'L'
+            const capacityUnit =
+              vessel.capacityUnit || liquidMapVessel?.vesselCapacityUnit || "L";
 
             // Debug: Log vessel capacity unit data
-            console.log('Vessel:', vessel.name, 'vessel.capacityUnit:', vessel.capacityUnit, 'liquidMapVessel.vesselCapacityUnit:', liquidMapVessel?.vesselCapacityUnit, 'final capacityUnit:', capacityUnit);
+            console.log(
+              "Vessel:",
+              vessel.name,
+              "vessel.capacityUnit:",
+              vessel.capacityUnit,
+              "liquidMapVessel.vesselCapacityUnit:",
+              liquidMapVessel?.vesselCapacityUnit,
+              "final capacityUnit:",
+              capacityUnit,
+            );
 
             // Use batch volume if available, otherwise use apple press run volume
             const currentVolumeL = liquidMapVessel?.currentVolumeL
               ? parseFloat(liquidMapVessel.currentVolumeL.toString())
               : liquidMapVessel?.applePressRunVolume
                 ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
-                : 0
-            const capacityL = parseFloat(vessel.capacityL)
-            const fillPercentage = capacityL > 0 ? (currentVolumeL / capacityL) * 100 : 0
+                : 0;
+            const capacityL = parseFloat(vessel.capacityL);
+            const fillPercentage =
+              capacityL > 0 ? (currentVolumeL / capacityL) * 100 : 0;
 
             return (
               <div
@@ -815,8 +980,12 @@ function VesselMap() {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-base sm:text-lg truncate">{vessel.name || 'Unnamed Vessel'}</h3>
-                    <p className="text-xs sm:text-sm text-gray-600 truncate">{vessel.location || 'No location'}</p>
+                    <h3 className="font-semibold text-base sm:text-lg truncate">
+                      {vessel.name || "Unnamed Vessel"}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-gray-600 truncate">
+                      {vessel.location || "No location"}
+                    </p>
                   </div>
                   <div className="flex items-center space-x-2">
                     {getStatusIcon(vessel.status)}
@@ -827,13 +996,18 @@ function VesselMap() {
                 {liquidMapVessel?.batchId && (
                   <div className="mb-3 space-y-2">
                     {/* Custom Name and Batch Number */}
-                    {(liquidMapVessel.batchCustomName || liquidMapVessel.batchNumber) && (
+                    {(liquidMapVessel.batchCustomName ||
+                      liquidMapVessel.batchNumber) && (
                       <div className="pb-2 border-b">
                         {liquidMapVessel.batchCustomName && (
-                          <p className="text-sm font-medium text-gray-900">{liquidMapVessel.batchCustomName}</p>
+                          <p className="text-sm font-medium text-gray-900">
+                            {liquidMapVessel.batchCustomName}
+                          </p>
                         )}
                         {liquidMapVessel.batchNumber && (
-                          <p className="text-xs text-gray-600 font-mono">Batch ID: {liquidMapVessel.batchNumber}</p>
+                          <p className="text-xs text-gray-600 font-mono">
+                            Batch ID: {liquidMapVessel.batchNumber}
+                          </p>
                         )}
                       </div>
                     )}
@@ -843,19 +1017,25 @@ function VesselMap() {
                       {liquidMapVessel.latestMeasurement?.specificGravity && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">SG:</span>
-                          <span className="font-medium">{liquidMapVessel.latestMeasurement.specificGravity}</span>
+                          <span className="font-medium">
+                            {liquidMapVessel.latestMeasurement.specificGravity}
+                          </span>
                         </div>
                       )}
                       {liquidMapVessel.latestMeasurement?.ph && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">pH:</span>
-                          <span className="font-medium">{liquidMapVessel.latestMeasurement.ph}</span>
+                          <span className="font-medium">
+                            {liquidMapVessel.latestMeasurement.ph}
+                          </span>
                         </div>
                       )}
                       {liquidMapVessel.latestMeasurement?.temperature && (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Temp:</span>
-                          <span className="font-medium">{liquidMapVessel.latestMeasurement.temperature}°C</span>
+                          <span className="font-medium">
+                            {liquidMapVessel.latestMeasurement.temperature}°C
+                          </span>
                         </div>
                       )}
                     </div>
@@ -867,15 +1047,21 @@ function VesselMap() {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">Volume</span>
                     <span className="text-sm font-semibold">
-                      {formatVolumeRange(currentVolumeL, capacityL, capacityUnit as VolumeUnit)}
+                      {formatVolumeRange(
+                        currentVolumeL,
+                        capacityL,
+                        capacityUnit as VolumeUnit,
+                      )}
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3">
                     <div
                       className={`h-3 rounded-full transition-all ${
-                        fillPercentage > 90 ? "bg-red-500" :
-                        fillPercentage > 75 ? "bg-yellow-500" :
-                        "bg-blue-500"
+                        fillPercentage > 90
+                          ? "bg-red-500"
+                          : fillPercentage > 75
+                            ? "bg-yellow-500"
+                            : "bg-blue-500"
                       }`}
                       style={{ width: `${Math.min(fillPercentage, 100)}%` }}
                     />
@@ -912,7 +1098,9 @@ function VesselMap() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleBottle(vessel.id)}
-                        disabled={!liquidMapVessel?.batchId || currentVolumeL <= 0}
+                        disabled={
+                          !liquidMapVessel?.batchId || currentVolumeL <= 0
+                        }
                       >
                         <Wine className="w-3 h-3 mr-2" />
                         Bottle
@@ -944,7 +1132,7 @@ function VesselMap() {
                         <ArrowRight className="w-3 h-3 mr-2" />
                         Transfer to Another Tank
                       </DropdownMenuItem>
-                      {vessel.status === 'cleaning' && (
+                      {vessel.status === "cleaning" && (
                         <DropdownMenuItem
                           onClick={() => handleCleanTank(vessel.id)}
                           className="text-green-600"
@@ -963,8 +1151,10 @@ function VesselMap() {
                         Purge Tank
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => handleDeleteClick(vessel.id, vessel.name)}
-                        disabled={vessel.status === 'in_use'}
+                        onClick={() =>
+                          handleDeleteClick(vessel.id, vessel.name)
+                        }
+                        disabled={vessel.status === "in_use"}
                         className="text-red-600"
                       >
                         <Trash2 className="w-3 h-3 mr-1" />
@@ -974,10 +1164,9 @@ function VesselMap() {
                   </DropdownMenu>
                 </div>
               </div>
-            )
+            );
           })}
         </div>
-
 
         {/* Delete Confirmation Modal */}
         <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
@@ -985,7 +1174,9 @@ function VesselMap() {
             <DialogHeader>
               <DialogTitle>Delete Tank</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete &quot;{vesselToDelete?.name || 'Unknown'}&quot;? This action cannot be undone.
+                Are you sure you want to delete &quot;
+                {vesselToDelete?.name || "Unknown"}&quot;? This action cannot be
+                undone.
               </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end space-x-2 mt-4">
@@ -1005,9 +1196,10 @@ function VesselMap() {
             <DialogHeader>
               <DialogTitle>Purge Tank</DialogTitle>
               <DialogDescription>
-                Are you sure you want to purge &quot;{vesselToPurge?.name || 'Unknown'}&quot;?
-                This will delete the batch currently in the tank and clear all liquid.
-                This action cannot be undone.
+                Are you sure you want to purge &quot;
+                {vesselToPurge?.name || "Unknown"}&quot;? This will delete the
+                batch currently in the tank and clear all liquid. This action
+                cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <div className="flex justify-end space-x-2 mt-4">
@@ -1026,7 +1218,10 @@ function VesselMap() {
         </Dialog>
 
         {/* Batch Measurement Form */}
-        <Dialog open={showMeasurementForm} onOpenChange={setShowMeasurementForm}>
+        <Dialog
+          open={showMeasurementForm}
+          onOpenChange={setShowMeasurementForm}
+        >
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Add Batch Measurement</DialogTitle>
@@ -1036,11 +1231,11 @@ function VesselMap() {
             </DialogHeader>
             {selectedBatchIdForMeasurement && (
               <BatchMeasurementFormWrapper
-                vesselId={selectedVesselId || ''}
+                vesselId={selectedVesselId || ""}
                 batchId={selectedBatchIdForMeasurement}
                 onClose={() => {
-                  setShowMeasurementForm(false)
-                  setSelectedBatchIdForMeasurement(null)
+                  setShowMeasurementForm(false);
+                  setSelectedBatchIdForMeasurement(null);
                 }}
               />
             )}
@@ -1057,7 +1252,7 @@ function VesselMap() {
               </DialogDescription>
             </DialogHeader>
             <TankAdditiveForm
-              vesselId={selectedVesselId || ''}
+              vesselId={selectedVesselId || ""}
               onClose={() => setShowAdditiveForm(false)}
             />
           </DialogContent>
@@ -1073,7 +1268,7 @@ function VesselMap() {
               </DialogDescription>
             </DialogHeader>
             <TankTransferForm
-              fromVesselId={selectedVesselId || ''}
+              fromVesselId={selectedVesselId || ""}
               onClose={() => setShowTransferForm(false)}
             />
           </DialogContent>
@@ -1085,8 +1280,8 @@ function VesselMap() {
             batchId={selectedBatchId}
             open={showBatchHistory}
             onClose={() => {
-              setShowBatchHistory(false)
-              setSelectedBatchId(null)
+              setShowBatchHistory(false);
+              setSelectedBatchId(null);
             }}
           />
         )}
@@ -1096,8 +1291,8 @@ function VesselMap() {
           <BottleModal
             open={showBottleModal}
             onClose={() => {
-              setShowBottleModal(false)
-              setSelectedVesselForBottling(null)
+              setShowBottleModal(false);
+              setSelectedVesselForBottling(null);
             }}
             vesselId={selectedVesselForBottling.id}
             vesselName={selectedVesselForBottling.name}
@@ -1107,7 +1302,10 @@ function VesselMap() {
         )}
 
         {/* Edit Tank Modal */}
-        <Dialog open={!!editingVesselId} onOpenChange={(open) => !open && setEditingVesselId(null)}>
+        <Dialog
+          open={!!editingVesselId}
+          onOpenChange={(open) => !open && setEditingVesselId(null)}
+        >
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit Tank</DialogTitle>
@@ -1125,12 +1323,12 @@ function VesselMap() {
         </Dialog>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 function BatchDetails() {
   // Replace the mock batch timeline with the full BatchManagementTable component
-  return <BatchManagementTable />
+  return <BatchManagementTable />;
 }
 
 function AddMeasurement() {
@@ -1139,25 +1337,25 @@ function AddMeasurement() {
     handleSubmit,
     formState: { errors },
     setValue,
-    watch
+    watch,
   } = useForm<MeasurementForm>({
-    resolver: zodResolver(measurementSchema)
-  })
+    resolver: zodResolver(measurementSchema),
+  });
 
-  const specificGravity = watch("specificGravity")
-  
+  const specificGravity = watch("specificGravity");
+
   // Calculate approximate ABV from SG
   const calculateAbv = (sg: number) => {
-    if (!sg || sg >= 1.000) return 0
+    if (!sg || sg >= 1.0) return 0;
     // Simplified ABV calculation: (OG - FG) * 131.25
-    const og = 1.055 // Assumed original gravity
-    return ((og - sg) * 131.25).toFixed(1)
-  }
+    const og = 1.055; // Assumed original gravity
+    return ((og - sg) * 131.25).toFixed(1);
+  };
 
   const onSubmit = (data: MeasurementForm) => {
-    console.log("Measurement data:", data)
+    console.log("Measurement data:", data);
     // TODO: Implement measurement creation mutation
-  }
+  };
 
   return (
     <Card>
@@ -1166,7 +1364,9 @@ function AddMeasurement() {
           <Plus className="w-5 h-5 text-green-600" />
           Add Measurement
         </CardTitle>
-        <CardDescription>Record new batch measurements and observations</CardDescription>
+        <CardDescription>
+          Record new batch measurements and observations
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -1178,35 +1378,53 @@ function AddMeasurement() {
                   <SelectValue placeholder="Select batch" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="b-2024-001">B-2024-001 (Fermenter Tank 1)</SelectItem>
-                  <SelectItem value="b-2024-002">B-2024-002 (Fermenter Tank 2)</SelectItem>
-                  <SelectItem value="b-2024-003">B-2024-003 (Conditioning Tank 1)</SelectItem>
+                  <SelectItem value="b-2024-001">
+                    B-2024-001 (Fermenter Tank 1)
+                  </SelectItem>
+                  <SelectItem value="b-2024-002">
+                    B-2024-002 (Fermenter Tank 2)
+                  </SelectItem>
+                  <SelectItem value="b-2024-003">
+                    B-2024-003 (Conditioning Tank 1)
+                  </SelectItem>
                 </SelectContent>
               </Select>
-              {errors.batchId && <p className="text-sm text-red-600 mt-1">{errors.batchId.message}</p>}
+              {errors.batchId && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.batchId.message}
+                </p>
+              )}
             </div>
             <div>
               <Label htmlFor="measurementDate">Measurement Date</Label>
-              <Input 
-                id="measurementDate" 
+              <Input
+                id="measurementDate"
                 type="datetime-local"
-                {...register("measurementDate")} 
+                {...register("measurementDate")}
               />
-              {errors.measurementDate && <p className="text-sm text-red-600 mt-1">{errors.measurementDate.message}</p>}
+              {errors.measurementDate && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.measurementDate.message}
+                </p>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <Label htmlFor="specificGravity">Specific Gravity</Label>
-              <Input 
-                id="specificGravity" 
+              <Input
+                id="specificGravity"
                 type="number"
                 step="0.001"
                 placeholder="1.015"
-                {...register("specificGravity", { valueAsNumber: true })} 
+                {...register("specificGravity", { valueAsNumber: true })}
               />
-              {errors.specificGravity && <p className="text-sm text-red-600 mt-1">{errors.specificGravity.message}</p>}
+              {errors.specificGravity && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.specificGravity.message}
+                </p>
+              )}
               {specificGravity && (
                 <p className="text-sm text-gray-600 mt-1">
                   Est. ABV: {calculateAbv(specificGravity)}%
@@ -1215,56 +1433,62 @@ function AddMeasurement() {
             </div>
             <div>
               <Label htmlFor="ph">pH</Label>
-              <Input 
-                id="ph" 
+              <Input
+                id="ph"
                 type="number"
                 step="0.1"
                 placeholder="3.5"
-                {...register("ph", { valueAsNumber: true })} 
+                {...register("ph", { valueAsNumber: true })}
               />
-              {errors.ph && <p className="text-sm text-red-600 mt-1">{errors.ph.message}</p>}
+              {errors.ph && (
+                <p className="text-sm text-red-600 mt-1">{errors.ph.message}</p>
+              )}
             </div>
             <div>
               <Label htmlFor="temperature">Temperature (°C)</Label>
-              <Input 
-                id="temperature" 
+              <Input
+                id="temperature"
                 type="number"
                 step="0.1"
                 placeholder="18.5"
-                {...register("temperature", { valueAsNumber: true })} 
+                {...register("temperature", { valueAsNumber: true })}
               />
-              {errors.temperature && <p className="text-sm text-red-600 mt-1">{errors.temperature.message}</p>}
+              {errors.temperature && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.temperature.message}
+                </p>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="totalAcidity">Total Acidity (g/L)</Label>
-              <Input 
-                id="totalAcidity" 
+              <Input
+                id="totalAcidity"
                 type="number"
                 step="0.1"
                 placeholder="5.2"
-                {...register("totalAcidity", { valueAsNumber: true })} 
+                {...register("totalAcidity", { valueAsNumber: true })}
               />
             </div>
             <div>
               <Label htmlFor="volumeL">Volume</Label>
-              <Input 
-                id="volumeL" 
+              <Input
+                id="volumeL"
                 type="number"
                 step="0.1"
                 placeholder="750"
-                {...register("volumeL", { valueAsNumber: true })} 
+                {...register("volumeL", { valueAsNumber: true })}
               />
             </div>
           </div>
 
           <div>
             <Label htmlFor="notes">Notes</Label>
-            <Input 
-              id="notes" 
-              {...register("notes")} 
+            <Input
+              id="notes"
+              {...register("notes")}
               placeholder="Fermentation observations..."
             />
           </div>
@@ -1273,28 +1497,27 @@ function AddMeasurement() {
             <Button type="button" variant="outline">
               Cancel
             </Button>
-            <Button type="submit">
-              Add Measurement
-            </Button>
+            <Button type="submit">Add Measurement</Button>
           </div>
         </form>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 export default function CellarPage() {
-  const [activeTab, setActiveTab] = useState<"vessels" | "batches">("vessels")
+  const [activeTab, setActiveTab] = useState<"vessels" | "batches">("vessels");
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Cellar</h1>
           <p className="text-gray-600 mt-1">
-            Monitor fermentation vessels, track batch progress, and record measurements.
+            Monitor fermentation vessels, track batch progress, and record
+            measurements.
           </p>
         </div>
 
@@ -1304,7 +1527,7 @@ export default function CellarPage() {
             { key: "vessels", label: "Vessel Map", icon: Beaker },
             { key: "batches", label: "Batch Details", icon: Activity },
           ].map((tab) => {
-            const Icon = tab.icon
+            const Icon = tab.icon;
             return (
               <button
                 key={tab.key}
@@ -1318,7 +1541,7 @@ export default function CellarPage() {
                 <Icon className="w-4 h-4 mr-2" />
                 {tab.label}
               </button>
-            )
+            );
           })}
         </div>
 
@@ -1329,5 +1552,5 @@ export default function CellarPage() {
         </div>
       </main>
     </div>
-  )
+  );
 }

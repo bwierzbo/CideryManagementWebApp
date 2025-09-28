@@ -58,7 +58,7 @@ export interface APIRequest {
 }
 
 export interface UserInteraction {
-  type: 'click' | 'navigation' | 'form_submit' | 'search' | 'export';
+  type: "click" | "navigation" | "form_submit" | "search" | "export";
   target: string;
   timestamp: number;
   duration?: number;
@@ -88,7 +88,7 @@ export class PerformanceMonitor {
   private pageLoadStartTime: number = 0;
 
   private constructor() {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       this.initializeMonitoring();
     }
   }
@@ -124,7 +124,7 @@ export class PerformanceMonitor {
    * Initialize Web Vitals monitoring using Performance Observer
    */
   private initializeWebVitalsObserver(): void {
-    if (!('PerformanceObserver' in window)) return;
+    if (!("PerformanceObserver" in window)) return;
 
     try {
       // Monitor LCP (Largest Contentful Paint)
@@ -132,18 +132,21 @@ export class PerformanceMonitor {
         const entries = list.getEntries();
         const lcpEntry = entries[entries.length - 1];
         if (lcpEntry) {
-          this.reportMetric('largest-contentful-paint', lcpEntry.startTime);
+          this.reportMetric("largest-contentful-paint", lcpEntry.startTime);
         }
       });
-      lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
+      lcpObserver.observe({ type: "largest-contentful-paint", buffered: true });
 
       // Monitor FID (First Input Delay)
       const fidObserver = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          this.reportMetric('first-input-delay', (entry as any).processingStart - entry.startTime);
+          this.reportMetric(
+            "first-input-delay",
+            (entry as any).processingStart - entry.startTime,
+          );
         }
       });
-      fidObserver.observe({ type: 'first-input', buffered: true });
+      fidObserver.observe({ type: "first-input", buffered: true });
 
       // Monitor CLS (Cumulative Layout Shift)
       let clsValue = 0;
@@ -153,22 +156,21 @@ export class PerformanceMonitor {
             clsValue += (entry as any).value;
           }
         }
-        this.reportMetric('cumulative-layout-shift', clsValue);
+        this.reportMetric("cumulative-layout-shift", clsValue);
       });
-      clsObserver.observe({ type: 'layout-shift', buffered: true });
+      clsObserver.observe({ type: "layout-shift", buffered: true });
 
       // Monitor FCP (First Contentful Paint)
       const fcpObserver = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          if (entry.name === 'first-contentful-paint') {
-            this.reportMetric('first-contentful-paint', entry.startTime);
+          if (entry.name === "first-contentful-paint") {
+            this.reportMetric("first-contentful-paint", entry.startTime);
           }
         }
       });
-      fcpObserver.observe({ type: 'paint', buffered: true });
-
+      fcpObserver.observe({ type: "paint", buffered: true });
     } catch (error) {
-      console.warn('Failed to initialize Web Vitals observer:', error);
+      console.warn("Failed to initialize Web Vitals observer:", error);
     }
   }
 
@@ -180,8 +182,9 @@ export class PerformanceMonitor {
     const originalFetch = window.fetch;
     window.fetch = async (...args) => {
       const requestId = this.generateRequestId();
-      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
-      const method = args[1]?.method || 'GET';
+      const url =
+        typeof args[0] === "string" ? args[0] : (args[0] as Request).url;
+      const method = args[1]?.method || "GET";
 
       const apiRequest: APIRequest = {
         url,
@@ -198,11 +201,12 @@ export class PerformanceMonitor {
         const completedRequest = this.apiRequests.get(requestId);
         if (completedRequest) {
           completedRequest.endTime = performance.now();
-          completedRequest.duration = completedRequest.endTime - completedRequest.startTime;
+          completedRequest.duration =
+            completedRequest.endTime - completedRequest.startTime;
           completedRequest.status = response.status;
 
           // Get response size if available
-          const contentLength = response.headers.get('content-length');
+          const contentLength = response.headers.get("content-length");
           if (contentLength) {
             completedRequest.size = parseInt(contentLength, 10);
           }
@@ -216,7 +220,8 @@ export class PerformanceMonitor {
         const failedRequest = this.apiRequests.get(requestId);
         if (failedRequest) {
           failedRequest.endTime = performance.now();
-          failedRequest.duration = failedRequest.endTime - failedRequest.startTime;
+          failedRequest.duration =
+            failedRequest.endTime - failedRequest.startTime;
           failedRequest.status = 0; // Error status
           this.reportAPIRequest(failedRequest);
         }
@@ -230,13 +235,13 @@ export class PerformanceMonitor {
    */
   private initializeInteractionTracking(): void {
     // Track clicks on important elements
-    document.addEventListener('click', (event) => {
+    document.addEventListener("click", (event) => {
       const target = event.target as HTMLElement;
       const interactionTarget = this.getInteractionTarget(target);
 
       if (interactionTarget) {
         this.recordUserInteraction({
-          type: 'click',
+          type: "click",
           target: interactionTarget,
           timestamp: performance.now(),
         });
@@ -244,11 +249,11 @@ export class PerformanceMonitor {
     });
 
     // Track form submissions
-    document.addEventListener('submit', (event) => {
+    document.addEventListener("submit", (event) => {
       const form = event.target as HTMLFormElement;
       this.recordUserInteraction({
-        type: 'form_submit',
-        target: form.name || form.id || 'unknown-form',
+        type: "form_submit",
+        target: form.name || form.id || "unknown-form",
         timestamp: performance.now(),
       });
     });
@@ -263,9 +268,9 @@ export class PerformanceMonitor {
   private initializeMemoryMonitoring(): void {
     // Monitor memory usage every 30 seconds
     setInterval(() => {
-      if ('memory' in performance) {
+      if ("memory" in performance) {
         const memoryInfo = (performance as any).memory;
-        this.reportMetric('memory-usage', memoryInfo.usedJSHeapSize);
+        this.reportMetric("memory-usage", memoryInfo.usedJSHeapSize);
       }
     }, 30000);
   }
@@ -275,9 +280,9 @@ export class PerformanceMonitor {
    */
   private trackNavigation(): void {
     // Track initial page load
-    window.addEventListener('load', () => {
+    window.addEventListener("load", () => {
       const loadTime = performance.now() - this.pageLoadStartTime;
-      this.reportMetric('page-load-time', loadTime);
+      this.reportMetric("page-load-time", loadTime);
     });
 
     // Track SPA navigation (if using client-side routing)
@@ -285,7 +290,7 @@ export class PerformanceMonitor {
     const observer = new MutationObserver(() => {
       if (window.location.href !== previousUrl) {
         this.recordUserInteraction({
-          type: 'navigation',
+          type: "navigation",
           target: window.location.pathname,
           timestamp: performance.now(),
         });
@@ -308,7 +313,7 @@ export class PerformanceMonitor {
     if (element.id) return element.id;
 
     // Check for specific classes that indicate important interactions
-    const importantClasses = ['btn', 'button', 'link', 'nav-item', 'menu-item'];
+    const importantClasses = ["btn", "button", "link", "nav-item", "menu-item"];
     for (const className of importantClasses) {
       if (element.classList.contains(className)) {
         return element.textContent?.trim().substring(0, 50) || className;
@@ -358,11 +363,13 @@ export class PerformanceMonitor {
     // Check against performance budgets
     const budget = this.getBudgetForMetric(name);
     if (budget && value > budget) {
-      console.warn(`Performance budget violation: ${name} = ${value.toFixed(2)}ms (budget: ${budget}ms)`);
+      console.warn(
+        `Performance budget violation: ${name} = ${value.toFixed(2)}ms (budget: ${budget}ms)`,
+      );
     }
 
     // Log significant metrics in development
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log(`Performance metric: ${name} = ${value.toFixed(2)}ms`);
     }
   }
@@ -375,12 +382,16 @@ export class PerformanceMonitor {
 
     // Check API response time budget
     if (request.duration > PERFORMANCE_BUDGETS.apiResponseTime) {
-      console.warn(`Slow API request: ${request.method} ${request.url} took ${request.duration.toFixed(2)}ms`);
+      console.warn(
+        `Slow API request: ${request.method} ${request.url} took ${request.duration.toFixed(2)}ms`,
+      );
     }
 
     // Log slow requests in development
-    if (process.env.NODE_ENV === 'development' && request.duration > 500) {
-      console.log(`API request: ${request.method} ${request.url} - ${request.duration.toFixed(2)}ms`);
+    if (process.env.NODE_ENV === "development" && request.duration > 500) {
+      console.log(
+        `API request: ${request.method} ${request.url} - ${request.duration.toFixed(2)}ms`,
+      );
     }
   }
 
@@ -389,12 +400,12 @@ export class PerformanceMonitor {
    */
   private getBudgetForMetric(name: string): number | null {
     const budgetMap: Record<string, keyof typeof PERFORMANCE_BUDGETS> = {
-      'page-load-time': 'loadTime',
-      'first-contentful-paint': 'firstContentfulPaint',
-      'largest-contentful-paint': 'largestContentfulPaint',
-      'cumulative-layout-shift': 'cumulativeLayoutShift',
-      'time-to-interactive': 'timeToInteractive',
-      'total-blocking-time': 'totalBlockingTime',
+      "page-load-time": "loadTime",
+      "first-contentful-paint": "firstContentfulPaint",
+      "largest-contentful-paint": "largestContentfulPaint",
+      "cumulative-layout-shift": "cumulativeLayoutShift",
+      "time-to-interactive": "timeToInteractive",
+      "total-blocking-time": "totalBlockingTime",
     };
 
     const budgetKey = budgetMap[name];
@@ -412,22 +423,25 @@ export class PerformanceMonitor {
 
     try {
       // Get basic timing information
-      const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+      const navigation = performance.getEntriesByType(
+        "navigation",
+      )[0] as PerformanceNavigationTiming;
       if (navigation) {
         metrics.loadTime = navigation.loadEventEnd - navigation.startTime;
-        metrics.timeToInteractive = navigation.domInteractive - navigation.startTime;
+        metrics.timeToInteractive =
+          navigation.domInteractive - navigation.startTime;
       }
 
       // Get paint metrics
-      const paintEntries = performance.getEntriesByType('paint');
+      const paintEntries = performance.getEntriesByType("paint");
       for (const entry of paintEntries) {
-        if (entry.name === 'first-contentful-paint') {
+        if (entry.name === "first-contentful-paint") {
           metrics.firstContentfulPaint = entry.startTime;
         }
       }
 
       // Get memory usage
-      if ('memory' in performance) {
+      if ("memory" in performance) {
         const memoryInfo = (performance as any).memory;
         metrics.memoryUsage = {
           usedJSHeapSize: memoryInfo.usedJSHeapSize,
@@ -437,12 +451,19 @@ export class PerformanceMonitor {
       }
 
       // Get API metrics
-      const completedRequests = Array.from(this.apiRequests.values()).filter(r => r.duration);
+      const completedRequests = Array.from(this.apiRequests.values()).filter(
+        (r) => r.duration,
+      );
       if (completedRequests.length > 0) {
-        const totalDuration = completedRequests.reduce((sum, r) => sum + (r.duration || 0), 0);
+        const totalDuration = completedRequests.reduce(
+          (sum, r) => sum + (r.duration || 0),
+          0,
+        );
         const slowRequests = completedRequests
-          .filter(r => (r.duration || 0) > PERFORMANCE_BUDGETS.apiResponseTime)
-          .map(r => ({ url: r.url, duration: r.duration || 0 }))
+          .filter(
+            (r) => (r.duration || 0) > PERFORMANCE_BUDGETS.apiResponseTime,
+          )
+          .map((r) => ({ url: r.url, duration: r.duration || 0 }))
           .sort((a, b) => b.duration - a.duration)
           .slice(0, 10);
 
@@ -455,9 +476,8 @@ export class PerformanceMonitor {
 
       // Check for budget violations
       metrics.budgetViolations = this.getBudgetViolations(metrics);
-
     } catch (error) {
-      console.warn('Failed to collect performance metrics:', error);
+      console.warn("Failed to collect performance metrics:", error);
     }
 
     return metrics;
@@ -475,10 +495,26 @@ export class PerformanceMonitor {
     const violations = [];
 
     const checks = [
-      { metric: 'loadTime', value: metrics.loadTime, budget: PERFORMANCE_BUDGETS.loadTime },
-      { metric: 'firstContentfulPaint', value: metrics.firstContentfulPaint, budget: PERFORMANCE_BUDGETS.firstContentfulPaint },
-      { metric: 'largestContentfulPaint', value: metrics.largestContentfulPaint, budget: PERFORMANCE_BUDGETS.largestContentfulPaint },
-      { metric: 'cumulativeLayoutShift', value: metrics.cumulativeLayoutShift, budget: PERFORMANCE_BUDGETS.cumulativeLayoutShift },
+      {
+        metric: "loadTime",
+        value: metrics.loadTime,
+        budget: PERFORMANCE_BUDGETS.loadTime,
+      },
+      {
+        metric: "firstContentfulPaint",
+        value: metrics.firstContentfulPaint,
+        budget: PERFORMANCE_BUDGETS.firstContentfulPaint,
+      },
+      {
+        metric: "largestContentfulPaint",
+        value: metrics.largestContentfulPaint,
+        budget: PERFORMANCE_BUDGETS.largestContentfulPaint,
+      },
+      {
+        metric: "cumulativeLayoutShift",
+        value: metrics.cumulativeLayoutShift,
+        budget: PERFORMANCE_BUDGETS.cumulativeLayoutShift,
+      },
     ];
 
     for (const check of checks) {
@@ -502,43 +538,55 @@ export class PerformanceMonitor {
     const metrics = await this.getPerformanceMetrics();
     const report = [];
 
-    report.push('=== Frontend Performance Report ===');
+    report.push("=== Frontend Performance Report ===");
     report.push(`Load Time: ${metrics.loadTime.toFixed(2)}ms`);
 
     if (metrics.firstContentfulPaint) {
-      report.push(`First Contentful Paint: ${metrics.firstContentfulPaint.toFixed(2)}ms`);
+      report.push(
+        `First Contentful Paint: ${metrics.firstContentfulPaint.toFixed(2)}ms`,
+      );
     }
 
     if (metrics.largestContentfulPaint) {
-      report.push(`Largest Contentful Paint: ${metrics.largestContentfulPaint.toFixed(2)}ms`);
+      report.push(
+        `Largest Contentful Paint: ${metrics.largestContentfulPaint.toFixed(2)}ms`,
+      );
     }
 
     if (metrics.memoryUsage) {
-      report.push(`Memory Usage: ${(metrics.memoryUsage.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB`);
+      report.push(
+        `Memory Usage: ${(metrics.memoryUsage.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB`,
+      );
     }
 
     if (metrics.apiMetrics) {
       report.push(`API Requests: ${metrics.apiMetrics.totalRequests}`);
-      report.push(`Average API Response Time: ${metrics.apiMetrics.averageResponseTime.toFixed(2)}ms`);
+      report.push(
+        `Average API Response Time: ${metrics.apiMetrics.averageResponseTime.toFixed(2)}ms`,
+      );
 
       if (metrics.apiMetrics.slowRequests.length > 0) {
-        report.push(`Slow API Requests (>${PERFORMANCE_BUDGETS.apiResponseTime}ms):`);
-        metrics.apiMetrics.slowRequests.forEach(req => {
+        report.push(
+          `Slow API Requests (>${PERFORMANCE_BUDGETS.apiResponseTime}ms):`,
+        );
+        metrics.apiMetrics.slowRequests.forEach((req) => {
           report.push(`  - ${req.duration.toFixed(2)}ms: ${req.url}`);
         });
       }
     }
 
     if (metrics.budgetViolations && metrics.budgetViolations.length > 0) {
-      report.push('\nPerformance Budget Violations:');
-      metrics.budgetViolations.forEach(violation => {
-        report.push(`  - ${violation.metric}: ${violation.value.toFixed(2)} (budget: ${violation.budget}, violation: +${violation.violation.toFixed(2)})`);
+      report.push("\nPerformance Budget Violations:");
+      metrics.budgetViolations.forEach((violation) => {
+        report.push(
+          `  - ${violation.metric}: ${violation.value.toFixed(2)} (budget: ${violation.budget}, violation: +${violation.violation.toFixed(2)})`,
+        );
       });
     }
 
     report.push(`\nUser Interactions Tracked: ${this.userInteractions.length}`);
 
-    return report.join('\n');
+    return report.join("\n");
   }
 
   /**
@@ -570,7 +618,7 @@ export class PerformanceMonitor {
     const interaction = this.userInteractions
       .slice()
       .reverse()
-      .find(i => i.target === target && !i.duration);
+      .find((i) => i.target === target && !i.duration);
 
     if (interaction) {
       interaction.duration = duration;
@@ -585,4 +633,5 @@ export const performanceMonitor = PerformanceMonitor.getInstance();
 export const trackPageLoad = () => performanceMonitor.getPerformanceMetrics();
 export const trackUserInteraction = (interaction: UserInteraction) =>
   performanceMonitor.recordUserInteraction(interaction);
-export const generatePerformanceReport = () => performanceMonitor.generateReport();
+export const generatePerformanceReport = () =>
+  performanceMonitor.generateReport();

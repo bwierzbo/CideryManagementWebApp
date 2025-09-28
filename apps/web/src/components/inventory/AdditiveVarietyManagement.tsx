@@ -1,15 +1,41 @@
-"use client"
+"use client";
 
-import React, { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Textarea } from "@/components/ui/textarea"
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Plus,
   Edit,
@@ -18,24 +44,24 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-} from "lucide-react"
-import { trpc } from "@/utils/trpc"
-import { useForm, Controller } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
+} from "lucide-react";
+import { trpc } from "@/utils/trpc";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 const ADDITIVE_TYPES = [
-  'Sugar & Sweeteners',
-  'Flavorings & Adjuncts',
-  'Fermentation Organisms',
-  'Enzymes',
-  'Antioxidants & Antimicrobials',
-  'Tannins & Mouthfeel',
-  'Acids & Bases',
-  'Nutrients',
-  'Stabilizers',
-  'Refining & Clarifying'
-] as const
+  "Sugar & Sweeteners",
+  "Flavorings & Adjuncts",
+  "Fermentation Organisms",
+  "Enzymes",
+  "Antioxidants & Antimicrobials",
+  "Tannins & Mouthfeel",
+  "Acids & Bases",
+  "Nutrients",
+  "Stabilizers",
+  "Refining & Clarifying",
+] as const;
 
 const varietySchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -44,158 +70,165 @@ const varietySchema = z.object({
   labelImpactNotes: z.string().optional(),
   allergensVegan: z.boolean().default(false),
   allergensVeganNotes: z.string().optional(),
-})
+});
 
-type VarietyForm = z.infer<typeof varietySchema>
+type VarietyForm = z.infer<typeof varietySchema>;
 
 export function AdditiveVarietyManagement() {
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [editingVariety, setEditingVariety] = useState<any>(null)
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingVariety, setEditingVariety] = useState<any>(null);
 
   // Search and pagination state
-  const [searchQuery, setSearchQuery] = useState("")
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Calculate pagination offset
-  const offset = (currentPage - 1) * itemsPerPage
+  const offset = (currentPage - 1) * itemsPerPage;
 
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery)
-    }, 300)
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
 
-    return () => clearTimeout(timer)
-  }, [searchQuery])
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const queryInput = React.useMemo(() => {
     return {
       search: debouncedSearchQuery || undefined,
       limit: itemsPerPage,
       offset: offset,
-      sortBy: 'name' as const,
-      sortOrder: 'asc' as const,
+      sortBy: "name" as const,
+      sortOrder: "asc" as const,
       includeInactive: false,
-    }
-  }, [debouncedSearchQuery, itemsPerPage, offset])
+    };
+  }, [debouncedSearchQuery, itemsPerPage, offset]);
 
-  const { data: varietyData, refetch: refetchVarieties, isLoading } = trpc.additiveVarieties.list.useQuery(queryInput)
+  const {
+    data: varietyData,
+    refetch: refetchVarieties,
+    isLoading,
+  } = trpc.additiveVarieties.list.useQuery(queryInput);
 
-  const varieties = React.useMemo(() => varietyData?.varieties || [], [varietyData])
-  const pagination = varietyData?.pagination
+  const varieties = React.useMemo(
+    () => varietyData?.varieties || [],
+    [varietyData],
+  );
+  const pagination = varietyData?.pagination;
 
   // Reset to first page when search changes
   useEffect(() => {
-    setCurrentPage(1)
-  }, [debouncedSearchQuery])
+    setCurrentPage(1);
+  }, [debouncedSearchQuery]);
 
   const createVariety = trpc.additiveVarieties.create.useMutation({
     onSuccess: () => {
-      refetchVarieties()
-      setIsAddDialogOpen(false)
+      refetchVarieties();
+      setIsAddDialogOpen(false);
       reset({
-        name: '',
+        name: "",
         itemType: undefined,
         labelImpact: false,
-        labelImpactNotes: '',
+        labelImpactNotes: "",
         allergensVegan: false,
-        allergensVeganNotes: ''
-      })
+        allergensVeganNotes: "",
+      });
     },
     onError: (error) => {
-      console.error('Create variety error:', error)
-    }
-  })
+      console.error("Create variety error:", error);
+    },
+  });
 
   const updateVariety = trpc.additiveVarieties.update.useMutation({
     onSuccess: () => {
-      refetchVarieties()
-      setIsEditDialogOpen(false)
-      setEditingVariety(null)
+      refetchVarieties();
+      setIsEditDialogOpen(false);
+      setEditingVariety(null);
       reset({
-        name: '',
+        name: "",
         itemType: undefined,
         labelImpact: false,
-        labelImpactNotes: '',
+        labelImpactNotes: "",
         allergensVegan: false,
-        allergensVeganNotes: ''
-      })
-    }
-  })
+        allergensVeganNotes: "",
+      });
+    },
+  });
 
   const deleteVariety = trpc.additiveVarieties.delete.useMutation({
-    onSuccess: () => refetchVarieties()
-  })
+    onSuccess: () => refetchVarieties(),
+  });
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
-    control
+    control,
   } = useForm<VarietyForm>({
     // resolver: zodResolver(varietySchema), // Temporarily disabled due to type mismatch
     defaultValues: {
-      name: '',
+      name: "",
       itemType: ADDITIVE_TYPES[0],
       labelImpact: false,
-      labelImpactNotes: '',
+      labelImpactNotes: "",
       allergensVegan: false,
-      allergensVeganNotes: ''
-    }
-  })
+      allergensVeganNotes: "",
+    },
+  });
 
   const onSubmit = (data: VarietyForm) => {
-    console.log('Form data being submitted:', data)
+    console.log("Form data being submitted:", data);
     if (editingVariety) {
-      updateVariety.mutate({ ...data, id: editingVariety.id, isActive: true })
+      updateVariety.mutate({ ...data, id: editingVariety.id, isActive: true });
     } else {
-      createVariety.mutate(data)
+      createVariety.mutate(data);
     }
-  }
+  };
 
   const handleEdit = (variety: any) => {
-    setEditingVariety(variety)
+    setEditingVariety(variety);
     reset({
       name: variety.name,
       itemType: variety.itemType,
       labelImpact: variety.labelImpact || false,
-      labelImpactNotes: variety.labelImpactNotes || '',
+      labelImpactNotes: variety.labelImpactNotes || "",
       allergensVegan: variety.allergensVegan || false,
-      allergensVeganNotes: variety.allergensVeganNotes || '',
-    })
-    setIsEditDialogOpen(true)
-  }
+      allergensVeganNotes: variety.allergensVeganNotes || "",
+    });
+    setIsEditDialogOpen(true);
+  };
 
   const handleAddNew = () => {
-    setEditingVariety(null)
+    setEditingVariety(null);
     reset({
-      name: '',
+      name: "",
       itemType: undefined,
       labelImpact: false,
-      labelImpactNotes: '',
+      labelImpactNotes: "",
       allergensVegan: false,
-      allergensVeganNotes: ''
-    })
-    setIsAddDialogOpen(true)
-  }
+      allergensVeganNotes: "",
+    });
+    setIsAddDialogOpen(true);
+  };
 
   const handleCloseDialog = () => {
-    setIsAddDialogOpen(false)
-    setIsEditDialogOpen(false)
-    setEditingVariety(null)
+    setIsAddDialogOpen(false);
+    setIsEditDialogOpen(false);
+    setEditingVariety(null);
     reset({
-      name: '',
+      name: "",
       itemType: undefined,
       labelImpact: false,
-      labelImpactNotes: '',
+      labelImpactNotes: "",
       allergensVegan: false,
-      allergensVeganNotes: ''
-    })
-  }
+      allergensVeganNotes: "",
+    });
+  };
 
   return (
     <Card>
@@ -206,12 +239,17 @@ export function AdditiveVarietyManagement() {
               <FlaskConical className="w-5 h-5 text-purple-600" />
               Additive Varieties
             </CardTitle>
-            <CardDescription>Manage additive types and varieties for your cidery</CardDescription>
+            <CardDescription>
+              Manage additive types and varieties for your cidery
+            </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
-              if (!open) handleCloseDialog()
-            }}>
+            <Dialog
+              open={isAddDialogOpen || isEditDialogOpen}
+              onOpenChange={(open) => {
+                if (!open) handleCloseDialog();
+              }}
+            >
               <DialogTrigger asChild>
                 <Button onClick={handleAddNew}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -236,16 +274,23 @@ export function AdditiveVarietyManagement() {
           </div>
         </div>
 
-        <Dialog open={isAddDialogOpen || isEditDialogOpen} onOpenChange={(open) => {
-          if (!open) handleCloseDialog()
-        }}>
+        <Dialog
+          open={isAddDialogOpen || isEditDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) handleCloseDialog();
+          }}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingVariety ? 'Edit Additive Variety' : 'Add New Additive Variety'}</DialogTitle>
+              <DialogTitle>
+                {editingVariety
+                  ? "Edit Additive Variety"
+                  : "Add New Additive Variety"}
+              </DialogTitle>
               <DialogDescription>
                 {editingVariety
-                  ? 'Update additive variety information.'
-                  : 'Create a new additive variety to track in purchases.'}
+                  ? "Update additive variety information."
+                  : "Create a new additive variety to track in purchases."}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -256,7 +301,11 @@ export function AdditiveVarietyManagement() {
                   {...register("name")}
                   placeholder="e.g., Pectic Enzyme, Potassium Sorbate"
                 />
-                {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
+                {errors.name && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.name.message}
+                  </p>
+                )}
               </div>
               <div>
                 <Label htmlFor="itemType">Item Type</Label>
@@ -278,7 +327,11 @@ export function AdditiveVarietyManagement() {
                     </Select>
                   )}
                 />
-                {errors.itemType && <p className="text-sm text-red-600 mt-1">{errors.itemType.message}</p>}
+                {errors.itemType && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.itemType.message}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-3">
@@ -304,7 +357,9 @@ export function AdditiveVarietyManagement() {
                       <>
                         {field.value ? (
                           <div className="mt-2">
-                            <Label htmlFor="labelImpactNotes">Label Impact Notes</Label>
+                            <Label htmlFor="labelImpactNotes">
+                              Label Impact Notes
+                            </Label>
                             <Textarea
                               id="labelImpactNotes"
                               {...register("labelImpactNotes")}
@@ -331,7 +386,9 @@ export function AdditiveVarietyManagement() {
                         />
                       )}
                     />
-                    <Label htmlFor="allergensVegan">Allergens/Vegan Concerns</Label>
+                    <Label htmlFor="allergensVegan">
+                      Allergens/Vegan Concerns
+                    </Label>
                   </div>
                   <Controller
                     name="allergensVegan"
@@ -340,7 +397,9 @@ export function AdditiveVarietyManagement() {
                       <>
                         {field.value ? (
                           <div className="mt-2">
-                            <Label htmlFor="allergensVeganNotes">Allergens/Vegan Notes</Label>
+                            <Label htmlFor="allergensVeganNotes">
+                              Allergens/Vegan Notes
+                            </Label>
                             <Textarea
                               id="allergensVeganNotes"
                               {...register("allergensVeganNotes")}
@@ -355,14 +414,24 @@ export function AdditiveVarietyManagement() {
                 </div>
               </div>
               <div className="flex justify-end space-x-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleCloseDialog}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseDialog}
+                >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createVariety.isPending || updateVariety.isPending}>
+                <Button
+                  type="submit"
+                  disabled={createVariety.isPending || updateVariety.isPending}
+                >
                   {editingVariety
-                    ? (updateVariety.isPending ? "Updating..." : "Update Variety")
-                    : (createVariety.isPending ? "Creating..." : "Create Variety")
-                  }
+                    ? updateVariety.isPending
+                      ? "Updating..."
+                      : "Update Variety"
+                    : createVariety.isPending
+                      ? "Creating..."
+                      : "Create Variety"}
                 </Button>
               </div>
             </form>
@@ -381,13 +450,14 @@ export function AdditiveVarietyManagement() {
           <div className="text-center py-8">
             <FlaskConical className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {searchQuery ? 'No additive varieties found' : 'No additive varieties yet'}
+              {searchQuery
+                ? "No additive varieties found"
+                : "No additive varieties yet"}
             </h3>
             <p className="text-gray-500">
               {searchQuery
                 ? `No additive varieties match "${searchQuery}". Try a different search term.`
-                : 'Start by adding your first additive variety to track in purchases.'
-              }
+                : "Start by adding your first additive variety to track in purchases."}
             </p>
           </div>
         )}
@@ -407,14 +477,18 @@ export function AdditiveVarietyManagement() {
               <TableBody>
                 {varieties.map((variety: any) => (
                   <TableRow key={variety.id} className="hover:bg-gray-50">
-                    <TableCell className="font-medium">{variety.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {variety.name}
+                    </TableCell>
                     <TableCell>{variety.itemType}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        variety.isActive
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                          variety.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
                         {variety.isActive ? "Active" : "Inactive"}
                       </span>
                     </TableCell>
@@ -431,7 +505,9 @@ export function AdditiveVarietyManagement() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => deleteVariety.mutate({ id: variety.id })}
+                          onClick={() =>
+                            deleteVariety.mutate({ id: variety.id })
+                          }
                           title="Delete variety"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -453,13 +529,19 @@ export function AdditiveVarietyManagement() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h3 className="font-medium text-gray-900">{variety.name}</h3>
-                      <p className="text-sm text-gray-600 mt-1">{variety.itemType}</p>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-2 ${
-                        variety.isActive
-                          ? "bg-green-100 text-green-800"
-                          : "bg-red-100 text-red-800"
-                      }`}>
+                      <h3 className="font-medium text-gray-900">
+                        {variety.name}
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {variety.itemType}
+                      </p>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-2 ${
+                          variety.isActive
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
                         {variety.isActive ? "Active" : "Inactive"}
                       </span>
                     </div>
@@ -493,7 +575,9 @@ export function AdditiveVarietyManagement() {
         {pagination && pagination.total > itemsPerPage && (
           <div className="mt-6 flex items-center justify-between">
             <div className="text-sm text-gray-700">
-              Showing {pagination.offset + 1} to {Math.min(pagination.offset + pagination.limit, pagination.total)} of {pagination.total} varieties
+              Showing {pagination.offset + 1} to{" "}
+              {Math.min(pagination.offset + pagination.limit, pagination.total)}{" "}
+              of {pagination.total} varieties
             </div>
             <div className="flex items-center space-x-2">
               <Button
@@ -506,7 +590,8 @@ export function AdditiveVarietyManagement() {
                 Previous
               </Button>
               <span className="text-sm text-gray-700">
-                Page {currentPage} of {Math.ceil(pagination.total / itemsPerPage)}
+                Page {currentPage} of{" "}
+                {Math.ceil(pagination.total / itemsPerPage)}
               </span>
               <Button
                 variant="outline"
@@ -522,5 +607,5 @@ export function AdditiveVarietyManagement() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }

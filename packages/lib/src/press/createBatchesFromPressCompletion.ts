@@ -1,5 +1,5 @@
-import { eq, and, sql } from 'drizzle-orm'
-import { type Database } from 'db'
+import { eq, and, sql } from "drizzle-orm";
+import { type Database } from "db";
 import {
   pressRuns,
   pressItems,
@@ -10,42 +10,48 @@ import {
   vessels,
   batches,
   batchCompositions,
-} from 'db/src/schema'
-import { generateBatchNameFromComposition, type BatchComposition } from '../naming/batchName'
-import { auditEventBus, publishCreateEvent } from '../audit/eventBus'
+} from "db/src/schema";
+import {
+  generateBatchNameFromComposition,
+  type BatchComposition,
+} from "../naming/batchName";
+import { auditEventBus, publishCreateEvent } from "../audit/eventBus";
 
 export type Assignment = {
-  toVesselId: string
-  volumeL: number
-}
+  toVesselId: string;
+  volumeL: number;
+};
 
 export interface CreateBatchesOptions {
-  allocationMode?: 'weight' | 'sugar'
+  allocationMode?: "weight" | "sugar";
 }
 
 export interface CreateBatchesResult {
-  createdBatchIds: string[]
+  createdBatchIds: string[];
 }
 
 /**
  * Domain service error types
  */
 export class PressCompletionError extends Error {
-  constructor(message: string, public code: string) {
-    super(message)
-    this.name = 'PressCompletionError'
+  constructor(
+    message: string,
+    public code: string,
+  ) {
+    super(message);
+    this.name = "PressCompletionError";
   }
 }
 
 export class PressValidationError extends PressCompletionError {
   constructor(message: string) {
-    super(message, 'VALIDATION_ERROR')
+    super(message, "VALIDATION_ERROR");
   }
 }
 
 export class InvariantError extends PressCompletionError {
   constructor(message: string) {
-    super(message, 'INVARIANT_ERROR')
+    super(message, "INVARIANT_ERROR");
   }
 }
 
@@ -53,27 +59,27 @@ export class InvariantError extends PressCompletionError {
  * Internal data structures
  */
 interface PressRunData {
-  id: string
-  totalJuiceProducedL: number
-  batchesCreated?: boolean
+  id: string;
+  totalJuiceProducedL: number;
+  batchesCreated?: boolean;
 }
 
 interface PurchaseLineData {
-  id: string
-  vendorId: string
-  varietyId: string
-  varietyName: string
-  lotCode?: string
-  inputWeightKg: number
-  unitCost: number
-  totalCost: number
-  brixMeasured?: number
+  id: string;
+  vendorId: string;
+  varietyId: string;
+  varietyName: string;
+  lotCode?: string;
+  inputWeightKg: number;
+  unitCost: number;
+  totalCost: number;
+  brixMeasured?: number;
 }
 
 interface AllocationFraction {
-  purchaseItemId: string
-  fraction: number
-  sugarWeight?: number
+  purchaseItemId: string;
+  fraction: number;
+  sugarWeight?: number;
 }
 
 /**
@@ -90,18 +96,22 @@ export async function createBatchesFromPressCompletion(
   db: Database,
   pressRunId: string,
   assignments: Assignment[],
-  opts: CreateBatchesOptions = {}
+  opts: CreateBatchesOptions = {},
 ): Promise<CreateBatchesResult> {
-  const { allocationMode = 'weight' } = opts
+  const { allocationMode = "weight" } = opts;
 
   // Step 1: Validate inputs and load data
-  const { pressRunData, purchaseLines } = await validateAndLoadData(db, pressRunId, assignments)
+  const { pressRunData, purchaseLines } = await validateAndLoadData(
+    db,
+    pressRunId,
+    assignments,
+  );
 
   // Step 2: Compute allocation fractions
-  const fractions = computeAllocationFractions(purchaseLines, allocationMode)
+  const fractions = computeAllocationFractions(purchaseLines, allocationMode);
 
   // Step 3: Create batches for each assignment
-  const createdBatchIds: string[] = []
+  const createdBatchIds: string[] = [];
 
   for (const assignment of assignments) {
     const batchId = await createBatchForAssignment(
@@ -109,15 +119,15 @@ export async function createBatchesFromPressCompletion(
       pressRunData,
       assignment,
       purchaseLines,
-      fractions
-    )
-    createdBatchIds.push(batchId)
+      fractions,
+    );
+    createdBatchIds.push(batchId);
   }
 
   // Step 4: Finalize press run (mark as processed)
-  await finalizePressRun(db, pressRunId)
+  await finalizePressRun(db, pressRunId);
 
-  return { createdBatchIds }
+  return { createdBatchIds };
 }
 
 /**
@@ -126,7 +136,7 @@ export async function createBatchesFromPressCompletion(
 async function validateAndLoadData(
   db: Database,
   pressRunId: string,
-  assignments: Assignment[]
+  assignments: Assignment[],
 ): Promise<{ pressRunData: PressRunData; purchaseLines: PurchaseLineData[] }> {
   // Load press run data
   const pressRunResult = await db
@@ -136,39 +146,47 @@ async function validateAndLoadData(
     })
     .from(pressRuns)
     .where(eq(pressRuns.id, pressRunId))
-    .limit(1)
+    .limit(1);
 
   if (pressRunResult.length === 0) {
-    throw new PressValidationError(`Press run not found: ${pressRunId}`)
+    throw new PressValidationError(`Press run not found: ${pressRunId}`);
   }
 
-  const pressRunData = pressRunResult[0]
+  const pressRunData = pressRunResult[0];
 
   // Check for idempotency - verify no batches already created for this press run
   const existingBatches = await db
     .select({ id: batches.id })
     .from(batches)
     .where(eq(batches.originPressRunId, pressRunId))
-    .limit(1)
+    .limit(1);
 
   if (existingBatches.length > 0) {
-    throw new PressValidationError(`Batches already created for press run: ${pressRunId}`)
+    throw new PressValidationError(
+      `Batches already created for press run: ${pressRunId}`,
+    );
   }
 
   // Validate assignment volumes
-  const totalAssignedVolume = assignments.reduce((sum, a) => sum + a.volumeL, 0)
-  const availableVolume = Number(pressRunData.totalJuiceProducedL)
+  const totalAssignedVolume = assignments.reduce(
+    (sum, a) => sum + a.volumeL,
+    0,
+  );
+  const availableVolume = Number(pressRunData.totalJuiceProducedL);
 
-  if (totalAssignedVolume > availableVolume + 0.001) { // Allow 1mL tolerance
+  if (totalAssignedVolume > availableVolume + 0.001) {
+    // Allow 1mL tolerance
     throw new PressValidationError(
-      `Total assigned volume (${totalAssignedVolume}L) exceeds available juice (${availableVolume}L)`
-    )
+      `Total assigned volume (${totalAssignedVolume}L) exceeds available juice (${availableVolume}L)`,
+    );
   }
 
   // Validate vessel assignments
   for (const assignment of assignments) {
     if (assignment.volumeL <= 0) {
-      throw new PressValidationError(`Invalid volume assignment: ${assignment.volumeL}L`)
+      throw new PressValidationError(
+        `Invalid volume assignment: ${assignment.volumeL}L`,
+      );
     }
 
     // Check that vessel exists and has capacity
@@ -176,23 +194,26 @@ async function validateAndLoadData(
       .select({
         id: vessels.id,
         capacityL: vessels.capacityL,
-        name: vessels.name
+        name: vessels.name,
       })
       .from(vessels)
       .where(eq(vessels.id, assignment.toVesselId))
-      .limit(1)
+      .limit(1);
 
     if (vesselResult.length === 0) {
-      throw new PressValidationError(`Vessel not found: ${assignment.toVesselId}`)
+      throw new PressValidationError(
+        `Vessel not found: ${assignment.toVesselId}`,
+      );
     }
 
-    const vessel = vesselResult[0]
-    const vesselCapacity = Number(vessel.capacityL)
+    const vessel = vesselResult[0];
+    const vesselCapacity = Number(vessel.capacityL);
 
-    if (assignment.volumeL > vesselCapacity + 0.001) { // Allow 1mL tolerance
+    if (assignment.volumeL > vesselCapacity + 0.001) {
+      // Allow 1mL tolerance
       throw new PressValidationError(
-        `Assignment volume (${assignment.volumeL}L) exceeds vessel capacity (${vesselCapacity}L) for vessel ${vessel.name}`
-      )
+        `Assignment volume (${assignment.volumeL}L) exceeds vessel capacity (${vesselCapacity}L) for vessel ${vessel.name}`,
+      );
     }
   }
 
@@ -213,19 +234,24 @@ async function validateAndLoadData(
     .innerJoin(purchaseItems, eq(pressItems.purchaseItemId, purchaseItems.id))
     .innerJoin(purchases, eq(purchaseItems.purchaseId, purchases.id))
     .innerJoin(vendors, eq(purchases.vendorId, vendors.id))
-    .innerJoin(baseFruitVarieties, eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id))
-    .where(eq(pressItems.pressRunId, pressRunId))
+    .innerJoin(
+      baseFruitVarieties,
+      eq(purchaseItems.fruitVarietyId, baseFruitVarieties.id),
+    )
+    .where(eq(pressItems.pressRunId, pressRunId));
 
   if (purchaseLines.length === 0) {
-    throw new PressValidationError(`No purchase lines found for press run: ${pressRunId}`)
+    throw new PressValidationError(
+      `No purchase lines found for press run: ${pressRunId}`,
+    );
   }
 
   return {
     pressRunData: {
       id: pressRunData.id,
-      totalJuiceProducedL: Number(pressRunData.totalJuiceProducedL)
+      totalJuiceProducedL: Number(pressRunData.totalJuiceProducedL),
     },
-    purchaseLines: purchaseLines.map(line => ({
+    purchaseLines: purchaseLines.map((line) => ({
       id: line.id,
       vendorId: line.vendorId,
       varietyId: line.varietyId,
@@ -235,8 +261,8 @@ async function validateAndLoadData(
       unitCost: Number(line.unitCost || 0),
       totalCost: Number(line.totalCost || 0),
       brixMeasured: line.brixMeasured ? Number(line.brixMeasured) : undefined,
-    }))
-  }
+    })),
+  };
 }
 
 /**
@@ -244,41 +270,49 @@ async function validateAndLoadData(
  */
 function computeAllocationFractions(
   purchaseLines: PurchaseLineData[],
-  allocationMode: 'weight' | 'sugar'
+  allocationMode: "weight" | "sugar",
 ): AllocationFraction[] {
-  if (allocationMode === 'weight') {
-    const totalWeight = purchaseLines.reduce((sum, line) => sum + line.inputWeightKg, 0)
+  if (allocationMode === "weight") {
+    const totalWeight = purchaseLines.reduce(
+      (sum, line) => sum + line.inputWeightKg,
+      0,
+    );
 
     if (totalWeight <= 0) {
-      throw new InvariantError('Total input weight must be greater than zero')
+      throw new InvariantError("Total input weight must be greater than zero");
     }
 
-    return purchaseLines.map(line => ({
+    return purchaseLines.map((line) => ({
       purchaseItemId: line.id,
-      fraction: line.inputWeightKg / totalWeight
-    }))
+      fraction: line.inputWeightKg / totalWeight,
+    }));
   } else {
     // Sugar-weighted allocation
-    const linesWithSugar = purchaseLines.map(line => {
-      const brix = line.brixMeasured || 0
-      const sugarWeight = line.inputWeightKg * (brix / 100)
+    const linesWithSugar = purchaseLines.map((line) => {
+      const brix = line.brixMeasured || 0;
+      const sugarWeight = line.inputWeightKg * (brix / 100);
       return {
         ...line,
-        sugarWeight
-      }
-    })
+        sugarWeight,
+      };
+    });
 
-    const totalSugarWeight = linesWithSugar.reduce((sum, line) => sum + line.sugarWeight, 0)
+    const totalSugarWeight = linesWithSugar.reduce(
+      (sum, line) => sum + line.sugarWeight,
+      0,
+    );
 
     if (totalSugarWeight <= 0) {
-      throw new InvariantError('Total sugar weight must be greater than zero for sugar-based allocation')
+      throw new InvariantError(
+        "Total sugar weight must be greater than zero for sugar-based allocation",
+      );
     }
 
-    return linesWithSugar.map(line => ({
+    return linesWithSugar.map((line) => ({
       purchaseItemId: line.id,
       fraction: line.sugarWeight / totalSugarWeight,
-      sugarWeight: line.sugarWeight
-    }))
+      sugarWeight: line.sugarWeight,
+    }));
   }
 }
 
@@ -290,39 +324,45 @@ async function createBatchForAssignment(
   pressRunData: PressRunData,
   assignment: Assignment,
   purchaseLines: PurchaseLineData[],
-  fractions: AllocationFraction[]
+  fractions: AllocationFraction[],
 ): Promise<string> {
   // Get vessel information for batch naming
   const vesselResult = await db
     .select({
       id: vessels.id,
-      name: vessels.name
+      name: vessels.name,
     })
     .from(vessels)
     .where(eq(vessels.id, assignment.toVesselId))
-    .limit(1)
+    .limit(1);
 
   if (vesselResult.length === 0) {
-    throw new PressValidationError(`Vessel not found: ${assignment.toVesselId}`)
+    throw new PressValidationError(
+      `Vessel not found: ${assignment.toVesselId}`,
+    );
   }
 
-  const vessel = vesselResult[0]
+  const vessel = vesselResult[0];
 
   // Generate batch composition for naming
-  const batchCompositionsForNaming: BatchComposition[] = fractions.map(fraction => {
-    const purchaseLine = purchaseLines.find(line => line.id === fraction.purchaseItemId)!
-    return {
-      varietyName: purchaseLine.varietyName,
-      fractionOfBatch: fraction.fraction
-    }
-  })
+  const batchCompositionsForNaming: BatchComposition[] = fractions.map(
+    (fraction) => {
+      const purchaseLine = purchaseLines.find(
+        (line) => line.id === fraction.purchaseItemId,
+      )!;
+      return {
+        varietyName: purchaseLine.varietyName,
+        fractionOfBatch: fraction.fraction,
+      };
+    },
+  );
 
   // Generate batch name
   const batchName = generateBatchNameFromComposition({
     date: new Date(),
     vesselCode: vessel.name || vessel.id.substring(0, 6).toUpperCase(),
-    batchCompositions: batchCompositionsForNaming
-  })
+    batchCompositions: batchCompositionsForNaming,
+  });
 
   // Create batch record with all required fields
   const newBatch = {
@@ -331,33 +371,35 @@ async function createBatchForAssignment(
     batchNumber: batchName, // Using batch name as batch number
     initialVolumeL: assignment.volumeL.toString(),
     currentVolumeL: assignment.volumeL.toString(),
-    status: 'active' as const,
+    status: "active" as const,
     startDate: new Date(),
-    originPressRunId: pressRunData.id
-  }
+    originPressRunId: pressRunData.id,
+  };
 
   const batchResult = await db
     .insert(batches)
     .values(newBatch)
-    .returning({ id: batches.id })
+    .returning({ id: batches.id });
 
-  const batchId = batchResult[0].id
+  const batchId = batchResult[0].id;
 
   // Create batch compositions
-  const compositions: any[] = []
-  let totalFraction = 0
-  let totalJuiceVolume = 0
-  let totalMaterialCost = 0
+  const compositions: any[] = [];
+  let totalFraction = 0;
+  let totalJuiceVolume = 0;
+  let totalMaterialCost = 0;
 
   for (const fraction of fractions) {
-    const purchaseLine = purchaseLines.find(line => line.id === fraction.purchaseItemId)!
+    const purchaseLine = purchaseLines.find(
+      (line) => line.id === fraction.purchaseItemId,
+    )!;
 
-    const juiceVolumeL = assignment.volumeL * fraction.fraction
-    const materialCost = purchaseLine.totalCost * fraction.fraction
+    const juiceVolumeL = assignment.volumeL * fraction.fraction;
+    const materialCost = purchaseLine.totalCost * fraction.fraction;
 
-    totalFraction += fraction.fraction
-    totalJuiceVolume += juiceVolumeL
-    totalMaterialCost += materialCost
+    totalFraction += fraction.fraction;
+    totalJuiceVolume += juiceVolumeL;
+    totalMaterialCost += materialCost;
 
     const composition = {
       batchId,
@@ -370,59 +412,66 @@ async function createBatchForAssignment(
       fractionOfBatch: fraction.fraction.toString(),
       materialCost: materialCost.toString(),
       avgBrix: purchaseLine.brixMeasured?.toString(),
-      estSugarKg: fraction.sugarWeight?.toString()
-    }
+      estSugarKg: fraction.sugarWeight?.toString(),
+    };
 
-    compositions.push(composition)
+    compositions.push(composition);
   }
 
   // Validate invariants
-  const fractionTolerance = 5e-6
-  const volumeTolerance = 0.001
-  const costTolerance = 0.01
+  const fractionTolerance = 5e-6;
+  const volumeTolerance = 0.001;
+  const costTolerance = 0.01;
 
   if (Math.abs(totalFraction - 1.0) > fractionTolerance) {
-    throw new InvariantError(`Fraction sum (${totalFraction}) must equal 1.0 ± ${fractionTolerance}`)
+    throw new InvariantError(
+      `Fraction sum (${totalFraction}) must equal 1.0 ± ${fractionTolerance}`,
+    );
   }
 
   if (Math.abs(totalJuiceVolume - assignment.volumeL) > volumeTolerance) {
-    throw new InvariantError(`Juice volume sum (${totalJuiceVolume}L) must equal assignment volume (${assignment.volumeL}L) ± ${volumeTolerance}L`)
+    throw new InvariantError(
+      `Juice volume sum (${totalJuiceVolume}L) must equal assignment volume (${assignment.volumeL}L) ± ${volumeTolerance}L`,
+    );
   }
 
-  const expectedTotalCost = purchaseLines.reduce((sum, line) => sum + line.totalCost, 0)
+  const expectedTotalCost = purchaseLines.reduce(
+    (sum, line) => sum + line.totalCost,
+    0,
+  );
   if (Math.abs(totalMaterialCost - expectedTotalCost) > costTolerance) {
-    throw new InvariantError(`Material cost sum ($${totalMaterialCost}) must equal expected total ($${expectedTotalCost}) ± $${costTolerance}`)
+    throw new InvariantError(
+      `Material cost sum ($${totalMaterialCost}) must equal expected total ($${expectedTotalCost}) ± $${costTolerance}`,
+    );
   }
 
   // Insert compositions
-  await db.insert(batchCompositions).values(compositions)
+  await db.insert(batchCompositions).values(compositions);
 
   // Emit audit events
-  await publishCreateEvent(
-    'batches',
-    batchId,
-    newBatch
-  )
+  await publishCreateEvent("batches", batchId, newBatch);
 
   for (const composition of compositions) {
     await publishCreateEvent(
-      'batch_compositions',
+      "batch_compositions",
       composition.batchId, // Will need actual ID after insert
-      composition
-    )
+      composition,
+    );
   }
 
-  return batchId
+  return batchId;
 }
 
 /**
  * Step 4: Finalize the press run to prevent duplicate processing
  */
-async function finalizePressRun(db: Database, pressRunId: string): Promise<void> {
+async function finalizePressRun(
+  db: Database,
+  pressRunId: string,
+): Promise<void> {
   // Note: The schema doesn't seem to have a 'batchesCreated' field,
   // so we'll rely on the existence of batches with originPressRunId for idempotency
   // This could be enhanced by adding a status field to press runs in the future
-
   // For now, this is a no-op since we check for existing batches in validation
   // In a future enhancement, we could add:
   // await db.update(pressRuns).set({ status: 'batches_created' }).where(eq(pressRuns.id, pressRunId))

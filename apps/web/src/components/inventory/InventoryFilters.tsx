@@ -1,115 +1,130 @@
-"use client"
+"use client";
 
-import React, { useState, useCallback } from 'react'
-import { Filter, X, MapPin, AlertCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import React, { useState, useCallback } from "react";
+import { Filter, X, MapPin, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuItem
-} from '@/components/ui/dropdown-menu'
-import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import type {
   FilterCallback,
   InventoryFiltersState,
   MaterialType,
   LocationOption,
-  StatusOption
-} from '@/types/inventory'
+  StatusOption,
+} from "@/types/inventory";
 import {
   MATERIAL_TYPE_CONFIG,
   LOCATION_OPTIONS,
-  STATUS_OPTIONS
-} from '@/types/inventory'
+  STATUS_OPTIONS,
+} from "@/types/inventory";
 
 interface InventoryFiltersProps {
-  onFiltersChange: FilterCallback
-  initialFilters?: Partial<InventoryFiltersState>
-  className?: string
-  showActiveFilter?: boolean
+  onFiltersChange: FilterCallback;
+  initialFilters?: Partial<InventoryFiltersState>;
+  className?: string;
+  showActiveFilter?: boolean;
 }
 
 export function InventoryFilters({
   onFiltersChange,
   initialFilters = {},
   className,
-  showActiveFilter = true
+  showActiveFilter = true,
 }: InventoryFiltersProps) {
   const [filters, setFilters] = useState<InventoryFiltersState>({
     materialTypes: [],
-    location: 'all',
-    status: 'all',
+    location: "all",
+    status: "all",
     isActive: true,
-    ...initialFilters
-  })
+    ...initialFilters,
+  });
 
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Handle material type toggle
-  const handleMaterialTypeToggle = useCallback((materialType: MaterialType) => {
-    const newMaterialTypes = filters.materialTypes.includes(materialType)
-      ? filters.materialTypes.filter(type => type !== materialType)
-      : [...filters.materialTypes, materialType]
+  const handleMaterialTypeToggle = useCallback(
+    (materialType: MaterialType) => {
+      const newMaterialTypes = filters.materialTypes.includes(materialType)
+        ? filters.materialTypes.filter((type) => type !== materialType)
+        : [...filters.materialTypes, materialType];
 
-    const newFilters = { ...filters, materialTypes: newMaterialTypes }
-    setFilters(newFilters)
-    onFiltersChange(newFilters)
-  }, [filters, onFiltersChange])
+      const newFilters = { ...filters, materialTypes: newMaterialTypes };
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
+    },
+    [filters, onFiltersChange],
+  );
 
   // Handle location change
-  const handleLocationChange = useCallback((location: LocationOption) => {
-    const newFilters = { ...filters, location }
-    setFilters(newFilters)
-    onFiltersChange(newFilters)
-  }, [filters, onFiltersChange])
+  const handleLocationChange = useCallback(
+    (location: LocationOption) => {
+      const newFilters = { ...filters, location };
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
+    },
+    [filters, onFiltersChange],
+  );
 
   // Handle status change
-  const handleStatusChange = useCallback((status: StatusOption) => {
-    const newFilters = { ...filters, status }
-    setFilters(newFilters)
-    onFiltersChange(newFilters)
-  }, [filters, onFiltersChange])
+  const handleStatusChange = useCallback(
+    (status: StatusOption) => {
+      const newFilters = { ...filters, status };
+      setFilters(newFilters);
+      onFiltersChange(newFilters);
+    },
+    [filters, onFiltersChange],
+  );
 
   // Handle active filter toggle
   const handleActiveToggle = useCallback(() => {
-    const newFilters = { ...filters, isActive: !filters.isActive }
-    setFilters(newFilters)
-    onFiltersChange(newFilters)
-  }, [filters, onFiltersChange])
+    const newFilters = { ...filters, isActive: !filters.isActive };
+    setFilters(newFilters);
+    onFiltersChange(newFilters);
+  }, [filters, onFiltersChange]);
 
   // Clear all filters
   const handleClearAll = useCallback(() => {
     const newFilters: InventoryFiltersState = {
       materialTypes: [],
-      location: 'all',
-      status: 'all',
-      isActive: true
-    }
-    setFilters(newFilters)
-    onFiltersChange(newFilters)
-    setIsDropdownOpen(false)
-  }, [onFiltersChange])
+      location: "all",
+      status: "all",
+      isActive: true,
+    };
+    setFilters(newFilters);
+    onFiltersChange(newFilters);
+    setIsDropdownOpen(false);
+  }, [onFiltersChange]);
 
   // Calculate active filter count
   const activeFilterCount = [
     filters.materialTypes.length > 0,
-    filters.location !== 'all',
-    filters.status !== 'all',
-    showActiveFilter && !filters.isActive
-  ].filter(Boolean).length
+    filters.location !== "all",
+    filters.status !== "all",
+    showActiveFilter && !filters.isActive,
+  ].filter(Boolean).length;
 
   return (
     <div className={cn("flex flex-col sm:flex-row gap-4", className)}>
       {/* Material Type Filter Buttons */}
       <div className="flex flex-wrap gap-2">
         {Object.values(MATERIAL_TYPE_CONFIG).map((config) => {
-          const isActive = filters.materialTypes.includes(config.value)
+          const isActive = filters.materialTypes.includes(config.value);
           return (
             <Button
               key={config.value}
@@ -118,7 +133,7 @@ export function InventoryFilters({
               onClick={() => handleMaterialTypeToggle(config.value)}
               className={cn(
                 "flex items-center gap-2 transition-all",
-                isActive && config.color
+                isActive && config.color,
               )}
             >
               <span className="text-base">{config.icon}</span>
@@ -127,13 +142,13 @@ export function InventoryFilters({
                 <X
                   className="w-3 h-3 ml-1"
                   onClick={(e) => {
-                    e.stopPropagation()
-                    handleMaterialTypeToggle(config.value)
+                    e.stopPropagation();
+                    handleMaterialTypeToggle(config.value);
                   }}
                 />
               )}
             </Button>
-          )
+          );
         })}
       </div>
 
@@ -141,7 +156,11 @@ export function InventoryFilters({
       <div className="flex items-center gap-2">
         <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+            >
               <Filter className="w-4 h-4" />
               <span>More Filters</span>
               {activeFilterCount > 0 && (
@@ -169,7 +188,10 @@ export function InventoryFilters({
                   <MapPin className="w-4 h-4" />
                   Location
                 </Label>
-                <Select value={filters.location} onValueChange={handleLocationChange}>
+                <Select
+                  value={filters.location}
+                  onValueChange={handleLocationChange}
+                >
                   <SelectTrigger className="h-8">
                     <SelectValue />
                   </SelectTrigger>
@@ -188,7 +210,10 @@ export function InventoryFilters({
                   <AlertCircle className="w-4 h-4" />
                   Status
                 </Label>
-                <Select value={filters.status} onValueChange={handleStatusChange}>
+                <Select
+                  value={filters.status}
+                  onValueChange={handleStatusChange}
+                >
                   <SelectTrigger className="h-8">
                     <SelectValue />
                   </SelectTrigger>
@@ -223,7 +248,7 @@ export function InventoryFilters({
       {activeFilterCount > 0 && (
         <div className="flex flex-wrap gap-2">
           {filters.materialTypes.map((materialType) => {
-            const config = MATERIAL_TYPE_CONFIG[materialType]
+            const config = MATERIAL_TYPE_CONFIG[materialType];
             return (
               <Badge
                 key={materialType}
@@ -237,27 +262,37 @@ export function InventoryFilters({
                   onClick={() => handleMaterialTypeToggle(materialType)}
                 />
               </Badge>
-            )
+            );
           })}
 
-          {filters.location !== 'all' && (
+          {filters.location !== "all" && (
             <Badge variant="secondary" className="flex items-center gap-1">
               <MapPin className="w-3 h-3" />
-              <span>{LOCATION_OPTIONS.find(opt => opt.value === filters.location)?.label}</span>
+              <span>
+                {
+                  LOCATION_OPTIONS.find((opt) => opt.value === filters.location)
+                    ?.label
+                }
+              </span>
               <X
                 className="w-3 h-3 cursor-pointer hover:text-red-500"
-                onClick={() => handleLocationChange('all')}
+                onClick={() => handleLocationChange("all")}
               />
             </Badge>
           )}
 
-          {filters.status !== 'all' && (
+          {filters.status !== "all" && (
             <Badge variant="secondary" className="flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />
-              <span>{STATUS_OPTIONS.find(opt => opt.value === filters.status)?.label}</span>
+              <span>
+                {
+                  STATUS_OPTIONS.find((opt) => opt.value === filters.status)
+                    ?.label
+                }
+              </span>
               <X
                 className="w-3 h-3 cursor-pointer hover:text-red-500"
-                onClick={() => handleStatusChange('all')}
+                onClick={() => handleStatusChange("all")}
               />
             </Badge>
           )}
@@ -274,49 +309,49 @@ export function InventoryFilters({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // Simplified filter component for basic use cases
 interface SimpleInventoryFiltersProps {
-  onMaterialTypeChange: (materialTypes: MaterialType[]) => void
-  selectedMaterialTypes?: MaterialType[]
-  className?: string
+  onMaterialTypeChange: (materialTypes: MaterialType[]) => void;
+  selectedMaterialTypes?: MaterialType[];
+  className?: string;
 }
 
 export function SimpleInventoryFilters({
   onMaterialTypeChange,
   selectedMaterialTypes = [],
-  className
+  className,
 }: SimpleInventoryFiltersProps) {
-  const handleToggle = useCallback((materialType: MaterialType) => {
-    const newSelection = selectedMaterialTypes.includes(materialType)
-      ? selectedMaterialTypes.filter(type => type !== materialType)
-      : [...selectedMaterialTypes, materialType]
+  const handleToggle = useCallback(
+    (materialType: MaterialType) => {
+      const newSelection = selectedMaterialTypes.includes(materialType)
+        ? selectedMaterialTypes.filter((type) => type !== materialType)
+        : [...selectedMaterialTypes, materialType];
 
-    onMaterialTypeChange(newSelection)
-  }, [selectedMaterialTypes, onMaterialTypeChange])
+      onMaterialTypeChange(newSelection);
+    },
+    [selectedMaterialTypes, onMaterialTypeChange],
+  );
 
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
       {Object.values(MATERIAL_TYPE_CONFIG).map((config) => {
-        const isActive = selectedMaterialTypes.includes(config.value)
+        const isActive = selectedMaterialTypes.includes(config.value);
         return (
           <Button
             key={config.value}
             variant={isActive ? "default" : "outline"}
             size="sm"
             onClick={() => handleToggle(config.value)}
-            className={cn(
-              "flex items-center gap-2",
-              isActive && config.color
-            )}
+            className={cn("flex items-center gap-2", isActive && config.color)}
           >
             <span className="text-base">{config.icon}</span>
             <span>{config.label}</span>
           </Button>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
