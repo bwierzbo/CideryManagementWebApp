@@ -116,8 +116,8 @@ export function FruitLoadFormWithTRPC({
       vendorId: editingLoad?.vendorId || vendorId || "",
       purchaseItemId: editingLoad?.purchaseItemId || "",
       fruitVarietyId: editingLoad?.fruitVarietyId || "",
-      weightUnit: editingLoad?.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad?.originalWeightUnit || 'lbs'),
-      weight: editingLoad ? parseFloat(editingLoad.originalWeight || '') : undefined,
+      weightUnit: 'lbs', // Always default to lbs for new loads
+      weight: editingLoad ? (editingLoad.originalWeightUnit === 'lb' ? parseFloat(editingLoad.originalWeight || '') : undefined) : undefined,
       brixMeasured: editingLoad?.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
       phMeasured: editingLoad?.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
       appleCondition: editingLoad?.appleCondition || undefined,
@@ -161,8 +161,8 @@ export function FruitLoadFormWithTRPC({
         vendorId: editingLoad.vendorId || "",
         purchaseItemId: editingLoad.purchaseItemId || "",
         fruitVarietyId: editingLoad.fruitVarietyId || "",
-        weightUnit: editingLoad.originalWeightUnit === 'lb' ? 'lbs' : (editingLoad.originalWeightUnit || 'lbs'),
-        weight: editingLoad ? parseFloat(editingLoad.originalWeight || '0') : undefined,
+        weightUnit: editingLoad.originalWeightUnit === 'lb' ? 'lbs' : 'lbs', // Always prefer lbs for display
+        weight: editingLoad.originalWeightUnit === 'lb' ? parseFloat(editingLoad.originalWeight || '0') : undefined,
         brixMeasured: editingLoad.brixMeasured ? parseFloat(editingLoad.brixMeasured) : undefined,
         phMeasured: editingLoad.phMeasured ? parseFloat(editingLoad.phMeasured) : undefined,
         appleCondition: editingLoad.appleCondition || undefined,

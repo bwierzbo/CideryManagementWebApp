@@ -210,13 +210,13 @@ export const batchRouter = router({
         // Build ORDER BY clause
         const sortColumn = {
           name: batches.name,
-          startDate: batches.startDate,
+          startDate: sql`COALESCE(${applePressRuns.endTime}, ${batches.startDate})`,
           status: batches.status,
         }[input.sortBy || 'startDate']
 
         const orderBy = input.sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn)
 
-        // Query batches with vessel info
+        // Query batches with vessel info and press run completion date
         const batchesList = await db
           .select({
             id: batches.id,
@@ -227,7 +227,7 @@ export const batchRouter = router({
             vesselName: vessels.name,
             vesselCapacity: vessels.capacityL,
             currentVolumeL: batches.currentVolumeL,
-            startDate: batches.startDate,
+            startDate: sql<string>`COALESCE(${applePressRuns.endTime}, ${batches.startDate})`.as('startDate'),
             endDate: batches.endDate,
             originPressRunId: batches.originPressRunId,
             createdAt: batches.createdAt,
@@ -236,6 +236,7 @@ export const batchRouter = router({
           })
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+          .leftJoin(applePressRuns, eq(batches.originPressRunId, applePressRuns.id))
           .where(conditions.length > 0 ? and(...conditions) : undefined)
           .orderBy(orderBy)
           .limit(input.limit || 50)

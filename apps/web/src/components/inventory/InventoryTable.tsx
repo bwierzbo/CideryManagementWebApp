@@ -70,7 +70,7 @@ interface InventoryItem {
 }
 
 // Table column configuration
-type SortField = 'materialType' | 'currentBottleCount' | 'createdAt' | 'updatedAt'
+type SortField = 'materialType' | 'item' | 'vendor' | 'currentBottleCount' | 'createdAt' | 'updatedAt'
 
 interface InventoryTableProps {
   showSearch?: boolean
@@ -185,6 +185,10 @@ export function InventoryTable({
       switch (field) {
         case 'materialType':
           return item.materialType
+        case 'item':
+          return getItemDisplayName(item)
+        case 'vendor':
+          return getVendorName(item)
         case 'currentBottleCount':
           return item.currentBottleCount
         case 'createdAt':
@@ -419,10 +423,18 @@ export function InventoryTable({
                   >
                     Type
                   </SortableHeader>
-                  <SortableHeader canSort={false}>
+                  <SortableHeader
+                    sortDirection={getSortDirectionForDisplay('item')}
+                    sortIndex={getSortIndex('item')}
+                    onSort={() => handleColumnSort('item')}
+                  >
                     Item
                   </SortableHeader>
-                  <SortableHeader canSort={false}>
+                  <SortableHeader
+                    sortDirection={getSortDirectionForDisplay('vendor')}
+                    sortIndex={getSortIndex('vendor')}
+                    onSort={() => handleColumnSort('vendor')}
+                  >
                     Vendor
                   </SortableHeader>
                   <SortableHeader

@@ -23,7 +23,8 @@ import {
   Beaker,
   Edit3,
   Trash2,
-  X
+  X,
+  TrendingUp
 } from "lucide-react"
 
 export default function PressRunDetailsPage() {
@@ -290,7 +291,7 @@ export default function PressRunDetailsPage() {
             <CardTitle className="text-lg">Press Run Summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="flex items-center">
                 <Scale className="w-4 h-4 text-gray-500 mr-2" />
                 <div>
@@ -305,7 +306,46 @@ export default function PressRunDetailsPage() {
                   <p className="font-medium">{pressRun.loads?.length || 0} added</p>
                 </div>
               </div>
+              {pressRun?.pressRun?.status === 'completed' && (
+                <>
+                  <div className="flex items-center">
+                    <Beaker className="w-4 h-4 text-gray-500 mr-2" />
+                    <div>
+                      <p className="text-sm text-gray-600">Juice Volume</p>
+                      <p className="font-medium">
+                        {pressRun.pressRun.totalJuiceVolumeL ? `${parseFloat(pressRun.pressRun.totalJuiceVolumeL).toFixed(1)}L` : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center">
+                    <TrendingUp className="w-4 h-4 text-gray-500 mr-2" />
+                    <div>
+                      <p className="text-sm text-gray-600">Extraction Rate</p>
+                      <p className="font-medium">
+                        {pressRun.pressRun.extractionRate ? `${(parseFloat(pressRun.pressRun.extractionRate) * 100).toFixed(1)}%` : 'N/A'}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+            {pressRun?.pressRun?.status === 'completed' && pressRun?.pressRun?.endTime && (
+              <div className="pt-2 border-t">
+                <div className="flex items-center">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 mr-2" />
+                  <div>
+                    <p className="text-sm text-gray-600">Completed On</p>
+                    <p className="font-medium">{new Date(pressRun.pressRun.endTime).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {pressRun?.pressRun?.notes && (
               <>
@@ -323,7 +363,7 @@ export default function PressRunDetailsPage() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Fruit Loads</h3>
-            {!showAddLoadForm && (
+            {!showAddLoadForm && pressRun?.pressRun?.status !== 'completed' && (
               <Button
                 onClick={() => setShowAddLoadForm(true)}
                 className="bg-amber-600 hover:bg-amber-700"
@@ -385,17 +425,21 @@ export default function PressRunDetailsPage() {
               {pressRun.loads?.map((load, index) => (
                 <Card
                   key={load.id || index}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    editingLoad?.id === load.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50'
+                  className={`transition-all ${
+                    pressRun?.pressRun?.status === 'completed'
+                      ? ''
+                      : 'cursor-pointer hover:shadow-md ' + (editingLoad?.id === load.id ? 'ring-2 ring-blue-500 bg-blue-50' : 'hover:bg-gray-50')
                   }`}
-                  onClick={() => handleEditLoad(load)}
+                  onClick={pressRun?.pressRun?.status === 'completed' ? undefined : () => handleEditLoad(load)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-3">
                       <div>
                         <h4 className="font-semibold text-gray-900 flex items-center">
                           Load #{load.loadSequence || index + 1}
-                          <Edit3 className="w-4 h-4 ml-2 text-gray-400" />
+                          {pressRun?.pressRun?.status !== 'completed' && (
+                            <Edit3 className="w-4 h-4 ml-2 text-gray-400" />
+                          )}
                         </h4>
                         <p className="text-sm text-gray-600">
                           {load.appleVarietyName || 'Unknown Variety'}

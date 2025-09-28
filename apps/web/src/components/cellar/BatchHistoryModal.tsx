@@ -91,8 +91,12 @@ export function BatchHistoryModal({ batchId, open, onClose }: BatchHistoryModalP
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
+                    <p className="text-sm text-gray-600">Batch ID</p>
+                    <p className="font-semibold font-mono text-sm">{batch.name}</p>
+                  </div>
+                  <div>
                     <p className="text-sm text-gray-600">Batch Name</p>
-                    <p className="font-semibold">{batch.name}</p>
+                    <p className="font-semibold">{batch.customName || <span className="text-gray-400 font-normal">No name set</span>}</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Status</p>

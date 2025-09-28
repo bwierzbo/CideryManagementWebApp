@@ -189,7 +189,7 @@ export function BottleModal({
               </SelectTrigger>
               <SelectContent>
                 {packageSizesQuery.isLoading ? (
-                  <SelectItem value="" disabled>Loading package sizes...</SelectItem>
+                  <SelectItem value="loading" disabled>Loading package sizes...</SelectItem>
                 ) : packageSizesQuery.data?.length ? (
                   packageSizesQuery.data.map((size) => (
                     <SelectItem key={size.id} value={size.sizeML.toString()}>
@@ -197,7 +197,7 @@ export function BottleModal({
                     </SelectItem>
                   ))
                 ) : (
-                  <SelectItem value="" disabled>No package sizes available</SelectItem>
+                  <SelectItem value="none" disabled>No package sizes available</SelectItem>
                 )}
               </SelectContent>
             </Select>

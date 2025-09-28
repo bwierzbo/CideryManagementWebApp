@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -213,6 +214,7 @@ function CompletedRunsSection({
 }: {
   onDeletePressRun: (pressRunId: string) => void
 }) {
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
@@ -358,6 +360,17 @@ function CompletedRunsSection({
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          router.push(`/pressing/${run.id}`)
+                        }}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
                         onClick={(e) => {
                           e.stopPropagation()
@@ -487,6 +500,7 @@ function ActionButtons({ onStartNewRun, isCreating }: { onStartNewRun: () => voi
 }
 
 export default function PressingPage() {
+  const router = useRouter()
   const [viewMode, setViewMode] = useState<ViewMode>('home')
   const [selectedPressRunId, setSelectedPressRunId] = useState<string | null>(null)
   const [showCancelDialog, setShowCancelDialog] = useState(false)

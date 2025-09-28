@@ -145,9 +145,14 @@ export function PressRunCompletionForm({
 
 
   const onSubmit = (data: PressRunCompletionForm) => {
+    // Parse the date string (YYYY-MM-DD) and create a Date object in local timezone
+    // to avoid timezone conversion issues
+    const [year, month, day] = data.completionDate.split('-').map(Number)
+    const completionDate = new Date(year, month - 1, day) // month is 0-indexed
+
     const submissionPayload = {
       pressRunId,
-      completionDate: new Date(data.completionDate),
+      completionDate,
       totalJuiceVolumeL: data.totalJuiceVolumeL,
       assignments: data.assignments,
       laborHours: data.laborHours,

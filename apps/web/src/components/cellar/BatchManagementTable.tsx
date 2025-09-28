@@ -237,8 +237,8 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Batch ID</TableHead>
                   <TableHead>Batch Name</TableHead>
-                  <TableHead>Custom Name</TableHead>
                   <TableHead>Vessel</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Start Date</TableHead>
@@ -258,7 +258,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                 ) : (
                   batches.map((batch) => (
                     <TableRow key={batch.id}>
-                      <TableCell className="font-medium">{batch.name}</TableCell>
+                      <TableCell className="font-medium font-mono text-sm">{batch.name}</TableCell>
                       <TableCell>
                         {editingBatch?.batchId === batch.id ? (
                           <div className="flex items-center gap-2">
@@ -266,7 +266,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                               value={editingBatch.customName}
                               onChange={(e) => setEditingBatch({ ...editingBatch, customName: e.target.value })}
                               className="h-8 w-40"
-                              placeholder="Custom name..."
+                              placeholder="Batch name..."
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   handleSaveCustomName()
@@ -294,10 +294,10 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                           </div>
                         ) : (
                           <div
-                            className="cursor-pointer flex items-center gap-1 hover:text-blue-600"
+                            className="cursor-pointer flex items-center gap-1 hover:text-blue-600 font-medium"
                             onClick={() => setEditingBatch({ batchId: batch.id, customName: batch.customName || '' })}
                           >
-                            {batch.customName || <span className="text-gray-400">Click to add</span>}
+                            {batch.customName || <span className="text-gray-400 font-normal">Click to add batch name</span>}
                             <Edit2 className="w-3 h-3" />
                           </div>
                         )}

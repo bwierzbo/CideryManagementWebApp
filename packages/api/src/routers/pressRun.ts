@@ -637,7 +637,7 @@ export const pressRunRouter = router({
               initialVolumeL: totalJuiceVolumeL.toString(),
               currentVolumeL: totalJuiceVolumeL.toString(),
               status: 'active',
-              startDate: new Date(),
+              startDate: input.completionDate,
               originPressRunId: input.pressRunId
             })
             .returning({ id: batches.id })
@@ -2017,13 +2017,16 @@ export const pressRunRouter = router({
           }
         })
 
+        // Filter out items with no available quantity (archived/fully allocated items)
+        const availableItems = itemsWithAllocations.filter(item => item.availableQuantityKg > 0)
+
         // Calculate summary
-        const totalAvailableKg = itemsWithAllocations.reduce((sum, item) => sum + item.availableQuantityKg, 0)
+        const totalAvailableKg = availableItems.reduce((sum, item) => sum + item.availableQuantityKg, 0)
 
         return {
-          items: itemsWithAllocations,
+          items: availableItems,
           summary: {
-            totalAvailableItems: itemsWithAllocations.filter(item => item.availableQuantityKg > 0).length,
+            totalAvailableItems: availableItems.length,
             totalAvailableKg
           }
         }

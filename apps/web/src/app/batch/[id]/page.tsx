@@ -197,7 +197,8 @@ export default function BatchDetailsPage() {
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
               <FlaskConical className="w-8 h-8 text-purple-600" />
-              {batch.name}
+              <span className="font-mono text-2xl">{batch.name}</span>
+              {batch.customName && <span className="text-xl">- {batch.customName}</span>}
             </h1>
             <p className="text-gray-600">
               Batch details and fermentation tracking
@@ -672,7 +673,7 @@ export default function BatchDetailsPage() {
             <DialogHeader>
               <DialogTitle>Add Batch Measurement</DialogTitle>
               <DialogDescription>
-                Record a new measurement for {batch.name}
+                Record a new measurement for batch {batch.name}{batch.customName && ` (${batch.customName})`}
               </DialogDescription>
             </DialogHeader>
             <AddBatchMeasurementForm
@@ -698,7 +699,7 @@ export default function BatchDetailsPage() {
             <DialogHeader>
               <DialogTitle>Add Batch Additive</DialogTitle>
               <DialogDescription>
-                Record an additive addition to {batch.name}
+                Record an additive addition to batch {batch.name}{batch.customName && ` (${batch.customName})`}
               </DialogDescription>
             </DialogHeader>
             <AddBatchAdditiveForm
