@@ -18,7 +18,12 @@ import {
   validateConversionPrecision,
   getConversionFactor,
   isConversionSupported,
-  BUSHEL_TO_KG_FACTOR
+  BUSHEL_TO_KG_FACTOR,
+  formatVolume,
+  formatVolumeRange,
+  toDisplayVolume,
+  VolumeUnit,
+  VOLUME_UNIT_SYMBOLS
 } from '../unitConversion';
 import { QuantityValidationError } from '../../validation/errors';
 
@@ -281,5 +286,88 @@ describe('Unit Conversion - Integration with Validation System', () => {
     // Test that reasonable upper bounds are enforced by validation
     // The validation system allows up to 1,000,000 for unmapped units
     expect(() => bushelsToKg(1000001)).toThrow(QuantityValidationError);
+  });
+});
+
+describe('Volume Formatting - toDisplayVolume', () => {
+  it('should return liters unchanged for L unit', () => {
+    expect(toDisplayVolume(100, 'L')).toBe(100);
+    expect(toDisplayVolume(19.05, 'L')).toBe(19.05);
+    expect(toDisplayVolume(0, 'L')).toBe(0);
+  });
+
+  it('should convert liters to gallons for gal unit', () => {
+    expect(toDisplayVolume(18.93, 'gal')).toBeCloseTo(5, 1); // 5 gallon container
+    expect(toDisplayVolume(0, 'gal')).toBe(0);
+    expect(toDisplayVolume(3.785, 'gal')).toBeCloseTo(1, 1); // ~1 gallon
+  });
+});
+
+describe('Volume Formatting - formatVolume', () => {
+  it('should format liters with L symbol', () => {
+    expect(formatVolume(100, 'L')).toBe('100 L');
+    expect(formatVolume(19.05, 'L')).toBe('19.1 L');
+    expect(formatVolume(19, 'L')).toBe('19 L');
+    expect(formatVolume(0, 'L')).toBe('0 L');
+  });
+
+  it('should format gallons with gal symbol', () => {
+    expect(formatVolume(18.93, 'gal')).toBe('5 gal'); // 5 gallon container
+    expect(formatVolume(0, 'gal')).toBe('0 gal');
+    expect(formatVolume(3.785, 'gal')).toBe('1 gal'); // ~1 gallon
+    expect(formatVolume(7.57, 'gal')).toBe('2 gal'); // ~2 gallons
+  });
+
+  it('should show whole numbers when close to integers', () => {
+    expect(formatVolume(19.001, 'L')).toBe('19 L'); // Very close to 19
+    expect(formatVolume(18.999, 'L')).toBe('19 L'); // Very close to 19
+    expect(formatVolume(18.93, 'gal')).toBe('5 gal'); // Exactly 5 gallons when converted
+  });
+
+  it('should show 1 decimal place for non-whole numbers', () => {
+    expect(formatVolume(19.1, 'L')).toBe('19.1 L');
+    expect(formatVolume(18.5, 'L')).toBe('18.5 L');
+    expect(formatVolume(7.0, 'gal')).toBe('1.9 gal'); // 7L ≈ 1.85 gal → 1.9 gal
+  });
+});
+
+describe('Volume Formatting - formatVolumeRange', () => {
+  it('should format liter ranges correctly', () => {
+    expect(formatVolumeRange(0, 19, 'L')).toBe('0 L / 19 L');
+    expect(formatVolumeRange(5.5, 100, 'L')).toBe('5.5 L / 100 L');
+    expect(formatVolumeRange(120, 120, 'L')).toBe('120 L / 120 L');
+  });
+
+  it('should format gallon ranges correctly', () => {
+    // 19L ≈ 5 gal container
+    expect(formatVolumeRange(0, 18.93, 'gal')).toBe('0 gal / 5 gal');
+    // Partially filled 5 gallon container
+    expect(formatVolumeRange(7.57, 18.93, 'gal')).toBe('2 gal / 5 gal');
+  });
+
+  it('should handle real-world vessel scenarios', () => {
+    // Empty 5-gallon carboy
+    expect(formatVolumeRange(0, 18.93, 'gal')).toBe('0 gal / 5 gal');
+    // Full 5-gallon carboy
+    expect(formatVolumeRange(18.93, 18.93, 'gal')).toBe('5 gal / 5 gal');
+    // Empty 120L tank
+    expect(formatVolumeRange(0, 120, 'L')).toBe('0 L / 120 L');
+    // Partially filled 120L tank
+    expect(formatVolumeRange(75.5, 120, 'L')).toBe('75.5 L / 120 L');
+  });
+});
+
+describe('Volume Formatting - Unit Symbols', () => {
+  it('should define correct volume unit symbols', () => {
+    expect(VOLUME_UNIT_SYMBOLS.L).toBe('L');
+    expect(VOLUME_UNIT_SYMBOLS.gal).toBe('gal');
+  });
+
+  it('should support all VolumeUnit types', () => {
+    const units: VolumeUnit[] = ['L', 'gal'];
+    units.forEach(unit => {
+      expect(VOLUME_UNIT_SYMBOLS[unit]).toBeDefined();
+      expect(typeof VOLUME_UNIT_SYMBOLS[unit]).toBe('string');
+    });
   });
 });

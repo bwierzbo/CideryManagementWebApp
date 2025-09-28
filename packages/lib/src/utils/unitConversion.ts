@@ -200,3 +200,65 @@ export function isConversionSupported(fromUnit: string, toUnit: string): boolean
     return false;
   }
 }
+
+/**
+ * Volume unit types supported for display formatting
+ */
+export type VolumeUnit = 'L' | 'gal';
+
+/**
+ * Volume unit display symbols
+ */
+export const VOLUME_UNIT_SYMBOLS: Record<VolumeUnit, string> = {
+  L: 'L',
+  gal: 'gal',
+};
+
+/**
+ * Convert volume from liters to the specified display unit
+ * @param liters - Volume in liters (base storage unit, can be 0 for empty vessels)
+ * @param unit - Target display unit
+ * @returns Volume in the target unit
+ */
+export function toDisplayVolume(liters: number, unit: VolumeUnit): number {
+  if (unit === 'gal') {
+    // Use direct conversion for display, allowing zero values
+    return Math.round((liters / GAL_TO_L_FACTOR) * 100) / 100;
+  }
+  return liters;
+}
+
+/**
+ * Format a volume for display with appropriate unit symbol
+ * @param liters - Volume in liters (base storage unit)
+ * @param unit - Display unit to convert to
+ * @returns Formatted volume string (e.g., "5 gal", "19 L")
+ */
+export function formatVolume(liters: number, unit: VolumeUnit): string {
+  const displayValue = toDisplayVolume(liters, unit);
+  const symbol = VOLUME_UNIT_SYMBOLS[unit];
+
+  // Show whole numbers when close, else 1 decimal place
+  const formatted = Math.abs(displayValue - Math.round(displayValue)) < 0.01
+    ? Math.round(displayValue)
+    : Number(displayValue.toFixed(1));
+
+  return `${formatted} ${symbol}`;
+}
+
+/**
+ * Format a volume range for display (e.g., current/capacity)
+ * @param currentLiters - Current volume in liters
+ * @param capacityLiters - Total capacity in liters
+ * @param unit - Display unit to convert to
+ * @returns Formatted range string (e.g., "0 gal / 5 gal")
+ */
+export function formatVolumeRange(
+  currentLiters: number,
+  capacityLiters: number,
+  unit: VolumeUnit
+): string {
+  const currentFormatted = formatVolume(currentLiters, unit);
+  const capacityFormatted = formatVolume(capacityLiters, unit);
+  return `${currentFormatted} / ${capacityFormatted}`;
+}

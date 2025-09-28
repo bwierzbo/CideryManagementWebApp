@@ -34,6 +34,7 @@ import {
   FlaskConical,
   Wine
 } from "lucide-react"
+import { litersToGallons, formatVolume, formatVolumeRange, VolumeUnit } from "lib"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -144,9 +145,16 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
   React.useEffect(() => {
     if (vesselQuery.data?.vessel) {
       const vessel = vesselQuery.data.vessel
+      let displayCapacity = parseFloat(vessel.capacityL)
+
+      // Convert from liters to gallons for display if unit is gallons
+      if (vessel.capacityUnit === 'gal') {
+        displayCapacity = displayCapacity / 3.78541
+      }
+
       reset({
         name: vessel.name || undefined,
-        capacityL: parseFloat(vessel.capacityL),
+        capacityL: displayCapacity,
         capacityUnit: vessel.capacityUnit as any,
         material: vessel.material as any,
         jacketed: vessel.jacketed as any,
@@ -159,10 +167,22 @@ function TankForm({ vesselId, onClose }: { vesselId?: string; onClose: () => voi
   const watchedCapacityUnit = watch('capacityUnit')
 
   const onSubmit = (data: TankForm) => {
+    // Convert capacity to liters if unit is gallons
+    let capacityToSubmit = data.capacityL
+    if (data.capacityUnit === 'gal') {
+      // User entered gallons, but we store in liters
+      capacityToSubmit = data.capacityL * 3.78541
+    }
+
+    const submitData = {
+      ...data,
+      capacityL: capacityToSubmit
+    }
+
     if (vesselId) {
-      updateMutation.mutate({ id: vesselId, ...data })
+      updateMutation.mutate({ id: vesselId, ...submitData })
     } else {
-      createMutation.mutate(data)
+      createMutation.mutate(submitData)
     }
   }
 
@@ -345,6 +365,11 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery()
   const utils = trpc.useUtils()
 
+  const formatVolumeDisplay = (volumeL: number, capacityUnit: string) => {
+    const unit = capacityUnit as VolumeUnit
+    return formatVolume(volumeL, unit)
+  }
+
   // Get source vessel info
   const sourceVessel = vesselListQuery.data?.vessels?.find(v => v.id === fromVesselId)
   const sourceLiquidMap = liquidMapQuery.data?.vessels?.find(v => v.vesselId === fromVesselId)
@@ -385,7 +410,7 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <div className="text-center p-4 bg-blue-50 rounded-lg">
         <h4 className="font-medium text-blue-900">Transfer from {sourceVessel?.name || 'Unknown'}</h4>
-        <p className="text-sm text-blue-700">Current volume: {currentVolumeL.toFixed(1)}L</p>
+        <p className="text-sm text-blue-700">Current volume: {formatVolume(currentVolumeL, sourceVessel?.capacityUnit as VolumeUnit)}</p>
       </div>
 
       <div>
@@ -397,7 +422,7 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
           <SelectContent>
             {availableVessels.map((vessel) => (
               <SelectItem key={vessel.id} value={vessel.id}>
-                {vessel.name || 'Unnamed'} ({parseFloat(vessel.capacityL).toFixed(0)}L capacity)
+                {vessel.name || 'Unnamed'} ({formatVolumeDisplay(parseFloat(vessel.capacityL), vessel.capacityUnit)} capacity)
               </SelectItem>
             ))}
           </SelectContent>
@@ -407,7 +432,7 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="volumeL">Transfer Volume (L)</Label>
+          <Label htmlFor="volumeL">Transfer Volume</Label>
           <Input
             id="volumeL"
             type="number"
@@ -437,7 +462,7 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
           <p className="text-sm">
             <span className="font-medium">Remaining in source tank:</span>{' '}
             <span className={remainingVolume < 0 ? 'text-red-600 font-medium' : 'text-gray-700'}>
-              {remainingVolume.toFixed(1)}L
+              {formatVolume(remainingVolume, sourceVessel?.capacityUnit as VolumeUnit)}
             </span>
           </p>
           {remainingVolume < 0 && (
@@ -474,6 +499,7 @@ function TankTransferForm({ fromVesselId, onClose }: { fromVesselId: string; onC
 
 function VesselMap() {
   const [showAddTank, setShowAddTank] = useState(false)
+  const [editingVesselId, setEditingVesselId] = useState<string | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [vesselToDelete, setVesselToDelete] = useState<{id: string, name: string | null} | null>(null)
   const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false)
@@ -584,6 +610,11 @@ function VesselMap() {
   const formatJacketed = (jacketed: string | null) => {
     if (!jacketed) return ''
     return jacketed.charAt(0).toUpperCase() + jacketed.slice(1)
+  }
+
+  const formatVolumeDisplay = (volumeL: number, capacityUnit: string) => {
+    const unit = capacityUnit as VolumeUnit
+    return formatVolume(volumeL, unit)
   }
 
   const handleDeleteClick = (vesselId: string, vesselName: string | null) => {
@@ -761,6 +792,13 @@ function VesselMap() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
           {vessels.map((vessel) => {
             const liquidMapVessel = liquidMapQuery.data?.vessels.find(v => v.vesselId === vessel.id)
+
+            // Determine capacity unit from either vessel data or liquidMap data
+            const capacityUnit = vessel.capacityUnit || liquidMapVessel?.vesselCapacityUnit || 'L'
+
+            // Debug: Log vessel capacity unit data
+            console.log('Vessel:', vessel.name, 'vessel.capacityUnit:', vessel.capacityUnit, 'liquidMapVessel.vesselCapacityUnit:', liquidMapVessel?.vesselCapacityUnit, 'final capacityUnit:', capacityUnit);
+
             // Use batch volume if available, otherwise use apple press run volume
             const currentVolumeL = liquidMapVessel?.currentVolumeL
               ? parseFloat(liquidMapVessel.currentVolumeL.toString())
@@ -795,7 +833,7 @@ function VesselMap() {
                           <p className="text-sm font-medium text-gray-900">{liquidMapVessel.batchCustomName}</p>
                         )}
                         {liquidMapVessel.batchNumber && (
-                          <p className="text-xs text-gray-600">Batch {liquidMapVessel.batchNumber}</p>
+                          <p className="text-xs text-gray-600 font-mono">Batch ID: {liquidMapVessel.batchNumber}</p>
                         )}
                       </div>
                     )}
@@ -829,7 +867,7 @@ function VesselMap() {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">Volume</span>
                     <span className="text-sm font-semibold">
-                      {currentVolumeL.toFixed(0)}L / {capacityL.toFixed(0)}L
+                      {formatVolumeRange(currentVolumeL, capacityL, capacityUnit as VolumeUnit)}
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3">
@@ -866,6 +904,12 @@ function VesselMap() {
                     >
                       <DropdownMenuLabel>Tank Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setEditingVesselId(vessel.id)}
+                      >
+                        <Settings className="w-3 h-3 mr-2" />
+                        Edit Tank
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleBottle(vessel.id)}
                         disabled={!liquidMapVessel?.batchId || currentVolumeL <= 0}
@@ -1061,6 +1105,24 @@ function VesselMap() {
             currentVolumeL={selectedVesselForBottling.currentVolumeL}
           />
         )}
+
+        {/* Edit Tank Modal */}
+        <Dialog open={!!editingVesselId} onOpenChange={(open) => !open && setEditingVesselId(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Tank</DialogTitle>
+              <DialogDescription>
+                Update tank details including name and capacity unit
+              </DialogDescription>
+            </DialogHeader>
+            {editingVesselId && (
+              <TankForm
+                vesselId={editingVesselId}
+                onClose={() => setEditingVesselId(null)}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   )
@@ -1187,7 +1249,7 @@ function AddMeasurement() {
               />
             </div>
             <div>
-              <Label htmlFor="volumeL">Volume (L)</Label>
+              <Label htmlFor="volumeL">Volume</Label>
               <Input 
                 id="volumeL" 
                 type="number"
