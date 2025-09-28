@@ -330,6 +330,7 @@ function CompletedRunsSection({
                 <>
                   <p>No completed press runs found</p>
                   <p className="text-sm">Completed press runs will appear here</p>
+                  <p className="text-xs text-gray-400 mt-2">Debug: {pressRunsData?.pressRuns?.length || 0} total completed runs loaded</p>
                 </>
               )}
             </div>
@@ -358,13 +359,14 @@ function CompletedRunsSection({
                         Completed
                       </Badge>
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50"
+                        className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50 border-blue-200"
                         onClick={(e) => {
                           e.stopPropagation()
                           router.push(`/pressing/${run.id}`)
                         }}
+                        title="View press run details"
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
