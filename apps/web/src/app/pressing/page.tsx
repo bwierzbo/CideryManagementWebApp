@@ -340,7 +340,20 @@ function CompletedRunsSection({
         <>
           <div className="space-y-3">
             {paginatedPressRuns.map((run) => (
-              <Card key={run.id} className="border border-green-200">
+              <Card
+                key={run.id}
+                className="border border-green-200 cursor-pointer hover:bg-green-50 transition-colors"
+                onClick={() => router.push(`/pressing/${run.id}`)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    router.push(`/pressing/${run.id}`)
+                  }
+                }}
+                aria-label={`View press run details for ${run.pressRunName || (run.endTime ? new Date(run.endTime).toLocaleDateString() : 'Recent')}`}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex-1">
@@ -378,6 +391,7 @@ function CompletedRunsSection({
                           e.stopPropagation()
                           onDeletePressRun(run.id)
                         }}
+                        title="Delete press run"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -406,6 +420,22 @@ function CompletedRunsSection({
                         </p>
                       </div>
                     </div>
+                  </div>
+
+                  {/* View Press Run Button */}
+                  <div className="mt-4 flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-green-700 border-green-600 hover:bg-green-600 hover:text-white"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        router.push(`/pressing/${run.id}`)
+                      }}
+                      data-testid="view-press-run"
+                    >
+                      View Press Run
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
