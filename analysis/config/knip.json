@@ -1,0 +1,115 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/**/*.ts",
+        "vitest.config.ts",
+        "playwright.config.ts"
+      ],
+      "project": [
+        "scripts/**/*.ts",
+        "tests/**/*.ts",
+        "**/*.config.{js,ts,mjs}",
+        "**/*.d.ts"
+      ]
+    },
+    "apps/web": {
+      "entry": [
+        "src/app/**/{page,layout,loading,error,not-found,global-error}.{js,ts,jsx,tsx}",
+        "src/app/**/{route,middleware}.{js,ts}",
+        "src/pages/**/*.{js,ts,jsx,tsx}",
+        "src/middleware.{js,ts}",
+        "next.config.{js,mjs}",
+        "playwright.config.{js,ts}",
+        "vitest.config.{js,ts}"
+      ],
+      "project": [
+        "src/**/*.{js,ts,jsx,tsx}",
+        "tests/**/*.{js,ts,jsx,tsx}",
+        "**/*.config.{js,ts,mjs}",
+        "**/*.d.ts"
+      ],
+      "ignore": [
+        ".next/**",
+        "dist/**",
+        "build/**",
+        "coverage/**"
+      ]
+    },
+    "packages/api": {
+      "entry": [
+        "src/index.ts",
+        "src/trpc.ts",
+        "src/routers/index.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/db": {
+      "entry": [
+        "src/index.ts",
+        "src/schema.ts",
+        "drizzle.config.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "drizzle/**/*.sql"
+      ],
+      "ignore": [
+        "drizzle/**/*.sql"
+      ]
+    },
+    "packages/lib": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    },
+    "packages/worker": {
+      "entry": [
+        "src/index.ts"
+      ],
+      "project": [
+        "src/**/*.ts"
+      ]
+    }
+  },
+  "ignore": [
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    ".next/**",
+    "coverage/**",
+    "*.d.ts",
+    "**/*.test.{js,ts,jsx,tsx}",
+    "**/*.spec.{js,ts,jsx,tsx}",
+    "tests/**/*",
+    "analysis/reports/**"
+  ],
+  "ignoreBinaries": [
+    "next",
+    "tsx",
+    "tsc",
+    "eslint",
+    "prettier",
+    "vitest",
+    "playwright"
+  ],
+  "ignoreDependencies": [
+    "@types/*",
+    "eslint*",
+    "prettier*",
+    "typescript",
+    "vitest",
+    "@vitest/*",
+    "@playwright/test",
+    "concurrently",
+    "autoprefixer",
+    "postcss",
+    "tailwindcss*"
+  ]
+}

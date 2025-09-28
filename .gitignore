@@ -112,3 +112,7 @@ playwright/.auth/
 quality-dashboard/
 performance-report.md
 .coverage-history/
+
+# Analysis Reports (except baseline)
+analysis/reports/latest/
+analysis/reports/history/
