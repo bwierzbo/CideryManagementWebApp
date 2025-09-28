@@ -215,7 +215,7 @@ export function PressRunSummary({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center p-3 bg-amber-50 rounded-lg">
               <div className="text-2xl font-bold text-amber-800">{loads.length}</div>
               <div className="text-sm text-amber-600">Total Loads</div>
@@ -231,10 +231,6 @@ export function PressRunSummary({
             <div className="text-center p-3 bg-purple-50 rounded-lg">
               <div className="text-2xl font-bold text-purple-800">{varietyCount}</div>
               <div className="text-sm text-purple-600">Varietie{varietyCount !== 1 ? 's' : 'y'}</div>
-            </div>
-            <div className="text-center p-3 bg-orange-50 rounded-lg">
-              <div className="text-2xl font-bold text-orange-800">{Object.keys(vendorVarietySummary).length}</div>
-              <div className="text-sm text-orange-600">Combinations</div>
             </div>
           </div>
         </CardContent>
