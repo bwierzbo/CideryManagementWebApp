@@ -1,14 +1,27 @@
-"use client"
+"use client";
 
-import { useState, useMemo } from "react"
-import { useSession } from "next-auth/react"
-import { Navbar } from "@/components/navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Input } from "@/components/ui/input"
+import { useState, useMemo } from "react";
+import { useSession } from "next-auth/react";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import {
   BarChart3,
   Package,
@@ -36,9 +49,9 @@ import {
   Settings,
   Search,
   ChevronLeft,
-  ChevronRight
-} from "lucide-react"
-import { trpc } from "@/utils/trpc"
+  ChevronRight,
+} from "lucide-react";
+import { trpc } from "@/utils/trpc";
 
 const stats = [
   {
@@ -47,7 +60,7 @@ const stats = [
     value: "12",
     change: "+2 from last month",
     changeType: "positive" as const,
-    color: "bg-blue-50 text-blue-700 border-blue-200"
+    color: "bg-blue-50 text-blue-700 border-blue-200",
   },
   {
     icon: Package,
@@ -55,7 +68,7 @@ const stats = [
     value: "1,234",
     change: "Ready to ship",
     changeType: "neutral" as const,
-    color: "bg-green-50 text-green-700 border-green-200"
+    color: "bg-green-50 text-green-700 border-green-200",
   },
   {
     icon: TrendingUp,
@@ -63,7 +76,7 @@ const stats = [
     value: "$12,450",
     change: "+15% from last month",
     changeType: "positive" as const,
-    color: "bg-amber-50 text-amber-700 border-amber-200"
+    color: "bg-amber-50 text-amber-700 border-amber-200",
   },
   {
     icon: Users,
@@ -71,16 +84,44 @@ const stats = [
     value: "8",
     change: "All suppliers active",
     changeType: "positive" as const,
-    color: "bg-purple-50 text-purple-700 border-purple-200"
-  }
-]
+    color: "bg-purple-50 text-purple-700 border-purple-200",
+  },
+];
 
 const recentBatches = [
-  { id: "B-2024-001", variety: "Honeycrisp", status: "Fermenting", abv: "4.2%", daysLeft: 12, statusColor: "bg-blue-100 text-blue-800" },
-  { id: "B-2024-002", variety: "Gala Blend", status: "Aging", abv: "5.8%", daysLeft: 28, statusColor: "bg-amber-100 text-amber-800" },
-  { id: "B-2024-003", variety: "Wild Apple", status: "Ready", abv: "6.1%", daysLeft: 0, statusColor: "bg-green-100 text-green-800" },
-  { id: "B-2024-004", variety: "Granny Smith", status: "Pressing", abv: "—", daysLeft: 45, statusColor: "bg-gray-100 text-gray-800" }
-]
+  {
+    id: "B-2024-001",
+    variety: "Honeycrisp",
+    status: "Fermenting",
+    abv: "4.2%",
+    daysLeft: 12,
+    statusColor: "bg-blue-100 text-blue-800",
+  },
+  {
+    id: "B-2024-002",
+    variety: "Gala Blend",
+    status: "Aging",
+    abv: "5.8%",
+    daysLeft: 28,
+    statusColor: "bg-amber-100 text-amber-800",
+  },
+  {
+    id: "B-2024-003",
+    variety: "Wild Apple",
+    status: "Ready",
+    abv: "6.1%",
+    daysLeft: 0,
+    statusColor: "bg-green-100 text-green-800",
+  },
+  {
+    id: "B-2024-004",
+    variety: "Granny Smith",
+    status: "Pressing",
+    abv: "—",
+    daysLeft: 45,
+    statusColor: "bg-gray-100 text-gray-800",
+  },
+];
 
 const quickActions = [
   {
@@ -88,30 +129,30 @@ const quickActions = [
     title: "Record Purchase",
     description: "Add new apple purchase",
     href: "/purchasing",
-    color: "bg-blue-600 hover:bg-blue-700"
+    color: "bg-blue-600 hover:bg-blue-700",
   },
   {
     icon: Grape,
     title: "Start Press Run",
     description: "Begin apple processing",
-    href: "/pressing", 
-    color: "bg-purple-600 hover:bg-purple-700"
+    href: "/pressing",
+    color: "bg-purple-600 hover:bg-purple-700",
   },
   {
     icon: Beaker,
     title: "Log Measurement",
     description: "Record batch metrics",
     href: "/cellar",
-    color: "bg-green-600 hover:bg-green-700"
+    color: "bg-green-600 hover:bg-green-700",
   },
   {
     icon: FileText,
     title: "Generate Report",
     description: "Create COGS analysis",
     href: "/reports",
-    color: "bg-amber-600 hover:bg-amber-700"
-  }
-]
+    color: "bg-amber-600 hover:bg-amber-700",
+  },
+];
 
 const alerts = [
   {
@@ -120,36 +161,40 @@ const alerts = [
     title: "Batch B-2024-001 needs attention",
     description: "Temperature reading is outside normal range",
     time: "2 hours ago",
-    color: "border-l-amber-500 bg-amber-50"
+    color: "border-l-amber-500 bg-amber-50",
   },
   {
-    type: "success", 
+    type: "success",
     icon: CheckCircle2,
     title: "Packaging completed for Batch B-2023-089",
     description: "456 bottles successfully packaged and labeled",
     time: "4 hours ago",
-    color: "border-l-green-500 bg-green-50"
-  }
-]
+    color: "border-l-green-500 bg-green-50",
+  },
+];
 
 function PingStatus() {
-  const pingQuery = trpc.ping.useQuery()
-  
+  const pingQuery = trpc.ping.useQuery();
+
   return (
     <div className="flex items-center gap-2">
-      <div className={`w-2 h-2 rounded-full ${pingQuery.data?.ok ? 'bg-green-500' : 'bg-red-500'}`}></div>
+      <div
+        className={`w-2 h-2 rounded-full ${pingQuery.data?.ok ? "bg-green-500" : "bg-red-500"}`}
+      ></div>
       <span className="text-sm text-gray-600">
-        API: {pingQuery.data?.ok ? 'Connected' : 'Disconnected'}
+        API: {pingQuery.data?.ok ? "Connected" : "Disconnected"}
       </span>
     </div>
-  )
+  );
 }
 
 function LiquidMap() {
-  const { data: session } = useSession()
-  const { data: liquidData, isPending } = trpc.vessel.liquidMap.useQuery()
-  
-  const canView = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'operator'
+  const { data: session } = useSession();
+  const { data: liquidData, isPending } = trpc.vessel.liquidMap.useQuery();
+
+  const canView =
+    (session?.user as any)?.role === "admin" ||
+    (session?.user as any)?.role === "operator";
 
   if (!canView) {
     return (
@@ -164,11 +209,13 @@ function LiquidMap() {
           <div className="text-center py-8 text-gray-500">
             <Settings className="w-8 h-8 mx-auto mb-2" />
             <p>Access denied</p>
-            <p className="text-sm">You need admin or operator permissions to view liquid inventory</p>
+            <p className="text-sm">
+              You need admin or operator permissions to view liquid inventory
+            </p>
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (isPending) {
@@ -179,7 +226,9 @@ function LiquidMap() {
             <Droplets className="w-5 h-5" />
             Liquid Map
           </CardTitle>
-          <CardDescription>Loading liquid inventory across cellar and packaging...</CardDescription>
+          <CardDescription>
+            Loading liquid inventory across cellar and packaging...
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="animate-pulse">
@@ -188,14 +237,15 @@ function LiquidMap() {
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
-  const vessels = liquidData?.vessels || []
-  const cellarLiquid = Number(liquidData?.cellarLiquidL) || 0
-  const packagedVolume = Number(liquidData?.packagedInventory?.totalVolumeL) || 0
-  const totalBottles = Number(liquidData?.packagedInventory?.totalBottles) || 0
-  const totalLiquid = Number(liquidData?.totalLiquidL) || 0
+  const vessels = liquidData?.vessels || [];
+  const cellarLiquid = Number(liquidData?.cellarLiquidL) || 0;
+  const packagedVolume =
+    Number(liquidData?.packagedInventory?.totalVolumeL) || 0;
+  const totalBottles = Number(liquidData?.packagedInventory?.totalBottles) || 0;
+  const totalLiquid = Number(liquidData?.totalLiquidL) || 0;
 
   return (
     <Card>
@@ -205,7 +255,8 @@ function LiquidMap() {
           Liquid Map
         </CardTitle>
         <CardDescription>
-          Total liquid: {totalLiquid.toFixed(1)}L ({cellarLiquid.toFixed(1)}L in cellar, {packagedVolume.toFixed(1)}L packaged)
+          Total liquid: {totalLiquid.toFixed(1)}L ({cellarLiquid.toFixed(1)}L in
+          cellar, {packagedVolume.toFixed(1)}L packaged)
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -216,7 +267,9 @@ function LiquidMap() {
                 <Wine className="w-4 h-4 text-blue-600" />
                 <div>
                   <p className="text-sm text-gray-600">Cellar Liquid</p>
-                  <p className="text-2xl font-bold text-blue-600">{cellarLiquid.toFixed(1)}L</p>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {cellarLiquid.toFixed(1)}L
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -228,8 +281,12 @@ function LiquidMap() {
                 <Package className="w-4 h-4 text-green-600" />
                 <div>
                   <p className="text-sm text-gray-600">Packaged Stock</p>
-                  <p className="text-2xl font-bold text-green-600">{totalBottles.toLocaleString()}</p>
-                  <p className="text-xs text-gray-500">({packagedVolume.toFixed(1)}L)</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {totalBottles.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    ({packagedVolume.toFixed(1)}L)
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -241,7 +298,9 @@ function LiquidMap() {
                 <TrendingUp className="w-4 h-4 text-purple-600" />
                 <div>
                   <p className="text-sm text-gray-600">Total Liquid</p>
-                  <p className="text-2xl font-bold text-purple-600">{totalLiquid.toFixed(1)}L</p>
+                  <p className="text-2xl font-bold text-purple-600">
+                    {totalLiquid.toFixed(1)}L
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -256,14 +315,25 @@ function LiquidMap() {
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-medium">{vessel.vesselName}</h4>
-                    <Badge variant={vessel.vesselStatus === 'available' ? 'secondary' : 'default'}>
+                    <Badge
+                      variant={
+                        vessel.vesselStatus === "available"
+                          ? "secondary"
+                          : "default"
+                      }
+                    >
                       {vessel.vesselStatus}
                     </Badge>
                   </div>
-                  
+
                   <div className="text-sm text-gray-600 mb-2">
-                    <p>Capacity: {(Number(vessel.vesselCapacityL) || 0).toFixed(1)}L</p>
-                    {vessel.vesselLocation && <p>Location: {vessel.vesselLocation}</p>}
+                    <p>
+                      Capacity:{" "}
+                      {(Number(vessel.vesselCapacityL) || 0).toFixed(1)}L
+                    </p>
+                    {vessel.vesselLocation && (
+                      <p>Location: {vessel.vesselLocation}</p>
+                    )}
                   </div>
 
                   {vessel.batchId && (
@@ -275,7 +345,8 @@ function LiquidMap() {
                         </span>
                       </div>
                       <div className="text-xs text-blue-700">
-                        Volume: {(Number(vessel.currentVolumeL) || 0).toFixed(1)}L
+                        Volume:{" "}
+                        {(Number(vessel.currentVolumeL) || 0).toFixed(1)}L
                       </div>
                       <div className="text-xs text-blue-700">
                         Status: {vessel.batchStatus}
@@ -288,20 +359,27 @@ function LiquidMap() {
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
                       <span>Utilization</span>
                       <span>
-                        {vessel.currentVolumeL 
-                          ? ((Number(vessel.currentVolumeL) / Number(vessel.vesselCapacityL)) * 100).toFixed(0)
-                          : 0}%
+                        {vessel.currentVolumeL
+                          ? (
+                              (Number(vessel.currentVolumeL) /
+                                Number(vessel.vesselCapacityL)) *
+                              100
+                            ).toFixed(0)
+                          : 0}
+                        %
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
+                      <div
                         className={`h-2 rounded-full ${
-                          vessel.vesselStatus === 'in_use' ? 'bg-blue-500' : 'bg-gray-300'
+                          vessel.vesselStatus === "in_use"
+                            ? "bg-blue-500"
+                            : "bg-gray-300"
                         }`}
                         style={{
-                          width: vessel.currentVolumeL 
+                          width: vessel.currentVolumeL
                             ? `${Math.min((Number(vessel.currentVolumeL) / Number(vessel.vesselCapacityL)) * 100, 100)}%`
-                            : '0%'
+                            : "0%",
                         }}
                       />
                     </div>
@@ -313,49 +391,53 @@ function LiquidMap() {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 function RecentPressRuns() {
-  const { data: session } = useSession()
-  const [searchTerm, setSearchTerm] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 10
+  const { data: session } = useSession();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const { data: pressRunsData, isPending } = trpc.pressRun.list.useQuery({
-    status: 'completed',
+    status: "completed",
     limit: 100, // Get more items for client-side pagination and search
-    sortBy: 'updated',
-    sortOrder: 'desc'
-  })
+    sortBy: "updated",
+    sortOrder: "desc",
+  });
 
-  const canView = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'operator'
+  const canView =
+    (session?.user as any)?.role === "admin" ||
+    (session?.user as any)?.role === "operator";
 
   const filteredPressRuns = useMemo(() => {
-    if (!pressRunsData?.pressRuns) return []
+    if (!pressRunsData?.pressRuns) return [];
 
-    const filtered = pressRunsData.pressRuns.filter(pressRun => {
-      const searchLower = searchTerm.toLowerCase()
-      const varietiesText = pressRun.varieties.join(' ').toLowerCase()
-      const vesselText = pressRun.vesselName?.toLowerCase() || ''
-      const dateText = pressRun.endTime ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase() : ''
+    const filtered = pressRunsData.pressRuns.filter((pressRun) => {
+      const searchLower = searchTerm.toLowerCase();
+      const varietiesText = pressRun.varieties.join(" ").toLowerCase();
+      const vesselText = pressRun.vesselName?.toLowerCase() || "";
+      const dateText = pressRun.endTime
+        ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase()
+        : "";
 
       return (
         varietiesText.includes(searchLower) ||
         vesselText.includes(searchLower) ||
         dateText.includes(searchLower)
-      )
-    })
+      );
+    });
 
-    return filtered
-  }, [pressRunsData?.pressRuns, searchTerm])
+    return filtered;
+  }, [pressRunsData?.pressRuns, searchTerm]);
 
   const paginatedPressRuns = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    return filteredPressRuns.slice(startIndex, startIndex + itemsPerPage)
-  }, [filteredPressRuns, currentPage, itemsPerPage])
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredPressRuns.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredPressRuns, currentPage, itemsPerPage]);
 
-  const totalPages = Math.ceil(filteredPressRuns.length / itemsPerPage)
+  const totalPages = Math.ceil(filteredPressRuns.length / itemsPerPage);
 
   if (!canView) {
     return (
@@ -370,11 +452,13 @@ function RecentPressRuns() {
           <div className="text-center py-8 text-gray-500">
             <Settings className="w-8 h-8 mx-auto mb-2" />
             <p>Access denied</p>
-            <p className="text-sm">You need admin or operator permissions to view press runs</p>
+            <p className="text-sm">
+              You need admin or operator permissions to view press runs
+            </p>
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (isPending) {
@@ -385,7 +469,9 @@ function RecentPressRuns() {
             <Grape className="w-5 h-5" />
             Recent Completed Press Runs
           </CardTitle>
-          <CardDescription>Loading recent press run completions...</CardDescription>
+          <CardDescription>
+            Loading recent press run completions...
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="animate-pulse">
@@ -394,7 +480,7 @@ function RecentPressRuns() {
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -407,7 +493,8 @@ function RecentPressRuns() {
               Recent Completed Press Runs
             </CardTitle>
             <CardDescription>
-              {filteredPressRuns.length} completed press run{filteredPressRuns.length !== 1 ? 's' : ''}
+              {filteredPressRuns.length} completed press run
+              {filteredPressRuns.length !== 1 ? "s" : ""}
               {searchTerm && ` matching "${searchTerm}"`}
             </CardDescription>
           </div>
@@ -421,8 +508,8 @@ function RecentPressRuns() {
               placeholder="Search by variety, vessel, or date..."
               value={searchTerm}
               onChange={(e) => {
-                setSearchTerm(e.target.value)
-                setCurrentPage(1) // Reset to first page when searching
+                setSearchTerm(e.target.value);
+                setCurrentPage(1); // Reset to first page when searching
               }}
               className="pl-10"
             />
@@ -450,23 +537,29 @@ function RecentPressRuns() {
           <>
             <div className="space-y-4">
               {paginatedPressRuns.map((pressRun) => (
-                <div key={pressRun.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                <div
+                  key={pressRun.id}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                >
                   <div className="flex items-center space-x-4">
                     <div className="w-12 h-12 bg-gradient-to-r from-green-100 to-emerald-100 rounded-lg flex items-center justify-center">
                       <CheckCircle className="w-6 h-6 text-green-600" />
                     </div>
                     <div>
                       <h4 className="font-semibold text-gray-900">
-                        {pressRun.endTime ? new Date(pressRun.endTime).toLocaleDateString() : 'Recent'}
+                        {pressRun.endTime
+                          ? new Date(pressRun.endTime).toLocaleDateString()
+                          : "Recent"}
                       </h4>
                       <p className="text-sm text-gray-600">
                         {pressRun.varieties.length > 0
-                          ? pressRun.varieties.join(', ')
-                          : 'Mixed varieties'
-                        }
+                          ? pressRun.varieties.join(", ")
+                          : "Mixed varieties"}
                       </p>
                       {pressRun.vesselName && (
-                        <p className="text-xs text-gray-500">→ {pressRun.vesselName}</p>
+                        <p className="text-xs text-gray-500">
+                          → {pressRun.vesselName}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -475,15 +568,20 @@ function RecentPressRuns() {
                       Completed
                     </span>
                     <p className="text-xs text-gray-500 mt-1">
-                      {pressRun.loadCount} load{pressRun.loadCount !== 1 ? 's' : ''}
+                      {pressRun.loadCount} load
+                      {pressRun.loadCount !== 1 ? "s" : ""}
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-gray-900">
-                      {pressRun.totalJuiceVolumeL ? `${parseFloat(pressRun.totalJuiceVolumeL).toFixed(1)}L` : '—'}
+                      {pressRun.totalJuiceVolumeL
+                        ? `${parseFloat(pressRun.totalJuiceVolumeL).toFixed(1)}L`
+                        : "—"}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {pressRun.extractionRatePercent ? `${pressRun.extractionRatePercent.toFixed(1)}%` : 'Juice'}
+                      {pressRun.extractionRatePercent
+                        ? `${pressRun.extractionRatePercent.toFixed(1)}%`
+                        : "Juice"}
                     </p>
                   </div>
                 </div>
@@ -494,13 +592,20 @@ function RecentPressRuns() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between mt-6 pt-4 border-t">
                 <div className="text-sm text-gray-600">
-                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredPressRuns.length)} of {filteredPressRuns.length} results
+                  Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                  {Math.min(
+                    currentPage * itemsPerPage,
+                    filteredPressRuns.length,
+                  )}{" "}
+                  of {filteredPressRuns.length} results
                 </div>
                 <div className="flex items-center space-x-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(1, prev - 1))
+                    }
                     disabled={currentPage === 1}
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -509,9 +614,13 @@ function RecentPressRuns() {
 
                   <div className="flex items-center space-x-1">
                     {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .filter(page => {
+                      .filter((page) => {
                         // Show first page, last page, current page, and pages around current
-                        return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1
+                        return (
+                          page === 1 ||
+                          page === totalPages ||
+                          Math.abs(page - currentPage) <= 1
+                        );
                       })
                       .map((page, index, array) => (
                         <div key={page} className="flex items-center">
@@ -519,7 +628,9 @@ function RecentPressRuns() {
                             <span className="px-2 text-gray-400">...</span>
                           )}
                           <Button
-                            variant={currentPage === page ? "default" : "outline"}
+                            variant={
+                              currentPage === page ? "default" : "outline"
+                            }
                             size="sm"
                             onClick={() => setCurrentPage(page)}
                             className="w-8 h-8 p-0"
@@ -533,7 +644,9 @@ function RecentPressRuns() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                    }
                     disabled={currentPage === totalPages}
                   >
                     Next
@@ -546,34 +659,40 @@ function RecentPressRuns() {
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
 
 function COGSReport() {
-  const { data: session } = useSession()
-  const { data: cogsData, isPending, refetch } = trpc.reports.cogsPerBatch.useQuery()
-  
-  const isAdmin = (session?.user as any)?.role === 'admin'
-  const canView = (session?.user as any)?.role === 'admin' || (session?.user as any)?.role === 'operator'
+  const { data: session } = useSession();
+  const {
+    data: cogsData,
+    isPending,
+    refetch,
+  } = trpc.reports.cogsPerBatch.useQuery();
+
+  const isAdmin = (session?.user as any)?.role === "admin";
+  const canView =
+    (session?.user as any)?.role === "admin" ||
+    (session?.user as any)?.role === "operator";
 
   const exportCSV = () => {
-    if (!cogsData?.batches) return
-    
+    if (!cogsData?.batches) return;
+
     const headers = [
-      'Batch Number',
-      'Status', 
-      'Total Cost',
-      'Apple Cost',
-      'Labor Cost', 
-      'Overhead Cost',
-      'Packaging Cost',
-      'Cost per Bottle',
-      'Cost per Liter',
-      'Initial Volume (L)',
-      'Current Volume (L)'
-    ]
-    
-    const rows = cogsData.batches.map(batch => [
+      "Batch Number",
+      "Status",
+      "Total Cost",
+      "Apple Cost",
+      "Labor Cost",
+      "Overhead Cost",
+      "Packaging Cost",
+      "Cost per Bottle",
+      "Cost per Liter",
+      "Initial Volume (L)",
+      "Current Volume (L)",
+    ];
+
+    const rows = cogsData.batches.map((batch) => [
       batch.batchNumber,
       batch.batchStatus,
       batch.totalCost,
@@ -581,72 +700,104 @@ function COGSReport() {
       batch.laborCost,
       batch.overheadCost,
       batch.packagingCost,
-      batch.costPerBottle || '',
-      batch.costPerL || '',
+      batch.costPerBottle || "",
+      batch.costPerL || "",
       batch.initialVolumeL,
-      batch.currentVolumeL
-    ])
-    
+      batch.currentVolumeL,
+    ]);
+
     const csvContent = [headers, ...rows]
-      .map(row => row.map(field => `"${field}"`).join(','))
-      .join('\n')
-    
-    const blob = new Blob([csvContent], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `cogs-report-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+      .map((row) => row.map((field) => `"${field}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cogs-report-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const exportPDF = async () => {
-    if (!cogsData?.batches) return
-    
+    if (!cogsData?.batches) return;
+
     try {
       // Dynamic import to avoid SSR issues
-      const { Document, Page, Text, View, StyleSheet, pdf } = await import('@react-pdf/renderer')
-      
+      const { Document, Page, Text, View, StyleSheet, pdf } = await import(
+        "@react-pdf/renderer"
+      );
+
       const COGSReportPDF = () => (
         <Document>
           <Page size="A4" style={styles.page}>
             <View style={styles.header}>
               <Text style={styles.title}>COGS per Batch Report</Text>
-              <Text style={styles.subtitle}>Generated on {new Date().toLocaleDateString()}</Text>
+              <Text style={styles.subtitle}>
+                Generated on {new Date().toLocaleDateString()}
+              </Text>
             </View>
-            
+
             <View style={styles.table}>
               <View style={styles.tableHeader}>
                 <Text style={[styles.tableCell, styles.headerCell]}>Batch</Text>
-                <Text style={[styles.tableCell, styles.headerCell]}>Status</Text>
-                <Text style={[styles.tableCell, styles.headerCell]}>Total Cost</Text>
-                <Text style={[styles.tableCell, styles.headerCell]}>Apple Cost</Text>
+                <Text style={[styles.tableCell, styles.headerCell]}>
+                  Status
+                </Text>
+                <Text style={[styles.tableCell, styles.headerCell]}>
+                  Total Cost
+                </Text>
+                <Text style={[styles.tableCell, styles.headerCell]}>
+                  Apple Cost
+                </Text>
                 <Text style={[styles.tableCell, styles.headerCell]}>Labor</Text>
-                <Text style={[styles.tableCell, styles.headerCell]}>Overhead</Text>
-                <Text style={[styles.tableCell, styles.headerCell]}>Packaging</Text>
-                <Text style={[styles.tableCell, styles.headerCell]}>$/Bottle</Text>
-                <Text style={[styles.tableCell, styles.headerCell]}>$/Liter</Text>
+                <Text style={[styles.tableCell, styles.headerCell]}>
+                  Overhead
+                </Text>
+                <Text style={[styles.tableCell, styles.headerCell]}>
+                  Packaging
+                </Text>
+                <Text style={[styles.tableCell, styles.headerCell]}>
+                  $/Bottle
+                </Text>
+                <Text style={[styles.tableCell, styles.headerCell]}>
+                  $/Liter
+                </Text>
               </View>
-              
+
               {cogsData.batches.map((batch, index) => (
                 <View key={batch.batchId} style={styles.tableRow}>
                   <Text style={styles.tableCell}>{batch.batchNumber}</Text>
                   <Text style={styles.tableCell}>{batch.batchStatus}</Text>
-                  <Text style={styles.tableCell}>${parseFloat(batch.totalCost).toFixed(2)}</Text>
-                  <Text style={styles.tableCell}>${parseFloat(batch.totalAppleCost).toFixed(2)}</Text>
-                  <Text style={styles.tableCell}>${parseFloat(batch.laborCost).toFixed(2)}</Text>
-                  <Text style={styles.tableCell}>${parseFloat(batch.overheadCost).toFixed(2)}</Text>
-                  <Text style={styles.tableCell}>${parseFloat(batch.packagingCost).toFixed(2)}</Text>
                   <Text style={styles.tableCell}>
-                    {batch.costPerBottle ? `$${parseFloat(batch.costPerBottle).toFixed(4)}` : '—'}
+                    ${parseFloat(batch.totalCost).toFixed(2)}
                   </Text>
                   <Text style={styles.tableCell}>
-                    {batch.costPerL ? `$${parseFloat(batch.costPerL).toFixed(2)}` : '—'}
+                    ${parseFloat(batch.totalAppleCost).toFixed(2)}
+                  </Text>
+                  <Text style={styles.tableCell}>
+                    ${parseFloat(batch.laborCost).toFixed(2)}
+                  </Text>
+                  <Text style={styles.tableCell}>
+                    ${parseFloat(batch.overheadCost).toFixed(2)}
+                  </Text>
+                  <Text style={styles.tableCell}>
+                    ${parseFloat(batch.packagingCost).toFixed(2)}
+                  </Text>
+                  <Text style={styles.tableCell}>
+                    {batch.costPerBottle
+                      ? `$${parseFloat(batch.costPerBottle).toFixed(4)}`
+                      : "—"}
+                  </Text>
+                  <Text style={styles.tableCell}>
+                    {batch.costPerL
+                      ? `$${parseFloat(batch.costPerL).toFixed(2)}`
+                      : "—"}
                   </Text>
                 </View>
               ))}
             </View>
-            
+
             <View style={styles.footer}>
               <Text style={styles.footerText}>
                 Total Batches: {cogsData.batches.length}
@@ -654,12 +805,12 @@ function COGSReport() {
             </View>
           </Page>
         </Document>
-      )
+      );
 
       const styles = StyleSheet.create({
         page: {
-          flexDirection: 'column',
-          backgroundColor: '#FFFFFF',
+          flexDirection: "column",
+          backgroundColor: "#FFFFFF",
           padding: 30,
         },
         header: {
@@ -667,74 +818,74 @@ function COGSReport() {
         },
         title: {
           fontSize: 24,
-          fontWeight: 'bold',
+          fontWeight: "bold",
           marginBottom: 5,
         },
         subtitle: {
           fontSize: 12,
-          color: '#666666',
+          color: "#666666",
         },
         table: {
-          display: 'flex',
-          width: 'auto',
-          borderStyle: 'solid',
+          display: "flex",
+          width: "auto",
+          borderStyle: "solid",
           borderWidth: 1,
-          borderColor: '#bfbfbf',
+          borderColor: "#bfbfbf",
         },
         tableHeader: {
-          flexDirection: 'row',
-          backgroundColor: '#f0f0f0',
+          flexDirection: "row",
+          backgroundColor: "#f0f0f0",
         },
         tableRow: {
-          flexDirection: 'row',
+          flexDirection: "row",
           borderTopWidth: 1,
-          borderTopColor: '#bfbfbf',
+          borderTopColor: "#bfbfbf",
         },
         tableCell: {
           flex: 1,
           fontSize: 8,
           padding: 5,
           borderRightWidth: 1,
-          borderRightColor: '#bfbfbf',
+          borderRightColor: "#bfbfbf",
         },
         headerCell: {
-          fontWeight: 'bold',
-          backgroundColor: '#f0f0f0',
+          fontWeight: "bold",
+          backgroundColor: "#f0f0f0",
         },
         footer: {
           marginTop: 20,
           paddingTop: 10,
           borderTopWidth: 1,
-          borderTopColor: '#bfbfbf',
+          borderTopColor: "#bfbfbf",
         },
         footerText: {
           fontSize: 10,
-          color: '#666666',
+          color: "#666666",
         },
-      })
-      
-      const blob = await pdf(<COGSReportPDF />).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `cogs-report-${new Date().toISOString().split('T')[0]}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
+      });
+
+      const blob = await pdf(<COGSReportPDF />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cogs-report-${new Date().toISOString().split("T")[0]}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error generating PDF:', error)
-      alert('Error generating PDF. Please try again.')
+      console.error("Error generating PDF:", error);
+      alert("Error generating PDF. Please try again.");
     }
-  }
+  };
 
   const refreshSnapshots = async () => {
     try {
-      await refetch()
-      alert('Cost data refreshed successfully')
+      await refetch();
+      alert("Cost data refreshed successfully");
     } catch (error) {
-      console.error('Error refreshing data:', error)
-      alert('Error refreshing data. Please try again.')
+      console.error("Error refreshing data:", error);
+      alert("Error refreshing data. Please try again.");
     }
-  }
+  };
 
   if (!canView) {
     return (
@@ -749,11 +900,13 @@ function COGSReport() {
           <div className="text-center py-8 text-gray-500">
             <Settings className="w-8 h-8 mx-auto mb-2" />
             <p>Access denied</p>
-            <p className="text-sm">You need admin or operator permissions to view this report</p>
+            <p className="text-sm">
+              You need admin or operator permissions to view this report
+            </p>
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   if (isPending) {
@@ -772,10 +925,10 @@ function COGSReport() {
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
-  const batches = cogsData?.batches || []
+  const batches = cogsData?.batches || [];
 
   return (
     <Card>
@@ -790,7 +943,7 @@ function COGSReport() {
               Cost breakdown for {batches.length} batches
             </CardDescription>
           </div>
-          
+
           <div className="flex gap-2">
             {isAdmin && (
               <Button variant="outline" size="sm" onClick={refreshSnapshots}>
@@ -827,9 +980,17 @@ function COGSReport() {
           <TableBody>
             {batches.map((batch) => (
               <TableRow key={batch.batchId}>
-                <TableCell className="font-medium">{batch.batchNumber}</TableCell>
+                <TableCell className="font-medium">
+                  {batch.batchNumber}
+                </TableCell>
                 <TableCell>
-                  <Badge variant={batch.batchStatus === 'completed' ? 'default' : 'secondary'}>
+                  <Badge
+                    variant={
+                      batch.batchStatus === "completed"
+                        ? "default"
+                        : "secondary"
+                    }
+                  >
                     {batch.batchStatus}
                   </Badge>
                 </TableCell>
@@ -849,10 +1010,14 @@ function COGSReport() {
                   ${parseFloat(batch.packagingCost).toFixed(2)}
                 </TableCell>
                 <TableCell className="text-right">
-                  {batch.costPerBottle ? `$${parseFloat(batch.costPerBottle).toFixed(4)}` : '—'}
+                  {batch.costPerBottle
+                    ? `$${parseFloat(batch.costPerBottle).toFixed(4)}`
+                    : "—"}
                 </TableCell>
                 <TableCell className="text-right">
-                  {batch.costPerL ? `$${parseFloat(batch.costPerL).toFixed(2)}` : '—'}
+                  {batch.costPerL
+                    ? `$${parseFloat(batch.costPerL).toFixed(2)}`
+                    : "—"}
                 </TableCell>
               </TableRow>
             ))}
@@ -863,21 +1028,23 @@ function COGSReport() {
           <div className="text-center py-8 text-gray-500">
             <AlertCircle className="w-8 h-8 mx-auto mb-2" />
             <p>No batch cost data available</p>
-            <p className="text-sm">Cost calculations will appear here once batches are processed</p>
+            <p className="text-sm">
+              Cost calculations will appear here once batches are processed
+            </p>
           </div>
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
 
 export default function DashboardPage() {
-  const { data: session } = useSession()
-  
+  const { data: session } = useSession();
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
@@ -893,14 +1060,22 @@ export default function DashboardPage() {
               {session?.user && (
                 <div>
                   <p className="text-sm text-gray-500">Role</p>
-                  <Badge variant={(session.user as any).role === 'admin' ? 'default' : 'secondary'}>
-                    {(session.user as any).role || 'Unknown'}
+                  <Badge
+                    variant={
+                      (session.user as any).role === "admin"
+                        ? "default"
+                        : "secondary"
+                    }
+                  >
+                    {(session.user as any).role || "Unknown"}
                   </Badge>
                 </div>
               )}
               <div>
                 <p className="text-sm text-gray-500">Last updated</p>
-                <p className="text-sm font-medium text-gray-900">Today at 2:30 PM</p>
+                <p className="text-sm font-medium text-gray-900">
+                  Today at 2:30 PM
+                </p>
               </div>
             </div>
           </div>
@@ -916,7 +1091,10 @@ export default function DashboardPage() {
               <Droplets className="w-4 h-4" />
               Liquid Map
             </TabsTrigger>
-            <TabsTrigger value="cogs-report" className="flex items-center gap-2">
+            <TabsTrigger
+              value="cogs-report"
+              className="flex items-center gap-2"
+            >
               <DollarSign className="w-4 h-4" />
               COGS Report
             </TabsTrigger>
@@ -925,194 +1103,241 @@ export default function DashboardPage() {
           <TabsContent value="overview">
             {/* Original Dashboard Content */}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => {
-            const Icon = stat.icon
-            return (
-              <Card key={index} className="bg-white border-2 border-gray-100 hover:border-gray-200 transition-all duration-200 hover:shadow-md">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-600 mb-1">{stat.label}</p>
-                      <p className="text-3xl font-bold text-gray-900 mb-2">{stat.value}</p>
-                      <div className="flex items-center">
-                        {stat.changeType === "positive" && <ArrowUpRight className="w-4 h-4 text-green-500 mr-1" />}
-                        <p className={`text-sm ${stat.changeType === "positive" ? "text-green-600" : "text-gray-500"}`}>
-                          {stat.change}
-                        </p>
-                      </div>
-                    </div>
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 ${stat.color}`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-
-        {/* Alerts */}
-        <Card className="bg-white mb-8 border-2 border-gray-100">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-600" />
-              Recent Alerts & Updates
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {alerts.map((alert, index) => {
-                const Icon = alert.icon
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              {stats.map((stat, index) => {
+                const Icon = stat.icon;
                 return (
-                  <div key={index} className={`p-4 rounded-lg border-l-4 ${alert.color}`}>
-                    <div className="flex items-start">
-                      <Icon className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 mb-1">{alert.title}</h4>
-                        <p className="text-gray-600 text-sm mb-2">{alert.description}</p>
-                        <p className="text-xs text-gray-500 flex items-center">
-                          <Clock className="w-3 h-3 mr-1" />
-                          {alert.time}
-                        </p>
+                  <Card
+                    key={index}
+                    className="bg-white border-2 border-gray-100 hover:border-gray-200 transition-all duration-200 hover:shadow-md"
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-600 mb-1">
+                            {stat.label}
+                          </p>
+                          <p className="text-3xl font-bold text-gray-900 mb-2">
+                            {stat.value}
+                          </p>
+                          <div className="flex items-center">
+                            {stat.changeType === "positive" && (
+                              <ArrowUpRight className="w-4 h-4 text-green-500 mr-1" />
+                            )}
+                            <p
+                              className={`text-sm ${stat.changeType === "positive" ? "text-green-600" : "text-gray-500"}`}
+                            >
+                              {stat.change}
+                            </p>
+                          </div>
+                        </div>
+                        <div
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 ${stat.color}`}
+                        >
+                          <Icon className="w-6 h-6" />
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                )
+                    </CardContent>
+                  </Card>
+                );
               })}
             </div>
-          </CardContent>
-        </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Recent Batches */}
-          <div className="lg:col-span-2">
-            <Card className="bg-white border-2 border-gray-100 h-full">
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Active Batches</CardTitle>
-                    <CardDescription>Monitor your current fermentation batches</CardDescription>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    <Eye className="w-4 h-4 mr-2" />
-                    View All
-                  </Button>
-                </div>
+            {/* Alerts */}
+            <Card className="bg-white mb-8 border-2 border-gray-100">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                  Recent Alerts & Updates
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {recentBatches.map((batch, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
-                          <Beaker className="w-6 h-6 text-purple-600" />
-                        </div>
-                        <div>
-                          <h4 className="font-semibold text-gray-900">{batch.id}</h4>
-                          <p className="text-sm text-gray-600">{batch.variety}</p>
-                        </div>
-                      </div>
-                      <div className="text-center">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${batch.statusColor}`}>
-                          {batch.status}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {batch.daysLeft > 0 ? `${batch.daysLeft} days left` : "Complete"}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900">{batch.abv}</p>
-                        <p className="text-xs text-gray-500">ABV</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Quick Actions */}
-          <div>
-            <Card className="bg-white border-2 border-gray-100">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plus className="w-5 h-5" />
-                  Quick Actions
-                </CardTitle>
-                <CardDescription>Common tasks and operations</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {quickActions.map((action, index) => {
-                    const Icon = action.icon
+                  {alerts.map((alert, index) => {
+                    const Icon = alert.icon;
                     return (
-                      <Button
+                      <div
                         key={index}
-                        variant="outline"
-                        className="w-full justify-start h-auto p-4 hover:shadow-md transition-all duration-200 group"
-                        asChild
+                        className={`p-4 rounded-lg border-l-4 ${alert.color}`}
                       >
-                        <a href={action.href}>
-                          <div className={`w-10 h-10 ${action.color} rounded-lg flex items-center justify-center mr-3 text-white group-hover:scale-110 transition-transform`}>
-                            <Icon className="w-5 h-5" />
+                        <div className="flex items-start">
+                          <Icon className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-900 mb-1">
+                              {alert.title}
+                            </h4>
+                            <p className="text-gray-600 text-sm mb-2">
+                              {alert.description}
+                            </p>
+                            <p className="text-xs text-gray-500 flex items-center">
+                              <Clock className="w-3 h-3 mr-1" />
+                              {alert.time}
+                            </p>
                           </div>
-                          <div className="text-left">
-                            <div className="font-semibold text-gray-900 group-hover:text-gray-700">
-                              {action.title}
-                            </div>
-                            <div className="text-sm text-gray-500">{action.description}</div>
-                          </div>
-                        </a>
-                      </Button>
-                    )
+                        </div>
+                      </div>
+                    );
                   })}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Upcoming Tasks */}
-            <Card className="bg-white border-2 border-gray-100 mt-6">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5" />
-                  This Week
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center text-sm">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">Bottle Batch B-2024-001</p>
-                      <p className="text-gray-500">Tomorrow</p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+              {/* Recent Batches */}
+              <div className="lg:col-span-2">
+                <Card className="bg-white border-2 border-gray-100 h-full">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Active Batches</CardTitle>
+                        <CardDescription>
+                          Monitor your current fermentation batches
+                        </CardDescription>
+                      </div>
+                      <Button variant="outline" size="sm">
+                        <Eye className="w-4 h-4 mr-2" />
+                        View All
+                      </Button>
                     </div>
-                  </div>
-                  <div className="flex items-center text-sm">
-                    <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">Vendor delivery expected</p>
-                      <p className="text-gray-500">Thursday</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {recentBatches.map((batch, index) => (
+                        <div
+                          key={index}
+                          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
+                              <Beaker className="w-6 h-6 text-purple-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-900">
+                                {batch.id}
+                              </h4>
+                              <p className="text-sm text-gray-600">
+                                {batch.variety}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-center">
+                            <span
+                              className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${batch.statusColor}`}
+                            >
+                              {batch.status}
+                            </span>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {batch.daysLeft > 0
+                                ? `${batch.daysLeft} days left`
+                                : "Complete"}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-gray-900">
+                              {batch.abv}
+                            </p>
+                            <p className="text-xs text-gray-500">ABV</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                  <div className="flex items-center text-sm">
-                    <div className="w-2 h-2 bg-amber-500 rounded-full mr-3"></div>
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">Monthly COGS report due</p>
-                      <p className="text-gray-500">Friday</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+                  </CardContent>
+                </Card>
+              </div>
 
-        {/* Recent Press Runs */}
-        <div className="mb-8">
-          <RecentPressRuns />
-        </div>
+              {/* Quick Actions */}
+              <div>
+                <Card className="bg-white border-2 border-gray-100">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Plus className="w-5 h-5" />
+                      Quick Actions
+                    </CardTitle>
+                    <CardDescription>
+                      Common tasks and operations
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {quickActions.map((action, index) => {
+                        const Icon = action.icon;
+                        return (
+                          <Button
+                            key={index}
+                            variant="outline"
+                            className="w-full justify-start h-auto p-4 hover:shadow-md transition-all duration-200 group"
+                            asChild
+                          >
+                            <a href={action.href}>
+                              <div
+                                className={`w-10 h-10 ${action.color} rounded-lg flex items-center justify-center mr-3 text-white group-hover:scale-110 transition-transform`}
+                              >
+                                <Icon className="w-5 h-5" />
+                              </div>
+                              <div className="text-left">
+                                <div className="font-semibold text-gray-900 group-hover:text-gray-700">
+                                  {action.title}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {action.description}
+                                </div>
+                              </div>
+                            </a>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Upcoming Tasks */}
+                <Card className="bg-white border-2 border-gray-100 mt-6">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Calendar className="w-5 h-5" />
+                      This Week
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex items-center text-sm">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">
+                            Bottle Batch B-2024-001
+                          </p>
+                          <p className="text-gray-500">Tomorrow</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center text-sm">
+                        <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">
+                            Vendor delivery expected
+                          </p>
+                          <p className="text-gray-500">Thursday</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center text-sm">
+                        <div className="w-2 h-2 bg-amber-500 rounded-full mr-3"></div>
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">
+                            Monthly COGS report due
+                          </p>
+                          <p className="text-gray-500">Friday</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Recent Press Runs */}
+            <div className="mb-8">
+              <RecentPressRuns />
+            </div>
           </TabsContent>
 
           <TabsContent value="liquid-map">
@@ -1125,5 +1350,5 @@ export default function DashboardPage() {
         </Tabs>
       </main>
     </div>
-  )
+  );
 }

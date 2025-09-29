@@ -1,22 +1,39 @@
-"use client"
+"use client";
 
-import React, { useState, useMemo } from "react"
-import { trpc } from "@/utils/trpc"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { toast } from "@/hooks/use-toast"
-import { Loader2, Search } from "lucide-react"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
+import React, { useState, useMemo } from "react";
+import { trpc } from "@/utils/trpc";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "@/hooks/use-toast";
+import { Loader2, Search } from "lucide-react";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 interface AddBatchAdditiveFormProps {
-  batchId: string
-  onSuccess: () => void
-  onCancel: () => void
+  batchId: string;
+  onSuccess: () => void;
+  onCancel: () => void;
 }
 
 const units = [
@@ -29,89 +46,98 @@ const units = [
   { value: "mg/L", label: "Milligrams per liter (mg/L)" },
   { value: "g/L", label: "Grams per liter (g/L)" },
   { value: "units", label: "Units" },
-]
+];
 
 const additiveTypes = [
   { value: "Sugar & Sweeteners", label: "Sugar & Sweeteners" },
   { value: "Flavorings & Adjuncts", label: "Flavorings & Adjuncts" },
   { value: "Fermentation Organisms", label: "Fermentation Organisms" },
   { value: "Enzymes", label: "Enzymes" },
-  { value: "Antioxidants & Antimicrobials", label: "Antioxidants & Antimicrobials" },
+  {
+    value: "Antioxidants & Antimicrobials",
+    label: "Antioxidants & Antimicrobials",
+  },
   { value: "Tannins & Mouthfeel", label: "Tannins & Mouthfeel" },
   { value: "Acids & Bases", label: "Acids & Bases" },
   { value: "Nutrients", label: "Nutrients" },
   { value: "Stabilizers", label: "Stabilizers" },
   { value: "Refining & Clarifying", label: "Refining & Clarifying" },
-]
+];
 
 export function AddBatchAdditiveForm({
   batchId,
   onSuccess,
   onCancel,
 }: AddBatchAdditiveFormProps) {
-  const [selectedAdditiveType, setSelectedAdditiveType] = useState("")
-  const [selectedAdditiveId, setSelectedAdditiveId] = useState("")
-  const [selectedAdditive, setSelectedAdditive] = useState<any>(null)
-  const [amount, setAmount] = useState("")
-  const [unit, setUnit] = useState("")
-  const [notes, setNotes] = useState("")
-  const [searchQuery, setSearchQuery] = useState("")
-  const [open, setOpen] = useState(false)
+  const [selectedAdditiveType, setSelectedAdditiveType] = useState("");
+  const [selectedAdditiveId, setSelectedAdditiveId] = useState("");
+  const [selectedAdditive, setSelectedAdditive] = useState<any>(null);
+  const [amount, setAmount] = useState("");
+  const [unit, setUnit] = useState("");
+  const [notes, setNotes] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [open, setOpen] = useState(false);
 
   // Fetch available additives from inventory, filtered by type if selected
-  const { data: additiveData, isLoading: isLoadingAdditives } = trpc.additiveVarieties.list.useQuery({
-    search: searchQuery,
-    limit: 50,
-    includeInactive: false,
-    sortBy: 'name',
-    sortOrder: 'asc'
-  }, {
-    enabled: !!selectedAdditiveType
-  })
+  const { data: additiveData, isLoading: isLoadingAdditives } =
+    trpc.additiveVarieties.list.useQuery(
+      {
+        search: searchQuery,
+        limit: 50,
+        includeInactive: false,
+        sortBy: "name",
+        sortOrder: "asc",
+      },
+      {
+        enabled: !!selectedAdditiveType,
+      },
+    );
 
   // Filter additives by selected type
   const filteredAdditives = useMemo(() => {
-    if (!additiveData?.varieties || !selectedAdditiveType) return []
-    return additiveData.varieties.filter(additive => additive.itemType === selectedAdditiveType)
-  }, [additiveData?.varieties, selectedAdditiveType])
+    if (!additiveData?.varieties || !selectedAdditiveType) return [];
+    return additiveData.varieties.filter(
+      (additive) => additive.itemType === selectedAdditiveType,
+    );
+  }, [additiveData?.varieties, selectedAdditiveType]);
 
-  const additives = useMemo(() => filteredAdditives, [filteredAdditives])
+  const additives = useMemo(() => filteredAdditives, [filteredAdditives]);
 
   const addAdditive = trpc.batch.addAdditive.useMutation({
     onSuccess: () => {
       toast({
         title: "Success",
         description: "Additive recorded successfully",
-      })
-      onSuccess()
+      });
+      onSuccess();
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const handleAdditiveTypeChange = (value: string) => {
-    setSelectedAdditiveType(value)
+    setSelectedAdditiveType(value);
     // Reset additive selection when type changes
-    setSelectedAdditiveId("")
-    setSelectedAdditive(null)
-    setSearchQuery("")
-  }
+    setSelectedAdditiveId("");
+    setSelectedAdditive(null);
+    setSearchQuery("");
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (!selectedAdditiveType || !selectedAdditive || !amount || !unit) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     const additiveData = {
@@ -121,19 +147,19 @@ export function AddBatchAdditiveForm({
       amount: parseFloat(amount),
       unit,
       notes: notes || undefined,
-    }
+    };
 
-    addAdditive.mutate(additiveData)
-  }
+    addAdditive.mutate(additiveData);
+  };
 
   const handleSelectAdditive = (additiveId: string) => {
-    const additive = additives.find(a => a.id === additiveId)
+    const additive = additives.find((a) => a.id === additiveId);
     if (additive) {
-      setSelectedAdditive(additive)
-      setSelectedAdditiveId(additiveId)
-      setOpen(false)
+      setSelectedAdditive(additive);
+      setSelectedAdditiveId(additiveId);
+      setOpen(false);
     }
-  }
+  };
 
   const getAdditiveTypeLabel = (type: string) => {
     const typeLabels: Record<string, string> = {
@@ -142,16 +168,19 @@ export function AddBatchAdditiveForm({
       enzyme: "Enzyme",
       clarifier: "Clarifier",
       preservative: "Preservative",
-      other: "Other"
-    }
-    return typeLabels[type] || type
-  }
+      other: "Other",
+    };
+    return typeLabels[type] || type;
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="additiveType">Additive Type *</Label>
-        <Select value={selectedAdditiveType} onValueChange={handleAdditiveTypeChange}>
+        <Select
+          value={selectedAdditiveType}
+          onValueChange={handleAdditiveTypeChange}
+        >
           <SelectTrigger id="additiveType">
             <SelectValue placeholder="Select additive type" />
           </SelectTrigger>
@@ -168,94 +197,102 @@ export function AddBatchAdditiveForm({
       {selectedAdditiveType && (
         <div className="space-y-2">
           <Label>Select Additive from Inventory *</Label>
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={open}
-              disabled={!selectedAdditiveType}
-              className="w-full justify-between text-left font-normal"
-            >
-              {selectedAdditive ? (
-                <div className="flex items-center justify-between w-full">
-                  <span>{selectedAdditive.name}</span>
-                  <span className="text-muted-foreground text-sm ml-2">
-                    ({getAdditiveTypeLabel(selectedAdditive.itemType)})
-                  </span>
-                </div>
-              ) : (
-                <span className="text-muted-foreground">
-                  {selectedAdditiveType ? `Search ${selectedAdditiveType.toLowerCase()} additives...` : "Select additive type first..."}
-                </span>
-              )}
-              <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-full p-0" align="start">
-            <Command>
-              <CommandInput
-                placeholder={`Search ${selectedAdditiveType.toLowerCase()} additives...`}
-                value={searchQuery}
-                onValueChange={setSearchQuery}
-              />
-              <CommandList>
-                {isLoadingAdditives && (
-                  <CommandEmpty>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading additives...
-                  </CommandEmpty>
-                )}
-                {!isLoadingAdditives && additives.length === 0 && (
-                  <CommandEmpty>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={open}
+                disabled={!selectedAdditiveType}
+                className="w-full justify-between text-left font-normal"
+              >
+                {selectedAdditive ? (
+                  <div className="flex items-center justify-between w-full">
+                    <span>{selectedAdditive.name}</span>
+                    <span className="text-muted-foreground text-sm ml-2">
+                      ({getAdditiveTypeLabel(selectedAdditive.itemType)})
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">
                     {selectedAdditiveType
-                      ? `No ${selectedAdditiveType.toLowerCase()} additives found in inventory.`
-                      : "Select an additive type first."
-                    }
-                  </CommandEmpty>
+                      ? `Search ${selectedAdditiveType.toLowerCase()} additives...`
+                      : "Select additive type first..."}
+                  </span>
                 )}
-                {!isLoadingAdditives && additives.length > 0 && (
-                  <CommandGroup heading="Available Additives">
-                    {additives.map((additive) => (
-                      <CommandItem
-                        key={additive.id}
-                        value={additive.id}
-                        onSelect={() => handleSelectAdditive(additive.id)}
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-medium">{additive.name}</span>
-                          <span className="text-sm text-muted-foreground">
-                            Type: {getAdditiveTypeLabel(additive.itemType)}
-                            {additive.labelImpact && " • Label Impact"}
-                            {additive.allergensVegan && " • Allergen/Vegan Concern"}
-                          </span>
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
+                <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-full p-0" align="start">
+              <Command>
+                <CommandInput
+                  placeholder={`Search ${selectedAdditiveType.toLowerCase()} additives...`}
+                  value={searchQuery}
+                  onValueChange={setSearchQuery}
+                />
+                <CommandList>
+                  {isLoadingAdditives && (
+                    <CommandEmpty>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading additives...
+                    </CommandEmpty>
+                  )}
+                  {!isLoadingAdditives && additives.length === 0 && (
+                    <CommandEmpty>
+                      {selectedAdditiveType
+                        ? `No ${selectedAdditiveType.toLowerCase()} additives found in inventory.`
+                        : "Select an additive type first."}
+                    </CommandEmpty>
+                  )}
+                  {!isLoadingAdditives && additives.length > 0 && (
+                    <CommandGroup heading="Available Additives">
+                      {additives.map((additive) => (
+                        <CommandItem
+                          key={additive.id}
+                          value={additive.id}
+                          onSelect={() => handleSelectAdditive(additive.id)}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{additive.name}</span>
+                            <span className="text-sm text-muted-foreground">
+                              Type: {getAdditiveTypeLabel(additive.itemType)}
+                              {additive.labelImpact && " • Label Impact"}
+                              {additive.allergensVegan &&
+                                " • Allergen/Vegan Concern"}
+                            </span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          {selectedAdditive && (
+            <div className="mt-2 p-3 bg-muted rounded-md text-sm">
+              <div className="font-medium mb-1">
+                Selected: {selectedAdditive.name}
+              </div>
+              <div className="text-muted-foreground">
+                Type: {getAdditiveTypeLabel(selectedAdditive.itemType)}
+                {selectedAdditive.labelImpact && (
+                  <div className="mt-1">
+                    ⚠️ Label Impact:{" "}
+                    {selectedAdditive.labelImpactNotes ||
+                      "May require label disclosure"}
+                  </div>
                 )}
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
-        {selectedAdditive && (
-          <div className="mt-2 p-3 bg-muted rounded-md text-sm">
-            <div className="font-medium mb-1">Selected: {selectedAdditive.name}</div>
-            <div className="text-muted-foreground">
-              Type: {getAdditiveTypeLabel(selectedAdditive.itemType)}
-              {selectedAdditive.labelImpact && (
-                <div className="mt-1">
-                  ⚠️ Label Impact: {selectedAdditive.labelImpactNotes || "May require label disclosure"}
-                </div>
-              )}
-              {selectedAdditive.allergensVegan && (
-                <div className="mt-1">
-                  ⚠️ Allergen/Vegan: {selectedAdditive.allergensVeganNotes || "May contain allergens or affect vegan status"}
-                </div>
-              )}
+                {selectedAdditive.allergensVegan && (
+                  <div className="mt-1">
+                    ⚠️ Allergen/Vegan:{" "}
+                    {selectedAdditive.allergensVeganNotes ||
+                      "May contain allergens or affect vegan status"}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
       )}
 
@@ -313,5 +350,5 @@ export function AddBatchAdditiveForm({
         </Button>
       </div>
     </form>
-  )
+  );
 }

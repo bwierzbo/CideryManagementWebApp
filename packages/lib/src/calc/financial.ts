@@ -12,19 +12,23 @@
  * @param locale - Locale for formatting (default: en-US)
  * @returns Formatted currency string
  */
-export function formatCurrency(amount: number, currencyCode: string = 'USD', locale: string = 'en-US'): string {
+export function formatCurrency(
+  amount: number,
+  currencyCode: string = "USD",
+  locale: string = "en-US",
+): string {
   if (!isFinite(amount)) {
-    throw new Error('Amount must be a finite number')
+    throw new Error("Amount must be a finite number");
   }
 
   const formatter = new Intl.NumberFormat(locale, {
-    style: 'currency',
+    style: "currency",
     currency: currencyCode,
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })
+    maximumFractionDigits: 2,
+  });
 
-  return formatter.format(amount)
+  return formatter.format(amount);
 }
 
 /**
@@ -35,16 +39,19 @@ export function formatCurrency(amount: number, currencyCode: string = 'USD', loc
  * @param decimalPlaces - Number of decimal places (default: 2)
  * @returns Formatted percentage string
  */
-export function formatPercentage(value: number, decimalPlaces: number = 2): string {
+export function formatPercentage(
+  value: number,
+  decimalPlaces: number = 2,
+): string {
   if (!isFinite(value)) {
-    throw new Error('Percentage value must be a finite number')
+    throw new Error("Percentage value must be a finite number");
   }
 
   if (decimalPlaces < 0 || decimalPlaces > 10) {
-    throw new Error('Decimal places must be between 0 and 10')
+    throw new Error("Decimal places must be between 0 and 10");
   }
 
-  return `${value.toFixed(decimalPlaces)}%`
+  return `${value.toFixed(decimalPlaces)}%`;
 }
 
 /**
@@ -55,17 +62,20 @@ export function formatPercentage(value: number, decimalPlaces: number = 2): stri
  * @param decimalPlaces - Number of decimal places (default: 2)
  * @returns Rounded amount
  */
-export function roundFinancial(amount: number, decimalPlaces: number = 2): number {
+export function roundFinancial(
+  amount: number,
+  decimalPlaces: number = 2,
+): number {
   if (!isFinite(amount)) {
-    throw new Error('Amount must be a finite number')
+    throw new Error("Amount must be a finite number");
   }
 
   if (decimalPlaces < 0 || decimalPlaces > 10) {
-    throw new Error('Decimal places must be between 0 and 10')
+    throw new Error("Decimal places must be between 0 and 10");
   }
 
-  const multiplier = Math.pow(10, decimalPlaces)
-  return Math.round(amount * multiplier) / multiplier
+  const multiplier = Math.pow(10, decimalPlaces);
+  return Math.round(amount * multiplier) / multiplier;
 }
 
 /**
@@ -75,32 +85,34 @@ export function roundFinancial(amount: number, decimalPlaces: number = 2): numbe
  * @param values - Array of {value, weight} objects
  * @returns Weighted average value
  */
-export function calculateWeightedAverage(values: Array<{ value: number; weight: number }>): number {
+export function calculateWeightedAverage(
+  values: Array<{ value: number; weight: number }>,
+): number {
   if (values.length === 0) {
-    throw new Error('At least one value is required for weighted average')
+    throw new Error("At least one value is required for weighted average");
   }
 
-  let totalWeightedValue = 0
-  let totalWeight = 0
+  let totalWeightedValue = 0;
+  let totalWeight = 0;
 
   for (const item of values) {
     if (!isFinite(item.value) || !isFinite(item.weight)) {
-      throw new Error('All values and weights must be finite numbers')
+      throw new Error("All values and weights must be finite numbers");
     }
 
     if (item.weight < 0) {
-      throw new Error('Weights must be non-negative')
+      throw new Error("Weights must be non-negative");
     }
 
-    totalWeightedValue += item.value * item.weight
-    totalWeight += item.weight
+    totalWeightedValue += item.value * item.weight;
+    totalWeight += item.weight;
   }
 
   if (totalWeight === 0) {
-    throw new Error('Total weight cannot be zero')
+    throw new Error("Total weight cannot be zero");
   }
 
-  return roundFinancial(totalWeightedValue / totalWeight, 4)
+  return roundFinancial(totalWeightedValue / totalWeight, 4);
 }
 
 /**
@@ -112,24 +124,26 @@ export function calculateWeightedAverage(values: Array<{ value: number; weight: 
  */
 export function calculateStandardDeviation(values: number[]): number {
   if (values.length === 0) {
-    throw new Error('At least one value is required for standard deviation')
+    throw new Error("At least one value is required for standard deviation");
   }
 
   if (values.length === 1) {
-    return 0
+    return 0;
   }
 
   for (const value of values) {
     if (!isFinite(value)) {
-      throw new Error('All values must be finite numbers')
+      throw new Error("All values must be finite numbers");
     }
   }
 
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length
-  const squaredDifferences = values.map(value => Math.pow(value - mean, 2))
-  const variance = squaredDifferences.reduce((sum, diff) => sum + diff, 0) / (values.length - 1)
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const squaredDifferences = values.map((value) => Math.pow(value - mean, 2));
+  const variance =
+    squaredDifferences.reduce((sum, diff) => sum + diff, 0) /
+    (values.length - 1);
 
-  return roundFinancial(Math.sqrt(variance), 4)
+  return roundFinancial(Math.sqrt(variance), 4);
 }
 
 /**
@@ -141,19 +155,21 @@ export function calculateStandardDeviation(values: number[]): number {
  */
 export function calculateCoefficientOfVariation(values: number[]): number {
   if (values.length === 0) {
-    throw new Error('At least one value is required')
+    throw new Error("At least one value is required");
   }
 
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
 
   if (mean === 0) {
-    throw new Error('Cannot calculate coefficient of variation when mean is zero')
+    throw new Error(
+      "Cannot calculate coefficient of variation when mean is zero",
+    );
   }
 
-  const stdDev = calculateStandardDeviation(values)
-  const cv = (stdDev / Math.abs(mean)) * 100
+  const stdDev = calculateStandardDeviation(values);
+  const cv = (stdDev / Math.abs(mean)) * 100;
 
-  return roundFinancial(cv, 2)
+  return roundFinancial(cv, 2);
 }
 
 /**
@@ -165,24 +181,24 @@ export function calculateCoefficientOfVariation(values: number[]): number {
  */
 export function calculateMedian(values: number[]): number {
   if (values.length === 0) {
-    throw new Error('At least one value is required for median calculation')
+    throw new Error("At least one value is required for median calculation");
   }
 
   for (const value of values) {
     if (!isFinite(value)) {
-      throw new Error('All values must be finite numbers')
+      throw new Error("All values must be finite numbers");
     }
   }
 
-  const sorted = [...values].sort((a, b) => a - b)
-  const middle = Math.floor(sorted.length / 2)
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
 
   if (sorted.length % 2 === 0) {
     // Even number of values - average of two middle values
-    return roundFinancial((sorted[middle - 1] + sorted[middle]) / 2, 4)
+    return roundFinancial((sorted[middle - 1] + sorted[middle]) / 2, 4);
   } else {
     // Odd number of values - middle value
-    return sorted[middle]
+    return sorted[middle];
   }
 }
 
@@ -194,39 +210,44 @@ export function calculateMedian(values: number[]): number {
  * @param percentile - Percentile to calculate (0-100)
  * @returns Percentile value
  */
-export function calculatePercentile(values: number[], percentile: number): number {
+export function calculatePercentile(
+  values: number[],
+  percentile: number,
+): number {
   if (values.length === 0) {
-    throw new Error('At least one value is required for percentile calculation')
+    throw new Error(
+      "At least one value is required for percentile calculation",
+    );
   }
 
   if (percentile < 0 || percentile > 100) {
-    throw new Error('Percentile must be between 0 and 100')
+    throw new Error("Percentile must be between 0 and 100");
   }
 
   for (const value of values) {
     if (!isFinite(value)) {
-      throw new Error('All values must be finite numbers')
+      throw new Error("All values must be finite numbers");
     }
   }
 
-  const sorted = [...values].sort((a, b) => a - b)
+  const sorted = [...values].sort((a, b) => a - b);
 
-  if (percentile === 0) return sorted[0]
-  if (percentile === 100) return sorted[sorted.length - 1]
+  if (percentile === 0) return sorted[0];
+  if (percentile === 100) return sorted[sorted.length - 1];
 
-  const index = (percentile / 100) * (sorted.length - 1)
-  const lower = Math.floor(index)
-  const upper = Math.ceil(index)
+  const index = (percentile / 100) * (sorted.length - 1);
+  const lower = Math.floor(index);
+  const upper = Math.ceil(index);
 
   if (lower === upper) {
-    return sorted[lower]
+    return sorted[lower];
   }
 
   // Linear interpolation between adjacent values
-  const weight = index - lower
-  const interpolated = sorted[lower] * (1 - weight) + sorted[upper] * weight
+  const weight = index - lower;
+  const interpolated = sorted[lower] * (1 - weight) + sorted[upper] * weight;
 
-  return roundFinancial(interpolated, 4)
+  return roundFinancial(interpolated, 4);
 }
 
 /**
@@ -238,22 +259,26 @@ export function calculatePercentile(values: number[], percentile: number): numbe
  * @param periods - Number of periods (years, months, etc.)
  * @returns CAGR as percentage
  */
-export function calculateCagr(beginningValue: number, endingValue: number, periods: number): number {
+export function calculateCagr(
+  beginningValue: number,
+  endingValue: number,
+  periods: number,
+): number {
   if (beginningValue <= 0) {
-    throw new Error('Beginning value must be positive')
+    throw new Error("Beginning value must be positive");
   }
 
   if (endingValue <= 0) {
-    throw new Error('Ending value must be positive')
+    throw new Error("Ending value must be positive");
   }
 
   if (periods <= 0) {
-    throw new Error('Number of periods must be positive')
+    throw new Error("Number of periods must be positive");
   }
 
-  const cagr = (Math.pow(endingValue / beginningValue, 1 / periods) - 1) * 100
+  const cagr = (Math.pow(endingValue / beginningValue, 1 / periods) - 1) * 100;
 
-  return roundFinancial(cagr, 2)
+  return roundFinancial(cagr, 2);
 }
 
 /**
@@ -265,16 +290,20 @@ export function calculateCagr(beginningValue: number, endingValue: number, perio
  * @param tolerance - Tolerance for comparison (default: 0.01 for penny precision)
  * @returns True if amounts are approximately equal
  */
-export function isFinanciallyEqual(amount1: number, amount2: number, tolerance: number = 0.01): boolean {
+export function isFinanciallyEqual(
+  amount1: number,
+  amount2: number,
+  tolerance: number = 0.01,
+): boolean {
   if (!isFinite(amount1) || !isFinite(amount2)) {
-    throw new Error('Amounts must be finite numbers')
+    throw new Error("Amounts must be finite numbers");
   }
 
   if (tolerance < 0) {
-    throw new Error('Tolerance must be non-negative')
+    throw new Error("Tolerance must be non-negative");
   }
 
-  return Math.abs(amount1 - amount2) <= tolerance
+  return Math.abs(amount1 - amount2) <= tolerance;
 }
 
 /**
@@ -285,32 +314,35 @@ export function isFinanciallyEqual(amount1: number, amount2: number, tolerance: 
  * @param fieldName - Name of field for error messages
  * @returns Parsed number
  */
-export function parseFinancialAmount(value: string | number, fieldName: string = 'amount'): number {
-  if (typeof value === 'number') {
+export function parseFinancialAmount(
+  value: string | number,
+  fieldName: string = "amount",
+): number {
+  if (typeof value === "number") {
     if (!isFinite(value)) {
-      throw new Error(`${fieldName} must be a finite number`)
+      throw new Error(`${fieldName} must be a finite number`);
     }
-    return value
+    return value;
   }
 
-  if (typeof value === 'string') {
+  if (typeof value === "string") {
     // Remove currency symbols and whitespace
-    const cleaned = value.replace(/[$,\s]/g, '')
+    const cleaned = value.replace(/[$,\s]/g, "");
 
-    if (cleaned === '') {
-      throw new Error(`${fieldName} cannot be empty`)
+    if (cleaned === "") {
+      throw new Error(`${fieldName} cannot be empty`);
     }
 
-    const parsed = parseFloat(cleaned)
+    const parsed = parseFloat(cleaned);
 
     if (!isFinite(parsed)) {
-      throw new Error(`${fieldName} must be a valid number`)
+      throw new Error(`${fieldName} must be a valid number`);
     }
 
-    return parsed
+    return parsed;
   }
 
-  throw new Error(`${fieldName} must be a string or number`)
+  throw new Error(`${fieldName} must be a string or number`);
 }
 
 /**
@@ -323,16 +355,16 @@ export function parseFinancialAmount(value: string | number, fieldName: string =
  */
 export function calculateRoi(gain: number, cost: number): number {
   if (!isFinite(gain) || !isFinite(cost)) {
-    throw new Error('Gain and cost must be finite numbers')
+    throw new Error("Gain and cost must be finite numbers");
   }
 
   if (cost === 0) {
-    throw new Error('Investment cost cannot be zero')
+    throw new Error("Investment cost cannot be zero");
   }
 
-  const roi = (gain / Math.abs(cost)) * 100
+  const roi = (gain / Math.abs(cost)) * 100;
 
-  return roundFinancial(roi, 2)
+  return roundFinancial(roi, 2);
 }
 
 /**
@@ -347,27 +379,29 @@ export function calculateRoi(gain: number, cost: number): number {
 export function calculateBreakEvenUnits(
   fixedCosts: number,
   pricePerUnit: number,
-  variableCostPerUnit: number
+  variableCostPerUnit: number,
 ): number {
   if (fixedCosts < 0) {
-    throw new Error('Fixed costs must be non-negative')
+    throw new Error("Fixed costs must be non-negative");
   }
 
   if (pricePerUnit <= 0) {
-    throw new Error('Price per unit must be positive')
+    throw new Error("Price per unit must be positive");
   }
 
   if (variableCostPerUnit < 0) {
-    throw new Error('Variable cost per unit must be non-negative')
+    throw new Error("Variable cost per unit must be non-negative");
   }
 
-  const contributionMargin = pricePerUnit - variableCostPerUnit
+  const contributionMargin = pricePerUnit - variableCostPerUnit;
 
   if (contributionMargin <= 0) {
-    throw new Error('Price per unit must be greater than variable cost per unit')
+    throw new Error(
+      "Price per unit must be greater than variable cost per unit",
+    );
   }
 
-  const breakEvenUnits = fixedCosts / contributionMargin
+  const breakEvenUnits = fixedCosts / contributionMargin;
 
-  return Math.ceil(breakEvenUnits) // Round up to whole units
+  return Math.ceil(breakEvenUnits); // Round up to whole units
 }

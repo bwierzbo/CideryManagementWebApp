@@ -1,0 +1,17 @@
+{
+  "performance": {
+    "build_time": 45,
+    "total_time": 120,
+    "cache_hit": true
+  },
+  "bundle": {
+    "total_size_kb": 800,
+    "gzipped_size_kb": 240,
+    "file_count": 25
+  },
+  "code_quality": {
+    "dead_code_files": 2,
+    "unused_dependencies": 1,
+    "circular_dependencies": 0
+  }
+}

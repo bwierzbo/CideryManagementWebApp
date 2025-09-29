@@ -2,14 +2,14 @@
  * Transfer validation guards for vessel capacity and state checks
  */
 
-import { z } from 'zod';
-import { TransferValidationError, VesselStateValidationError } from './errors';
+import { z } from "zod";
+import { TransferValidationError, VesselStateValidationError } from "./errors";
 
 export interface VesselData {
   id: string;
   name: string;
   capacityL: number;
-  status: 'available' | 'in_use' | 'cleaning' | 'maintenance';
+  status: "available" | "in_use" | "cleaning" | "maintenance";
   currentVolumeL?: number;
 }
 
@@ -17,7 +17,7 @@ export interface BatchData {
   id: string;
   batchNumber: string;
   currentVolumeL: number;
-  status: 'planned' | 'active' | 'completed' | 'cancelled';
+  status: "planned" | "active" | "completed" | "cancelled";
   vesselId?: string;
 }
 
@@ -35,19 +35,19 @@ export interface TransferData {
  * Validates that vessel is available for receiving transfers
  */
 export function validateVesselAvailability(vessel: VesselData): void {
-  if (vessel.status === 'maintenance') {
+  if (vessel.status === "maintenance") {
     throw new VesselStateValidationError(
       `Vessel ${vessel.name} is under maintenance`,
       `Cannot transfer to vessel "${vessel.name}" - it's currently under maintenance. Please select a different vessel or wait until maintenance is complete.`,
-      { vesselId: vessel.id, vesselName: vessel.name, status: vessel.status }
+      { vesselId: vessel.id, vesselName: vessel.name, status: vessel.status },
     );
   }
 
-  if (vessel.status === 'cleaning') {
+  if (vessel.status === "cleaning") {
     throw new VesselStateValidationError(
       `Vessel ${vessel.name} is being cleaned`,
       `Cannot transfer to vessel "${vessel.name}" - it's currently being cleaned. Please wait until cleaning is complete or select another vessel.`,
-      { vesselId: vessel.id, vesselName: vessel.name, status: vessel.status }
+      { vesselId: vessel.id, vesselName: vessel.name, status: vessel.status },
     );
   }
 }
@@ -58,7 +58,7 @@ export function validateVesselAvailability(vessel: VesselData): void {
 export function validateVesselCapacity(
   vessel: VesselData,
   transferVolume: number,
-  currentVolumeL: number = 0
+  currentVolumeL: number = 0,
 ): void {
   const totalVolumeAfterTransfer = currentVolumeL + transferVolume;
 
@@ -74,8 +74,8 @@ export function validateVesselCapacity(
         currentVolumeL,
         transferVolumeL: transferVolume,
         availableCapacityL: availableCapacity,
-        excessVolumeL: totalVolumeAfterTransfer - vessel.capacityL
-      }
+        excessVolumeL: totalVolumeAfterTransfer - vessel.capacityL,
+      },
     );
   }
 }
@@ -83,7 +83,10 @@ export function validateVesselCapacity(
 /**
  * Validates that batch has sufficient volume for transfer
  */
-export function validateBatchVolume(batch: BatchData, transferVolume: number): void {
+export function validateBatchVolume(
+  batch: BatchData,
+  transferVolume: number,
+): void {
   if (transferVolume > batch.currentVolumeL) {
     throw new TransferValidationError(
       `Transfer volume ${transferVolume}L exceeds batch volume ${batch.currentVolumeL}L`,
@@ -93,24 +96,32 @@ export function validateBatchVolume(batch: BatchData, transferVolume: number): v
         batchNumber: batch.batchNumber,
         batchVolumeL: batch.currentVolumeL,
         transferVolumeL: transferVolume,
-        shortfallL: transferVolume - batch.currentVolumeL
-      }
+        shortfallL: transferVolume - batch.currentVolumeL,
+      },
     );
   }
 
-  if (batch.status === 'completed') {
+  if (batch.status === "completed") {
     throw new TransferValidationError(
       `Cannot transfer from completed batch`,
       `Batch "${batch.batchNumber}" is marked as completed and cannot be transferred. If you need to make changes, please update the batch status first.`,
-      { batchId: batch.id, batchNumber: batch.batchNumber, status: batch.status }
+      {
+        batchId: batch.id,
+        batchNumber: batch.batchNumber,
+        status: batch.status,
+      },
     );
   }
 
-  if (batch.status === 'cancelled') {
+  if (batch.status === "cancelled") {
     throw new TransferValidationError(
       `Cannot transfer from cancelled batch`,
       `Batch "${batch.batchNumber}" is cancelled and cannot be transferred.`,
-      { batchId: batch.id, batchNumber: batch.batchNumber, status: batch.status }
+      {
+        batchId: batch.id,
+        batchNumber: batch.batchNumber,
+        status: batch.status,
+      },
     );
   }
 }
@@ -118,12 +129,15 @@ export function validateBatchVolume(batch: BatchData, transferVolume: number): v
 /**
  * Validates that vessel is not transferring to itself
  */
-export function validateNotSelfTransfer(fromVesselId: string | undefined, toVesselId: string): void {
+export function validateNotSelfTransfer(
+  fromVesselId: string | undefined,
+  toVesselId: string,
+): void {
   if (fromVesselId && fromVesselId === toVesselId) {
     throw new TransferValidationError(
-      'Cannot transfer to same vessel',
-      'Source and destination vessels cannot be the same. Please select a different destination vessel.',
-      { fromVesselId, toVesselId }
+      "Cannot transfer to same vessel",
+      "Source and destination vessels cannot be the same. Please select a different destination vessel.",
+      { fromVesselId, toVesselId },
     );
   }
 }
@@ -136,14 +150,14 @@ export function validateTransfer(
   batch: BatchData,
   toVessel: VesselData,
   fromVessel?: VesselData,
-  toVesselCurrentVolume: number = 0
+  toVesselCurrentVolume: number = 0,
 ): void {
   // Validate transfer volume is positive
   if (transferData.volumeTransferredL <= 0) {
     throw new TransferValidationError(
-      'Transfer volume must be positive',
-      'Transfer volume must be greater than 0L. Please enter a valid volume.',
-      { volumeTransferredL: transferData.volumeTransferredL }
+      "Transfer volume must be positive",
+      "Transfer volume must be greater than 0L. Please enter a valid volume.",
+      { volumeTransferredL: transferData.volumeTransferredL },
     );
   }
 
@@ -154,18 +168,26 @@ export function validateTransfer(
   validateVesselAvailability(toVessel);
 
   // Validate destination vessel capacity
-  validateVesselCapacity(toVessel, transferData.volumeTransferredL, toVesselCurrentVolume);
+  validateVesselCapacity(
+    toVessel,
+    transferData.volumeTransferredL,
+    toVesselCurrentVolume,
+  );
 
   // Validate not transferring to same vessel
   validateNotSelfTransfer(transferData.fromVesselId, transferData.toVesselId);
 
   // If transferring from a vessel, validate source vessel
   if (fromVessel) {
-    if (fromVessel.status === 'maintenance') {
+    if (fromVessel.status === "maintenance") {
       throw new VesselStateValidationError(
         `Source vessel ${fromVessel.name} is under maintenance`,
         `Cannot transfer from vessel "${fromVessel.name}" - it's currently under maintenance.`,
-        { vesselId: fromVessel.id, vesselName: fromVessel.name, status: fromVessel.status }
+        {
+          vesselId: fromVessel.id,
+          vesselName: fromVessel.name,
+          status: fromVessel.status,
+        },
       );
     }
   }
@@ -174,27 +196,46 @@ export function validateTransfer(
 /**
  * Enhanced Zod schema for transfer validation with business rules
  */
-export const transferValidationSchema = z.object({
-  batchId: z.string().uuid('Invalid batch ID format'),
-  fromVesselId: z.string().uuid('Invalid source vessel ID format').optional(),
-  toVesselId: z.string().uuid('Invalid destination vessel ID format'),
-  volumeTransferredL: z.number()
-    .positive('Transfer volume must be greater than 0L')
-    .max(50000, 'Transfer volume cannot exceed 50,000L')
-    .refine((val) => Number.isFinite(val), 'Transfer volume must be a valid number'),
-  transferDate: z.date()
-    .refine((date) => date <= new Date(), 'Transfer date cannot be in the future'),
-  reason: z.string().max(500, 'Reason cannot exceed 500 characters').optional(),
-  notes: z.string().max(1000, 'Notes cannot exceed 1000 characters').optional()
-}).refine((data) => {
-  // Ensure not transferring to same vessel
-  if (data.fromVesselId && data.fromVesselId === data.toVesselId) {
-    throw new Error('Source and destination vessels cannot be the same');
-  }
-  return true;
-}, {
-  message: 'Source and destination vessels cannot be the same',
-  path: ['toVesselId']
-});
+export const transferValidationSchema = z
+  .object({
+    batchId: z.string().uuid("Invalid batch ID format"),
+    fromVesselId: z.string().uuid("Invalid source vessel ID format").optional(),
+    toVesselId: z.string().uuid("Invalid destination vessel ID format"),
+    volumeTransferredL: z
+      .number()
+      .positive("Transfer volume must be greater than 0L")
+      .max(50000, "Transfer volume cannot exceed 50,000L")
+      .refine(
+        (val) => Number.isFinite(val),
+        "Transfer volume must be a valid number",
+      ),
+    transferDate: z
+      .date()
+      .refine(
+        (date) => date <= new Date(),
+        "Transfer date cannot be in the future",
+      ),
+    reason: z
+      .string()
+      .max(500, "Reason cannot exceed 500 characters")
+      .optional(),
+    notes: z
+      .string()
+      .max(1000, "Notes cannot exceed 1000 characters")
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      // Ensure not transferring to same vessel
+      if (data.fromVesselId && data.fromVesselId === data.toVesselId) {
+        throw new Error("Source and destination vessels cannot be the same");
+      }
+      return true;
+    },
+    {
+      message: "Source and destination vessels cannot be the same",
+      path: ["toVesselId"],
+    },
+  );
 
 export type ValidatedTransferData = z.infer<typeof transferValidationSchema>;

@@ -13,8 +13,8 @@ import {
   stateTransitionSchema,
   type VesselStateData,
   type VesselStatus
-} from '../../../packages/lib/src/validation/vessel-state';
-import { VesselStateValidationError } from '../../../packages/lib/src/validation/errors';
+} from './packages/lib/src/validation/vessel-state';
+import { VesselStateValidationError } from './packages/lib/src/validation/errors';
 
 describe('Vessel State Validation', () => {
   const mockVessel: VesselStateData = {

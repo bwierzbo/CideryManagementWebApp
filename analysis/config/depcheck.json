@@ -1,0 +1,57 @@
+{
+  "ignoreBinaries": [
+    "next",
+    "tsx",
+    "tsc",
+    "eslint",
+    "prettier",
+    "vitest",
+    "playwright",
+    "concurrently",
+    "pnpm"
+  ],
+  "skipMissing": false,
+  "ignoreMatches": [
+    "@types/*",
+    "eslint*",
+    "prettier*",
+    "typescript",
+    "@vitest/*",
+    "@playwright/test",
+    "autoprefixer",
+    "postcss",
+    "tailwindcss*",
+    "next",
+    "react",
+    "react-dom"
+  ],
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    "analysis/reports"
+  ],
+  "parsers": {
+    "*.js": "es6",
+    "*.jsx": "jsx",
+    "*.ts": "typescript",
+    "*.tsx": "tsx"
+  },
+  "detectors": [
+    "requireCallExpression",
+    "importDeclaration",
+    "importCallExpression",
+    "exportDeclaration"
+  ],
+  "specials": [
+    "eslint",
+    "prettier",
+    "jest",
+    "vitest",
+    "playwright",
+    "next",
+    "tailwindcss"
+  ]
+}

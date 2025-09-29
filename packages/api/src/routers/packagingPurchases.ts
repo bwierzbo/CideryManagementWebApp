@@ -1,24 +1,26 @@
-import { z } from 'zod'
-import { router, createRbacProcedure } from '../trpc'
-import { db, packagingPurchases, packagingPurchaseItems, vendors } from 'db'
-import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
+import { z } from "zod";
+import { router, createRbacProcedure } from "../trpc";
+import { db, packagingPurchases, packagingPurchaseItems, vendors } from "db";
+import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 
 export const packagingPurchasesRouter = router({
   // List packaging purchases
-  list: createRbacProcedure('list', 'purchase')
-    .input(z.object({
-      limit: z.number().int().positive().max(100).default(50),
-      offset: z.number().int().min(0).default(0),
-      vendorId: z.string().uuid().optional(),
-    }))
+  list: createRbacProcedure("list", "purchase")
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+        vendorId: z.string().uuid().optional(),
+      }),
+    )
     .query(async ({ input }) => {
       try {
-        const { limit, offset, vendorId } = input
+        const { limit, offset, vendorId } = input;
 
-        const conditions = [isNull(packagingPurchases.deletedAt)]
+        const conditions = [isNull(packagingPurchases.deletedAt)];
         if (vendorId) {
-          conditions.push(eq(packagingPurchases.vendorId, vendorId))
+          conditions.push(eq(packagingPurchases.vendorId, vendorId));
         }
 
         const purchases = await db
@@ -39,12 +41,12 @@ export const packagingPurchasesRouter = router({
           .where(and(...conditions))
           .orderBy(desc(packagingPurchases.purchaseDate))
           .limit(limit)
-          .offset(offset)
+          .offset(offset);
 
         const totalCount = await db
           .select({ count: sql<number>`count(*)` })
           .from(packagingPurchases)
-          .where(and(...conditions))
+          .where(and(...conditions));
 
         return {
           purchases,
@@ -52,73 +54,87 @@ export const packagingPurchasesRouter = router({
             total: totalCount[0]?.count || 0,
             limit,
             offset,
-            hasMore: (totalCount[0]?.count || 0) > offset + limit
-          }
-        }
+            hasMore: (totalCount[0]?.count || 0) > offset + limit,
+          },
+        };
       } catch (error) {
-        console.error('Error listing packaging purchases:', error)
+        console.error("Error listing packaging purchases:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list packaging purchases'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to list packaging purchases",
+        });
       }
     }),
 
   // Create packaging purchase
-  create: createRbacProcedure('create', 'purchase')
-    .input(z.object({
-      vendorId: z.string().uuid('Invalid vendor ID'),
-      purchaseDate: z.date().or(z.string().transform(val => new Date(val))),
-      invoiceNumber: z.string().optional(),
-      notes: z.string().optional(),
-      items: z.array(z.object({
-        packagingId: z.string().uuid('Invalid packaging ID'),
-        packagingName: z.string().optional(),
-        packagingType: z.string().optional(),
-        unitType: z.string().optional(),
-        quantity: z.number().int().positive('Quantity must be positive'),
-        pricePerUnit: z.number().positive('Price per unit must be positive').optional(),
-        totalCost: z.number().positive('Total cost must be positive').optional(),
+  create: createRbacProcedure("create", "purchase")
+    .input(
+      z.object({
+        vendorId: z.string().uuid("Invalid vendor ID"),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))),
+        invoiceNumber: z.string().optional(),
         notes: z.string().optional(),
-      })).min(1, 'At least one item is required'),
-    }))
+        items: z
+          .array(
+            z.object({
+              packagingId: z.string().uuid("Invalid packaging ID"),
+              packagingName: z.string().optional(),
+              packagingType: z.string().optional(),
+              unitType: z.string().optional(),
+              quantity: z.number().int().positive("Quantity must be positive"),
+              pricePerUnit: z
+                .number()
+                .positive("Price per unit must be positive")
+                .optional(),
+              totalCost: z
+                .number()
+                .positive("Total cost must be positive")
+                .optional(),
+              notes: z.string().optional(),
+            }),
+          )
+          .min(1, "At least one item is required"),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
           // Calculate total cost
-          let totalCost = 0
-          const processedItems = []
+          let totalCost = 0;
+          const processedItems = [];
 
           for (const item of input.items) {
             // Use totalCost if provided, otherwise calculate from unit cost
-            const itemTotal = item.totalCost || (item.pricePerUnit ? item.quantity * item.pricePerUnit : 0)
-            totalCost += itemTotal
+            const itemTotal =
+              item.totalCost ||
+              (item.pricePerUnit ? item.quantity * item.pricePerUnit : 0);
+            totalCost += itemTotal;
 
             processedItems.push({
               packagingVarietyId: item.packagingId,
               packageType: item.packagingType || null,
-              size: item.packagingName || 'Unknown',
+              size: item.packagingName || "Unknown",
               quantity: item.quantity,
               totalCost: itemTotal.toString(),
               pricePerUnit: item.pricePerUnit?.toString() || null,
               notes: item.notes || null,
-            })
+            });
           }
 
           // Handle invoice number generation
-          let finalInvoiceNumber = input.invoiceNumber
-          let autoGenerated = false
+          let finalInvoiceNumber = input.invoiceNumber;
+          let autoGenerated = false;
 
           if (!finalInvoiceNumber) {
-            const dateStr = input.purchaseDate.toISOString().split('T')[0]
-            const startOfDay = new Date(input.purchaseDate)
-            startOfDay.setHours(0, 0, 0, 0)
-            const endOfDay = new Date(input.purchaseDate)
-            endOfDay.setHours(23, 59, 59, 999)
+            const dateStr = input.purchaseDate.toISOString().split("T")[0];
+            const startOfDay = new Date(input.purchaseDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(input.purchaseDate);
+            endOfDay.setHours(23, 59, 59, 999);
 
             const maxSequenceResult = await tx
               .select({
-                maxInvoice: sql<string>`MAX(${packagingPurchases.invoiceNumber})`
+                maxInvoice: sql<string>`MAX(${packagingPurchases.invoiceNumber})`,
               })
               .from(packagingPurchases)
               .where(
@@ -127,25 +143,25 @@ export const packagingPurchasesRouter = router({
                   sql`${packagingPurchases.purchaseDate} >= ${startOfDay}`,
                   sql`${packagingPurchases.purchaseDate} <= ${endOfDay}`,
                   eq(packagingPurchases.autoGeneratedInvoice, true),
-                  sql`${packagingPurchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`
-                )
-              )
+                  sql`${packagingPurchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`,
+                ),
+              );
 
-            let nextSequence = 1
+            let nextSequence = 1;
             if (maxSequenceResult[0]?.maxInvoice) {
-              const parts = maxSequenceResult[0].maxInvoice.split('-')
+              const parts = maxSequenceResult[0].maxInvoice.split("-");
               if (parts.length >= 7) {
-                const sequencePart = parts[parts.length - 1]
-                const currentSeq = parseInt(sequencePart, 10)
+                const sequencePart = parts[parts.length - 1];
+                const currentSeq = parseInt(sequencePart, 10);
                 if (!isNaN(currentSeq)) {
-                  nextSequence = currentSeq + 1
+                  nextSequence = currentSeq + 1;
                 }
               }
             }
 
-            const paddedSequence = nextSequence.toString().padStart(3, '0')
-            finalInvoiceNumber = `${dateStr}-${input.vendorId}-${paddedSequence}-PKG`
-            autoGenerated = true
+            const paddedSequence = nextSequence.toString().padStart(3, "0");
+            finalInvoiceNumber = `${dateStr}-${input.vendorId}-${paddedSequence}-PKG`;
+            autoGenerated = true;
           }
 
           // Create the purchase
@@ -161,9 +177,9 @@ export const packagingPurchasesRouter = router({
               createdAt: new Date(),
               updatedAt: new Date(),
             })
-            .returning()
+            .returning();
 
-          const purchaseId = newPurchase[0].id
+          const purchaseId = newPurchase[0].id;
 
           // Create purchase items
           const newItems = await tx
@@ -174,28 +190,28 @@ export const packagingPurchasesRouter = router({
                 ...item,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-              }))
+              })),
             )
-            .returning()
+            .returning();
 
           return {
             success: true,
             purchase: newPurchase[0],
             items: newItems,
-            message: 'Packaging purchase created successfully'
-          }
-        })
+            message: "Packaging purchase created successfully",
+          };
+        });
       } catch (error) {
-        console.error('Error creating packaging purchase:', error)
+        console.error("Error creating packaging purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to create packaging purchase'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create packaging purchase",
+        });
       }
     }),
 
   // Get purchase by ID with items
-  getById: createRbacProcedure('read', 'purchase')
+  getById: createRbacProcedure("read", "purchase")
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input }) => {
       try {
@@ -204,26 +220,26 @@ export const packagingPurchasesRouter = router({
           with: {
             items: true,
             vendor: true,
-          }
-        })
+          },
+        });
 
         if (!purchase) {
           throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Packaging purchase not found'
-          })
+            code: "NOT_FOUND",
+            message: "Packaging purchase not found",
+          });
         }
 
-        return { purchase }
+        return { purchase };
       } catch (error) {
         if (error instanceof TRPCError) {
-          throw error
+          throw error;
         }
-        console.error('Error fetching packaging purchase:', error)
+        console.error("Error fetching packaging purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to fetch packaging purchase'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch packaging purchase",
+        });
       }
     }),
-})
+});

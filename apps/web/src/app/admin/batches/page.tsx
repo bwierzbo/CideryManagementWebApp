@@ -1,11 +1,17 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useSession } from "next-auth/react"
-import { Navbar } from "@/components/navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { useState } from "react";
+import { useSession } from "next-auth/react";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -13,7 +19,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,74 +29,94 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Trash2, AlertTriangle, Package } from "lucide-react"
-import { trpc } from "@/utils/trpc"
-import { handleTransactionError, showSuccess, showLoading } from "@/utils/error-handling"
+} from "@/components/ui/alert-dialog";
+import { Trash2, AlertTriangle, Package } from "lucide-react";
+import { trpc } from "@/utils/trpc";
+import {
+  handleTransactionError,
+  showSuccess,
+  showLoading,
+} from "@/utils/error-handling";
 
 export default function BatchManagementPage() {
-  const { data: session } = useSession()
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [selectedBatch, setSelectedBatch] = useState<any>(null)
+  const { data: session } = useSession();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedBatch, setSelectedBatch] = useState<any>(null);
 
-  const utils = trpc.useContext()
+  const utils = trpc.useContext();
 
   // Get all batches (active only by default)
   const { data: batchesData, isLoading } = trpc.batch.list.useQuery({
-    limit: 100
-  })
+    limit: 100,
+  });
 
   const deleteBatchMutation = trpc.batch.delete.useMutation({
     onSuccess: () => {
-      utils.batch.list.invalidate()
-      showSuccess("Batch Deleted", "Batch has been successfully deleted")
-      setDeleteDialogOpen(false)
-      setSelectedBatch(null)
+      utils.batch.list.invalidate();
+      showSuccess("Batch Deleted", "Batch has been successfully deleted");
+      setDeleteDialogOpen(false);
+      setSelectedBatch(null);
     },
     onError: (error) => {
-      handleTransactionError(error, "Batch", "Delete")
-    }
-  })
+      handleTransactionError(error, "Batch", "Delete");
+    },
+  });
 
   const handleDeleteClick = (batch: any) => {
-    setSelectedBatch(batch)
-    setDeleteDialogOpen(true)
-  }
+    setSelectedBatch(batch);
+    setDeleteDialogOpen(true);
+  };
 
   const handleDeleteConfirm = async () => {
-    if (!selectedBatch) return
+    if (!selectedBatch) return;
 
-    const dismissLoading = showLoading("Deleting batch...")
+    const dismissLoading = showLoading("Deleting batch...");
     try {
-      await deleteBatchMutation.mutateAsync({ batchId: selectedBatch.id })
+      await deleteBatchMutation.mutateAsync({ batchId: selectedBatch.id });
     } finally {
-      dismissLoading()
+      dismissLoading();
     }
-  }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'fermenting':
-        return <Badge variant="default" className="bg-yellow-100 text-yellow-800">Fermenting</Badge>
-      case 'aging':
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-800">Aging</Badge>
-      case 'ready':
-        return <Badge variant="default" className="bg-green-100 text-green-800">Ready</Badge>
-      case 'packaged':
-        return <Badge variant="outline" className="bg-purple-50 text-purple-700">Packaged</Badge>
+      case "fermenting":
+        return (
+          <Badge variant="default" className="bg-yellow-100 text-yellow-800">
+            Fermenting
+          </Badge>
+        );
+      case "aging":
+        return (
+          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+            Aging
+          </Badge>
+        );
+      case "ready":
+        return (
+          <Badge variant="default" className="bg-green-100 text-green-800">
+            Ready
+          </Badge>
+        );
+      case "packaged":
+        return (
+          <Badge variant="outline" className="bg-purple-50 text-purple-700">
+            Packaged
+          </Badge>
+        );
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge variant="outline">{status}</Badge>;
     }
-  }
+  };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString()
-  }
+    return new Date(dateString).toLocaleDateString();
+  };
 
-  const batches = batchesData?.batches || []
+  const batches = batchesData?.batches || [];
 
   // Only allow admins
-  if ((session?.user as any)?.role !== 'admin') {
+  if ((session?.user as any)?.role !== "admin") {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
@@ -101,7 +127,7 @@ export default function BatchManagementPage() {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -114,7 +140,9 @@ export default function BatchManagementPage() {
             <Package className="w-8 h-8 text-amber-600 mr-3" />
             Delete Batches
           </h1>
-          <p className="text-gray-600 mt-2">Delete accidentally created batches</p>
+          <p className="text-gray-600 mt-2">
+            Delete accidentally created batches
+          </p>
         </div>
 
         {/* Batch List */}
@@ -125,9 +153,13 @@ export default function BatchManagementPage() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="text-center py-8 text-gray-500">Loading batches...</div>
+              <div className="text-center py-8 text-gray-500">
+                Loading batches...
+              </div>
             ) : batches.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">No batches found</div>
+              <div className="text-center py-8 text-gray-500">
+                No batches found
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -144,11 +176,13 @@ export default function BatchManagementPage() {
                   <TableBody>
                     {batches.map((batch) => (
                       <TableRow key={batch.id}>
-                        <TableCell className="font-medium">{batch.name}</TableCell>
+                        <TableCell className="font-medium">
+                          {batch.name}
+                        </TableCell>
                         <TableCell>{getStatusBadge(batch.status)}</TableCell>
                         <TableCell>{formatDate(batch.createdAt)}</TableCell>
-                        <TableCell>{batch.currentVolumeL || 'N/A'}</TableCell>
-                        <TableCell>{batch.vesselName || 'No vessel'}</TableCell>
+                        <TableCell>{batch.currentVolumeL || "N/A"}</TableCell>
+                        <TableCell>{batch.vesselName || "No vessel"}</TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -178,8 +212,9 @@ export default function BatchManagementPage() {
                 Delete Batch
               </AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete the batch &ldquo;{selectedBatch?.name}&rdquo;?
-                This will permanently remove the batch and all its related data. This action cannot be undone.
+                Are you sure you want to delete the batch &ldquo;
+                {selectedBatch?.name}&rdquo;? This will permanently remove the
+                batch and all its related data. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -189,12 +224,12 @@ export default function BatchManagementPage() {
                 className="bg-red-600 hover:bg-red-700"
                 disabled={deleteBatchMutation.isPending}
               >
-                {deleteBatchMutation.isPending ? 'Deleting...' : 'Delete Batch'}
+                {deleteBatchMutation.isPending ? "Deleting..." : "Delete Batch"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
       </div>
     </div>
-  )
+  );
 }

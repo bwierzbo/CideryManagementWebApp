@@ -6,22 +6,22 @@
  */
 
 // Error types
-export * from './errors';
+export * from "./errors";
 
 // Transfer validation
-export * from './transfer';
+export * from "./transfer";
 
 // Volume and quantity validation
-export * from './volume-quantity';
+export * from "./volume-quantity";
 
 // Packaging validation
-export * from './packaging';
+export * from "./packaging";
 
 // Measurement validation
-export * from './measurements';
+export * from "./measurements";
 
 // Vessel state validation
-export * from './vessel-state';
+export * from "./vessel-state";
 
 /**
  * Main validation function that combines all business rule validations
@@ -29,22 +29,22 @@ export * from './vessel-state';
 export function validateBusinessRules(
   operation: string,
   data: Record<string, any>,
-  context: Record<string, any> = {}
+  context: Record<string, any> = {},
 ): void {
   // This function can be extended to provide a centralized validation entry point
   // based on the operation type and data provided
 
   switch (operation) {
-    case 'transfer':
+    case "transfer":
       // Transfer validations are handled by the transfer module
       break;
-    case 'packaging':
+    case "packaging":
       // Packaging validations are handled by the packaging module
       break;
-    case 'measurement':
+    case "measurement":
       // Measurement validations are handled by the measurements module
       break;
-    case 'vessel_state':
+    case "vessel_state":
       // Vessel state validations are handled by the vessel-state module
       break;
     default:

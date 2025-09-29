@@ -1,4 +1,4 @@
-import { withAuth } from "next-auth/middleware"
+import { withAuth } from "next-auth/middleware";
 
 export default withAuth(
   function middleware(req) {
@@ -9,11 +9,11 @@ export default withAuth(
     callbacks: {
       authorized: ({ token }) => {
         // Allow access if user has a valid token
-        return !!token
+        return !!token;
       },
     },
-  }
-)
+  },
+);
 
 export const config = {
   // Protect all routes except homepage and auth routes
@@ -29,4 +29,4 @@ export const config = {
      */
     "/((?!^/$|auth|api/auth|_next/static|_next/image|favicon.ico).*)",
   ],
-}
+};

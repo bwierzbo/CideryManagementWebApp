@@ -1,49 +1,62 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { ChevronDown, ChevronUp } from "lucide-react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-interface ScrollableContainerProps extends React.HTMLAttributes<HTMLDivElement> {
-  maxHeight?: string
-  showScrollIndicators?: boolean
-  children: React.ReactNode
+interface ScrollableContainerProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  maxHeight?: string;
+  showScrollIndicators?: boolean;
+  children: React.ReactNode;
 }
 
-export const ScrollableContainer = React.forwardRef<HTMLDivElement, ScrollableContainerProps>(
-  ({ className, children, maxHeight = "16rem", showScrollIndicators = true, ...props }, ref) => {
-    const [canScrollUp, setCanScrollUp] = React.useState(false)
-    const [canScrollDown, setCanScrollDown] = React.useState(false)
-    const scrollRef = React.useRef<HTMLDivElement>(null)
+export const ScrollableContainer = React.forwardRef<
+  HTMLDivElement,
+  ScrollableContainerProps
+>(
+  (
+    {
+      className,
+      children,
+      maxHeight = "16rem",
+      showScrollIndicators = true,
+      ...props
+    },
+    ref,
+  ) => {
+    const [canScrollUp, setCanScrollUp] = React.useState(false);
+    const [canScrollDown, setCanScrollDown] = React.useState(false);
+    const scrollRef = React.useRef<HTMLDivElement>(null);
 
     const checkScrollability = React.useCallback(() => {
-      const element = scrollRef.current
-      if (!element) return
+      const element = scrollRef.current;
+      if (!element) return;
 
-      const { scrollTop, scrollHeight, clientHeight } = element
-      setCanScrollUp(scrollTop > 0)
-      setCanScrollDown(scrollTop + clientHeight < scrollHeight - 1)
-    }, [])
+      const { scrollTop, scrollHeight, clientHeight } = element;
+      setCanScrollUp(scrollTop > 0);
+      setCanScrollDown(scrollTop + clientHeight < scrollHeight - 1);
+    }, []);
 
     React.useEffect(() => {
-      const element = scrollRef.current
-      if (!element) return
+      const element = scrollRef.current;
+      if (!element) return;
 
       // Check initial scrollability
-      setTimeout(checkScrollability, 0) // Delay to ensure DOM is rendered
+      setTimeout(checkScrollability, 0); // Delay to ensure DOM is rendered
 
       // Add scroll listener
-      element.addEventListener('scroll', checkScrollability)
+      element.addEventListener("scroll", checkScrollability);
 
       // Check scrollability when content changes
-      const observer = new ResizeObserver(checkScrollability)
-      observer.observe(element)
+      const observer = new ResizeObserver(checkScrollability);
+      observer.observe(element);
 
       return () => {
-        element.removeEventListener('scroll', checkScrollability)
-        observer.disconnect()
-      }
-    }, [checkScrollability, children])
+        element.removeEventListener("scroll", checkScrollability);
+        observer.disconnect();
+      };
+    }, [checkScrollability, children]);
 
     return (
       <div ref={ref} className={cn("relative", className)} {...props}>
@@ -57,11 +70,7 @@ export const ScrollableContainer = React.forwardRef<HTMLDivElement, ScrollableCo
         )}
 
         {/* Scrollable content */}
-        <div
-          ref={scrollRef}
-          className="overflow-y-auto"
-          style={{ maxHeight }}
-        >
+        <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight }}>
           {children}
         </div>
 
@@ -74,8 +83,8 @@ export const ScrollableContainer = React.forwardRef<HTMLDivElement, ScrollableCo
           </div>
         )}
       </div>
-    )
-  }
-)
+    );
+  },
+);
 
-ScrollableContainer.displayName = "ScrollableContainer"
+ScrollableContainer.displayName = "ScrollableContainer";

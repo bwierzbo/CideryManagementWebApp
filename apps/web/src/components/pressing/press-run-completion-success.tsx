@@ -1,15 +1,15 @@
-"use client"
+"use client";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
   CheckCircle2,
   Droplets,
@@ -19,24 +19,24 @@ import {
   Eye,
   Plus,
   BarChart3,
-} from "lucide-react"
+} from "lucide-react";
 
 interface PressRunCompletionSuccessProps {
   completedPressRun: {
-    id: string
-    vendorName?: string
-    totalJuiceVolumeL: number
-    extractionRate: number
-    createdBatchIds: string[]
-    totalAppleWeightKg?: number
-    endTime: string
-    laborHours?: number
-    laborCost?: number
-  }
-  onViewJuiceLot?: () => void
-  onStartNewRun: () => void
-  onViewPressRun: () => void
-  onBackToPressingHome: () => void
+    id: string;
+    vendorName?: string;
+    totalJuiceVolumeL: number;
+    extractionRate: number;
+    createdBatchIds: string[];
+    totalAppleWeightKg?: number;
+    endTime: string;
+    laborHours?: number;
+    laborCost?: number;
+  };
+  onViewJuiceLot?: () => void;
+  onStartNewRun: () => void;
+  onViewPressRun: () => void;
+  onBackToPressingHome: () => void;
 }
 
 export function PressRunCompletionSuccess({
@@ -46,11 +46,11 @@ export function PressRunCompletionSuccess({
   onViewPressRun,
   onBackToPressingHome,
 }: PressRunCompletionSuccessProps) {
-  const totalJuiceGal = completedPressRun.totalJuiceVolumeL / 3.78541
-  const extractionPercentage = completedPressRun.extractionRate * 100
+  const totalJuiceGal = completedPressRun.totalJuiceVolumeL / 3.78541;
+  const extractionPercentage = completedPressRun.extractionRate * 100;
 
   // Format completion time
-  const completionTime = new Date(completedPressRun.endTime).toLocaleString()
+  const completionTime = new Date(completedPressRun.endTime).toLocaleString();
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -64,7 +64,11 @@ export function PressRunCompletionSuccess({
             Press Run Completed Successfully!
           </CardTitle>
           <CardDescription className="text-green-700">
-            Your apples have been pressed and {completedPressRun.createdBatchIds.length} fermentation batch{completedPressRun.createdBatchIds.length === 1 ? '' : 'es'} {completedPressRun.createdBatchIds.length === 1 ? 'has' : 'have'} been created
+            Your apples have been pressed and{" "}
+            {completedPressRun.createdBatchIds.length} fermentation batch
+            {completedPressRun.createdBatchIds.length === 1 ? "" : "es"}{" "}
+            {completedPressRun.createdBatchIds.length === 1 ? "has" : "have"}{" "}
+            been created
           </CardDescription>
         </CardHeader>
       </Card>
@@ -85,9 +89,7 @@ export function PressRunCompletionSuccess({
               <div className="text-2xl font-bold text-blue-800">
                 {completedPressRun.totalJuiceVolumeL.toFixed(0)}L
               </div>
-              <div className="text-sm text-blue-600">
-                Juice Produced
-              </div>
+              <div className="text-sm text-blue-600">Juice Produced</div>
               <div className="text-xs text-blue-500 mt-1">
                 {totalJuiceGal.toFixed(1)} gallons
               </div>
@@ -98,9 +100,7 @@ export function PressRunCompletionSuccess({
               <div className="text-2xl font-bold text-green-800">
                 {extractionPercentage.toFixed(1)}%
               </div>
-              <div className="text-sm text-green-600">
-                Extraction Rate
-              </div>
+              <div className="text-sm text-green-600">Extraction Rate</div>
               {completedPressRun.totalAppleWeightKg && (
                 <div className="text-xs text-green-500 mt-1">
                   from {completedPressRun.totalAppleWeightKg}kg apples
@@ -136,7 +136,9 @@ export function PressRunCompletionSuccess({
             {completedPressRun.vendorName && (
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-gray-600">Vendor:</span>
-                <span className="font-medium text-sm">{completedPressRun.vendorName}</span>
+                <span className="font-medium text-sm">
+                  {completedPressRun.vendorName}
+                </span>
               </div>
             )}
 
@@ -163,18 +165,27 @@ export function PressRunCompletionSuccess({
           {/* Created Batches */}
           <Separator />
           <div className="space-y-3">
-            <h4 className="text-sm font-medium text-gray-900">Created Batches</h4>
+            <h4 className="text-sm font-medium text-gray-900">
+              Created Batches
+            </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {completedPressRun.createdBatchIds.map((batchId, index) => (
-                <div key={batchId} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div
+                  key={batchId}
+                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                >
                   <div>
                     <div className="text-sm font-medium">Batch {index + 1}</div>
-                    <div className="text-xs text-gray-600 font-mono">{batchId}</div>
+                    <div className="text-xs text-gray-600 font-mono">
+                      {batchId}
+                    </div>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => window.location.href = `/batches/${batchId}`}
+                    onClick={() =>
+                      (window.location.href = `/batches/${batchId}`)
+                    }
                     className="text-xs"
                   >
                     <Eye className="w-3 h-3 mr-1" />
@@ -204,17 +215,23 @@ export function PressRunCompletionSuccess({
                   <p className="text-sm text-gray-600">
                     {extractionPercentage >= 70 && (
                       <span className="text-green-700">
-                        🎉 Excellent extraction rate! You achieved {extractionPercentage.toFixed(1)}% efficiency.
+                        🎉 Excellent extraction rate! You achieved{" "}
+                        {extractionPercentage.toFixed(1)}% efficiency.
                       </span>
                     )}
-                    {extractionPercentage >= 60 && extractionPercentage < 70 && (
-                      <span className="text-blue-700">
-                        👍 Good extraction rate of {extractionPercentage.toFixed(1)}%. This is within normal range.
-                      </span>
-                    )}
+                    {extractionPercentage >= 60 &&
+                      extractionPercentage < 70 && (
+                        <span className="text-blue-700">
+                          👍 Good extraction rate of{" "}
+                          {extractionPercentage.toFixed(1)}%. This is within
+                          normal range.
+                        </span>
+                      )}
                     {extractionPercentage < 60 && (
                       <span className="text-amber-700">
-                        ⚠️ Lower extraction rate of {extractionPercentage.toFixed(1)}%. Consider checking apple quality or pressing technique.
+                        ⚠️ Lower extraction rate of{" "}
+                        {extractionPercentage.toFixed(1)}%. Consider checking
+                        apple quality or pressing technique.
                       </span>
                     )}
                   </p>
@@ -228,7 +245,9 @@ export function PressRunCompletionSuccess({
                 Next Steps
               </h4>
               <p className="text-sm text-amber-700">
-                Your juice is now ready for fermentation. Consider taking initial measurements (Brix, pH) and adding yeast when ready to begin fermentation.
+                Your juice is now ready for fermentation. Consider taking
+                initial measurements (Brix, pH) and adding yeast when ready to
+                begin fermentation.
               </p>
             </div>
           </div>
@@ -240,7 +259,7 @@ export function PressRunCompletionSuccess({
         {/* Primary Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Button
-            onClick={() => window.location.href = '/batches'}
+            onClick={() => (window.location.href = "/batches")}
             className="h-12 bg-blue-600 hover:bg-blue-700"
           >
             <Beaker className="w-5 h-5 mr-2" />
@@ -258,11 +277,7 @@ export function PressRunCompletionSuccess({
 
         {/* Secondary Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Button
-            onClick={onViewPressRun}
-            variant="outline"
-            className="h-10"
-          >
+          <Button onClick={onViewPressRun} variant="outline" className="h-10">
             <Eye className="w-4 h-4 mr-2" />
             View Press Run Details
           </Button>
@@ -283,5 +298,5 @@ export function PressRunCompletionSuccess({
         </div>
       </div>
     </div>
-  )
+  );
 }

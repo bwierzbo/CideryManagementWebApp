@@ -1,18 +1,18 @@
-"use client"
+"use client";
 
-import React, { useState } from "react"
-import { trpc } from "@/utils/trpc"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { toast } from "@/hooks/use-toast"
-import { Loader2 } from "lucide-react"
+import React, { useState } from "react";
+import { trpc } from "@/utils/trpc";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 interface AddBatchMeasurementFormProps {
-  batchId: string
-  onSuccess: () => void
-  onCancel: () => void
+  batchId: string;
+  onSuccess: () => void;
+  onCancel: () => void;
 }
 
 export function AddBatchMeasurementForm({
@@ -21,60 +21,61 @@ export function AddBatchMeasurementForm({
   onCancel,
 }: AddBatchMeasurementFormProps) {
   // Initialize with current date and time in local timezone
-  const now = new Date()
+  const now = new Date();
   const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
     .toISOString()
-    .slice(0, 16) // Format: YYYY-MM-DDTHH:mm
+    .slice(0, 16); // Format: YYYY-MM-DDTHH:mm
 
-  const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime)
-  const [specificGravity, setSpecificGravity] = useState("")
-  const [ph, setPh] = useState("")
-  const [totalAcidity, setTotalAcidity] = useState("")
-  const [temperature, setTemperature] = useState("")
-  const [notes, setNotes] = useState("")
+  const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime);
+  const [specificGravity, setSpecificGravity] = useState("");
+  const [ph, setPh] = useState("");
+  const [totalAcidity, setTotalAcidity] = useState("");
+  const [temperature, setTemperature] = useState("");
+  const [notes, setNotes] = useState("");
 
   const addMeasurement = trpc.batch.addMeasurement.useMutation({
     onSuccess: () => {
       toast({
         title: "Success",
         description: "Measurement added successfully",
-      })
-      onSuccess()
+      });
+      onSuccess();
     },
     onError: (error) => {
       toast({
         title: "Error",
         description: error.message,
         variant: "destructive",
-      })
+      });
     },
-  })
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (!measurementDateTime) {
       toast({
         title: "Error",
         description: "Please select a measurement date and time",
         variant: "destructive",
-      })
-      return
+      });
+      return;
     }
 
     const measurementData: any = {
       batchId,
       measurementDate: new Date(measurementDateTime).toISOString(),
-    }
+    };
 
-    if (specificGravity) measurementData.specificGravity = parseFloat(specificGravity)
-    if (ph) measurementData.ph = parseFloat(ph)
-    if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity)
-    if (temperature) measurementData.temperature = parseFloat(temperature)
-    if (notes) measurementData.notes = notes
+    if (specificGravity)
+      measurementData.specificGravity = parseFloat(specificGravity);
+    if (ph) measurementData.ph = parseFloat(ph);
+    if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity);
+    if (temperature) measurementData.temperature = parseFloat(temperature);
+    if (notes) measurementData.notes = notes;
 
-    addMeasurement.mutate(measurementData)
-  }
+    addMeasurement.mutate(measurementData);
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -164,5 +165,5 @@ export function AddBatchMeasurementForm({
         </Button>
       </div>
     </form>
-  )
+  );
 }

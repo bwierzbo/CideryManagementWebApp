@@ -13,11 +13,11 @@ import {
   type VesselData,
   type BatchData,
   type TransferData
-} from '../../../packages/lib/src/validation/transfer';
+} from './packages/lib/src/validation/transfer';
 import {
   TransferValidationError,
   VesselStateValidationError
-} from '../../../packages/lib/src/validation/errors';
+} from './packages/lib/src/validation/errors';
 
 describe('Transfer Validation', () => {
   const mockVessel: VesselData = {

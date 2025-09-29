@@ -4,28 +4,28 @@
  */
 
 export interface CogsComponent {
-  itemType: 'apple_cost' | 'labor' | 'overhead' | 'packaging'
-  amount: number
-  description?: string
-  unitCost?: number
-  quantity?: number
+  itemType: "apple_cost" | "labor" | "overhead" | "packaging";
+  amount: number;
+  description?: string;
+  unitCost?: number;
+  quantity?: number;
 }
 
 export interface BatchCostData {
-  batchId: string
-  juiceVolumeL: number
-  appleWeightKg: number
-  laborHours: number
-  packagingUnits: number
-  bottleCount: number
+  batchId: string;
+  juiceVolumeL: number;
+  appleWeightKg: number;
+  laborHours: number;
+  packagingUnits: number;
+  bottleCount: number;
 }
 
 export interface CostAllocationConfig {
-  appleCostPerKg: number
-  laborRatePerHour: number
-  overheadRatePerL: number
-  packagingCostPerUnit: number
-  wastageRate: number // Percentage loss expected (0-100)
+  appleCostPerKg: number;
+  laborRatePerHour: number;
+  overheadRatePerL: number;
+  packagingCostPerUnit: number;
+  wastageRate: number; // Percentage loss expected (0-100)
 }
 
 /**
@@ -36,24 +36,30 @@ export interface CostAllocationConfig {
  * @param config - Cost allocation configuration
  * @returns Total COGS amount
  */
-export function calculateTotalCogs(batchData: BatchCostData, config: CostAllocationConfig): number {
+export function calculateTotalCogs(
+  batchData: BatchCostData,
+  config: CostAllocationConfig,
+): number {
   if (batchData.juiceVolumeL <= 0) {
-    throw new Error('Juice volume must be positive')
+    throw new Error("Juice volume must be positive");
   }
 
   if (batchData.appleWeightKg <= 0) {
-    throw new Error('Apple weight must be positive')
+    throw new Error("Apple weight must be positive");
   }
 
   if (config.wastageRate < 0 || config.wastageRate > 100) {
-    throw new Error('Wastage rate must be between 0 and 100 percent')
+    throw new Error("Wastage rate must be between 0 and 100 percent");
   }
 
-  const components = calculateCogsComponents(batchData, config)
-  const totalCogs = components.reduce((sum, component) => sum + component.amount, 0)
+  const components = calculateCogsComponents(batchData, config);
+  const totalCogs = components.reduce(
+    (sum, component) => sum + component.amount,
+    0,
+  );
 
   // Round to 2 decimal places
-  return Math.round(totalCogs * 100) / 100
+  return Math.round(totalCogs * 100) / 100;
 }
 
 /**
@@ -64,53 +70,56 @@ export function calculateTotalCogs(batchData: BatchCostData, config: CostAllocat
  * @param config - Cost allocation configuration
  * @returns Array of COGS components with amounts
  */
-export function calculateCogsComponents(batchData: BatchCostData, config: CostAllocationConfig): CogsComponent[] {
-  const components: CogsComponent[] = []
+export function calculateCogsComponents(
+  batchData: BatchCostData,
+  config: CostAllocationConfig,
+): CogsComponent[] {
+  const components: CogsComponent[] = [];
 
   // Apple cost (adjusted for wastage)
-  const appleWastageMultiplier = 1 + (config.wastageRate / 100)
-  const adjustedAppleWeight = batchData.appleWeightKg * appleWastageMultiplier
-  const appleCost = adjustedAppleWeight * config.appleCostPerKg
+  const appleWastageMultiplier = 1 + config.wastageRate / 100;
+  const adjustedAppleWeight = batchData.appleWeightKg * appleWastageMultiplier;
+  const appleCost = adjustedAppleWeight * config.appleCostPerKg;
 
   components.push({
-    itemType: 'apple_cost',
+    itemType: "apple_cost",
     amount: Math.round(appleCost * 100) / 100,
     description: `Apple cost for ${batchData.appleWeightKg}kg (adjusted for ${config.wastageRate}% wastage)`,
     unitCost: config.appleCostPerKg,
-    quantity: adjustedAppleWeight
-  })
+    quantity: adjustedAppleWeight,
+  });
 
   // Labor cost
-  const laborCost = batchData.laborHours * config.laborRatePerHour
+  const laborCost = batchData.laborHours * config.laborRatePerHour;
   components.push({
-    itemType: 'labor',
+    itemType: "labor",
     amount: Math.round(laborCost * 100) / 100,
     description: `Labor cost for ${batchData.laborHours} hours`,
     unitCost: config.laborRatePerHour,
-    quantity: batchData.laborHours
-  })
+    quantity: batchData.laborHours,
+  });
 
   // Overhead cost (utilities, rent, equipment depreciation)
-  const overheadCost = batchData.juiceVolumeL * config.overheadRatePerL
+  const overheadCost = batchData.juiceVolumeL * config.overheadRatePerL;
   components.push({
-    itemType: 'overhead',
+    itemType: "overhead",
     amount: Math.round(overheadCost * 100) / 100,
     description: `Overhead allocation for ${batchData.juiceVolumeL}L production`,
     unitCost: config.overheadRatePerL,
-    quantity: batchData.juiceVolumeL
-  })
+    quantity: batchData.juiceVolumeL,
+  });
 
   // Packaging cost
-  const packagingCost = batchData.packagingUnits * config.packagingCostPerUnit
+  const packagingCost = batchData.packagingUnits * config.packagingCostPerUnit;
   components.push({
-    itemType: 'packaging',
+    itemType: "packaging",
     amount: Math.round(packagingCost * 100) / 100,
     description: `Packaging cost for ${batchData.packagingUnits} units`,
     unitCost: config.packagingCostPerUnit,
-    quantity: batchData.packagingUnits
-  })
+    quantity: batchData.packagingUnits,
+  });
 
-  return components
+  return components;
 }
 
 /**
@@ -121,18 +130,21 @@ export function calculateCogsComponents(batchData: BatchCostData, config: CostAl
  * @param finalVolumeL - Final volume of packaged product
  * @returns Cost per liter
  */
-export function calculateCostPerLiter(totalCogs: number, finalVolumeL: number): number {
+export function calculateCostPerLiter(
+  totalCogs: number,
+  finalVolumeL: number,
+): number {
   if (totalCogs < 0) {
-    throw new Error('Total COGS must be non-negative')
+    throw new Error("Total COGS must be non-negative");
   }
 
   if (finalVolumeL <= 0) {
-    throw new Error('Final volume must be positive')
+    throw new Error("Final volume must be positive");
   }
 
-  const costPerL = totalCogs / finalVolumeL
+  const costPerL = totalCogs / finalVolumeL;
 
-  return Math.round(costPerL * 10000) / 10000 // 4 decimal places for precision
+  return Math.round(costPerL * 10000) / 10000; // 4 decimal places for precision
 }
 
 /**
@@ -143,18 +155,21 @@ export function calculateCostPerLiter(totalCogs: number, finalVolumeL: number): 
  * @param bottleCount - Number of bottles produced
  * @returns Cost per bottle
  */
-export function calculateCostPerBottle(totalCogs: number, bottleCount: number): number {
+export function calculateCostPerBottle(
+  totalCogs: number,
+  bottleCount: number,
+): number {
   if (totalCogs < 0) {
-    throw new Error('Total COGS must be non-negative')
+    throw new Error("Total COGS must be non-negative");
   }
 
   if (bottleCount <= 0) {
-    throw new Error('Bottle count must be positive')
+    throw new Error("Bottle count must be positive");
   }
 
-  const costPerBottle = totalCogs / bottleCount
+  const costPerBottle = totalCogs / bottleCount;
 
-  return Math.round(costPerBottle * 100) / 100
+  return Math.round(costPerBottle * 100) / 100;
 }
 
 /**
@@ -165,24 +180,27 @@ export function calculateCostPerBottle(totalCogs: number, bottleCount: number): 
  * @param cogsCost - COGS cost per unit
  * @returns Gross margin as percentage
  */
-export function calculateGrossMargin(sellingPrice: number, cogsCost: number): number {
+export function calculateGrossMargin(
+  sellingPrice: number,
+  cogsCost: number,
+): number {
   if (sellingPrice <= 0) {
-    throw new Error('Selling price must be positive')
+    throw new Error("Selling price must be positive");
   }
 
   if (cogsCost < 0) {
-    throw new Error('COGS cost must be non-negative')
+    throw new Error("COGS cost must be non-negative");
   }
 
   if (cogsCost > sellingPrice) {
     // Allow negative margins for loss analysis
-    const margin = ((sellingPrice - cogsCost) / sellingPrice) * 100
-    return Math.round(margin * 100) / 100
+    const margin = ((sellingPrice - cogsCost) / sellingPrice) * 100;
+    return Math.round(margin * 100) / 100;
   }
 
-  const margin = ((sellingPrice - cogsCost) / sellingPrice) * 100
+  const margin = ((sellingPrice - cogsCost) / sellingPrice) * 100;
 
-  return Math.round(margin * 100) / 100
+  return Math.round(margin * 100) / 100;
 }
 
 /**
@@ -193,18 +211,21 @@ export function calculateGrossMargin(sellingPrice: number, cogsCost: number): nu
  * @param cogsCost - COGS cost per unit
  * @returns Markup as percentage
  */
-export function calculateMarkup(sellingPrice: number, cogsCost: number): number {
+export function calculateMarkup(
+  sellingPrice: number,
+  cogsCost: number,
+): number {
   if (sellingPrice <= 0) {
-    throw new Error('Selling price must be positive')
+    throw new Error("Selling price must be positive");
   }
 
   if (cogsCost <= 0) {
-    throw new Error('COGS cost must be positive for markup calculation')
+    throw new Error("COGS cost must be positive for markup calculation");
   }
 
-  const markup = ((sellingPrice - cogsCost) / cogsCost) * 100
+  const markup = ((sellingPrice - cogsCost) / cogsCost) * 100;
 
-  return Math.round(markup * 100) / 100
+  return Math.round(markup * 100) / 100;
 }
 
 /**
@@ -217,27 +238,28 @@ export function calculateMarkup(sellingPrice: number, cogsCost: number): number 
  */
 export function allocateSharedCosts(
   sharedCost: number,
-  batches: Array<{ batchId: string; volumeL: number }>
+  batches: Array<{ batchId: string; volumeL: number }>,
 ): Array<{ batchId: string; allocatedCost: number }> {
   if (sharedCost < 0) {
-    throw new Error('Shared cost must be non-negative')
+    throw new Error("Shared cost must be non-negative");
   }
 
   if (batches.length === 0) {
-    throw new Error('At least one batch is required for cost allocation')
+    throw new Error("At least one batch is required for cost allocation");
   }
 
   const totalVolume = batches.reduce((sum, batch) => {
     if (batch.volumeL <= 0) {
-      throw new Error(`Batch ${batch.batchId} volume must be positive`)
+      throw new Error(`Batch ${batch.batchId} volume must be positive`);
     }
-    return sum + batch.volumeL
-  }, 0)
+    return sum + batch.volumeL;
+  }, 0);
 
-  return batches.map(batch => ({
+  return batches.map((batch) => ({
     batchId: batch.batchId,
-    allocatedCost: Math.round((sharedCost * batch.volumeL / totalVolume) * 100) / 100
-  }))
+    allocatedCost:
+      Math.round(((sharedCost * batch.volumeL) / totalVolume) * 100) / 100,
+  }));
 }
 
 /**
@@ -252,21 +274,21 @@ export function allocateSharedCosts(
 export function calculateYieldVarianceCostImpact(
   expectedYield: number,
   actualYield: number,
-  baseCostPerL: number
+  baseCostPerL: number,
 ): number {
   if (expectedYield <= 0 || actualYield <= 0) {
-    throw new Error('Yield values must be positive')
+    throw new Error("Yield values must be positive");
   }
 
   if (baseCostPerL < 0) {
-    throw new Error('Base cost per liter must be non-negative')
+    throw new Error("Base cost per liter must be non-negative");
   }
 
   // Cost per liter increases when actual yield is lower than expected
-  const yieldRatio = expectedYield / actualYield
-  const adjustedCost = baseCostPerL * yieldRatio
+  const yieldRatio = expectedYield / actualYield;
+  const adjustedCost = baseCostPerL * yieldRatio;
 
-  return Math.round(adjustedCost * 10000) / 10000
+  return Math.round(adjustedCost * 10000) / 10000;
 }
 
 /**
@@ -277,18 +299,21 @@ export function calculateYieldVarianceCostImpact(
  * @param budgetedCogs - Budgeted/target COGS
  * @returns Performance category string
  */
-export function getCogsPerformanceCategory(actualCogs: number, budgetedCogs: number): string {
+export function getCogsPerformanceCategory(
+  actualCogs: number,
+  budgetedCogs: number,
+): string {
   if (actualCogs < 0 || budgetedCogs <= 0) {
-    throw new Error('COGS values must be positive')
+    throw new Error("COGS values must be positive");
   }
 
-  const variance = ((actualCogs - budgetedCogs) / budgetedCogs) * 100
+  const variance = ((actualCogs - budgetedCogs) / budgetedCogs) * 100;
 
-  if (variance <= -10) return 'Excellent' // 10%+ under budget
-  if (variance <= -5) return 'Good' // 5-10% under budget
-  if (variance <= 5) return 'On Target' // Within 5% of budget
-  if (variance <= 15) return 'Over Budget' // 5-15% over budget
-  return 'Significantly Over Budget' // 15%+ over budget
+  if (variance <= -10) return "Excellent"; // 10%+ under budget
+  if (variance <= -5) return "Good"; // 5-10% under budget
+  if (variance <= 5) return "On Target"; // Within 5% of budget
+  if (variance <= 15) return "Over Budget"; // 5-15% over budget
+  return "Significantly Over Budget"; // 15%+ over budget
 }
 
 /**
@@ -299,18 +324,21 @@ export function getCogsPerformanceCategory(actualCogs: number, budgetedCogs: num
  * @param recentCogsPerBottle - Most recent COGS per bottle
  * @returns Total inventory value
  */
-export function calculateInventoryValue(inventoryBottles: number, recentCogsPerBottle: number): number {
+export function calculateInventoryValue(
+  inventoryBottles: number,
+  recentCogsPerBottle: number,
+): number {
   if (inventoryBottles < 0) {
-    throw new Error('Inventory bottles must be non-negative')
+    throw new Error("Inventory bottles must be non-negative");
   }
 
   if (recentCogsPerBottle < 0) {
-    throw new Error('COGS per bottle must be non-negative')
+    throw new Error("COGS per bottle must be non-negative");
   }
 
-  const inventoryValue = inventoryBottles * recentCogsPerBottle
+  const inventoryValue = inventoryBottles * recentCogsPerBottle;
 
-  return Math.round(inventoryValue * 100) / 100
+  return Math.round(inventoryValue * 100) / 100;
 }
 
 /**
@@ -318,26 +346,26 @@ export function calculateInventoryValue(inventoryBottles: number, recentCogsPerB
  * Handles nullable cost values for free ingredients
  */
 export interface PurchaseItemData {
-  id: string
-  quantity: number
-  quantityKg?: number | null
-  pricePerUnit?: number | null
-  totalCost?: number | null
-  appleVarietyId: string
+  id: string;
+  quantity: number;
+  quantityKg?: number | null;
+  pricePerUnit?: number | null;
+  totalCost?: number | null;
+  appleVarietyId: string;
 }
 
 /**
  * Press run data with purchase item allocations
  */
 export interface PressRunData {
-  id: string
-  totalAppleProcessedKg: number
-  totalJuiceProducedL: number
+  id: string;
+  totalAppleProcessedKg: number;
+  totalJuiceProducedL: number;
   items: Array<{
-    purchaseItemId: string
-    quantityUsedKg: number
-    juiceProducedL: number
-  }>
+    purchaseItemId: string;
+    quantityUsedKg: number;
+    juiceProducedL: number;
+  }>;
 }
 
 /**
@@ -347,29 +375,31 @@ export interface PressRunData {
  * @param purchaseItems - Array of purchase items with costs
  * @returns Weighted average cost per kg, or 0 if no paid items
  */
-export function calculateWeightedAverageCostPerKg(purchaseItems: PurchaseItemData[]): number {
+export function calculateWeightedAverageCostPerKg(
+  purchaseItems: PurchaseItemData[],
+): number {
   if (purchaseItems.length === 0) {
-    return 0
+    return 0;
   }
 
-  let totalCost = 0
-  let totalWeight = 0
+  let totalCost = 0;
+  let totalWeight = 0;
 
   for (const item of purchaseItems) {
-    const weightKg = item.quantityKg || 0
-    const cost = item.totalCost || 0 // Treat null as $0.00
+    const weightKg = item.quantityKg || 0;
+    const cost = item.totalCost || 0; // Treat null as $0.00
 
     if (weightKg > 0) {
-      totalCost += cost
-      totalWeight += weightKg
+      totalCost += cost;
+      totalWeight += weightKg;
     }
   }
 
   if (totalWeight === 0) {
-    return 0
+    return 0;
   }
 
-  return Math.round((totalCost / totalWeight) * 10000) / 10000 // 4 decimal places
+  return Math.round((totalCost / totalWeight) * 10000) / 10000; // 4 decimal places
 }
 
 /**
@@ -382,66 +412,67 @@ export function calculateWeightedAverageCostPerKg(purchaseItems: PurchaseItemDat
  */
 export function calculateAppleCostFromPurchases(
   pressRunData: PressRunData,
-  purchaseItems: PurchaseItemData[]
+  purchaseItems: PurchaseItemData[],
 ): {
-  totalCost: number
-  averageCostPerKg: number
-  freeAppleKg: number
-  paidAppleKg: number
+  totalCost: number;
+  averageCostPerKg: number;
+  freeAppleKg: number;
+  paidAppleKg: number;
   breakdown: Array<{
-    purchaseItemId: string
-    quantityUsedKg: number
-    unitCost: number
-    totalCost: number
-    isFree: boolean
-  }>
+    purchaseItemId: string;
+    quantityUsedKg: number;
+    unitCost: number;
+    totalCost: number;
+    isFree: boolean;
+  }>;
 } {
-  let totalCost = 0
-  let freeAppleKg = 0
-  let paidAppleKg = 0
-  const breakdown = []
+  let totalCost = 0;
+  let freeAppleKg = 0;
+  let paidAppleKg = 0;
+  const breakdown = [];
 
   // Create lookup map for purchase items
-  const purchaseMap = new Map(purchaseItems.map(item => [item.id, item]))
+  const purchaseMap = new Map(purchaseItems.map((item) => [item.id, item]));
 
   for (const pressItem of pressRunData.items) {
-    const purchaseItem = purchaseMap.get(pressItem.purchaseItemId)
+    const purchaseItem = purchaseMap.get(pressItem.purchaseItemId);
 
     if (!purchaseItem) {
-      throw new Error(`Purchase item ${pressItem.purchaseItemId} not found`)
+      throw new Error(`Purchase item ${pressItem.purchaseItemId} not found`);
     }
 
-    const quantityUsedKg = pressItem.quantityUsedKg
-    const unitCost = purchaseItem.pricePerUnit || 0
-    const itemCost = quantityUsedKg * unitCost
-    const isFree = !purchaseItem.pricePerUnit || purchaseItem.pricePerUnit === 0
+    const quantityUsedKg = pressItem.quantityUsedKg;
+    const unitCost = purchaseItem.pricePerUnit || 0;
+    const itemCost = quantityUsedKg * unitCost;
+    const isFree =
+      !purchaseItem.pricePerUnit || purchaseItem.pricePerUnit === 0;
 
     if (isFree) {
-      freeAppleKg += quantityUsedKg
+      freeAppleKg += quantityUsedKg;
     } else {
-      paidAppleKg += quantityUsedKg
+      paidAppleKg += quantityUsedKg;
     }
 
-    totalCost += itemCost
+    totalCost += itemCost;
     breakdown.push({
       purchaseItemId: pressItem.purchaseItemId,
       quantityUsedKg,
       unitCost,
       totalCost: Math.round(itemCost * 100) / 100,
-      isFree
-    })
+      isFree,
+    });
   }
 
-  const totalAppleKg = freeAppleKg + paidAppleKg
-  const averageCostPerKg = totalAppleKg > 0 ? totalCost / totalAppleKg : 0
+  const totalAppleKg = freeAppleKg + paidAppleKg;
+  const averageCostPerKg = totalAppleKg > 0 ? totalCost / totalAppleKg : 0;
 
   return {
     totalCost: Math.round(totalCost * 100) / 100,
     averageCostPerKg: Math.round(averageCostPerKg * 10000) / 10000,
     freeAppleKg,
     paidAppleKg,
-    breakdown
-  }
+    breakdown,
+  };
 }
 
 /**
@@ -456,58 +487,58 @@ export function calculateAppleCostFromPurchases(
 export function calculateCogsFromPurchases(
   batchData: BatchCostData,
   purchaseCostData: {
-    totalCost: number
-    averageCostPerKg: number
-    freeAppleKg: number
-    paidAppleKg: number
+    totalCost: number;
+    averageCostPerKg: number;
+    freeAppleKg: number;
+    paidAppleKg: number;
   },
-  config: Omit<CostAllocationConfig, 'appleCostPerKg'>
+  config: Omit<CostAllocationConfig, "appleCostPerKg">,
 ): CogsComponent[] {
-  const components: CogsComponent[] = []
+  const components: CogsComponent[] = [];
 
   // Apple cost (using actual purchase data, adjusted for wastage)
-  const appleWastageMultiplier = 1 + (config.wastageRate / 100)
-  const adjustedAppleCost = purchaseCostData.totalCost * appleWastageMultiplier
+  const appleWastageMultiplier = 1 + config.wastageRate / 100;
+  const adjustedAppleCost = purchaseCostData.totalCost * appleWastageMultiplier;
 
   components.push({
-    itemType: 'apple_cost',
+    itemType: "apple_cost",
     amount: Math.round(adjustedAppleCost * 100) / 100,
     description: `Apple cost: ${purchaseCostData.freeAppleKg}kg free + ${purchaseCostData.paidAppleKg}kg paid (adjusted for ${config.wastageRate}% wastage)`,
     unitCost: purchaseCostData.averageCostPerKg,
-    quantity: batchData.appleWeightKg * appleWastageMultiplier
-  })
+    quantity: batchData.appleWeightKg * appleWastageMultiplier,
+  });
 
   // Labor cost (unchanged from existing logic)
-  const laborCost = batchData.laborHours * config.laborRatePerHour
+  const laborCost = batchData.laborHours * config.laborRatePerHour;
   components.push({
-    itemType: 'labor',
+    itemType: "labor",
     amount: Math.round(laborCost * 100) / 100,
     description: `Labor cost for ${batchData.laborHours} hours`,
     unitCost: config.laborRatePerHour,
-    quantity: batchData.laborHours
-  })
+    quantity: batchData.laborHours,
+  });
 
   // Overhead cost (unchanged from existing logic)
-  const overheadCost = batchData.juiceVolumeL * config.overheadRatePerL
+  const overheadCost = batchData.juiceVolumeL * config.overheadRatePerL;
   components.push({
-    itemType: 'overhead',
+    itemType: "overhead",
     amount: Math.round(overheadCost * 100) / 100,
     description: `Overhead allocation for ${batchData.juiceVolumeL}L production`,
     unitCost: config.overheadRatePerL,
-    quantity: batchData.juiceVolumeL
-  })
+    quantity: batchData.juiceVolumeL,
+  });
 
   // Packaging cost (unchanged from existing logic)
-  const packagingCost = batchData.packagingUnits * config.packagingCostPerUnit
+  const packagingCost = batchData.packagingUnits * config.packagingCostPerUnit;
   components.push({
-    itemType: 'packaging',
+    itemType: "packaging",
     amount: Math.round(packagingCost * 100) / 100,
     description: `Packaging cost for ${batchData.packagingUnits} units`,
     unitCost: config.packagingCostPerUnit,
-    quantity: batchData.packagingUnits
-  })
+    quantity: batchData.packagingUnits,
+  });
 
-  return components
+  return components;
 }
 
 /**
@@ -522,15 +553,22 @@ export function calculateCogsFromPurchases(
 export function calculateTotalCogsFromPurchases(
   batchData: BatchCostData,
   purchaseCostData: {
-    totalCost: number
-    averageCostPerKg: number
-    freeAppleKg: number
-    paidAppleKg: number
+    totalCost: number;
+    averageCostPerKg: number;
+    freeAppleKg: number;
+    paidAppleKg: number;
   },
-  config: Omit<CostAllocationConfig, 'appleCostPerKg'>
+  config: Omit<CostAllocationConfig, "appleCostPerKg">,
 ): number {
-  const components = calculateCogsFromPurchases(batchData, purchaseCostData, config)
-  const totalCogs = components.reduce((sum, component) => sum + component.amount, 0)
+  const components = calculateCogsFromPurchases(
+    batchData,
+    purchaseCostData,
+    config,
+  );
+  const totalCogs = components.reduce(
+    (sum, component) => sum + component.amount,
+    0,
+  );
 
-  return Math.round(totalCogs * 100) / 100
+  return Math.round(totalCogs * 100) / 100;
 }

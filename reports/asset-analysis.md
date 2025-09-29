@@ -1,18 +1,16 @@
 # Asset Usage Analysis Report
 
-Generated: 9/28/2025, 6:29:16 PM
+Generated: 9/28/2025, 6:46:57 PM
 
 ## Summary
-- **Total Assets**: 9
+- **Total Assets**: 7
 - **Used Assets**: 4
-- **Unused Assets**: 5
+- **Unused Assets**: 3
 - **Potentially Unused**: 4
 - **Large Assets (>100KB)**: 0
 
 ## Unused Assets
-- `/test-inline-edit.html` (3KB)
-- `/test-dropdown.html` (1KB)
-- `/sw.js` (11KB)
+- `/sw.js` (12KB)
 - `/manifest.json` (2KB)
 - `./src/app/globals.css` (2KB)
 

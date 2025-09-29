@@ -1,18 +1,13 @@
-"use client"
+"use client";
 
-import React, { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import {
-  FileText,
-  Download,
-  Loader2,
-  Settings
-} from 'lucide-react'
+import React, { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { FileText, Download, Loader2, Settings } from "lucide-react";
 import {
   generatePackagingRunPDF,
   type PackagingRunPDFData,
-  type PDFGeneratorOptions
-} from '@/lib/pdf-generator'
+  type PDFGeneratorOptions,
+} from "@/lib/pdf-generator";
 import {
   Dialog,
   DialogContent,
@@ -20,56 +15,56 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Separator } from '@/components/ui/separator'
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 
 interface PackagingPDFTemplateProps {
-  data: PackagingRunPDFData
-  className?: string
-  variant?: 'default' | 'outline' | 'ghost'
-  size?: 'default' | 'sm' | 'lg'
-  showOptionsDialog?: boolean
+  data: PackagingRunPDFData;
+  className?: string;
+  variant?: "default" | "outline" | "ghost";
+  size?: "default" | "sm" | "lg";
+  showOptionsDialog?: boolean;
 }
 
 export function PackagingPDFTemplate({
   data,
   className,
-  variant = 'default',
-  size = 'default',
-  showOptionsDialog = false
+  variant = "default",
+  size = "default",
+  showOptionsDialog = false,
 }: PackagingPDFTemplateProps) {
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [options, setOptions] = useState<PDFGeneratorOptions>({
-    companyName: 'Cidery Management',
-    companyAddress: '',
+    companyName: "Cidery Management",
+    companyAddress: "",
     includePhotos: false,
-    includeQRCode: false
-  })
+    includeQRCode: false,
+  });
 
   const handleGeneratePDF = async (customOptions?: PDFGeneratorOptions) => {
-    setIsGenerating(true)
+    setIsGenerating(true);
     try {
-      await generatePackagingRunPDF(data, customOptions || options)
+      await generatePackagingRunPDF(data, customOptions || options);
     } catch (error) {
-      console.error('Error generating PDF:', error)
+      console.error("Error generating PDF:", error);
       // TODO: Add toast notification for error
     } finally {
-      setIsGenerating(false)
-      setIsDialogOpen(false)
+      setIsGenerating(false);
+      setIsDialogOpen(false);
     }
-  }
+  };
 
   const handleQuickGenerate = () => {
     if (showOptionsDialog) {
-      setIsDialogOpen(true)
+      setIsDialogOpen(true);
     } else {
-      handleGeneratePDF()
+      handleGeneratePDF();
     }
-  }
+  };
 
   if (showOptionsDialog) {
     return (
@@ -106,17 +101,29 @@ export function PackagingPDFTemplate({
                 <Input
                   id="companyName"
                   value={options.companyName}
-                  onChange={(e) => setOptions(prev => ({ ...prev, companyName: e.target.value }))}
+                  onChange={(e) =>
+                    setOptions((prev) => ({
+                      ...prev,
+                      companyName: e.target.value,
+                    }))
+                  }
                   placeholder="Enter company name"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="companyAddress">Company Address (Optional)</Label>
+                <Label htmlFor="companyAddress">
+                  Company Address (Optional)
+                </Label>
                 <Input
                   id="companyAddress"
                   value={options.companyAddress}
-                  onChange={(e) => setOptions(prev => ({ ...prev, companyAddress: e.target.value }))}
+                  onChange={(e) =>
+                    setOptions((prev) => ({
+                      ...prev,
+                      companyAddress: e.target.value,
+                    }))
+                  }
                   placeholder="Enter company address"
                 />
               </div>
@@ -133,7 +140,10 @@ export function PackagingPDFTemplate({
                   id="includePhotos"
                   checked={options.includePhotos}
                   onCheckedChange={(checked) =>
-                    setOptions(prev => ({ ...prev, includePhotos: checked as boolean }))
+                    setOptions((prev) => ({
+                      ...prev,
+                      includePhotos: checked as boolean,
+                    }))
                   }
                 />
                 <Label htmlFor="includePhotos" className="text-sm">
@@ -146,7 +156,10 @@ export function PackagingPDFTemplate({
                   id="includeQRCode"
                   checked={options.includeQRCode}
                   onCheckedChange={(checked) =>
-                    setOptions(prev => ({ ...prev, includeQRCode: checked as boolean }))
+                    setOptions((prev) => ({
+                      ...prev,
+                      includeQRCode: checked as boolean,
+                    }))
                   }
                 />
                 <Label htmlFor="includeQRCode" className="text-sm">
@@ -178,7 +191,7 @@ export function PackagingPDFTemplate({
           </div>
         </DialogContent>
       </Dialog>
-    )
+    );
   }
 
   return (
@@ -196,16 +209,16 @@ export function PackagingPDFTemplate({
       )}
       Export PDF
     </Button>
-  )
+  );
 }
 
 // Quick export button without options
 export function QuickPDFExport({
   data,
   className,
-  variant = 'outline',
-  size = 'sm'
-}: Omit<PackagingPDFTemplateProps, 'showOptionsDialog'>) {
+  variant = "outline",
+  size = "sm",
+}: Omit<PackagingPDFTemplateProps, "showOptionsDialog">) {
   return (
     <PackagingPDFTemplate
       data={data}
@@ -214,16 +227,16 @@ export function QuickPDFExport({
       size={size}
       showOptionsDialog={false}
     />
-  )
+  );
 }
 
 // Full options PDF export
 export function AdvancedPDFExport({
   data,
   className,
-  variant = 'default',
-  size = 'default'
-}: Omit<PackagingPDFTemplateProps, 'showOptionsDialog'>) {
+  variant = "default",
+  size = "default",
+}: Omit<PackagingPDFTemplateProps, "showOptionsDialog">) {
   return (
     <PackagingPDFTemplate
       data={data}
@@ -232,20 +245,24 @@ export function AdvancedPDFExport({
       size={size}
       showOptionsDialog={true}
     />
-  )
+  );
 }
 
 // PDF options summary component
-export function PDFOptionsPreview({ options }: { options: PDFGeneratorOptions }) {
+export function PDFOptionsPreview({
+  options,
+}: {
+  options: PDFGeneratorOptions;
+}) {
   return (
     <div className="p-4 bg-muted/50 rounded-lg space-y-2">
       <h4 className="font-medium text-sm">PDF Report Configuration</h4>
       <div className="text-xs text-muted-foreground space-y-1">
-        <div>Company: {options.companyName || 'Not specified'}</div>
+        <div>Company: {options.companyName || "Not specified"}</div>
         {options.companyAddress && <div>Address: {options.companyAddress}</div>}
-        <div>Include Photos: {options.includePhotos ? 'Yes' : 'No'}</div>
-        <div>Include QR Code: {options.includeQRCode ? 'Yes' : 'No'}</div>
+        <div>Include Photos: {options.includePhotos ? "Yes" : "No"}</div>
+        <div>Include QR Code: {options.includeQRCode ? "Yes" : "No"}</div>
       </div>
     </div>
-  )
+  );
 }

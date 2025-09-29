@@ -1,51 +1,57 @@
-"use client"
+"use client";
 
-import { useState, Suspense } from 'react'
-import { signIn, getSession } from 'next-auth/react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Grape, Eye, EyeOff } from 'lucide-react'
+import { useState, Suspense } from "react";
+import { signIn, getSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Grape, Eye, EyeOff } from "lucide-react";
 
 function SignInForm() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
     try {
-      const result = await signIn('credentials', {
+      const result = await signIn("credentials", {
         email,
         password,
         redirect: false,
-      })
+      });
 
       if (result?.error) {
-        setError('Invalid email or password')
+        setError("Invalid email or password");
       } else {
         // Force refresh session to ensure it's properly loaded
-        await getSession()
-        router.push(callbackUrl)
-        router.refresh()
+        await getSession();
+        router.push(callbackUrl);
+        router.refresh();
       }
     } catch (error) {
-      setError('An error occurred. Please try again.')
+      setError("An error occurred. Please try again.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -57,9 +63,7 @@ function SignInForm() {
           <h1 className="mt-6 text-3xl font-bold text-gray-900">
             Cidery Management
           </h1>
-          <p className="mt-2 text-gray-600">
-            Sign in to your account
-          </p>
+          <p className="mt-2 text-gray-600">Sign in to your account</p>
         </div>
 
         <Card className="mt-8">
@@ -76,7 +80,7 @@ function SignInForm() {
                   {error}
                 </div>
               )}
-              
+
               <div>
                 <Label htmlFor="email">Email address</Label>
                 <Input
@@ -98,7 +102,7 @@ function SignInForm() {
                   <Input
                     id="password"
                     name="password"
-                    type={showPassword ? 'text' : 'password'}
+                    type={showPassword ? "text" : "password"}
                     autoComplete="current-password"
                     required
                     value={password}
@@ -120,12 +124,8 @@ function SignInForm() {
                 </div>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={loading}
-              >
-                {loading ? 'Signing in...' : 'Sign in'}
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? "Signing in..." : "Sign in"}
               </Button>
             </form>
 
@@ -142,22 +142,24 @@ function SignInForm() {
         </Card>
       </div>
     </div>
-  )
+  );
 }
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto h-12 w-12 bg-purple-100 rounded-full flex items-center justify-center">
-            <Grape className="h-6 w-6 text-purple-600" />
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="mx-auto h-12 w-12 bg-purple-100 rounded-full flex items-center justify-center">
+              <Grape className="h-6 w-6 text-purple-600" />
+            </div>
+            <p className="mt-4 text-gray-600">Loading...</p>
           </div>
-          <p className="mt-4 text-gray-600">Loading...</p>
         </div>
-      </div>
-    }>
+      }
+    >
       <SignInForm />
     </Suspense>
-  )
+  );
 }

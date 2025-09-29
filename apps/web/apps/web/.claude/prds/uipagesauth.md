@@ -25,22 +25,26 @@ The current cidery management application has several gaps that prevent it from 
 ### Primary Personas
 
 **Cidery Operator (Primary User)**
+
 - Daily user managing production, inventory, and basic reporting
 - Needs quick access to common operations
 - Requires mobile-friendly interfaces for cellar work
 
 **Cidery Owner/Admin (Secondary User)**
+
 - Strategic oversight of operations and detailed reporting
 - Manages user access and system configuration
 - Needs comprehensive financial and operational reports
 
 **Viewer/Auditor (Tertiary User)**
+
 - Read-only access for compliance, auditing, or stakeholder reporting
 - Needs filtered views based on permissions
 
 ### User Journeys
 
 **Inventory Management Journey**
+
 ```
 As a cidery operator, I want to:
 1. View real-time inventory across all locations (cellar, packaging, finished goods)
@@ -51,6 +55,7 @@ As a cidery operator, I want to:
 ```
 
 **Advanced Reporting Journey**
+
 ```
 As a cidery owner, I want to:
 1. Access comprehensive COGS reports with drill-down capability
@@ -61,6 +66,7 @@ As a cidery owner, I want to:
 ```
 
 **Recipe Management Journey**
+
 ```
 As a cidery operator, I want to:
 1. Create and manage cider recipes with ingredient specifications
@@ -75,6 +81,7 @@ As a cidery operator, I want to:
 ### Functional Requirements
 
 #### Inventory Management Pages
+
 - **Inventory Overview Dashboard**
   - Real-time inventory levels across all locations
   - Low stock alerts and expiration warnings
@@ -93,6 +100,7 @@ As a cidery operator, I want to:
   - Export capabilities (PDF, CSV)
 
 #### Advanced Reports Pages
+
 - **COGS Analysis Dashboard**
   - Batch-level cost breakdown
   - Profit margin analysis by product
@@ -112,6 +120,7 @@ As a cidery operator, I want to:
   - Purchase volume analysis
 
 #### Recipe Management Pages
+
 - **Recipe Library**
   - Browse and search recipes
   - Recipe categories and tagging
@@ -131,6 +140,7 @@ As a cidery operator, I want to:
   - Version comparison tools
 
 #### Authentication & Authorization
+
 - **Role-Based Access Control**
   - Admin: Full access to all features
   - Operator: Read/write access to operational features, read-only reports
@@ -150,24 +160,28 @@ As a cidery operator, I want to:
 ### Non-Functional Requirements
 
 #### Performance
+
 - Page load times under 2 seconds
 - Real-time inventory updates within 5 seconds
 - Report generation under 10 seconds for standard reports
 - Support for concurrent users (10+ simultaneous)
 
 #### Security
+
 - All API endpoints protected with proper RBAC
 - Input validation and sanitization
 - Secure session management
 - Audit logging for all user actions
 
 #### Usability
+
 - Mobile-responsive design (tablet and phone)
 - Accessible design (WCAG 2.1 AA compliance)
 - Consistent design language across all pages
 - Intuitive navigation and user flows
 
 #### Scalability
+
 - Support for growing inventory (1000+ products)
 - Report generation for large datasets
 - Efficient database queries and caching
@@ -175,12 +189,14 @@ As a cidery operator, I want to:
 ## Success Criteria
 
 ### Primary Metrics
+
 - **Feature Completion**: 100% of identified UI pages implemented with full functionality
 - **Authentication Coverage**: 100% of pages properly implement role-based access control
 - **User Adoption**: 90% of target workflows can be completed without reverting to Excel
 - **Performance**: All pages meet performance requirements (load times, response times)
 
 ### Secondary Metrics
+
 - **User Satisfaction**: Positive feedback from beta users on usability and completeness
 - **Error Rate**: Less than 1% of user actions result in unhandled errors
 - **Mobile Usage**: 30% of users can successfully complete key tasks on mobile devices
@@ -189,22 +205,26 @@ As a cidery operator, I want to:
 ## Constraints & Assumptions
 
 ### Technical Constraints
+
 - Must work within existing Next.js 15 + tRPC + PostgreSQL architecture
 - Must maintain compatibility with existing data models and API endpoints
 - Must use existing shadcn/ui component library for consistency
 - Must support existing user roles without modification
 
 ### Timeline Constraints
+
 - Target completion within 3-4 weeks
 - Must not disrupt existing functionality during development
 - Phased rollout preferred (inventory → reports → recipes)
 
 ### Resource Constraints
+
 - Single developer implementation
 - No additional third-party services or significant infrastructure changes
 - Must leverage existing audit logging and RBAC systems
 
 ### Assumptions
+
 - Current authentication system is sufficient for expanded functionality
 - Existing database schema supports inventory transaction tracking
 - Users are familiar with current application navigation patterns
@@ -213,6 +233,7 @@ As a cidery operator, I want to:
 ## Out of Scope
 
 ### Explicitly NOT Building
+
 - **Advanced Analytics/BI**: Complex data science or machine learning features
 - **Multi-tenant Architecture**: Support for multiple cideries in single instance
 - **E-commerce Integration**: Direct sales or customer-facing features
@@ -222,6 +243,7 @@ As a cidery operator, I want to:
 - **API for External Access**: Public API for third-party integrations
 
 ### Future Considerations
+
 - Integration with accounting systems
 - Advanced inventory forecasting
 - Customer relationship management features
@@ -230,17 +252,20 @@ As a cidery operator, I want to:
 ## Dependencies
 
 ### External Dependencies
+
 - Continued stability of Next.js 15 and tRPC frameworks
 - PostgreSQL database availability and performance
 - Third-party UI component library (shadcn/ui) updates
 
 ### Internal Dependencies
+
 - Completion of current authentication system debugging (in progress)
 - Database schema may need minor additions for inventory transactions
 - Existing RBAC system must be fully functional
 - Current audit logging system for tracking user actions
 
 ### Team Dependencies
+
 - Product feedback from actual cidery operators for usability validation
 - Testing support for various user roles and scenarios
 - Deployment pipeline readiness for new pages and features
@@ -248,15 +273,19 @@ As a cidery operator, I want to:
 ## Implementation Notes
 
 ### Phase 1: Inventory Management (Week 1-2)
+
 Priority implementation order based on user value and technical complexity.
 
 ### Phase 2: Advanced Reports (Week 2-3)
+
 Builds on existing COGS foundation, adds visualization and export capabilities.
 
 ### Phase 3: Recipe Management (Week 3-4)
+
 New functionality area, requires new data models and workflows.
 
 ### Risk Mitigation
+
 - Implement feature flags for gradual rollout
 - Maintain backward compatibility throughout development
 - Create comprehensive test coverage for authentication flows

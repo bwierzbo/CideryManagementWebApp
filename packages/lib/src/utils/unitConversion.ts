@@ -7,7 +7,7 @@
  * - Display formatting helpers
  */
 
-import { validatePositiveQuantity } from '../validation/volume-quantity';
+import { validatePositiveQuantity } from "../validation/volume-quantity";
 
 /**
  * Conversion factor: 1 bushel = 40 lb = 18.14 kg
@@ -28,7 +28,7 @@ export const GAL_TO_L_FACTOR = 3.78541;
  * @throws QuantityValidationError for invalid inputs
  */
 export function bushelsToKg(bushels: number): number {
-  validatePositiveQuantity(bushels, 'Bushels', 'bushels', 'unit conversion');
+  validatePositiveQuantity(bushels, "Bushels", "bushels", "unit conversion");
 
   // Convert and round to 0.01 kg precision
   return Math.round(bushels * BUSHEL_TO_KG_FACTOR * 100) / 100;
@@ -41,7 +41,7 @@ export function bushelsToKg(bushels: number): number {
  * @throws QuantityValidationError for invalid inputs
  */
 export function kgToBushels(kg: number): number {
-  validatePositiveQuantity(kg, 'Kilograms', 'kg', 'unit conversion');
+  validatePositiveQuantity(kg, "Kilograms", "kg", "unit conversion");
 
   // Convert and round to 0.01 bushel precision
   return Math.round((kg / BUSHEL_TO_KG_FACTOR) * 100) / 100;
@@ -54,7 +54,7 @@ export function kgToBushels(kg: number): number {
  * @throws QuantityValidationError for invalid inputs
  */
 export function gallonsToLiters(gallons: number): number {
-  validatePositiveQuantity(gallons, 'Gallons', 'gal', 'unit conversion');
+  validatePositiveQuantity(gallons, "Gallons", "gal", "unit conversion");
 
   // Convert and round to 0.01 L precision
   return Math.round(gallons * GAL_TO_L_FACTOR * 100) / 100;
@@ -67,7 +67,7 @@ export function gallonsToLiters(gallons: number): number {
  * @throws QuantityValidationError for invalid inputs
  */
 export function litersToGallons(liters: number): number {
-  validatePositiveQuantity(liters, 'Liters', 'L', 'unit conversion');
+  validatePositiveQuantity(liters, "Liters", "L", "unit conversion");
 
   // Convert and round to 0.01 gallon precision
   return Math.round((liters / GAL_TO_L_FACTOR) * 100) / 100;
@@ -85,7 +85,7 @@ export function formatUnitConversion(
   value: number,
   fromUnit: string,
   toUnit: string,
-  convertedValue?: number
+  convertedValue?: number,
 ): string {
   let converted: number;
 
@@ -93,13 +93,13 @@ export function formatUnitConversion(
     converted = convertedValue;
   } else {
     // Auto-convert based on units
-    if (fromUnit === 'bushels' && toUnit === 'kg') {
+    if (fromUnit === "bushels" && toUnit === "kg") {
       converted = bushelsToKg(value);
-    } else if (fromUnit === 'kg' && toUnit === 'bushels') {
+    } else if (fromUnit === "kg" && toUnit === "bushels") {
       converted = kgToBushels(value);
-    } else if (fromUnit === 'gal' && toUnit === 'L') {
+    } else if (fromUnit === "gal" && toUnit === "L") {
       converted = gallonsToLiters(value);
-    } else if (fromUnit === 'L' && toUnit === 'gal') {
+    } else if (fromUnit === "L" && toUnit === "gal") {
       converted = litersToGallons(value);
     } else {
       throw new Error(`Unsupported conversion from ${fromUnit} to ${toUnit}`);
@@ -120,28 +120,31 @@ export function formatUnitConversion(
 export function validateConversionPrecision(
   originalValue: number,
   fromUnit: string,
-  toUnit: string
+  toUnit: string,
 ): boolean {
   let roundTripValue: number;
 
-  if (fromUnit === 'bushels' && toUnit === 'kg') {
+  if (fromUnit === "bushels" && toUnit === "kg") {
     const kg = bushelsToKg(originalValue);
     roundTripValue = kgToBushels(kg);
-  } else if (fromUnit === 'kg' && toUnit === 'bushels') {
+  } else if (fromUnit === "kg" && toUnit === "bushels") {
     const bushels = kgToBushels(originalValue);
     roundTripValue = bushelsToKg(bushels);
-  } else if (fromUnit === 'gal' && toUnit === 'L') {
+  } else if (fromUnit === "gal" && toUnit === "L") {
     const liters = gallonsToLiters(originalValue);
     roundTripValue = litersToGallons(liters);
-  } else if (fromUnit === 'L' && toUnit === 'gal') {
+  } else if (fromUnit === "L" && toUnit === "gal") {
     const gallons = litersToGallons(originalValue);
     roundTripValue = gallonsToLiters(gallons);
   } else {
-    throw new Error(`Unsupported conversion validation from ${fromUnit} to ${toUnit}`);
+    throw new Error(
+      `Unsupported conversion validation from ${fromUnit} to ${toUnit}`,
+    );
   }
 
   // Calculate percentage error: |original - roundtrip| / original * 100
-  const percentageError = Math.abs(originalValue - roundTripValue) / originalValue * 100;
+  const percentageError =
+    (Math.abs(originalValue - roundTripValue) / originalValue) * 100;
 
   // Must be within ±0.1% tolerance
   return percentageError <= 0.1;
@@ -155,22 +158,22 @@ export function validateConversionPrecision(
  */
 export function getConversionFactor(fromUnit: string, toUnit: string): number {
   const conversions: Record<string, Record<string, number>> = {
-    'bushels': {
-      'kg': BUSHEL_TO_KG_FACTOR,
-      'bushels': 1
+    bushels: {
+      kg: BUSHEL_TO_KG_FACTOR,
+      bushels: 1,
     },
-    'kg': {
-      'bushels': 1 / BUSHEL_TO_KG_FACTOR,
-      'kg': 1
+    kg: {
+      bushels: 1 / BUSHEL_TO_KG_FACTOR,
+      kg: 1,
     },
-    'gal': {
-      'L': GAL_TO_L_FACTOR,
-      'gal': 1
+    gal: {
+      L: GAL_TO_L_FACTOR,
+      gal: 1,
     },
-    'L': {
-      'gal': 1 / GAL_TO_L_FACTOR,
-      'L': 1
-    }
+    L: {
+      gal: 1 / GAL_TO_L_FACTOR,
+      L: 1,
+    },
   };
 
   const fromConversions = conversions[fromUnit];
@@ -192,7 +195,10 @@ export function getConversionFactor(fromUnit: string, toUnit: string): number {
  * @param toUnit - Target unit to check
  * @returns true if conversion is supported
  */
-export function isConversionSupported(fromUnit: string, toUnit: string): boolean {
+export function isConversionSupported(
+  fromUnit: string,
+  toUnit: string,
+): boolean {
   try {
     getConversionFactor(fromUnit, toUnit);
     return true;
@@ -204,14 +210,14 @@ export function isConversionSupported(fromUnit: string, toUnit: string): boolean
 /**
  * Volume unit types supported for display formatting
  */
-export type VolumeUnit = 'L' | 'gal';
+export type VolumeUnit = "L" | "gal";
 
 /**
  * Volume unit display symbols
  */
 export const VOLUME_UNIT_SYMBOLS: Record<VolumeUnit, string> = {
-  L: 'L',
-  gal: 'gal',
+  L: "L",
+  gal: "gal",
 };
 
 /**
@@ -221,7 +227,7 @@ export const VOLUME_UNIT_SYMBOLS: Record<VolumeUnit, string> = {
  * @returns Volume in the target unit
  */
 export function toDisplayVolume(liters: number, unit: VolumeUnit): number {
-  if (unit === 'gal') {
+  if (unit === "gal") {
     // Use direct conversion for display, allowing zero values
     return Math.round((liters / GAL_TO_L_FACTOR) * 100) / 100;
   }
@@ -239,9 +245,10 @@ export function formatVolume(liters: number, unit: VolumeUnit): string {
   const symbol = VOLUME_UNIT_SYMBOLS[unit];
 
   // Show whole numbers when close, else 1 decimal place
-  const formatted = Math.abs(displayValue - Math.round(displayValue)) < 0.01
-    ? Math.round(displayValue)
-    : Number(displayValue.toFixed(1));
+  const formatted =
+    Math.abs(displayValue - Math.round(displayValue)) < 0.01
+      ? Math.round(displayValue)
+      : Number(displayValue.toFixed(1));
 
   return `${formatted} ${symbol}`;
 }
@@ -256,7 +263,7 @@ export function formatVolume(liters: number, unit: VolumeUnit): string {
 export function formatVolumeRange(
   currentLiters: number,
   capacityLiters: number,
-  unit: VolumeUnit
+  unit: VolumeUnit,
 ): string {
   const currentFormatted = formatVolume(currentLiters, unit);
   const capacityFormatted = formatVolume(capacityLiters, unit);

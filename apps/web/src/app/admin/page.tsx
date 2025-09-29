@@ -1,14 +1,40 @@
-"use client"
+"use client";
 
-import React, { useState } from "react"
-import { Navbar } from "@/components/navbar"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import React, { useState } from "react";
+import { Navbar } from "@/components/navbar";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Settings,
   Users,
@@ -31,12 +57,12 @@ import {
   Archive,
   ArchiveRestore,
   X,
-  XCircle
-} from "lucide-react"
-import { trpc } from "@/utils/trpc"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
+  XCircle,
+} from "lucide-react";
+import { trpc } from "@/utils/trpc";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 
 // Form schemas
 const userSchema = z.object({
@@ -44,29 +70,29 @@ const userSchema = z.object({
   name: z.string().min(1, "Name is required"),
   role: z.enum(["admin", "operator"]),
   password: z.string().min(8, "Password must be at least 8 characters"),
-})
+});
 
 const appleVarietySchema = z.object({
   name: z.string().min(1, "Name is required"),
-})
+});
 
 const renameVarietySchema = z.object({
   name: z.string().min(1, "Name is required"),
-})
+});
 
 type NotificationType = {
-  id: number
-  type: 'success' | 'error'
-  title: string
-  message: string
-}
+  id: number;
+  type: "success" | "error";
+  title: string;
+  message: string;
+};
 
-type UserForm = z.infer<typeof userSchema>
-type AppleVarietyForm = z.infer<typeof appleVarietySchema>
+type UserForm = z.infer<typeof userSchema>;
+type AppleVarietyForm = z.infer<typeof appleVarietySchema>;
 
 function UserManagement() {
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Mock user data
   const users = [
@@ -77,54 +103,56 @@ function UserManagement() {
       role: "admin",
       isActive: true,
       lastLogin: "2024-01-27 10:30",
-      createdAt: "2024-01-01"
+      createdAt: "2024-01-01",
     },
     {
       id: "2",
-      email: "operator@example.com", 
+      email: "operator@example.com",
       name: "Operator User",
       role: "operator",
       isActive: true,
       lastLogin: "2024-01-26 16:45",
-      createdAt: "2024-01-05"
+      createdAt: "2024-01-05",
     },
     {
       id: "3",
       email: "john.cellar@cidery.com",
       name: "John Smith",
-      role: "operator", 
+      role: "operator",
       isActive: false,
       lastLogin: "2024-01-20 09:15",
-      createdAt: "2024-01-10"
-    }
-  ]
+      createdAt: "2024-01-10",
+    },
+  ];
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     setValue,
-    reset
+    reset,
   } = useForm<UserForm>({
-    resolver: zodResolver(userSchema)
-  })
+    resolver: zodResolver(userSchema),
+  });
 
   const onSubmit = (data: UserForm) => {
-    console.log("User data:", data)
+    console.log("User data:", data);
     // TODO: Implement user creation mutation
-    setIsAddDialogOpen(false)
-    reset()
-  }
+    setIsAddDialogOpen(false);
+    reset();
+  };
 
   const promoteUser = (userId: string, currentRole: string) => {
-    console.log(`Promoting user ${userId} from ${currentRole}`)
+    console.log(`Promoting user ${userId} from ${currentRole}`);
     // TODO: Implement user role update
-  }
+  };
 
   const toggleUserStatus = (userId: string, currentStatus: boolean) => {
-    console.log(`${currentStatus ? 'Deactivating' : 'Activating'} user ${userId}`)
+    console.log(
+      `${currentStatus ? "Deactivating" : "Activating"} user ${userId}`,
+    );
     // TODO: Implement user status toggle
-  }
+  };
 
   return (
     <Card>
@@ -135,7 +163,9 @@ function UserManagement() {
               <Users className="w-5 h-5 text-blue-600" />
               User Management
             </CardTitle>
-            <CardDescription>Manage system users and their permissions</CardDescription>
+            <CardDescription>
+              Manage system users and their permissions
+            </CardDescription>
           </div>
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
@@ -154,26 +184,38 @@ function UserManagement() {
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div>
                   <Label htmlFor="email">Email Address</Label>
-                  <Input 
-                    id="email" 
+                  <Input
+                    id="email"
                     type="email"
-                    {...register("email")} 
+                    {...register("email")}
                     placeholder="user@example.com"
                   />
-                  {errors.email && <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>}
+                  {errors.email && (
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.email.message}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="name">Full Name</Label>
-                  <Input 
-                    id="name" 
-                    {...register("name")} 
+                  <Input
+                    id="name"
+                    {...register("name")}
                     placeholder="John Smith"
                   />
-                  {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
+                  {errors.name && (
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.name.message}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="role">Role</Label>
-                  <Select onValueChange={(value: "admin" | "operator") => setValue("role", value)}>
+                  <Select
+                    onValueChange={(value: "admin" | "operator") =>
+                      setValue("role", value)
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
@@ -182,15 +224,19 @@ function UserManagement() {
                       <SelectItem value="admin">Administrator</SelectItem>
                     </SelectContent>
                   </Select>
-                  {errors.role && <p className="text-sm text-red-600 mt-1">{errors.role.message}</p>}
+                  {errors.role && (
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.role.message}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="password">Password</Label>
                   <div className="relative">
-                    <Input 
-                      id="password" 
+                    <Input
+                      id="password"
                       type={showPassword ? "text" : "password"}
-                      {...register("password")} 
+                      {...register("password")}
                       placeholder="••••••••"
                     />
                     <button
@@ -198,18 +244,28 @@ function UserManagement() {
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute inset-y-0 right-0 pr-3 flex items-center"
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
                     </button>
                   </div>
-                  {errors.password && <p className="text-sm text-red-600 mt-1">{errors.password.message}</p>}
+                  {errors.password && (
+                    <p className="text-sm text-red-600 mt-1">
+                      {errors.password.message}
+                    </p>
+                  )}
                 </div>
                 <div className="flex justify-end space-x-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsAddDialogOpen(false)}
+                  >
                     Cancel
                   </Button>
-                  <Button type="submit">
-                    Create User
-                  </Button>
+                  <Button type="submit">Create User</Button>
                 </div>
               </form>
             </DialogContent>
@@ -233,9 +289,11 @@ function UserManagement() {
               <TableRow key={user.id}>
                 <TableCell>
                   <div className="flex items-center space-x-2">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      user.role === "admin" ? "bg-red-100" : "bg-blue-100"
-                    }`}>
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        user.role === "admin" ? "bg-red-100" : "bg-blue-100"
+                      }`}
+                    >
                       {user.role === "admin" ? (
                         <Crown className="w-4 h-4 text-red-600" />
                       ) : (
@@ -249,20 +307,24 @@ function UserManagement() {
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    user.role === "admin" 
-                      ? "bg-red-100 text-red-800" 
-                      : "bg-blue-100 text-blue-800"
-                  }`}>
+                  <span
+                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      user.role === "admin"
+                        ? "bg-red-100 text-red-800"
+                        : "bg-blue-100 text-blue-800"
+                    }`}
+                  >
                     {user.role}
                   </span>
                 </TableCell>
                 <TableCell>
-                  <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                    user.isActive 
-                      ? "bg-green-100 text-green-800" 
-                      : "bg-gray-100 text-gray-800"
-                  }`}>
+                  <span
+                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      user.isActive
+                        ? "bg-green-100 text-green-800"
+                        : "bg-gray-100 text-gray-800"
+                    }`}
+                  >
                     {user.isActive ? "Active" : "Inactive"}
                   </span>
                 </TableCell>
@@ -283,7 +345,11 @@ function UserManagement() {
                       variant="outline"
                       onClick={() => toggleUserStatus(user.id, user.isActive)}
                     >
-                      {user.isActive ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      {user.isActive ? (
+                        <EyeOff className="w-3 h-3" />
+                      ) : (
+                        <Eye className="w-3 h-3" />
+                      )}
                     </Button>
                     <Button size="sm" variant="outline">
                       <Edit className="w-3 h-3" />
@@ -296,89 +362,106 @@ function UserManagement() {
         </Table>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 function ReferenceValues() {
-  const [activeSection, setActiveSection] = useState<"varieties" | "vessels" | "locations">("varieties")
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
-  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
-  const [editingVariety, setEditingVariety] = useState<any>(null)
-  const [showInactive, setShowInactive] = useState(false)
-  const [notifications, setNotifications] = useState<NotificationType[]>([])
+  const [activeSection, setActiveSection] = useState<
+    "varieties" | "vessels" | "locations"
+  >("varieties");
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [editingVariety, setEditingVariety] = useState<any>(null);
+  const [showInactive, setShowInactive] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationType[]>([]);
 
-  const addNotification = (type: 'success' | 'error', title: string, message: string) => {
-    const id = Date.now()
-    setNotifications(prev => [...prev, { id, type, title, message }])
+  const addNotification = (
+    type: "success" | "error",
+    title: string,
+    message: string,
+  ) => {
+    const id = Date.now();
+    setNotifications((prev) => [...prev, { id, type, title, message }]);
     setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id))
-    }, 5000)
-  }
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 5000);
+  };
 
   const removeNotification = (id: number) => {
-    setNotifications(prev => prev.filter(n => n.id !== id))
-  }
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
 
   // tRPC hooks
-  const { data: varietiesData, refetch: refetchVarieties } = trpc.fruitVariety.listAll.useQuery(
-    { includeInactive: showInactive }
-  )
-  const appleVarieties = varietiesData?.appleVarieties || []
+  const { data: varietiesData, refetch: refetchVarieties } =
+    trpc.fruitVariety.listAll.useQuery({ includeInactive: showInactive });
+  const appleVarieties = varietiesData?.appleVarieties || [];
 
   const createVariety = trpc.fruitVariety.create.useMutation({
     onSuccess: (result) => {
-      refetchVarieties()
-      setIsAddDialogOpen(false)
-      addNotification('success', 'Variety Created', 'Variety created successfully')
-      reset()
+      refetchVarieties();
+      setIsAddDialogOpen(false);
+      addNotification(
+        "success",
+        "Variety Created",
+        "Variety created successfully",
+      );
+      reset();
     },
     onError: (error) => {
-      addNotification('error', 'Creation Failed', error.message)
-    }
-  })
+      addNotification("error", "Creation Failed", error.message);
+    },
+  });
 
   const renameVariety = trpc.fruitVariety.update.useMutation({
     onSuccess: (result) => {
-      refetchVarieties()
-      setIsRenameDialogOpen(false)
-      setEditingVariety(null)
-      addNotification('success', 'Variety Renamed', result.message || 'Variety renamed successfully')
-      renameReset()
+      refetchVarieties();
+      setIsRenameDialogOpen(false);
+      setEditingVariety(null);
+      addNotification(
+        "success",
+        "Variety Renamed",
+        result.message || "Variety renamed successfully",
+      );
+      renameReset();
     },
     onError: (error) => {
-      addNotification('error', 'Rename Failed', error.message)
-    }
-  })
+      addNotification("error", "Rename Failed", error.message);
+    },
+  });
 
   const setActiveVariety = trpc.fruitVariety.update.useMutation({
     onSuccess: (result) => {
-      refetchVarieties()
-      addNotification('success', 'Status Updated', result.message || 'Status updated successfully')
+      refetchVarieties();
+      addNotification(
+        "success",
+        "Status Updated",
+        result.message || "Status updated successfully",
+      );
     },
     onError: (error) => {
-      addNotification('error', 'Update Failed', error.message)
-    }
-  })
+      addNotification("error", "Update Failed", error.message);
+    },
+  });
 
   // Form hooks
   const {
     register,
     handleSubmit,
     formState: { errors },
-    reset
+    reset,
   } = useForm<AppleVarietyForm>({
-    resolver: zodResolver(appleVarietySchema)
-  })
+    resolver: zodResolver(appleVarietySchema),
+  });
 
   const {
     register: renameRegister,
     handleSubmit: renameHandleSubmit,
     formState: { errors: renameErrors },
     reset: renameReset,
-    setValue: renameSetValue
+    setValue: renameSetValue,
   } = useForm<AppleVarietyForm>({
-    resolver: zodResolver(renameVarietySchema)
-  })
+    resolver: zodResolver(renameVarietySchema),
+  });
 
   const onSubmit = (data: AppleVarietyForm) => {
     createVariety.mutate({
@@ -389,8 +472,8 @@ function ReferenceValues() {
       sugarBrix: undefined,
       harvestWindow: undefined,
       varietyNotes: undefined,
-    })
-  }
+    });
+  };
 
   const onRenameSubmit = (data: AppleVarietyForm) => {
     if (editingVariety) {
@@ -403,17 +486,17 @@ function ReferenceValues() {
           acid: undefined,
           sugarBrix: undefined,
           harvestWindow: undefined,
-          varietyNotes: undefined
-        }
-      })
+          varietyNotes: undefined,
+        },
+      });
     }
-  }
+  };
 
   const handleRename = (variety: any) => {
-    setEditingVariety(variety)
-    renameSetValue('name', variety.name)
-    setIsRenameDialogOpen(true)
-  }
+    setEditingVariety(variety);
+    renameSetValue("name", variety.name);
+    setIsRenameDialogOpen(true);
+  };
 
   const handleArchive = (variety: any) => {
     setActiveVariety.mutate({
@@ -425,10 +508,10 @@ function ReferenceValues() {
         acid: undefined,
         sugarBrix: undefined,
         harvestWindow: undefined,
-        varietyNotes: undefined
-      }
-    })
-  }
+        varietyNotes: undefined,
+      },
+    });
+  };
 
   const handleRestore = (variety: any) => {
     setActiveVariety.mutate({
@@ -440,12 +523,12 @@ function ReferenceValues() {
         acid: undefined,
         sugarBrix: undefined,
         harvestWindow: undefined,
-        varietyNotes: undefined
-      }
-    })
-  }
+        varietyNotes: undefined,
+      },
+    });
+  };
 
-  const isActive = (variety: any) => !variety.deletedAt
+  const isActive = (variety: any) => !variety.deletedAt;
 
   return (
     <>
@@ -456,15 +539,16 @@ function ReferenceValues() {
             key={notification.id}
             className={`
               min-w-80 max-w-md p-4 rounded-lg shadow-lg border
-              ${notification.type === 'success'
-                ? 'bg-green-50 border-green-200 text-green-800'
-                : 'bg-red-50 border-red-200 text-red-800'
+              ${
+                notification.type === "success"
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : "bg-red-50 border-red-200 text-red-800"
               }
             `}
           >
             <div className="flex items-start space-x-3">
               <div className="flex-shrink-0 mt-0.5">
-                {notification.type === 'success' ? (
+                {notification.type === "success" ? (
                   <CheckCircle className="h-5 w-5 text-green-600" />
                 ) : (
                   <XCircle className="h-5 w-5 text-red-600" />
@@ -472,7 +556,9 @@ function ReferenceValues() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold">{notification.title}</p>
-                <p className="text-sm mt-1 opacity-90">{notification.message}</p>
+                <p className="text-sm mt-1 opacity-90">
+                  {notification.message}
+                </p>
               </div>
               <button
                 onClick={() => removeNotification(notification.id)}
@@ -493,7 +579,10 @@ function ReferenceValues() {
                 <Apple className="w-5 h-5 text-green-600" />
                 Apple Varieties
               </CardTitle>
-              <CardDescription>Manage the master list of apple varieties used throughout the system</CardDescription>
+              <CardDescription>
+                Manage the master list of apple varieties used throughout the
+                system
+              </CardDescription>
             </div>
             <div className="flex space-x-2">
               <Button
@@ -533,14 +622,24 @@ function ReferenceValues() {
                         {...register("name")}
                         placeholder="e.g., Honeycrisp, Granny Smith"
                       />
-                      {errors.name && <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>}
+                      {errors.name && (
+                        <p className="text-sm text-red-600 mt-1">
+                          {errors.name.message}
+                        </p>
+                      )}
                     </div>
                     <div className="flex justify-end space-x-2 pt-4">
-                      <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsAddDialogOpen(false)}
+                      >
                         Cancel
                       </Button>
                       <Button type="submit" disabled={createVariety.isPending}>
-                        {createVariety.isPending ? "Creating..." : "Create Variety"}
+                        {createVariety.isPending
+                          ? "Creating..."
+                          : "Create Variety"}
                       </Button>
                     </div>
                   </form>
@@ -564,18 +663,24 @@ function ReferenceValues() {
               <TableBody>
                 {appleVarieties.map((variety) => (
                   <TableRow key={variety.id}>
-                    <TableCell className="font-medium">{variety.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {variety.name}
+                    </TableCell>
                     <TableCell>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        isActive(variety)
-                          ? "bg-green-100 text-green-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                          isActive(variety)
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
                         {isActive(variety) ? "Active" : "Archived"}
                       </span>
                     </TableCell>
                     <TableCell>
-                      {variety.createdAt ? new Date(variety.createdAt).toLocaleDateString() : "—"}
+                      {variety.createdAt
+                        ? new Date(variety.createdAt).toLocaleDateString()
+                        : "—"}
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
@@ -623,12 +728,16 @@ function ReferenceValues() {
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <h3 className="font-medium text-gray-900">{variety.name}</h3>
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-1 ${
-                        isActive(variety)
-                          ? "bg-green-100 text-green-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}>
+                      <h3 className="font-medium text-gray-900">
+                        {variety.name}
+                      </h3>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full mt-1 ${
+                          isActive(variety)
+                            ? "bg-green-100 text-green-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
                         {isActive(variety) ? "Active" : "Archived"}
                       </span>
                     </div>
@@ -665,7 +774,12 @@ function ReferenceValues() {
                     </div>
                   </div>
                   <div className="text-sm text-gray-600">
-                    <p>Created: {variety.createdAt ? new Date(variety.createdAt).toLocaleDateString() : "—"}</p>
+                    <p>
+                      Created:{" "}
+                      {variety.createdAt
+                        ? new Date(variety.createdAt).toLocaleDateString()
+                        : "—"}
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -679,8 +793,7 @@ function ReferenceValues() {
               <p className="text-sm mb-4">
                 {showInactive
                   ? "No apple varieties found. Add your first variety to get started."
-                  : "No active varieties found. Try showing archived varieties or add a new one."
-                }
+                  : "No active varieties found. Try showing archived varieties or add a new one."}
               </p>
             </div>
           )}
@@ -693,10 +806,14 @@ function ReferenceValues() {
           <DialogHeader>
             <DialogTitle>Rename Apple Variety</DialogTitle>
             <DialogDescription>
-              Change the name of this apple variety. This will update all references throughout the system.
+              Change the name of this apple variety. This will update all
+              references throughout the system.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={renameHandleSubmit(onRenameSubmit)} className="space-y-4">
+          <form
+            onSubmit={renameHandleSubmit(onRenameSubmit)}
+            className="space-y-4"
+          >
             <div>
               <Label htmlFor="rename-name">Variety Name</Label>
               <Input
@@ -704,15 +821,19 @@ function ReferenceValues() {
                 {...renameRegister("name")}
                 placeholder="Enter new name"
               />
-              {renameErrors.name && <p className="text-sm text-red-600 mt-1">{renameErrors.name.message}</p>}
+              {renameErrors.name && (
+                <p className="text-sm text-red-600 mt-1">
+                  {renameErrors.name.message}
+                </p>
+              )}
             </div>
             <div className="flex justify-end space-x-2 pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  setIsRenameDialogOpen(false)
-                  setEditingVariety(null)
+                  setIsRenameDialogOpen(false);
+                  setEditingVariety(null);
                 }}
               >
                 Cancel
@@ -725,7 +846,7 @@ function ReferenceValues() {
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }
 
 function SystemSettings() {
@@ -735,27 +856,27 @@ function SystemSettings() {
       id: "default_yield",
       name: "Default Apple Yield",
       value: "70%",
-      description: "Expected juice yield percentage from apples"
+      description: "Expected juice yield percentage from apples",
     },
     {
       id: "fermentation_temp",
       name: "Fermentation Temperature Range",
       value: "16-20°C",
-      description: "Optimal temperature range for fermentation"
+      description: "Optimal temperature range for fermentation",
     },
     {
       id: "package_loss",
       name: "Expected Packaging Loss",
       value: "2%",
-      description: "Expected volume loss during packaging"
+      description: "Expected volume loss during packaging",
     },
     {
       id: "inventory_alert",
       name: "Low Inventory Alert",
       value: "100 bottles",
-      description: "Alert threshold for low inventory"
-    }
-  ]
+      description: "Alert threshold for low inventory",
+    },
+  ];
 
   return (
     <Card>
@@ -764,19 +885,24 @@ function SystemSettings() {
           <Settings className="w-5 h-5 text-purple-600" />
           System Settings
         </CardTitle>
-        <CardDescription>Configure system-wide settings and defaults</CardDescription>
+        <CardDescription>
+          Configure system-wide settings and defaults
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {settings.map((setting) => (
-            <div key={setting.id} className="flex items-center justify-between p-4 border rounded-lg">
+            <div
+              key={setting.id}
+              className="flex items-center justify-between p-4 border rounded-lg"
+            >
               <div className="flex-1">
                 <h4 className="font-medium">{setting.name}</h4>
                 <p className="text-sm text-gray-600">{setting.description}</p>
               </div>
               <div className="flex items-center space-x-2">
-                <Input 
-                  value={setting.value} 
+                <Input
+                  value={setting.value}
                   className="w-32 text-right"
                   readOnly
                 />
@@ -795,16 +921,18 @@ function SystemSettings() {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState<"users" | "reference" | "settings">("users")
+  const [activeTab, setActiveTab] = useState<
+    "users" | "reference" | "settings"
+  >("users");
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      
+
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Administration</h1>
@@ -820,7 +948,7 @@ export default function AdminPage() {
             { key: "reference", label: "Reference Data", icon: Database },
             { key: "settings", label: "System Settings", icon: Settings },
           ].map((tab) => {
-            const Icon = tab.icon
+            const Icon = tab.icon;
             return (
               <button
                 key={tab.key}
@@ -834,7 +962,7 @@ export default function AdminPage() {
                 <Icon className="w-4 h-4 mr-2" />
                 {tab.label}
               </button>
-            )
+            );
           })}
         </div>
 
@@ -846,5 +974,5 @@ export default function AdminPage() {
         </div>
       </main>
     </div>
-  )
+  );
 }

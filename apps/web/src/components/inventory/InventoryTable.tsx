@@ -1,19 +1,25 @@
-"use client"
+"use client";
 
-import React, { useState, useCallback, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
   TableCell,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
-import { SortableHeader } from '@/components/ui/sortable-header'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+} from "@/components/ui/table";
+import { SortableHeader } from "@/components/ui/sortable-header";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Calendar,
   Package,
@@ -22,22 +28,22 @@ import {
   Edit,
   MoreVertical,
   X,
-  Trash2
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { trpc } from '@/utils/trpc'
-import { useTableSorting } from '@/hooks/useTableSorting'
-import { MaterialTypeIndicator } from './MaterialTypeIndicator'
-import { InventorySearch } from './InventorySearch'
-import { InventoryFilters } from './InventoryFilters'
-import { InventoryEditDialog } from './InventoryEditDialog'
+  Trash2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { trpc } from "@/utils/trpc";
+import { useTableSorting } from "@/hooks/useTableSorting";
+import { MaterialTypeIndicator } from "./MaterialTypeIndicator";
+import { InventorySearch } from "./InventorySearch";
+import { InventoryFilters } from "./InventoryFilters";
+import { InventoryEditDialog } from "./InventoryEditDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,37 +53,43 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+} from "@/components/ui/alert-dialog";
 import type {
   MaterialType,
   InventoryFiltersState,
   SearchCallback,
-  FilterCallback
-} from '@/types/inventory'
+  FilterCallback,
+} from "@/types/inventory";
 
 // Type for inventory item from API
 interface InventoryItem {
-  id: string
-  packageId?: string | null
-  currentBottleCount: number
-  reservedBottleCount: number
-  materialType?: MaterialType // TODO: Make required after database migration
-  metadata?: unknown
-  location?: string | null
-  notes?: string | null
-  createdAt: string
-  updatedAt: string
+  id: string;
+  packageId?: string | null;
+  currentBottleCount: number;
+  reservedBottleCount: number;
+  materialType?: MaterialType; // TODO: Make required after database migration
+  metadata?: unknown;
+  location?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // Table column configuration
-type SortField = 'materialType' | 'item' | 'vendor' | 'currentBottleCount' | 'createdAt' | 'updatedAt'
+type SortField =
+  | "materialType"
+  | "item"
+  | "vendor"
+  | "currentBottleCount"
+  | "createdAt"
+  | "updatedAt";
 
 interface InventoryTableProps {
-  showSearch?: boolean
-  showFilters?: boolean
-  className?: string
-  itemsPerPage?: number
-  onItemClick?: (item: InventoryItem) => void
+  showSearch?: boolean;
+  showFilters?: boolean;
+  className?: string;
+  itemsPerPage?: number;
+  onItemClick?: (item: InventoryItem) => void;
 }
 
 export function InventoryTable({
@@ -85,18 +97,18 @@ export function InventoryTable({
   showFilters = true,
   className,
   itemsPerPage = 50,
-  onItemClick
+  onItemClick,
 }: InventoryTableProps) {
   // Search and filter state
-  const [searchQuery, setSearchQuery] = useState<string>('')
-  const [editItem, setEditItem] = useState<InventoryItem | null>(null)
-  const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null)
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
   const [filters, setFilters] = useState<InventoryFiltersState>({
     materialTypes: [],
-    location: 'all',
-    status: 'all',
-    isActive: true
-  })
+    location: "all",
+    status: "all",
+    isActive: true,
+  });
 
   // Sorting state using the reusable hook
   const {
@@ -105,238 +117,275 @@ export function InventoryTable({
     getSortDirection,
     getSortIcon,
     sortData,
-    clearAllSort
+    clearAllSort,
   } = useTableSorting<SortField>({
     multiColumn: true,
-    defaultSort: undefined
-  })
+    defaultSort: undefined,
+  });
 
   // Pagination state
-  const [currentPage, setCurrentPage] = useState(0)
+  const [currentPage, setCurrentPage] = useState(0);
 
   // Router for navigation
-  const router = useRouter()
+  const router = useRouter();
 
   // Calculate API parameters
-  const apiParams = useMemo(() => ({
-    materialType: filters.materialTypes.length === 1 ? filters.materialTypes[0] : undefined,
-    location: filters.location !== 'all' ? filters.location : undefined,
-    isActive: filters.isActive,
-    limit: itemsPerPage,
-    offset: currentPage * itemsPerPage,
-  }), [filters, itemsPerPage, currentPage])
+  const apiParams = useMemo(
+    () => ({
+      materialType:
+        filters.materialTypes.length === 1
+          ? filters.materialTypes[0]
+          : undefined,
+      location: filters.location !== "all" ? filters.location : undefined,
+      isActive: filters.isActive,
+      limit: itemsPerPage,
+      offset: currentPage * itemsPerPage,
+    }),
+    [filters, itemsPerPage, currentPage],
+  );
 
   // Search API parameters
-  const searchParams = useMemo(() => ({
-    query: searchQuery,
-    materialTypes: filters.materialTypes.length > 0 ? filters.materialTypes : undefined,
-    limit: itemsPerPage,
-  }), [searchQuery, filters.materialTypes, itemsPerPage])
+  const searchParams = useMemo(
+    () => ({
+      query: searchQuery,
+      materialTypes:
+        filters.materialTypes.length > 0 ? filters.materialTypes : undefined,
+      limit: itemsPerPage,
+    }),
+    [searchQuery, filters.materialTypes, itemsPerPage],
+  );
 
   // Determine whether to use search or list endpoint
-  const useSearch = searchQuery.trim().length > 0
+  const useSearch = searchQuery.trim().length > 0;
 
   // API queries
   const {
     data: listData,
     isLoading: isListLoading,
     error: listError,
-    refetch: refetchList
+    refetch: refetchList,
   } = trpc.inventory.list.useQuery(apiParams, {
     enabled: !useSearch,
-  })
+  });
 
   const {
     data: searchData,
     isLoading: isSearchLoading,
     error: searchError,
-    refetch: refetchSearch
+    refetch: refetchSearch,
   } = trpc.inventory.search.useQuery(searchParams, {
     enabled: useSearch,
-  })
+  });
 
   // Delete mutation
   const deleteMutation = trpc.inventory.deleteItem.useMutation({
     onSuccess: () => {
-      setDeleteItem(null)
+      setDeleteItem(null);
       if (useSearch) {
-        refetchSearch()
+        refetchSearch();
       } else {
-        refetchList()
+        refetchList();
       }
     },
     onError: (error) => {
-      console.error('Error deleting item:', error)
+      console.error("Error deleting item:", error);
       // Handle error (could show toast notification)
-    }
-  })
+    },
+  });
 
   // Derived state
-  const isLoading = useSearch ? isSearchLoading : isListLoading
-  const error = useSearch ? searchError : listError
-  const items = useMemo(() => useSearch ? searchData?.items || [] : listData?.items || [], [useSearch, searchData?.items, listData?.items])
-  const totalCount = useSearch ? searchData?.count || 0 : listData?.pagination?.total || 0
-  const hasMore = useSearch ? false : listData?.pagination?.hasMore || false
+  const isLoading = useSearch ? isSearchLoading : isListLoading;
+  const error = useSearch ? searchError : listError;
+  const items = useMemo(
+    () => (useSearch ? searchData?.items || [] : listData?.items || []),
+    [useSearch, searchData?.items, listData?.items],
+  );
+  const totalCount = useSearch
+    ? searchData?.count || 0
+    : listData?.pagination?.total || 0;
+  const hasMore = useSearch ? false : listData?.pagination?.hasMore || false;
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
     return sortData(items, (item: any, field) => {
       // Custom sort value extraction for different field types
       switch (field) {
-        case 'materialType':
-          return item.materialType
-        case 'item':
-          return getItemDisplayName(item)
-        case 'vendor':
-          return getVendorName(item)
-        case 'currentBottleCount':
-          return item.currentBottleCount
-        case 'createdAt':
-          return new Date(item.createdAt)
-        case 'updatedAt':
-          return new Date(item.updatedAt)
+        case "materialType":
+          return item.materialType;
+        case "item":
+          return getItemDisplayName(item);
+        case "vendor":
+          return getVendorName(item);
+        case "currentBottleCount":
+          return item.currentBottleCount;
+        case "createdAt":
+          return new Date(item.createdAt);
+        case "updatedAt":
+          return new Date(item.updatedAt);
         default:
-          return (item as any)[field]
+          return (item as any)[field];
       }
-    })
-  }, [items, sortData])
+    });
+  }, [items, sortData]);
 
   // Event handlers
   const handleSearch: SearchCallback = useCallback((query: string) => {
-    setSearchQuery(query)
-    setCurrentPage(0) // Reset pagination when searching
-  }, [])
+    setSearchQuery(query);
+    setCurrentPage(0); // Reset pagination when searching
+  }, []);
 
-  const handleFiltersChange: FilterCallback = useCallback((newFilters: Partial<InventoryFiltersState>) => {
-    setFilters(prev => ({ ...prev, ...newFilters }))
-    setCurrentPage(0) // Reset pagination when filtering
-  }, [])
+  const handleFiltersChange: FilterCallback = useCallback(
+    (newFilters: Partial<InventoryFiltersState>) => {
+      setFilters((prev) => ({ ...prev, ...newFilters }));
+      setCurrentPage(0); // Reset pagination when filtering
+    },
+    [],
+  );
 
   // Sort handler is provided by the hook
-  const handleColumnSort = useCallback((field: SortField) => {
-    handleSort(field)
-  }, [handleSort])
+  const handleColumnSort = useCallback(
+    (field: SortField) => {
+      handleSort(field);
+    },
+    [handleSort],
+  );
 
-  const handleItemClick = useCallback((item: InventoryItem) => {
-    if (onItemClick) {
-      onItemClick(item)
-    }
-    // No default navigation - clicking on row does nothing unless onItemClick is provided
-  }, [onItemClick])
+  const handleItemClick = useCallback(
+    (item: InventoryItem) => {
+      if (onItemClick) {
+        onItemClick(item);
+      }
+      // No default navigation - clicking on row does nothing unless onItemClick is provided
+    },
+    [onItemClick],
+  );
 
   const handleRefresh = useCallback(() => {
     if (useSearch) {
-      refetchSearch()
+      refetchSearch();
     } else {
-      refetchList()
+      refetchList();
     }
-  }, [useSearch, refetchSearch, refetchList])
+  }, [useSearch, refetchSearch, refetchList]);
 
   // Get unit from metadata
   const getUnit = (item: InventoryItem) => {
-    const metadata = (item.metadata as Record<string, any>) || {}
-    return metadata.unit || 'units'
-  }
+    const metadata = (item.metadata as Record<string, any>) || {};
+    return metadata.unit || "units";
+  };
 
   // Get formatted quantity with unit
   const getQuantityWithUnit = (item: InventoryItem) => {
-    const unit = getUnit(item)
-    const quantity = item.currentBottleCount
-    return `${quantity.toLocaleString()} ${unit}`
-  }
+    const unit = getUnit(item);
+    const quantity = item.currentBottleCount;
+    return `${quantity.toLocaleString()} ${unit}`;
+  };
 
   // Get display name for item
   const getItemDisplayName = (item: InventoryItem) => {
     if (item.packageId) {
-      return `Package ${item.packageId}`
+      return `Package ${item.packageId}`;
     }
 
-    const metadata = (item.metadata as Record<string, any>) || {}
+    const metadata = (item.metadata as Record<string, any>) || {};
     switch (item.materialType) {
-      case 'apple':
+      case "apple":
         // For basefruit purchase items being shown as inventory
         if (metadata.varietyName) {
-          return `${metadata.varietyName} Apples`
+          return `${metadata.varietyName} Apples`;
         }
-        return metadata.additiveName || metadata.appleVarietyId || 'Apple Inventory'
-      case 'additive':
+        return (
+          metadata.additiveName || metadata.appleVarietyId || "Apple Inventory"
+        );
+      case "additive":
         // For additive purchase items
         // Check if brandManufacturer is a UUID (36 chars with dashes in specific positions)
         const isUUID = (str: string) => {
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-          return uuidRegex.test(str)
-        }
+          const uuidRegex =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          return uuidRegex.test(str);
+        };
 
         if (metadata.productName) {
-          return metadata.productName
+          return metadata.productName;
         }
         if (metadata.additiveType) {
-          return `${metadata.additiveType} Additive`
+          return `${metadata.additiveType} Additive`;
         }
-        return metadata.additiveName || 'Additive Inventory'
-      case 'juice':
+        return metadata.additiveName || "Additive Inventory";
+      case "juice":
         // For juice purchase items
         if (metadata.varietyName) {
           // If varietyName already contains "Juice", don't add it again
-          return metadata.varietyName.toLowerCase().includes('juice')
+          return metadata.varietyName.toLowerCase().includes("juice")
             ? metadata.varietyName
-            : `${metadata.varietyName} Juice`
+            : `${metadata.varietyName} Juice`;
         }
         if (metadata.juiceType) {
-          return `${metadata.juiceType} Juice`
+          return `${metadata.juiceType} Juice`;
         }
-        return metadata.vessellId || metadata.pressRunId || 'Juice Inventory'
-      case 'packaging':
+        return metadata.vessellId || metadata.pressRunId || "Juice Inventory";
+      case "packaging":
         // For packaging purchase items - just show the size/name
         if (metadata.size) {
-          return metadata.size
+          return metadata.size;
         }
         if (metadata.packageType) {
-          return metadata.packageType
+          return metadata.packageType;
         }
-        return metadata.packagingName || 'Packaging Inventory'
+        return metadata.packagingName || "Packaging Inventory";
       default:
-        return 'Inventory Item'
+        return "Inventory Item";
     }
-  }
+  };
 
   // Get vendor name from metadata
   const getVendorName = (item: InventoryItem) => {
-    const metadata = (item.metadata as Record<string, any>) || {}
-    return metadata.vendorName || '-'
-  }
+    const metadata = (item.metadata as Record<string, any>) || {};
+    return metadata.vendorName || "-";
+  };
 
   // Get sort direction for display
-  const getSortDirectionForDisplay = useCallback((field: SortField) => {
-    const direction = getSortDirection(field)
-    return direction ? direction : 'none'
-  }, [getSortDirection])
+  const getSortDirectionForDisplay = useCallback(
+    (field: SortField) => {
+      const direction = getSortDirection(field);
+      return direction ? direction : "none";
+    },
+    [getSortDirection],
+  );
 
   // Get sort index for multi-column sorting display
-  const getSortIndex = useCallback((field: SortField) => {
-    const columnIndex = sortState.columns.findIndex(col => col.field === field)
-    return columnIndex >= 0 ? columnIndex : undefined
-  }, [sortState.columns])
+  const getSortIndex = useCallback(
+    (field: SortField) => {
+      const columnIndex = sortState.columns.findIndex(
+        (col) => col.field === field,
+      );
+      return columnIndex >= 0 ? columnIndex : undefined;
+    },
+    [sortState.columns],
+  );
 
   // Helper function to determine item type from ID
-  const getItemType = (id: string): 'basefruit' | 'additive' | 'juice' | 'packaging' => {
-    if (id.startsWith('basefruit-')) return 'basefruit'
-    if (id.startsWith('additive-')) return 'additive'
-    if (id.startsWith('juice-')) return 'juice'
-    if (id.startsWith('packaging-')) return 'packaging'
-    return 'basefruit' // fallback
-  }
+  const getItemType = (
+    id: string,
+  ): "basefruit" | "additive" | "juice" | "packaging" => {
+    if (id.startsWith("basefruit-")) return "basefruit";
+    if (id.startsWith("additive-")) return "additive";
+    if (id.startsWith("juice-")) return "juice";
+    if (id.startsWith("packaging-")) return "packaging";
+    return "basefruit"; // fallback
+  };
 
   // Handle delete confirmation
   const handleDeleteConfirm = useCallback(() => {
     if (deleteItem) {
-      const itemType = getItemType(deleteItem.id)
+      const itemType = getItemType(deleteItem.id);
       deleteMutation.mutate({
         id: deleteItem.id,
-        itemType
-      })
+        itemType,
+      });
     }
-  }, [deleteItem, deleteMutation])
+  }, [deleteItem, deleteMutation]);
 
   return (
     <div className={cn("space-y-6", className)}>
@@ -374,12 +423,15 @@ export function InventoryTable({
               </CardTitle>
               <div className="flex items-center gap-4">
                 <CardDescription>
-                  {totalCount > 0 ? `${totalCount} items found` : 'No items found'}
+                  {totalCount > 0
+                    ? `${totalCount} items found`
+                    : "No items found"}
                 </CardDescription>
                 {sortState.columns.length > 0 && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span>
-                      Sorted by {sortState.columns.length} column{sortState.columns.length === 1 ? '' : 's'}
+                      Sorted by {sortState.columns.length} column
+                      {sortState.columns.length === 1 ? "" : "s"}
                     </span>
                     <Button
                       variant="ghost"
@@ -417,38 +469,40 @@ export function InventoryTable({
               <TableHeader>
                 <TableRow>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('materialType')}
-                    sortIndex={getSortIndex('materialType')}
-                    onSort={() => handleColumnSort('materialType')}
+                    sortDirection={getSortDirectionForDisplay("materialType")}
+                    sortIndex={getSortIndex("materialType")}
+                    onSort={() => handleColumnSort("materialType")}
                   >
                     Type
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('item')}
-                    sortIndex={getSortIndex('item')}
-                    onSort={() => handleColumnSort('item')}
+                    sortDirection={getSortDirectionForDisplay("item")}
+                    sortIndex={getSortIndex("item")}
+                    onSort={() => handleColumnSort("item")}
                   >
                     Item
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('vendor')}
-                    sortIndex={getSortIndex('vendor')}
-                    onSort={() => handleColumnSort('vendor')}
+                    sortDirection={getSortDirectionForDisplay("vendor")}
+                    sortIndex={getSortIndex("vendor")}
+                    onSort={() => handleColumnSort("vendor")}
                   >
                     Vendor
                   </SortableHeader>
                   <SortableHeader
                     align="right"
-                    sortDirection={getSortDirectionForDisplay('currentBottleCount')}
-                    sortIndex={getSortIndex('currentBottleCount')}
-                    onSort={() => handleColumnSort('currentBottleCount')}
+                    sortDirection={getSortDirectionForDisplay(
+                      "currentBottleCount",
+                    )}
+                    sortIndex={getSortIndex("currentBottleCount")}
+                    onSort={() => handleColumnSort("currentBottleCount")}
                   >
                     Available
                   </SortableHeader>
                   <SortableHeader
-                    sortDirection={getSortDirectionForDisplay('createdAt')}
-                    sortIndex={getSortIndex('createdAt')}
-                    onSort={() => handleColumnSort('createdAt')}
+                    sortDirection={getSortDirectionForDisplay("createdAt")}
+                    sortIndex={getSortIndex("createdAt")}
+                    onSort={() => handleColumnSort("createdAt")}
                   >
                     Purchase Date
                   </SortableHeader>
@@ -462,29 +516,43 @@ export function InventoryTable({
                   // Loading skeleton
                   Array.from({ length: 5 }).map((_, index) => (
                     <TableRow key={index}>
-                      <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-24 ml-auto" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+                      <TableCell>
+                        <Skeleton className="h-6 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Skeleton className="h-4 w-24 ml-auto" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      {searchQuery ? 'No items match your search' : 'No inventory items found'}
+                    <TableCell
+                      colSpan={6}
+                      className="text-center py-8 text-muted-foreground"
+                    >
+                      {searchQuery
+                        ? "No items match your search"
+                        : "No inventory items found"}
                     </TableCell>
                   </TableRow>
                 ) : (
                   sortedItems.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      className="hover:bg-muted/50"
-                    >
+                    <TableRow key={item.id} className="hover:bg-muted/50">
                       <TableCell>
                         <MaterialTypeIndicator
-                          materialType={item.materialType || 'apple'}
+                          materialType={item.materialType || "apple"}
                           variant="compact"
                         />
                       </TableCell>
@@ -501,9 +569,7 @@ export function InventoryTable({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">
-                          {getVendorName(item)}
-                        </div>
+                        <div className="text-sm">{getVendorName(item)}</div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {getQuantityWithUnit(item)}
@@ -531,8 +597,8 @@ export function InventoryTable({
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
                               onClick={(e) => {
-                                e.stopPropagation()
-                                setEditItem(item)
+                                e.stopPropagation();
+                                setEditItem(item);
                               }}
                             >
                               <Edit className="mr-2 h-4 w-4" />
@@ -541,8 +607,8 @@ export function InventoryTable({
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => {
-                                e.stopPropagation()
-                                setDeleteItem(item)
+                                e.stopPropagation();
+                                setDeleteItem(item);
                               }}
                               className="text-red-600 focus:text-red-600"
                             >
@@ -563,13 +629,15 @@ export function InventoryTable({
           {!useSearch && listData?.pagination && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
-                Showing {currentPage * itemsPerPage + 1} to {Math.min((currentPage + 1) * itemsPerPage, totalCount)} of {totalCount} items
+                Showing {currentPage * itemsPerPage + 1} to{" "}
+                {Math.min((currentPage + 1) * itemsPerPage, totalCount)} of{" "}
+                {totalCount} items
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                  onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
                   disabled={currentPage === 0}
                 >
                   Previous
@@ -577,7 +645,7 @@ export function InventoryTable({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrentPage(p => p + 1)}
+                  onClick={() => setCurrentPage((p) => p + 1)}
                   disabled={!hasMore}
                 >
                   Next
@@ -595,51 +663,58 @@ export function InventoryTable({
           onClose={() => setEditItem(null)}
           item={editItem}
           onSuccess={() => {
-            setEditItem(null)
+            setEditItem(null);
             if (useSearch) {
-              refetchSearch()
+              refetchSearch();
             } else {
-              refetchList()
+              refetchList();
             }
           }}
         />
       )}
 
       {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteItem} onOpenChange={(open) => !open && setDeleteItem(null)}>
+      <AlertDialog
+        open={!!deleteItem}
+        onOpenChange={(open) => !open && setDeleteItem(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Inventory Item</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &ldquo;{deleteItem ? getItemDisplayName(deleteItem) : ''}&rdquo;?
-              This action cannot be undone and will permanently remove this item from your inventory.
+              Are you sure you want to delete &ldquo;
+              {deleteItem ? getItemDisplayName(deleteItem) : ""}&rdquo;? This
+              action cannot be undone and will permanently remove this item from
+              your inventory.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleteMutation.isPending}
               className="bg-red-600 hover:bg-red-700"
             >
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }
 
 // Export a simplified version for basic usage
 export function SimpleInventoryTable({
   materialType,
   limit = 20,
-  className
+  className,
 }: {
-  materialType?: MaterialType
-  limit?: number
-  className?: string
+  materialType?: MaterialType;
+  limit?: number;
+  className?: string;
 }) {
   return (
     <InventoryTable
@@ -648,5 +723,5 @@ export function SimpleInventoryTable({
       className={className}
       itemsPerPage={limit}
     />
-  )
+  );
 }

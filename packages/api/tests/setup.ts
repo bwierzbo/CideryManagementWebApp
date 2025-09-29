@@ -1,13 +1,13 @@
-import { vi, beforeAll, afterAll } from 'vitest'
+import { vi, beforeAll, afterAll } from "vitest";
 
 // Mock environment variables
 beforeAll(() => {
-  process.env.NODE_ENV = 'test'
+  process.env.NODE_ENV = "test";
 
   // Mock any global API setup that might be needed
-  vi.clearAllMocks()
-})
+  vi.clearAllMocks();
+});
 
 afterAll(() => {
-  vi.restoreAllMocks()
-})
+  vi.restoreAllMocks();
+});

@@ -1,24 +1,26 @@
-import { z } from 'zod'
-import { router, createRbacProcedure } from '../trpc'
-import { db, juicePurchases, juicePurchaseItems, vendors } from 'db'
-import { eq, and, desc, asc, sql, isNull } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
+import { z } from "zod";
+import { router, createRbacProcedure } from "../trpc";
+import { db, juicePurchases, juicePurchaseItems, vendors } from "db";
+import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 
 export const juicePurchasesRouter = router({
   // List juice purchases
-  list: createRbacProcedure('list', 'purchase')
-    .input(z.object({
-      limit: z.number().int().positive().max(100).default(50),
-      offset: z.number().int().min(0).default(0),
-      vendorId: z.string().uuid().optional(),
-    }))
+  list: createRbacProcedure("list", "purchase")
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+        vendorId: z.string().uuid().optional(),
+      }),
+    )
     .query(async ({ input }) => {
       try {
-        const { limit, offset, vendorId } = input
+        const { limit, offset, vendorId } = input;
 
-        const conditions = [isNull(juicePurchases.deletedAt)]
+        const conditions = [isNull(juicePurchases.deletedAt)];
         if (vendorId) {
-          conditions.push(eq(juicePurchases.vendorId, vendorId))
+          conditions.push(eq(juicePurchases.vendorId, vendorId));
         }
 
         const purchases = await db
@@ -39,12 +41,12 @@ export const juicePurchasesRouter = router({
           .where(and(...conditions))
           .orderBy(desc(juicePurchases.purchaseDate))
           .limit(limit)
-          .offset(offset)
+          .offset(offset);
 
         const totalCount = await db
           .select({ count: sql<number>`count(*)` })
           .from(juicePurchases)
-          .where(and(...conditions))
+          .where(and(...conditions));
 
         return {
           purchases,
@@ -52,47 +54,60 @@ export const juicePurchasesRouter = router({
             total: totalCount[0]?.count || 0,
             limit,
             offset,
-            hasMore: (totalCount[0]?.count || 0) > offset + limit
-          }
-        }
+            hasMore: (totalCount[0]?.count || 0) > offset + limit,
+          },
+        };
       } catch (error) {
-        console.error('Error listing juice purchases:', error)
+        console.error("Error listing juice purchases:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list juice purchases'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to list juice purchases",
+        });
       }
     }),
 
   // Create juice purchase
-  create: createRbacProcedure('create', 'purchase')
-    .input(z.object({
-      vendorId: z.string().uuid('Invalid vendor ID'),
-      purchaseDate: z.date().or(z.string().transform(val => new Date(val))),
-      invoiceNumber: z.string().optional(),
-      notes: z.string().optional(),
-      items: z.array(z.object({
-        juiceType: z.string().min(1, 'Juice type is required'),
-        varietyName: z.string().optional(),
-        volumeL: z.number().positive('Volume must be positive'),
-        brix: z.number().min(0).max(50).optional(),
-        ph: z.number().min(0).max(14).optional(),
-        specificGravity: z.number().min(0.9).max(1.2).optional(),
-        containerType: z.enum(['drum', 'tote', 'tank', 'other']).optional(),
-        pricePerLiter: z.number().positive('Price per liter must be positive').optional(),
+  create: createRbacProcedure("create", "purchase")
+    .input(
+      z.object({
+        vendorId: z.string().uuid("Invalid vendor ID"),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))),
+        invoiceNumber: z.string().optional(),
         notes: z.string().optional(),
-      })).min(1, 'At least one item is required'),
-    }))
+        items: z
+          .array(
+            z.object({
+              juiceType: z.string().min(1, "Juice type is required"),
+              varietyName: z.string().optional(),
+              volumeL: z.number().positive("Volume must be positive"),
+              brix: z.number().min(0).max(50).optional(),
+              ph: z.number().min(0).max(14).optional(),
+              specificGravity: z.number().min(0.9).max(1.2).optional(),
+              containerType: z
+                .enum(["drum", "tote", "tank", "other"])
+                .optional(),
+              pricePerLiter: z
+                .number()
+                .positive("Price per liter must be positive")
+                .optional(),
+              notes: z.string().optional(),
+            }),
+          )
+          .min(1, "At least one item is required"),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
           // Calculate total cost
-          let totalCost = 0
-          const processedItems = []
+          let totalCost = 0;
+          const processedItems = [];
 
           for (const item of input.items) {
-            const itemTotal = item.pricePerLiter ? item.volumeL * item.pricePerLiter : 0
-            totalCost += itemTotal
+            const itemTotal = item.pricePerLiter
+              ? item.volumeL * item.pricePerLiter
+              : 0;
+            totalCost += itemTotal;
 
             processedItems.push({
               ...item,
@@ -102,23 +117,23 @@ export const juicePurchasesRouter = router({
               brix: item.brix?.toString() || null,
               ph: item.ph?.toString() || null,
               specificGravity: item.specificGravity?.toString() || null,
-            })
+            });
           }
 
           // Handle invoice number generation
-          let finalInvoiceNumber = input.invoiceNumber
-          let autoGenerated = false
+          let finalInvoiceNumber = input.invoiceNumber;
+          let autoGenerated = false;
 
           if (!finalInvoiceNumber) {
-            const dateStr = input.purchaseDate.toISOString().split('T')[0]
-            const startOfDay = new Date(input.purchaseDate)
-            startOfDay.setHours(0, 0, 0, 0)
-            const endOfDay = new Date(input.purchaseDate)
-            endOfDay.setHours(23, 59, 59, 999)
+            const dateStr = input.purchaseDate.toISOString().split("T")[0];
+            const startOfDay = new Date(input.purchaseDate);
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(input.purchaseDate);
+            endOfDay.setHours(23, 59, 59, 999);
 
             const maxSequenceResult = await tx
               .select({
-                maxInvoice: sql<string>`MAX(${juicePurchases.invoiceNumber})`
+                maxInvoice: sql<string>`MAX(${juicePurchases.invoiceNumber})`,
               })
               .from(juicePurchases)
               .where(
@@ -127,25 +142,25 @@ export const juicePurchasesRouter = router({
                   sql`${juicePurchases.purchaseDate} >= ${startOfDay}`,
                   sql`${juicePurchases.purchaseDate} <= ${endOfDay}`,
                   eq(juicePurchases.autoGeneratedInvoice, true),
-                  sql`${juicePurchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`
-                )
-              )
+                  sql`${juicePurchases.invoiceNumber} LIKE ${`${dateStr}-${input.vendorId}-%`}`,
+                ),
+              );
 
-            let nextSequence = 1
+            let nextSequence = 1;
             if (maxSequenceResult[0]?.maxInvoice) {
-              const parts = maxSequenceResult[0].maxInvoice.split('-')
+              const parts = maxSequenceResult[0].maxInvoice.split("-");
               if (parts.length >= 7) {
-                const sequencePart = parts[parts.length - 1]
-                const currentSeq = parseInt(sequencePart, 10)
+                const sequencePart = parts[parts.length - 1];
+                const currentSeq = parseInt(sequencePart, 10);
                 if (!isNaN(currentSeq)) {
-                  nextSequence = currentSeq + 1
+                  nextSequence = currentSeq + 1;
                 }
               }
             }
 
-            const paddedSequence = nextSequence.toString().padStart(3, '0')
-            finalInvoiceNumber = `${dateStr}-${input.vendorId}-${paddedSequence}-JUI`
-            autoGenerated = true
+            const paddedSequence = nextSequence.toString().padStart(3, "0");
+            finalInvoiceNumber = `${dateStr}-${input.vendorId}-${paddedSequence}-JUI`;
+            autoGenerated = true;
           }
 
           // Create the purchase
@@ -161,9 +176,9 @@ export const juicePurchasesRouter = router({
               createdAt: new Date(),
               updatedAt: new Date(),
             })
-            .returning()
+            .returning();
 
-          const purchaseId = newPurchase[0].id
+          const purchaseId = newPurchase[0].id;
 
           // Create purchase items
           const newItems = await tx
@@ -174,28 +189,28 @@ export const juicePurchasesRouter = router({
                 ...item,
                 createdAt: new Date(),
                 updatedAt: new Date(),
-              }))
+              })),
             )
-            .returning()
+            .returning();
 
           return {
             success: true,
             purchase: newPurchase[0],
             items: newItems,
-            message: 'Juice purchase created successfully'
-          }
-        })
+            message: "Juice purchase created successfully",
+          };
+        });
       } catch (error) {
-        console.error('Error creating juice purchase:', error)
+        console.error("Error creating juice purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to create juice purchase'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create juice purchase",
+        });
       }
     }),
 
   // Get purchase by ID with items
-  getById: createRbacProcedure('read', 'purchase')
+  getById: createRbacProcedure("read", "purchase")
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input }) => {
       try {
@@ -204,26 +219,26 @@ export const juicePurchasesRouter = router({
           with: {
             items: true,
             vendor: true,
-          }
-        })
+          },
+        });
 
         if (!purchase) {
           throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'Juice purchase not found'
-          })
+            code: "NOT_FOUND",
+            message: "Juice purchase not found",
+          });
         }
 
-        return { purchase }
+        return { purchase };
       } catch (error) {
         if (error instanceof TRPCError) {
-          throw error
+          throw error;
         }
-        console.error('Error fetching juice purchase:', error)
+        console.error("Error fetching juice purchase:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to fetch juice purchase'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch juice purchase",
+        });
       }
     }),
-})
+});

@@ -1,18 +1,29 @@
-import { z } from 'zod'
-import { router, createRbacProcedure } from '../trpc'
-import { db, vendorVarieties, baseFruitVarieties, vendors, auditLog,
-         vendorAdditiveVarieties, additiveVarieties,
-         vendorJuiceVarieties, juiceVarieties,
-         vendorPackagingVarieties, packagingVarieties } from 'db'
-import { eq, and, isNull, ilike, or, sql } from 'drizzle-orm'
-import { TRPCError } from '@trpc/server'
-import { ensureVendorVariety, createVendorVariety } from '../lib/dbChecks'
+import { z } from "zod";
+import { router, createRbacProcedure } from "../trpc";
+import {
+  db,
+  vendorVarieties,
+  baseFruitVarieties,
+  vendors,
+  auditLog,
+  vendorAdditiveVarieties,
+  additiveVarieties,
+  vendorJuiceVarieties,
+  juiceVarieties,
+  vendorPackagingVarieties,
+  packagingVarieties,
+} from "db";
+import { eq, and, isNull, ilike, or, sql } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
+import { ensureVendorVariety, createVendorVariety } from "../lib/dbChecks";
 
 export const vendorVarietyRouter = router({
-  listForVendor: createRbacProcedure('list', 'vendor')
-    .input(z.object({
-      vendorId: z.string().uuid('Invalid vendor ID'),
-    }))
+  listForVendor: createRbacProcedure("list", "vendor")
+    .input(
+      z.object({
+        vendorId: z.string().uuid("Invalid vendor ID"),
+      }),
+    )
     .query(async ({ input }) => {
       try {
         // Fetch base fruit varieties
@@ -27,15 +38,18 @@ export const vendorVarietyRouter = router({
             varietyType: sql<string>`'baseFruit'`,
           })
           .from(vendorVarieties)
-          .innerJoin(baseFruitVarieties, eq(vendorVarieties.varietyId, baseFruitVarieties.id))
+          .innerJoin(
+            baseFruitVarieties,
+            eq(vendorVarieties.varietyId, baseFruitVarieties.id),
+          )
           .where(
             and(
               eq(vendorVarieties.vendorId, input.vendorId),
               isNull(vendorVarieties.deletedAt),
               isNull(baseFruitVarieties.deletedAt),
-              eq(baseFruitVarieties.isActive, true)
-            )
-          )
+              eq(baseFruitVarieties.isActive, true),
+            ),
+          );
 
         // Fetch additive varieties
         const additiveVarietiesData = await db
@@ -50,15 +64,18 @@ export const vendorVarietyRouter = router({
             category: additiveVarieties.itemType,
           })
           .from(vendorAdditiveVarieties)
-          .innerJoin(additiveVarieties, eq(vendorAdditiveVarieties.varietyId, additiveVarieties.id))
+          .innerJoin(
+            additiveVarieties,
+            eq(vendorAdditiveVarieties.varietyId, additiveVarieties.id),
+          )
           .where(
             and(
               eq(vendorAdditiveVarieties.vendorId, input.vendorId),
               isNull(vendorAdditiveVarieties.deletedAt),
               isNull(additiveVarieties.deletedAt),
-              eq(additiveVarieties.isActive, true)
-            )
-          )
+              eq(additiveVarieties.isActive, true),
+            ),
+          );
 
         // Fetch juice varieties
         const juiceVarietiesData = await db
@@ -72,15 +89,18 @@ export const vendorVarietyRouter = router({
             varietyType: sql<string>`'juice'`,
           })
           .from(vendorJuiceVarieties)
-          .innerJoin(juiceVarieties, eq(vendorJuiceVarieties.varietyId, juiceVarieties.id))
+          .innerJoin(
+            juiceVarieties,
+            eq(vendorJuiceVarieties.varietyId, juiceVarieties.id),
+          )
           .where(
             and(
               eq(vendorJuiceVarieties.vendorId, input.vendorId),
               isNull(vendorJuiceVarieties.deletedAt),
               isNull(juiceVarieties.deletedAt),
-              eq(juiceVarieties.isActive, true)
-            )
-          )
+              eq(juiceVarieties.isActive, true),
+            ),
+          );
 
         // Fetch packaging varieties
         const packagingVarietiesData = await db
@@ -95,46 +115,51 @@ export const vendorVarietyRouter = router({
             category: packagingVarieties.itemType,
           })
           .from(vendorPackagingVarieties)
-          .innerJoin(packagingVarieties, eq(vendorPackagingVarieties.varietyId, packagingVarieties.id))
+          .innerJoin(
+            packagingVarieties,
+            eq(vendorPackagingVarieties.varietyId, packagingVarieties.id),
+          )
           .where(
             and(
               eq(vendorPackagingVarieties.vendorId, input.vendorId),
               isNull(vendorPackagingVarieties.deletedAt),
               isNull(packagingVarieties.deletedAt),
-              eq(packagingVarieties.isActive, true)
-            )
-          )
+              eq(packagingVarieties.isActive, true),
+            ),
+          );
 
         // Combine all varieties
         const allVarieties = [
           ...baseFruitVarietiesData,
           ...additiveVarietiesData,
           ...juiceVarietiesData,
-          ...packagingVarietiesData
-        ]
+          ...packagingVarietiesData,
+        ];
 
         // Sort by name
-        allVarieties.sort((a, b) => a.name.localeCompare(b.name))
+        allVarieties.sort((a, b) => a.name.localeCompare(b.name));
 
         return {
           varieties: allVarieties,
           count: allVarieties.length,
-        }
+        };
       } catch (error) {
-        console.error('Error listing vendor varieties:', error)
+        console.error("Error listing vendor varieties:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to list vendor varieties'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to list vendor varieties",
+        });
       }
     }),
 
-  attach: createRbacProcedure('update', 'vendor')
-    .input(z.object({
-      vendorId: z.string().uuid('Invalid vendor ID'),
-      varietyNameOrId: z.string().min(1, 'Variety name or ID is required'),
-      notes: z.string().optional(),
-    }))
+  attach: createRbacProcedure("update", "vendor")
+    .input(
+      z.object({
+        vendorId: z.string().uuid("Invalid vendor ID"),
+        varietyNameOrId: z.string().min(1, "Variety name or ID is required"),
+        notes: z.string().optional(),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
@@ -142,56 +167,72 @@ export const vendorVarietyRouter = router({
           const vendor = await tx
             .select({ id: vendors.id, name: vendors.name })
             .from(vendors)
-            .where(and(eq(vendors.id, input.vendorId), eq(vendors.isActive, true)))
-            .limit(1)
+            .where(
+              and(eq(vendors.id, input.vendorId), eq(vendors.isActive, true)),
+            )
+            .limit(1);
 
           if (!vendor.length) {
             throw new TRPCError({
-              code: 'NOT_FOUND',
-              message: 'Vendor not found'
-            })
+              code: "NOT_FOUND",
+              message: "Vendor not found",
+            });
           }
 
-          let varietyId: string
-          let varietyName: string
+          let varietyId: string;
+          let varietyName: string;
 
           // Check if input is a UUID (existing variety)
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.varietyNameOrId)
+          const isUuid =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              input.varietyNameOrId,
+            );
 
           if (isUuid) {
             // It's an ID, verify it exists
             const existingVariety = await tx
-              .select({ id: baseFruitVarieties.id, name: baseFruitVarieties.name })
+              .select({
+                id: baseFruitVarieties.id,
+                name: baseFruitVarieties.name,
+              })
               .from(baseFruitVarieties)
-              .where(and(eq(baseFruitVarieties.id, input.varietyNameOrId), isNull(baseFruitVarieties.deletedAt)))
-              .limit(1)
+              .where(
+                and(
+                  eq(baseFruitVarieties.id, input.varietyNameOrId),
+                  isNull(baseFruitVarieties.deletedAt),
+                ),
+              )
+              .limit(1);
 
             if (!existingVariety.length) {
               throw new TRPCError({
-                code: 'NOT_FOUND',
-                message: 'Fruit variety not found'
-              })
+                code: "NOT_FOUND",
+                message: "Fruit variety not found",
+              });
             }
 
-            varietyId = existingVariety[0].id
-            varietyName = existingVariety[0].name
+            varietyId = existingVariety[0].id;
+            varietyName = existingVariety[0].name;
           } else {
             // It's a name, check if variety exists first
             const existingVariety = await tx
-              .select({ id: baseFruitVarieties.id, name: baseFruitVarieties.name })
+              .select({
+                id: baseFruitVarieties.id,
+                name: baseFruitVarieties.name,
+              })
               .from(baseFruitVarieties)
               .where(
                 and(
                   ilike(baseFruitVarieties.name, input.varietyNameOrId.trim()),
-                  isNull(baseFruitVarieties.deletedAt)
-                )
+                  isNull(baseFruitVarieties.deletedAt),
+                ),
               )
-              .limit(1)
+              .limit(1);
 
             if (existingVariety.length) {
               // Variety exists, use it
-              varietyId = existingVariety[0].id
-              varietyName = existingVariety[0].name
+              varietyId = existingVariety[0].id;
+              varietyName = existingVariety[0].name;
             } else {
               // Create new variety
               const newVariety = await tx
@@ -202,20 +243,20 @@ export const vendorVarietyRouter = router({
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 })
-                .returning()
+                .returning();
 
-              varietyId = newVariety[0].id
-              varietyName = newVariety[0].name
+              varietyId = newVariety[0].id;
+              varietyName = newVariety[0].name;
 
               // Audit log for variety creation
               await tx.insert(auditLog).values({
-                tableName: 'base_fruit_varieties',
+                tableName: "base_fruit_varieties",
                 recordId: varietyId,
-                operation: 'create',
+                operation: "create",
                 newData: { varietyId, name: varietyName },
                 changedBy: ctx.session?.user?.id,
-                reason: 'Auto-created when linking to vendor',
-              })
+                reason: "Auto-created when linking to vendor",
+              });
             }
           }
 
@@ -227,10 +268,10 @@ export const vendorVarietyRouter = router({
               and(
                 eq(vendorVarieties.vendorId, input.vendorId),
                 eq(vendorVarieties.varietyId, varietyId),
-                isNull(vendorVarieties.deletedAt)
-              )
+                isNull(vendorVarieties.deletedAt),
+              ),
             )
-            .limit(1)
+            .limit(1);
 
           if (existingLink.length) {
             return {
@@ -239,7 +280,7 @@ export const vendorVarietyRouter = router({
               varietyId,
               varietyName,
               message: `${vendor[0].name} is already linked to ${varietyName}`,
-            }
+            };
           }
 
           // Create the vendor-variety link
@@ -252,13 +293,13 @@ export const vendorVarietyRouter = router({
               createdAt: new Date(),
               updatedAt: new Date(),
             })
-            .returning()
+            .returning();
 
           // Audit log for vendor-variety link creation
           await tx.insert(auditLog).values({
-            tableName: 'vendor_varieties',
+            tableName: "vendor_varieties",
             recordId: newLink[0].id,
-            operation: 'create',
+            operation: "create",
             newData: {
               vendorId: input.vendorId,
               varietyId,
@@ -266,8 +307,8 @@ export const vendorVarietyRouter = router({
               varietyName,
             },
             changedBy: ctx.session?.user?.id,
-            reason: 'Vendor-variety link created via API',
-          })
+            reason: "Vendor-variety link created via API",
+          });
 
           return {
             success: true,
@@ -276,23 +317,25 @@ export const vendorVarietyRouter = router({
             varietyName,
             linkId: newLink[0].id,
             message: `${vendor[0].name} linked to ${varietyName}`,
-          }
-        })
+          };
+        });
       } catch (error) {
-        if (error instanceof TRPCError) throw error
-        console.error('Error attaching vendor variety:', error)
+        if (error instanceof TRPCError) throw error;
+        console.error("Error attaching vendor variety:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to attach vendor variety'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to attach vendor variety",
+        });
       }
     }),
 
-  detach: createRbacProcedure('update', 'vendor')
-    .input(z.object({
-      vendorId: z.string().uuid('Invalid vendor ID'),
-      varietyId: z.string().uuid('Invalid variety ID'),
-    }))
+  detach: createRbacProcedure("update", "vendor")
+    .input(
+      z.object({
+        vendorId: z.string().uuid("Invalid vendor ID"),
+        varietyId: z.string().uuid("Invalid variety ID"),
+      }),
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
@@ -305,21 +348,24 @@ export const vendorVarietyRouter = router({
             })
             .from(vendorVarieties)
             .leftJoin(vendors, eq(vendorVarieties.vendorId, vendors.id))
-            .leftJoin(baseFruitVarieties, eq(vendorVarieties.varietyId, baseFruitVarieties.id))
+            .leftJoin(
+              baseFruitVarieties,
+              eq(vendorVarieties.varietyId, baseFruitVarieties.id),
+            )
             .where(
               and(
                 eq(vendorVarieties.vendorId, input.vendorId),
                 eq(vendorVarieties.varietyId, input.varietyId),
-                isNull(vendorVarieties.deletedAt)
-              )
+                isNull(vendorVarieties.deletedAt),
+              ),
             )
-            .limit(1)
+            .limit(1);
 
           if (!existingLink.length) {
             throw new TRPCError({
-              code: 'NOT_FOUND',
-              message: 'Vendor-variety link not found'
-            })
+              code: "NOT_FOUND",
+              message: "Vendor-variety link not found",
+            });
           }
 
           // Soft delete the link
@@ -329,13 +375,13 @@ export const vendorVarietyRouter = router({
               deletedAt: new Date(),
               updatedAt: new Date(),
             })
-            .where(eq(vendorVarieties.id, existingLink[0].id))
+            .where(eq(vendorVarieties.id, existingLink[0].id));
 
           // Audit log for detachment
           await tx.insert(auditLog).values({
-            tableName: 'vendor_varieties',
+            tableName: "vendor_varieties",
             recordId: existingLink[0].id,
-            operation: 'delete',
+            operation: "delete",
             oldData: {
               vendorId: input.vendorId,
               varietyId: input.varietyId,
@@ -344,29 +390,31 @@ export const vendorVarietyRouter = router({
             },
             newData: { deletedAt: new Date() },
             changedBy: ctx.session?.user?.id,
-            reason: 'Vendor-variety link removed via API',
-          })
+            reason: "Vendor-variety link removed via API",
+          });
 
           return {
             success: true,
             message: `${existingLink[0].vendorName} detached from ${existingLink[0].varietyName}`,
-          }
-        })
+          };
+        });
       } catch (error) {
-        if (error instanceof TRPCError) throw error
-        console.error('Error detaching vendor variety:', error)
+        if (error instanceof TRPCError) throw error;
+        console.error("Error detaching vendor variety:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to detach vendor variety'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to detach vendor variety",
+        });
       }
     }),
 
-  search: createRbacProcedure('list', 'vendor')
-    .input(z.object({
-      q: z.string().min(1, 'Search query is required'),
-      limit: z.number().int().min(1).max(50).default(10),
-    }))
+  search: createRbacProcedure("list", "vendor")
+    .input(
+      z.object({
+        q: z.string().min(1, "Search query is required"),
+        limit: z.number().int().min(1).max(50).default(10),
+      }),
+    )
     .query(async ({ input }) => {
       try {
         const varieties = await db
@@ -380,23 +428,23 @@ export const vendorVarietyRouter = router({
             and(
               ilike(baseFruitVarieties.name, `%${input.q}%`),
               isNull(baseFruitVarieties.deletedAt),
-              eq(baseFruitVarieties.isActive, true)
-            )
+              eq(baseFruitVarieties.isActive, true),
+            ),
           )
           .orderBy(baseFruitVarieties.name)
-          .limit(input.limit)
+          .limit(input.limit);
 
         return {
           varieties,
           count: varieties.length,
           searchQuery: input.q,
-        }
+        };
       } catch (error) {
-        console.error('Error searching apple varieties:', error)
+        console.error("Error searching apple varieties:", error);
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'Failed to search apple varieties'
-        })
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to search apple varieties",
+        });
       }
     }),
-})
+});

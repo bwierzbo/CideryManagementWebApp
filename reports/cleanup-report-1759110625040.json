@@ -1,0 +1,731 @@
+{
+  "timestamp": "2025-09-29T01:50:25.040Z",
+  "duplicatesRemoved": [
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/.claude/epics/prd-system-verification/10.md",
+      "size": 1,
+      "hash": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/.claude/epics/prd-system-verification/11.md",
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/.claude/epics/prd-system-verification/12.md",
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/.claude/epics/prd-system-verification/13.md",
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/.claude/epics/prd-system-verification/14.md",
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/.claude/epics/prd-system-verification/9.md"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/apps/web/package.json",
+      "size": 2329,
+      "hash": "9a835eabeaec81b266cb7f82b28e3ab3de22fb116c6425c918cb3ff8e85f190f",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/rollback-backup/web-package.json.bak"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/api/package.json",
+      "size": 907,
+      "hash": "b62b8926f115dcd1d4bc5cebd3d22351095c3ec6de1ff3e68658f46f12b5394b",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/rollback-backup/api-package.json.bak"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/api/vitest.config.ts",
+      "size": 990,
+      "hash": "92d63f9dad8e4491ba81c51ee3167d5ac34023c9c807256ba89adc9399bc6a47",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/worker/vitest.config.ts"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/db/package.json",
+      "size": 1287,
+      "hash": "35774d76f2b2b313c4066ccae167dc3ecb021f31699d7b4bdf6e3df96ec251cd",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/rollback-backup/db-package.json.bak"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/lib/package.json",
+      "size": 759,
+      "hash": "cc5de445524a273aaedf96b16da9b795d72ea5498df28c1a59ed64e7081b1f50",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/rollback-backup/lib-package.json.bak"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/lib/tsconfig.json",
+      "size": 181,
+      "hash": "b6ceb10d98749dab93308e48f131e0916f6ea90b25436720970f454344a79492",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/worker/tsconfig.json"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/worker/package.json",
+      "size": 693,
+      "hash": "e460382c06fcefa7c4d2dd7bb191075fc35b17ecbc1a49cf8d3be8e077582637",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/rollback-backup/worker-package.json.bak"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/reports/consolidated-analysis-2025-09-29T01-46-57.json",
+      "size": 30531,
+      "hash": "f4b525bca8cc6d94df734ee77893163e253886794a1815ed1653d5abae5534ed",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/reports/consolidated-analysis-latest.json"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/cleanup-validation/metrics/latest-validation-report.json",
+      "size": 17369,
+      "hash": "1c01b29c8916cd326766b50058a3dd2efba7a2446a6cf0b37f68af5b5f65422a",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/cleanup-validation/metrics/validation-report-1759105511256.json"
+      ]
+    },
+    {
+      "path": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tsconfig.base.json",
+      "size": 851,
+      "hash": "979b7cce020d739e1364c16c852710f6c4698fc6cb946c914f0882ce6407af51",
+      "duplicates": [
+        "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tsconfig.json"
+      ]
+    }
+  ],
+  "importsNormalized": [
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/analysis/scripts/drift-analyzer.ts",
+      "imports": [
+        {
+          "original": "./schema-mapper.js",
+          "normalized": "./schema-mapper",
+          "type": "relative"
+        },
+        {
+          "original": "./db-usage-scanner.js",
+          "normalized": "./db-usage-scanner",
+          "type": "relative"
+        },
+        {
+          "original": "./unused-elements-analyzer.js",
+          "normalized": "./unused-elements-analyzer",
+          "type": "relative"
+        },
+        {
+          "original": "fs/promises",
+          "normalized": "fs/promises",
+          "type": "external"
+        },
+        {
+          "original": "path",
+          "normalized": "path",
+          "type": "external"
+        },
+        {
+          "original": "glob",
+          "normalized": "glob",
+          "type": "external"
+        },
+        {
+          "original": "module",
+          "normalized": "module",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/analysis/scripts/performance-assessor.ts",
+      "imports": [
+        {
+          "original": "./schema-mapper.js",
+          "normalized": "./schema-mapper",
+          "type": "relative"
+        },
+        {
+          "original": "./db-usage-scanner.js",
+          "normalized": "./db-usage-scanner",
+          "type": "relative"
+        },
+        {
+          "original": "./unused-elements-analyzer.js",
+          "normalized": "./unused-elements-analyzer",
+          "type": "relative"
+        },
+        {
+          "original": "./drift-analyzer.js",
+          "normalized": "./drift-analyzer",
+          "type": "relative"
+        },
+        {
+          "original": "fs/promises",
+          "normalized": "fs/promises",
+          "type": "external"
+        },
+        {
+          "original": "path",
+          "normalized": "path",
+          "type": "external"
+        },
+        {
+          "original": "glob",
+          "normalized": "glob",
+          "type": "external"
+        },
+        {
+          "original": "module",
+          "normalized": "module",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/analysis/scripts/report-generator.ts",
+      "imports": [
+        {
+          "original": "fs/promises",
+          "normalized": "fs/promises",
+          "type": "external"
+        },
+        {
+          "original": "path",
+          "normalized": "path",
+          "type": "external"
+        },
+        {
+          "original": "./asset-scanner",
+          "normalized": "./asset-scanner",
+          "type": "relative"
+        },
+        {
+          "original": "./db-scanner",
+          "normalized": "./db-scanner",
+          "type": "relative"
+        },
+        {
+          "original": "./schema-mapper.js",
+          "normalized": "./schema-mapper",
+          "type": "relative"
+        },
+        {
+          "original": "./db-usage-scanner.js",
+          "normalized": "./db-usage-scanner",
+          "type": "relative"
+        },
+        {
+          "original": "./unused-elements-analyzer.js",
+          "normalized": "./unused-elements-analyzer",
+          "type": "relative"
+        },
+        {
+          "original": "./drift-analyzer.js",
+          "normalized": "./drift-analyzer",
+          "type": "relative"
+        },
+        {
+          "original": "./performance-assessor.js",
+          "normalized": "./performance-assessor",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/analysis/scripts/unused-elements-analyzer.ts",
+      "imports": [
+        {
+          "original": "./schema-mapper.js",
+          "normalized": "./schema-mapper",
+          "type": "relative"
+        },
+        {
+          "original": "./db-usage-scanner.js",
+          "normalized": "./db-usage-scanner",
+          "type": "relative"
+        },
+        {
+          "original": "./ast-parser.js",
+          "normalized": "./ast-parser",
+          "type": "relative"
+        },
+        {
+          "original": "fs/promises",
+          "normalized": "fs/promises",
+          "type": "external"
+        },
+        {
+          "original": "path",
+          "normalized": "path",
+          "type": "external"
+        },
+        {
+          "original": "glob",
+          "normalized": "glob",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/apps/web/src/app/api/trpc/[trpc]/route.ts",
+      "imports": [
+        {
+          "original": "@trpc/server/adapters/fetch",
+          "normalized": "@trpc/server/adapters/fetch",
+          "type": "external"
+        },
+        {
+          "original": "next-auth/next",
+          "normalized": "next-auth/next",
+          "type": "external"
+        },
+        {
+          "original": "api",
+          "normalized": "api",
+          "type": "external"
+        },
+        {
+          "original": "../../../../lib/auth",
+          "normalized": "./src/lib/auth",
+          "type": "relative"
+        },
+        {
+          "original": "api/src/middleware/audit",
+          "normalized": "api/src/middleware/audit",
+          "type": "external"
+        },
+        {
+          "original": "db",
+          "normalized": "db",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/apps/web/src/app/auth/test/page.tsx",
+      "imports": [
+        {
+          "original": "next-auth/react",
+          "normalized": "next-auth/react",
+          "type": "external"
+        },
+        {
+          "original": "../../../utils/trpc",
+          "normalized": "./src/utils/trpc",
+          "type": "relative"
+        },
+        {
+          "original": "../../../components/ui/button",
+          "normalized": "./src/components/ui/button",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/create-admin-user.ts",
+      "imports": [
+        {
+          "original": "dotenv/config",
+          "normalized": "dotenv/config",
+          "type": "external"
+        },
+        {
+          "original": "./packages/db/src/index",
+          "normalized": "./packages/db/src",
+          "type": "relative"
+        },
+        {
+          "original": "./packages/db/src/schema",
+          "normalized": "./packages/db/src/schema",
+          "type": "relative"
+        },
+        {
+          "original": "bcryptjs",
+          "normalized": "bcryptjs",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/api/src/routers/__tests__/purchase-integration.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../index",
+          "normalized": "..",
+          "type": "relative"
+        },
+        {
+          "original": "db",
+          "normalized": "db",
+          "type": "external"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/api/src/routers/__tests__/purchase-line-integration.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../index",
+          "normalized": "..",
+          "type": "relative"
+        },
+        {
+          "original": "db",
+          "normalized": "db",
+          "type": "external"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/db/src/queries/packaging-optimized.ts",
+      "imports": [
+        {
+          "original": "../index",
+          "normalized": "..",
+          "type": "relative"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        },
+        {
+          "original": "drizzle-orm/pg-core",
+          "normalized": "drizzle-orm/pg-core",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/cleanup-validation/suites/database-migration.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        },
+        {
+          "original": "drizzle-orm/node-postgres",
+          "normalized": "drizzle-orm/node-postgres",
+          "type": "external"
+        },
+        {
+          "original": "pg",
+          "normalized": "pg",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/db/src/migrations/deprecation-system",
+          "normalized": "./packages/db/src/migrations/deprecation-system",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/monitoring/deprecated-monitor",
+          "normalized": "./packages/db/src/monitoring/deprecated-monitor",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/migrations/rollback-manager",
+          "normalized": "./packages/db/src/migrations/rollback-manager",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/migrations/safety-checks",
+          "normalized": "./packages/db/src/migrations/safety-checks",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/migrations/backup-validator",
+          "normalized": "./packages/db/src/migrations/backup-validator",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/e2e/fixtures/test-data-factory.ts",
+      "imports": [
+        {
+          "original": "drizzle-orm/node-postgres",
+          "normalized": "drizzle-orm/node-postgres",
+          "type": "external"
+        },
+        {
+          "original": "pg",
+          "normalized": "pg",
+          "type": "external"
+        },
+        {
+          "original": "dotenv",
+          "normalized": "dotenv",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/db/src/schema",
+          "normalized": "./packages/db/src/schema",
+          "type": "relative"
+        },
+        {
+          "original": "bcryptjs",
+          "normalized": "bcryptjs",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/e2e/utils/calculation-validators.ts",
+      "imports": [
+        {
+          "original": "@playwright/test",
+          "normalized": "@playwright/test",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/db/src/client",
+          "normalized": "./packages/db/src/client",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/schema",
+          "normalized": "./packages/db/src/schema",
+          "type": "relative"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/e2e/utils/data-completeness-validator.ts",
+      "imports": [
+        {
+          "original": "@playwright/test",
+          "normalized": "@playwright/test",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/db/src/client",
+          "normalized": "./packages/db/src/client",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/schema",
+          "normalized": "./packages/db/src/schema",
+          "type": "relative"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/e2e/utils/data-validation.ts",
+      "imports": [
+        {
+          "original": "@playwright/test",
+          "normalized": "@playwright/test",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/db/src/client",
+          "normalized": "./packages/db/src/client",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/schema",
+          "normalized": "./packages/db/src/schema",
+          "type": "relative"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/e2e/utils/relationship-validators.ts",
+      "imports": [
+        {
+          "original": "../../../packages/db/src/client",
+          "normalized": "./packages/db/src/client",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/schema",
+          "normalized": "./packages/db/src/schema",
+          "type": "relative"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/e2e/utils/seeded-data-discovery.ts",
+      "imports": [
+        {
+          "original": "../../../packages/db/src/client",
+          "normalized": "./packages/db/src/client",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/db/src/schema",
+          "normalized": "./packages/db/src/schema",
+          "type": "relative"
+        },
+        {
+          "original": "drizzle-orm",
+          "normalized": "drizzle-orm",
+          "type": "external"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/lib/validation/errors.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/errors",
+          "normalized": "./packages/lib/src/validation/errors",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/lib/validation/measurements.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/measurements",
+          "normalized": "./packages/lib/src/validation/measurements",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/errors",
+          "normalized": "./packages/lib/src/validation/errors",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/lib/validation/packaging.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/packaging",
+          "normalized": "./packages/lib/src/validation/packaging",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/errors",
+          "normalized": "./packages/lib/src/validation/errors",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/lib/validation/transfer.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/transfer",
+          "normalized": "./packages/lib/src/validation/transfer",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/errors",
+          "normalized": "./packages/lib/src/validation/errors",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/lib/validation/vessel-state.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/vessel-state",
+          "normalized": "./packages/lib/src/validation/vessel-state",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/errors",
+          "normalized": "./packages/lib/src/validation/errors",
+          "type": "relative"
+        }
+      ]
+    },
+    {
+      "file": "/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/tests/lib/validation/volume-quantity.test.ts",
+      "imports": [
+        {
+          "original": "vitest",
+          "normalized": "vitest",
+          "type": "external"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/volume-quantity",
+          "normalized": "./packages/lib/src/validation/volume-quantity",
+          "type": "relative"
+        },
+        {
+          "original": "../../../packages/lib/src/validation/errors",
+          "normalized": "./packages/lib/src/validation/errors",
+          "type": "relative"
+        }
+      ]
+    }
+  ],
+  "spaceSaved": 19396,
+  "filesProcessed": 34
+}

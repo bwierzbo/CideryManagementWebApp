@@ -1,0 +1,25 @@
+{
+  "timestamp": "2025-09-29T00:24:35.952Z",
+  "environment": "test",
+  "commit": "c5972c4b26831931c44faaa1f751af571d2b7aa1",
+  "metrics": {
+    "buildTime": -1,
+    "typeCheckTime": -1,
+    "analysisTime": {
+      "knip": -1,
+      "tsPrune": -1,
+      "depcheck": -1,
+      "madge": 1588.6659169999984
+    },
+    "bundleSize": {
+      "total": 0,
+      "packages": {
+        "api": 0,
+        "db": 0,
+        "lib": 0,
+        "worker": 0,
+        "web": 0
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { config } from 'dotenv';
-import * as schema from '../../../packages/db/src/schema';
+import * as schema from './packages/db/src/schema';
 import bcrypt from 'bcryptjs';
 
 // Load environment variables

@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -10,19 +10,19 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Button } from "@/components/ui/button"
-import { AlertTriangle } from "lucide-react"
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
 
 interface ConfirmDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  description: string
-  confirmText?: string
-  cancelText?: string
-  variant?: "default" | "destructive"
-  onConfirm: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  confirmText?: string;
+  cancelText?: string;
+  variant?: "default" | "destructive";
+  onConfirm: () => void;
 }
 
 export function ConfirmDialog({
@@ -33,12 +33,12 @@ export function ConfirmDialog({
   confirmText = "Confirm",
   cancelText = "Cancel",
   variant = "default",
-  onConfirm
+  onConfirm,
 }: ConfirmDialogProps) {
   const handleConfirm = () => {
-    onConfirm()
-    onOpenChange(false)
-  }
+    onConfirm();
+    onOpenChange(false);
+  };
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -50,18 +50,14 @@ export function ConfirmDialog({
             )}
             <AlertDialogTitle>{title}</AlertDialogTitle>
           </div>
-          <AlertDialogDescription>
-            {description}
-          </AlertDialogDescription>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelText}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             className={
-              variant === "destructive"
-                ? "bg-red-600 hover:bg-red-700"
-                : ""
+              variant === "destructive" ? "bg-red-600 hover:bg-red-700" : ""
             }
           >
             {confirmText}
@@ -69,5 +65,5 @@ export function ConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
+  );
 }

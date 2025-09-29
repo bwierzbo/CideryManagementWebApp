@@ -16,11 +16,11 @@ import {
   percentageSchema,
   nonNegativeVolumeSchema,
   nonNegativeQuantitySchema
-} from '../../../packages/lib/src/validation/volume-quantity';
+} from './packages/lib/src/validation/volume-quantity';
 import {
   VolumeValidationError,
   QuantityValidationError
-} from '../../../packages/lib/src/validation/errors';
+} from './packages/lib/src/validation/errors';
 
 describe('Volume and Quantity Validation', () => {
   describe('validatePositiveVolume', () => {

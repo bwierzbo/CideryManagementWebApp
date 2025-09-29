@@ -147,53 +147,37 @@
       "indexes": {
         "apple_press_run_loads_apple_press_run_idx": {
           "name": "apple_press_run_loads_apple_press_run_idx",
-          "columns": [
-            "apple_press_run_id"
-          ],
+          "columns": ["apple_press_run_id"],
           "isUnique": false
         },
         "apple_press_run_loads_purchase_item_idx": {
           "name": "apple_press_run_loads_purchase_item_idx",
-          "columns": [
-            "purchase_item_id"
-          ],
+          "columns": ["purchase_item_id"],
           "isUnique": false
         },
         "apple_press_run_loads_variety_idx": {
           "name": "apple_press_run_loads_variety_idx",
-          "columns": [
-            "apple_variety_id"
-          ],
+          "columns": ["apple_variety_id"],
           "isUnique": false
         },
         "apple_press_run_loads_sequence_idx": {
           "name": "apple_press_run_loads_sequence_idx",
-          "columns": [
-            "apple_press_run_id",
-            "load_sequence"
-          ],
+          "columns": ["apple_press_run_id", "load_sequence"],
           "isUnique": false
         },
         "apple_press_run_loads_created_by_idx": {
           "name": "apple_press_run_loads_created_by_idx",
-          "columns": [
-            "created_by"
-          ],
+          "columns": ["created_by"],
           "isUnique": false
         },
         "apple_press_run_loads_updated_by_idx": {
           "name": "apple_press_run_loads_updated_by_idx",
-          "columns": [
-            "updated_by"
-          ],
+          "columns": ["updated_by"],
           "isUnique": false
         },
         "apple_press_run_loads_unique_sequence": {
           "name": "apple_press_run_loads_unique_sequence",
-          "columns": [
-            "apple_press_run_id",
-            "load_sequence"
-          ],
+          "columns": ["apple_press_run_id", "load_sequence"],
           "isUnique": true
         }
       },
@@ -202,12 +186,8 @@
           "name": "apple_press_run_loads_apple_press_run_id_apple_press_runs_id_fk",
           "tableFrom": "apple_press_run_loads",
           "tableTo": "apple_press_runs",
-          "columnsFrom": [
-            "apple_press_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["apple_press_run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -215,12 +195,8 @@
           "name": "apple_press_run_loads_purchase_item_id_purchase_items_id_fk",
           "tableFrom": "apple_press_run_loads",
           "tableTo": "purchase_items",
-          "columnsFrom": [
-            "purchase_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["purchase_item_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -228,12 +204,8 @@
           "name": "apple_press_run_loads_apple_variety_id_apple_varieties_id_fk",
           "tableFrom": "apple_press_run_loads",
           "tableTo": "apple_varieties",
-          "columnsFrom": [
-            "apple_variety_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["apple_variety_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -241,12 +213,8 @@
           "name": "apple_press_run_loads_created_by_users_id_fk",
           "tableFrom": "apple_press_run_loads",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -254,12 +222,8 @@
           "name": "apple_press_run_loads_updated_by_users_id_fk",
           "tableFrom": "apple_press_run_loads",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -411,60 +375,42 @@
       "indexes": {
         "apple_press_runs_vendor_idx": {
           "name": "apple_press_runs_vendor_idx",
-          "columns": [
-            "vendor_id"
-          ],
+          "columns": ["vendor_id"],
           "isUnique": false
         },
         "apple_press_runs_status_idx": {
           "name": "apple_press_runs_status_idx",
-          "columns": [
-            "status"
-          ],
+          "columns": ["status"],
           "isUnique": false
         },
         "apple_press_runs_scheduled_date_idx": {
           "name": "apple_press_runs_scheduled_date_idx",
-          "columns": [
-            "scheduled_date"
-          ],
+          "columns": ["scheduled_date"],
           "isUnique": false
         },
         "apple_press_runs_start_time_idx": {
           "name": "apple_press_runs_start_time_idx",
-          "columns": [
-            "start_time"
-          ],
+          "columns": ["start_time"],
           "isUnique": false
         },
         "apple_press_runs_vendor_status_idx": {
           "name": "apple_press_runs_vendor_status_idx",
-          "columns": [
-            "vendor_id",
-            "status"
-          ],
+          "columns": ["vendor_id", "status"],
           "isUnique": false
         },
         "apple_press_runs_date_status_idx": {
           "name": "apple_press_runs_date_status_idx",
-          "columns": [
-            "scheduled_date",
-            "status"
-          ],
+          "columns": ["scheduled_date", "status"],
           "isUnique": false
         },
         "apple_press_runs_created_by_idx": {
           "name": "apple_press_runs_created_by_idx",
-          "columns": [
-            "created_by"
-          ],
+          "columns": ["created_by"],
           "isUnique": false
         },
         "apple_press_runs_updated_by_idx": {
           "name": "apple_press_runs_updated_by_idx",
-          "columns": [
-            "updated_by"
-          ],
+          "columns": ["updated_by"],
           "isUnique": false
         }
       },
@@ -473,12 +419,8 @@
           "name": "apple_press_runs_vendor_id_vendors_id_fk",
           "tableFrom": "apple_press_runs",
           "tableTo": "vendors",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -486,12 +428,8 @@
           "name": "apple_press_runs_vessel_id_vessels_id_fk",
           "tableFrom": "apple_press_runs",
           "tableTo": "vessels",
-          "columnsFrom": [
-            "vessel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vessel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -499,12 +437,8 @@
           "name": "apple_press_runs_created_by_users_id_fk",
           "tableFrom": "apple_press_runs",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -512,12 +446,8 @@
           "name": "apple_press_runs_updated_by_users_id_fk",
           "tableFrom": "apple_press_runs",
           "tableTo": "users",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["updated_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -609,9 +539,7 @@
       "indexes": {
         "apple_varieties_name_unique_idx": {
           "name": "apple_varieties_name_unique_idx",
-          "columns": [
-            "name"
-          ],
+          "columns": ["name"],
           "isUnique": true
         }
       },
@@ -786,12 +714,8 @@
           "name": "batch_costs_batch_id_batches_id_fk",
           "tableFrom": "batch_costs",
           "tableTo": "batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["batch_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -867,12 +791,8 @@
           "name": "batch_ingredients_batch_id_batches_id_fk",
           "tableFrom": "batch_ingredients",
           "tableTo": "batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["batch_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -880,12 +800,8 @@
           "name": "batch_ingredients_press_item_id_press_items_id_fk",
           "tableFrom": "batch_ingredients",
           "tableTo": "press_items",
-          "columnsFrom": [
-            "press_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["press_item_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -991,12 +907,8 @@
           "name": "batch_measurements_batch_id_batches_id_fk",
           "tableFrom": "batch_measurements",
           "tableTo": "batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["batch_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1109,12 +1021,8 @@
           "name": "batches_vessel_id_vessels_id_fk",
           "tableFrom": "batches",
           "tableTo": "vessels",
-          "columnsFrom": [
-            "vessel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vessel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1124,9 +1032,7 @@
         "batches_batch_number_unique": {
           "name": "batches_batch_number_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "batch_number"
-          ]
+          "columns": ["batch_number"]
         }
       }
     },
@@ -1216,12 +1122,8 @@
           "name": "cogs_items_batch_id_batches_id_fk",
           "tableFrom": "cogs_items",
           "tableTo": "batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["batch_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1312,12 +1214,8 @@
           "name": "inventory_package_id_packages_id_fk",
           "tableFrom": "inventory",
           "tableTo": "packages",
-          "columnsFrom": [
-            "package_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["package_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1399,12 +1297,8 @@
           "name": "inventory_transactions_inventory_id_inventory_id_fk",
           "tableFrom": "inventory_transactions",
           "tableTo": "inventory",
-          "columnsFrom": [
-            "inventory_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["inventory_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1492,12 +1386,8 @@
           "name": "packages_batch_id_batches_id_fk",
           "tableFrom": "packages",
           "tableTo": "batches",
-          "columnsFrom": [
-            "batch_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["batch_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1579,12 +1469,8 @@
           "name": "press_items_press_run_id_press_runs_id_fk",
           "tableFrom": "press_items",
           "tableTo": "press_runs",
-          "columnsFrom": [
-            "press_run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["press_run_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1592,12 +1478,8 @@
           "name": "press_items_purchase_item_id_purchase_items_id_fk",
           "tableFrom": "press_items",
           "tableTo": "purchase_items",
-          "columnsFrom": [
-            "purchase_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["purchase_item_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1782,12 +1664,8 @@
           "name": "purchase_items_purchase_id_purchases_id_fk",
           "tableFrom": "purchase_items",
           "tableTo": "purchases",
-          "columnsFrom": [
-            "purchase_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["purchase_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1795,12 +1673,8 @@
           "name": "purchase_items_apple_variety_id_apple_varieties_id_fk",
           "tableFrom": "purchase_items",
           "tableTo": "apple_varieties",
-          "columnsFrom": [
-            "apple_variety_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["apple_variety_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1883,12 +1757,8 @@
           "name": "purchases_vendor_id_vendors_id_fk",
           "tableFrom": "purchases",
           "tableTo": "vendors",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1974,16 +1844,12 @@
       "indexes": {
         "tank_additives_vessel_idx": {
           "name": "tank_additives_vessel_idx",
-          "columns": [
-            "vessel_id"
-          ],
+          "columns": ["vessel_id"],
           "isUnique": false
         },
         "tank_additives_added_at_idx": {
           "name": "tank_additives_added_at_idx",
-          "columns": [
-            "added_at"
-          ],
+          "columns": ["added_at"],
           "isUnique": false
         }
       },
@@ -1992,12 +1858,8 @@
           "name": "tank_additives_vessel_id_vessels_id_fk",
           "tableFrom": "tank_additives",
           "tableTo": "vessels",
-          "columnsFrom": [
-            "vessel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vessel_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2005,12 +1867,8 @@
           "name": "tank_additives_created_by_users_id_fk",
           "tableFrom": "tank_additives",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2102,16 +1960,12 @@
       "indexes": {
         "tank_measurements_vessel_idx": {
           "name": "tank_measurements_vessel_idx",
-          "columns": [
-            "vessel_id"
-          ],
+          "columns": ["vessel_id"],
           "isUnique": false
         },
         "tank_measurements_date_idx": {
           "name": "tank_measurements_date_idx",
-          "columns": [
-            "measurement_date"
-          ],
+          "columns": ["measurement_date"],
           "isUnique": false
         }
       },
@@ -2120,12 +1974,8 @@
           "name": "tank_measurements_vessel_id_vessels_id_fk",
           "tableFrom": "tank_measurements",
           "tableTo": "vessels",
-          "columnsFrom": [
-            "vessel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vessel_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2133,12 +1983,8 @@
           "name": "tank_measurements_created_by_users_id_fk",
           "tableFrom": "tank_measurements",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2223,9 +2069,7 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       }
     },
@@ -2282,24 +2126,17 @@
       "indexes": {
         "vendor_varieties_vendor_variety_unique_idx": {
           "name": "vendor_varieties_vendor_variety_unique_idx",
-          "columns": [
-            "vendor_id",
-            "variety_id"
-          ],
+          "columns": ["vendor_id", "variety_id"],
           "isUnique": true
         },
         "vendor_varieties_vendor_idx": {
           "name": "vendor_varieties_vendor_idx",
-          "columns": [
-            "vendor_id"
-          ],
+          "columns": ["vendor_id"],
           "isUnique": false
         },
         "vendor_varieties_variety_idx": {
           "name": "vendor_varieties_variety_idx",
-          "columns": [
-            "variety_id"
-          ],
+          "columns": ["variety_id"],
           "isUnique": false
         }
       },
@@ -2308,12 +2145,8 @@
           "name": "vendor_varieties_vendor_id_vendors_id_fk",
           "tableFrom": "vendor_varieties",
           "tableTo": "vendors",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2321,12 +2154,8 @@
           "name": "vendor_varieties_variety_id_apple_varieties_id_fk",
           "tableFrom": "vendor_varieties",
           "tableTo": "apple_varieties",
-          "columnsFrom": [
-            "variety_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["variety_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2597,61 +2426,42 @@
       "indexes": {
         "audit_logs_table_name_idx": {
           "name": "audit_logs_table_name_idx",
-          "columns": [
-            "table_name"
-          ],
+          "columns": ["table_name"],
           "isUnique": false
         },
         "audit_logs_record_id_idx": {
           "name": "audit_logs_record_id_idx",
-          "columns": [
-            "record_id"
-          ],
+          "columns": ["record_id"],
           "isUnique": false
         },
         "audit_logs_changed_by_idx": {
           "name": "audit_logs_changed_by_idx",
-          "columns": [
-            "changed_by"
-          ],
+          "columns": ["changed_by"],
           "isUnique": false
         },
         "audit_logs_changed_at_idx": {
           "name": "audit_logs_changed_at_idx",
-          "columns": [
-            "changed_at"
-          ],
+          "columns": ["changed_at"],
           "isUnique": false
         },
         "audit_logs_operation_idx": {
           "name": "audit_logs_operation_idx",
-          "columns": [
-            "operation"
-          ],
+          "columns": ["operation"],
           "isUnique": false
         },
         "audit_logs_table_record_idx": {
           "name": "audit_logs_table_record_idx",
-          "columns": [
-            "table_name",
-            "record_id"
-          ],
+          "columns": ["table_name", "record_id"],
           "isUnique": false
         },
         "audit_logs_user_time_idx": {
           "name": "audit_logs_user_time_idx",
-          "columns": [
-            "changed_by",
-            "changed_at"
-          ],
+          "columns": ["changed_by", "changed_at"],
           "isUnique": false
         },
         "audit_logs_table_time_idx": {
           "name": "audit_logs_table_time_idx",
-          "columns": [
-            "table_name",
-            "changed_at"
-          ],
+          "columns": ["table_name", "changed_at"],
           "isUnique": false
         }
       },
@@ -2660,12 +2470,8 @@
           "name": "audit_logs_changed_by_users_id_fk",
           "tableFrom": "audit_logs",
           "tableTo": "users",
-          "columnsFrom": [
-            "changed_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["changed_by"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -2719,23 +2525,17 @@
       "indexes": {
         "audit_metadata_type_idx": {
           "name": "audit_metadata_type_idx",
-          "columns": [
-            "metadata_type"
-          ],
+          "columns": ["metadata_type"],
           "isUnique": false
         },
         "audit_metadata_table_idx": {
           "name": "audit_metadata_table_idx",
-          "columns": [
-            "table_name"
-          ],
+          "columns": ["table_name"],
           "isUnique": false
         },
         "audit_metadata_created_at_idx": {
           "name": "audit_metadata_created_at_idx",
-          "columns": [
-            "created_at"
-          ],
+          "columns": ["created_at"],
           "isUnique": false
         }
       },

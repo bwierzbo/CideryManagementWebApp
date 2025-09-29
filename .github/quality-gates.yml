@@ -1,0 +1,71 @@
+# Quality Gates Configuration
+# This file defines thresholds and rules for CI quality checks
+
+# Performance Thresholds
+performance:
+  max_build_time_seconds: 120
+  max_total_ci_time_seconds: 600
+  max_install_time_seconds: 60
+  max_test_time_seconds: 60
+  max_lint_time_seconds: 20
+  max_typecheck_time_seconds: 30
+
+# Bundle Size Thresholds
+bundle:
+  max_total_size_kb: 1000
+  max_gzipped_ratio: 0.4  # Gzipped should be <40% of total
+  max_individual_file_kb: 100
+  max_vendor_chunk_kb: 300
+  max_css_size_kb: 50
+  warn_if_files_exceed: 10  # Warn if more than N files exceed size limits
+
+# Code Quality Thresholds
+code_quality:
+  max_dead_code_files: 5
+  max_unused_dependencies: 3
+  max_circular_dependencies: 0
+  max_duplicated_code_blocks: 5
+  max_complexity_score: 10
+
+# Test Coverage Requirements (future)
+test_coverage:
+  min_line_coverage_percent: 80
+  min_branch_coverage_percent: 70
+  min_function_coverage_percent: 85
+  enforce_coverage_on_new_code: true
+
+# Security Thresholds
+security:
+  max_high_vulnerabilities: 0
+  max_medium_vulnerabilities: 2
+  max_low_vulnerabilities: 10
+  fail_on_license_issues: true
+
+# Notification Settings
+notifications:
+  performance_degradation_threshold_percent: 15
+  bundle_size_increase_threshold_percent: 10
+  send_slack_notifications: false
+  send_email_notifications: false
+
+# Quality Gate Behavior
+behavior:
+  fail_fast: false  # Continue running all checks even if one fails
+  allow_override_on_emergency: false
+  require_approval_for_threshold_increase: true
+  auto_create_issues_for_violations: true
+
+# Analysis Settings
+analysis:
+  enable_trend_tracking: true
+  retention_days: 30
+  baseline_update_strategy: "auto"  # auto, manual, never
+  comparison_branches: ["main", "develop"]
+
+# Reporting Configuration
+reporting:
+  generate_markdown_reports: true
+  generate_json_reports: true
+  include_recommendations: true
+  include_trend_charts: false  # ASCII charts for now
+  verbose_output: false

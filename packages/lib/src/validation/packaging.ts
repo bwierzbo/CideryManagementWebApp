@@ -2,15 +2,18 @@
  * Packaging validation guards ensuring consumption doesn't exceed available volume
  */
 
-import { z } from 'zod';
-import { PackagingValidationError } from './errors';
-import { validatePositiveVolume, validatePositiveCount } from './volume-quantity';
+import { z } from "zod";
+import { PackagingValidationError } from "./errors";
+import {
+  validatePositiveVolume,
+  validatePositiveCount,
+} from "./volume-quantity";
 
 export interface BatchPackagingData {
   id: string;
   batchNumber: string;
   currentVolumeL: number;
-  status: 'planned' | 'active' | 'completed' | 'cancelled';
+  status: "planned" | "active" | "completed" | "cancelled";
   vesselId?: string;
 }
 
@@ -36,20 +39,30 @@ export interface ExistingPackagingData {
 /**
  * Validates that batch is ready for packaging
  */
-export function validateBatchReadyForPackaging(batch: BatchPackagingData): void {
-  if (batch.status === 'planned') {
+export function validateBatchReadyForPackaging(
+  batch: BatchPackagingData,
+): void {
+  if (batch.status === "planned") {
     throw new PackagingValidationError(
       `Batch ${batch.batchNumber} is still in planning`,
       `Batch "${batch.batchNumber}" is still in planning phase and cannot be packaged yet. Please start the batch before packaging.`,
-      { batchId: batch.id, batchNumber: batch.batchNumber, status: batch.status }
+      {
+        batchId: batch.id,
+        batchNumber: batch.batchNumber,
+        status: batch.status,
+      },
     );
   }
 
-  if (batch.status === 'cancelled') {
+  if (batch.status === "cancelled") {
     throw new PackagingValidationError(
       `Batch ${batch.batchNumber} is cancelled`,
       `Batch "${batch.batchNumber}" is cancelled and cannot be packaged.`,
-      { batchId: batch.id, batchNumber: batch.batchNumber, status: batch.status }
+      {
+        batchId: batch.id,
+        batchNumber: batch.batchNumber,
+        status: batch.status,
+      },
     );
   }
 
@@ -57,7 +70,11 @@ export function validateBatchReadyForPackaging(batch: BatchPackagingData): void 
     throw new PackagingValidationError(
       `Batch ${batch.batchNumber} has no volume available`,
       `Batch "${batch.batchNumber}" has no volume available for packaging (${batch.currentVolumeL}L). Please check the batch status.`,
-      { batchId: batch.id, batchNumber: batch.batchNumber, currentVolumeL: batch.currentVolumeL }
+      {
+        batchId: batch.id,
+        batchNumber: batch.batchNumber,
+        currentVolumeL: batch.currentVolumeL,
+      },
     );
   }
 }
@@ -68,10 +85,14 @@ export function validateBatchReadyForPackaging(batch: BatchPackagingData): void 
 export function validatePackagingVolume(
   batch: BatchPackagingData,
   packagingData: PackagingRunData,
-  existingPackaging?: ExistingPackagingData
+  existingPackaging?: ExistingPackagingData,
 ): void {
   // Validate positive packaging volume
-  validatePositiveVolume(packagingData.volumePackagedL, 'Packaging volume', `batch ${batch.batchNumber}`);
+  validatePositiveVolume(
+    packagingData.volumePackagedL,
+    "Packaging volume",
+    `batch ${batch.batchNumber}`,
+  );
 
   const totalPreviouslyPackaged = existingPackaging?.totalVolumePackagedL || 0;
   const remainingVolume = batch.currentVolumeL - totalPreviouslyPackaged;
@@ -87,8 +108,8 @@ export function validatePackagingVolume(
         previouslyPackagedL: totalPreviouslyPackaged,
         remainingVolumeL: remainingVolume,
         requestedVolumeL: packagingData.volumePackagedL,
-        excessVolumeL: packagingData.volumePackagedL - remainingVolume
-      }
+        excessVolumeL: packagingData.volumePackagedL - remainingVolume,
+      },
     );
   }
 }
@@ -96,8 +117,14 @@ export function validatePackagingVolume(
 /**
  * Validates bottle count and size consistency
  */
-export function validateBottleConsistency(packagingData: PackagingRunData): void {
-  validatePositiveCount(packagingData.bottleCount, 'Bottle count', `packaging run`);
+export function validateBottleConsistency(
+  packagingData: PackagingRunData,
+): void {
+  validatePositiveCount(
+    packagingData.bottleCount,
+    "Bottle count",
+    `packaging run`,
+  );
 
   // Parse bottle size to extract volume
   const bottleSizeMatch = packagingData.bottleSize.match(/(\d+(?:\.\d+)?)/);
@@ -105,24 +132,30 @@ export function validateBottleConsistency(packagingData: PackagingRunData): void
     throw new PackagingValidationError(
       `Invalid bottle size format: ${packagingData.bottleSize}`,
       `Bottle size "${packagingData.bottleSize}" is not in a valid format. Please use a format like "750ml", "500mL", "12oz", etc.`,
-      { bottleSize: packagingData.bottleSize }
+      { bottleSize: packagingData.bottleSize },
     );
   }
 
   const bottleVolume = parseFloat(bottleSizeMatch[1]);
-  const isMetric = packagingData.bottleSize.toLowerCase().includes('ml') || packagingData.bottleSize.toLowerCase().includes('l');
+  const isMetric =
+    packagingData.bottleSize.toLowerCase().includes("ml") ||
+    packagingData.bottleSize.toLowerCase().includes("l");
 
   // Convert to liters if needed
   let bottleVolumeL: number;
   if (isMetric) {
-    bottleVolumeL = packagingData.bottleSize.toLowerCase().includes('ml') ? bottleVolume / 1000 : bottleVolume;
+    bottleVolumeL = packagingData.bottleSize.toLowerCase().includes("ml")
+      ? bottleVolume / 1000
+      : bottleVolume;
   } else {
     // Assume fluid ounces, convert to liters
     bottleVolumeL = bottleVolume * 0.0295735;
   }
 
   const calculatedTotalVolume = bottleVolumeL * packagingData.bottleCount;
-  const volumeDifference = Math.abs(calculatedTotalVolume - packagingData.volumePackagedL);
+  const volumeDifference = Math.abs(
+    calculatedTotalVolume - packagingData.volumePackagedL,
+  );
   const tolerance = 0.05; // 50ml tolerance
 
   if (volumeDifference > tolerance) {
@@ -136,8 +169,8 @@ export function validateBottleConsistency(packagingData: PackagingRunData): void
         calculatedTotalVolumeL: calculatedTotalVolume,
         specifiedVolumeL: packagingData.volumePackagedL,
         volumeDifferenceL: volumeDifference,
-        toleranceL: tolerance
-      }
+        toleranceL: tolerance,
+      },
     );
   }
 }
@@ -151,7 +184,7 @@ export function validatePackagingAbv(abv: number | undefined): void {
       throw new PackagingValidationError(
         `ABV cannot be negative: ${abv}%`,
         `ABV at packaging cannot be negative. Please enter a value between 0% and 20%.`,
-        { abv }
+        { abv },
       );
     }
 
@@ -159,7 +192,7 @@ export function validatePackagingAbv(abv: number | undefined): void {
       throw new PackagingValidationError(
         `ABV exceeds maximum: ${abv}%`,
         `ABV at packaging of ${abv}% exceeds the maximum allowed for cider (20%). Please verify your measurement.`,
-        { abv, maxAllowed: 20 }
+        { abv, maxAllowed: 20 },
       );
     }
 
@@ -167,7 +200,7 @@ export function validatePackagingAbv(abv: number | undefined): void {
       throw new PackagingValidationError(
         `ABV must be a valid number: ${abv}`,
         `ABV at packaging must be a valid number. Please check your input.`,
-        { abv }
+        { abv },
       );
     }
   }
@@ -181,7 +214,10 @@ export function validatePackagingDate(packageDate: Date): void {
     throw new PackagingValidationError(
       `Packaging date cannot be in the future: ${packageDate.toISOString()}`,
       `Packaging date cannot be in the future. Please select today's date or an earlier date.`,
-      { packageDate: packageDate.toISOString(), currentDate: new Date().toISOString() }
+      {
+        packageDate: packageDate.toISOString(),
+        currentDate: new Date().toISOString(),
+      },
     );
   }
 }
@@ -192,7 +228,7 @@ export function validatePackagingDate(packageDate: Date): void {
 export function validatePackaging(
   batch: BatchPackagingData,
   packagingData: PackagingRunData,
-  existingPackaging?: ExistingPackagingData
+  existingPackaging?: ExistingPackagingData,
 ): void {
   // Validate batch is ready for packaging
   validateBatchReadyForPackaging(batch);
@@ -214,29 +250,38 @@ export function validatePackaging(
  * Enhanced Zod schema for packaging validation with business rules
  */
 export const packagingValidationSchema = z.object({
-  batchId: z.string().uuid('Invalid batch ID format'),
-  packageDate: z.date()
-    .refine((date) => date <= new Date(), 'Packaging date cannot be in the future'),
-  volumePackagedL: z.number()
-    .positive('Packaging volume must be greater than 0L')
-    .max(50000, 'Packaging volume cannot exceed 50,000L')
-    .refine((val) => Number.isFinite(val), 'Packaging volume must be a valid number'),
-  bottleSize: z.string()
-    .min(1, 'Bottle size is required')
-    .max(20, 'Bottle size description too long')
-    .regex(/\d+(?:\.\d+)?/, 'Bottle size must contain a numeric value'),
-  bottleCount: z.number()
-    .int('Bottle count must be a whole number')
-    .positive('Bottle count must be greater than 0')
-    .max(1000000, 'Bottle count seems unusually large'),
-  abvAtPackaging: z.number()
-    .min(0, 'ABV cannot be negative')
-    .max(20, 'ABV cannot exceed 20% for cider')
-    .refine((val) => Number.isFinite(val), 'ABV must be a valid number')
+  batchId: z.string().uuid("Invalid batch ID format"),
+  packageDate: z
+    .date()
+    .refine(
+      (date) => date <= new Date(),
+      "Packaging date cannot be in the future",
+    ),
+  volumePackagedL: z
+    .number()
+    .positive("Packaging volume must be greater than 0L")
+    .max(50000, "Packaging volume cannot exceed 50,000L")
+    .refine(
+      (val) => Number.isFinite(val),
+      "Packaging volume must be a valid number",
+    ),
+  bottleSize: z
+    .string()
+    .min(1, "Bottle size is required")
+    .max(20, "Bottle size description too long")
+    .regex(/\d+(?:\.\d+)?/, "Bottle size must contain a numeric value"),
+  bottleCount: z
+    .number()
+    .int("Bottle count must be a whole number")
+    .positive("Bottle count must be greater than 0")
+    .max(1000000, "Bottle count seems unusually large"),
+  abvAtPackaging: z
+    .number()
+    .min(0, "ABV cannot be negative")
+    .max(20, "ABV cannot exceed 20% for cider")
+    .refine((val) => Number.isFinite(val), "ABV must be a valid number")
     .optional(),
-  notes: z.string()
-    .max(1000, 'Notes cannot exceed 1000 characters')
-    .optional()
+  notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
 });
 
 export type ValidatedPackagingData = z.infer<typeof packagingValidationSchema>;

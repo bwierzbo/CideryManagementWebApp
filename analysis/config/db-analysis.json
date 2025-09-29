@@ -1,0 +1,171 @@
+{
+  "version": "1.0.0",
+  "schemaMapping": {
+    "enabled": true,
+    "schemaPatterns": [
+      "packages/db/src/schema.ts",
+      "packages/db/src/schema/**/*.ts"
+    ],
+    "sourcePatterns": [
+      "apps/web/src/**/*.{ts,tsx}",
+      "packages/api/src/**/*.ts",
+      "packages/lib/src/**/*.ts",
+      "packages/worker/src/**/*.ts"
+    ],
+    "astAnalysis": {
+      "includeComments": false,
+      "trackTypeReferences": true,
+      "analyzeImports": true,
+      "detectDynamicQueries": true
+    }
+  },
+  "usageAnalysis": {
+    "enabled": true,
+    "confidenceThresholds": {
+      "high": 0.8,
+      "medium": 0.6,
+      "low": 0.3
+    },
+    "queryComplexityWeights": {
+      "simple": 1,
+      "medium": 2,
+      "complex": 3
+    },
+    "frequencyThresholds": {
+      "frequent": 10,
+      "occasional": 3,
+      "rare": 1
+    }
+  },
+  "unusedElementsAnalysis": {
+    "enabled": true,
+    "removalCriteria": {
+      "tables": {
+        "requiredConfidence": "high",
+        "checkDependencies": true,
+        "checkMigrations": true,
+        "checkTests": true
+      },
+      "columns": {
+        "requiredConfidence": "medium",
+        "allowNullableRemoval": true,
+        "checkIndexes": true,
+        "checkConstraints": true
+      },
+      "indexes": {
+        "requiredConfidence": "high",
+        "checkQueryPatterns": true,
+        "allowUnusedRemoval": true
+      },
+      "enums": {
+        "requiredConfidence": "high",
+        "checkColumnUsage": true
+      }
+    },
+    "safeguards": {
+      "requireBackup": true,
+      "generateRollbackScripts": true,
+      "validateBeforeRemoval": true
+    }
+  },
+  "driftAnalysis": {
+    "enabled": true,
+    "severityLevels": {
+      "critical": {
+        "score": 20,
+        "examples": ["unused primary keys", "missing foreign key references"]
+      },
+      "major": {
+        "score": 10,
+        "examples": ["unused tables", "high-confidence unused elements"]
+      },
+      "minor": {
+        "score": 5,
+        "examples": ["unused indexes", "low-usage columns"]
+      },
+      "info": {
+        "score": 1,
+        "examples": ["documentation inconsistencies", "naming conventions"]
+      }
+    },
+    "healthScoring": {
+      "baseScore": 100,
+      "penaltyMultipliers": {
+        "unusedElements": 0.5,
+        "redundantIndexes": 1.0,
+        "complexQueries": 0.3
+      }
+    }
+  },
+  "performanceAssessment": {
+    "enabled": true,
+    "metrics": {
+      "indexUtilization": {
+        "excellent": 90,
+        "good": 80,
+        "poor": 60
+      },
+      "schemaBloat": {
+        "excellent": 5,
+        "good": 10,
+        "poor": 20
+      },
+      "queryComplexity": {
+        "excellent": 10,
+        "good": 20,
+        "poor": 40
+      }
+    },
+    "optimizationEstimates": {
+      "indexRemoval": {
+        "storagePerIndex": 50000,
+        "performanceImprovementPercent": 2,
+        "maintenanceHoursPerMonth": 0.5
+      },
+      "tableRemoval": {
+        "storagePerTable": 100000,
+        "maintenanceHoursPerMonth": 1.0
+      },
+      "queryOptimization": {
+        "performanceImprovementPercent": 5,
+        "effortHoursPerQuery": 4
+      }
+    }
+  },
+  "reporting": {
+    "outputFormats": ["json", "markdown"],
+    "includeSections": [
+      "executive_summary",
+      "schema_mapping",
+      "usage_analysis",
+      "unused_elements",
+      "drift_analysis",
+      "performance_assessment",
+      "recommendations",
+      "action_plan"
+    ],
+    "detailLevels": {
+      "summary": "high_level_metrics_only",
+      "standard": "detailed_analysis_with_examples",
+      "verbose": "full_analysis_with_all_data"
+    }
+  },
+  "integration": {
+    "cicd": {
+      "enabled": false,
+      "thresholds": {
+        "failOnCriticalIssues": true,
+        "warnOnSchemaHealthBelow": 70,
+        "warnOnPerformanceScoreBelow": 70
+      }
+    },
+    "monitoring": {
+      "enabled": false,
+      "alertThresholds": {
+        "schemaHealth": 50,
+        "performanceScore": 50,
+        "criticalDrifts": 1
+      }
+    }
+  }
+}

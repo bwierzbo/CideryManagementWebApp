@@ -1,0 +1,552 @@
+name: Cleanup Checks & Performance Analysis
+
+on:
+  push:
+    branches: [ main, develop, 'epic/**', 'feature/**' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run daily at 6 AM UTC to track trends
+    - cron: '0 6 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Quality gate thresholds
+  MAX_BUNDLE_SIZE_KB: 1000
+  MAX_BUILD_TIME_SECONDS: 120
+  MAX_DEAD_CODE_FILES: 5
+  MAX_UNUSED_DEPS: 3
+  MAX_CIRCULAR_DEPS: 0
+
+jobs:
+  analysis:
+    name: Code Analysis & Cleanup Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    outputs:
+      bundle-size: ${{ steps.bundle-analysis.outputs.size-kb }}
+      bundle-gzipped: ${{ steps.bundle-analysis.outputs.gzipped-kb }}
+      bundle-files: ${{ steps.bundle-analysis.outputs.file-count }}
+      bundle-warnings: ${{ steps.bundle-analysis.outputs.warnings-count }}
+      build-time: ${{ steps.build-performance.outputs.build-time }}
+      total-time: ${{ steps.build-performance.outputs.total-time }}
+      cache-hit: ${{ steps.build-performance.outputs.cache-hit }}
+      performance-warnings: ${{ steps.build-performance.outputs.warnings-count }}
+      dead-code-count: ${{ steps.dead-code.outputs.file-count }}
+      unused-deps-count: ${{ steps.deps-analysis.outputs.unused-count }}
+      circular-deps-count: ${{ steps.circular-deps.outputs.count }}
+      analysis-report: ${{ steps.generate-report.outputs.report-path }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for trend analysis
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Comprehensive Performance Monitoring
+      - name: Start performance monitoring
+        id: performance-start
+        run: |
+          echo "monitor-start=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "🚀 Starting comprehensive performance monitoring"
+
+      - name: Build project with performance tracking
+        id: build-performance
+        run: |
+          echo "Building project and tracking performance..."
+          pnpm performance:monitor build
+
+          # Extract performance metrics from the generated report
+          if [ -f "analysis/reports/ci/performance-metrics.json" ]; then
+            build_time=$(jq -r '.buildTime // 0' analysis/reports/ci/performance-metrics.json)
+            total_time=$(jq -r '.totalTime // 0' analysis/reports/ci/performance-metrics.json)
+            cache_hit=$(jq -r '.cacheHit // false' analysis/reports/ci/performance-metrics.json)
+            warnings_count=$(jq -r '.warnings | length' analysis/reports/ci/performance-metrics.json)
+
+            echo "build-time=$build_time" >> $GITHUB_OUTPUT
+            echo "total-time=$total_time" >> $GITHUB_OUTPUT
+            echo "cache-hit=$cache_hit" >> $GITHUB_OUTPUT
+            echo "warnings-count=$warnings_count" >> $GITHUB_OUTPUT
+          else
+            echo "build-time=0" >> $GITHUB_OUTPUT
+            echo "total-time=0" >> $GITHUB_OUTPUT
+            echo "cache-hit=false" >> $GITHUB_OUTPUT
+            echo "warnings-count=0" >> $GITHUB_OUTPUT
+          fi
+
+      # Advanced Bundle Size Analysis
+      - name: Analyze bundle size with detailed insights
+        id: bundle-analysis
+        run: |
+          echo "Running comprehensive bundle analysis..."
+          pnpm analysis:bundle
+
+          # Extract bundle metrics from the generated report
+          if [ -f "analysis/reports/ci/bundle-analysis.json" ]; then
+            total_size=$(jq -r '.totalSizeKB // 0' analysis/reports/ci/bundle-analysis.json)
+            gzipped_size=$(jq -r '.gzippedSizeKB // 0' analysis/reports/ci/bundle-analysis.json)
+            file_count=$(jq -r '.files | length' analysis/reports/ci/bundle-analysis.json)
+            warnings_count=$(jq -r '.warnings | length' analysis/reports/ci/bundle-analysis.json)
+
+            echo "size-kb=$total_size" >> $GITHUB_OUTPUT
+            echo "gzipped-kb=$gzipped_size" >> $GITHUB_OUTPUT
+            echo "file-count=$file_count" >> $GITHUB_OUTPUT
+            echo "warnings-count=$warnings_count" >> $GITHUB_OUTPUT
+
+            echo "Bundle analysis: ${total_size}KB total (${gzipped_size}KB gzipped)"
+          else
+            echo "size-kb=0" >> $GITHUB_OUTPUT
+            echo "gzipped-kb=0" >> $GITHUB_OUTPUT
+            echo "file-count=0" >> $GITHUB_OUTPUT
+            echo "warnings-count=0" >> $GITHUB_OUTPUT
+            echo "No bundle analysis results found"
+          fi
+
+      # Dead Code Analysis
+      - name: Run dead code analysis
+        id: dead-code
+        run: |
+          echo "Running knip analysis..."
+          pnpm analysis:dead-code > analysis/reports/ci/dead-code.json || true
+
+          # Count issues from knip output
+          if [ -f "analysis/reports/ci/dead-code.json" ]; then
+            # Extract file count from knip results
+            file_count=$(cat analysis/reports/ci/dead-code.json | wc -l)
+          else
+            file_count=0
+          fi
+
+          echo "file-count=$file_count" >> $GITHUB_OUTPUT
+          echo "Dead code files found: $file_count"
+
+      - name: Run TypeScript pruning
+        run: |
+          echo "Running ts-prune analysis..."
+          pnpm analysis:ts-prune > analysis/reports/ci/ts-prune.txt || true
+
+      # Dependency Analysis
+      - name: Run dependency analysis
+        id: deps-analysis
+        run: |
+          echo "Running dependency analysis..."
+          pnpm analysis:deps > analysis/reports/ci/deps-check.json || true
+
+          # Count unused dependencies
+          if [ -f "analysis/reports/ci/deps-check.json" ]; then
+            unused_count=$(grep -o '"unused"' analysis/reports/ci/deps-check.json | wc -l || echo "0")
+          else
+            unused_count=0
+          fi
+
+          echo "unused-count=$unused_count" >> $GITHUB_OUTPUT
+          echo "Unused dependencies found: $unused_count"
+
+      # Circular Dependencies
+      - name: Check circular dependencies
+        id: circular-deps
+        run: |
+          echo "Checking for circular dependencies..."
+          pnpm analysis:circular > analysis/reports/ci/circular-deps.txt || true
+
+          # Count circular dependency groups
+          if [ -f "analysis/reports/ci/circular-deps.txt" ]; then
+            count=$(grep -c "Circular dependency" analysis/reports/ci/circular-deps.txt || echo "0")
+          else
+            count=0
+          fi
+
+          echo "count=$count" >> $GITHUB_OUTPUT
+          echo "Circular dependencies found: $count"
+
+      # Asset Analysis
+      - name: Run asset analysis
+        run: |
+          echo "Running asset analysis..."
+          pnpm analysis:assets > analysis/reports/ci/assets.json || true
+
+      # Database Analysis
+      - name: Run database analysis
+        run: |
+          echo "Running database analysis..."
+          pnpm analysis:database > analysis/reports/ci/database.json || true
+
+      # Generate Comprehensive Report
+      - name: Generate analysis report
+        id: generate-report
+        run: |
+          echo "Generating comprehensive analysis report..."
+          pnpm analysis:all --output analysis/reports/ci/comprehensive-report.json
+
+          # Generate markdown summary
+          cat > analysis/reports/ci/summary.md << EOF
+          # Cleanup Analysis Summary
+
+          **Build Performance:**
+          - Build Time: ${{ steps.build-timing.outputs.duration }}s (Threshold: ${{ env.MAX_BUILD_TIME_SECONDS }}s)
+          - Bundle Size: ${{ steps.bundle-analysis.outputs.size-kb }}KB (Threshold: ${{ env.MAX_BUNDLE_SIZE_KB }}KB)
+
+          **Code Quality:**
+          - Dead Code Files: ${{ steps.dead-code.outputs.file-count }} (Threshold: ${{ env.MAX_DEAD_CODE_FILES }})
+          - Unused Dependencies: ${{ steps.deps-analysis.outputs.unused-count }} (Threshold: ${{ env.MAX_UNUSED_DEPS }})
+          - Circular Dependencies: ${{ steps.circular-deps.outputs.count }} (Threshold: ${{ env.MAX_CIRCULAR_DEPS }})
+
+          **Analysis Files:**
+          - Bundle Analysis: analysis/reports/ci/bundle-size.md
+          - Dead Code: analysis/reports/ci/dead-code.json
+          - Dependencies: analysis/reports/ci/deps-check.json
+          - Circular Deps: analysis/reports/ci/circular-deps.txt
+          - Assets: analysis/reports/ci/assets.json
+          - Database: analysis/reports/ci/database.json
+
+          **Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          EOF
+
+          echo "report-path=analysis/reports/ci/summary.md" >> $GITHUB_OUTPUT
+
+      # Upload analysis artifacts
+      - name: Upload analysis reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanup-analysis-reports-${{ github.run_number }}
+          path: analysis/reports/ci/
+          retention-days: 30
+
+  quality-gates:
+    name: Quality Gate Validation
+    runs-on: ubuntu-latest
+    needs: analysis
+
+    steps:
+      - name: Validate build performance
+        run: |
+          build_time=${{ needs.analysis.outputs.build-time }}
+          total_time=${{ needs.analysis.outputs.total-time }}
+          cache_hit=${{ needs.analysis.outputs.cache-hit }}
+          perf_warnings=${{ needs.analysis.outputs.performance-warnings }}
+
+          failed=false
+
+          # Check build time
+          if [ $build_time -gt ${{ env.MAX_BUILD_TIME_SECONDS }} ]; then
+            echo "::error::Build time ${build_time}s exceeds threshold of ${{ env.MAX_BUILD_TIME_SECONDS }}s"
+            failed=true
+          fi
+
+          # Check total CI time (max 10 minutes)
+          if [ $total_time -gt 600 ]; then
+            echo "::error::Total CI time ${total_time}s exceeds 10 minute threshold"
+            failed=true
+          fi
+
+          # Report performance warnings
+          if [ $perf_warnings -gt 0 ]; then
+            echo "::warning::${perf_warnings} performance warnings detected"
+          fi
+
+          if [ "$failed" = true ]; then
+            exit 1
+          fi
+
+          echo "::notice::Build performance: ${build_time}s (threshold: ${{ env.MAX_BUILD_TIME_SECONDS }}s)"
+          echo "::notice::Total CI time: ${total_time}s"
+          echo "::notice::Cache status: $([ "$cache_hit" = "true" ] && echo "hit" || echo "miss")"
+
+      - name: Validate bundle size and quality
+        run: |
+          bundle_size=${{ needs.analysis.outputs.bundle-size }}
+          bundle_gzipped=${{ needs.analysis.outputs.bundle-gzipped }}
+          bundle_warnings=${{ needs.analysis.outputs.bundle-warnings }}
+
+          failed=false
+
+          # Check total bundle size
+          if [ $bundle_size -gt ${{ env.MAX_BUNDLE_SIZE_KB }} ]; then
+            echo "::error::Bundle size ${bundle_size}KB exceeds threshold of ${{ env.MAX_BUNDLE_SIZE_KB }}KB"
+            failed=true
+          fi
+
+          # Check gzipped size (should be roughly 30% of total)
+          expected_gzipped=$((bundle_size * 30 / 100))
+          if [ $bundle_gzipped -gt $((expected_gzipped + 50)) ]; then
+            echo "::warning::Bundle compression ratio seems low (${bundle_gzipped}KB gzipped vs ${bundle_size}KB raw)"
+          fi
+
+          # Report bundle warnings
+          if [ $bundle_warnings -gt 0 ]; then
+            echo "::warning::${bundle_warnings} bundle warnings detected"
+          fi
+
+          if [ "$failed" = true ]; then
+            exit 1
+          fi
+
+          echo "::notice::Bundle size: ${bundle_size}KB (${bundle_gzipped}KB gzipped, threshold: ${{ env.MAX_BUNDLE_SIZE_KB }}KB)"
+
+      - name: Validate code quality metrics
+        run: |
+          dead_code=${{ needs.analysis.outputs.dead-code-count }}
+          unused_deps=${{ needs.analysis.outputs.unused-deps-count }}
+          circular_deps=${{ needs.analysis.outputs.circular-deps-count }}
+
+          failed=false
+
+          if [ $dead_code -gt ${{ env.MAX_DEAD_CODE_FILES }} ]; then
+            echo "::error::Dead code files ($dead_code) exceed threshold (${{ env.MAX_DEAD_CODE_FILES }})"
+            failed=true
+          fi
+
+          if [ $unused_deps -gt ${{ env.MAX_UNUSED_DEPS }} ]; then
+            echo "::error::Unused dependencies ($unused_deps) exceed threshold (${{ env.MAX_UNUSED_DEPS }})"
+            failed=true
+          fi
+
+          if [ $circular_deps -gt ${{ env.MAX_CIRCULAR_DEPS }} ]; then
+            echo "::error::Circular dependencies ($circular_deps) exceed threshold (${{ env.MAX_CIRCULAR_DEPS }})"
+            failed=true
+          fi
+
+          if [ "$failed" = true ]; then
+            exit 1
+          fi
+
+          echo "::notice::Code quality metrics within acceptable limits"
+
+  pr-comment:
+    name: PR Comment Generation
+    runs-on: ubuntu-latest
+    needs: [analysis, quality-gates]
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download analysis reports
+        uses: actions/download-artifact@v4
+        with:
+          name: cleanup-analysis-reports-${{ github.run_number }}
+          path: analysis/reports/ci/
+
+      - name: Generate enhanced PR comment
+        id: pr-comment
+        run: |
+          # Calculate status indicators
+          build_status=$([ ${{ needs.analysis.outputs.build-time }} -le ${{ env.MAX_BUILD_TIME_SECONDS }} ] && echo "✅ Pass" || echo "❌ Fail")
+          bundle_status=$([ ${{ needs.analysis.outputs.bundle-size }} -le ${{ env.MAX_BUNDLE_SIZE_KB }} ] && echo "✅ Pass" || echo "❌ Fail")
+          dead_code_status=$([ ${{ needs.analysis.outputs.dead-code-count }} -le ${{ env.MAX_DEAD_CODE_FILES }} ] && echo "✅ Pass" || echo "❌ Fail")
+          deps_status=$([ ${{ needs.analysis.outputs.unused-deps-count }} -le ${{ env.MAX_UNUSED_DEPS }} ] && echo "✅ Pass" || echo "❌ Fail")
+          circular_status=$([ ${{ needs.analysis.outputs.circular-deps-count }} -le ${{ env.MAX_CIRCULAR_DEPS }} ] && echo "✅ Pass" || echo "❌ Fail")
+
+          # Calculate trend indicators (simplified)
+          cache_emoji=$([ "${{ needs.analysis.outputs.cache-hit }}" = "true" ] && echo "🚀" || echo "🐌")
+          perf_emoji=$([ ${{ needs.analysis.outputs.performance-warnings }} -eq 0 ] && echo "⚡" || echo "⚠️")
+
+          # Create comprehensive PR comment
+          cat > pr-comment.md << EOF
+          ## 🔍 Code Quality & Performance Analysis
+
+          ### 🚀 Performance Overview
+          | Metric | Value | Threshold | Status | Trend |
+          |--------|-------|-----------|--------|-------|
+          | Build Time | ${{ needs.analysis.outputs.build-time }}s | ${{ env.MAX_BUILD_TIME_SECONDS }}s | $build_status | $perf_emoji |
+          | Total CI Time | ${{ needs.analysis.outputs.total-time }}s | 600s | $([ ${{ needs.analysis.outputs.total-time }} -le 600 ] && echo "✅ Pass" || echo "❌ Fail") | - |
+          | Cache Status | $([ "${{ needs.analysis.outputs.cache-hit }}" = "true" ] && echo "Hit" || echo "Miss") | - | $([ "${{ needs.analysis.outputs.cache-hit }}" = "true" ] && echo "✅ Hit" || echo "🟡 Miss") | $cache_emoji |
+
+          ### 📦 Bundle Analysis
+          | Metric | Value | Threshold | Status | Notes |
+          |--------|-------|-----------|--------|-------|
+          | Total Size | ${{ needs.analysis.outputs.bundle-size }}KB | ${{ env.MAX_BUNDLE_SIZE_KB }}KB | $bundle_status | Raw bundle size |
+          | Gzipped Size | ${{ needs.analysis.outputs.bundle-gzipped }}KB | - | ✅ Info | Compressed size |
+          | File Count | ${{ needs.analysis.outputs.bundle-files }} | - | ✅ Info | Static assets |
+          | Bundle Warnings | ${{ needs.analysis.outputs.bundle-warnings }} | 0 | $([ ${{ needs.analysis.outputs.bundle-warnings }} -eq 0 ] && echo "✅ Pass" || echo "⚠️ Check") | Analysis warnings |
+
+          ### 🧹 Code Quality Metrics
+          | Metric | Count | Threshold | Status | Action Required |
+          |--------|-------|-----------|--------|-----------------|
+          | Dead Code Files | ${{ needs.analysis.outputs.dead-code-count }} | ${{ env.MAX_DEAD_CODE_FILES }} | $dead_code_status | $([ ${{ needs.analysis.outputs.dead-code-count }} -gt ${{ env.MAX_DEAD_CODE_FILES }} ] && echo "Remove unused code" || echo "None") |
+          | Unused Dependencies | ${{ needs.analysis.outputs.unused-deps-count }} | ${{ env.MAX_UNUSED_DEPS }} | $deps_status | $([ ${{ needs.analysis.outputs.unused-deps-count }} -gt ${{ env.MAX_UNUSED_DEPS }} ] && echo "Clean package.json" || echo "None") |
+          | Circular Dependencies | ${{ needs.analysis.outputs.circular-deps-count }} | ${{ env.MAX_CIRCULAR_DEPS }} | $circular_status | $([ ${{ needs.analysis.outputs.circular-deps-count }} -gt ${{ env.MAX_CIRCULAR_DEPS }} ] && echo "Refactor imports" || echo "None") |
+
+          ### 📊 Quick Actions
+          $(if [ ${{ needs.analysis.outputs.dead-code-count }} -gt ${{ env.MAX_DEAD_CODE_FILES }} ] || [ ${{ needs.analysis.outputs.unused-deps-count }} -gt ${{ env.MAX_UNUSED_DEPS }} ] || [ ${{ needs.analysis.outputs.circular-deps-count }} -gt ${{ env.MAX_CIRCULAR_DEPS }} ]; then
+            echo "⚠️ **Quality gates failed!** Please address the issues above before merging."
+            echo ""
+            echo "**Quick fixes:**"
+            [ ${{ needs.analysis.outputs.dead-code-count }} -gt ${{ env.MAX_DEAD_CODE_FILES }} ] && echo "- Run \`pnpm analysis:dead-code\` to identify unused files"
+            [ ${{ needs.analysis.outputs.unused-deps-count }} -gt ${{ env.MAX_UNUSED_DEPS }} ] && echo "- Run \`pnpm analysis:deps\` to find unused dependencies"
+            [ ${{ needs.analysis.outputs.circular-deps-count }} -gt ${{ env.MAX_CIRCULAR_DEPS }} ] && echo "- Run \`pnpm analysis:circular\` to identify circular imports"
+          else
+            echo "🎉 **All quality gates passed!** Your code is clean and performant."
+          fi)
+
+          ### 📈 Performance Insights
+          $(if [ ${{ needs.analysis.outputs.performance-warnings }} -gt 0 ] || [ ${{ needs.analysis.outputs.bundle-warnings }} -gt 0 ]; then
+            echo "**Performance Recommendations:**"
+            [ ${{ needs.analysis.outputs.performance-warnings }} -gt 0 ] && echo "- Check performance report for build optimization suggestions"
+            [ ${{ needs.analysis.outputs.bundle-warnings }} -gt 0 ] && echo "- Review bundle analysis for size optimization opportunities"
+            [ "${{ needs.analysis.outputs.cache-hit }}" = "false" ] && echo "- Consider CI caching optimization for faster builds"
+          else
+            echo "✨ **Great performance!** No optimization recommendations at this time."
+          fi)
+
+          ### 🔗 Detailed Reports
+          <details>
+          <summary>📦 Bundle Size Breakdown</summary>
+
+          $(cat analysis/reports/ci/bundle-size.md 2>/dev/null || echo "Detailed bundle analysis not available. Check workflow artifacts.")
+
+          </details>
+
+          <details>
+          <summary>⚡ Performance Report</summary>
+
+          $(cat analysis/reports/ci/performance-report.md 2>/dev/null || echo "Detailed performance report not available. Check workflow artifacts.")
+
+          </details>
+
+          <details>
+          <summary>📋 Full Analysis Summary</summary>
+
+          $(cat analysis/reports/ci/summary.md 2>/dev/null || echo "Full analysis summary not available. Check workflow artifacts.")
+
+          </details>
+
+          ---
+          📊 **Analysis Data:** [View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) | 🕐 **Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          EOF
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = fs.readFileSync('pr-comment.md', 'utf8');
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existingComment = comments.find(comment =>
+              comment.body.includes('🔍 Cleanup Analysis Report')
+            );
+
+            if (existingComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: comment
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+  trend-tracking:
+    name: Trend Tracking & Baseline Update
+    runs-on: ubuntu-latest
+    needs: [analysis, quality-gates]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download analysis reports
+        uses: actions/download-artifact@v4
+        with:
+          name: cleanup-analysis-reports-${{ github.run_number }}
+          path: analysis/reports/ci/
+
+      - name: Update trend data
+        run: |
+          # Create trend data directory
+          mkdir -p analysis/reports/trends
+
+          # Create trend data entry
+          timestamp=$(date -u +"%Y-%m-%d %H:%M:%S")
+          cat > analysis/reports/trends/$(date +%Y%m%d-%H%M%S).json << EOF
+          {
+            "timestamp": "$timestamp",
+            "commit": "${{ github.sha }}",
+            "build_time": ${{ needs.analysis.outputs.build-time }},
+            "bundle_size_kb": ${{ needs.analysis.outputs.bundle-size }},
+            "dead_code_files": ${{ needs.analysis.outputs.dead-code-count }},
+            "unused_deps": ${{ needs.analysis.outputs.unused-deps-count }},
+            "circular_deps": ${{ needs.analysis.outputs.circular-deps-count }}
+          }
+          EOF
+
+          # Keep only last 30 trend files
+          cd analysis/reports/trends
+          ls -t *.json | tail -n +31 | xargs -r rm
+
+      - name: Update baseline if improved
+        run: |
+          # Copy current analysis as new baseline if all metrics improved
+          current_build=${{ needs.analysis.outputs.build-time }}
+          current_bundle=${{ needs.analysis.outputs.bundle-size }}
+
+          if [ -f "analysis/reports/baseline/metrics.json" ]; then
+            baseline_build=$(jq -r '.build_time' analysis/reports/baseline/metrics.json)
+            baseline_bundle=$(jq -r '.bundle_size_kb' analysis/reports/baseline/metrics.json)
+
+            if [ $current_build -le $baseline_build ] && [ $current_bundle -le $baseline_bundle ]; then
+              echo "Metrics improved, updating baseline"
+              cp -r analysis/reports/ci/* analysis/reports/baseline/
+
+              cat > analysis/reports/baseline/metrics.json << EOF
+              {
+                "timestamp": "$(date -u +"%Y-%m-%d %H:%M:%S")",
+                "commit": "${{ github.sha }}",
+                "build_time": $current_build,
+                "bundle_size_kb": $current_bundle,
+                "dead_code_files": ${{ needs.analysis.outputs.dead-code-count }},
+                "unused_deps": ${{ needs.analysis.outputs.unused-deps-count }},
+                "circular_deps": ${{ needs.analysis.outputs.circular-deps-count }}
+              }
+          EOF
+            fi
+          else
+            echo "No baseline exists, creating initial baseline"
+            mkdir -p analysis/reports/baseline
+            cp -r analysis/reports/ci/* analysis/reports/baseline/
+          fi
+
+      - name: Commit trend data
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add analysis/reports/trends/ analysis/reports/baseline/
+          git diff --staged --quiet || git commit -m "Update cleanup analysis trends and baseline [skip ci]"
+          git push
