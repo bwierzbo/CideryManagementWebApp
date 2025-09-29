@@ -52,7 +52,8 @@
     "performance:analyze": "tsx .claude/scripts/ci/performance-monitor.ts analyze",
     "quality:validate": "tsx .claude/scripts/ci/quality-gates-manager.ts validate",
     "quality:config": "tsx .claude/scripts/ci/quality-gates-manager.ts config",
-    "quality:thresholds": "tsx .claude/scripts/ci/quality-gates-manager.ts thresholds"
+    "quality:thresholds": "tsx .claude/scripts/ci/quality-gates-manager.ts thresholds",
+    "ci:test": "tsx .claude/scripts/ci/ci-integration-test.ts"
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^15.5.4",

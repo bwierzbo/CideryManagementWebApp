@@ -29,7 +29,13 @@ jobs:
 
     outputs:
       bundle-size: ${{ steps.bundle-analysis.outputs.size-kb }}
-      build-time: ${{ steps.build-timing.outputs.duration }}
+      bundle-gzipped: ${{ steps.bundle-analysis.outputs.gzipped-kb }}
+      bundle-files: ${{ steps.bundle-analysis.outputs.file-count }}
+      bundle-warnings: ${{ steps.bundle-analysis.outputs.warnings-count }}
+      build-time: ${{ steps.build-performance.outputs.build-time }}
+      total-time: ${{ steps.build-performance.outputs.total-time }}
+      cache-hit: ${{ steps.build-performance.outputs.cache-hit }}
+      performance-warnings: ${{ steps.build-performance.outputs.warnings-count }}
       dead-code-count: ${{ steps.dead-code.outputs.file-count }}
       unused-deps-count: ${{ steps.deps-analysis.outputs.unused-count }}
       circular-deps-count: ${{ steps.circular-deps.outputs.count }}
@@ -55,51 +61,63 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Build Time Performance Benchmarking
-      - name: Build timing start
-        id: build-start
-        run: echo "start-time=$(date +%s)" >> $GITHUB_OUTPUT
-
-      - name: Build project
-        run: pnpm build
-
-      - name: Calculate build duration
-        id: build-timing
+      # Comprehensive Performance Monitoring
+      - name: Start performance monitoring
+        id: performance-start
         run: |
-          start_time=${{ steps.build-start.outputs.start-time }}
-          end_time=$(date +%s)
-          duration=$((end_time - start_time))
-          echo "duration=$duration" >> $GITHUB_OUTPUT
-          echo "Build completed in ${duration} seconds"
+          echo "monitor-start=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "🚀 Starting comprehensive performance monitoring"
 
-      # Bundle Size Analysis
-      - name: Analyze bundle size
+      - name: Build project with performance tracking
+        id: build-performance
+        run: |
+          echo "Building project and tracking performance..."
+          pnpm performance:monitor build
+
+          # Extract performance metrics from the generated report
+          if [ -f "analysis/reports/ci/performance-metrics.json" ]; then
+            build_time=$(jq -r '.buildTime // 0' analysis/reports/ci/performance-metrics.json)
+            total_time=$(jq -r '.totalTime // 0' analysis/reports/ci/performance-metrics.json)
+            cache_hit=$(jq -r '.cacheHit // false' analysis/reports/ci/performance-metrics.json)
+            warnings_count=$(jq -r '.warnings | length' analysis/reports/ci/performance-metrics.json)
+
+            echo "build-time=$build_time" >> $GITHUB_OUTPUT
+            echo "total-time=$total_time" >> $GITHUB_OUTPUT
+            echo "cache-hit=$cache_hit" >> $GITHUB_OUTPUT
+            echo "warnings-count=$warnings_count" >> $GITHUB_OUTPUT
+          else
+            echo "build-time=0" >> $GITHUB_OUTPUT
+            echo "total-time=0" >> $GITHUB_OUTPUT
+            echo "cache-hit=false" >> $GITHUB_OUTPUT
+            echo "warnings-count=0" >> $GITHUB_OUTPUT
+          fi
+
+      # Advanced Bundle Size Analysis
+      - name: Analyze bundle size with detailed insights
         id: bundle-analysis
         run: |
-          # Find the Next.js build output
-          if [ -d "apps/web/.next" ]; then
-            # Calculate total bundle size
-            total_size=$(find apps/web/.next/static -name "*.js" -exec stat -f%z {} \; | awk '{s+=$1} END {print s}')
-            size_kb=$((total_size / 1024))
-            echo "size-kb=$size_kb" >> $GITHUB_OUTPUT
-            echo "Bundle size: ${size_kb}KB"
+          echo "Running comprehensive bundle analysis..."
+          pnpm analysis:bundle
 
-            # Create bundle size report
-            mkdir -p analysis/reports/ci
-            echo "# Bundle Size Analysis" > analysis/reports/ci/bundle-size.md
-            echo "**Total Size:** ${size_kb}KB" >> analysis/reports/ci/bundle-size.md
-            echo "**Timestamp:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> analysis/reports/ci/bundle-size.md
-            echo "" >> analysis/reports/ci/bundle-size.md
+          # Extract bundle metrics from the generated report
+          if [ -f "analysis/reports/ci/bundle-analysis.json" ]; then
+            total_size=$(jq -r '.totalSizeKB // 0' analysis/reports/ci/bundle-analysis.json)
+            gzipped_size=$(jq -r '.gzippedSizeKB // 0' analysis/reports/ci/bundle-analysis.json)
+            file_count=$(jq -r '.files | length' analysis/reports/ci/bundle-analysis.json)
+            warnings_count=$(jq -r '.warnings | length' analysis/reports/ci/bundle-analysis.json)
 
-            # List largest files
-            echo "## Largest Bundle Files" >> analysis/reports/ci/bundle-size.md
-            find apps/web/.next/static -name "*.js" -exec stat -f"%z %N" {} \; | sort -nr | head -10 | while read size file; do
-              size_kb=$((size / 1024))
-              echo "- $(basename $file): ${size_kb}KB" >> analysis/reports/ci/bundle-size.md
-            done
+            echo "size-kb=$total_size" >> $GITHUB_OUTPUT
+            echo "gzipped-kb=$gzipped_size" >> $GITHUB_OUTPUT
+            echo "file-count=$file_count" >> $GITHUB_OUTPUT
+            echo "warnings-count=$warnings_count" >> $GITHUB_OUTPUT
+
+            echo "Bundle analysis: ${total_size}KB total (${gzipped_size}KB gzipped)"
           else
             echo "size-kb=0" >> $GITHUB_OUTPUT
-            echo "No build output found"
+            echo "gzipped-kb=0" >> $GITHUB_OUTPUT
+            echo "file-count=0" >> $GITHUB_OUTPUT
+            echo "warnings-count=0" >> $GITHUB_OUTPUT
+            echo "No bundle analysis results found"
           fi
 
       # Dead Code Analysis
@@ -221,20 +239,67 @@ jobs:
       - name: Validate build performance
         run: |
           build_time=${{ needs.analysis.outputs.build-time }}
+          total_time=${{ needs.analysis.outputs.total-time }}
+          cache_hit=${{ needs.analysis.outputs.cache-hit }}
+          perf_warnings=${{ needs.analysis.outputs.performance-warnings }}
+
+          failed=false
+
+          # Check build time
           if [ $build_time -gt ${{ env.MAX_BUILD_TIME_SECONDS }} ]; then
             echo "::error::Build time ${build_time}s exceeds threshold of ${{ env.MAX_BUILD_TIME_SECONDS }}s"
+            failed=true
+          fi
+
+          # Check total CI time (max 10 minutes)
+          if [ $total_time -gt 600 ]; then
+            echo "::error::Total CI time ${total_time}s exceeds 10 minute threshold"
+            failed=true
+          fi
+
+          # Report performance warnings
+          if [ $perf_warnings -gt 0 ]; then
+            echo "::warning::${perf_warnings} performance warnings detected"
+          fi
+
+          if [ "$failed" = true ]; then
             exit 1
           fi
-          echo "::notice::Build performance: ${build_time}s (threshold: ${{ env.MAX_BUILD_TIME_SECONDS }}s)"
 
-      - name: Validate bundle size
+          echo "::notice::Build performance: ${build_time}s (threshold: ${{ env.MAX_BUILD_TIME_SECONDS }}s)"
+          echo "::notice::Total CI time: ${total_time}s"
+          echo "::notice::Cache status: $([ "$cache_hit" = "true" ] && echo "hit" || echo "miss")"
+
+      - name: Validate bundle size and quality
         run: |
           bundle_size=${{ needs.analysis.outputs.bundle-size }}
+          bundle_gzipped=${{ needs.analysis.outputs.bundle-gzipped }}
+          bundle_warnings=${{ needs.analysis.outputs.bundle-warnings }}
+
+          failed=false
+
+          # Check total bundle size
           if [ $bundle_size -gt ${{ env.MAX_BUNDLE_SIZE_KB }} ]; then
             echo "::error::Bundle size ${bundle_size}KB exceeds threshold of ${{ env.MAX_BUNDLE_SIZE_KB }}KB"
+            failed=true
+          fi
+
+          # Check gzipped size (should be roughly 30% of total)
+          expected_gzipped=$((bundle_size * 30 / 100))
+          if [ $bundle_gzipped -gt $((expected_gzipped + 50)) ]; then
+            echo "::warning::Bundle compression ratio seems low (${bundle_gzipped}KB gzipped vs ${bundle_size}KB raw)"
+          fi
+
+          # Report bundle warnings
+          if [ $bundle_warnings -gt 0 ]; then
+            echo "::warning::${bundle_warnings} bundle warnings detected"
+          fi
+
+          if [ "$failed" = true ]; then
             exit 1
           fi
-          echo "::notice::Bundle size: ${bundle_size}KB (threshold: ${{ env.MAX_BUNDLE_SIZE_KB }}KB)"
+
+          echo "::notice::Bundle size: ${bundle_size}KB (${bundle_gzipped}KB gzipped, threshold: ${{ env.MAX_BUNDLE_SIZE_KB }}KB)"
 
       - name: Validate code quality metrics
         run: |
@@ -281,46 +346,92 @@ jobs:
           name: cleanup-analysis-reports-${{ github.run_number }}
           path: analysis/reports/ci/
 
-      - name: Generate PR comment
+      - name: Generate enhanced PR comment
         id: pr-comment
         run: |
-          # Create PR comment with analysis results
+          # Calculate status indicators
+          build_status=$([ ${{ needs.analysis.outputs.build-time }} -le ${{ env.MAX_BUILD_TIME_SECONDS }} ] && echo "✅ Pass" || echo "❌ Fail")
+          bundle_status=$([ ${{ needs.analysis.outputs.bundle-size }} -le ${{ env.MAX_BUNDLE_SIZE_KB }} ] && echo "✅ Pass" || echo "❌ Fail")
+          dead_code_status=$([ ${{ needs.analysis.outputs.dead-code-count }} -le ${{ env.MAX_DEAD_CODE_FILES }} ] && echo "✅ Pass" || echo "❌ Fail")
+          deps_status=$([ ${{ needs.analysis.outputs.unused-deps-count }} -le ${{ env.MAX_UNUSED_DEPS }} ] && echo "✅ Pass" || echo "❌ Fail")
+          circular_status=$([ ${{ needs.analysis.outputs.circular-deps-count }} -le ${{ env.MAX_CIRCULAR_DEPS }} ] && echo "✅ Pass" || echo "❌ Fail")
+
+          # Calculate trend indicators (simplified)
+          cache_emoji=$([ "${{ needs.analysis.outputs.cache-hit }}" = "true" ] && echo "🚀" || echo "🐌")
+          perf_emoji=$([ ${{ needs.analysis.outputs.performance-warnings }} -eq 0 ] && echo "⚡" || echo "⚠️")
+
+          # Create comprehensive PR comment
           cat > pr-comment.md << EOF
-          ## 🔍 Cleanup Analysis Report
+          ## 🔍 Code Quality & Performance Analysis
 
-          ### Performance Metrics
-          | Metric | Value | Threshold | Status |
-          |--------|-------|-----------|--------|
-          | Build Time | ${{ needs.analysis.outputs.build-time }}s | ${{ env.MAX_BUILD_TIME_SECONDS }}s | $([ ${{ needs.analysis.outputs.build-time }} -le ${{ env.MAX_BUILD_TIME_SECONDS }} ] && echo "✅ Pass" || echo "❌ Fail") |
-          | Bundle Size | ${{ needs.analysis.outputs.bundle-size }}KB | ${{ env.MAX_BUNDLE_SIZE_KB }}KB | $([ ${{ needs.analysis.outputs.bundle-size }} -le ${{ env.MAX_BUNDLE_SIZE_KB }} ] && echo "✅ Pass" || echo "❌ Fail") |
+          ### 🚀 Performance Overview
+          | Metric | Value | Threshold | Status | Trend |
+          |--------|-------|-----------|--------|-------|
+          | Build Time | ${{ needs.analysis.outputs.build-time }}s | ${{ env.MAX_BUILD_TIME_SECONDS }}s | $build_status | $perf_emoji |
+          | Total CI Time | ${{ needs.analysis.outputs.total-time }}s | 600s | $([ ${{ needs.analysis.outputs.total-time }} -le 600 ] && echo "✅ Pass" || echo "❌ Fail") | - |
+          | Cache Status | $([ "${{ needs.analysis.outputs.cache-hit }}" = "true" ] && echo "Hit" || echo "Miss") | - | $([ "${{ needs.analysis.outputs.cache-hit }}" = "true" ] && echo "✅ Hit" || echo "🟡 Miss") | $cache_emoji |
 
-          ### Code Quality Metrics
-          | Metric | Count | Threshold | Status |
-          |--------|-------|-----------|--------|
-          | Dead Code Files | ${{ needs.analysis.outputs.dead-code-count }} | ${{ env.MAX_DEAD_CODE_FILES }} | $([ ${{ needs.analysis.outputs.dead-code-count }} -le ${{ env.MAX_DEAD_CODE_FILES }} ] && echo "✅ Pass" || echo "❌ Fail") |
-          | Unused Dependencies | ${{ needs.analysis.outputs.unused-deps-count }} | ${{ env.MAX_UNUSED_DEPS }} | $([ ${{ needs.analysis.outputs.unused-deps-count }} -le ${{ env.MAX_UNUSED_DEPS }} ] && echo "✅ Pass" || echo "❌ Fail") |
-          | Circular Dependencies | ${{ needs.analysis.outputs.circular-deps-count }} | ${{ env.MAX_CIRCULAR_DEPS }} | $([ ${{ needs.analysis.outputs.circular-deps-count }} -le ${{ env.MAX_CIRCULAR_DEPS }} ] && echo "✅ Pass" || echo "❌ Fail") |
+          ### 📦 Bundle Analysis
+          | Metric | Value | Threshold | Status | Notes |
+          |--------|-------|-----------|--------|-------|
+          | Total Size | ${{ needs.analysis.outputs.bundle-size }}KB | ${{ env.MAX_BUNDLE_SIZE_KB }}KB | $bundle_status | Raw bundle size |
+          | Gzipped Size | ${{ needs.analysis.outputs.bundle-gzipped }}KB | - | ✅ Info | Compressed size |
+          | File Count | ${{ needs.analysis.outputs.bundle-files }} | - | ✅ Info | Static assets |
+          | Bundle Warnings | ${{ needs.analysis.outputs.bundle-warnings }} | 0 | $([ ${{ needs.analysis.outputs.bundle-warnings }} -eq 0 ] && echo "✅ Pass" || echo "⚠️ Check") | Analysis warnings |
 
-          ### 📊 Detailed Reports
+          ### 🧹 Code Quality Metrics
+          | Metric | Count | Threshold | Status | Action Required |
+          |--------|-------|-----------|--------|-----------------|
+          | Dead Code Files | ${{ needs.analysis.outputs.dead-code-count }} | ${{ env.MAX_DEAD_CODE_FILES }} | $dead_code_status | $([ ${{ needs.analysis.outputs.dead-code-count }} -gt ${{ env.MAX_DEAD_CODE_FILES }} ] && echo "Remove unused code" || echo "None") |
+          | Unused Dependencies | ${{ needs.analysis.outputs.unused-deps-count }} | ${{ env.MAX_UNUSED_DEPS }} | $deps_status | $([ ${{ needs.analysis.outputs.unused-deps-count }} -gt ${{ env.MAX_UNUSED_DEPS }} ] && echo "Clean package.json" || echo "None") |
+          | Circular Dependencies | ${{ needs.analysis.outputs.circular-deps-count }} | ${{ env.MAX_CIRCULAR_DEPS }} | $circular_status | $([ ${{ needs.analysis.outputs.circular-deps-count }} -gt ${{ env.MAX_CIRCULAR_DEPS }} ] && echo "Refactor imports" || echo "None") |
 
-          Analysis artifacts are available in the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+          ### 📊 Quick Actions
+          $(if [ ${{ needs.analysis.outputs.dead-code-count }} -gt ${{ env.MAX_DEAD_CODE_FILES }} ] || [ ${{ needs.analysis.outputs.unused-deps-count }} -gt ${{ env.MAX_UNUSED_DEPS }} ] || [ ${{ needs.analysis.outputs.circular-deps-count }} -gt ${{ env.MAX_CIRCULAR_DEPS }} ]; then
+            echo "⚠️ **Quality gates failed!** Please address the issues above before merging."
+            echo ""
+            echo "**Quick fixes:**"
+            [ ${{ needs.analysis.outputs.dead-code-count }} -gt ${{ env.MAX_DEAD_CODE_FILES }} ] && echo "- Run \`pnpm analysis:dead-code\` to identify unused files"
+            [ ${{ needs.analysis.outputs.unused-deps-count }} -gt ${{ env.MAX_UNUSED_DEPS }} ] && echo "- Run \`pnpm analysis:deps\` to find unused dependencies"
+            [ ${{ needs.analysis.outputs.circular-deps-count }} -gt ${{ env.MAX_CIRCULAR_DEPS }} ] && echo "- Run \`pnpm analysis:circular\` to identify circular imports"
+          else
+            echo "🎉 **All quality gates passed!** Your code is clean and performant."
+          fi)
 
+          ### 📈 Performance Insights
+          $(if [ ${{ needs.analysis.outputs.performance-warnings }} -gt 0 ] || [ ${{ needs.analysis.outputs.bundle-warnings }} -gt 0 ]; then
+            echo "**Performance Recommendations:**"
+            [ ${{ needs.analysis.outputs.performance-warnings }} -gt 0 ] && echo "- Check performance report for build optimization suggestions"
+            [ ${{ needs.analysis.outputs.bundle-warnings }} -gt 0 ] && echo "- Review bundle analysis for size optimization opportunities"
+            [ "${{ needs.analysis.outputs.cache-hit }}" = "false" ] && echo "- Consider CI caching optimization for faster builds"
+          else
+            echo "✨ **Great performance!** No optimization recommendations at this time."
+          fi)
+
+          ### 🔗 Detailed Reports
           <details>
           <summary>📦 Bundle Size Breakdown</summary>
 
-          $(cat analysis/reports/ci/bundle-size.md 2>/dev/null || echo "Bundle analysis not available")
+          $(cat analysis/reports/ci/bundle-size.md 2>/dev/null || echo "Detailed bundle analysis not available. Check workflow artifacts.")
 
           </details>
 
           <details>
-          <summary>🧹 Code Cleanup Summary</summary>
+          <summary>⚡ Performance Report</summary>
 
-          $(cat analysis/reports/ci/summary.md 2>/dev/null || echo "Summary not available")
+          $(cat analysis/reports/ci/performance-report.md 2>/dev/null || echo "Detailed performance report not available. Check workflow artifacts.")
+
+          </details>
+
+          <details>
+          <summary>📋 Full Analysis Summary</summary>
+
+          $(cat analysis/reports/ci/summary.md 2>/dev/null || echo "Full analysis summary not available. Check workflow artifacts.")
 
           </details>
 
           ---
-          *Generated by Cleanup Checks workflow - $(date -u +"%Y-%m-%d %H:%M:%S UTC")*
+          📊 **Analysis Data:** [View workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) | 🕐 **Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
           EOF
 
       - name: Comment on PR
