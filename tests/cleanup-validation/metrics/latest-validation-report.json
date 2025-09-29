@@ -1,0 +1,87 @@
+{
+  "summary": {
+    "timestamp": "2025-09-29T00:24:35.860Z",
+    "environment": "test",
+    "commit": "c5972c4b26831931c44faaa1f751af571d2b7aa1",
+    "totalTests": 2,
+    "passed": 0,
+    "failed": 2,
+    "warnings": 2,
+    "totalDuration": 35396.410917
+  },
+  "baseline": {
+    "timestamp": "2025-09-29T00:24:35.952Z",
+    "environment": "test",
+    "commit": "c5972c4b26831931c44faaa1f751af571d2b7aa1",
+    "metrics": {
+      "buildTime": -1,
+      "typeCheckTime": -1,
+      "analysisTime": {
+        "knip": -1,
+        "tsPrune": -1,
+        "depcheck": -1,
+        "madge": 1588.6659169999984
+      },
+      "bundleSize": {
+        "total": 0,
+        "packages": {
+          "api": 0,
+          "db": 0,
+          "lib": 0,
+          "worker": 0,
+          "web": 0
+        }
+      }
+    }
+  },
+  "categories": {
+    "staticAnalysis": {
+      "success": false,
+      "errors": [
+        "Knip analysis failed"
+      ],
+      "warnings": [
+        "ts-prune found unused exports",
+        "Dependency check found issues"
+      ],
+      "metrics": {
+        "knip": {
+          "success": false,
+          "error": "Command failed: pnpm analysis:dead-code\n/prettier*/                                      analysis/config/knip.json  Remove from ignoreDependencies     \ntypescript                                       analysis/config/knip.json  Remove from ignoreDependencies     \nvitest                                           analysis/config/knip.json  Remove from ignoreDependencies     \n/@vitest\\/*/                                     analysis/config/knip.json  Remove from ignoreDependencies     \n@playwright/test                                 analysis/config/knip.json  Remove from ignoreDependencies     \nconcurrently                                     analysis/config/knip.json  Remove from ignoreDependencies     \nautoprefixer                                     analysis/config/knip.json  Remove from ignoreDependencies     \npostcss                                          analysis/config/knip.json  Remove from ignoreDependencies     \n/tailwindcss*/                                   analysis/config/knip.json  Remove from ignoreDependencies     \nnext                                             analysis/config/knip.json  Remove from ignoreBinaries         \ntsx                                              analysis/config/knip.json  Remove from ignoreBinaries         \ntsc                                              analysis/config/knip.json  Remove from ignoreBinaries         \nprettier                                         analysis/config/knip.json  Remove from ignoreBinaries         \nvitest                                           analysis/config/knip.json  Remove from ignoreBinaries         \nplaywright                                       analysis/config/knip.json  Remove from ignoreBinaries         \nsrc/pages/**/*.{js,ts,jsx,tsx}  apps/web         analysis/config/knip.json  Refine entry pattern (no matches)  \nsrc/middleware.{js,ts}          apps/web         analysis/config/knip.json  Refine entry pattern (no matches)  \nplaywright.config.{js,ts}       apps/web         analysis/config/knip.json  Refine entry pattern (no matches)  \n**/*.config.{js,ts,mjs}                          analysis/config/knip.json  Refine project pattern (no matches)\n**/*.d.ts                                        analysis/config/knip.json  Refine project pattern (no matches)\ndrizzle/**/*.sql                packages/db      analysis/config/knip.json  Refine project pattern (no matches)\nvitest.config.ts                                 analysis/config/knip.json  Remove redundant entry pattern     \nplaywright.config.ts                             analysis/config/knip.json  Remove redundant entry pattern     \nsrc/index.ts                    packages/api     analysis/config/knip.json  Remove redundant entry pattern     \nsrc/index.ts                    packages/lib     analysis/config/knip.json  Remove redundant entry pattern     \nsrc/index.ts                    packages/worker  analysis/config/knip.json  Remove redundant entry pattern     \nsrc/index.ts                    packages/db      analysis/config/knip.json  Remove redundant entry pattern     \nsrc/schema.ts                   packages/db      analysis/config/knip.json  Remove redundant entry pattern     \ndrizzle.config.ts               packages/db      analysis/config/knip.json  Remove redundant entry pattern     \n"
+        },
+        "tsPrune": {
+          "success": true,
+          "output": "\n> cidery-management-app@0.1.0 analysis:ts-prune /Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks\n> ts-prune\n\n ELIFECYCLE  Command failed with exit code 1.\n"
+        },
+        "depcheck": {
+          "success": true,
+          "output": "\n> cidery-management-app@0.1.0 analysis:deps /Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks\n> depcheck --config analysis/config/depcheck.json\n\nUnused devDependencies\n* @playwright/test\n* @types/glob\n* @types/node\n* @types/typescript\n* @vitest/coverage-v8\n* @vitest/ui\n* concurrently\n* depcheck\n* glob\n* knip\n* madge\n* prettier\n* ts-prune\n* tsx\n* typescript\n* vitest\n ELIFECYCLE  Command failed with exit code 255.\n"
+        },
+        "madge": {
+          "success": true,
+          "output": "No circular dependencies found"
+        }
+      },
+      "duration": 8305.022125
+    },
+    "codeQuality": {
+      "success": false,
+      "errors": [
+        "TypeScript compilation failed",
+        "Build failed"
+      ],
+      "warnings": [],
+      "metrics": {
+        "typescript": {
+          "success": false,
+          "error": "\n> cidery-management-app@0.1.0 typecheck /Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks\n> pnpm -r run typecheck\n\nScope: 5 of 6 workspace projects\npackages/worker typecheck$ tsc --noEmit\npackages/db typecheck$ tsc --noEmit\npackages/worker typecheck: Done\npackages/db typecheck: src/__tests__/deprecation-system.test.ts(120,42): error TS7006: Parameter 'query' implicitly has an 'any' type.\npackages/db typecheck: src/__tests__/deprecation-system.test.ts(160,42): error TS7006: Parameter 'query' implicitly has an 'any' type.\npackages/db typecheck: src/__tests__/deprecation-system.test.ts(219,42): error TS7006: Parameter 'query' implicitly has an 'any' type.\npackages/db typecheck: src/__tests__/deprecation-system.test.ts(269,63): error TS2741: Property 'reason' is missing in type '{ type: ElementType; name: string; expectedSql: string; }' but required in type '{ type: ElementType; name: string; schema?: string | undefined; reason: DeprecationReason; }'.\npackages/db typecheck: src/__tests__/deprecation-system.test.ts(302,42): error TS7006: Parameter 'query' implicitly has an 'any' type.\npackages/db typecheck: src/__tests__/deprecation-system.test.ts(336,52): error TS7006: Parameter 'callback' implicitly has an 'any' type.\npackages/db typecheck: src/config/deprecation-config.ts(165,5): error TS2739: Type '{ enabled: false; testRestoreEnabled: false; }' is missing the following properties from type '{ enabled: boolean; directory: string; retentionDays: number; compressionEnabled: boolean; encryptionEnabled: boolean; verificationLevel: \"full\" | \"basic\" | \"comprehensive\"; testRestoreEnabled: boolean; }': directory, retentionDays, compressionEnabled, encryptionEnabled, verificationLevel\npackages/db typecheck: src/config/deprecation-config.ts(169,5): error TS2739: Type '{ enabled: true; channels: string[]; throttleWindowMinutes: number; }' is missing the following properties from type '{ enabled: boolean; channels: string[]; throttleWindowMinutes: number; maxAlertsPerHour: number; escalationRules: { triggerCount: number; timeWindowMinutes: number; escalateTo: \"error\" | \"critical\" | \"warning\"; }[]; }': maxAlertsPerHour, escalationRules\npackages/db typecheck: src/config/deprecation-config.ts(181,5): error TS2739: Type '{ enabled: false; testRestoreEnabled: true; }' is missing the following properties from type '{ enabled: boolean; directory: string; retentionDays: number; compressionEnabled: boolean; encryptionEnabled: boolean; verificationLevel: \"full\" | \"basic\" | \"comprehensive\"; testRestoreEnabled: boolean; }': directory, retentionDays, compressionEnabled, encryptionEnabled, verificationLevel\npackages/db typecheck: src/config/deprecation-config.ts(185,5): error TS2739: Type '{ enabled: false; retentionDays: number; }' is missing the following properties from type '{ enabled: boolean; alertOnAccess: boolean; trackPerformance: boolean; retentionDays: number; batchSize: number; aggregationInterval: number; }': alertOnAccess, trackPerformance, batchSize, aggregationInterval\npackages/db typecheck: src/config/deprecation-config.ts(189,5): error TS2739: Type '{ enabled: false; }' is missing the following properties from type '{ enabled: boolean; channels: string[]; throttleWindowMinutes: number; maxAlertsPerHour: number; escalationRules: { triggerCount: number; timeWindowMinutes: number; escalateTo: \"error\" | \"critical\" | \"warning\"; }[]; }': channels, throttleWindowMinutes, maxAlertsPerHour, escalationRules\npackages/db typecheck: src/config/deprecation-config.ts(199,5): error TS2739: Type '{ enabled: true; testRestoreEnabled: true; verificationLevel: \"comprehensive\"; }' is missing the following properties from type '{ enabled: boolean; directory: string; retentionDays: number; compressionEnabled: boolean; encryptionEnabled: boolean; verificationLevel: \"full\" | \"basic\" | \"comprehensive\"; testRestoreEnabled: boolean; }': directory, retentionDays, compressionEnabled, encryptionEnabled\npackages/db typecheck: src/config/deprecation-config.ts(204,5): error TS2739: Type '{ enabled: true; retentionDays: number; }' is missing the following properties from type '{ enabled: boolean; alertOnAccess: boolean; trackPerformance: boolean; retentionDays: number; batchSize: number; aggregationInterval: number; }': alertOnAccess, trackPerformance, batchSize, aggregationInterval\npackages/db typecheck: src/config/deprecation-config.ts(208,5): error TS2739: Type '{ enabled: true; channels: string[]; }' is missing the following properties from type '{ enabled: boolean; channels: string[]; throttleWindowMinutes: number; maxAlertsPerHour: number; escalationRules: { triggerCount: number; timeWindowMinutes: number; escalateTo: \"error\" | \"critical\" | \"warning\"; }[]; }': throttleWindowMinutes, maxAlertsPerHour, escalationRules\npackages/db typecheck: src/config/deprecation-config.ts(219,5): error TS2739: Type '{ enabled: true; testRestoreEnabled: false; verificationLevel: \"comprehensive\"; encryptionEnabled: true; }' is missing the following properties from type '{ enabled: boolean; directory: string; retentionDays: number; compressionEnabled: boolean; encryptionEnabled: boolean; verificationLevel: \"full\" | \"basic\" | \"comprehensive\"; testRestoreEnabled: boolean; }': directory, retentionDays, compressionEnabled\npackages/db typecheck: src/config/deprecation-config.ts(225,5): error TS2739: Type '{ enabled: true; retentionDays: number; }' is missing the following properties from type '{ enabled: boolean; alertOnAccess: boolean; trackPerformance: boolean; retentionDays: number; batchSize: number; aggregationInterval: number; }': alertOnAccess, trackPerformance, batchSize, aggregationInterval\npackages/db typecheck: src/config/deprecation-config.ts(229,5): error TS2739: Type '{ enabled: true; channels: string[]; escalationRules: ({ triggerCount: number; timeWindowMinutes: number; escalateTo: \"warning\"; } | { triggerCount: number; timeWindowMinutes: number; escalateTo: \"error\"; } | { ...; })[]; }' is missing the following properties from type '{ enabled: boolean; channels: string[]; throttleWindowMinutes: number; maxAlertsPerHour: number; escalationRules: { triggerCount: number; timeWindowMinutes: number; escalateTo: \"error\" | \"critical\" | \"warning\"; }[]; }': throttleWindowMinutes, maxAlertsPerHour\npackages/db typecheck: src/config/deprecation-config.ts(439,58): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/backup-validator.ts(224,42): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/backup-validator.ts(292,18): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/backup-validator.ts(348,64): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/backup-validator.ts(356,38): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/backup-validator.ts(413,7): error TS2322: Type 'ElementType' is not assignable to type '\"function\" | \"schema\" | \"table\" | \"index\" | \"constraint\" | \"view\"'.\npackages/db typecheck:   Type '\"column\"' is not assignable to type '\"function\" | \"schema\" | \"table\" | \"index\" | \"constraint\" | \"view\"'.\npackages/db typecheck: src/migrations/deprecation-system.ts(147,24): error TS2339: Property 'reason' does not exist on type 'Partial<MigrationMetadata>'.\npackages/db typecheck: src/migrations/deprecation-system.ts(221,66): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/deprecation-system.ts(221,100): error TS18046: 'rollbackError' is of type 'unknown'.\npackages/db typecheck: src/migrations/deprecation-system.ts(360,73): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/deprecation-system.ts(509,67): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/deprecation-system.ts(520,69): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/deprecation-system.ts(527,55): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/rollback-manager.ts(144,46): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/rollback-manager.ts(265,41): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/rollback-manager.ts(385,20): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/rollback-manager.ts(493,33): error TS2339: Property 'raw' does not exist on type 'string'.\npackages/db typecheck: src/migrations/safety-checks.ts(77,53): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/safety-checks.ts(122,69): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/safety-checks.ts(133,71): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/safety-checks.ts(143,69): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/safety-checks.ts(154,79): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/safety-checks.ts(162,51): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/safety-checks.ts(270,7): error TS2322: Type 'boolean | undefined' is not assignable to type 'boolean'.\npackages/db typecheck:   Type 'undefined' is not assignable to type 'boolean'.\npackages/db typecheck: src/migrations/safety-checks.ts(319,9): error TS2322: Type 'boolean | undefined' is not assignable to type 'boolean'.\npackages/db typecheck:   Type 'undefined' is not assignable to type 'boolean'.\npackages/db typecheck: src/migrations/safety-checks.ts(336,48): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/safety-checks.ts(388,59): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/safety-checks.ts(397,9): error TS2322: Type 'boolean | undefined' is not assignable to type 'boolean'.\npackages/db typecheck:   Type 'undefined' is not assignable to type 'boolean'.\npackages/db typecheck: src/migrations/safety-checks.ts(414,50): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/safety-checks.ts(512,69): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/safety-checks.ts(522,69): error TS2554: Expected 1 arguments, but got 2.\npackages/db typecheck: src/migrations/safety-checks.ts(529,58): error TS18046: 'error' is of type 'unknown'.\npackages/db typecheck: src/migrations/safety-checks.ts(572,7): error TS2322: Type 'boolean | undefined' is not assignable to type 'boolean'.\npackages/db typecheck:   Type 'undefined' is not assignable to type 'boolean'.\npackages/db typecheck: src/monitoring/deprecated-monitor.ts(103,9): error TS2393: Duplicate function implementation.\npackages/db typecheck: src/monitoring/deprecated-monitor.ts(124,9): error TS2393: Duplicate function implementation.\npackages/db typecheck: src/monitoring/deprecated-monitor.ts(355,11): error TS2393: Duplicate function implementation.\npackages/db typecheck: src/monitoring/deprecated-monitor.ts(366,11): error TS2393: Duplicate function implementation.\npackages/db typecheck: Failed\n/Users/benjaminwierzbanowski/Code/epic-cleanupandcodechecks/packages/db:\n ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  db@0.1.0 typecheck: `tsc --noEmit`\nExit status 2\n ELIFECYCLE  Command failed with exit code 1.\n"
+        },
+        "build": {
+          "success": false,
+          "error": "Command failed: pnpm build"
+        }
+      },
+      "duration": 8100.875625000001
+    }
+  }
+}
