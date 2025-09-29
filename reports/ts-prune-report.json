@@ -1,0 +1,5349 @@
+{
+  "unusedExports": [
+    {
+      "file": "playwright-page-verification.config.ts",
+      "line": 6,
+      "name": "default"
+    },
+    {
+      "file": "playwright-standalone.config.ts",
+      "line": 6,
+      "name": "default"
+    },
+    {
+      "file": "playwright.config.ts",
+      "line": 10,
+      "name": "default"
+    },
+    {
+      "file": "vitest.config.ts",
+      "line": 4,
+      "name": "default"
+    },
+    {
+      "file": "vitest.workspace.ts",
+      "line": 3,
+      "name": "default"
+    },
+    {
+      "file": "scripts/quality-dashboard.ts",
+      "line": 680,
+      "name": "QualityDashboard (used in module)"
+    },
+    {
+      "file": "apps/web/middleware.ts",
+      "line": 3,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/middleware.ts",
+      "line": 18,
+      "name": "config"
+    },
+    {
+      "file": "apps/web/vitest.config.ts",
+      "line": 6,
+      "name": "default"
+    },
+    {
+      "file": "packages/api/vitest.config.ts",
+      "line": 5,
+      "name": "default"
+    },
+    {
+      "file": "packages/db/drizzle.config.ts",
+      "line": 4,
+      "name": "default"
+    },
+    {
+      "file": "packages/db/vitest.config.ts",
+      "line": 5,
+      "name": "default"
+    },
+    {
+      "file": "packages/lib/vitest.config.ts",
+      "line": 4,
+      "name": "default"
+    },
+    {
+      "file": "packages/worker/vitest.config.ts",
+      "line": 5,
+      "name": "default"
+    },
+    {
+      "file": "tests/e2e/global-setup.ts",
+      "line": 137,
+      "name": "default"
+    },
+    {
+      "file": "tests/e2e/global-teardown.ts",
+      "line": 23,
+      "name": "default"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 11,
+      "name": "cleanDatabase"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 30,
+      "name": "createTestDbConnection"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 38,
+      "name": "waitFor"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 31,
+      "name": "createTestUser"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 45,
+      "name": "createTestVendor"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 58,
+      "name": "createTestPurchase"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 72,
+      "name": "createTestAbvData"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 83,
+      "name": "createTestYieldData"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 5,
+      "name": "TestUser"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 13,
+      "name": "TestVendor"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 20,
+      "name": "TestPurchase"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 9,
+      "name": "mockNextRouter"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 32,
+      "name": "mockTrpcClient"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 58,
+      "name": "mockSession"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 74,
+      "name": "mockEnvVars"
+    },
+    {
+      "file": "tests/utils/index.ts",
+      "line": 86,
+      "name": "mockConsole"
+    },
+    {
+      "file": "packages/api/src/index.ts",
+      "line": 1,
+      "name": "appRouter"
+    },
+    {
+      "file": "packages/api/src/index.ts",
+      "line": 1,
+      "name": "AppRouter"
+    },
+    {
+      "file": "packages/api/src/trpc.ts",
+      "line": 47,
+      "name": "auditedProcedure"
+    },
+    {
+      "file": "packages/api/src/trpc.ts",
+      "line": 89,
+      "name": "createAuditedRbacProcedure"
+    },
+    {
+      "file": "packages/api/src/trpc.ts",
+      "line": 95,
+      "name": "createCustomAuditProcedure"
+    },
+    {
+      "file": "packages/db/dist/client.js",
+      "line": 38,
+      "name": "__esModule (used in module)"
+    },
+    {
+      "file": "packages/db/dist/client.js",
+      "line": 70,
+      "name": "db (used in module)"
+    },
+    {
+      "file": "packages/db/dist/index.js",
+      "line": 16,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/index.js",
+      "line": 20,
+      "name": "db (used in module)"
+    },
+    {
+      "file": "packages/db/dist/run-backfill.js",
+      "line": 3,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 16,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 22,
+      "name": "unitEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 23,
+      "name": "batchStatusEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 24,
+      "name": "vesselStatusEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 25,
+      "name": "vesselTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 26,
+      "name": "vesselMaterialEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 27,
+      "name": "vesselJacketedEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 28,
+      "name": "transactionTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 29,
+      "name": "cogsItemTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 30,
+      "name": "userRoleEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 31,
+      "name": "pressRunStatusEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 37,
+      "name": "fruitTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 39,
+      "name": "ciderCategoryEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 40,
+      "name": "intensityEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 41,
+      "name": "harvestWindowEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 42,
+      "name": "materialTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 43,
+      "name": "packagingItemTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 50,
+      "name": "users (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 62,
+      "name": "vendors (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 71,
+      "name": "baseFruitVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 90,
+      "name": "vendorVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 106,
+      "name": "additiveVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 121,
+      "name": "vendorAdditiveVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 135,
+      "name": "juiceVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 145,
+      "name": "vendorJuiceVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 159,
+      "name": "packagingVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 170,
+      "name": "vendorPackagingVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 183,
+      "name": "basefruitPurchases (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 195,
+      "name": "basefruitPurchaseItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 221,
+      "name": "additivePurchases (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 233,
+      "name": "additivePurchaseItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 254,
+      "name": "juicePurchases (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 266,
+      "name": "juicePurchaseItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 286,
+      "name": "packagingPurchases (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 298,
+      "name": "packagingPurchaseItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 314,
+      "name": "pressRuns (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 325,
+      "name": "pressItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 337,
+      "name": "vessels (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 352,
+      "name": "juiceLots (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 363,
+      "name": "batches (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 384,
+      "name": "batchCompositions (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 410,
+      "name": "batchMeasurements (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 426,
+      "name": "batchAdditives (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 441,
+      "name": "packages (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 454,
+      "name": "inventory (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 467,
+      "name": "inventoryTransactions (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 479,
+      "name": "batchCosts (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 495,
+      "name": "cogsItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 510,
+      "name": "applePressRuns (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 555,
+      "name": "applePressRunLoads (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 601,
+      "name": "auditLog (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 612,
+      "name": "batchTransfers (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 642,
+      "name": "batchMergeHistory (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 667,
+      "name": "vendorsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 678,
+      "name": "baseFruitVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 683,
+      "name": "vendorVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 694,
+      "name": "additiveVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 697,
+      "name": "vendorAdditiveVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 708,
+      "name": "juiceVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 711,
+      "name": "vendorJuiceVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 722,
+      "name": "packagingVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 725,
+      "name": "vendorPackagingVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 735,
+      "name": "basefruitPurchasesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 742,
+      "name": "basefruitPurchaseItemsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 755,
+      "name": "additivePurchasesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 762,
+      "name": "additivePurchaseItemsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 769,
+      "name": "juicePurchasesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 776,
+      "name": "juicePurchaseItemsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 783,
+      "name": "packagingPurchasesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 790,
+      "name": "packagingPurchaseItemsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 796,
+      "name": "pressRunsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 801,
+      "name": "juiceLotsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 808,
+      "name": "pressItemsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 819,
+      "name": "vesselsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 824,
+      "name": "batchesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 850,
+      "name": "batchMergeHistoryRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 860,
+      "name": "batchCompositionsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 878,
+      "name": "batchMeasurementsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 884,
+      "name": "batchAdditivesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 894,
+      "name": "packagesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 901,
+      "name": "inventoryRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 908,
+      "name": "inventoryTransactionsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 914,
+      "name": "batchCostsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 920,
+      "name": "cogsItemsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 927,
+      "name": "applePressRunsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 949,
+      "name": "applePressRunLoadsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 975,
+      "name": "tankMeasurements (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 992,
+      "name": "tankAdditives (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1009,
+      "name": "tankMeasurementsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1019,
+      "name": "tankAdditivesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1029,
+      "name": "batchTransfersRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1059,
+      "name": "appleVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1060,
+      "name": "appleVarietiesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1061,
+      "name": "purchases (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1062,
+      "name": "purchaseItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema.js",
+      "line": 1063,
+      "name": "batchIngredients (used in module)"
+    },
+    {
+      "file": "packages/db/dist/seed.js",
+      "line": 5,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/setup-neon.js",
+      "line": 3,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/test-auth.js",
+      "line": 2,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/test-queries.js",
+      "line": 2,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/scripts/backfillVendorVarieties.ts",
+      "line": 111,
+      "name": "backfillVendorVarieties (used in module)"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 5,
+      "name": "unitEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 6,
+      "name": "batchStatusEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 7,
+      "name": "vesselStatusEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 8,
+      "name": "vesselTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 9,
+      "name": "vesselMaterialEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 10,
+      "name": "vesselJacketedEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 11,
+      "name": "transactionTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 12,
+      "name": "cogsItemTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 13,
+      "name": "userRoleEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 14,
+      "name": "pressRunStatusEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 20,
+      "name": "fruitTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 23,
+      "name": "ciderCategoryEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 24,
+      "name": "intensityEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 25,
+      "name": "harvestWindowEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 26,
+      "name": "materialTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 27,
+      "name": "packagingItemTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 35,
+      "name": "users"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 47,
+      "name": "vendors"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 57,
+      "name": "baseFruitVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 77,
+      "name": "vendorVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 94,
+      "name": "additiveVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 110,
+      "name": "vendorAdditiveVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 125,
+      "name": "juiceVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 136,
+      "name": "vendorJuiceVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 151,
+      "name": "packagingVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 163,
+      "name": "vendorPackagingVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 177,
+      "name": "basefruitPurchases"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 190,
+      "name": "basefruitPurchaseItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 217,
+      "name": "additivePurchases"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 230,
+      "name": "additivePurchaseItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 252,
+      "name": "juicePurchases"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 265,
+      "name": "juicePurchaseItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 286,
+      "name": "packagingPurchases"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 299,
+      "name": "packagingPurchaseItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 316,
+      "name": "pressRuns"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 328,
+      "name": "pressItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 341,
+      "name": "vessels"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 357,
+      "name": "juiceLots"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 369,
+      "name": "batches"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 391,
+      "name": "batchCompositions"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 418,
+      "name": "batchMeasurements"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 435,
+      "name": "batchAdditives"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 451,
+      "name": "packages"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 465,
+      "name": "inventory"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 479,
+      "name": "inventoryTransactions"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 492,
+      "name": "batchCosts"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 509,
+      "name": "cogsItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 525,
+      "name": "applePressRuns"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 580,
+      "name": "applePressRunLoads"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 638,
+      "name": "auditLog"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 650,
+      "name": "batchTransfers"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 681,
+      "name": "batchMergeHistory"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 707,
+      "name": "vendorsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 719,
+      "name": "baseFruitVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 725,
+      "name": "vendorVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 737,
+      "name": "additiveVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 741,
+      "name": "vendorAdditiveVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 753,
+      "name": "juiceVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 757,
+      "name": "vendorJuiceVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 769,
+      "name": "packagingVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 773,
+      "name": "vendorPackagingVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 784,
+      "name": "basefruitPurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 792,
+      "name": "basefruitPurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 806,
+      "name": "additivePurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 814,
+      "name": "additivePurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 822,
+      "name": "juicePurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 830,
+      "name": "juicePurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 838,
+      "name": "packagingPurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 846,
+      "name": "packagingPurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 853,
+      "name": "pressRunsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 859,
+      "name": "juiceLotsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 867,
+      "name": "pressItemsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 879,
+      "name": "vesselsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 885,
+      "name": "batchesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 912,
+      "name": "batchMergeHistoryRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 923,
+      "name": "batchCompositionsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 942,
+      "name": "batchMeasurementsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 949,
+      "name": "batchAdditivesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 960,
+      "name": "packagesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 968,
+      "name": "inventoryRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 976,
+      "name": "inventoryTransactionsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 983,
+      "name": "batchCostsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 990,
+      "name": "cogsItemsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 998,
+      "name": "applePressRunsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1023,
+      "name": "applePressRunLoadsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1052,
+      "name": "tankMeasurements"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1070,
+      "name": "tankAdditives"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1088,
+      "name": "tankMeasurementsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1099,
+      "name": "tankAdditivesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1110,
+      "name": "batchTransfersRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1141,
+      "name": "appleVarieties"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1142,
+      "name": "appleVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1143,
+      "name": "purchases"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1144,
+      "name": "purchaseItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 1145,
+      "name": "batchIngredients"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 6,
+      "name": "auditOperationEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 9,
+      "name": "auditLogs"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 55,
+      "name": "auditLogsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 63,
+      "name": "AuditLog"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 64,
+      "name": "NewAuditLog"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 65,
+      "name": "AuditOperation"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 68,
+      "name": "auditMetadata"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 89,
+      "name": "AuditMetadata"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 90,
+      "name": "NewAuditMetadata"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 8,
+      "name": "packageTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 9,
+      "name": "carbonationLevelEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 10,
+      "name": "fillCheckEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 11,
+      "name": "packagingRunStatusEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 12,
+      "name": "packageSizeTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 13,
+      "name": "packagingPhotoTypeEnum"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 16,
+      "name": "packageSizes"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 34,
+      "name": "packagingRuns"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 87,
+      "name": "packagingRunPhotos"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 101,
+      "name": "packageSizesRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 105,
+      "name": "packagingRunsRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 139,
+      "name": "packagingRunPhotosRelations"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 151,
+      "name": "inventoryItems"
+    },
+    {
+      "file": "packages/db/src/client.ts",
+      "line": 178,
+      "name": "inventoryItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 2,
+      "name": "Database"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 5,
+      "name": "unitEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 6,
+      "name": "batchStatusEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 7,
+      "name": "vesselStatusEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 8,
+      "name": "vesselTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 9,
+      "name": "vesselMaterialEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 10,
+      "name": "vesselJacketedEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 11,
+      "name": "transactionTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 12,
+      "name": "cogsItemTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 13,
+      "name": "userRoleEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 14,
+      "name": "pressRunStatusEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 20,
+      "name": "fruitTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 23,
+      "name": "ciderCategoryEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 24,
+      "name": "intensityEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 25,
+      "name": "harvestWindowEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 26,
+      "name": "materialTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 27,
+      "name": "packagingItemTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 47,
+      "name": "vendors"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 57,
+      "name": "baseFruitVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 77,
+      "name": "vendorVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 94,
+      "name": "additiveVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 110,
+      "name": "vendorAdditiveVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 125,
+      "name": "juiceVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 136,
+      "name": "vendorJuiceVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 151,
+      "name": "packagingVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 163,
+      "name": "vendorPackagingVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 177,
+      "name": "basefruitPurchases"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 190,
+      "name": "basefruitPurchaseItems"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 217,
+      "name": "additivePurchases"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 230,
+      "name": "additivePurchaseItems"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 252,
+      "name": "juicePurchases"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 265,
+      "name": "juicePurchaseItems"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 286,
+      "name": "packagingPurchases"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 299,
+      "name": "packagingPurchaseItems"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 316,
+      "name": "pressRuns"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 328,
+      "name": "pressItems"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 357,
+      "name": "juiceLots"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 391,
+      "name": "batchCompositions"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 418,
+      "name": "batchMeasurements"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 435,
+      "name": "batchAdditives"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 451,
+      "name": "packages"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 465,
+      "name": "inventory"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 479,
+      "name": "inventoryTransactions"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 492,
+      "name": "batchCosts"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 509,
+      "name": "cogsItems"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 525,
+      "name": "applePressRuns"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 580,
+      "name": "applePressRunLoads"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 638,
+      "name": "auditLog"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 650,
+      "name": "batchTransfers"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 681,
+      "name": "batchMergeHistory"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 707,
+      "name": "vendorsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 719,
+      "name": "baseFruitVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 725,
+      "name": "vendorVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 737,
+      "name": "additiveVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 741,
+      "name": "vendorAdditiveVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 753,
+      "name": "juiceVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 757,
+      "name": "vendorJuiceVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 769,
+      "name": "packagingVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 773,
+      "name": "vendorPackagingVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 784,
+      "name": "basefruitPurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 792,
+      "name": "basefruitPurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 806,
+      "name": "additivePurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 814,
+      "name": "additivePurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 822,
+      "name": "juicePurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 830,
+      "name": "juicePurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 838,
+      "name": "packagingPurchasesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 846,
+      "name": "packagingPurchaseItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 853,
+      "name": "pressRunsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 859,
+      "name": "juiceLotsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 867,
+      "name": "pressItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 879,
+      "name": "vesselsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 885,
+      "name": "batchesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 912,
+      "name": "batchMergeHistoryRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 923,
+      "name": "batchCompositionsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 942,
+      "name": "batchMeasurementsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 949,
+      "name": "batchAdditivesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 960,
+      "name": "packagesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 968,
+      "name": "inventoryRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 976,
+      "name": "inventoryTransactionsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 983,
+      "name": "batchCostsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 990,
+      "name": "cogsItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 998,
+      "name": "applePressRunsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1023,
+      "name": "applePressRunLoadsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1052,
+      "name": "tankMeasurements"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1070,
+      "name": "tankAdditives"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1088,
+      "name": "tankMeasurementsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1099,
+      "name": "tankAdditivesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1110,
+      "name": "batchTransfersRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1141,
+      "name": "appleVarieties"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1142,
+      "name": "appleVarietiesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1143,
+      "name": "purchases"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1144,
+      "name": "purchaseItems"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 1145,
+      "name": "batchIngredients"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 6,
+      "name": "auditOperationEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 9,
+      "name": "auditLogs"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 55,
+      "name": "auditLogsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 63,
+      "name": "AuditLog"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 64,
+      "name": "NewAuditLog"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 65,
+      "name": "AuditOperation"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 68,
+      "name": "auditMetadata"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 89,
+      "name": "AuditMetadata"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 90,
+      "name": "NewAuditMetadata"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 8,
+      "name": "packageTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 9,
+      "name": "carbonationLevelEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 10,
+      "name": "fillCheckEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 11,
+      "name": "packagingRunStatusEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 12,
+      "name": "packageSizeTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 13,
+      "name": "packagingPhotoTypeEnum"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 101,
+      "name": "packageSizesRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 105,
+      "name": "packagingRunsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 139,
+      "name": "packagingRunPhotosRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 178,
+      "name": "inventoryItemsRelations"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 77,
+      "name": "withCursorPagination"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 119,
+      "name": "generateCursor"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 127,
+      "name": "getPackagingRunsOptimized"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 264,
+      "name": "getBatchPackagingRuns"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 331,
+      "name": "getPackageSizesCached"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 364,
+      "name": "clearPackageSizesCache"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 373,
+      "name": "getPackagingRunInventory"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 424,
+      "name": "measureQuery"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 26,
+      "name": "PackagingRunListItem"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 47,
+      "name": "CursorPaginationParams"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 53,
+      "name": "PackagingRunFilters"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 64,
+      "name": "PaginatedResult"
+    },
+    {
+      "file": "packages/db/src/index.ts",
+      "line": 414,
+      "name": "QueryMetrics"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 1,
+      "name": "placeholder"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 5,
+      "name": "auditEventBus"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 6,
+      "name": "publishCreateEvent"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 7,
+      "name": "publishUpdateEvent"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 8,
+      "name": "publishDeleteEvent"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 9,
+      "name": "publishSoftDeleteEvent"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 10,
+      "name": "publishRestoreEvent"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 11,
+      "name": "createDatabaseAuditSubscriber"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 38,
+      "name": "generateAuditChecksum"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 39,
+      "name": "validateAuditIntegrity"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 40,
+      "name": "generateDataDiff"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 41,
+      "name": "sanitizeAuditData"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 42,
+      "name": "createAuditLogEntry"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 43,
+      "name": "filterAuditDataForQuery"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 44,
+      "name": "validateAuditSnapshot"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 45,
+      "name": "extractChangedFields"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 46,
+      "name": "generateChangeSummary"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 51,
+      "name": "AuditDatabase"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 56,
+      "name": "AuditQueryService"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 57,
+      "name": "auditQuerySchema"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 58,
+      "name": "recordHistoryQuerySchema"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 59,
+      "name": "userActivityQuerySchema"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 60,
+      "name": "auditStatsQuerySchema"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 61,
+      "name": "integrityCheckSchema"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 66,
+      "name": "AuditContext"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 67,
+      "name": "AuditSnapshot"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 68,
+      "name": "AuditLogEntry"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 72,
+      "name": "AuditQueryOptions"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 73,
+      "name": "AuditQueryResult"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 77,
+      "name": "AuditQueryInput"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 78,
+      "name": "RecordHistoryQueryInput"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 79,
+      "name": "UserActivityQueryInput"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 80,
+      "name": "AuditStatsQueryInput"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 81,
+      "name": "IntegrityCheckInput"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 19,
+      "name": "calculateAbv"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 49,
+      "name": "calculatePotentialAbv"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 60,
+      "name": "brixToSpecificGravity"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 79,
+      "name": "calculateAbvFromBrix"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 94,
+      "name": "calculateAttenuation"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 115,
+      "name": "isValidSpecificGravity"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 126,
+      "name": "getAbvCategory"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 18,
+      "name": "calcActualLPerKg"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 51,
+      "name": "calcVariancePct"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 74,
+      "name": "calculateExtractionEfficiency"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 87,
+      "name": "getVarietyYieldRange"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 112,
+      "name": "calculatePotentialJuiceVolume"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 136,
+      "name": "getYieldPerformanceCategory"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 152,
+      "name": "calculateWeightedAverageYield"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 39,
+      "name": "calculateTotalCogs"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 67,
+      "name": "calculateCogsComponents"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 124,
+      "name": "calculateCostPerLiter"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 146,
+      "name": "calculateCostPerBottle"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 168,
+      "name": "calculateGrossMargin"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 196,
+      "name": "calculateMarkup"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 218,
+      "name": "allocateSharedCosts"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 252,
+      "name": "calculateYieldVarianceCostImpact"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 280,
+      "name": "getCogsPerformanceCategory"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 302,
+      "name": "calculateInventoryValue"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 350,
+      "name": "calculateWeightedAverageCostPerKg"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 383,
+      "name": "calculateAppleCostFromPurchases"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 456,
+      "name": "calculateCogsFromPurchases"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 522,
+      "name": "calculateTotalCogsFromPurchases"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 6,
+      "name": "CogsComponent"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 14,
+      "name": "BatchCostData"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 23,
+      "name": "CostAllocationConfig"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 320,
+      "name": "PurchaseItemData"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 332,
+      "name": "PressRunData"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 15,
+      "name": "formatCurrency"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 38,
+      "name": "formatPercentage"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 58,
+      "name": "roundFinancial"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 78,
+      "name": "calculateWeightedAverage"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 113,
+      "name": "calculateStandardDeviation"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 142,
+      "name": "calculateCoefficientOfVariation"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 166,
+      "name": "calculateMedian"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 197,
+      "name": "calculatePercentile"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 241,
+      "name": "calculateCagr"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 268,
+      "name": "isFinanciallyEqual"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 288,
+      "name": "parseFinancialAmount"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 324,
+      "name": "calculateRoi"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 347,
+      "name": "calculateBreakEvenUnits"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 4,
+      "name": "CIDER_CATEGORY"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 5,
+      "name": "INTENSITY"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 6,
+      "name": "HARVEST_WINDOW"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 9,
+      "name": "zCiderCategory"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 10,
+      "name": "zIntensity"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 11,
+      "name": "zHarvestWindow"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 14,
+      "name": "CiderCategory"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 15,
+      "name": "Intensity"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 16,
+      "name": "HarvestWindow"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 19,
+      "name": "getCiderCategoryOptions"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 26,
+      "name": "getIntensityOptions"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 34,
+      "name": "getHarvestWindowOptions"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 43,
+      "name": "getCiderCategoryLabel"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 48,
+      "name": "getIntensityLabel"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 53,
+      "name": "getHarvestWindowLabel"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 36,
+      "name": "generateBatchName"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 60,
+      "name": "generateVarietyCode"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 107,
+      "name": "selectPrimaryVariety"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 144,
+      "name": "generateBatchNameFromComposition"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 5,
+      "name": "BatchComposition"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 10,
+      "name": "GenerateBatchNameOptions"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 17,
+      "name": "BatchCompositionInput"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 89,
+      "name": "createBatchesFromPressCompletion"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 17,
+      "name": "Assignment"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 22,
+      "name": "CreateBatchesOptions"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 26,
+      "name": "CreateBatchesResult"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 33,
+      "name": "PressCompletionError"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 40,
+      "name": "PressValidationError"
+    },
+    {
+      "file": "packages/lib/src/index.ts",
+      "line": 46,
+      "name": "InvariantError"
+    },
+    {
+      "file": "packages/worker/src/index.ts",
+      "line": 1,
+      "name": "placeholder"
+    },
+    {
+      "file": "tests/e2e/fixtures/index.ts",
+      "line": 2,
+      "name": "TestDataFactory"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 2,
+      "name": "BasePage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 3,
+      "name": "LoginPage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 4,
+      "name": "DashboardPage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 5,
+      "name": "PurchasePage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 6,
+      "name": "PressPage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 7,
+      "name": "BatchPage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 8,
+      "name": "PackagingPage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 9,
+      "name": "ReportsPage"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 10,
+      "name": "PageVerifier"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 11,
+      "name": "PageVerificationReport"
+    },
+    {
+      "file": "tests/e2e/page-objects/index.ts",
+      "line": 11,
+      "name": "VerificationResult"
+    },
+    {
+      "file": "tests/e2e/utils/auth-helpers.ts",
+      "line": 5,
+      "name": "TestUser (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/calculation-validators.ts",
+      "line": 22,
+      "name": "CalculationValidation (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-completeness-validator.ts",
+      "line": 26,
+      "name": "DataFreshnessResult (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-completeness-validator.ts",
+      "line": 41,
+      "name": "DataCompletenessResult (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-completeness-validator.ts",
+      "line": 67,
+      "name": "DataQualityResult (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-completeness-validator.ts",
+      "line": 84,
+      "name": "MissingDataResult (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-completeness-validator.ts",
+      "line": 98,
+      "name": "DataCompletenessValidationReport (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-validation.ts",
+      "line": 26,
+      "name": "DataValidationResult (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-validation.ts",
+      "line": 40,
+      "name": "CalculationValidationResult (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/data-validation.ts",
+      "line": 51,
+      "name": "RelationshipValidationResult (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 2,
+      "name": "AuthHelper"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 2,
+      "name": "TEST_USERS"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 3,
+      "name": "VisualHelpers"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 4,
+      "name": "test"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 4,
+      "name": "expect"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 4,
+      "name": "TestHelpers"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 4,
+      "name": "TestReporter"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 5,
+      "name": "pageDiscovery"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 5,
+      "name": "PageDiscovery"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 6,
+      "name": "DiscoveredPage"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 7,
+      "name": "PerformanceMonitor"
+    },
+    {
+      "file": "tests/e2e/utils/index.ts",
+      "line": 8,
+      "name": "PerformanceMetrics"
+    },
+    {
+      "file": "tests/e2e/utils/relationship-validators.ts",
+      "line": 25,
+      "name": "RelationshipValidation (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/relationship-validators.ts",
+      "line": 41,
+      "name": "WorkflowValidation (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/seeded-data-discovery.ts",
+      "line": 25,
+      "name": "SeededEntityInfo (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/seeded-data-discovery.ts",
+      "line": 60,
+      "name": "DataRelationshipMap (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/seeded-data-discovery.ts",
+      "line": 71,
+      "name": "WorkflowCoverage (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/validation-reporter.ts",
+      "line": 9,
+      "name": "ComprehensiveValidationReport (used in module)"
+    },
+    {
+      "file": "tests/e2e/utils/validation-reporter.ts",
+      "line": 69,
+      "name": "PerformanceMetrics (used in module)"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 38,
+      "name": "ParamsOf"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 45,
+      "name": "AppRoutes (used in module)"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 45,
+      "name": "PageRoutes (used in module)"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 45,
+      "name": "LayoutRoutes (used in module)"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 45,
+      "name": "RedirectRoutes (used in module)"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 45,
+      "name": "RewriteRoutes (used in module)"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 45,
+      "name": "ParamMap (used in module)"
+    },
+    {
+      "file": "apps/web/.next/types/routes.d.ts",
+      "line": 45,
+      "name": "AppRouteHandlerRoutes (used in module)"
+    },
+    {
+      "file": "apps/web/src/app/layout.tsx",
+      "line": 13,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/layout.tsx",
+      "line": 8,
+      "name": "metadata"
+    },
+    {
+      "file": "apps/web/src/app/page.tsx",
+      "line": 46,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/components/navbar.tsx",
+      "line": 79,
+      "name": "Navbar"
+    },
+    {
+      "file": "apps/web/src/hooks/use-press-run-drafts.ts",
+      "line": 15,
+      "name": "usePressRunDrafts"
+    },
+    {
+      "file": "apps/web/src/hooks/use-press-run-drafts.ts",
+      "line": 79,
+      "name": "usePressRunDraft"
+    },
+    {
+      "file": "apps/web/src/hooks/use-press-run-drafts.ts",
+      "line": 226,
+      "name": "useNetworkSync"
+    },
+    {
+      "file": "apps/web/src/hooks/use-press-run-drafts.ts",
+      "line": 380,
+      "name": "useOfflineCapability"
+    },
+    {
+      "file": "apps/web/src/hooks/use-press-run-drafts.ts",
+      "line": 9,
+      "name": "DraftOperationResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/use-toast.ts",
+      "line": 46,
+      "name": "reducer (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/use-toast.ts",
+      "line": 164,
+      "name": "useToast (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/use-toast.ts",
+      "line": 164,
+      "name": "toast (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useDebounce.ts",
+      "line": 3,
+      "name": "useDebounce"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedPackagingQueries.ts",
+      "line": 31,
+      "name": "useOptimizedPackagingList"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedPackagingQueries.ts",
+      "line": 142,
+      "name": "useOptimizedPackagingRun"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedPackagingQueries.ts",
+      "line": 194,
+      "name": "useOptimizedPackagingMutations"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedPackagingQueries.ts",
+      "line": 227,
+      "name": "usePackagingPrefetching"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedPackagingQueries.ts",
+      "line": 10,
+      "name": "PackagingFilters (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedPackagingQueries.ts",
+      "line": 18,
+      "name": "PackagingQueryParams (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedSearch.ts",
+      "line": 81,
+      "name": "useOptimizedSearch (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedSearch.ts",
+      "line": 360,
+      "name": "useSimpleSearch"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedSearch.ts",
+      "line": 397,
+      "name": "useSearchHighlighting"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedSearch.ts",
+      "line": 19,
+      "name": "OptimizedSearchConfig (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedSearch.ts",
+      "line": 29,
+      "name": "SearchState (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useOptimizedSearch.ts",
+      "line": 40,
+      "name": "OptimizedSearchHook (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useTableSorting.ts",
+      "line": 34,
+      "name": "useTableSorting"
+    },
+    {
+      "file": "apps/web/src/hooks/useTableSorting.ts",
+      "line": 3,
+      "name": "SortDirection (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useTableSorting.ts",
+      "line": 5,
+      "name": "SortColumn (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useTableSorting.ts",
+      "line": 10,
+      "name": "SortState (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useTableSorting.ts",
+      "line": 15,
+      "name": "UseTableSortingOptions (used in module)"
+    },
+    {
+      "file": "apps/web/src/hooks/useTableSorting.ts",
+      "line": 20,
+      "name": "UseTableSortingReturn (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 534,
+      "name": "getConflictSeverity"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 551,
+      "name": "getConflictDescription"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 10,
+      "name": "ConflictType (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 12,
+      "name": "ResolutionStrategy (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 14,
+      "name": "ConflictItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 31,
+      "name": "ConflictResolutionResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 524,
+      "name": "conflictResolver"
+    },
+    {
+      "file": "apps/web/src/lib/conflict-resolution.ts",
+      "line": 527,
+      "name": "ConflictResolutionUIProps"
+    },
+    {
+      "file": "apps/web/src/lib/offline-storage.ts",
+      "line": 9,
+      "name": "pressRunDraftSchema (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/offline-storage.ts",
+      "line": 50,
+      "name": "StorageInfo (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/offline-storage.ts",
+      "line": 57,
+      "name": "SyncQueueItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/offline-storage.ts",
+      "line": 415,
+      "name": "offlineStorage"
+    },
+    {
+      "file": "apps/web/src/lib/pdf-generator.ts",
+      "line": 469,
+      "name": "generatePackagingRunPDF (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/pdf-generator.ts",
+      "line": 4,
+      "name": "PackagingRunPDFData (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/pdf-generator.ts",
+      "line": 63,
+      "name": "PDFGeneratorOptions (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/pdf-generator.ts",
+      "line": 75,
+      "name": "PackagingPDFGenerator (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 8,
+      "name": "PerformanceMetrics (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 50,
+      "name": "APIRequest (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 60,
+      "name": "UserInteraction (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 71,
+      "name": "PERFORMANCE_BUDGETS (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 82,
+      "name": "PerformanceMonitor (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 585,
+      "name": "trackPageLoad"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 586,
+      "name": "trackUserInteraction"
+    },
+    {
+      "file": "apps/web/src/lib/performance-monitor.ts",
+      "line": 588,
+      "name": "generatePerformanceReport"
+    },
+    {
+      "file": "apps/web/src/lib/service-worker.ts",
+      "line": 242,
+      "name": "useServiceWorker"
+    },
+    {
+      "file": "apps/web/src/lib/service-worker.ts",
+      "line": 6,
+      "name": "SWRegistrationResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/service-worker.ts",
+      "line": 12,
+      "name": "SyncRegistrationResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/lib/service-worker.ts",
+      "line": 239,
+      "name": "serviceWorkerManager (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 4,
+      "name": "materialTypeEnum (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 5,
+      "name": "MaterialType (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 8,
+      "name": "InventorySearchState (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 16,
+      "name": "InventoryFiltersState (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 24,
+      "name": "searchInputSchema (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 31,
+      "name": "filterInputSchema (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 39,
+      "name": "InventoryUIState"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 42,
+      "name": "SearchCallback"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 45,
+      "name": "FilterCallback"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 48,
+      "name": "DebouncedSearchHook"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 55,
+      "name": "MaterialTypeInfo (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 64,
+      "name": "MATERIAL_TYPE_CONFIG"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 96,
+      "name": "LOCATION_OPTIONS (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 106,
+      "name": "STATUS_OPTIONS (used in module)"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 115,
+      "name": "SearchInputType"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 116,
+      "name": "FilterInputType"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 117,
+      "name": "LocationOption"
+    },
+    {
+      "file": "apps/web/src/types/inventory.ts",
+      "line": 118,
+      "name": "StatusOption"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 3,
+      "name": "ErrorDetails"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 10,
+      "name": "UserFriendlyError (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 23,
+      "name": "ErrorHandler (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 285,
+      "name": "handleApiError"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 289,
+      "name": "handleFormError"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 293,
+      "name": "handleTransactionError (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 297,
+      "name": "showSuccess"
+    },
+    {
+      "file": "apps/web/src/utils/error-handling.ts",
+      "line": 301,
+      "name": "showLoading"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 47,
+      "name": "generateTestInventoryData (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 192,
+      "name": "runInventoryPerformanceTests"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 411,
+      "name": "runAccessibilityTests"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 10,
+      "name": "PerformanceTestConfig (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 24,
+      "name": "PerformanceTestResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 396,
+      "name": "AccessibilityTestResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 462,
+      "name": "PerformanceTimer (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 463,
+      "name": "getMemoryUsage (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 464,
+      "name": "simulateSearch (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/inventoryPerformanceTest.ts",
+      "line": 465,
+      "name": "simulateSort (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchPerformanceTest.ts",
+      "line": 9,
+      "name": "generateTestData (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchPerformanceTest.ts",
+      "line": 44,
+      "name": "runPerformanceTests (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchPerformanceTest.ts",
+      "line": 102,
+      "name": "generatePerformanceReport (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchPerformanceTest.ts",
+      "line": 229,
+      "name": "runQuickPerformanceCheck"
+    },
+    {
+      "file": "apps/web/src/utils/searchPerformanceTest.ts",
+      "line": 35,
+      "name": "PerformanceTestResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchUtils.ts",
+      "line": 23,
+      "name": "SearchConfig (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchUtils.ts",
+      "line": 32,
+      "name": "SearchFieldWeight (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchUtils.ts",
+      "line": 38,
+      "name": "SearchResult (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchUtils.ts",
+      "line": 45,
+      "name": "SearchMatch (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchUtils.ts",
+      "line": 53,
+      "name": "SearchMetrics (used in module)"
+    },
+    {
+      "file": "apps/web/src/utils/searchUtils.ts",
+      "line": 526,
+      "name": "SearchHistory"
+    },
+    {
+      "file": "apps/web/src/utils/searchUtils.ts",
+      "line": 586,
+      "name": "SearchPerformanceMonitor"
+    },
+    {
+      "file": "packages/api/src/lib/dbChecks.ts",
+      "line": 57,
+      "name": "getVendorVarieties"
+    },
+    {
+      "file": "packages/api/src/middleware/audit.ts",
+      "line": 41,
+      "name": "initializeAuditSystem"
+    },
+    {
+      "file": "packages/api/src/middleware/audit.ts",
+      "line": 10,
+      "name": "AuditConfig (used in module)"
+    },
+    {
+      "file": "packages/api/src/routers/batch.ts",
+      "line": 999,
+      "name": "BatchRouter"
+    },
+    {
+      "file": "packages/api/src/routers/health.ts",
+      "line": 332,
+      "name": "HealthRouter"
+    },
+    {
+      "file": "packages/api/src/routers/index.ts",
+      "line": 3027,
+      "name": "AppRouter"
+    },
+    {
+      "file": "packages/api/src/routers/packaging.ts",
+      "line": 686,
+      "name": "PackagingRouter"
+    },
+    {
+      "file": "packages/api/src/services/inventory.ts",
+      "line": 29,
+      "name": "InventoryCreateParams (used in module)"
+    },
+    {
+      "file": "packages/api/src/services/inventory.ts",
+      "line": 38,
+      "name": "StockLevelCheck (used in module)"
+    },
+    {
+      "file": "packages/api/src/services/inventory.ts",
+      "line": 46,
+      "name": "TransactionSummary (used in module)"
+    },
+    {
+      "file": "packages/api/src/types/inventory.ts",
+      "line": 147,
+      "name": "InventoryListInput"
+    },
+    {
+      "file": "packages/api/src/types/inventory.ts",
+      "line": 148,
+      "name": "InventorySearchInput"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 25,
+      "name": "createPackagingConnection"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 39,
+      "name": "checkConnectionHealth"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 54,
+      "name": "logQueryPerformance"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 55,
+      "name": "getQueryPerformanceStats"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 67,
+      "name": "withMonitoredTransaction"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 8,
+      "name": "connectionConfig"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 30,
+      "name": "queryHints"
+    },
+    {
+      "file": "packages/db/dist/config/connection.d.ts",
+      "line": 47,
+      "name": "QueryPerformanceLog (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 44,
+      "name": "__esModule (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 46,
+      "name": "createPackagingConnection (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 47,
+      "name": "checkConnectionHealth (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 48,
+      "name": "logQueryPerformance (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 49,
+      "name": "getQueryPerformanceStats (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 50,
+      "name": "withMonitoredTransaction (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 55,
+      "name": "connectionConfig (used in module)"
+    },
+    {
+      "file": "packages/db/dist/config/connection.js",
+      "line": 88,
+      "name": "queryHints (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 12,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 13,
+      "name": "withCursorPagination (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 14,
+      "name": "generateCursor (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 15,
+      "name": "getPackagingRunsOptimized (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 16,
+      "name": "getBatchPackagingRuns (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 17,
+      "name": "getPackageSizesCached (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 18,
+      "name": "clearPackageSizesCache (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 19,
+      "name": "getPackagingRunInventory (used in module)"
+    },
+    {
+      "file": "packages/db/dist/queries/packaging-optimized.js",
+      "line": 20,
+      "name": "measureQuery (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/audit.js",
+      "line": 2,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/schema/audit.js",
+      "line": 8,
+      "name": "auditOperationEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/audit.js",
+      "line": 10,
+      "name": "auditLogs (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/audit.js",
+      "line": 47,
+      "name": "auditLogsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/audit.js",
+      "line": 54,
+      "name": "auditMetadata (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 2,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 10,
+      "name": "packageTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 11,
+      "name": "carbonationLevelEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 12,
+      "name": "fillCheckEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 13,
+      "name": "packagingRunStatusEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 14,
+      "name": "packageSizeTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 15,
+      "name": "packagingPhotoTypeEnum (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 17,
+      "name": "packageSizes (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 34,
+      "name": "packagingRuns (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 81,
+      "name": "packagingRunPhotos (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 94,
+      "name": "packageSizesRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 97,
+      "name": "packagingRunsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 128,
+      "name": "packagingRunPhotosRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 139,
+      "name": "inventoryItems (used in module)"
+    },
+    {
+      "file": "packages/db/dist/schema/packaging.js",
+      "line": 163,
+      "name": "inventoryItemsRelations (used in module)"
+    },
+    {
+      "file": "packages/db/dist/seed/packageSizes.js",
+      "line": 2,
+      "name": "__esModule"
+    },
+    {
+      "file": "packages/db/dist/seed/packageSizes.js",
+      "line": 4,
+      "name": "seedPackageSizes (used in module)"
+    },
+    {
+      "file": "packages/db/dist/seed/packageSizes.js",
+      "line": 8,
+      "name": "packageSizesData (used in module)"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 40,
+      "name": "createPackagingConnection"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 70,
+      "name": "checkConnectionHealth"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 111,
+      "name": "logQueryPerformance (used in module)"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 125,
+      "name": "getQueryPerformanceStats"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 149,
+      "name": "withMonitoredTransaction"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 13,
+      "name": "connectionConfig (used in module)"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 53,
+      "name": "queryHints"
+    },
+    {
+      "file": "packages/db/src/config/connection.ts",
+      "line": 100,
+      "name": "QueryPerformanceLog (used in module)"
+    },
+    {
+      "file": "packages/db/src/seed/packageSizes.ts",
+      "line": 5,
+      "name": "packageSizesData (used in module)"
+    },
+    {
+      "file": "packages/lib/src/audit/eventBus.ts",
+      "line": 267,
+      "name": "auditAction"
+    },
+    {
+      "file": "packages/lib/src/audit/eventBus.ts",
+      "line": 8,
+      "name": "AuditEventType (used in module)"
+    },
+    {
+      "file": "packages/lib/src/audit/eventBus.ts",
+      "line": 23,
+      "name": "EventHandler (used in module)"
+    },
+    {
+      "file": "packages/lib/src/rbac/roles.ts",
+      "line": 7,
+      "name": "UserRole (used in module)"
+    },
+    {
+      "file": "packages/lib/src/rbac/roles.ts",
+      "line": 10,
+      "name": "Action (used in module)"
+    },
+    {
+      "file": "packages/lib/src/rbac/roles.ts",
+      "line": 13,
+      "name": "Entity (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 9,
+      "name": "uuidSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 10,
+      "name": "positiveNumberSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 11,
+      "name": "nonNegativeNumberSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 12,
+      "name": "dateSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 13,
+      "name": "isoDateStringSchema"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 16,
+      "name": "unitSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 21,
+      "name": "batchStatusSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 22,
+      "name": "vesselStatusSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 23,
+      "name": "vesselTypeSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 24,
+      "name": "transactionTypeSchema"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 25,
+      "name": "cogsItemTypeSchema"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 28,
+      "name": "additiveTypeSchema"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 44,
+      "name": "packagingItemTypeSchema"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 54,
+      "name": "vendorContactInfoSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 62,
+      "name": "createVendorSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 68,
+      "name": "updateVendorSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 70,
+      "name": "vendorSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 81,
+      "name": "createAppleVarietySchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 88,
+      "name": "updateAppleVarietySchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 90,
+      "name": "appleVarietySchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 102,
+      "name": "createPurchaseItemSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 113,
+      "name": "createPurchaseSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 122,
+      "name": "updatePurchaseSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 126,
+      "name": "purchaseItemSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 142,
+      "name": "purchaseSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 156,
+      "name": "createPressItemSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 164,
+      "name": "createPressRunSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 173,
+      "name": "updatePressRunSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 177,
+      "name": "pressRunSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 190,
+      "name": "createVesselSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 199,
+      "name": "updateVesselSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 201,
+      "name": "vesselSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 215,
+      "name": "createBatchSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 228,
+      "name": "updateBatchSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 232,
+      "name": "batchSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 251,
+      "name": "createTransferSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 261,
+      "name": "transferSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 274,
+      "name": "createPackagingRunSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 284,
+      "name": "updatePackagingRunSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 286,
+      "name": "packagingRunSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 301,
+      "name": "createMeasurementSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 314,
+      "name": "updateMeasurementSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 316,
+      "name": "measurementSchema (used in module)"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 334,
+      "name": "CreateVendor"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 335,
+      "name": "UpdateVendor"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 336,
+      "name": "Vendor"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 338,
+      "name": "CreateAppleVariety"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 339,
+      "name": "UpdateAppleVariety"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 340,
+      "name": "AppleVariety"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 342,
+      "name": "CreatePurchase"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 343,
+      "name": "UpdatePurchase"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 344,
+      "name": "Purchase"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 345,
+      "name": "PurchaseItem"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 347,
+      "name": "CreatePressRun"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 348,
+      "name": "UpdatePressRun"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 349,
+      "name": "PressRun"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 351,
+      "name": "CreateVessel"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 352,
+      "name": "UpdateVessel"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 353,
+      "name": "Vessel"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 355,
+      "name": "CreateBatch"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 356,
+      "name": "UpdateBatch"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 357,
+      "name": "Batch"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 359,
+      "name": "CreateTransfer"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 360,
+      "name": "Transfer"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 362,
+      "name": "CreatePackagingRun"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 363,
+      "name": "UpdatePackagingRun"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 364,
+      "name": "PackagingRun"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 366,
+      "name": "CreateMeasurement"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 367,
+      "name": "UpdateMeasurement"
+    },
+    {
+      "file": "packages/lib/src/schemas/index.ts",
+      "line": 368,
+      "name": "Measurement"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 30,
+      "name": "bushelsToKg"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 43,
+      "name": "kgToBushels"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 56,
+      "name": "gallonsToLiters"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 69,
+      "name": "litersToGallons"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 84,
+      "name": "formatUnitConversion"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 120,
+      "name": "validateConversionPrecision"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 156,
+      "name": "getConversionFactor"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 195,
+      "name": "isConversionSupported"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 223,
+      "name": "toDisplayVolume"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 237,
+      "name": "formatVolume"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 256,
+      "name": "formatVolumeRange"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 16,
+      "name": "BUSHEL_TO_KG_FACTOR"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 22,
+      "name": "GAL_TO_L_FACTOR"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 207,
+      "name": "VolumeUnit"
+    },
+    {
+      "file": "packages/lib/src/utils/index.ts",
+      "line": 212,
+      "name": "VOLUME_UNIT_SYMBOLS"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 29,
+      "name": "validateBusinessRules"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 77,
+      "name": "createValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 106,
+      "name": "isValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 113,
+      "name": "extractUserMessage"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 6,
+      "name": "ValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 25,
+      "name": "TransferValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 32,
+      "name": "VolumeValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 39,
+      "name": "QuantityValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 46,
+      "name": "PackagingValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 53,
+      "name": "MeasurementValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 60,
+      "name": "VesselStateValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 67,
+      "name": "PermissionValidationError"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 37,
+      "name": "validateVesselAvailability"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 58,
+      "name": "validateVesselCapacity"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 86,
+      "name": "validateBatchVolume"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 121,
+      "name": "validateNotSelfTransfer"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 134,
+      "name": "validateTransfer"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 8,
+      "name": "VesselData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 16,
+      "name": "BatchData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 24,
+      "name": "TransferData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 177,
+      "name": "transferValidationSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 200,
+      "name": "ValidatedTransferData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 11,
+      "name": "validatePositiveVolume"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 53,
+      "name": "validatePositiveQuantity"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 104,
+      "name": "validatePositiveCount"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 146,
+      "name": "validatePositivePrice"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 189,
+      "name": "validatePercentage"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 222,
+      "name": "positiveVolumeSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 227,
+      "name": "positiveQuantitySchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 232,
+      "name": "positiveCountSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 237,
+      "name": "positivePriceSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 242,
+      "name": "percentageSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 250,
+      "name": "nonNegativeVolumeSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 255,
+      "name": "nonNegativeQuantitySchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 39,
+      "name": "validateBatchReadyForPackaging"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 68,
+      "name": "validatePackagingVolume"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 99,
+      "name": "validateBottleConsistency"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 148,
+      "name": "validatePackagingAbv"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 179,
+      "name": "validatePackagingDate"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 192,
+      "name": "validatePackaging"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 9,
+      "name": "BatchPackagingData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 17,
+      "name": "PackagingRunData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 27,
+      "name": "ExistingPackagingData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 216,
+      "name": "packagingValidationSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 242,
+      "name": "ValidatedPackagingData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 24,
+      "name": "validateAbv"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 61,
+      "name": "validatePh"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 101,
+      "name": "validateSpecificGravity"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 141,
+      "name": "validateTotalAcidity"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 181,
+      "name": "validateTemperature"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 221,
+      "name": "validateMeasurementDate"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 238,
+      "name": "validateMeasurementVolume"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 269,
+      "name": "validateMeasurement"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 8,
+      "name": "MeasurementData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 285,
+      "name": "measurementValidationSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 327,
+      "name": "ValidatedMeasurementData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 39,
+      "name": "validateStateTransition"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 78,
+      "name": "validateTransitionWithContent"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 134,
+      "name": "validateVesselUsability"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 226,
+      "name": "validateVesselTypeForOperation"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 256,
+      "name": "validateVesselState"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 8,
+      "name": "VesselStatus"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 10,
+      "name": "VesselStateData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 19,
+      "name": "StateTransition"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 277,
+      "name": "vesselStateValidationSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 300,
+      "name": "stateTransitionSchema"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 307,
+      "name": "ValidatedVesselStateData"
+    },
+    {
+      "file": "packages/lib/src/validation/index.ts",
+      "line": 308,
+      "name": "ValidatedStateTransition"
+    },
+    {
+      "file": "apps/web/src/app/admin/page.tsx",
+      "line": 801,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/cellar/page.tsx",
+      "line": 1286,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/dashboard/page.tsx",
+      "line": 874,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/inventory/page.tsx",
+      "line": 35,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/packaging/loading.tsx",
+      "line": 9,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/packaging/loading.tsx",
+      "line": 134,
+      "name": "PackagingCardSkeleton"
+    },
+    {
+      "file": "apps/web/src/app/packaging/page.tsx",
+      "line": 20,
+      "name": "default (used in module)"
+    },
+    {
+      "file": "apps/web/src/app/recipes/page.tsx",
+      "line": 100,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/reports/page.tsx",
+      "line": 48,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/vendors/page.tsx",
+      "line": 18,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/components/batch/BatchActivityHistory.tsx",
+      "line": 52,
+      "name": "BatchActivityHistory"
+    },
+    {
+      "file": "apps/web/src/components/cellar/BatchManagementTable.tsx",
+      "line": 48,
+      "name": "BatchManagementTable"
+    },
+    {
+      "file": "apps/web/src/components/inventory/AdditivesInventoryTable.tsx",
+      "line": 87,
+      "name": "AdditivesInventoryTable"
+    },
+    {
+      "file": "apps/web/src/components/inventory/AdditivesTransactionForm.tsx",
+      "line": 68,
+      "name": "AdditivesTransactionForm"
+    },
+    {
+      "file": "apps/web/src/components/inventory/AdditiveVarietyManagement.tsx",
+      "line": 51,
+      "name": "AdditiveVarietyManagement"
+    },
+    {
+      "file": "apps/web/src/components/inventory/AppleTransactionForm.tsx",
+      "line": 64,
+      "name": "AppleTransactionForm"
+    },
+    {
+      "file": "apps/web/src/components/inventory/BaseFruitTable.tsx",
+      "line": 88,
+      "name": "BaseFruitTable"
+    },
+    {
+      "file": "apps/web/src/components/inventory/BatchMergeHistory.tsx",
+      "line": 15,
+      "name": "BatchMergeHistory"
+    },
+    {
+      "file": "apps/web/src/components/inventory/InventoryFilters.tsx",
+      "line": 287,
+      "name": "SimpleInventoryFilters"
+    },
+    {
+      "file": "apps/web/src/components/inventory/InventorySearch.tsx",
+      "line": 29,
+      "name": "useDebouncedSearch (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/inventory/InventorySearch.tsx",
+      "line": 343,
+      "name": "AdvancedInventorySearch"
+    },
+    {
+      "file": "apps/web/src/components/inventory/InventorySearch.tsx",
+      "line": 365,
+      "name": "OptimizedInventorySearch"
+    },
+    {
+      "file": "apps/web/src/components/inventory/InventorySearch.tsx",
+      "line": 405,
+      "name": "SimpleInventorySearch"
+    },
+    {
+      "file": "apps/web/src/components/inventory/InventoryTable.tsx",
+      "line": 83,
+      "name": "InventoryTable (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/inventory/InventoryTable.tsx",
+      "line": 635,
+      "name": "SimpleInventoryTable"
+    },
+    {
+      "file": "apps/web/src/components/inventory/JuiceInventoryTable.tsx",
+      "line": 85,
+      "name": "JuiceInventoryTable"
+    },
+    {
+      "file": "apps/web/src/components/inventory/JuiceTransactionForm.tsx",
+      "line": 79,
+      "name": "JuiceTransactionForm"
+    },
+    {
+      "file": "apps/web/src/components/inventory/JuiceVarietyManagement.tsx",
+      "line": 30,
+      "name": "JuiceVarietyManagement"
+    },
+    {
+      "file": "apps/web/src/components/inventory/MaterialTypeIndicator.tsx",
+      "line": 72,
+      "name": "CompactMaterialTypeIndicator"
+    },
+    {
+      "file": "apps/web/src/components/inventory/MaterialTypeIndicator.tsx",
+      "line": 89,
+      "name": "DetailedMaterialTypeIndicator"
+    },
+    {
+      "file": "apps/web/src/components/inventory/MaterialTypeIndicator.tsx",
+      "line": 126,
+      "name": "MaterialTypeIcon"
+    },
+    {
+      "file": "apps/web/src/components/inventory/PackagingInventoryTable.tsx",
+      "line": 83,
+      "name": "PackagingInventoryTable"
+    },
+    {
+      "file": "apps/web/src/components/inventory/PackagingTransactionForm.tsx",
+      "line": 77,
+      "name": "PackagingTransactionForm"
+    },
+    {
+      "file": "apps/web/src/components/inventory/PackagingVarietyManagement.tsx",
+      "line": 42,
+      "name": "PackagingVarietyManagement"
+    },
+    {
+      "file": "apps/web/src/components/inventory/PurchaseOrdersTable.tsx",
+      "line": 67,
+      "name": "PurchaseOrdersTable"
+    },
+    {
+      "file": "apps/web/src/components/inventory/SearchHighlighter.tsx",
+      "line": 21,
+      "name": "SearchHighlighter"
+    },
+    {
+      "file": "apps/web/src/components/inventory/SearchHighlighter.tsx",
+      "line": 54,
+      "name": "useSimpleHighlighting (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/inventory/SearchHighlighter.tsx",
+      "line": 100,
+      "name": "SimpleHighlighter"
+    },
+    {
+      "file": "apps/web/src/components/inventory/SearchHighlighter.tsx",
+      "line": 137,
+      "name": "MultiQueryHighlighter"
+    },
+    {
+      "file": "apps/web/src/components/inventory/SearchHighlighter.tsx",
+      "line": 243,
+      "name": "TruncatedHighlighter"
+    },
+    {
+      "file": "apps/web/src/components/inventory/TransactionTypeSelector.tsx",
+      "line": 74,
+      "name": "TransactionTypeSelector"
+    },
+    {
+      "file": "apps/web/src/components/inventory/VendorManagement.tsx",
+      "line": 45,
+      "name": "VendorManagement"
+    },
+    {
+      "file": "apps/web/src/components/inventory/VendorVarietyManagement.tsx",
+      "line": 356,
+      "name": "VendorVarietyManagement"
+    },
+    {
+      "file": "apps/web/src/components/packaging/bottle-modal.tsx",
+      "line": 43,
+      "name": "BottleModal"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-detail-cards.tsx",
+      "line": 31,
+      "name": "PackagingDetailCards"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-filters.tsx",
+      "line": 41,
+      "name": "PackagingFilters"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-filters.tsx",
+      "line": 339,
+      "name": "SimplePackagingFilters"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-filters.tsx",
+      "line": 16,
+      "name": "PackagingFiltersState (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-filters.tsx",
+      "line": 24,
+      "name": "PackagingFiltersProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-filters.tsx",
+      "line": 333,
+      "name": "SimplePackagingFiltersProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-pdf-template.tsx",
+      "line": 37,
+      "name": "PackagingPDFTemplate (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-pdf-template.tsx",
+      "line": 203,
+      "name": "QuickPDFExport"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-pdf-template.tsx",
+      "line": 221,
+      "name": "AdvancedPDFExport"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-pdf-template.tsx",
+      "line": 239,
+      "name": "PDFOptionsPreview"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-table.tsx",
+      "line": 93,
+      "name": "PackagingTable (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/packaging/packaging-table.tsx",
+      "line": 752,
+      "name": "SimplePackagingTable"
+    },
+    {
+      "file": "apps/web/src/components/packaging/qa-update-modal.tsx",
+      "line": 56,
+      "name": "QAUpdateModal"
+    },
+    {
+      "file": "apps/web/src/components/pressing/FruitLoadForm.tsx",
+      "line": 88,
+      "name": "FruitLoadForm"
+    },
+    {
+      "file": "apps/web/src/components/pressing/FruitLoadFormWithTRPC.tsx",
+      "line": 81,
+      "name": "FruitLoadFormWithTRPC"
+    },
+    {
+      "file": "apps/web/src/components/pressing/index.ts",
+      "line": 1,
+      "name": "PressRunCompletion"
+    },
+    {
+      "file": "apps/web/src/components/pressing/index.ts",
+      "line": 2,
+      "name": "PressRunCompletionForm"
+    },
+    {
+      "file": "apps/web/src/components/pressing/index.ts",
+      "line": 3,
+      "name": "PressRunSummary"
+    },
+    {
+      "file": "apps/web/src/components/pressing/index.ts",
+      "line": 4,
+      "name": "PressRunCompletionSuccess"
+    },
+    {
+      "file": "apps/web/src/components/pressing/OfflineFruitLoadForm.tsx",
+      "line": 85,
+      "name": "OfflineFruitLoadForm"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 130,
+      "name": "AlertDialog (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 131,
+      "name": "AlertDialogPortal (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 132,
+      "name": "AlertDialogOverlay (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 133,
+      "name": "AlertDialogTrigger (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 134,
+      "name": "AlertDialogContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 135,
+      "name": "AlertDialogHeader (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 136,
+      "name": "AlertDialogFooter (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 137,
+      "name": "AlertDialogTitle (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 138,
+      "name": "AlertDialogDescription (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 139,
+      "name": "AlertDialogAction (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert-dialog.tsx",
+      "line": 140,
+      "name": "AlertDialogCancel (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert.tsx",
+      "line": 59,
+      "name": "Alert (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert.tsx",
+      "line": 59,
+      "name": "AlertTitle (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/alert.tsx",
+      "line": 59,
+      "name": "AlertDescription (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/badge.tsx",
+      "line": 26,
+      "name": "BadgeProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/badge.tsx",
+      "line": 36,
+      "name": "Badge (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/badge.tsx",
+      "line": 36,
+      "name": "badgeVariants (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/button.tsx",
+      "line": 36,
+      "name": "ButtonProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/button.tsx",
+      "line": 56,
+      "name": "buttonVariants (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/card.tsx",
+      "line": 79,
+      "name": "Card (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/card.tsx",
+      "line": 79,
+      "name": "CardHeader (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/card.tsx",
+      "line": 79,
+      "name": "CardFooter (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/card.tsx",
+      "line": 79,
+      "name": "CardTitle (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/card.tsx",
+      "line": 79,
+      "name": "CardDescription (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/card.tsx",
+      "line": 79,
+      "name": "CardContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/checkbox.tsx",
+      "line": 30,
+      "name": "Checkbox (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 144,
+      "name": "Command (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 145,
+      "name": "CommandDialog (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 146,
+      "name": "CommandInput (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 147,
+      "name": "CommandList (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 148,
+      "name": "CommandEmpty (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 149,
+      "name": "CommandGroup (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 150,
+      "name": "CommandItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 151,
+      "name": "CommandShortcut (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/command.tsx",
+      "line": 152,
+      "name": "CommandSeparator (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/confirm-dialog.tsx",
+      "line": 28,
+      "name": "ConfirmDialog"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 111,
+      "name": "DialogPortal (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 112,
+      "name": "DialogOverlay (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 113,
+      "name": "DialogClose (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 114,
+      "name": "DialogTrigger (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 116,
+      "name": "DialogHeader (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 117,
+      "name": "DialogFooter (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 118,
+      "name": "DialogTitle (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dialog.tsx",
+      "line": 119,
+      "name": "DialogDescription (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 183,
+      "name": "DropdownMenu (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 184,
+      "name": "DropdownMenuTrigger (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 185,
+      "name": "DropdownMenuContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 186,
+      "name": "DropdownMenuItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 187,
+      "name": "DropdownMenuCheckboxItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 188,
+      "name": "DropdownMenuRadioItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 189,
+      "name": "DropdownMenuLabel (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 190,
+      "name": "DropdownMenuSeparator (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 191,
+      "name": "DropdownMenuShortcut (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 192,
+      "name": "DropdownMenuGroup (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 193,
+      "name": "DropdownMenuPortal (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 194,
+      "name": "DropdownMenuSub (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 195,
+      "name": "DropdownMenuSubContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 196,
+      "name": "DropdownMenuSubTrigger (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/dropdown-menu.tsx",
+      "line": 197,
+      "name": "DropdownMenuRadioGroup (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 168,
+      "name": "useFormField (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 169,
+      "name": "Form (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 170,
+      "name": "FormItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 171,
+      "name": "FormLabel (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 172,
+      "name": "FormControl (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 173,
+      "name": "FormDescription (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 174,
+      "name": "FormMessage (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/form.tsx",
+      "line": 175,
+      "name": "FormField (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/harvest-date-picker.tsx",
+      "line": 177,
+      "name": "HarvestDatePicker (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/harvest-date-picker.tsx",
+      "line": 178,
+      "name": "HarvestDatePickerProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/input.tsx",
+      "line": 5,
+      "name": "InputProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/input.tsx",
+      "line": 25,
+      "name": "Input (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/label.tsx",
+      "line": 24,
+      "name": "Label (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/popover.tsx",
+      "line": 31,
+      "name": "Popover (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/popover.tsx",
+      "line": 31,
+      "name": "PopoverTrigger (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/popover.tsx",
+      "line": 31,
+      "name": "PopoverContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/progress.tsx",
+      "line": 28,
+      "name": "Progress (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/scrollable-container.tsx",
+      "line": 13,
+      "name": "ScrollableContainer (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/scrollable-select.tsx",
+      "line": 13,
+      "name": "ScrollableSelectContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 113,
+      "name": "Select (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 114,
+      "name": "SelectGroup (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 115,
+      "name": "SelectValue (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 116,
+      "name": "SelectTrigger (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 117,
+      "name": "SelectContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 118,
+      "name": "SelectLabel (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 119,
+      "name": "SelectItem (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/select.tsx",
+      "line": 120,
+      "name": "SelectSeparator (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/separator.tsx",
+      "line": 31,
+      "name": "Separator (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/skeleton.tsx",
+      "line": 15,
+      "name": "Skeleton (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/sortable-header.tsx",
+      "line": 128,
+      "name": "getSortDirectionText"
+    },
+    {
+      "file": "apps/web/src/components/ui/sortable-header.tsx",
+      "line": 142,
+      "name": "useSortableHeader"
+    },
+    {
+      "file": "apps/web/src/components/ui/sortable-header.tsx",
+      "line": 6,
+      "name": "SortDirection (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/sortable-header.tsx",
+      "line": 8,
+      "name": "SortableHeaderProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/sortable-header.tsx",
+      "line": 23,
+      "name": "SortableHeader (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/table.tsx",
+      "line": 109,
+      "name": "Table (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/table.tsx",
+      "line": 110,
+      "name": "TableHeader (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/table.tsx",
+      "line": 111,
+      "name": "TableBody (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/table.tsx",
+      "line": 112,
+      "name": "TableFooter (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/table.tsx",
+      "line": 114,
+      "name": "TableRow (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/table.tsx",
+      "line": 115,
+      "name": "TableCell (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/table.tsx",
+      "line": 116,
+      "name": "TableCaption (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/tabs.tsx",
+      "line": 55,
+      "name": "Tabs (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/tabs.tsx",
+      "line": 55,
+      "name": "TabsList (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/tabs.tsx",
+      "line": 55,
+      "name": "TabsTrigger (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/tabs.tsx",
+      "line": 55,
+      "name": "TabsContent (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/textarea.tsx",
+      "line": 5,
+      "name": "TextareaProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/textarea.tsx",
+      "line": 24,
+      "name": "Textarea (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/toast-provider.tsx",
+      "line": 154,
+      "name": "useToast"
+    },
+    {
+      "file": "apps/web/src/components/ui/toast-provider.tsx",
+      "line": 7,
+      "name": "ToastState (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/toast.tsx",
+      "line": 117,
+      "name": "ToastProps (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/toast.tsx",
+      "line": 118,
+      "name": "ToastActionElement (used in module)"
+    },
+    {
+      "file": "apps/web/src/components/ui/toast.tsx",
+      "line": 120,
+      "name": "ToastAction (used in module)"
+    },
+    {
+      "file": "apps/web/src/server/routers/press-run.ts",
+      "line": 4,
+      "name": "pressRunRouter"
+    },
+    {
+      "file": "packages/db/dist/queries/__tests__/packaging-optimized.test.js",
+      "line": 12,
+      "name": "__esModule"
+    },
+    {
+      "file": "apps/web/src/app/admin/batches/page.tsx",
+      "line": 31,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/auth/signin/page.tsx",
+      "line": 148,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/auth/test/page.tsx",
+      "line": 7,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/batch/[id]/page.tsx",
+      "line": 37,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/packaging/[id]/page.tsx",
+      "line": 48,
+      "name": "default (used in module)"
+    },
+    {
+      "file": "apps/web/src/app/pressing/[id]/page.tsx",
+      "line": 30,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/purchase-orders/[id]/page.tsx",
+      "line": 35,
+      "name": "default"
+    },
+    {
+      "file": "apps/web/src/app/api/auth/[...nextauth]/route.ts",
+      "line": 6,
+      "name": "GET"
+    },
+    {
+      "file": "apps/web/src/app/api/auth/[...nextauth]/route.ts",
+      "line": 6,
+      "name": "POST"
+    },
+    {
+      "file": "apps/web/src/app/api/trpc/[trpc]/route.ts",
+      "line": 28,
+      "name": "GET"
+    },
+    {
+      "file": "apps/web/src/app/api/trpc/[trpc]/route.ts",
+      "line": 28,
+      "name": "POST"
+    },
+    {
+      "file": "apps/web/src/app/pressing/[id]/complete/page.tsx",
+      "line": 8,
+      "name": "default"
+    }
+  ]
+}

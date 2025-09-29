@@ -1,0 +1,22 @@
+{
+  "baseline": {
+    "date": "2025-09-29T01:29:24.665Z",
+    "totalIssues": 117,
+    "highRisk": 18,
+    "mediumRisk": 54,
+    "lowRisk": 45
+  },
+  "current": {
+    "date": "2025-09-29T01:29:24.665Z",
+    "totalIssues": 117,
+    "highRisk": 18,
+    "mediumRisk": 54,
+    "lowRisk": 45
+  },
+  "changes": {
+    "totalIssues": 0,
+    "highRisk": 0,
+    "mediumRisk": 0,
+    "lowRisk": 0
+  }
+}

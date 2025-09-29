@@ -1,0 +1,69 @@
+{
+  "totalAssets": 9,
+  "usedAssets": 4,
+  "unusedAssets": [
+    {
+      "path": "/test-inline-edit.html",
+      "referencedBy": [],
+      "type": "other",
+      "size": 3217
+    },
+    {
+      "path": "/test-dropdown.html",
+      "referencedBy": [],
+      "type": "other",
+      "size": 1155
+    },
+    {
+      "path": "/sw.js",
+      "referencedBy": [],
+      "type": "js",
+      "size": 11552
+    },
+    {
+      "path": "/manifest.json",
+      "referencedBy": [],
+      "type": "other",
+      "size": 1923
+    },
+    {
+      "path": "./src/app/globals.css",
+      "referencedBy": [],
+      "type": "css",
+      "size": 1553
+    }
+  ],
+  "potentiallyUnused": [
+    {
+      "path": "/icon-192x192.png",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "image"
+    },
+    {
+      "path": "/icon-512x512.png",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "image"
+    },
+    {
+      "path": "/apple-touch-icon.png",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "image"
+    },
+    {
+      "path": "/pressing",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "other"
+    }
+  ],
+  "largeAssets": [],
+  "analysisDate": "2025-09-29T01:29:16.090Z",
+  "errors": []
+}

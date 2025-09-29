@@ -18,6 +18,9 @@ importers:
       '@types/node':
         specifier: ^20.11.0
         version: 20.19.13
+      '@types/typescript':
+        specifier: ^2.0.0
+        version: 2.0.0
       '@vitest/coverage-v8':
         specifier: ^1.0.0
         version: 1.6.1(vitest@1.6.1)
@@ -3342,6 +3345,13 @@ packages:
 
   /@types/stack-utils@2.0.3:
     resolution: {integrity: sha512-9aEbYZ3TbYMznPdcdr3SmIrLXwC/AKZXQeCf9Pgao5CKb8CyHuEX5jzWPTkvregvhRJHcpRO6BFoGW9ycaOkYw==}
+    dev: true
+
+  /@types/typescript@2.0.0:
+    resolution: {integrity: sha512-WMEWfMISiJ2QKyk5/dSdgL0ZwP//PZj0jmDU0hMh51FmLq4WIYzjlngsUQZXejQL+QtkXJUOGjb3G3UCvgZuSQ==}
+    deprecated: This is a stub types definition for TypeScript (https://github.com/Microsoft/TypeScript). TypeScript provides its own type definitions, so you don't need @types/typescript installed!
+    dependencies:
+      typescript: 5.9.2
     dev: true
 
   /@types/yargs-parser@21.0.3:

@@ -1,0 +1,994 @@
+{
+  "summary": {
+    "totalIssues": 117,
+    "highRiskItems": 18,
+    "mediumRiskItems": 54,
+    "lowRiskItems": 45,
+    "potentialSavings": {
+      "files": 0,
+      "dependencies": 0,
+      "assets": 5,
+      "databaseEntities": 54
+    }
+  },
+  "risks": [
+    {
+      "item": "juiceLots",
+      "type": "database",
+      "risk": "high",
+      "reason": "table is defined but never used",
+      "recommendation": "Consider dropping table"
+    },
+    {
+      "item": "tankMeasurements",
+      "type": "database",
+      "risk": "high",
+      "reason": "table is defined but never used",
+      "recommendation": "Consider dropping table"
+    },
+    {
+      "item": "tankAdditives",
+      "type": "database",
+      "risk": "high",
+      "reason": "table is defined but never used",
+      "recommendation": "Consider dropping table"
+    },
+    {
+      "item": "unitEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum unitEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchStatusEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum batchStatusEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vesselStatusEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum vesselStatusEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vesselTypeEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum vesselTypeEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vesselMaterialEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum vesselMaterialEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vesselJacketedEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum vesselJacketedEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "transactionTypeEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum transactionTypeEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "cogsItemTypeEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum cogsItemTypeEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "userRoleEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum userRoleEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "pressRunStatusEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum pressRunStatusEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "fruitTypeEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum fruitTypeEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "ciderCategoryEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum ciderCategoryEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "intensityEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum intensityEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "harvestWindowEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum harvestWindowEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "packagingItemTypeEnum",
+      "type": "database",
+      "risk": "high",
+      "reason": "Enum packagingItemTypeEnum is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "unitEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchStatusEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vesselStatusEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vesselTypeEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vesselMaterialEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vesselJacketedEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "transactionTypeEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "cogsItemTypeEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "userRoleEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "pressRunStatusEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "fruitTypeEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "ciderCategoryEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "intensityEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "harvestWindowEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "packagingItemTypeEnum",
+      "type": "database",
+      "risk": "medium",
+      "reason": "enum is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vendorsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "baseFruitVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vendorVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "additiveVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vendorAdditiveVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "juiceVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vendorJuiceVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "packagingVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vendorPackagingVarietiesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "basefruitPurchasesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "basefruitPurchaseItemsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "additivePurchasesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "additivePurchaseItemsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "juicePurchasesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "juicePurchaseItemsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "packagingPurchasesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "packagingPurchaseItemsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "pressRunsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "juiceLotsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "pressItemsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "vesselsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchMergeHistoryRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchCompositionsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchMeasurementsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchAdditivesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "packagesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "inventoryRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "inventoryTransactionsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchCostsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "cogsItemsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "applePressRunsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "applePressRunLoadsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "tankMeasurementsRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "tankAdditivesRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "batchTransfersRelations",
+      "type": "database",
+      "risk": "medium",
+      "reason": "relation is defined but never used",
+      "recommendation": "Safe to remove definition"
+    },
+    {
+      "item": "juiceLots",
+      "type": "database",
+      "risk": "medium",
+      "reason": "Table juiceLots is defined but has no query usages",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "tankMeasurements",
+      "type": "database",
+      "risk": "medium",
+      "reason": "Table tankMeasurements is defined but has no query usages",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "tankAdditives",
+      "type": "database",
+      "risk": "medium",
+      "reason": "Table tankAdditives is defined but has no query usages",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "/test-inline-edit.html",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset is 0.00MB and not referenced",
+      "recommendation": "Safe to delete if not used by external systems"
+    },
+    {
+      "item": "/test-dropdown.html",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset is 0.00MB and not referenced",
+      "recommendation": "Safe to delete if not used by external systems"
+    },
+    {
+      "item": "/sw.js",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset is 0.01MB and not referenced",
+      "recommendation": "Safe to delete if not used by external systems"
+    },
+    {
+      "item": "/manifest.json",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset is 0.00MB and not referenced",
+      "recommendation": "Safe to delete if not used by external systems"
+    },
+    {
+      "item": "./src/app/globals.css",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset is 0.00MB and not referenced",
+      "recommendation": "Safe to delete if not used by external systems"
+    },
+    {
+      "item": "/icon-192x192.png",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset has minimal references",
+      "recommendation": "Review references before removing",
+      "relatedItems": [
+        "manifest.json"
+      ]
+    },
+    {
+      "item": "/icon-512x512.png",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset has minimal references",
+      "recommendation": "Review references before removing",
+      "relatedItems": [
+        "manifest.json"
+      ]
+    },
+    {
+      "item": "/apple-touch-icon.png",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset has minimal references",
+      "recommendation": "Review references before removing",
+      "relatedItems": [
+        "manifest.json"
+      ]
+    },
+    {
+      "item": "/pressing",
+      "type": "asset",
+      "risk": "low",
+      "reason": "Asset has minimal references",
+      "recommendation": "Review references before removing",
+      "relatedItems": [
+        "manifest.json"
+      ]
+    },
+    {
+      "item": "vendorsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation vendorsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "baseFruitVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation baseFruitVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vendorVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation vendorVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "additiveVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation additiveVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vendorAdditiveVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation vendorAdditiveVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "juiceVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation juiceVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vendorJuiceVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation vendorJuiceVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "packagingVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation packagingVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vendorPackagingVarietiesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation vendorPackagingVarietiesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "basefruitPurchasesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation basefruitPurchasesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "basefruitPurchaseItemsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation basefruitPurchaseItemsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "additivePurchasesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation additivePurchasesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "additivePurchaseItemsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation additivePurchaseItemsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "juicePurchasesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation juicePurchasesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "juicePurchaseItemsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation juicePurchaseItemsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "packagingPurchasesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation packagingPurchasesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "packagingPurchaseItemsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation packagingPurchaseItemsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "pressRunsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation pressRunsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "juiceLotsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation juiceLotsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "pressItemsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation pressItemsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "vesselsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation vesselsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation batchesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchMergeHistoryRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation batchMergeHistoryRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchCompositionsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation batchCompositionsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchMeasurementsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation batchMeasurementsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchAdditivesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation batchAdditivesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "packagesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation packagesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "inventoryRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation inventoryRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "inventoryTransactionsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation inventoryTransactionsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchCostsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation batchCostsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "cogsItemsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation cogsItemsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "applePressRunsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation applePressRunsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "applePressRunLoadsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation applePressRunLoadsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "tankMeasurementsRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation tankMeasurementsRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "tankAdditivesRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation tankAdditivesRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    },
+    {
+      "item": "batchTransfersRelations",
+      "type": "database",
+      "risk": "low",
+      "reason": "Relation batchTransfersRelations is defined but never used",
+      "recommendation": "Review and align schema with code usage"
+    }
+  ],
+  "deadCode": {
+    "files": [],
+    "exports": [],
+    "dependencies": [],
+    "devDependencies": []
+  },
+  "assets": {
+    "unused": [
+      "/test-inline-edit.html",
+      "/test-dropdown.html",
+      "/sw.js",
+      "/manifest.json",
+      "./src/app/globals.css"
+    ],
+    "large": [],
+    "potentiallyUnused": [
+      "/icon-192x192.png",
+      "/icon-512x512.png",
+      "/apple-touch-icon.png",
+      "/pressing"
+    ]
+  },
+  "database": {
+    "unusedEntities": [
+      "unitEnum",
+      "batchStatusEnum",
+      "vesselStatusEnum",
+      "vesselTypeEnum",
+      "vesselMaterialEnum",
+      "vesselJacketedEnum",
+      "transactionTypeEnum",
+      "cogsItemTypeEnum",
+      "userRoleEnum",
+      "pressRunStatusEnum",
+      "fruitTypeEnum",
+      "ciderCategoryEnum",
+      "intensityEnum",
+      "harvestWindowEnum",
+      "packagingItemTypeEnum",
+      "juiceLots",
+      "vendorsRelations",
+      "baseFruitVarietiesRelations",
+      "vendorVarietiesRelations",
+      "additiveVarietiesRelations",
+      "vendorAdditiveVarietiesRelations",
+      "juiceVarietiesRelations",
+      "vendorJuiceVarietiesRelations",
+      "packagingVarietiesRelations",
+      "vendorPackagingVarietiesRelations",
+      "basefruitPurchasesRelations",
+      "basefruitPurchaseItemsRelations",
+      "additivePurchasesRelations",
+      "additivePurchaseItemsRelations",
+      "juicePurchasesRelations",
+      "juicePurchaseItemsRelations",
+      "packagingPurchasesRelations",
+      "packagingPurchaseItemsRelations",
+      "pressRunsRelations",
+      "juiceLotsRelations",
+      "pressItemsRelations",
+      "vesselsRelations",
+      "batchesRelations",
+      "batchMergeHistoryRelations",
+      "batchCompositionsRelations",
+      "batchMeasurementsRelations",
+      "batchAdditivesRelations",
+      "packagesRelations",
+      "inventoryRelations",
+      "inventoryTransactionsRelations",
+      "batchCostsRelations",
+      "cogsItemsRelations",
+      "applePressRunsRelations",
+      "applePressRunLoadsRelations",
+      "tankMeasurements",
+      "tankAdditives",
+      "tankMeasurementsRelations",
+      "tankAdditivesRelations",
+      "batchTransfersRelations"
+    ],
+    "orphanedQueries": [
+      "packaging-optimized.ts:withCursorPagination",
+      "packaging-optimized.ts:generateCursor",
+      "packaging-optimized.ts:clearPackageSizesCache"
+    ],
+    "schemaDrift": [
+      "unitEnum",
+      "batchStatusEnum",
+      "vesselStatusEnum",
+      "vesselTypeEnum",
+      "vesselMaterialEnum",
+      "vesselJacketedEnum",
+      "transactionTypeEnum",
+      "cogsItemTypeEnum",
+      "userRoleEnum",
+      "pressRunStatusEnum",
+      "fruitTypeEnum",
+      "ciderCategoryEnum",
+      "intensityEnum",
+      "harvestWindowEnum",
+      "packagingItemTypeEnum",
+      "juiceLots",
+      "vendorsRelations",
+      "baseFruitVarietiesRelations",
+      "vendorVarietiesRelations",
+      "additiveVarietiesRelations",
+      "vendorAdditiveVarietiesRelations",
+      "juiceVarietiesRelations",
+      "vendorJuiceVarietiesRelations",
+      "packagingVarietiesRelations",
+      "vendorPackagingVarietiesRelations",
+      "basefruitPurchasesRelations",
+      "basefruitPurchaseItemsRelations",
+      "additivePurchasesRelations",
+      "additivePurchaseItemsRelations",
+      "juicePurchasesRelations",
+      "juicePurchaseItemsRelations",
+      "packagingPurchasesRelations",
+      "packagingPurchaseItemsRelations",
+      "pressRunsRelations",
+      "juiceLotsRelations",
+      "pressItemsRelations",
+      "vesselsRelations",
+      "batchesRelations",
+      "batchMergeHistoryRelations",
+      "batchCompositionsRelations",
+      "batchMeasurementsRelations",
+      "batchAdditivesRelations",
+      "packagesRelations",
+      "inventoryRelations",
+      "inventoryTransactionsRelations",
+      "batchCostsRelations",
+      "cogsItemsRelations",
+      "applePressRunsRelations",
+      "applePressRunLoadsRelations",
+      "tankMeasurements",
+      "tankAdditives",
+      "tankMeasurementsRelations",
+      "tankAdditivesRelations",
+      "batchTransfersRelations"
+    ]
+  },
+  "circular": [],
+  "analysisDate": "2025-09-29T01:29:24.665Z",
+  "errors": [
+    "Failed to load knip report: Error: ENOENT: no such file or directory, open '/Users/benjaminwierzbanowski/Code/CideryManagementApp/reports/knip-report.json'",
+    "Failed to load depcheck report: Error: ENOENT: no such file or directory, open '/Users/benjaminwierzbanowski/Code/CideryManagementApp/reports/depcheck-report.json'"
+  ]
+}

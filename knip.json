@@ -1,0 +1,144 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/**/*.{ts,js}",
+        ".claude/scripts/**/*.{ts,js}",
+        "create-admin-user.ts",
+        "vitest.config.ts",
+        "vitest.workspace.ts",
+        "playwright.config.ts",
+        "playwright-standalone.config.ts",
+        "playwright-page-verification.config.ts"
+      ],
+      "project": [
+        "**/*.{ts,tsx,js,jsx}",
+        "!apps/**",
+        "!packages/**",
+        "!node_modules/**",
+        "!.next/**",
+        "!dist/**",
+        "!build/**",
+        "!coverage/**",
+        "!test-results/**"
+      ],
+      "ignore": [
+        "apps/**",
+        "packages/**"
+      ]
+    },
+    "apps/web": {
+      "entry": [
+        "src/app/**/{page,layout,loading,error,not-found,route,default}.{ts,tsx,js,jsx}",
+        "src/app/api/**/{route,middleware}.{ts,tsx,js,jsx}",
+        "src/middleware.{ts,tsx,js,jsx}",
+        "next.config.{js,mjs,ts}",
+        "tailwind.config.{js,ts}",
+        "postcss.config.{js,ts}",
+        "vitest.config.{js,ts}",
+        "src/lib/auth.{ts,tsx}",
+        "src/lib/env.{ts,tsx}",
+        "src/components/providers/**/*.{ts,tsx}"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,js,jsx}",
+        "public/**/*",
+        "!node_modules/**",
+        "!.next/**",
+        "!dist/**",
+        "!build/**",
+        "!coverage/**"
+      ],
+      "ignore": [
+        "src/components/ui/**/*.{ts,tsx}",
+        "public/**/*",
+        ".next/**/*"
+      ],
+      "ignoreDependencies": [
+        "eslint-config-next",
+        "autoprefixer",
+        "postcss",
+        "tailwindcss",
+        "tailwindcss-animate"
+      ]
+    },
+    "packages/api": {
+      "entry": [
+        "src/index.{ts,js}",
+        "src/root.{ts,js}",
+        "src/trpc.{ts,js}"
+      ],
+      "project": [
+        "src/**/*.{ts,js}",
+        "!node_modules/**",
+        "!dist/**",
+        "!build/**"
+      ]
+    },
+    "packages/db": {
+      "entry": [
+        "src/index.{ts,js}",
+        "src/migrate.{ts,js}",
+        "src/seed.{ts,js}",
+        "drizzle.config.{ts,js}"
+      ],
+      "project": [
+        "src/**/*.{ts,js}",
+        "migrations/**/*.{ts,js,sql}",
+        "!node_modules/**",
+        "!dist/**",
+        "!build/**"
+      ]
+    },
+    "packages/lib": {
+      "entry": [
+        "src/index.{ts,js}"
+      ],
+      "project": [
+        "src/**/*.{ts,js}",
+        "!node_modules/**",
+        "!dist/**",
+        "!build/**"
+      ]
+    },
+    "packages/worker": {
+      "entry": [
+        "src/index.{ts,js}",
+        "src/server.{ts,js}"
+      ],
+      "project": [
+        "src/**/*.{ts,js}",
+        "!node_modules/**",
+        "!dist/**",
+        "!build/**"
+      ]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    ".next",
+    "dist",
+    "build",
+    "coverage",
+    "test-results",
+    ".git"
+  ],
+  "ignoreBinaries": [
+    "tsx",
+    "next",
+    "drizzle-kit",
+    "playwright",
+    "vitest"
+  ],
+  "ignoreDependencies": [
+    "@types/*",
+    "typescript",
+    "prettier",
+    "eslint*",
+    "vitest",
+    "@vitest/*",
+    "@playwright/test",
+    "concurrently"
+  ]
+}
