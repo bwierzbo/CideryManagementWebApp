@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { db } from './packages/db/src/index'
+import { db } from './packages/db/src'
 import { users } from './packages/db/src/schema'
 import bcrypt from 'bcryptjs'
 

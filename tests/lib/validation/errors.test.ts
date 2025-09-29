@@ -15,7 +15,7 @@ import {
   createValidationError,
   isValidationError,
   extractUserMessage
-} from '../../../packages/lib/src/validation/errors';
+} from './packages/lib/src/validation/errors';
 
 describe('Validation Errors', () => {
   describe('ValidationError', () => {

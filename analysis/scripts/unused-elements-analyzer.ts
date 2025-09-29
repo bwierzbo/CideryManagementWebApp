@@ -1,6 +1,6 @@
-import { SchemaMapper } from './schema-mapper.js';
-import { DatabaseUsageScanner } from './db-usage-scanner.js';
-import ASTParser from './ast-parser.js';
+import { SchemaMapper } from './schema-mapper';
+import { DatabaseUsageScanner } from './db-usage-scanner';
+import ASTParser from './ast-parser';
 import { readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { glob } from 'glob';

@@ -1,13 +1,37 @@
 {
-  "timestamp": "2025-09-28T23:36:27.728Z",
-  "totalSize": 0,
-  "totalSizeKB": 0,
-  "files": [],
-  "packages": {},
-  "chunks": {
-    "main": [],
-    "vendor": [],
-    "dynamic": []
-  },
+  "timestamp": "2025-09-29T01:41:50.777Z",
+  "commit": "b344039b0b25caa821d6e0a9a76c2ad7fc360219",
+  "totalSizeKB": 110.27999999999999,
+  "gzippedSizeKB": 33.09,
+  "files": [
+    {
+      "name": "chunks/polyfills.js",
+      "sizeKB": 109.96,
+      "gzippedKB": 32.99,
+      "type": "chunk"
+    },
+    {
+      "name": "development/_buildManifest.js",
+      "sizeKB": 0.23,
+      "gzippedKB": 0.07,
+      "type": "main"
+    },
+    {
+      "name": "development/_ssgManifest.js",
+      "sizeKB": 0.07,
+      "gzippedKB": 0.02,
+      "type": "main"
+    },
+    {
+      "name": "js/main.js",
+      "sizeKB": 0.02,
+      "gzippedKB": 0.01,
+      "type": "main"
+    }
+  ],
+  "chunks": [],
+  "warnings": [
+    "1 files exceed 100KB"
+  ],
   "recommendations": []
 }

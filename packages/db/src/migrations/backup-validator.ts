@@ -5,9 +5,9 @@
  * Provides backup integrity checking, restoration testing, and recovery procedures.
  */
 
-import { sql } from 'drizzle-orm';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { DeprecatedElement } from './deprecation-system';
+import { sql } from "drizzle-orm";
+import { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { DeprecatedElement } from "./deprecation-system";
 
 export interface BackupConfig {
   enabled: boolean;
@@ -15,7 +15,7 @@ export interface BackupConfig {
   retentionDays: number;
   compressionEnabled: boolean;
   encryptionEnabled: boolean;
-  verificationLevel: 'basic' | 'full' | 'comprehensive';
+  verificationLevel: "basic" | "full" | "comprehensive";
   maxBackupSizeMB: number;
   testRestoreEnabled: boolean;
 }
@@ -23,7 +23,7 @@ export interface BackupConfig {
 export interface BackupMetadata {
   id: string;
   timestamp: string;
-  type: 'pre-migration' | 'post-migration' | 'scheduled' | 'manual';
+  type: "pre-migration" | "post-migration" | "scheduled" | "manual";
   migrationId?: string;
   elements: BackupElement[];
   size: number;
@@ -34,7 +34,7 @@ export interface BackupMetadata {
 }
 
 export interface BackupElement {
-  type: 'table' | 'schema' | 'index' | 'constraint' | 'function' | 'view';
+  type: "table" | "schema" | "index" | "constraint" | "function" | "view";
   name: string;
   schema: string;
   size: number;
@@ -48,7 +48,7 @@ export interface BackupValidationResult {
   backupId: string;
   timestamp: string;
   passed: boolean;
-  validationLevel: 'basic' | 'full' | 'comprehensive';
+  validationLevel: "basic" | "full" | "comprehensive";
   checks: ValidationCheck[];
   duration: number;
   score: number; // 0-100
@@ -56,10 +56,10 @@ export interface BackupValidationResult {
 
 export interface ValidationCheck {
   name: string;
-  type: 'existence' | 'integrity' | 'consistency' | 'performance';
+  type: "existence" | "integrity" | "consistency" | "performance";
   passed: boolean;
   message: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  severity: "low" | "medium" | "high" | "critical";
   details?: any;
 }
 
@@ -85,11 +85,11 @@ export class BackupValidator {
     this.db = db;
     this.config = {
       enabled: true,
-      backupDirectory: process.env.DB_BACKUP_DIR || '/var/backups/database',
+      backupDirectory: process.env.DB_BACKUP_DIR || "/var/backups/database",
       retentionDays: 30,
       compressionEnabled: true,
       encryptionEnabled: false,
-      verificationLevel: 'full',
+      verificationLevel: "full",
       maxBackupSizeMB: 10240, // 10GB
       testRestoreEnabled: false,
       ...config,
@@ -101,15 +101,15 @@ export class BackupValidator {
    */
   async createPreMigrationBackup(
     migrationId: string,
-    elements: DeprecatedElement[]
+    elements: DeprecatedElement[],
   ): Promise<BackupMetadata> {
     if (!this.config.enabled) {
-      throw new Error('Backup system is disabled');
+      throw new Error("Backup system is disabled");
     }
 
     console.log(`💾 Creating pre-migration backup for ${migrationId}`);
 
-    const backupId = this.generateBackupId('pre-migration', migrationId);
+    const backupId = this.generateBackupId("pre-migration", migrationId);
     const startTime = Date.now();
 
     try {
@@ -121,18 +121,21 @@ export class BackupValidator {
 
       // Calculate metadata
       const backupSize = await this.getBackupSize(backupPath);
-      const checksums = await this.calculateChecksums(backupPath, backupElements);
+      const checksums = await this.calculateChecksums(
+        backupPath,
+        backupElements,
+      );
 
       const metadata: BackupMetadata = {
         id: backupId,
         timestamp: new Date().toISOString(),
-        type: 'pre-migration',
+        type: "pre-migration",
         migrationId,
         elements: backupElements,
         size: backupSize,
         checksums,
         compressionRatio: this.config.compressionEnabled ? 0.7 : 1.0, // Estimated
-        version: '1.0.0',
+        version: "1.0.0",
         databaseVersion: await this.getDatabaseVersion(),
       };
 
@@ -142,16 +145,25 @@ export class BackupValidator {
       // Validate the backup
       const validation = await this.validateBackup(backupId);
       if (!validation.passed) {
-        throw new Error(`Backup validation failed: ${validation.checks.filter(c => !c.passed).map(c => c.message).join(', ')}`);
+        throw new Error(
+          `Backup validation failed: ${validation.checks
+            .filter((c) => !c.passed)
+            .map((c) => c.message)
+            .join(", ")}`,
+        );
       }
 
       const duration = Date.now() - startTime;
-      console.log(`✅ Pre-migration backup created: ${backupId} (${duration}ms)`);
+      console.log(
+        `✅ Pre-migration backup created: ${backupId} (${duration}ms)`,
+      );
 
       return metadata;
-
     } catch (error) {
-      console.error(`❌ Pre-migration backup failed for ${migrationId}:`, error);
+      console.error(
+        `❌ Pre-migration backup failed for ${migrationId}:`,
+        error,
+      );
       throw error;
     }
   }
@@ -178,20 +190,24 @@ export class BackupValidator {
       checks.push(...basicChecks);
 
       // Full validation checks (if enabled)
-      if (this.config.verificationLevel === 'full' || this.config.verificationLevel === 'comprehensive') {
+      if (
+        this.config.verificationLevel === "full" ||
+        this.config.verificationLevel === "comprehensive"
+      ) {
         const fullChecks = await this.performFullValidation(metadata);
         checks.push(...fullChecks);
       }
 
       // Comprehensive validation (if enabled)
-      if (this.config.verificationLevel === 'comprehensive') {
-        const comprehensiveChecks = await this.performComprehensiveValidation(metadata);
+      if (this.config.verificationLevel === "comprehensive") {
+        const comprehensiveChecks =
+          await this.performComprehensiveValidation(metadata);
         checks.push(...comprehensiveChecks);
       }
 
-      const passedChecks = checks.filter(c => c.passed).length;
+      const passedChecks = checks.filter((c) => c.passed).length;
       const score = Math.round((passedChecks / checks.length) * 100);
-      const passed = checks.every(c => c.passed || c.severity === 'low');
+      const passed = checks.every((c) => c.passed || c.severity === "low");
 
       const result: BackupValidationResult = {
         id: validationId,
@@ -204,10 +220,11 @@ export class BackupValidator {
         score,
       };
 
-      console.log(`${passed ? '✅' : '❌'} Backup validation completed: ${score}/100 score`);
+      console.log(
+        `${passed ? "✅" : "❌"} Backup validation completed: ${score}/100 score`,
+      );
 
       return result;
-
     } catch (error) {
       console.error(`❌ Backup validation failed for ${backupId}:`, error);
 
@@ -217,13 +234,15 @@ export class BackupValidator {
         timestamp: new Date().toISOString(),
         passed: false,
         validationLevel: this.config.verificationLevel,
-        checks: [{
-          name: 'Validation Execution',
-          type: 'existence',
-          passed: false,
-          message: `Validation failed: ${error.message}`,
-          severity: 'critical',
-        }],
+        checks: [
+          {
+            name: "Validation Execution",
+            type: "existence",
+            passed: false,
+            message: `Validation failed: ${error.message}`,
+            severity: "critical",
+          },
+        ],
         duration: Date.now() - startTime,
         score: 0,
       };
@@ -233,9 +252,12 @@ export class BackupValidator {
   /**
    * Test backup restoration
    */
-  async testRestoration(backupId: string, testDatabaseName?: string): Promise<RestorationTest> {
+  async testRestoration(
+    backupId: string,
+    testDatabaseName?: string,
+  ): Promise<RestorationTest> {
     if (!this.config.testRestoreEnabled) {
-      throw new Error('Test restoration is disabled');
+      throw new Error("Test restoration is disabled");
     }
 
     console.log(`🧪 Testing restoration for backup: ${backupId}`);
@@ -252,7 +274,10 @@ export class BackupValidator {
       await this.restoreBackupToDatabase(backupId, testDb);
 
       // Verify restoration
-      const verificationResults = await this.verifyRestoredDatabase(backupId, testDb);
+      const verificationResults = await this.verifyRestoredDatabase(
+        backupId,
+        testDb,
+      );
 
       // Cleanup test database
       await this.cleanupTestDatabase(testDb);
@@ -262,16 +287,19 @@ export class BackupValidator {
         backupId,
         timestamp: new Date().toISOString(),
         testDatabase: testDb,
-        success: verificationResults.every(v => v.passed),
+        success: verificationResults.every((v) => v.passed),
         duration: Date.now() - startTime,
-        errors: verificationResults.filter(v => !v.passed).map(v => v.message),
+        errors: verificationResults
+          .filter((v) => !v.passed)
+          .map((v) => v.message),
         verificationResults,
       };
 
-      console.log(`${result.success ? '✅' : '❌'} Restoration test completed for ${backupId}`);
+      console.log(
+        `${result.success ? "✅" : "❌"} Restoration test completed for ${backupId}`,
+      );
 
       return result;
-
     } catch (error) {
       console.error(`❌ Restoration test failed for ${backupId}:`, error);
 
@@ -279,7 +307,7 @@ export class BackupValidator {
       try {
         await this.cleanupTestDatabase(testDb);
       } catch (cleanupError) {
-        console.error('Failed to cleanup test database:', cleanupError);
+        console.error("Failed to cleanup test database:", cleanupError);
       }
 
       return {
@@ -327,9 +355,13 @@ export class BackupValidator {
     errors: string[];
     spaceSaved: number;
   }> {
-    console.log(`🧹 Cleaning up backups older than ${this.config.retentionDays} days`);
+    console.log(
+      `🧹 Cleaning up backups older than ${this.config.retentionDays} days`,
+    );
 
-    const cutoffDate = new Date(Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000);
+    const cutoffDate = new Date(
+      Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000,
+    );
     const deleted: string[] = [];
     const errors: string[] = [];
     let spaceSaved = 0;
@@ -349,10 +381,11 @@ export class BackupValidator {
         }
       }
 
-      console.log(`✅ Cleanup completed: ${deleted.length} backups deleted, ${spaceSaved} bytes saved`);
-
+      console.log(
+        `✅ Cleanup completed: ${deleted.length} backups deleted, ${spaceSaved} bytes saved`,
+      );
     } catch (error) {
-      console.error('❌ Backup cleanup failed:', error);
+      console.error("❌ Backup cleanup failed:", error);
       errors.push(`Cleanup failed: ${error.message}`);
     }
 
@@ -361,7 +394,9 @@ export class BackupValidator {
 
   // Private methods
 
-  private async analyzeBackupElements(elements: DeprecatedElement[]): Promise<BackupElement[]> {
+  private async analyzeBackupElements(
+    elements: DeprecatedElement[],
+  ): Promise<BackupElement[]> {
     const backupElements: BackupElement[] = [];
 
     for (const element of elements) {
@@ -376,19 +411,27 @@ export class BackupValidator {
     }
 
     // Remove duplicates
-    const unique = backupElements.filter((elem, index, arr) =>
-      arr.findIndex(e => e.type === elem.type && e.name === elem.name && e.schema === elem.schema) === index
+    const unique = backupElements.filter(
+      (elem, index, arr) =>
+        arr.findIndex(
+          (e) =>
+            e.type === elem.type &&
+            e.name === elem.name &&
+            e.schema === elem.schema,
+        ) === index,
     );
 
     return unique;
   }
 
-  private async analyzeElement(element: DeprecatedElement): Promise<BackupElement> {
+  private async analyzeElement(
+    element: DeprecatedElement,
+  ): Promise<BackupElement> {
     let size = 0;
     let rowCount: number | undefined;
-    let checksum = '';
+    let checksum = "";
 
-    if (element.type === 'table') {
+    if (element.type === "table") {
       // Get table size and row count
       try {
         const sizeQuery = `
@@ -406,7 +449,10 @@ export class BackupValidator {
       }
 
       // Calculate checksum
-      checksum = await this.calculateTableChecksum(element.schema, element.originalName);
+      checksum = await this.calculateTableChecksum(
+        element.schema,
+        element.originalName,
+      );
     }
 
     return {
@@ -416,22 +462,28 @@ export class BackupValidator {
       size,
       rowCount,
       checksum,
-      dependencies: element.dependencies.map(d => d.name),
+      dependencies: element.dependencies.map((d) => d.name),
     };
   }
 
-  private async analyzeDependency(dependency: any, element: DeprecatedElement): Promise<BackupElement> {
+  private async analyzeDependency(
+    dependency: any,
+    element: DeprecatedElement,
+  ): Promise<BackupElement> {
     return {
       type: dependency.type,
       name: dependency.name,
       schema: element.schema,
       size: 0,
-      checksum: '',
+      checksum: "",
       dependencies: [],
     };
   }
 
-  private async executeBackup(backupId: string, elements: BackupElement[]): Promise<string> {
+  private async executeBackup(
+    backupId: string,
+    elements: BackupElement[],
+  ): Promise<string> {
     const backupPath = `${this.config.backupDirectory}/${backupId}.sql`;
 
     // In real implementation, would use pg_dump or similar
@@ -446,11 +498,14 @@ export class BackupValidator {
     return 1024 * 1024; // 1MB placeholder
   }
 
-  private async calculateChecksums(backupPath: string, elements: BackupElement[]): Promise<Record<string, string>> {
+  private async calculateChecksums(
+    backupPath: string,
+    elements: BackupElement[],
+  ): Promise<Record<string, string>> {
     const checksums: Record<string, string> = {};
 
     // Calculate checksum for backup file
-    checksums['backup_file'] = 'sha256:placeholder';
+    checksums["backup_file"] = "sha256:placeholder";
 
     // Calculate checksums for individual elements
     for (const element of elements) {
@@ -460,7 +515,10 @@ export class BackupValidator {
     return checksums;
   }
 
-  private async calculateTableChecksum(schema: string, tableName: string): Promise<string> {
+  private async calculateTableChecksum(
+    schema: string,
+    tableName: string,
+  ): Promise<string> {
     try {
       // Use PostgreSQL's md5 function to calculate table checksum
       const query = `
@@ -468,19 +526,22 @@ export class BackupValidator {
         FROM "${schema}"."${tableName}" t
       `;
       const result = await this.db.execute(sql.raw(query));
-      return result.rows[0]?.checksum as string || '';
+      return (result.rows[0]?.checksum as string) || "";
     } catch (error) {
-      console.warn(`Could not calculate checksum for ${schema}.${tableName}:`, error);
-      return '';
+      console.warn(
+        `Could not calculate checksum for ${schema}.${tableName}:`,
+        error,
+      );
+      return "";
     }
   }
 
   private async getDatabaseVersion(): Promise<string> {
     try {
-      const result = await this.db.execute(sql.raw('SELECT version()'));
-      return result.rows[0]?.version as string || 'unknown';
+      const result = await this.db.execute(sql.raw("SELECT version()"));
+      return (result.rows[0]?.version as string) || "unknown";
     } catch (error) {
-      return 'unknown';
+      return "unknown";
     }
   }
 
@@ -489,102 +550,114 @@ export class BackupValidator {
     console.log(`Storing backup metadata for: ${metadata.id}`);
   }
 
-  private async getBackupMetadata(backupId: string): Promise<BackupMetadata | null> {
+  private async getBackupMetadata(
+    backupId: string,
+  ): Promise<BackupMetadata | null> {
     // Retrieve backup metadata
     console.log(`Retrieving backup metadata for: ${backupId}`);
     return null; // Placeholder
   }
 
-  private async performBasicValidation(metadata: BackupMetadata): Promise<ValidationCheck[]> {
+  private async performBasicValidation(
+    metadata: BackupMetadata,
+  ): Promise<ValidationCheck[]> {
     const checks: ValidationCheck[] = [];
 
     // Check backup file exists
     checks.push({
-      name: 'Backup File Existence',
-      type: 'existence',
+      name: "Backup File Existence",
+      type: "existence",
       passed: true, // Would check actual file
-      message: 'Backup file exists and is accessible',
-      severity: 'critical',
+      message: "Backup file exists and is accessible",
+      severity: "critical",
     });
 
     // Check backup size is reasonable
-    const isReasonableSize = metadata.size > 0 && metadata.size < this.config.maxBackupSizeMB * 1024 * 1024;
+    const isReasonableSize =
+      metadata.size > 0 &&
+      metadata.size < this.config.maxBackupSizeMB * 1024 * 1024;
     checks.push({
-      name: 'Backup Size Validation',
-      type: 'integrity',
+      name: "Backup Size Validation",
+      type: "integrity",
       passed: isReasonableSize,
-      message: isReasonableSize ? `Backup size ${metadata.size} bytes is reasonable` : 'Backup size is invalid',
-      severity: 'high',
+      message: isReasonableSize
+        ? `Backup size ${metadata.size} bytes is reasonable`
+        : "Backup size is invalid",
+      severity: "high",
     });
 
     // Check checksum integrity
     checks.push({
-      name: 'Checksum Validation',
-      type: 'integrity',
+      name: "Checksum Validation",
+      type: "integrity",
       passed: Object.keys(metadata.checksums).length > 0,
-      message: 'Backup checksums are present',
-      severity: 'medium',
+      message: "Backup checksums are present",
+      severity: "medium",
     });
 
     return checks;
   }
 
-  private async performFullValidation(metadata: BackupMetadata): Promise<ValidationCheck[]> {
+  private async performFullValidation(
+    metadata: BackupMetadata,
+  ): Promise<ValidationCheck[]> {
     const checks: ValidationCheck[] = [];
 
     // Validate backup file format
     checks.push({
-      name: 'Backup Format Validation',
-      type: 'integrity',
+      name: "Backup Format Validation",
+      type: "integrity",
       passed: true, // Would validate SQL format
-      message: 'Backup file format is valid',
-      severity: 'high',
+      message: "Backup file format is valid",
+      severity: "high",
     });
 
     // Check all expected elements are present
     for (const element of metadata.elements) {
       checks.push({
         name: `Element ${element.name} Validation`,
-        type: 'consistency',
+        type: "consistency",
         passed: true, // Would check element in backup
         message: `${element.type} ${element.name} is present in backup`,
-        severity: 'medium',
+        severity: "medium",
       });
     }
 
     // Validate metadata consistency
     checks.push({
-      name: 'Metadata Consistency',
-      type: 'consistency',
+      name: "Metadata Consistency",
+      type: "consistency",
       passed: metadata.elements.length > 0,
-      message: 'Backup metadata is consistent',
-      severity: 'medium',
+      message: "Backup metadata is consistent",
+      severity: "medium",
     });
 
     return checks;
   }
 
-  private async performComprehensiveValidation(metadata: BackupMetadata): Promise<ValidationCheck[]> {
+  private async performComprehensiveValidation(
+    metadata: BackupMetadata,
+  ): Promise<ValidationCheck[]> {
     const checks: ValidationCheck[] = [];
 
     // Test partial restoration (if enabled)
     if (this.config.testRestoreEnabled) {
       checks.push({
-        name: 'Restoration Test',
-        type: 'performance',
+        name: "Restoration Test",
+        type: "performance",
         passed: true, // Would perform actual test
-        message: 'Backup can be successfully restored',
-        severity: 'high',
+        message: "Backup can be successfully restored",
+        severity: "high",
       });
     }
 
     // Performance validation
     checks.push({
-      name: 'Backup Performance',
-      type: 'performance',
+      name: "Backup Performance",
+      type: "performance",
       passed: metadata.size < this.config.maxBackupSizeMB * 1024 * 1024,
-      message: 'Backup meets performance criteria',
-      severity: 'low',
+      message: "Backup meets performance criteria",
+      severity: "low",
     });
 
     return checks;
@@ -597,31 +670,37 @@ export class BackupValidator {
     console.log(`Created test database: ${testDbName}`);
   }
 
-  private async restoreBackupToDatabase(backupId: string, testDbName: string): Promise<void> {
+  private async restoreBackupToDatabase(
+    backupId: string,
+    testDbName: string,
+  ): Promise<void> {
     // Restore backup to test database
     console.log(`Restoring backup ${backupId} to test database ${testDbName}`);
     // Implementation would use psql or pg_restore
   }
 
-  private async verifyRestoredDatabase(backupId: string, testDbName: string): Promise<ValidationCheck[]> {
+  private async verifyRestoredDatabase(
+    backupId: string,
+    testDbName: string,
+  ): Promise<ValidationCheck[]> {
     const checks: ValidationCheck[] = [];
 
     // Basic connectivity check
     checks.push({
-      name: 'Database Connectivity',
-      type: 'existence',
+      name: "Database Connectivity",
+      type: "existence",
       passed: true, // Would test actual connection
-      message: 'Can connect to restored database',
-      severity: 'critical',
+      message: "Can connect to restored database",
+      severity: "critical",
     });
 
     // Schema validation
     checks.push({
-      name: 'Schema Validation',
-      type: 'consistency',
+      name: "Schema Validation",
+      type: "consistency",
       passed: true, // Would validate schema
-      message: 'Database schema is correct',
-      severity: 'high',
+      message: "Database schema is correct",
+      severity: "high",
     });
 
     return checks;
@@ -637,7 +716,9 @@ export class BackupValidator {
     }
   }
 
-  private async findOldBackups(cutoffDate: Date): Promise<Array<{ id: string; path: string }>> {
+  private async findOldBackups(
+    cutoffDate: Date,
+  ): Promise<Array<{ id: string; path: string }>> {
     // Find backups older than cutoff date
     return []; // Placeholder
   }
@@ -648,8 +729,11 @@ export class BackupValidator {
   }
 
   private generateBackupId(type: string, migrationId?: string): string {
-    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').split('.')[0];
-    const suffix = migrationId ? `_${migrationId}` : '';
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:T]/g, "")
+      .split(".")[0];
+    const suffix = migrationId ? `_${migrationId}` : "";
     return `backup_${type}_${timestamp}${suffix}`;
   }
 
@@ -667,7 +751,7 @@ export class BackupValidator {
  */
 export function createBackupValidator(
   db: NodePgDatabase<any>,
-  config?: Partial<BackupConfig>
+  config?: Partial<BackupConfig>,
 ): BackupValidator {
   return new BackupValidator(db, config);
 }
@@ -684,23 +768,25 @@ export function validateBackupRequirements(config: BackupConfig): {
   const warnings: string[] = [];
 
   if (!config.enabled) {
-    warnings.push('Backup system is disabled');
+    warnings.push("Backup system is disabled");
   }
 
   if (!config.backupDirectory) {
-    issues.push('Backup directory is not configured');
+    issues.push("Backup directory is not configured");
   }
 
   if (config.retentionDays < 1) {
-    issues.push('Retention period must be at least 1 day');
+    issues.push("Retention period must be at least 1 day");
   }
 
   if (config.maxBackupSizeMB < 100) {
-    warnings.push('Maximum backup size is very small (< 100MB)');
+    warnings.push("Maximum backup size is very small (< 100MB)");
   }
 
-  if (config.verificationLevel === 'basic') {
-    warnings.push('Using basic verification level - consider upgrading for better safety');
+  if (config.verificationLevel === "basic") {
+    warnings.push(
+      "Using basic verification level - consider upgrading for better safety",
+    );
   }
 
   return {

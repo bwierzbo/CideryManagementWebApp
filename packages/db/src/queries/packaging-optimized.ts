@@ -18,7 +18,7 @@ import {
   vessels,
   users,
   packagingRunPhotos,
-} from "../index";
+} from "..";
 import {
   eq,
   and,

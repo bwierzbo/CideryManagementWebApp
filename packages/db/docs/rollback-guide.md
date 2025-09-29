@@ -13,6 +13,7 @@ The rollback system provides multiple levels of recovery for deprecation operati
 ## Quick Reference
 
 ### Emergency Commands
+
 ```bash
 # Emergency rollback of specific migration
 pnpm db:emergency-rollback --migration-id <id>
@@ -25,6 +26,7 @@ pnpm db:health-check --post-rollback
 ```
 
 ### Status Commands
+
 ```bash
 # Check rollback status
 pnpm db:rollback-status --migration-id <id>
@@ -41,24 +43,28 @@ pnpm db:validate-rollback --migration-id <id>
 ### Standard Rollback Process
 
 #### 1. Pre-Rollback Assessment
+
 ```bash
 # Assess rollback feasibility
 pnpm db:assess-rollback --migration-id <migration_id>
 ```
 
 **Assessment Criteria:**
+
 - Migration is in completed state
 - No subsequent migrations depend on this one
 - Original elements can be safely restored
 - No conflicts with current database state
 
 #### 2. Create Rollback Plan
+
 ```bash
 # Generate rollback plan
 pnpm db:create-rollback-plan --migration-id <migration_id>
 ```
 
 **Plan Components:**
+
 - Step-by-step rollback sequence
 - Dependency resolution order
 - Validation checkpoints
@@ -66,24 +72,28 @@ pnpm db:create-rollback-plan --migration-id <migration_id>
 - Risk assessment
 
 #### 3. Validate Rollback Plan
+
 ```bash
 # Test rollback plan
 pnpm db:test-rollback --plan-id <plan_id>
 ```
 
 **Validation Checks:**
+
 - SQL syntax validation
 - Dependency consistency
 - Resource availability
 - Timing constraints
 
 #### 4. Execute Rollback
+
 ```bash
 # Execute rollback with confirmation
 pnpm db:execute-rollback --plan-id <plan_id> --confirm
 ```
 
 **Execution Steps:**
+
 1. Create pre-rollback backup
 2. Stop monitoring for deprecated elements
 3. Begin transaction
@@ -93,12 +103,14 @@ pnpm db:execute-rollback --plan-id <plan_id> --confirm
 7. Update migration status
 
 #### 5. Post-Rollback Verification
+
 ```bash
 # Verify rollback completion
 pnpm db:verify-rollback --plan-id <plan_id>
 ```
 
 **Verification Checks:**
+
 - Original elements restored
 - Deprecated elements removed
 - Dependencies intact
@@ -133,6 +145,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
 #### Scenario 1: Rollback Failure During Execution
 
 **Symptoms:**
+
 - Rollback process stopped mid-execution
 - Database in inconsistent state
 - Some elements restored, others not
@@ -140,6 +153,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
 **Recovery Steps:**
 
 1. **Immediate Assessment**
+
    ```bash
    # Check database state
    pnpm db:emergency-assess --migration-id <id>
@@ -149,6 +163,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
    ```
 
 2. **Stabilize Database**
+
    ```bash
    # Stop all related processes
    pnpm db:stop-all-operations --migration-id <id>
@@ -158,6 +173,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
    ```
 
 3. **Selective Recovery**
+
    ```bash
    # Resume rollback from last successful step
    pnpm db:resume-rollback --plan-id <id> --from-step <step_number>
@@ -169,6 +185,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
 #### Scenario 2: Database Corruption During Rollback
 
 **Symptoms:**
+
 - Database connection errors
 - Data integrity violations
 - Transaction log errors
@@ -176,6 +193,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
 **Recovery Steps:**
 
 1. **Immediate Actions**
+
    ```bash
    # Stop all database operations
    sudo systemctl stop postgresql
@@ -185,6 +203,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
    ```
 
 2. **Restore from Backup**
+
    ```bash
    # Restore from pre-rollback backup
    pnpm db:restore-from-backup --backup-id <pre_rollback_backup>
@@ -202,6 +221,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
 #### Scenario 3: Application Breaking After Rollback
 
 **Symptoms:**
+
 - Application errors referencing restored elements
 - Performance degradation
 - Missing functionality
@@ -209,6 +229,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
 **Recovery Steps:**
 
 1. **Assess Impact**
+
    ```bash
    # Check application logs
    pnpm db:check-app-logs --since-rollback
@@ -218,6 +239,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
    ```
 
 2. **Quick Fixes**
+
    ```bash
    # Recreate any missing dependencies
    pnpm db:recreate-dependencies --migration-id <id>
@@ -244,6 +266,7 @@ pnpm db:verify-rollback --plan-id plan_20250928141000_def456
 ### Backup Restoration Process
 
 #### 1. Identify Correct Backup
+
 ```bash
 # List available backups for migration
 pnpm db:list-backups --migration-id <id>
@@ -253,6 +276,7 @@ pnpm db:validate-backup --backup-id <backup_id>
 ```
 
 #### 2. Prepare for Restoration
+
 ```bash
 # Create current state backup (if possible)
 pnpm db:emergency-backup --label "pre-restore"
@@ -265,6 +289,7 @@ pnpm ops:notify --event backup_restore_starting
 ```
 
 #### 3. Execute Restoration
+
 ```bash
 # Restore from backup
 pnpm db:restore-backup --backup-id <id> --mode full
@@ -274,6 +299,7 @@ pnpm db:verify-restore --comprehensive
 ```
 
 #### 4. Post-Restoration Steps
+
 ```bash
 # Update database metadata
 pnpm db:update-metadata --restored-from <backup_id>
@@ -289,17 +315,18 @@ pnpm app:health-check --comprehensive
 
 ### When to Rollback vs. Fix Forward
 
-| Scenario | Rollback | Fix Forward | Restore from Backup |
-|----------|----------|-------------|-------------------|
-| Minor application error | ❌ | ✅ | ❌ |
-| Performance degradation | ⚠️ | ✅ | ❌ |
-| Data integrity issue | ✅ | ❌ | ⚠️ |
-| Multiple cascading failures | ❌ | ❌ | ✅ |
-| Unknown dependencies found | ✅ | ⚠️ | ❌ |
-| Regulatory compliance issue | ✅ | ❌ | ⚠️ |
-| Critical business impact | ✅ | ❌ | ⚠️ |
+| Scenario                    | Rollback | Fix Forward | Restore from Backup |
+| --------------------------- | -------- | ----------- | ------------------- |
+| Minor application error     | ❌       | ✅          | ❌                  |
+| Performance degradation     | ⚠️       | ✅          | ❌                  |
+| Data integrity issue        | ✅       | ❌          | ⚠️                  |
+| Multiple cascading failures | ❌       | ❌          | ✅                  |
+| Unknown dependencies found  | ✅       | ⚠️          | ❌                  |
+| Regulatory compliance issue | ✅       | ❌          | ⚠️                  |
+| Critical business impact    | ✅       | ❌          | ⚠️                  |
 
 **Legend:**
+
 - ✅ Recommended approach
 - ⚠️ Consider carefully
 - ❌ Not recommended
@@ -349,6 +376,7 @@ Operators should consider rollback when:
 ### Pre-Production Testing
 
 #### 1. Test Environment Setup
+
 ```bash
 # Clone production state to test environment
 pnpm db:clone-to-test --source production --target test
@@ -358,6 +386,7 @@ pnpm db:migrate --migration-id <id> --environment test
 ```
 
 #### 2. Execute Test Rollback
+
 ```bash
 # Create rollback plan for test
 pnpm db:create-rollback-plan --migration-id <id> --environment test
@@ -367,6 +396,7 @@ pnpm db:execute-rollback --plan-id <plan_id> --environment test
 ```
 
 #### 3. Validate Test Results
+
 ```bash
 # Comprehensive validation
 pnpm db:validate-rollback --plan-id <plan_id> --comprehensive
@@ -378,6 +408,7 @@ pnpm db:compare-performance --baseline pre_migration --current post_rollback
 ### Production Rollback Rehearsal
 
 #### Monthly Rollback Drills
+
 ```bash
 # Schedule rollback drill
 pnpm ops:schedule-drill --type rollback --date <date>
@@ -387,6 +418,7 @@ pnpm db:drill-rollback --migration-id <recent_migration> --dry-run
 ```
 
 #### Quarterly Full Testing
+
 ```bash
 # Full rollback test on staging
 pnpm db:full-rollback-test --environment staging --migrations recent_10
@@ -397,6 +429,7 @@ pnpm db:full-rollback-test --environment staging --migrations recent_10
 ### Rollback Monitoring
 
 **Key Metrics:**
+
 - Rollback execution time
 - Step success/failure rates
 - Database performance during rollback
@@ -404,6 +437,7 @@ pnpm db:full-rollback-test --environment staging --migrations recent_10
 - Recovery time objectives (RTO)
 
 **Alert Thresholds:**
+
 - Rollback time > estimated duration + 50%
 - Any step failure
 - Performance degradation > 20%
@@ -414,6 +448,7 @@ pnpm db:full-rollback-test --environment staging --migrations recent_10
 **Extended Monitoring Period:** 72 hours
 
 **Critical Metrics:**
+
 - Application functionality
 - Database performance baseline
 - Error rates and patterns
@@ -424,18 +459,21 @@ pnpm db:full-rollback-test --environment staging --migrations recent_10
 ### Rollback Documentation Requirements
 
 #### Pre-Rollback:
+
 - [ ] Rollback plan reviewed and approved
 - [ ] Stakeholder notifications sent
 - [ ] Backup verification completed
 - [ ] Team readiness confirmed
 
 #### During Rollback:
+
 - [ ] Real-time status updates
 - [ ] Step-by-step execution log
 - [ ] Any deviations documented
 - [ ] Issue escalation if needed
 
 #### Post-Rollback:
+
 - [ ] Completion verification
 - [ ] Performance impact assessment
 - [ ] Lessons learned captured
@@ -444,6 +482,7 @@ pnpm db:full-rollback-test --environment staging --migrations recent_10
 ### Communication Templates
 
 #### Rollback Initiation
+
 ```
 Subject: Database Rollback Initiated - Migration <ID>
 
@@ -462,6 +501,7 @@ Contact: <oncall_contact>
 ```
 
 #### Rollback Completion
+
 ```
 Subject: Database Rollback Completed - Migration <ID>
 
@@ -483,6 +523,7 @@ All systems have been verified and are operating normally.
 ### Issue: Rollback Hangs on Specific Step
 
 **Diagnosis:**
+
 ```bash
 # Check for blocking queries
 pnpm db:check-blocks --migration-id <id>
@@ -492,6 +533,7 @@ pnpm db:review-tx-log --since <rollback_start>
 ```
 
 **Resolution:**
+
 ```bash
 # Kill blocking sessions (if safe)
 pnpm db:kill-blocking-sessions --migration-id <id>
@@ -503,6 +545,7 @@ pnpm db:resume-rollback --plan-id <id>
 ### Issue: Validation Failures After Rollback
 
 **Diagnosis:**
+
 ```bash
 # Detail validation failures
 pnpm db:validation-details --plan-id <id>
@@ -512,6 +555,7 @@ pnpm db:check-consistency --migration-id <id>
 ```
 
 **Resolution:**
+
 ```bash
 # Manual correction of specific issues
 pnpm db:manual-fix --issue-id <id> --approved
@@ -523,6 +567,7 @@ pnpm db:revalidate --plan-id <id>
 ### Issue: Performance Problems After Rollback
 
 **Diagnosis:**
+
 ```bash
 # Compare performance metrics
 pnpm db:performance-compare --baseline pre_migration --current now
@@ -532,6 +577,7 @@ pnpm db:analyze-queries --since-rollback
 ```
 
 **Resolution:**
+
 ```bash
 # Regenerate statistics
 pnpm db:update-stats --tables <restored_tables>
@@ -543,18 +589,21 @@ pnpm db:rebuild-indexes --tables <restored_tables>
 ## Best Practices
 
 ### Planning
+
 1. Always test rollback procedures in non-production first
 2. Document all assumptions and dependencies
 3. Validate rollback plans with multiple team members
 4. Ensure adequate time windows for rollback operations
 
 ### Execution
+
 1. Follow the documented procedure exactly
 2. Validate each step before proceeding
 3. Maintain real-time communication with stakeholders
 4. Be prepared to escalate quickly if issues arise
 
 ### Recovery
+
 1. Prioritize data integrity over convenience
 2. Document all deviations and issues
 3. Learn from each rollback experience

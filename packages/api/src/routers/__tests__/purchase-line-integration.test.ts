@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { appRouter } from "../index";
+import { appRouter } from "..";
 import {
   db,
   purchases,

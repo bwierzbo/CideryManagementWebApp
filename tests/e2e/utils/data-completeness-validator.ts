@@ -1,5 +1,5 @@
 import { Page } from '@playwright/test';
-import { db } from '../../../packages/db/src/client';
+import { db } from './packages/db/src/client';
 import {
   vendors,
   purchases,
@@ -17,7 +17,7 @@ import {
   batchCosts,
   cogsItems,
   users
-} from '../../../packages/db/src/schema';
+} from './packages/db/src/schema';
 import { sql, count, max, min, avg, isNotNull, isNull } from 'drizzle-orm';
 
 /**

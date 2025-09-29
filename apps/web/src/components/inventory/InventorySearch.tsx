@@ -11,10 +11,7 @@ import {
   useSimpleSearch,
   type OptimizedSearchConfig,
 } from "@/hooks/useOptimizedSearch";
-import type {
-  SearchCallback,
-  MaterialType,
-} from "@/types/inventory";
+import type { SearchCallback, MaterialType } from "@/types/inventory";
 import type { SearchableItem } from "@/utils/searchUtils";
 
 interface InventorySearchProps {
@@ -31,7 +28,6 @@ interface InventorySearchProps {
   onResultsChange?: (results: SearchableItem[]) => void;
   showPerformanceMetrics?: boolean;
 }
-
 
 export function InventorySearch({
   onSearch,

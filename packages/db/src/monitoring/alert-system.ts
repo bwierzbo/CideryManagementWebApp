@@ -5,7 +5,7 @@
  * Supports multiple notification channels and alert severity levels.
  */
 
-import { AccessEvent } from './deprecated-monitor';
+import { AccessEvent } from "./deprecated-monitor";
 
 export interface AlertConfig {
   enabled: boolean;
@@ -17,7 +17,7 @@ export interface AlertConfig {
 }
 
 export interface AlertChannel {
-  type: 'console' | 'email' | 'slack' | 'webhook' | 'database';
+  type: "console" | "email" | "slack" | "webhook" | "database";
   name: string;
   config: Record<string, any>;
   severityFilter: AlertSeverity[];
@@ -30,7 +30,7 @@ export interface EscalationRule {
   additionalChannels?: string[];
 }
 
-export type AlertSeverity = 'info' | 'warning' | 'error' | 'critical';
+export type AlertSeverity = "info" | "warning" | "error" | "critical";
 
 export interface Alert {
   id: string;
@@ -45,11 +45,11 @@ export interface Alert {
 }
 
 export type AlertType =
-  | 'deprecated_element_access'
-  | 'threshold_exceeded'
-  | 'usage_spike'
-  | 'system_error'
-  | 'escalation';
+  | "deprecated_element_access"
+  | "threshold_exceeded"
+  | "usage_spike"
+  | "system_error"
+  | "escalation";
 
 /**
  * Main alert system for deprecated database element monitoring
@@ -58,32 +58,33 @@ export class AlertSystem {
   private config: AlertConfig;
   private alertHistory: Alert[] = [];
   private throttleMap: Map<string, number> = new Map();
-  private escalationCounters: Map<string, { count: number; firstSeen: Date }> = new Map();
+  private escalationCounters: Map<string, { count: number; firstSeen: Date }> =
+    new Map();
 
   constructor(config: Partial<AlertConfig> = {}) {
     this.config = {
       enabled: true,
       channels: [
         {
-          type: 'console',
-          name: 'console',
+          type: "console",
+          name: "console",
           config: {},
-          severityFilter: ['info', 'warning', 'error', 'critical'],
+          severityFilter: ["info", "warning", "error", "critical"],
         },
       ],
-      defaultSeverity: 'warning',
+      defaultSeverity: "warning",
       throttleWindowMinutes: 5,
       maxAlertsPerHour: 60,
       escalationRules: [
         {
           triggerCount: 5,
           timeWindowMinutes: 15,
-          escalateTo: 'error',
+          escalateTo: "error",
         },
         {
           triggerCount: 20,
           timeWindowMinutes: 60,
-          escalateTo: 'critical',
+          escalateTo: "critical",
         },
       ],
       ...config,
@@ -113,7 +114,7 @@ export class AlertSystem {
       id: this.generateAlertId(),
       timestamp: new Date().toISOString(),
       severity,
-      type: 'deprecated_element_access',
+      type: "deprecated_element_access",
       title: `Deprecated ${event.elementType} Accessed`,
       message: `Deprecated ${event.elementType} "${event.elementName}" was accessed by ${event.source.identifier} (${event.source.type})`,
       metadata: {
@@ -136,7 +137,7 @@ export class AlertSystem {
   async triggerThresholdAlert(
     elementKey: string,
     actualCount: number,
-    threshold: number
+    threshold: number,
   ): Promise<void> {
     if (!this.config.enabled) return;
 
@@ -149,9 +150,9 @@ export class AlertSystem {
     const alert: Alert = {
       id: this.generateAlertId(),
       timestamp: new Date().toISOString(),
-      severity: 'error',
-      type: 'threshold_exceeded',
-      title: 'Deprecated Element Access Threshold Exceeded',
+      severity: "error",
+      type: "threshold_exceeded",
+      title: "Deprecated Element Access Threshold Exceeded",
       message: `Element ${elementKey} accessed ${actualCount} times, exceeding threshold of ${threshold}`,
       metadata: {
         elementKey,
@@ -172,7 +173,7 @@ export class AlertSystem {
     elementName: string,
     currentUsage: number,
     normalUsage: number,
-    spikeRatio: number
+    spikeRatio: number,
   ): Promise<void> {
     if (!this.config.enabled) return;
 
@@ -185,9 +186,9 @@ export class AlertSystem {
     const alert: Alert = {
       id: this.generateAlertId(),
       timestamp: new Date().toISOString(),
-      severity: 'warning',
-      type: 'usage_spike',
-      title: 'Deprecated Element Usage Spike Detected',
+      severity: "warning",
+      type: "usage_spike",
+      title: "Deprecated Element Usage Spike Detected",
       message: `Unusual spike in usage for ${elementName}: ${currentUsage} (${spikeRatio.toFixed(1)}x normal)`,
       metadata: {
         elementName,
@@ -217,9 +218,9 @@ export class AlertSystem {
     const alert: Alert = {
       id: this.generateAlertId(),
       timestamp: new Date().toISOString(),
-      severity: 'critical',
-      type: 'system_error',
-      title: 'Database Monitoring System Error',
+      severity: "critical",
+      type: "system_error",
+      title: "Database Monitoring System Error",
       message: `System error in ${context}: ${error.message}`,
       metadata: {
         context,
@@ -239,28 +240,34 @@ export class AlertSystem {
   getAlertHistory(
     limit: number = 100,
     severity?: AlertSeverity,
-    type?: AlertType
+    type?: AlertType,
   ): Alert[] {
     let filtered = [...this.alertHistory];
 
     if (severity) {
-      filtered = filtered.filter(alert => alert.severity === severity);
+      filtered = filtered.filter((alert) => alert.severity === severity);
     }
 
     if (type) {
-      filtered = filtered.filter(alert => alert.type === type);
+      filtered = filtered.filter((alert) => alert.type === type);
     }
 
     return filtered
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      )
       .slice(0, limit);
   }
 
   /**
    * Acknowledge an alert
    */
-  async acknowledgeAlert(alertId: string, acknowledgedBy: string): Promise<boolean> {
-    const alert = this.alertHistory.find(a => a.id === alertId);
+  async acknowledgeAlert(
+    alertId: string,
+    acknowledgedBy: string,
+  ): Promise<boolean> {
+    const alert = this.alertHistory.find((a) => a.id === alertId);
     if (!alert) return false;
 
     alert.acknowledged = true;
@@ -274,8 +281,12 @@ export class AlertSystem {
   /**
    * Resolve an alert
    */
-  async resolveAlert(alertId: string, resolvedBy: string, resolution?: string): Promise<boolean> {
-    const alert = this.alertHistory.find(a => a.id === alertId);
+  async resolveAlert(
+    alertId: string,
+    resolvedBy: string,
+    resolution?: string,
+  ): Promise<boolean> {
+    const alert = this.alertHistory.find((a) => a.id === alertId);
     if (!alert) return false;
 
     alert.resolvedAt = new Date().toISOString();
@@ -301,7 +312,7 @@ export class AlertSystem {
   } {
     const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
     const recentAlerts = this.alertHistory.filter(
-      alert => new Date(alert.timestamp) >= cutoff
+      (alert) => new Date(alert.timestamp) >= cutoff,
     );
 
     const bySeverity: Record<AlertSeverity, number> = {
@@ -332,8 +343,9 @@ export class AlertSystem {
       if (alert.resolvedAt) resolved++;
 
       if (alert.metadata.acknowledgedAt) {
-        const responseTime = new Date(alert.metadata.acknowledgedAt).getTime() -
-                            new Date(alert.timestamp).getTime();
+        const responseTime =
+          new Date(alert.metadata.acknowledgedAt).getTime() -
+          new Date(alert.timestamp).getTime();
         totalResponseTime += responseTime;
         responseTimeCount++;
       }
@@ -345,7 +357,8 @@ export class AlertSystem {
       byType,
       acknowledged,
       resolved,
-      avgResponseTime: responseTimeCount > 0 ? totalResponseTime / responseTimeCount : 0,
+      avgResponseTime:
+        responseTimeCount > 0 ? totalResponseTime / responseTimeCount : 0,
     };
   }
 
@@ -353,21 +366,27 @@ export class AlertSystem {
    * Configure alert channels
    */
   addChannel(channel: AlertChannel): void {
-    const existingIndex = this.config.channels.findIndex(c => c.name === channel.name);
+    const existingIndex = this.config.channels.findIndex(
+      (c) => c.name === channel.name,
+    );
     if (existingIndex >= 0) {
       this.config.channels[existingIndex] = channel;
     } else {
       this.config.channels.push(channel);
     }
 
-    console.log(`📢 Alert channel ${channel.name} (${channel.type}) configured`);
+    console.log(
+      `📢 Alert channel ${channel.name} (${channel.type}) configured`,
+    );
   }
 
   /**
    * Remove alert channel
    */
   removeChannel(channelName: string): void {
-    this.config.channels = this.config.channels.filter(c => c.name !== channelName);
+    this.config.channels = this.config.channels.filter(
+      (c) => c.name !== channelName,
+    );
     console.log(`📢 Alert channel ${channelName} removed`);
   }
 
@@ -378,16 +397,17 @@ export class AlertSystem {
     const testAlert: Alert = {
       id: this.generateAlertId(),
       timestamp: new Date().toISOString(),
-      severity: 'info',
-      type: 'system_error',
-      title: 'Alert System Test',
-      message: 'This is a test alert to verify the alert system is working correctly',
+      severity: "info",
+      type: "system_error",
+      title: "Alert System Test",
+      message:
+        "This is a test alert to verify the alert system is working correctly",
       metadata: { test: true },
       acknowledged: false,
     };
 
     await this.sendAlert(testAlert);
-    console.log('🧪 Test alert sent successfully');
+    console.log("🧪 Test alert sent successfully");
   }
 
   // Private methods
@@ -408,29 +428,34 @@ export class AlertSystem {
       }
     }
 
-    console.log(`🚨 Alert sent: ${alert.severity.toUpperCase()} - ${alert.title}`);
+    console.log(
+      `🚨 Alert sent: ${alert.severity.toUpperCase()} - ${alert.title}`,
+    );
   }
 
-  private async sendToChannel(channel: AlertChannel, alert: Alert): Promise<void> {
+  private async sendToChannel(
+    channel: AlertChannel,
+    alert: Alert,
+  ): Promise<void> {
     try {
       switch (channel.type) {
-        case 'console':
+        case "console":
           await this.sendToConsole(alert);
           break;
 
-        case 'email':
+        case "email":
           await this.sendToEmail(channel, alert);
           break;
 
-        case 'slack':
+        case "slack":
           await this.sendToSlack(channel, alert);
           break;
 
-        case 'webhook':
+        case "webhook":
           await this.sendToWebhook(channel, alert);
           break;
 
-        case 'database':
+        case "database":
           await this.sendToDatabase(channel, alert);
           break;
 
@@ -454,22 +479,40 @@ export class AlertSystem {
     }
   }
 
-  private async sendToEmail(channel: AlertChannel, alert: Alert): Promise<void> {
+  private async sendToEmail(
+    channel: AlertChannel,
+    alert: Alert,
+  ): Promise<void> {
     // Email implementation would go here
-    console.log(`📧 Sending email alert to ${channel.config.recipients}: ${alert.title}`);
+    console.log(
+      `📧 Sending email alert to ${channel.config.recipients}: ${alert.title}`,
+    );
   }
 
-  private async sendToSlack(channel: AlertChannel, alert: Alert): Promise<void> {
+  private async sendToSlack(
+    channel: AlertChannel,
+    alert: Alert,
+  ): Promise<void> {
     // Slack implementation would go here
-    console.log(`💬 Sending Slack alert to ${channel.config.channel}: ${alert.title}`);
+    console.log(
+      `💬 Sending Slack alert to ${channel.config.channel}: ${alert.title}`,
+    );
   }
 
-  private async sendToWebhook(channel: AlertChannel, alert: Alert): Promise<void> {
+  private async sendToWebhook(
+    channel: AlertChannel,
+    alert: Alert,
+  ): Promise<void> {
     // Webhook implementation would go here
-    console.log(`🔗 Sending webhook alert to ${channel.config.url}: ${alert.title}`);
+    console.log(
+      `🔗 Sending webhook alert to ${channel.config.url}: ${alert.title}`,
+    );
   }
 
-  private async sendToDatabase(channel: AlertChannel, alert: Alert): Promise<void> {
+  private async sendToDatabase(
+    channel: AlertChannel,
+    alert: Alert,
+  ): Promise<void> {
     // Database storage implementation would go here
     console.log(`💾 Storing alert in database: ${alert.title}`);
   }
@@ -481,7 +524,7 @@ export class AlertSystem {
     if (!lastAlert) return false;
 
     const throttleWindow = this.config.throttleWindowMinutes * 60 * 1000;
-    return (now - lastAlert) < throttleWindow;
+    return now - lastAlert < throttleWindow;
   }
 
   private updateThrottle(alertKey: string): void {
@@ -493,7 +536,7 @@ export class AlertSystem {
     const throttleWindow = this.config.throttleWindowMinutes * 60 * 1000;
 
     for (const [key, timestamp] of this.throttleMap.entries()) {
-      if ((now - timestamp) > throttleWindow) {
+      if (now - timestamp > throttleWindow) {
         this.throttleMap.delete(key);
       }
     }
@@ -513,10 +556,17 @@ export class AlertSystem {
 
     // Check escalation rules
     for (const rule of this.config.escalationRules) {
-      const windowStart = new Date(now.getTime() - rule.timeWindowMinutes * 60 * 1000);
+      const windowStart = new Date(
+        now.getTime() - rule.timeWindowMinutes * 60 * 1000,
+      );
 
-      if (counter.firstSeen >= windowStart && counter.count >= rule.triggerCount) {
-        console.log(`📈 Escalating alert ${alertKey} to ${rule.escalateTo} (${counter.count} occurrences)`);
+      if (
+        counter.firstSeen >= windowStart &&
+        counter.count >= rule.triggerCount
+      ) {
+        console.log(
+          `📈 Escalating alert ${alertKey} to ${rule.escalateTo} (${counter.count} occurrences)`,
+        );
 
         // Reset counter for next escalation level
         this.escalationCounters.set(alertKey, { count: 1, firstSeen: now });
@@ -534,11 +584,16 @@ export class AlertSystem {
 
   private getSeverityIcon(severity: AlertSeverity): string {
     switch (severity) {
-      case 'info': return 'ℹ️';
-      case 'warning': return '⚠️';
-      case 'error': return '❌';
-      case 'critical': return '🚨';
-      default: return '📢';
+      case "info":
+        return "ℹ️";
+      case "warning":
+        return "⚠️";
+      case "error":
+        return "❌";
+      case "critical":
+        return "🚨";
+      default:
+        return "📢";
     }
   }
 }
@@ -557,64 +612,67 @@ export const AlertPresets = {
   /**
    * Development environment - console only, less strict
    */
-  development: (): AlertSystem => createAlertSystem({
-    enabled: true,
-    channels: [
-      {
-        type: 'console',
-        name: 'dev-console',
-        config: {},
-        severityFilter: ['warning', 'error', 'critical'],
-      },
-    ],
-    throttleWindowMinutes: 1,
-    maxAlertsPerHour: 100,
-  }),
+  development: (): AlertSystem =>
+    createAlertSystem({
+      enabled: true,
+      channels: [
+        {
+          type: "console",
+          name: "dev-console",
+          config: {},
+          severityFilter: ["warning", "error", "critical"],
+        },
+      ],
+      throttleWindowMinutes: 1,
+      maxAlertsPerHour: 100,
+    }),
 
   /**
    * Production environment - multiple channels, strict alerting
    */
-  production: (): AlertSystem => createAlertSystem({
-    enabled: true,
-    channels: [
-      {
-        type: 'console',
-        name: 'prod-console',
-        config: {},
-        severityFilter: ['error', 'critical'],
-      },
-      // Additional channels would be configured based on infrastructure
-    ],
-    throttleWindowMinutes: 5,
-    maxAlertsPerHour: 60,
-    escalationRules: [
-      {
-        triggerCount: 3,
-        timeWindowMinutes: 10,
-        escalateTo: 'error',
-      },
-      {
-        triggerCount: 10,
-        timeWindowMinutes: 30,
-        escalateTo: 'critical',
-      },
-    ],
-  }),
+  production: (): AlertSystem =>
+    createAlertSystem({
+      enabled: true,
+      channels: [
+        {
+          type: "console",
+          name: "prod-console",
+          config: {},
+          severityFilter: ["error", "critical"],
+        },
+        // Additional channels would be configured based on infrastructure
+      ],
+      throttleWindowMinutes: 5,
+      maxAlertsPerHour: 60,
+      escalationRules: [
+        {
+          triggerCount: 3,
+          timeWindowMinutes: 10,
+          escalateTo: "error",
+        },
+        {
+          triggerCount: 10,
+          timeWindowMinutes: 30,
+          escalateTo: "critical",
+        },
+      ],
+    }),
 
   /**
    * Testing environment - capture all alerts for analysis
    */
-  testing: (): AlertSystem => createAlertSystem({
-    enabled: true,
-    channels: [
-      {
-        type: 'console',
-        name: 'test-console',
-        config: {},
-        severityFilter: ['info', 'warning', 'error', 'critical'],
-      },
-    ],
-    throttleWindowMinutes: 0, // No throttling for tests
-    maxAlertsPerHour: 1000,
-  }),
+  testing: (): AlertSystem =>
+    createAlertSystem({
+      enabled: true,
+      channels: [
+        {
+          type: "console",
+          name: "test-console",
+          config: {},
+          severityFilter: ["info", "warning", "error", "critical"],
+        },
+      ],
+      throttleWindowMinutes: 0, // No throttling for tests
+      maxAlertsPerHour: 1000,
+    }),
 };

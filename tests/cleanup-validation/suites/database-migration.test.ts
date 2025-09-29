@@ -10,11 +10,11 @@ import { sql } from 'drizzle-orm';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Client } from 'pg';
 
-import { DeprecationSystem } from '../../../packages/db/src/migrations/deprecation-system';
-import { DeprecatedMonitor } from '../../../packages/db/src/monitoring/deprecated-monitor';
-import { RollbackManager } from '../../../packages/db/src/migrations/rollback-manager';
-import { performSafetyChecks } from '../../../packages/db/src/migrations/safety-checks';
-import { BackupValidator } from '../../../packages/db/src/migrations/backup-validator';
+import { DeprecationSystem } from './packages/db/src/migrations/deprecation-system';
+import { DeprecatedMonitor } from './packages/db/src/monitoring/deprecated-monitor';
+import { RollbackManager } from './packages/db/src/migrations/rollback-manager';
+import { performSafetyChecks } from './packages/db/src/migrations/safety-checks';
+import { BackupValidator } from './packages/db/src/migrations/backup-validator';
 
 describe('Database Migration and Deprecation System', () => {
   let testDb: NodePgDatabase<any>;

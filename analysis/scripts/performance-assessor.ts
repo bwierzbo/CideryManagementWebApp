@@ -1,7 +1,7 @@
-import { SchemaMapper } from './schema-mapper.js';
-import { DatabaseUsageScanner } from './db-usage-scanner.js';
-import { UnusedElementsAnalyzer } from './unused-elements-analyzer.js';
-import { DriftAnalyzer } from './drift-analyzer.js';
+import { SchemaMapper } from './schema-mapper';
+import { DatabaseUsageScanner } from './db-usage-scanner';
+import { UnusedElementsAnalyzer } from './unused-elements-analyzer';
+import { DriftAnalyzer } from './drift-analyzer';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { glob } from 'glob';

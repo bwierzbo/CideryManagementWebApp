@@ -5,9 +5,13 @@
  * Ensures safe recovery from failed or unwanted deprecation operations.
  */
 
-import { sql } from 'drizzle-orm';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { DeprecatedElement, RollbackPlan, RollbackStep } from './deprecation-system';
+import { sql } from "drizzle-orm";
+import { NodePgDatabase } from "drizzle-orm/node-postgres";
+import {
+  DeprecatedElement,
+  RollbackPlan,
+  RollbackStep,
+} from "./deprecation-system";
 
 export interface RollbackConfig {
   timeoutSeconds: number;
@@ -86,15 +90,15 @@ export class RollbackManager {
     try {
       // Pre-rollback validation
       if (this.config.validateBeforeRollback) {
-        console.log('🔍 Validating rollback plan...');
+        console.log("🔍 Validating rollback plan...");
         const validationResults = await this.validateRollbackPlan(plan);
-        const failedValidations = validationResults.filter(v => !v.passed);
+        const failedValidations = validationResults.filter((v) => !v.passed);
 
         if (failedValidations.length > 0) {
-          const errorMessage = `Rollback validation failed: ${failedValidations.map(v => v.message).join(', ')}`;
+          const errorMessage = `Rollback validation failed: ${failedValidations.map((v) => v.message).join(", ")}`;
           result.errors.push({
             step: -1,
-            sql: '',
+            sql: "",
             error: errorMessage,
             timestamp: new Date().toISOString(),
             retryable: false,
@@ -103,12 +107,12 @@ export class RollbackManager {
           return result;
         }
 
-        console.log('✅ Rollback plan validation passed');
+        console.log("✅ Rollback plan validation passed");
       }
 
       // Create backup if required
       if (this.config.createBackupBeforeRollback) {
-        console.log('💾 Creating pre-rollback backup...');
+        console.log("💾 Creating pre-rollback backup...");
         result.backupLocation = await this.createPreRollbackBackup(plan);
         console.log(`   Backup created: ${result.backupLocation}`);
       }
@@ -118,29 +122,28 @@ export class RollbackManager {
 
       // Final validation
       if (result.errors.length === 0) {
-        console.log('🔍 Performing post-rollback validation...');
+        console.log("🔍 Performing post-rollback validation...");
         const postValidation = await this.validatePostRollback(plan);
 
-        if (postValidation.every(v => v.passed)) {
+        if (postValidation.every((v) => v.passed)) {
           result.success = true;
-          console.log('✅ Rollback completed successfully');
+          console.log("✅ Rollback completed successfully");
         } else {
-          const failedChecks = postValidation.filter(v => !v.passed);
+          const failedChecks = postValidation.filter((v) => !v.passed);
           result.errors.push({
             step: -1,
-            sql: '',
-            error: `Post-rollback validation failed: ${failedChecks.map(v => v.message).join(', ')}`,
+            sql: "",
+            error: `Post-rollback validation failed: ${failedChecks.map((v) => v.message).join(", ")}`,
             timestamp: new Date().toISOString(),
             retryable: false,
           });
         }
       }
-
     } catch (error) {
-      console.error('❌ Rollback execution failed:', error);
+      console.error("❌ Rollback execution failed:", error);
       result.errors.push({
         step: -1,
-        sql: '',
+        sql: "",
         error: `Rollback execution failed: ${error.message}`,
         timestamp: new Date().toISOString(),
         retryable: false,
@@ -150,10 +153,16 @@ export class RollbackManager {
     result.duration = Date.now() - startTime;
 
     if (result.success) {
-      console.log(`🎉 Rollback ${rollbackId} completed successfully in ${result.duration}ms`);
+      console.log(
+        `🎉 Rollback ${rollbackId} completed successfully in ${result.duration}ms`,
+      );
     } else {
-      console.log(`❌ Rollback ${rollbackId} failed after ${result.duration}ms`);
-      console.log(`   Completed steps: ${result.completedSteps}/${result.totalSteps}`);
+      console.log(
+        `❌ Rollback ${rollbackId} failed after ${result.duration}ms`,
+      );
+      console.log(
+        `   Completed steps: ${result.completedSteps}/${result.totalSteps}`,
+      );
       console.log(`   Errors: ${result.errors.length}`);
     }
 
@@ -163,7 +172,9 @@ export class RollbackManager {
   /**
    * Create a rollback plan for deprecated elements
    */
-  async createRollbackPlan(elements: DeprecatedElement[]): Promise<RollbackPlan> {
+  async createRollbackPlan(
+    elements: DeprecatedElement[],
+  ): Promise<RollbackPlan> {
     const planId = this.generatePlanId();
     const steps: RollbackStep[] = [];
 
@@ -178,21 +189,27 @@ export class RollbackManager {
       // Main rollback step
       steps.push({
         order: stepOrder++,
-        type: 'rename',
+        type: "rename",
         sql: element.rollbackSql,
         description: `Restore ${element.type} ${element.deprecatedName} to ${element.originalName}`,
-        validation: this.generateValidationSql(element, 'restore'),
+        validation: this.generateValidationSql(element, "restore"),
       });
 
       // Restore dependent objects
       for (const dependency of element.dependencies) {
-        if (dependency.type === 'foreign_key' || dependency.type === 'constraint') {
+        if (
+          dependency.type === "foreign_key" ||
+          dependency.type === "constraint"
+        ) {
           steps.push({
             order: stepOrder++,
-            type: 'create_constraint',
+            type: "create_constraint",
             sql: this.generateDependencyRestoreSql(dependency, element),
             description: `Restore ${dependency.type} ${dependency.name}`,
-            validation: this.generateDependencyValidationSql(dependency, element),
+            validation: this.generateDependencyValidationSql(
+              dependency,
+              element,
+            ),
           });
         }
       }
@@ -209,14 +226,16 @@ export class RollbackManager {
 
     const plan: RollbackPlan = {
       id: planId,
-      migrationId: '', // Would be set by the deprecation system
+      migrationId: "", // Would be set by the deprecation system
       steps,
       estimatedDuration,
       dependencies,
       validationChecks,
     };
 
-    console.log(`✅ Rollback plan created with ${steps.length} steps (${estimatedDuration}s estimated)`);
+    console.log(
+      `✅ Rollback plan created with ${steps.length} steps (${estimatedDuration}s estimated)`,
+    );
 
     return plan;
   }
@@ -224,7 +243,9 @@ export class RollbackManager {
   /**
    * Validate a rollback plan before execution
    */
-  async validateRollbackPlan(plan: RollbackPlan): Promise<RollbackValidation[]> {
+  async validateRollbackPlan(
+    plan: RollbackPlan,
+  ): Promise<RollbackValidation[]> {
     const validations: RollbackValidation[] = [];
 
     // Validate each step
@@ -238,29 +259,32 @@ export class RollbackManager {
         validations.push({
           stepIndex: i,
           description: `Validate SQL syntax for step ${step.order}`,
-          validation: 'SQL syntax check',
+          validation: "SQL syntax check",
           passed: isValidSql,
-          message: isValidSql ? 'SQL syntax valid' : 'Invalid SQL syntax',
+          message: isValidSql ? "SQL syntax valid" : "Invalid SQL syntax",
         });
 
         // Check if validation query is valid
         if (step.validation) {
-          const isValidValidation = await this.validateSqlSyntax(step.validation);
+          const isValidValidation = await this.validateSqlSyntax(
+            step.validation,
+          );
 
           validations.push({
             stepIndex: i,
             description: `Validate validation query for step ${step.order}`,
-            validation: 'Validation query syntax check',
+            validation: "Validation query syntax check",
             passed: isValidValidation,
-            message: isValidValidation ? 'Validation query valid' : 'Invalid validation query',
+            message: isValidValidation
+              ? "Validation query valid"
+              : "Invalid validation query",
           });
         }
-
       } catch (error) {
         validations.push({
           stepIndex: i,
           description: `Validate step ${step.order}`,
-          validation: 'Step validation',
+          validation: "Step validation",
           passed: false,
           message: `Validation error: ${error.message}`,
         });
@@ -290,36 +314,47 @@ export class RollbackManager {
 
     // Validate the plan
     const validations = await this.validateRollbackPlan(plan);
-    const failedValidations = validations.filter(v => !v.passed);
+    const failedValidations = validations.filter((v) => !v.passed);
 
     if (failedValidations.length > 0) {
-      issues.push(...failedValidations.map(v => v.message));
+      issues.push(...failedValidations.map((v) => v.message));
     }
 
     // Check for potentially risky operations
     for (const step of plan.steps) {
-      if (step.sql.toUpperCase().includes('DROP')) {
-        warnings.push(`Step ${step.order} contains DROP operation: ${step.description}`);
+      if (step.sql.toUpperCase().includes("DROP")) {
+        warnings.push(
+          `Step ${step.order} contains DROP operation: ${step.description}`,
+        );
       }
 
-      if (step.sql.toUpperCase().includes('TRUNCATE')) {
-        issues.push(`Step ${step.order} contains TRUNCATE operation (not allowed): ${step.description}`);
+      if (step.sql.toUpperCase().includes("TRUNCATE")) {
+        issues.push(
+          `Step ${step.order} contains TRUNCATE operation (not allowed): ${step.description}`,
+        );
       }
     }
 
     // Check dependencies
     if (plan.dependencies.length > 0) {
-      warnings.push(`Plan has ${plan.dependencies.length} dependencies that may affect execution order`);
+      warnings.push(
+        `Plan has ${plan.dependencies.length} dependencies that may affect execution order`,
+      );
     }
 
     // Check estimated duration
-    if (plan.estimatedDuration > 300) { // 5 minutes
-      warnings.push(`Estimated duration ${plan.estimatedDuration}s exceeds recommended maximum (300s)`);
+    if (plan.estimatedDuration > 300) {
+      // 5 minutes
+      warnings.push(
+        `Estimated duration ${plan.estimatedDuration}s exceeds recommended maximum (300s)`,
+      );
     }
 
     const canExecute = issues.length === 0;
 
-    console.log(`📊 Test results: ${canExecute ? 'CAN EXECUTE' : 'CANNOT EXECUTE'}`);
+    console.log(
+      `📊 Test results: ${canExecute ? "CAN EXECUTE" : "CANNOT EXECUTE"}`,
+    );
     console.log(`   Issues: ${issues.length}`);
     console.log(`   Warnings: ${warnings.length}`);
 
@@ -334,22 +369,27 @@ export class RollbackManager {
   /**
    * Get rollback history
    */
-  async getRollbackHistory(): Promise<Array<{
-    rollbackId: string;
-    timestamp: string;
-    success: boolean;
-    duration: number;
-    stepsCompleted: number;
-    totalSteps: number;
-  }>> {
+  async getRollbackHistory(): Promise<
+    Array<{
+      rollbackId: string;
+      timestamp: string;
+      success: boolean;
+      duration: number;
+      stepsCompleted: number;
+      totalSteps: number;
+    }>
+  > {
     // In a real implementation, this would query from storage
     return [];
   }
 
   // Private methods
 
-  private async executeRollbackSteps(plan: RollbackPlan, result: RollbackResult): Promise<void> {
-    console.log('🔄 Executing rollback steps...');
+  private async executeRollbackSteps(
+    plan: RollbackPlan,
+    result: RollbackResult,
+  ): Promise<void> {
+    console.log("🔄 Executing rollback steps...");
 
     // Begin transaction
     await this.db.transaction(async (tx) => {
@@ -375,7 +415,6 @@ export class RollbackManager {
 
           result.completedSteps++;
           console.log(`    ✅ Step ${step.order} completed`);
-
         } catch (error) {
           console.error(`    ❌ Step ${step.order} failed:`, error);
 
@@ -397,15 +436,17 @@ export class RollbackManager {
     });
   }
 
-  private async sortElementsForRollback(elements: DeprecatedElement[]): Promise<DeprecatedElement[]> {
+  private async sortElementsForRollback(
+    elements: DeprecatedElement[],
+  ): Promise<DeprecatedElement[]> {
     // Sort elements in reverse dependency order
     // Tables with dependencies should be restored after their dependencies
     const sorted = [...elements];
 
     sorted.sort((a, b) => {
       // Tables last (they might have dependencies)
-      if (a.type === 'table' && b.type !== 'table') return 1;
-      if (b.type === 'table' && a.type !== 'table') return -1;
+      if (a.type === "table" && b.type !== "table") return 1;
+      if (b.type === "table" && a.type !== "table") return -1;
 
       // Sort by dependency count (fewer dependencies first)
       return a.dependencies.length - b.dependencies.length;
@@ -414,16 +455,19 @@ export class RollbackManager {
     return sorted;
   }
 
-  private generateValidationSql(element: DeprecatedElement, operation: 'restore'): string {
+  private generateValidationSql(
+    element: DeprecatedElement,
+    operation: "restore",
+  ): string {
     switch (element.type) {
-      case 'table':
+      case "table":
         return `SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = '${element.schema}' AND table_name = '${element.originalName}'`;
 
-      case 'column':
-        const [tableName, columnName] = element.originalName.split('.');
+      case "column":
+        const [tableName, columnName] = element.originalName.split(".");
         return `SELECT COUNT(*) as count FROM information_schema.columns WHERE table_schema = '${element.schema}' AND table_name = '${tableName}' AND column_name = '${columnName}'`;
 
-      case 'index':
+      case "index":
         return `SELECT COUNT(*) as count FROM pg_indexes WHERE schemaname = '${element.schema}' AND indexname = '${element.originalName}'`;
 
       default:
@@ -431,13 +475,19 @@ export class RollbackManager {
     }
   }
 
-  private generateDependencyRestoreSql(dependency: any, element: DeprecatedElement): string {
+  private generateDependencyRestoreSql(
+    dependency: any,
+    element: DeprecatedElement,
+  ): string {
     // Generate SQL to restore dependent objects
     // This would be implemented based on specific dependency types
     return `-- Restore dependency ${dependency.name} for ${element.originalName}`;
   }
 
-  private generateDependencyValidationSql(dependency: any, element: DeprecatedElement): string {
+  private generateDependencyValidationSql(
+    dependency: any,
+    element: DeprecatedElement,
+  ): string {
     // Generate validation SQL for dependent objects
     return `SELECT 1 as count`;
   }
@@ -448,7 +498,9 @@ export class RollbackManager {
 
     // Simple dependency calculation based on step order
     for (let i = 1; i < steps.length; i++) {
-      dependencies.push(`step_${steps[i].order}_depends_on_step_${steps[i-1].order}`);
+      dependencies.push(
+        `step_${steps[i].order}_depends_on_step_${steps[i - 1].order}`,
+      );
     }
 
     return dependencies;
@@ -459,13 +511,13 @@ export class RollbackManager {
 
     for (const step of steps) {
       switch (step.type) {
-        case 'rename':
+        case "rename":
           duration += 10; // 10 seconds for rename operations
           break;
-        case 'create_constraint':
+        case "create_constraint":
           duration += 30; // 30 seconds for constraint creation
           break;
-        case 'create_index':
+        case "create_index":
           duration += 60; // 60 seconds for index creation
           break;
         default:
@@ -481,7 +533,9 @@ export class RollbackManager {
 
     for (const element of elements) {
       checks.push(`Verify ${element.type} ${element.originalName} exists`);
-      checks.push(`Verify ${element.type} ${element.deprecatedName} does not exist`);
+      checks.push(
+        `Verify ${element.type} ${element.deprecatedName} does not exist`,
+      );
     }
 
     return checks;
@@ -504,23 +558,28 @@ export class RollbackManager {
     const hasCycles = this.detectCyclicDependencies(plan.dependencies);
     validations.push({
       stepIndex: -1,
-      description: 'Check for circular dependencies',
-      validation: 'Dependency cycle detection',
+      description: "Check for circular dependencies",
+      validation: "Dependency cycle detection",
       passed: !hasCycles,
-      message: hasCycles ? 'Circular dependencies detected' : 'No circular dependencies',
+      message: hasCycles
+        ? "Circular dependencies detected"
+        : "No circular dependencies",
     });
 
     // Validate dependency references
-    const invalidDeps = plan.dependencies.filter(dep =>
-      !this.isValidDependencyReference(dep, plan.steps)
+    const invalidDeps = plan.dependencies.filter(
+      (dep) => !this.isValidDependencyReference(dep, plan.steps),
     );
 
     validations.push({
       stepIndex: -1,
-      description: 'Validate dependency references',
-      validation: 'Dependency reference check',
+      description: "Validate dependency references",
+      validation: "Dependency reference check",
       passed: invalidDeps.length === 0,
-      message: invalidDeps.length === 0 ? 'All dependencies valid' : `Invalid dependencies: ${invalidDeps.join(', ')}`,
+      message:
+        invalidDeps.length === 0
+          ? "All dependencies valid"
+          : `Invalid dependencies: ${invalidDeps.join(", ")}`,
     });
 
     return validations;
@@ -551,8 +610,11 @@ export class RollbackManager {
     return false;
   }
 
-  private isValidDependencyReference(dependency: string, steps: RollbackStep[]): boolean {
-    const stepIds = steps.map(step => `step_${step.order}`);
+  private isValidDependencyReference(
+    dependency: string,
+    steps: RollbackStep[],
+  ): boolean {
+    const stepIds = steps.map((step) => `step_${step.order}`);
     const match = dependency.match(/(step_\d+)_depends_on_(step_\d+)/);
 
     if (!match) return false;
@@ -571,7 +633,9 @@ export class RollbackManager {
     return `/backups/${backupId}.sql`;
   }
 
-  private async validatePostRollback(plan: RollbackPlan): Promise<RollbackValidation[]> {
+  private async validatePostRollback(
+    plan: RollbackPlan,
+  ): Promise<RollbackValidation[]> {
     const validations: RollbackValidation[] = [];
 
     // Run validation checks defined in the plan
@@ -581,9 +645,9 @@ export class RollbackManager {
       validations.push({
         stepIndex: i,
         description: check,
-        validation: 'Post-rollback validation',
+        validation: "Post-rollback validation",
         passed: true, // Would run actual validation
-        message: 'Validation passed',
+        message: "Validation passed",
       });
     }
 
@@ -594,7 +658,7 @@ export class RollbackManager {
     // Interpret validation query result
     if (result.rows && result.rows.length > 0) {
       const firstRow = result.rows[0];
-      if ('count' in firstRow) {
+      if ("count" in firstRow) {
         return (firstRow.count as number) > 0;
       }
     }
@@ -603,14 +667,14 @@ export class RollbackManager {
 
   private isRetryableError(error: any): boolean {
     const retryableMessages = [
-      'connection timeout',
-      'temporary failure',
-      'lock timeout',
-      'deadlock detected',
+      "connection timeout",
+      "temporary failure",
+      "lock timeout",
+      "deadlock detected",
     ];
 
-    const errorMessage = error.message?.toLowerCase() || '';
-    return retryableMessages.some(msg => errorMessage.includes(msg));
+    const errorMessage = error.message?.toLowerCase() || "";
+    return retryableMessages.some((msg) => errorMessage.includes(msg));
   }
 
   private generateRollbackId(): string {
@@ -625,7 +689,9 @@ export class RollbackManager {
 /**
  * Create a rollback plan for deprecated elements
  */
-export async function createRollbackPlan(elements: DeprecatedElement[]): Promise<RollbackPlan> {
+export async function createRollbackPlan(
+  elements: DeprecatedElement[],
+): Promise<RollbackPlan> {
   // Create a temporary rollback manager for plan creation
   const manager = new RollbackManager({} as any); // Would use actual db instance
   return manager.createRollbackPlan(elements);
@@ -636,7 +702,7 @@ export async function createRollbackPlan(elements: DeprecatedElement[]): Promise
  */
 export function createRollbackManager(
   db: NodePgDatabase<any>,
-  config?: Partial<RollbackConfig>
+  config?: Partial<RollbackConfig>,
 ): RollbackManager {
   return new RollbackManager(db, config);
 }
@@ -646,7 +712,7 @@ export function createRollbackManager(
  */
 export async function canSafelyRollback(
   db: NodePgDatabase<any>,
-  plan: RollbackPlan
+  plan: RollbackPlan,
 ): Promise<{ canRollback: boolean; reasons: string[] }> {
   const manager = new RollbackManager(db);
   const testResult = await manager.testRollbackPlan(plan);

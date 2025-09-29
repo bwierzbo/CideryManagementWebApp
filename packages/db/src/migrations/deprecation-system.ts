@@ -5,18 +5,21 @@
  * Elements are renamed with deprecated naming convention rather than dropped.
  */
 
-import { sql } from 'drizzle-orm';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { generateDeprecatedName, validateNamingConvention } from './naming-convention';
-import { performSafetyChecks, SafetyCheckResult } from './safety-checks';
-import { createRollbackPlan, RollbackManager } from './rollback-manager';
-import { DeprecatedMonitor } from '../monitoring/deprecated-monitor';
+import { sql } from "drizzle-orm";
+import { NodePgDatabase } from "drizzle-orm/node-postgres";
+import {
+  generateDeprecatedName,
+  validateNamingConvention,
+} from "./naming-convention";
+import { performSafetyChecks, SafetyCheckResult } from "./safety-checks";
+import { createRollbackPlan, RollbackManager } from "./rollback-manager";
+import { DeprecatedMonitor } from "../monitoring/deprecated-monitor";
 
 // Types for deprecation system
 export interface DeprecationMigration {
   id: string;
   timestamp: string;
-  phase: 'planning' | 'executing' | 'completed' | 'rolled_back';
+  phase: "planning" | "executing" | "completed" | "rolled_back";
   elements: DeprecatedElement[];
   reason: string;
   rollbackPlan: RollbackPlan;
@@ -38,10 +41,16 @@ export interface DeprecatedElement {
 }
 
 export interface ElementDependency {
-  type: 'foreign_key' | 'index' | 'constraint' | 'trigger' | 'view' | 'function';
+  type:
+    | "foreign_key"
+    | "index"
+    | "constraint"
+    | "trigger"
+    | "view"
+    | "function";
   name: string;
   dependentObject: string;
-  impact: 'high' | 'medium' | 'low';
+  impact: "high" | "medium" | "low";
 }
 
 export interface UsageData {
@@ -58,7 +67,7 @@ export interface MigrationMetadata {
   backupLocation: string;
   approvalRequired: boolean;
   estimatedDuration: number; // in seconds
-  riskLevel: 'low' | 'medium' | 'high';
+  riskLevel: "low" | "medium" | "high";
 }
 
 export interface RollbackPlan {
@@ -72,14 +81,27 @@ export interface RollbackPlan {
 
 export interface RollbackStep {
   order: number;
-  type: 'rename' | 'create_constraint' | 'create_index' | 'restore_data';
+  type: "rename" | "create_constraint" | "create_index" | "restore_data";
   sql: string;
   description: string;
   validation: string;
 }
 
-export type ElementType = 'table' | 'column' | 'index' | 'constraint' | 'enum' | 'function' | 'view';
-export type DeprecationReason = 'unused' | 'performance' | 'migration' | 'refactor' | 'security' | 'optimization';
+export type ElementType =
+  | "table"
+  | "column"
+  | "index"
+  | "constraint"
+  | "enum"
+  | "function"
+  | "view";
+export type DeprecationReason =
+  | "unused"
+  | "performance"
+  | "migration"
+  | "refactor"
+  | "security"
+  | "optimization";
 
 /**
  * Main Deprecation System Class
@@ -93,7 +115,7 @@ export class DeprecationSystem {
   constructor(
     db: NodePgDatabase<any>,
     monitor: DeprecatedMonitor,
-    rollbackManager: RollbackManager
+    rollbackManager: RollbackManager,
   ) {
     this.db = db;
     this.monitor = monitor;
@@ -111,7 +133,7 @@ export class DeprecationSystem {
       schema?: string;
       reason: DeprecationReason;
     }>,
-    metadata: Partial<MigrationMetadata>
+    metadata: Partial<MigrationMetadata>,
   ): Promise<DeprecationMigration> {
     const migrationId = this.generateMigrationId();
     const timestamp = new Date().toISOString();
@@ -126,32 +148,37 @@ export class DeprecationSystem {
     }
 
     // Perform safety checks
-    console.log('🛡️ Performing safety checks...');
+    console.log("🛡️ Performing safety checks...");
     const safetyChecks = await performSafetyChecks(this.db, deprecatedElements);
 
     // Check if any safety checks failed
-    const failedChecks = safetyChecks.filter(check => !check.passed);
+    const failedChecks = safetyChecks.filter((check) => !check.passed);
     if (failedChecks.length > 0) {
-      throw new Error(`Safety checks failed: ${failedChecks.map(c => c.message).join(', ')}`);
+      throw new Error(
+        `Safety checks failed: ${failedChecks.map((c) => c.message).join(", ")}`,
+      );
     }
 
     // Create rollback plan
-    console.log('📋 Creating rollback plan...');
+    console.log("📋 Creating rollback plan...");
     const rollbackPlan = await createRollbackPlan(deprecatedElements);
 
     const migration: DeprecationMigration = {
       id: migrationId,
       timestamp,
-      phase: 'planning',
+      phase: "planning",
       elements: deprecatedElements,
-      reason: metadata.reason || 'Database optimization',
+      reason: metadata.reason || "Database optimization",
       rollbackPlan,
       safetyChecks,
       metadata: {
-        createdBy: metadata.createdBy || 'system',
-        environment: metadata.environment || process.env.NODE_ENV || 'development',
-        backupLocation: metadata.backupLocation || '',
-        approvalRequired: metadata.approvalRequired || this.requiresApproval(deprecatedElements),
+        createdBy: metadata.createdBy || "system",
+        environment:
+          metadata.environment || process.env.NODE_ENV || "development",
+        backupLocation: metadata.backupLocation || "",
+        approvalRequired:
+          metadata.approvalRequired ||
+          this.requiresApproval(deprecatedElements),
         estimatedDuration: this.estimateDuration(deprecatedElements),
         riskLevel: this.assessRiskLevel(deprecatedElements),
       },
@@ -175,17 +202,19 @@ export class DeprecationSystem {
       throw new Error(`Migration plan not found: ${migrationId}`);
     }
 
-    if (migration.phase !== 'planning') {
-      throw new Error(`Migration ${migrationId} is not in planning phase: ${migration.phase}`);
+    if (migration.phase !== "planning") {
+      throw new Error(
+        `Migration ${migrationId} is not in planning phase: ${migration.phase}`,
+      );
     }
 
     try {
       // Update phase to executing
-      await this.updateMigrationPhase(migrationId, 'executing');
+      await this.updateMigrationPhase(migrationId, "executing");
 
       // Create backup if required
       if (migration.metadata.backupLocation) {
-        console.log('💾 Creating backup...');
+        console.log("💾 Creating backup...");
         await this.createBackup(migration);
       }
 
@@ -193,7 +222,9 @@ export class DeprecationSystem {
       await this.db.transaction(async (tx) => {
         // Execute each element deprecation
         for (const element of migration.elements) {
-          console.log(`  📝 Deprecating ${element.type}: ${element.originalName} -> ${element.deprecatedName}`);
+          console.log(
+            `  📝 Deprecating ${element.type}: ${element.originalName} -> ${element.deprecatedName}`,
+          );
 
           // Execute migration SQL
           await tx.execute(sql.raw(element.migrationSql));
@@ -202,14 +233,13 @@ export class DeprecationSystem {
           await this.monitor.startMonitoring(element);
         }
 
-        console.log('✅ All deprecation operations completed successfully');
+        console.log("✅ All deprecation operations completed successfully");
       });
 
       // Update phase to completed
-      await this.updateMigrationPhase(migrationId, 'completed');
+      await this.updateMigrationPhase(migrationId, "completed");
 
       console.log(`🎉 Migration ${migrationId} executed successfully`);
-
     } catch (error) {
       console.error(`❌ Migration ${migrationId} failed:`, error);
 
@@ -218,7 +248,9 @@ export class DeprecationSystem {
         await this.rollbackMigration(migrationId);
       } catch (rollbackError) {
         console.error(`💥 Rollback also failed:`, rollbackError);
-        throw new Error(`Migration failed and rollback failed: ${error.message}. Rollback error: ${rollbackError.message}`);
+        throw new Error(
+          `Migration failed and rollback failed: ${error.message}. Rollback error: ${rollbackError.message}`,
+        );
       }
 
       throw error;
@@ -245,10 +277,9 @@ export class DeprecationSystem {
       }
 
       // Update phase to rolled back
-      await this.updateMigrationPhase(migrationId, 'rolled_back');
+      await this.updateMigrationPhase(migrationId, "rolled_back");
 
       console.log(`✅ Migration ${migrationId} rolled back successfully`);
-
     } catch (error) {
       console.error(`❌ Rollback failed for migration ${migrationId}:`, error);
       throw error;
@@ -292,7 +323,10 @@ export class DeprecationSystem {
 
   // Private helper methods
   private generateMigrationId(): string {
-    const timestamp = new Date().toISOString().replace(/[-:T]/g, '').split('.')[0];
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:T]/g, "")
+      .split(".")[0];
     const random = Math.random().toString(36).substring(2, 8);
     return `dep_${timestamp}_${random}`;
   }
@@ -303,16 +337,22 @@ export class DeprecationSystem {
     schema?: string;
     reason: DeprecationReason;
   }): Promise<DeprecatedElement> {
-    const schema = element.schema || 'public';
+    const schema = element.schema || "public";
     const deprecatedName = generateDeprecatedName(element.name, element.reason);
 
     // Validate naming convention
     if (!validateNamingConvention(deprecatedName)) {
-      throw new Error(`Generated deprecated name violates naming convention: ${deprecatedName}`);
+      throw new Error(
+        `Generated deprecated name violates naming convention: ${deprecatedName}`,
+      );
     }
 
     // Analyze dependencies
-    const dependencies = await this.analyzeDependencies(element.type, element.name, schema);
+    const dependencies = await this.analyzeDependencies(
+      element.type,
+      element.name,
+      schema,
+    );
 
     // Get usage data (would integrate with analysis from Task #88)
     const usageData: UsageData = {
@@ -324,15 +364,25 @@ export class DeprecationSystem {
     };
 
     // Generate migration SQL
-    const migrationSql = this.generateMigrationSql(element.type, element.name, deprecatedName, schema);
-    const rollbackSql = this.generateRollbackSql(element.type, deprecatedName, element.name, schema);
+    const migrationSql = this.generateMigrationSql(
+      element.type,
+      element.name,
+      deprecatedName,
+      schema,
+    );
+    const rollbackSql = this.generateRollbackSql(
+      element.type,
+      deprecatedName,
+      element.name,
+      schema,
+    );
 
     return {
       type: element.type,
       originalName: element.name,
       deprecatedName,
       schema,
-      deprecationDate: new Date().toISOString().split('T')[0],
+      deprecationDate: new Date().toISOString().split("T")[0],
       reason: element.reason,
       dependencies,
       usageData,
@@ -341,10 +391,14 @@ export class DeprecationSystem {
     };
   }
 
-  private async analyzeDependencies(type: ElementType, name: string, schema: string): Promise<ElementDependency[]> {
+  private async analyzeDependencies(
+    type: ElementType,
+    name: string,
+    schema: string,
+  ): Promise<ElementDependency[]> {
     const dependencies: ElementDependency[] = [];
 
-    if (type === 'table') {
+    if (type === "table") {
       // Find foreign keys, indexes, constraints
       const foreignKeyQuery = `
         SELECT
@@ -357,15 +411,18 @@ export class DeprecationSystem {
           AND tc.constraint_type = 'FOREIGN KEY'
       `;
 
-      const fkResults = await this.db.execute(sql.raw(foreignKeyQuery), [schema, name]);
+      const fkResults = await this.db.execute(sql.raw(foreignKeyQuery), [
+        schema,
+        name,
+      ]);
 
       // Convert to dependencies (simplified for now)
       for (const row of fkResults.rows) {
         dependencies.push({
-          type: 'foreign_key',
+          type: "foreign_key",
           name: row.constraint_name as string,
           dependentObject: row.dependent_table as string,
-          impact: 'high',
+          impact: "high",
         });
       }
     }
@@ -373,34 +430,44 @@ export class DeprecationSystem {
     return dependencies;
   }
 
-  private generateMigrationSql(type: ElementType, originalName: string, deprecatedName: string, schema: string): string {
+  private generateMigrationSql(
+    type: ElementType,
+    originalName: string,
+    deprecatedName: string,
+    schema: string,
+  ): string {
     switch (type) {
-      case 'table':
+      case "table":
         return `ALTER TABLE "${schema}"."${originalName}" RENAME TO "${deprecatedName}";`;
-      case 'column':
-        const [tableName, columnName] = originalName.split('.');
+      case "column":
+        const [tableName, columnName] = originalName.split(".");
         return `ALTER TABLE "${schema}"."${tableName}" RENAME COLUMN "${columnName}" TO "${deprecatedName}";`;
-      case 'index':
+      case "index":
         return `ALTER INDEX "${schema}"."${originalName}" RENAME TO "${deprecatedName}";`;
-      case 'constraint':
-        const [constraintTable, constraintName] = originalName.split('.');
+      case "constraint":
+        const [constraintTable, constraintName] = originalName.split(".");
         return `ALTER TABLE "${schema}"."${constraintTable}" RENAME CONSTRAINT "${constraintName}" TO "${deprecatedName}";`;
       default:
         throw new Error(`Unsupported element type for deprecation: ${type}`);
     }
   }
 
-  private generateRollbackSql(type: ElementType, deprecatedName: string, originalName: string, schema: string): string {
+  private generateRollbackSql(
+    type: ElementType,
+    deprecatedName: string,
+    originalName: string,
+    schema: string,
+  ): string {
     switch (type) {
-      case 'table':
+      case "table":
         return `ALTER TABLE "${schema}"."${deprecatedName}" RENAME TO "${originalName}";`;
-      case 'column':
-        const [tableName, columnName] = originalName.split('.');
+      case "column":
+        const [tableName, columnName] = originalName.split(".");
         return `ALTER TABLE "${schema}"."${tableName}" RENAME COLUMN "${deprecatedName}" TO "${columnName}";`;
-      case 'index':
+      case "index":
         return `ALTER INDEX "${schema}"."${deprecatedName}" RENAME TO "${originalName}";`;
-      case 'constraint':
-        const [constraintTable, constraintName] = originalName.split('.');
+      case "constraint":
+        const [constraintTable, constraintName] = originalName.split(".");
         return `ALTER TABLE "${schema}"."${constraintTable}" RENAME CONSTRAINT "${deprecatedName}" TO "${constraintName}";`;
       default:
         throw new Error(`Unsupported element type for rollback: ${type}`);
@@ -409,9 +476,10 @@ export class DeprecationSystem {
 
   private requiresApproval(elements: DeprecatedElement[]): boolean {
     // Require approval for tables or high-risk operations
-    return elements.some(el =>
-      el.type === 'table' ||
-      el.dependencies.some(dep => dep.impact === 'high')
+    return elements.some(
+      (el) =>
+        el.type === "table" ||
+        el.dependencies.some((dep) => dep.impact === "high"),
     );
   }
 
@@ -420,10 +488,10 @@ export class DeprecationSystem {
     let duration = 0;
     for (const element of elements) {
       switch (element.type) {
-        case 'table':
+        case "table":
           duration += 30; // 30 seconds per table
           break;
-        case 'index':
+        case "index":
           duration += 10; // 10 seconds per index
           break;
         default:
@@ -434,36 +502,47 @@ export class DeprecationSystem {
     return duration;
   }
 
-  private assessRiskLevel(elements: DeprecatedElement[]): 'low' | 'medium' | 'high' {
+  private assessRiskLevel(
+    elements: DeprecatedElement[],
+  ): "low" | "medium" | "high" {
     // Assess risk based on element types and confidence scores
-    const hasTable = elements.some(el => el.type === 'table');
-    const lowConfidence = elements.some(el => el.usageData.confidenceScore < 0.8);
-    const hasHighImpactDeps = elements.some(el =>
-      el.dependencies.some(dep => dep.impact === 'high')
+    const hasTable = elements.some((el) => el.type === "table");
+    const lowConfidence = elements.some(
+      (el) => el.usageData.confidenceScore < 0.8,
+    );
+    const hasHighImpactDeps = elements.some((el) =>
+      el.dependencies.some((dep) => dep.impact === "high"),
     );
 
     if (hasTable || lowConfidence || hasHighImpactDeps) {
-      return 'high';
+      return "high";
     }
     if (elements.length > 5) {
-      return 'medium';
+      return "medium";
     }
-    return 'low';
+    return "low";
   }
 
   // Storage methods (would be implemented with actual storage)
-  private async storeMigrationPlan(migration: DeprecationMigration): Promise<void> {
+  private async storeMigrationPlan(
+    migration: DeprecationMigration,
+  ): Promise<void> {
     // Store in database or file system
     console.log(`Storing migration plan: ${migration.id}`);
   }
 
-  private async getMigrationPlan(migrationId: string): Promise<DeprecationMigration | null> {
+  private async getMigrationPlan(
+    migrationId: string,
+  ): Promise<DeprecationMigration | null> {
     // Retrieve from storage
     console.log(`Retrieving migration plan: ${migrationId}`);
     return null;
   }
 
-  private async updateMigrationPhase(migrationId: string, phase: DeprecationMigration['phase']): Promise<void> {
+  private async updateMigrationPhase(
+    migrationId: string,
+    phase: DeprecationMigration["phase"],
+  ): Promise<void> {
     // Update phase in storage
     console.log(`Updating migration ${migrationId} phase to: ${phase}`);
   }
@@ -480,7 +559,7 @@ export class DeprecationSystem {
 export function createDeprecationSystem(
   db: NodePgDatabase<any>,
   monitor: DeprecatedMonitor,
-  rollbackManager: RollbackManager
+  rollbackManager: RollbackManager,
 ): DeprecationSystem {
   return new DeprecationSystem(db, monitor, rollbackManager);
 }
@@ -492,7 +571,7 @@ export async function canDeprecateElement(
   db: NodePgDatabase<any>,
   type: ElementType,
   name: string,
-  schema: string = 'public'
+  schema: string = "public",
 ): Promise<{ canDeprecate: boolean; reasons: string[] }> {
   const reasons: string[] = [];
 
@@ -500,24 +579,31 @@ export async function canDeprecateElement(
   let exists = false;
   try {
     switch (type) {
-      case 'table':
+      case "table":
         const tableQuery = `
           SELECT COUNT(*) as count
           FROM information_schema.tables
           WHERE table_schema = $1 AND table_name = $2
         `;
-        const tableResult = await db.execute(sql.raw(tableQuery), [schema, name]);
+        const tableResult = await db.execute(sql.raw(tableQuery), [
+          schema,
+          name,
+        ]);
         exists = (tableResult.rows[0]?.count as number) > 0;
         break;
 
-      case 'column':
-        const [tableName, columnName] = name.split('.');
+      case "column":
+        const [tableName, columnName] = name.split(".");
         const columnQuery = `
           SELECT COUNT(*) as count
           FROM information_schema.columns
           WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
         `;
-        const columnResult = await db.execute(sql.raw(columnQuery), [schema, tableName, columnName]);
+        const columnResult = await db.execute(sql.raw(columnQuery), [
+          schema,
+          tableName,
+          columnName,
+        ]);
         exists = (columnResult.rows[0]?.count as number) > 0;
         break;
 

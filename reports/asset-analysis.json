@@ -1,0 +1,57 @@
+{
+  "totalAssets": 7,
+  "usedAssets": 4,
+  "unusedAssets": [
+    {
+      "path": "/sw.js",
+      "referencedBy": [],
+      "type": "js",
+      "size": 11866
+    },
+    {
+      "path": "/manifest.json",
+      "referencedBy": [],
+      "type": "other",
+      "size": 1924
+    },
+    {
+      "path": "./src/app/globals.css",
+      "referencedBy": [],
+      "type": "css",
+      "size": 1553
+    }
+  ],
+  "potentiallyUnused": [
+    {
+      "path": "/icon-192x192.png",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "image"
+    },
+    {
+      "path": "/icon-512x512.png",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "image"
+    },
+    {
+      "path": "/apple-touch-icon.png",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "image"
+    },
+    {
+      "path": "/pressing",
+      "referencedBy": [
+        "manifest.json"
+      ],
+      "type": "other"
+    }
+  ],
+  "largeAssets": [],
+  "analysisDate": "2025-09-29T01:46:57.906Z",
+  "errors": []
+}

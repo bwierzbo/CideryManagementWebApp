@@ -14,8 +14,8 @@ import {
   validateMeasurement,
   measurementValidationSchema,
   type MeasurementData
-} from '../../../packages/lib/src/validation/measurements';
-import { MeasurementValidationError } from '../../../packages/lib/src/validation/errors';
+} from './packages/lib/src/validation/measurements';
+import { MeasurementValidationError } from './packages/lib/src/validation/errors';
 
 describe('Measurement Validation', () => {
   const mockMeasurement: MeasurementData = {

@@ -7,6 +7,7 @@
 Phase 2 of the database deprecation system involves the permanent removal of database elements that have been deprecated in Phase 1 and confirmed as safe for deletion through monitoring and validation.
 
 **Key Principles:**
+
 - **Irreversible Operations**: Phase 2 operations permanently delete database elements
 - **Extensive Validation**: Multi-layer safety checks before any removal
 - **Approval Required**: Formal approval process for all removals
@@ -18,36 +19,42 @@ Phase 2 of the database deprecation system involves the permanent removal of dat
 Before any Phase 2 operation can be executed, the following conditions **MUST** be met:
 
 ### 1. Phase 1 Completion
+
 - [ ] Element has been successfully deprecated using Phase 1 system
 - [ ] Deprecated element exists with proper naming convention
 - [ ] No errors occurred during Phase 1 deprecation
 - [ ] Rollback plan is validated and tested
 
 ### 2. Cooling-Off Period
+
 - [ ] Minimum 30 days have passed since deprecation
 - [ ] Extended to 90 days for production environments
 - [ ] No access detected during cooling-off period
 - [ ] Monitoring confirms zero usage
 
 ### 3. Monitoring Validation
+
 - [ ] Comprehensive monitoring data collected
 - [ ] Zero access events recorded
 - [ ] No alerts triggered for the element
 - [ ] Telemetry analysis confirms safety
 
 ### 4. Safety Validations
+
 - [ ] All safety checks pass with high confidence
 - [ ] No hidden dependencies discovered
 - [ ] Cross-reference analysis complete
 - [ ] Impact assessment approved
 
 ### 5. Backup Requirements
+
 - [ ] Full database backup created and validated
 - [ ] Element-specific backup available
 - [ ] Backup restoration tested successfully
 - [ ] Recovery procedures documented
 
 ### 6. Approval Process
+
 - [ ] Technical review completed
 - [ ] Business stakeholder approval obtained
 - [ ] Operations team approval received
@@ -69,6 +76,7 @@ pnpm db:review-monitoring --element-id <deprecated_element_id> --days 30
 ```
 
 **Assessment Criteria:**
+
 - Zero access events in monitoring period
 - No performance impact from retaining element
 - No undocumented dependencies found
@@ -82,6 +90,7 @@ pnpm db:create-removal-plan --elements <element_list> --include-dependencies
 ```
 
 **Removal Plan Contents:**
+
 - Detailed execution steps
 - Dependency removal order
 - Validation checkpoints
@@ -97,6 +106,7 @@ pnpm db:final-safety-check --removal-plan-id <plan_id>
 ```
 
 **Final Safety Checks:**
+
 - Re-verify zero usage
 - Confirm no new dependencies
 - Validate backup integrity
@@ -111,6 +121,7 @@ pnpm db:create-final-backup --removal-plan-id <plan_id> --verification-level com
 ```
 
 **Backup Requirements:**
+
 - Full database backup
 - Element-specific backup
 - Metadata and schema backup
@@ -127,6 +138,7 @@ pnpm db:execute-removal --plan-id <plan_id> --confirm-irreversible --require-app
 ```
 
 **Execution Process:**
+
 1. Final confirmation prompts
 2. Approval verification
 3. Transaction-based removal
@@ -142,6 +154,7 @@ pnpm db:validate-removal --plan-id <plan_id>
 ```
 
 **Post-Removal Checks:**
+
 - Confirm elements are completely removed
 - Verify no broken dependencies
 - Test application functionality
@@ -153,12 +166,14 @@ pnpm db:validate-removal --plan-id <plan_id>
 ### 1. Multi-Stage Approval
 
 **Required Approvals:**
+
 - **Technical Lead**: Database impact assessment
 - **Application Owner**: Business impact confirmation
 - **Operations Manager**: Infrastructure impact approval
 - **Security Officer**: Security impact review (if applicable)
 
 **Approval Documentation:**
+
 - Formal approval tickets
 - Risk assessment acknowledgment
 - Business impact statements
@@ -167,6 +182,7 @@ pnpm db:validate-removal --plan-id <plan_id>
 ### 2. Verification Requirements
 
 **Pre-Removal Verification:**
+
 ```sql
 -- Verify element exists in deprecated state
 SELECT COUNT(*) FROM information_schema.tables
@@ -183,6 +199,7 @@ WHERE table_name = '<deprecated_element>';
 ```
 
 **Post-Removal Verification:**
+
 ```sql
 -- Confirm element is completely removed
 SELECT COUNT(*) FROM information_schema.tables
@@ -225,16 +242,19 @@ AND timestamp > '<removal_timestamp>';
 ### High-Risk Elements
 
 **Tables with Data:**
+
 - **Risk**: Permanent data loss
 - **Mitigation**: Extended cooling-off period (90+ days)
 - **Additional Requirements**: Business owner sign-off, legal review
 
 **Elements with Complex Dependencies:**
+
 - **Risk**: Cascading failures
 - **Mitigation**: Comprehensive dependency analysis
 - **Additional Requirements**: Staged removal approach
 
 **Production Environment:**
+
 - **Risk**: Service disruption
 - **Mitigation**: Maintenance window scheduling
 - **Additional Requirements**: Rollback plan, monitoring
@@ -242,11 +262,13 @@ AND timestamp > '<removal_timestamp>';
 ### Medium-Risk Elements
 
 **Indexes and Constraints:**
+
 - **Risk**: Performance degradation
 - **Mitigation**: Performance impact analysis
 - **Additional Requirements**: Performance monitoring post-removal
 
 **Views and Functions:**
+
 - **Risk**: Application errors
 - **Mitigation**: Application compatibility testing
 - **Additional Requirements**: Code review and testing
@@ -254,6 +276,7 @@ AND timestamp > '<removal_timestamp>';
 ### Low-Risk Elements
 
 **Unused Columns:**
+
 - **Risk**: Minimal impact
 - **Mitigation**: Standard process
 - **Additional Requirements**: Basic validation
@@ -263,12 +286,14 @@ AND timestamp > '<removal_timestamp>';
 ### During Removal Process
 
 **Real-time Monitoring:**
+
 - Application error rates
 - Database performance metrics
 - Transaction success rates
 - Connection pool status
 
 **Alert Thresholds:**
+
 - Error rate increase > 5%
 - Response time increase > 20%
 - Connection failures > 1%
@@ -277,6 +302,7 @@ AND timestamp > '<removal_timestamp>';
 ### Post-Removal Monitoring
 
 **Extended Monitoring Period:**
+
 - 48 hours of intensive monitoring
 - 30 days of enhanced alerting
 - Regular health checks
@@ -287,18 +313,21 @@ AND timestamp > '<removal_timestamp>';
 > **⚠️ IMPORTANT**: Phase 2 operations have limited rollback capabilities
 
 ### What Can Be Restored:
+
 - Database structure from backups
 - Schema definitions
 - Index definitions
 - Constraint definitions
 
 ### What Cannot Be Restored:
+
 - Live transactional data since removal
 - Runtime state
 - Application-specific configurations
 - Third-party integrations
 
 ### Emergency Recovery:
+
 1. Restore from final backup to temporary database
 2. Extract required elements
 3. Recreate elements in production
@@ -308,6 +337,7 @@ AND timestamp > '<removal_timestamp>';
 ## Documentation Requirements
 
 ### Pre-Removal Documentation:
+
 - [ ] Detailed removal plan
 - [ ] Risk assessment
 - [ ] Approval records
@@ -315,12 +345,14 @@ AND timestamp > '<removal_timestamp>';
 - [ ] Monitoring analysis
 
 ### During Removal Documentation:
+
 - [ ] Real-time execution log
 - [ ] Validation checkpoints
 - [ ] Any issues encountered
 - [ ] Decision points and rationale
 
 ### Post-Removal Documentation:
+
 - [ ] Completion verification
 - [ ] Performance impact assessment
 - [ ] Lessons learned
@@ -330,6 +362,7 @@ AND timestamp > '<removal_timestamp>';
 ## Tools and Commands
 
 ### Assessment Tools
+
 ```bash
 # Generate removal readiness report
 pnpm db:removal-readiness --element <element_name>
@@ -342,6 +375,7 @@ pnpm db:validate-prerequisites --removal-plan <plan_id>
 ```
 
 ### Execution Tools
+
 ```bash
 # Create removal plan
 pnpm db:plan-removal --elements <element_list>
@@ -354,6 +388,7 @@ pnpm db:validate-removal --plan <plan_id>
 ```
 
 ### Recovery Tools
+
 ```bash
 # Emergency restore from backup
 pnpm db:emergency-restore --backup-id <backup_id> --elements <element_list>
@@ -368,6 +403,7 @@ pnpm db:health-check --comprehensive
 ## Checklist Template
 
 ### Pre-Removal Checklist
+
 - [ ] Element deprecated for minimum period
 - [ ] Zero usage confirmed through monitoring
 - [ ] All dependencies analyzed and documented
@@ -378,6 +414,7 @@ pnpm db:health-check --comprehensive
 - [ ] Team notifications sent
 
 ### Execution Checklist
+
 - [ ] Final safety checks passed
 - [ ] Backup verified one more time
 - [ ] Maintenance window initiated
@@ -388,6 +425,7 @@ pnpm db:health-check --comprehensive
 - [ ] Completion verified
 
 ### Post-Removal Checklist
+
 - [ ] All elements confirmed removed
 - [ ] No broken dependencies detected
 - [ ] Application functionality verified

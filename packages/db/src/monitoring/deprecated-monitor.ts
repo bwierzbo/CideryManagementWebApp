@@ -5,11 +5,11 @@
  * Provides real-time monitoring, alerting, and usage analytics.
  */
 
-import { sql } from 'drizzle-orm';
-import { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { DeprecatedElement } from '../migrations/deprecation-system';
-import { TelemetryCollector } from './telemetry-collector';
-import { AlertSystem } from './alert-system';
+import { sql } from "drizzle-orm";
+import { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { DeprecatedElement } from "../migrations/deprecation-system";
+import { TelemetryCollector } from "./telemetry-collector";
+import { AlertSystem } from "./alert-system";
 
 export interface MonitoringConfig {
   enabled: boolean;
@@ -36,12 +36,20 @@ export interface AccessEvent {
 }
 
 export interface AccessSource {
-  type: 'application' | 'migration' | 'admin' | 'unknown';
+  type: "application" | "migration" | "admin" | "unknown";
   identifier: string; // Function name, migration ID, user, etc.
   origin: string; // File path, IP address, etc.
 }
 
-export type QueryType = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE' | 'ALTER' | 'CREATE' | 'DROP' | 'OTHER';
+export type QueryType =
+  | "SELECT"
+  | "INSERT"
+  | "UPDATE"
+  | "DELETE"
+  | "ALTER"
+  | "CREATE"
+  | "DROP"
+  | "OTHER";
 
 export interface MonitoringStats {
   elementName: string;
@@ -74,7 +82,7 @@ export class DeprecatedMonitor {
     db: NodePgDatabase<any>,
     telemetry: TelemetryCollector,
     alerts: AlertSystem,
-    config: Partial<MonitoringConfig> = {}
+    config: Partial<MonitoringConfig> = {},
   ) {
     this.db = db;
     this.telemetry = telemetry;
@@ -102,14 +110,16 @@ export class DeprecatedMonitor {
    */
   async startMonitoring(element: DeprecatedElement): Promise<void> {
     if (!this.config.enabled) {
-      console.log('Monitoring is disabled');
+      console.log("Monitoring is disabled");
       return;
     }
 
     const key = `${element.type}:${element.deprecatedName}`;
     this.monitoredElements.set(key, element);
 
-    console.log(`📊 Started monitoring deprecated ${element.type}: ${element.deprecatedName}`);
+    console.log(
+      `📊 Started monitoring deprecated ${element.type}: ${element.deprecatedName}`,
+    );
 
     // Create monitoring metadata entry
     await this.createMonitoringEntry(element);
@@ -125,7 +135,9 @@ export class DeprecatedMonitor {
     const key = `${element.type}:${element.deprecatedName}`;
     this.monitoredElements.delete(key);
 
-    console.log(`📊 Stopped monitoring deprecated ${element.type}: ${element.deprecatedName}`);
+    console.log(
+      `📊 Stopped monitoring deprecated ${element.type}: ${element.deprecatedName}`,
+    );
 
     // Clean up monitoring resources
     await this.cleanupMonitoring(element);
@@ -139,7 +151,7 @@ export class DeprecatedMonitor {
     elementType: string,
     source: AccessSource,
     queryType: QueryType,
-    metadata?: Record<string, any>
+    metadata?: Record<string, any>,
   ): Promise<void> {
     if (!this.config.enabled) return;
 
@@ -166,7 +178,9 @@ export class DeprecatedMonitor {
       await this.flushAccessEvents();
     }
 
-    console.log(`⚠️ DEPRECATED ELEMENT ACCESSED: ${elementType} ${elementName} by ${source.identifier}`);
+    console.log(
+      `⚠️ DEPRECATED ELEMENT ACCESSED: ${elementType} ${elementName} by ${source.identifier}`,
+    );
   }
 
   /**
@@ -177,7 +191,9 @@ export class DeprecatedMonitor {
 
     try {
       // Query access events from the last 30 days
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const thirtyDaysAgo = new Date(
+        Date.now() - 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
 
       const events = await this.getAccessEvents(elementName, thirtyDaysAgo);
 
@@ -245,9 +261,13 @@ export class DeprecatedMonitor {
   /**
    * Check if any deprecated elements are ready for removal
    */
-  async getRemovalCandidates(daysSinceLastAccess: number = 30): Promise<string[]> {
+  async getRemovalCandidates(
+    daysSinceLastAccess: number = 30,
+  ): Promise<string[]> {
     const candidates: string[] = [];
-    const cutoffDate = new Date(Date.now() - daysSinceLastAccess * 24 * 60 * 60 * 1000);
+    const cutoffDate = new Date(
+      Date.now() - daysSinceLastAccess * 24 * 60 * 60 * 1000,
+    );
 
     for (const [key, element] of this.monitoredElements) {
       const stats = await this.getElementStats(element.deprecatedName);
@@ -280,7 +300,7 @@ export class DeprecatedMonitor {
       type: string;
       accessCount: number;
       lastAccessed: string | null;
-      status: 'safe' | 'warning' | 'active';
+      status: "safe" | "warning" | "active";
     }>;
     trends: {
       dailyAccess: number[];
@@ -292,14 +312,19 @@ export class DeprecatedMonitor {
     const removalCandidates = await this.getRemovalCandidates();
 
     // Calculate overview metrics
-    const totalAccess = allStats.reduce((sum, stat) => sum + stat.totalAccess, 0);
+    const totalAccess = allStats.reduce(
+      (sum, stat) => sum + stat.totalAccess,
+      0,
+    );
     const recentAlerts = await this.getRecentAlertCount();
 
     // Determine element status
-    const elements = allStats.map(stat => {
-      let status: 'safe' | 'warning' | 'active' = 'safe';
+    const elements = allStats.map((stat) => {
+      let status: "safe" | "warning" | "active" = "safe";
       if (stat.totalAccess > 0) {
-        status = removalCandidates.includes(stat.elementName) ? 'warning' : 'active';
+        status = removalCandidates.includes(stat.elementName)
+          ? "warning"
+          : "active";
       }
 
       return {
@@ -338,15 +363,19 @@ export class DeprecatedMonitor {
   async cleanupOldData(): Promise<void> {
     if (!this.config.enabled) return;
 
-    const cutoffDate = new Date(Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000);
+    const cutoffDate = new Date(
+      Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000,
+    );
 
     try {
       // Clean up access events (would be implemented with actual storage)
-      console.log(`🧹 Cleaning up monitoring data older than ${cutoffDate.toISOString()}`);
+      console.log(
+        `🧹 Cleaning up monitoring data older than ${cutoffDate.toISOString()}`,
+      );
 
       // Implementation would delete old records from storage
     } catch (error) {
-      console.error('Error cleaning up monitoring data:', error);
+      console.error("Error cleaning up monitoring data:", error);
     }
   }
 
@@ -360,7 +389,7 @@ export class DeprecatedMonitor {
       }
     }, 30000); // Flush every 30 seconds
 
-    console.log('📊 Deprecated element monitoring started');
+    console.log("📊 Deprecated element monitoring started");
   }
 
   private stopMonitoring(): void {
@@ -374,16 +403,20 @@ export class DeprecatedMonitor {
       this.flushAccessEvents().catch(console.error);
     }
 
-    console.log('📊 Deprecated element monitoring stopped');
+    console.log("📊 Deprecated element monitoring stopped");
   }
 
-  private async createMonitoringEntry(element: DeprecatedElement): Promise<void> {
+  private async createMonitoringEntry(
+    element: DeprecatedElement,
+  ): Promise<void> {
     // Create monitoring metadata entry
     // In a real implementation, this would store in a monitoring table
     console.log(`Creating monitoring entry for ${element.deprecatedName}`);
   }
 
-  private async setupDatabaseMonitoring(element: DeprecatedElement): Promise<void> {
+  private async setupDatabaseMonitoring(
+    element: DeprecatedElement,
+  ): Promise<void> {
     // Set up database-level monitoring (e.g., triggers, log analysis)
     // This would depend on the specific database system capabilities
     console.log(`Setting up database monitoring for ${element.deprecatedName}`);
@@ -409,7 +442,7 @@ export class DeprecatedMonitor {
 
       console.log(`📊 Flushed ${events.length} access events to telemetry`);
     } catch (error) {
-      console.error('Error flushing access events:', error);
+      console.error("Error flushing access events:", error);
       // Re-add events to buffer for retry
       this.accessEventBuffer.unshift(...events);
     }
@@ -427,7 +460,11 @@ export class DeprecatedMonitor {
     // Check thresholds
     for (const [elementKey, count] of elementCounts) {
       if (count >= this.config.alertThresholds.accessCount) {
-        await this.alerts.triggerThresholdAlert(elementKey, count, this.config.alertThresholds.accessCount);
+        await this.alerts.triggerThresholdAlert(
+          elementKey,
+          count,
+          this.config.alertThresholds.accessCount,
+        );
       }
     }
   }
@@ -436,13 +473,18 @@ export class DeprecatedMonitor {
     return `event_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   }
 
-  private async getAccessEvents(elementName: string, since: string): Promise<AccessEvent[]> {
+  private async getAccessEvents(
+    elementName: string,
+    since: string,
+  ): Promise<AccessEvent[]> {
     // Query access events from storage
     // This would be implemented with actual storage queries
     return [];
   }
 
-  private calculateAccessFrequency(events: AccessEvent[]): MonitoringStats['accessFrequency'] {
+  private calculateAccessFrequency(
+    events: AccessEvent[],
+  ): MonitoringStats["accessFrequency"] {
     const daily = new Array(30).fill(0);
     const weekly = new Array(4).fill(0);
     const monthly = new Array(12).fill(0);
@@ -451,7 +493,9 @@ export class DeprecatedMonitor {
 
     for (const event of events) {
       const eventDate = new Date(event.timestamp);
-      const daysDiff = Math.floor((now.getTime() - eventDate.getTime()) / (1000 * 60 * 60 * 24));
+      const daysDiff = Math.floor(
+        (now.getTime() - eventDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
       const weeksDiff = Math.floor(daysDiff / 7);
       const monthsDiff = Math.floor(daysDiff / 30);
 
@@ -474,7 +518,9 @@ export class DeprecatedMonitor {
     return sources;
   }
 
-  private calculateQueryTypeStats(events: AccessEvent[]): Record<QueryType, number> {
+  private calculateQueryTypeStats(
+    events: AccessEvent[],
+  ): Record<QueryType, number> {
     const queryTypes: Record<QueryType, number> = {
       SELECT: 0,
       INSERT: 0,
@@ -494,8 +540,12 @@ export class DeprecatedMonitor {
   }
 
   private calculateAverageExecutionTime(events: AccessEvent[]): number {
-    const timings = events.filter(e => e.executionTime !== undefined).map(e => e.executionTime!);
-    return timings.length > 0 ? timings.reduce((sum, time) => sum + time, 0) / timings.length : 0;
+    const timings = events
+      .filter((e) => e.executionTime !== undefined)
+      .map((e) => e.executionTime!);
+    return timings.length > 0
+      ? timings.reduce((sum, time) => sum + time, 0) / timings.length
+      : 0;
   }
 
   private calculatePeakAccessHour(events: AccessEvent[]): number {
@@ -522,7 +572,7 @@ export class DeprecatedMonitor {
         return element.type;
       }
     }
-    return 'unknown';
+    return "unknown";
   }
 
   private aggregateDailyAccess(stats: MonitoringStats[]): number[] {
@@ -537,7 +587,9 @@ export class DeprecatedMonitor {
     return dailyAccess;
   }
 
-  private aggregateTopSources(stats: MonitoringStats[]): Array<{ name: string; count: number }> {
+  private aggregateTopSources(
+    stats: MonitoringStats[],
+  ): Array<{ name: string; count: number }> {
     const sourceCounts = new Map<string, number>();
 
     for (const stat of stats) {
@@ -552,7 +604,9 @@ export class DeprecatedMonitor {
       .slice(0, 10);
   }
 
-  private aggregateQueryTypes(stats: MonitoringStats[]): Record<QueryType, number> {
+  private aggregateQueryTypes(
+    stats: MonitoringStats[],
+  ): Record<QueryType, number> {
     const queryTypes: Record<QueryType, number> = {
       SELECT: 0,
       INSERT: 0,
@@ -581,7 +635,7 @@ export function createDeprecatedMonitor(
   db: NodePgDatabase<any>,
   telemetry: TelemetryCollector,
   alerts: AlertSystem,
-  config?: Partial<MonitoringConfig>
+  config?: Partial<MonitoringConfig>,
 ): DeprecatedMonitor {
   return new DeprecatedMonitor(db, telemetry, alerts, config);
 }
@@ -605,7 +659,7 @@ export class QueryInterceptor {
   async interceptQuery(
     query: string,
     params?: any[],
-    source?: AccessSource
+    source?: AccessSource,
   ): Promise<{ proceed: boolean; warnings: string[] }> {
     const warnings: string[] = [];
     let proceed = true;
@@ -621,14 +675,14 @@ export class QueryInterceptor {
           // Record the access
           await this.monitor.recordAccess(
             elementName,
-            'unknown', // Would need to determine type
+            "unknown", // Would need to determine type
             source || {
-              type: 'unknown',
-              identifier: 'query-interceptor',
-              origin: 'database',
+              type: "unknown",
+              identifier: "query-interceptor",
+              origin: "database",
             },
             queryType,
-            { query, params }
+            { query, params },
           );
 
           warnings.push(`Query accesses deprecated element: ${elementName}`);
@@ -650,14 +704,14 @@ export class QueryInterceptor {
   private detectQueryType(query: string): QueryType {
     const upperQuery = query.toUpperCase().trim();
 
-    if (upperQuery.startsWith('SELECT')) return 'SELECT';
-    if (upperQuery.startsWith('INSERT')) return 'INSERT';
-    if (upperQuery.startsWith('UPDATE')) return 'UPDATE';
-    if (upperQuery.startsWith('DELETE')) return 'DELETE';
-    if (upperQuery.startsWith('ALTER')) return 'ALTER';
-    if (upperQuery.startsWith('CREATE')) return 'CREATE';
-    if (upperQuery.startsWith('DROP')) return 'DROP';
+    if (upperQuery.startsWith("SELECT")) return "SELECT";
+    if (upperQuery.startsWith("INSERT")) return "INSERT";
+    if (upperQuery.startsWith("UPDATE")) return "UPDATE";
+    if (upperQuery.startsWith("DELETE")) return "DELETE";
+    if (upperQuery.startsWith("ALTER")) return "ALTER";
+    if (upperQuery.startsWith("CREATE")) return "CREATE";
+    if (upperQuery.startsWith("DROP")) return "DROP";
 
-    return 'OTHER';
+    return "OTHER";
   }
 }

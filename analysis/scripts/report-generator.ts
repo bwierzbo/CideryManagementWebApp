@@ -2,11 +2,11 @@ import { writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { AssetScanner } from './asset-scanner';
 import { DatabaseScanner } from './db-scanner';
-import { SchemaMapper } from './schema-mapper.js';
-import { DatabaseUsageScanner } from './db-usage-scanner.js';
-import { UnusedElementsAnalyzer } from './unused-elements-analyzer.js';
-import { DriftAnalyzer } from './drift-analyzer.js';
-import { PerformanceAssessor } from './performance-assessor.js';
+import { SchemaMapper } from './schema-mapper';
+import { DatabaseUsageScanner } from './db-usage-scanner';
+import { UnusedElementsAnalyzer } from './unused-elements-analyzer';
+import { DriftAnalyzer } from './drift-analyzer';
+import { PerformanceAssessor } from './performance-assessor';
 
 interface AnalysisReport {
   timestamp: string;

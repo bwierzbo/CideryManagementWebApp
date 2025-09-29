@@ -5,20 +5,26 @@
  * Format: {original_name}_deprecated_{YYYYMMDD}_{reason_code}
  */
 
-export type DeprecationReason = 'unused' | 'performance' | 'migration' | 'refactor' | 'security' | 'optimization';
+export type DeprecationReason =
+  | "unused"
+  | "performance"
+  | "migration"
+  | "refactor"
+  | "security"
+  | "optimization";
 
 // Database identifier length limits (PostgreSQL standard)
 const MAX_IDENTIFIER_LENGTH = 63;
-const DEPRECATION_SUFFIX_LENGTH = '_deprecated_YYYYMMDD_REASON'.length; // ~26 chars
+const DEPRECATION_SUFFIX_LENGTH = "_deprecated_YYYYMMDD_REASON".length; // ~26 chars
 
 // Reason code mappings for shorter suffixes
 const REASON_CODES: Record<DeprecationReason, string> = {
-  unused: 'unu',       // unused elements
-  performance: 'perf', // performance optimization
-  migration: 'migr',   // migration/restructuring
-  refactor: 'refr',    // code refactoring
-  security: 'sec',     // security improvements
-  optimization: 'opt', // general optimization
+  unused: "unu", // unused elements
+  performance: "perf", // performance optimization
+  migration: "migr", // migration/restructuring
+  refactor: "refr", // code refactoring
+  security: "sec", // security improvements
+  optimization: "opt", // general optimization
 };
 
 /**
@@ -27,7 +33,7 @@ const REASON_CODES: Record<DeprecationReason, string> = {
 export function generateDeprecatedName(
   originalName: string,
   reason: DeprecationReason,
-  date?: Date
+  date?: Date,
 ): string {
   const targetDate = date || new Date();
   const dateStr = formatDeprecationDate(targetDate);
@@ -64,9 +70,9 @@ export function parseDeprecatedName(deprecatedName: string): {
 
   if (!match) {
     return {
-      originalName: '',
+      originalName: "",
       deprecationDate: new Date(),
-      reason: 'unused',
+      reason: "unused",
       isValid: false,
     };
   }
@@ -80,12 +86,14 @@ export function parseDeprecatedName(deprecatedName: string): {
   const deprecationDate = new Date(year, month, day);
 
   // Find reason from code
-  const reason = Object.entries(REASON_CODES).find(([, code]) => code === reasonCode)?.[0] as DeprecationReason;
+  const reason = Object.entries(REASON_CODES).find(
+    ([, code]) => code === reasonCode,
+  )?.[0] as DeprecationReason;
 
   return {
     originalName,
     deprecationDate,
-    reason: reason || 'unused',
+    reason: reason || "unused",
     isValid: true,
   };
 }
@@ -113,16 +121,27 @@ export function validateNamingConvention(name: string): boolean {
 
   // Validate date is reasonable (not too far in future/past)
   const now = new Date();
-  const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-  const oneMonthFromNow = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  const oneYearAgo = new Date(
+    now.getFullYear() - 1,
+    now.getMonth(),
+    now.getDate(),
+  );
+  const oneMonthFromNow = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    now.getDate(),
+  );
 
-  if (parsed.deprecationDate < oneYearAgo || parsed.deprecationDate > oneMonthFromNow) {
+  if (
+    parsed.deprecationDate < oneYearAgo ||
+    parsed.deprecationDate > oneMonthFromNow
+  ) {
     return false;
   }
 
   // Validate reason code
   const validReasonCodes = Object.values(REASON_CODES);
-  const reasonCode = name.split('_').pop();
+  const reasonCode = name.split("_").pop();
   if (!reasonCode || !validReasonCodes.includes(reasonCode)) {
     return false;
   }
@@ -134,7 +153,7 @@ export function validateNamingConvention(name: string): boolean {
  * Check if a name is a deprecated name
  */
 export function isDeprecatedName(name: string): boolean {
-  return name.includes('_deprecated_') && validateNamingConvention(name);
+  return name.includes("_deprecated_") && validateNamingConvention(name);
 }
 
 /**
@@ -144,7 +163,7 @@ export function generateUniqueDeprecatedName(
   originalName: string,
   reason: DeprecationReason,
   existingNames: string[],
-  date?: Date
+  date?: Date,
 ): string {
   let baseName = generateDeprecatedName(originalName, reason, date);
 
@@ -159,7 +178,7 @@ export function generateUniqueDeprecatedName(
 
   do {
     // Try with counter suffix
-    const suffix = `_${counter.toString().padStart(2, '0')}`;
+    const suffix = `_${counter.toString().padStart(2, "0")}`;
 
     // Need to make room for the counter
     const maxLength = MAX_IDENTIFIER_LENGTH - suffix.length;
@@ -170,7 +189,9 @@ export function generateUniqueDeprecatedName(
   } while (existingNames.includes(uniqueName) && counter <= 99);
 
   if (counter > 99) {
-    throw new Error(`Unable to generate unique deprecated name for: ${originalName}`);
+    throw new Error(
+      `Unable to generate unique deprecated name for: ${originalName}`,
+    );
   }
 
   return uniqueName;
@@ -190,8 +211,8 @@ export function getDeprecatedNamePattern(originalName: string): string {
  */
 function formatDeprecationDate(date: Date): string {
   const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
   return `${year}${month}${day}`;
 }
 
@@ -199,7 +220,7 @@ function formatDeprecationDate(date: Date): string {
  * Escape special regex characters
  */
 function escapeRegex(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -213,23 +234,27 @@ export function validateCanDeprecate(name: string): {
 
   // Check if already deprecated
   if (isDeprecatedName(name)) {
-    issues.push('Name is already deprecated');
+    issues.push("Name is already deprecated");
   }
 
   // Check length constraints
-  const testDeprecated = generateDeprecatedName(name, 'unused');
+  const testDeprecated = generateDeprecatedName(name, "unused");
   if (testDeprecated.length > MAX_IDENTIFIER_LENGTH) {
-    issues.push(`Name too long (${name.length} chars, max effective: ${MAX_IDENTIFIER_LENGTH - DEPRECATION_SUFFIX_LENGTH})`);
+    issues.push(
+      `Name too long (${name.length} chars, max effective: ${MAX_IDENTIFIER_LENGTH - DEPRECATION_SUFFIX_LENGTH})`,
+    );
   }
 
   // Check for problematic characters
   if (!/^[a-zA-Z0-9_]+$/.test(name)) {
-    issues.push('Name contains invalid characters (only alphanumeric and underscore allowed)');
+    issues.push(
+      "Name contains invalid characters (only alphanumeric and underscore allowed)",
+    );
   }
 
   // Check reserved patterns
-  if (name.startsWith('pg_') || name.startsWith('_')) {
-    issues.push('Name uses reserved prefix');
+  if (name.startsWith("pg_") || name.startsWith("_")) {
+    issues.push("Name uses reserved prefix");
   }
 
   return {
@@ -249,7 +274,9 @@ export function getDeprecationStats(names: string[]): {
   newestDeprecation: Date | null;
 } {
   const deprecatedNames = names.filter(isDeprecatedName);
-  const parsed = deprecatedNames.map(parseDeprecatedName).filter(p => p.isValid);
+  const parsed = deprecatedNames
+    .map(parseDeprecatedName)
+    .filter((p) => p.isValid);
 
   const byReason: Record<DeprecationReason, number> = {
     unused: 0,
@@ -306,11 +333,14 @@ export function generateDeprecationReport(names: string[]): {
   const now = new Date();
 
   const details = deprecatedNames
-    .map(name => {
+    .map((name) => {
       const parsed = parseDeprecatedName(name);
       if (!parsed.isValid) return null;
 
-      const ageInDays = Math.floor((now.getTime() - parsed.deprecationDate.getTime()) / (1000 * 60 * 60 * 24));
+      const ageInDays = Math.floor(
+        (now.getTime() - parsed.deprecationDate.getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
 
       return {
         name,
@@ -327,10 +357,10 @@ export function generateDeprecationReport(names: string[]): {
 Deprecation Summary:
 - Total deprecated elements: ${stats.totalDeprecated}
 - By reason: ${Object.entries(stats.byReason)
-  .filter(([, count]) => count > 0)
-  .map(([reason, count]) => `${reason}: ${count}`)
-  .join(', ')}
-- Age range: ${stats.oldestDeprecation ? `${Math.floor((now.getTime() - stats.oldestDeprecation.getTime()) / (1000 * 60 * 60 * 24))} days` : 'N/A'} to ${stats.newestDeprecation ? `${Math.floor((now.getTime() - stats.newestDeprecation.getTime()) / (1000 * 60 * 60 * 24))} days` : 'N/A'}
+    .filter(([, count]) => count > 0)
+    .map(([reason, count]) => `${reason}: ${count}`)
+    .join(", ")}
+- Age range: ${stats.oldestDeprecation ? `${Math.floor((now.getTime() - stats.oldestDeprecation.getTime()) / (1000 * 60 * 60 * 24))} days` : "N/A"} to ${stats.newestDeprecation ? `${Math.floor((now.getTime() - stats.newestDeprecation.getTime()) / (1000 * 60 * 60 * 24))} days` : "N/A"}
   `.trim();
 
   return { summary, details };

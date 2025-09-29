@@ -14,8 +14,8 @@ import {
   type BatchPackagingData,
   type PackagingRunData,
   type ExistingPackagingData
-} from '../../../packages/lib/src/validation/packaging';
-import { PackagingValidationError } from '../../../packages/lib/src/validation/errors';
+} from './packages/lib/src/validation/packaging';
+import { PackagingValidationError } from './packages/lib/src/validation/errors';
 
 describe('Packaging Validation', () => {
   const mockBatch: BatchPackagingData = {

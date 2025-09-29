@@ -8,7 +8,7 @@
 export interface DeprecationConfig {
   // System settings
   enabled: boolean;
-  environment: 'development' | 'test' | 'staging' | 'production';
+  environment: "development" | "test" | "staging" | "production";
 
   // Safety settings
   requireApproval: boolean;
@@ -23,7 +23,7 @@ export interface DeprecationConfig {
     retentionDays: number;
     compressionEnabled: boolean;
     encryptionEnabled: boolean;
-    verificationLevel: 'basic' | 'full' | 'comprehensive';
+    verificationLevel: "basic" | "full" | "comprehensive";
     testRestoreEnabled: boolean;
   };
 
@@ -46,7 +46,7 @@ export interface DeprecationConfig {
     escalationRules: Array<{
       triggerCount: number;
       timeWindowMinutes: number;
-      escalateTo: 'warning' | 'error' | 'critical';
+      escalateTo: "warning" | "error" | "critical";
     }>;
   };
 
@@ -80,7 +80,7 @@ export interface DeprecationConfig {
  */
 export const DEFAULT_CONFIG: DeprecationConfig = {
   enabled: true,
-  environment: 'development',
+  environment: "development",
   requireApproval: false,
   minimumConfidenceScore: 0.9,
   coolingOffDays: 30,
@@ -88,11 +88,11 @@ export const DEFAULT_CONFIG: DeprecationConfig = {
 
   backup: {
     enabled: true,
-    directory: process.env.DB_BACKUP_DIR || '/var/backups/database',
+    directory: process.env.DB_BACKUP_DIR || "/var/backups/database",
     retentionDays: 30,
     compressionEnabled: true,
     encryptionEnabled: false,
-    verificationLevel: 'full',
+    verificationLevel: "full",
     testRestoreEnabled: false,
   },
 
@@ -107,33 +107,33 @@ export const DEFAULT_CONFIG: DeprecationConfig = {
 
   alerts: {
     enabled: true,
-    channels: ['console'],
+    channels: ["console"],
     throttleWindowMinutes: 5,
     maxAlertsPerHour: 60,
     escalationRules: [
       {
         triggerCount: 5,
         timeWindowMinutes: 15,
-        escalateTo: 'error',
+        escalateTo: "error",
       },
       {
         triggerCount: 20,
         timeWindowMinutes: 60,
-        escalateTo: 'critical',
+        escalateTo: "critical",
       },
     ],
   },
 
   naming: {
     maxIdentifierLength: 63,
-    dateFormat: 'YYYYMMDD',
+    dateFormat: "YYYYMMDD",
     reasonCodes: {
-      unused: 'unu',
-      performance: 'perf',
-      migration: 'migr',
-      refactor: 'refr',
-      security: 'sec',
-      optimization: 'opt',
+      unused: "unu",
+      performance: "perf",
+      migration: "migr",
+      refactor: "refr",
+      security: "sec",
+      optimization: "opt",
     },
   },
 
@@ -168,7 +168,7 @@ export const ENVIRONMENT_CONFIGS: Record<string, Partial<DeprecationConfig>> = {
     },
     alerts: {
       enabled: true,
-      channels: ['console'],
+      channels: ["console"],
       throttleWindowMinutes: 1,
     },
   },
@@ -199,7 +199,7 @@ export const ENVIRONMENT_CONFIGS: Record<string, Partial<DeprecationConfig>> = {
     backup: {
       enabled: true,
       testRestoreEnabled: true,
-      verificationLevel: 'comprehensive',
+      verificationLevel: "comprehensive",
     },
     monitoring: {
       enabled: true,
@@ -207,7 +207,7 @@ export const ENVIRONMENT_CONFIGS: Record<string, Partial<DeprecationConfig>> = {
     },
     alerts: {
       enabled: true,
-      channels: ['console', 'slack'],
+      channels: ["console", "slack"],
     },
   },
 
@@ -219,7 +219,7 @@ export const ENVIRONMENT_CONFIGS: Record<string, Partial<DeprecationConfig>> = {
     backup: {
       enabled: true,
       testRestoreEnabled: false,
-      verificationLevel: 'comprehensive',
+      verificationLevel: "comprehensive",
       encryptionEnabled: true,
     },
     monitoring: {
@@ -228,22 +228,22 @@ export const ENVIRONMENT_CONFIGS: Record<string, Partial<DeprecationConfig>> = {
     },
     alerts: {
       enabled: true,
-      channels: ['console', 'email', 'slack', 'pagerduty'],
+      channels: ["console", "email", "slack", "pagerduty"],
       escalationRules: [
         {
           triggerCount: 1,
           timeWindowMinutes: 5,
-          escalateTo: 'warning',
+          escalateTo: "warning",
         },
         {
           triggerCount: 3,
           timeWindowMinutes: 10,
-          escalateTo: 'error',
+          escalateTo: "error",
         },
         {
           triggerCount: 5,
           timeWindowMinutes: 15,
-          escalateTo: 'critical',
+          escalateTo: "critical",
         },
       ],
     },
@@ -257,7 +257,7 @@ export class ConfigManager {
   private config: DeprecationConfig;
 
   constructor(environment?: string) {
-    const env = environment || process.env.NODE_ENV || 'development';
+    const env = environment || process.env.NODE_ENV || "development";
     this.config = this.loadConfig(env);
   }
 
@@ -315,56 +315,65 @@ export class ConfigManager {
 
     // Validate backup settings
     if (this.config.backup.enabled && !this.config.backup.directory) {
-      errors.push('Backup directory must be specified when backups are enabled');
+      errors.push(
+        "Backup directory must be specified when backups are enabled",
+      );
     }
 
     if (this.config.backup.retentionDays < 1) {
-      errors.push('Backup retention days must be at least 1');
+      errors.push("Backup retention days must be at least 1");
     }
 
     // Validate monitoring settings
     if (this.config.monitoring.retentionDays < 1) {
-      errors.push('Monitoring retention days must be at least 1');
+      errors.push("Monitoring retention days must be at least 1");
     }
 
     if (this.config.monitoring.batchSize < 1) {
-      errors.push('Monitoring batch size must be at least 1');
+      errors.push("Monitoring batch size must be at least 1");
     }
 
     // Validate safety settings
-    if (this.config.minimumConfidenceScore < 0 || this.config.minimumConfidenceScore > 1) {
-      errors.push('Minimum confidence score must be between 0 and 1');
+    if (
+      this.config.minimumConfidenceScore < 0 ||
+      this.config.minimumConfidenceScore > 1
+    ) {
+      errors.push("Minimum confidence score must be between 0 and 1");
     }
 
     if (this.config.coolingOffDays < 0) {
-      errors.push('Cooling off days cannot be negative');
+      errors.push("Cooling off days cannot be negative");
     }
 
     // Validate performance settings
     if (this.config.performance.maxConcurrentOperations < 1) {
-      errors.push('Max concurrent operations must be at least 1');
+      errors.push("Max concurrent operations must be at least 1");
     }
 
     if (this.config.performance.queryTimeout < 1000) {
-      warnings.push('Query timeout is very low (< 1 second)');
+      warnings.push("Query timeout is very low (< 1 second)");
     }
 
     // Environment-specific validations
-    if (this.config.environment === 'production') {
+    if (this.config.environment === "production") {
       if (!this.config.requireApproval) {
-        warnings.push('Production environment should require approval');
+        warnings.push("Production environment should require approval");
       }
 
       if (this.config.allowRiskyOperations) {
-        warnings.push('Production environment should not allow risky operations');
+        warnings.push(
+          "Production environment should not allow risky operations",
+        );
       }
 
       if (this.config.coolingOffDays < 30) {
-        warnings.push('Production environment should have at least 30 days cooling off period');
+        warnings.push(
+          "Production environment should have at least 30 days cooling off period",
+        );
       }
 
       if (!this.config.backup.enabled) {
-        errors.push('Production environment must have backups enabled');
+        errors.push("Production environment must have backups enabled");
       }
     }
 
@@ -433,7 +442,9 @@ export class ConfigManager {
 
       const validation = this.validateConfig();
       if (!validation.isValid) {
-        throw new Error(`Invalid configuration: ${validation.errors.join(', ')}`);
+        throw new Error(
+          `Invalid configuration: ${validation.errors.join(", ")}`,
+        );
       }
     } catch (error) {
       throw new Error(`Failed to import configuration: ${error.message}`);
@@ -448,7 +459,11 @@ export class ConfigManager {
 
     for (const key in source) {
       if (source.hasOwnProperty(key)) {
-        if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+        if (
+          source[key] &&
+          typeof source[key] === "object" &&
+          !Array.isArray(source[key])
+        ) {
           result[key] = this.deepMerge(target[key] || {}, source[key]);
         } else {
           result[key] = source[key];
@@ -478,7 +493,9 @@ export function getConfigManager(environment?: string): ConfigManager {
 /**
  * Initialize configuration with custom settings
  */
-export function initializeConfig(customConfig: Partial<DeprecationConfig>): ConfigManager {
+export function initializeConfig(
+  customConfig: Partial<DeprecationConfig>,
+): ConfigManager {
   globalConfigManager = new ConfigManager();
   globalConfigManager.updateConfig(customConfig);
   return globalConfigManager;
@@ -500,14 +517,18 @@ export function validateConfiguration(config: Partial<DeprecationConfig>): {
 /**
  * Environment detection utility
  */
-export function detectEnvironment(): 'development' | 'test' | 'staging' | 'production' {
+export function detectEnvironment():
+  | "development"
+  | "test"
+  | "staging"
+  | "production" {
   const env = process.env.NODE_ENV?.toLowerCase();
 
-  if (env === 'production' || env === 'prod') return 'production';
-  if (env === 'staging' || env === 'stage') return 'staging';
-  if (env === 'test') return 'test';
+  if (env === "production" || env === "prod") return "production";
+  if (env === "staging" || env === "stage") return "staging";
+  if (env === "test") return "test";
 
-  return 'development';
+  return "development";
 }
 
 /**
@@ -544,7 +565,7 @@ export const ConfigPresets = {
       ...DEFAULT_CONFIG.backup,
       enabled: true,
       encryptionEnabled: true,
-      verificationLevel: 'comprehensive',
+      verificationLevel: "comprehensive",
       testRestoreEnabled: true,
     },
   }),
