@@ -68,6 +68,7 @@ export interface MigrationMetadata {
   approvalRequired: boolean;
   estimatedDuration: number; // in seconds
   riskLevel: "low" | "medium" | "high";
+  reason?: string;
 }
 
 export interface RollbackPlan {
