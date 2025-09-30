@@ -271,7 +271,10 @@ function TankForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="material">Material</Label>
-          <Select onValueChange={(value) => setValue("material", value as any)}>
+          <Select
+            value={watch("material")}
+            onValueChange={(value) => setValue("material", value as any)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select material" />
             </SelectTrigger>
@@ -283,7 +286,10 @@ function TankForm({
         </div>
         <div>
           <Label htmlFor="jacketed">Jacketed</Label>
-          <Select onValueChange={(value) => setValue("jacketed", value as any)}>
+          <Select
+            value={watch("jacketed")}
+            onValueChange={(value) => setValue("jacketed", value as any)}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select jacketed option" />
             </SelectTrigger>
