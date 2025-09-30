@@ -186,8 +186,10 @@ export async function getPackagingRunsOptimized(
       packageType: packagingRuns.packageType,
       packageSizeML: packagingRuns.packageSizeML,
       unitsProduced: packagingRuns.unitsProduced,
-      volumeTakenL: packagingRuns.volumeTakenL,
-      lossL: packagingRuns.lossL,
+      volumeTaken: packagingRuns.volumeTaken,
+      volumeTakenUnit: packagingRuns.volumeTakenUnit,
+      loss: packagingRuns.loss,
+      lossUnit: packagingRuns.lossUnit,
       lossPercentage: packagingRuns.lossPercentage,
       status: packagingRuns.status,
       createdAt: packagingRuns.createdAt,
@@ -263,8 +265,8 @@ export async function getPackagingRunsOptimized(
   // Format results
   const formattedResults: PackagingRunListItem[] = results.map((item) => ({
     ...item,
-    volumeTakenL: parseFloat(item.volumeTakenL?.toString() || "0"),
-    lossL: parseFloat(item.lossL?.toString() || "0"),
+    volumeTakenL: parseFloat(item.volumeTaken?.toString() || "0"),
+    lossL: parseFloat(item.loss?.toString() || "0"),
     lossPercentage: parseFloat(item.lossPercentage?.toString() || "0"),
     abvAtPackaging: item.abvAtPackaging
       ? parseFloat(item.abvAtPackaging.toString())
@@ -299,8 +301,10 @@ export async function getBatchPackagingRuns(
       packageType: packagingRuns.packageType,
       packageSizeML: packagingRuns.packageSizeML,
       unitsProduced: packagingRuns.unitsProduced,
-      volumeTakenL: packagingRuns.volumeTakenL,
-      lossL: packagingRuns.lossL,
+      volumeTaken: packagingRuns.volumeTaken,
+      volumeTakenUnit: packagingRuns.volumeTakenUnit,
+      loss: packagingRuns.loss,
+      lossUnit: packagingRuns.lossUnit,
       lossPercentage: packagingRuns.lossPercentage,
       status: packagingRuns.status,
       createdAt: packagingRuns.createdAt,
@@ -331,8 +335,8 @@ export async function getBatchPackagingRuns(
 
     grouped.get(item.batchId)!.push({
       ...item,
-      volumeTakenL: parseFloat(item.volumeTakenL?.toString() || "0"),
-      lossL: parseFloat(item.lossL?.toString() || "0"),
+      volumeTakenL: parseFloat(item.volumeTaken?.toString() || "0"),
+      lossL: parseFloat(item.loss?.toString() || "0"),
       lossPercentage: parseFloat(item.lossPercentage?.toString() || "0"),
       abvAtPackaging: item.abvAtPackaging
         ? parseFloat(item.abvAtPackaging.toString())

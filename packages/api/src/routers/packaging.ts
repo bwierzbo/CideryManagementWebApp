@@ -98,7 +98,8 @@ export const packagingRouter = router({
           const vesselData = await tx
             .select({
               id: vessels.id,
-              capacityL: vessels.capacityL,
+              capacity: vessels.capacity,
+              capacityUnit: vessels.capacityUnit,
               status: vessels.status,
               name: vessels.name,
             })
@@ -130,7 +131,8 @@ export const packagingRouter = router({
             .select({
               id: batches.id,
               name: batches.name,
-              currentVolumeL: batches.currentVolumeL,
+              currentVolume: batches.currentVolume,
+              currentVolumeUnit: batches.currentVolumeUnit,
               vesselId: batches.vesselId,
             })
             .from(batches)
@@ -152,14 +154,14 @@ export const packagingRouter = router({
 
           const batch = batchData[0];
           const currentVolumeL = parseFloat(
-            batch.currentVolumeL?.toString() || "0",
+            batch.currentVolume?.toString() || "0",
           );
 
           // Validate sufficient volume
           if (currentVolumeL < input.volumeTakenL) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Insufficient volume in vessel. Available: ${currentVolumeL}L, Requested: ${input.volumeTakenL}L`,
+              message: `Insufficient volume in vessel. Available: ${currentVolumeL}${batch.currentVolumeUnit || 'L'}, Requested: ${input.volumeTakenL}L`,
             });
           }
 
@@ -192,10 +194,13 @@ export const packagingRouter = router({
             packagedAt: input.packagedAt,
             packageType: packageType as any,
             packageSizeML: input.packageSizeMl,
-            unitSizeL: unitSizeL.toString(),
+            unitSize: unitSizeL.toString(),
+            unitSizeUnit: "L",
             unitsProduced: input.unitsProduced,
-            volumeTakenL: input.volumeTakenL.toString(),
-            lossL: lossL.toString(),
+            volumeTaken: input.volumeTakenL.toString(),
+            volumeTakenUnit: "L",
+            loss: lossL.toString(),
+            lossUnit: "L",
             lossPercentage: lossPercentage.toString(),
             status: "completed" as any,
             createdBy: ctx.session?.user?.id || "",
@@ -218,7 +223,8 @@ export const packagingRouter = router({
           await tx
             .update(batches)
             .set({
-              currentVolumeL: newVolumeL.toString(),
+              currentVolume: newVolumeL.toString(),
+              currentVolumeUnit: batch.currentVolumeUnit || "L",
               updatedAt: new Date(),
             })
             .where(eq(batches.id, input.batchId));
@@ -306,10 +312,13 @@ export const packagingRouter = router({
             packagedAt: packagingRuns.packagedAt,
             packageType: packagingRuns.packageType,
             packageSizeML: packagingRuns.packageSizeML,
-            unitSizeL: packagingRuns.unitSizeL,
+            unitSize: packagingRuns.unitSize,
+            unitSizeUnit: packagingRuns.unitSizeUnit,
             unitsProduced: packagingRuns.unitsProduced,
-            volumeTakenL: packagingRuns.volumeTakenL,
-            lossL: packagingRuns.lossL,
+            volumeTaken: packagingRuns.volumeTaken,
+            volumeTakenUnit: packagingRuns.volumeTakenUnit,
+            loss: packagingRuns.loss,
+            lossUnit: packagingRuns.lossUnit,
             lossPercentage: packagingRuns.lossPercentage,
             abvAtPackaging: packagingRuns.abvAtPackaging,
             carbonationLevel: packagingRuns.carbonationLevel,
@@ -394,8 +403,10 @@ export const packagingRouter = router({
           inventory,
           photos,
           // Convert string numbers to numbers
-          volumeTakenL: parseFloat(run.volumeTakenL?.toString() || "0"),
-          lossL: parseFloat(run.lossL?.toString() || "0"),
+          volumeTaken: parseFloat(run.volumeTaken?.toString() || "0"),
+          volumeTakenUnit: run.volumeTakenUnit,
+          loss: parseFloat(run.loss?.toString() || "0"),
+          lossUnit: run.lossUnit,
           lossPercentage: parseFloat(run.lossPercentage?.toString() || "0"),
           abvAtPackaging: run.abvAtPackaging
             ? parseFloat(run.abvAtPackaging.toString())

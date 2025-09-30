@@ -323,8 +323,8 @@ export default function PressRunDetailsPage() {
                     <div>
                       <p className="text-sm text-gray-600">Juice Volume</p>
                       <p className="font-medium">
-                        {pressRun.pressRun.totalJuiceVolumeL
-                          ? `${parseFloat(pressRun.pressRun.totalJuiceVolumeL).toFixed(1)}L`
+                        {pressRun.pressRun.totalJuiceVolume
+                          ? `${parseFloat(pressRun.pressRun.totalJuiceVolume).toFixed(1)}L`
                           : "N/A"}
                       </p>
                     </div>

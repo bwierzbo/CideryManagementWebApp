@@ -1,6 +1,25 @@
 export const placeholder = "lib package";
 
-// Re-export audit functions
+// Re-export validation functions and schemas (client-safe)
+export * from "./validation";
+export * from "./schemas";
+
+// Re-export utility functions (client-safe)
+export * from "./utils";
+
+// Re-export calculation functions (client-safe)
+export * from "./calc/abv";
+export * from "./calc/yield";
+export * from "./calc/cogs";
+export * from "./calc/financial";
+
+// Re-export apple-related constants and utilities (client-safe)
+export * from "./apples";
+
+// Re-export naming utilities (client-safe - no crypto)
+export * from "./naming/batchName";
+
+// Re-export audit event bus (uses EventEmitter, safe for server)
 export {
   auditEventBus,
   publishCreateEvent,
@@ -11,55 +30,7 @@ export {
   createDatabaseAuditSubscriber,
 } from "./audit/eventBus";
 
-// Re-export validation functions and schemas
-export * from "./validation";
-export * from "./schemas";
-
-// Re-export utility functions
-export * from "./utils";
-
-// Re-export calculation functions
-export * from "./calc/abv";
-export * from "./calc/yield";
-export * from "./calc/cogs";
-export * from "./calc/financial";
-
-// Re-export apple-related constants and utilities
-export * from "./apples";
-
-// Re-export naming utilities
-export * from "./naming/batchName";
-
-// Re-export press domain services
-export * from "./press/createBatchesFromPressCompletion";
-
-// Re-export audit service functions
-export {
-  generateAuditChecksum,
-  validateAuditIntegrity,
-  generateDataDiff,
-  sanitizeAuditData,
-  createAuditLogEntry,
-  filterAuditDataForQuery,
-  validateAuditSnapshot,
-  extractChangedFields,
-  generateChangeSummary,
-} from "./audit/service";
-
-// Re-export audit database functions
-export { AuditDatabase } from "./audit/database";
-
-// Re-export audit query functions
-export {
-  AuditQueryService,
-  auditQuerySchema,
-  recordHistoryQuerySchema,
-  userActivityQuerySchema,
-  auditStatsQuerySchema,
-  integrityCheckSchema,
-} from "./audit/queries";
-
-// Export audit types
+// Export audit types only (no crypto-based implementations)
 export type {
   AuditContext,
   AuditSnapshot,
@@ -75,3 +46,7 @@ export type {
   AuditStatsQueryInput,
   IntegrityCheckInput,
 } from "./audit/queries";
+
+// Note: Server-only exports with crypto should be imported directly:
+// import { generateAuditChecksum } from "lib/src/audit/service"
+// import { createBatchesFromPressCompletion } from "lib/src/press/createBatchesFromPressCompletion"

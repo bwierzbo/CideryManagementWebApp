@@ -15,7 +15,8 @@ import {
 import { relations, sql } from "drizzle-orm";
 
 // PostgreSQL Enums
-export const unitEnum = pgEnum("unit", ["kg", "lb", "L", "gal", "bushel"]);
+import { unitEnum } from "./schema/shared";
+export { unitEnum };
 export const batchStatusEnum = pgEnum("batch_status", [
   "planned",
   "active",
@@ -428,7 +429,8 @@ export const juicePurchaseItems = pgTable("juice_purchase_items", {
   // Legacy fields for backward compatibility - can be removed once migrated
   juiceType: text("juice_type"),
   varietyName: text("variety_name"),
-  volumeL: decimal("volume_l", { precision: 10, scale: 3 }).notNull(),
+  volume: decimal("volume", { precision: 10, scale: 3 }).notNull(),
+  volumeUnit: unitEnum("volume_unit").notNull().default("L"),
   brix: decimal("brix", { precision: 5, scale: 2 }),
   ph: decimal("ph", { precision: 3, scale: 2 }), // pH measurement instead of storing in notes
   specificGravity: decimal("specific_gravity", { precision: 5, scale: 4 }), // SG measurement
@@ -488,10 +490,11 @@ export const pressRuns = pgTable("press_runs", {
     precision: 10,
     scale: 3,
   }).notNull(),
-  totalJuiceProducedL: decimal("total_juice_produced_l", {
+  totalJuiceProduced: decimal("total_juice_produced", {
     precision: 10,
     scale: 3,
   }).notNull(),
+  totalJuiceProducedUnit: unitEnum("total_juice_produced_unit").notNull().default("L"),
   extractionRate: decimal("extraction_rate", { precision: 5, scale: 4 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -510,10 +513,11 @@ export const pressItems = pgTable("press_items", {
     precision: 10,
     scale: 3,
   }).notNull(),
-  juiceProducedL: decimal("juice_produced_l", {
+  juiceProduced: decimal("juice_produced", {
     precision: 10,
     scale: 3,
   }).notNull(),
+  juiceProducedUnit: unitEnum("juice_produced_unit").notNull().default("L"),
   brixMeasured: decimal("brix_measured", { precision: 4, scale: 2 }),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -525,7 +529,7 @@ export const vessels = pgTable("vessels", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name"),
   type: vesselTypeEnum("type"), // TEMPORARY: Keep for DB compatibility until migration
-  capacityL: decimal("capacity_l", { precision: 10, scale: 3 }).notNull(),
+  capacity: decimal("capacity", { precision: 10, scale: 3 }).notNull(),
   capacityUnit: unitEnum("capacity_unit").notNull().default("L"),
   material: vesselMaterialEnum("material"),
   jacketed: vesselJacketedEnum("jacketed"),
@@ -544,7 +548,8 @@ export const juiceLots = pgTable(
     pressRunId: uuid("press_run_id")
       .notNull()
       .references(() => applePressRuns.id),
-    volumeL: decimal("volume_l", { precision: 10, scale: 3 }).notNull(),
+    volume: decimal("volume", { precision: 10, scale: 3 }).notNull(),
+    volumeUnit: unitEnum("volume_unit").notNull().default("L"),
     brix: decimal("brix", { precision: 5, scale: 2 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -564,11 +569,13 @@ export const batches = pgTable(
     name: text("name").notNull().unique(),
     customName: text("custom_name"),
     batchNumber: text("batch_number").notNull(),
-    initialVolumeL: decimal("initial_volume_l", {
+    initialVolume: decimal("initial_volume", {
       precision: 10,
       scale: 3,
     }).notNull(),
-    currentVolumeL: decimal("current_volume_l", { precision: 10, scale: 3 }),
+    initialVolumeUnit: unitEnum("initial_volume_unit").notNull().default("L"),
+    currentVolume: decimal("current_volume", { precision: 10, scale: 3 }),
+    currentVolumeUnit: unitEnum("current_volume_unit").notNull().default("L"),
     status: batchStatusEnum("status").notNull().default("active"),
     startDate: timestamp("start_date", { withTimezone: true })
       .notNull()
@@ -611,10 +618,11 @@ export const batchCompositions = pgTable(
       precision: 12,
       scale: 3,
     }).notNull(),
-    juiceVolumeL: decimal("juice_volume_l", {
+    juiceVolume: decimal("juice_volume", {
       precision: 12,
       scale: 3,
     }).notNull(),
+    juiceVolumeUnit: unitEnum("juice_volume_unit").notNull().default("L"),
     fractionOfBatch: decimal("fraction_of_batch", {
       precision: 8,
       scale: 6,
@@ -639,7 +647,7 @@ export const batchCompositions = pgTable(
     ),
     // CHECK constraints for data integrity
     inputWeightKgPositive: sql`CHECK (input_weight_kg >= 0)`,
-    juiceVolumeLPositive: sql`CHECK (juice_volume_l >= 0)`,
+    juiceVolumePositive: sql`CHECK (juice_volume >= 0)`,
     fractionOfBatchValid: sql`CHECK (fraction_of_batch >= 0 AND fraction_of_batch <= 1)`,
     materialCostPositive: sql`CHECK (material_cost >= 0)`,
   }),
@@ -656,7 +664,8 @@ export const batchMeasurements = pgTable("batch_measurements", {
   ph: decimal("ph", { precision: 3, scale: 2 }),
   totalAcidity: decimal("total_acidity", { precision: 4, scale: 2 }),
   temperature: decimal("temperature", { precision: 4, scale: 1 }),
-  volumeL: decimal("volume_l", { precision: 10, scale: 3 }),
+  volume: decimal("volume", { precision: 10, scale: 3 }),
+  volumeUnit: unitEnum("volume_unit").notNull().default("L"),
   notes: text("notes"),
   takenBy: text("taken_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -690,10 +699,11 @@ export const packages = pgTable("packages", {
     .notNull()
     .references(() => batches.id),
   packageDate: timestamp("package_date").notNull(),
-  volumePackagedL: decimal("volume_packaged_l", {
+  volumePackaged: decimal("volume_packaged", {
     precision: 10,
     scale: 3,
   }).notNull(),
+  volumePackagedUnit: unitEnum("volume_packaged_unit").notNull().default("L"),
   bottleSize: text("bottle_size").notNull(),
   bottleCount: integer("bottle_count").notNull(),
   abvAtPackaging: decimal("abv_at_packaging", { precision: 4, scale: 2 }),
@@ -805,10 +815,11 @@ export const applePressRuns = pgTable(
       precision: 10,
       scale: 3,
     }),
-    totalJuiceVolumeL: decimal("total_juice_volume_l", {
+    totalJuiceVolume: decimal("total_juice_volume", {
       precision: 10,
       scale: 3,
     }),
+    totalJuiceVolumeUnit: unitEnum("total_juice_volume_unit").notNull().default("L"),
     extractionRate: decimal("extraction_rate", { precision: 5, scale: 4 }), // Percentage with 4 decimal precision
 
     // Labor cost tracking following existing cost field patterns
@@ -885,7 +896,8 @@ export const applePressRunLoads = pgTable(
     originalWeightUnit: text("original_weight_unit"), // Original unit for display/editing
 
     // Juice volume measurements following same pattern
-    juiceVolumeL: decimal("juice_volume_l", { precision: 10, scale: 3 }), // Canonical storage in L
+    juiceVolume: decimal("juice_volume", { precision: 10, scale: 3 }), // Canonical storage in L
+    juiceVolumeUnit: unitEnum("juice_volume_unit").notNull().default("L"),
     originalVolume: decimal("original_volume", { precision: 10, scale: 3 }), // As entered by user
     originalVolumeUnit: text("original_volume_unit"), // Original unit for display/editing
 
@@ -976,19 +988,23 @@ export const batchTransfers = pgTable(
     // Optional remaining batch (if partial transfer)
     remainingBatchId: uuid("remaining_batch_id").references(() => batches.id),
     // Transfer details
-    volumeTransferredL: decimal("volume_transferred_l", {
+    volumeTransferred: decimal("volume_transferred", {
       precision: 10,
       scale: 3,
     }).notNull(),
-    lossL: decimal("loss_l", { precision: 10, scale: 3 }).default("0"),
-    totalVolumeProcessedL: decimal("total_volume_processed_l", {
+    volumeTransferredUnit: unitEnum("volume_transferred_unit").notNull().default("L"),
+    loss: decimal("loss", { precision: 10, scale: 3 }).default("0"),
+    lossUnit: unitEnum("loss_unit").notNull().default("L"),
+    totalVolumeProcessed: decimal("total_volume_processed", {
       precision: 10,
       scale: 3,
     }).notNull(), // transferred + loss
-    remainingVolumeL: decimal("remaining_volume_l", {
+    totalVolumeProcessedUnit: unitEnum("total_volume_processed_unit").notNull().default("L"),
+    remainingVolume: decimal("remaining_volume", {
       precision: 10,
       scale: 3,
     }), // left in source vessel
+    remainingVolumeUnit: unitEnum("remaining_volume_unit").notNull().default("L"),
     notes: text("notes"),
     // Metadata
     transferredAt: timestamp("transferred_at").notNull().defaultNow(),
@@ -1031,18 +1047,21 @@ export const batchMergeHistory = pgTable(
     ),
     sourceType: text("source_type").notNull(), // 'press_run' or 'batch_transfer'
     // Volume details
-    volumeAddedL: decimal("volume_added_l", {
+    volumeAdded: decimal("volume_added", {
       precision: 10,
       scale: 3,
     }).notNull(),
-    targetVolumeBeforeL: decimal("target_volume_before_l", {
+    volumeAddedUnit: unitEnum("volume_added_unit").notNull().default("L"),
+    targetVolumeBefore: decimal("target_volume_before", {
       precision: 10,
       scale: 3,
     }).notNull(),
-    targetVolumeAfterL: decimal("target_volume_after_l", {
+    targetVolumeBeforeUnit: unitEnum("target_volume_before_unit").notNull().default("L"),
+    targetVolumeAfter: decimal("target_volume_after", {
       precision: 10,
       scale: 3,
     }).notNull(),
+    targetVolumeAfterUnit: unitEnum("target_volume_after_unit").notNull().default("L"),
     // Composition snapshot at time of merge
     compositionSnapshot: jsonb("composition_snapshot"), // Store varieties and percentages
     notes: text("notes"),

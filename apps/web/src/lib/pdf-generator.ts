@@ -8,10 +8,13 @@ export interface PackagingRunPDFData {
   packagedAt: string;
   packageType: string;
   packageSizeML: number;
-  unitSizeL: string;
+  unitSize: string;
+  unitSizeUnit: string;
   unitsProduced: number;
-  volumeTakenL: number;
-  lossL: number;
+  volumeTaken: number;
+  volumeTakenUnit: string;
+  loss: number;
+  lossUnit: string;
   lossPercentage: number;
   abvAtPackaging?: number;
   carbonationLevel?: "still" | "petillant" | "sparkling";
@@ -259,7 +262,7 @@ export class PackagingPDFGenerator {
     this.doc.text("Volume Taken:", rightCol, this.currentY + lineHeight);
     this.doc.setFont("helvetica", "normal");
     this.doc.text(
-      `${data.volumeTakenL.toFixed(1)}L`,
+      `${data.volumeTaken.toFixed(1)}${data.volumeTakenUnit}`,
       rightCol + 35,
       this.currentY + lineHeight,
     );
@@ -268,7 +271,7 @@ export class PackagingPDFGenerator {
     this.doc.text("Loss:", rightCol, this.currentY + lineHeight * 2);
     this.doc.setFont("helvetica", "normal");
     this.doc.text(
-      `${data.lossL.toFixed(1)}L (${data.lossPercentage.toFixed(1)}%)`,
+      `${data.loss.toFixed(1)}${data.lossUnit} (${data.lossPercentage.toFixed(1)}%)`,
       rightCol + 35,
       this.currentY + lineHeight * 2,
     );

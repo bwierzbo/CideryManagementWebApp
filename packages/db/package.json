@@ -14,6 +14,8 @@
     "db:reset": "pnpm db:push --force && pnpm db:seed",
     "db:test": "tsx src/test-queries.ts",
     "db:setup-neon": "tsx src/setup-neon.ts",
+    "db:export": "tsx src/scripts/export-data.ts",
+    "db:import": "tsx src/scripts/import-data.ts",
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint \"**/*.{ts,tsx}\"",

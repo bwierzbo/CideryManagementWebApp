@@ -60,6 +60,7 @@ import { BatchHistoryModal } from "./BatchHistoryModal";
 import { AddBatchMeasurementForm } from "./AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "./AddBatchAdditiveForm";
 import { toast } from "@/hooks/use-toast";
+import { VolumeDisplay } from "@/components/ui/volume-input";
 
 interface BatchManagementTableProps {
   className?: string;
@@ -274,7 +275,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                     Specific Gravity
                   </TableHead>
                   <TableHead className="text-center">pH</TableHead>
-                  <TableHead className="text-right">Volume (L)</TableHead>
+                  <TableHead className="text-right">Volume</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -375,9 +376,10 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                         {batch.latestMeasurement?.ph || "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {batch.currentVolume > 0
-                          ? batch.currentVolume.toFixed(1)
-                          : "-"}
+                        <VolumeDisplay
+                          value={batch.currentVolume}
+                          unit={batch.currentVolumeUnit || "L"}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>

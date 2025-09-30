@@ -81,6 +81,7 @@ import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BottleModal } from "@/components/packaging/bottle-modal";
+import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 
 // Form schemas
 const measurementSchema = z.object({
@@ -131,7 +132,7 @@ const transferSchema = z.object({
 
 const tankSchema = z.object({
   name: z.string().optional(),
-  capacityL: z.number().positive("Capacity must be positive"),
+  capacity: z.number().positive("Capacity must be positive"),
   capacityUnit: z.enum(["L", "gal"]),
   material: z.enum(["stainless_steel", "plastic"]).optional(),
   jacketed: z.enum(["yes", "no"]).optional(),
@@ -192,7 +193,7 @@ function TankForm({
   React.useEffect(() => {
     if (vesselQuery.data?.vessel) {
       const vessel = vesselQuery.data.vessel;
-      let displayCapacity = parseFloat(vessel.capacityL);
+      let displayCapacity = parseFloat(vessel.capacity);
 
       // Convert from liters to gallons for display if unit is gallons
       if (vessel.capacityUnit === "gal") {
@@ -201,7 +202,7 @@ function TankForm({
 
       reset({
         name: vessel.name || undefined,
-        capacityL: displayCapacity,
+        capacity: displayCapacity,
         capacityUnit: vessel.capacityUnit as any,
         material: vessel.material as any,
         jacketed: vessel.jacketed as any,
@@ -215,10 +216,10 @@ function TankForm({
 
   const onSubmit = (data: TankForm) => {
     // Convert capacity to liters if unit is gallons
-    let capacityToSubmit = data.capacityL;
+    let capacityToSubmit = data.capacity;
     if (data.capacityUnit === "gal") {
       // User entered gallons, but we store in liters
-      capacityToSubmit = data.capacityL * 3.78541;
+      capacityToSubmit = data.capacity * 3.78541;
     }
 
     const submitData = {
@@ -249,37 +250,22 @@ function TankForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="capacityL">Size</Label>
-          <Input
-            id="capacityL"
-            type="number"
-            step="0.1"
-            placeholder="1000"
-            {...register("capacityL", { valueAsNumber: true })}
-          />
-          {errors.capacityL && (
-            <p className="text-sm text-red-600 mt-1">
-              {errors.capacityL.message}
-            </p>
-          )}
-        </div>
-        <div>
-          <Label htmlFor="capacityUnit">Unit</Label>
-          <Select
-            value={watchedCapacityUnit}
-            onValueChange={(value) => setValue("capacityUnit", value as any)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="L">Liters</SelectItem>
-              <SelectItem value="gal">Gallons</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      <div>
+        <Label htmlFor="capacity">Size</Label>
+        <VolumeInput
+          id="capacity"
+          value={watch("capacity")}
+          unit={watchedCapacityUnit as VolumeUnitType}
+          onValueChange={(value) => setValue("capacity", value || 0)}
+          onUnitChange={(unit) => setValue("capacityUnit", unit as "L" | "gal")}
+          placeholder="Enter capacity"
+          required
+        />
+        {errors.capacity && (
+          <p className="text-sm text-red-600 mt-1">
+            {errors.capacity.message}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -448,10 +434,6 @@ function TankTransferForm({
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
 
-  const formatVolumeDisplay = (volumeL: number, capacityUnit: string) => {
-    const unit = capacityUnit as VolumeUnit;
-    return formatVolume(volumeL, unit);
-  };
 
   // Get source vessel info
   const sourceVessel = vesselListQuery.data?.vessels?.find(
@@ -460,8 +442,8 @@ function TankTransferForm({
   const sourceLiquidMap = liquidMapQuery.data?.vessels?.find(
     (v) => v.vesselId === fromVesselId,
   );
-  const currentVolumeL = sourceLiquidMap?.currentVolumeL
-    ? parseFloat(sourceLiquidMap.currentVolumeL.toString())
+  const currentVolumeL = sourceLiquidMap?.currentVolume
+    ? parseFloat(sourceLiquidMap.currentVolume.toString())
     : sourceLiquidMap?.applePressRunVolume
       ? parseFloat(sourceLiquidMap.applePressRunVolume.toString())
       : 0;
@@ -518,12 +500,16 @@ function TankTransferForm({
           <SelectContent>
             {availableVessels.map((vessel) => (
               <SelectItem key={vessel.id} value={vessel.id}>
-                {vessel.name || "Unnamed"} (
-                {formatVolumeDisplay(
-                  parseFloat(vessel.capacityL),
-                  vessel.capacityUnit,
-                )}{" "}
-                capacity)
+                <span className="flex items-center gap-1">
+                  {vessel.name || "Unnamed"} (
+                  <VolumeDisplay
+                    value={parseFloat(vessel.capacity)}
+                    unit={vessel.capacityUnit as VolumeUnit}
+                    showUnit={true}
+                    className="inline"
+                  />
+                  capacity)
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
@@ -754,10 +740,6 @@ function VesselMap() {
     return jacketed.charAt(0).toUpperCase() + jacketed.slice(1);
   };
 
-  const formatVolumeDisplay = (volumeL: number, capacityUnit: string) => {
-    const unit = capacityUnit as VolumeUnit;
-    return formatVolume(volumeL, unit);
-  };
 
   const handleDeleteClick = (vesselId: string, vesselName: string | null) => {
     setVesselToDelete({ id: vesselId, name: vesselName });
@@ -868,8 +850,8 @@ function VesselMap() {
     }
 
     // Calculate current volume (same logic as in vessel cards)
-    const currentVolumeL = liquidMapVessel?.currentVolumeL
-      ? parseFloat(liquidMapVessel.currentVolumeL.toString())
+    const currentVolumeL = liquidMapVessel?.currentVolume
+      ? parseFloat(liquidMapVessel.currentVolume.toString())
       : liquidMapVessel?.applePressRunVolume
         ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
         : 0;
@@ -964,12 +946,12 @@ function VesselMap() {
             );
 
             // Use batch volume if available, otherwise use apple press run volume
-            const currentVolumeL = liquidMapVessel?.currentVolumeL
-              ? parseFloat(liquidMapVessel.currentVolumeL.toString())
+            const currentVolumeL = liquidMapVessel?.currentVolume
+              ? parseFloat(liquidMapVessel.currentVolume.toString())
               : liquidMapVessel?.applePressRunVolume
                 ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
                 : 0;
-            const capacityL = parseFloat(vessel.capacityL);
+            const capacityL = parseFloat(vessel.capacity);
             const fillPercentage =
               capacityL > 0 ? (currentVolumeL / capacityL) * 100 : 0;
 
@@ -1046,13 +1028,19 @@ function VesselMap() {
                 <div className="mb-3">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">Volume</span>
-                    <span className="text-sm font-semibold">
-                      {formatVolumeRange(
-                        currentVolumeL,
-                        capacityL,
-                        capacityUnit as VolumeUnit,
-                      )}
-                    </span>
+                    <div className="text-sm font-semibold flex items-center gap-1">
+                      <VolumeDisplay
+                        value={currentVolumeL}
+                        unit={capacityUnit as VolumeUnit}
+                        showUnit={true}
+                      />
+                      <span>/</span>
+                      <VolumeDisplay
+                        value={capacityL}
+                        unit={capacityUnit as VolumeUnit}
+                        showUnit={true}
+                      />
+                    </div>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3">
                     <div

@@ -212,7 +212,7 @@ export default function BatchDetailsPage() {
   const totalCompositionWeight =
     composition?.reduce((sum, comp) => sum + comp.inputWeightKg, 0) || 0;
   const totalCompositionVolume =
-    composition?.reduce((sum, comp) => sum + comp.juiceVolumeL, 0) || 0;
+    composition?.reduce((sum, comp) => sum + comp.juiceVolume, 0) || 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -307,8 +307,8 @@ export default function BatchDetailsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {latestMeasurement?.volumeL
-                ? `${latestMeasurement.volumeL.toFixed(1)}L`
+              {latestMeasurement?.volume
+                ? `${latestMeasurement.volume.toFixed(1)}${latestMeasurement.volumeUnit || 'L'}`
                 : "No data"}
             </div>
           </CardContent>
@@ -554,7 +554,7 @@ export default function BatchDetailsPage() {
                             {comp.inputWeightKg.toFixed(1)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {comp.juiceVolumeL.toFixed(1)}
+                            {comp.juiceVolume.toFixed(1)}
                           </TableCell>
                           <TableCell className="text-right">
                             {(comp.fractionOfBatch * 100).toFixed(1)}%
@@ -631,7 +631,7 @@ export default function BatchDetailsPage() {
                           {measurement.temperature?.toFixed(1) || "-"}
                         </TableCell>
                         <TableCell className="text-right">
-                          {measurement.volumeL?.toFixed(1) || "-"}
+                          {measurement.volume?.toFixed(1) || "-"}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
                           {measurement.notes || "-"}
@@ -754,10 +754,10 @@ export default function BatchDetailsPage() {
                         <TableCell>{transfer.sourceBatchName}</TableCell>
                         <TableCell>{transfer.destinationBatchName}</TableCell>
                         <TableCell className="text-right">
-                          {parseFloat(transfer.volumeTransferredL).toFixed(1)}
+                          {parseFloat(transfer.volumeTransferred).toFixed(1)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {parseFloat(transfer.lossL || "0").toFixed(1)}
+                          {parseFloat(transfer.loss || "0").toFixed(1)}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
                           {transfer.notes || "-"}

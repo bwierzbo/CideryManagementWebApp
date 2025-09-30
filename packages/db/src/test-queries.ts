@@ -81,8 +81,8 @@ async function testQueries() {
       .select({
         batchNumber: batches.batchNumber,
         status: batches.status,
-        initialVolume: batches.initialVolumeL,
-        currentVolume: batches.currentVolumeL,
+        initialVolume: batches.initialVolume,
+        currentVolume: batches.currentVolume,
         startDate: batches.startDate,
       })
       .from(batches)
@@ -151,7 +151,8 @@ async function testQueries() {
       .select({
         runDate: pressRuns.runDate,
         totalApples: pressRuns.totalAppleProcessedKg,
-        totalJuice: pressRuns.totalJuiceProducedL,
+        totalJuice: pressRuns.totalJuiceProduced,
+        totalJuiceUnit: pressRuns.totalJuiceProducedUnit,
         extractionRate: pressRuns.extractionRate,
         costPerKg: sql<number>`
           COALESCE(
@@ -168,7 +169,7 @@ async function testQueries() {
     console.log(`   Press efficiency:`);
     pressEfficiency.forEach((p) => {
       console.log(
-        `   - ${p.runDate.toDateString()}: ${p.extractionRate} extraction (${p.totalApples}kg → ${p.totalJuice}L)`,
+        `   - ${p.runDate.toDateString()}: ${p.extractionRate} extraction (${p.totalApples}kg → ${p.totalJuice}${p.totalJuiceUnit})`,
       );
     });
 
@@ -227,15 +228,15 @@ async function testQueries() {
       .select({
         vesselName: sql<string>`COALESCE(${vessels.name}, 'Unassigned')`,
         vesselType: vessels.type,
-        vesselCapacity: vessels.capacityL,
+        vesselCapacity: vessels.capacity,
         vesselStatus: vessels.status,
         currentBatch: batches.batchNumber,
         batchStatus: batches.status,
-        volumeUsed: batches.currentVolumeL,
+        volumeUsed: batches.currentVolume,
         utilizationPercent: sql<number>`
-          CASE 
-            WHEN ${vessels.capacityL} > 0 
-            THEN ROUND((${batches.currentVolumeL} / ${vessels.capacityL}) * 100, 1)
+          CASE
+            WHEN ${vessels.capacity} > 0
+            THEN ROUND((${batches.currentVolume} / ${vessels.capacity}) * 100, 1)
             ELSE 0 
           END`,
       })

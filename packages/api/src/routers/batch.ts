@@ -43,7 +43,8 @@ const addMeasurementSchema = z.object({
   ph: z.number().min(2).max(5).optional(),
   totalAcidity: z.number().min(0).max(20).optional(),
   temperature: z.number().min(0).max(40).optional(),
-  volumeL: z.number().positive().optional(),
+  volume: z.number().positive().optional(),
+  volumeUnit: z.enum(['L', 'gal']).default('L'),
   notes: z.string().optional(),
   takenBy: z.string().optional(),
 });
@@ -108,7 +109,7 @@ export const batchRouter = router({
             varietyName: baseFruitVarieties.name,
             lotCode: batchCompositions.lotCode,
             inputWeightKg: batchCompositions.inputWeightKg,
-            juiceVolumeL: batchCompositions.juiceVolumeL,
+            juiceVolume: batchCompositions.juiceVolume,
             fractionOfBatch: batchCompositions.fractionOfBatch,
             materialCost: batchCompositions.materialCost,
             avgBrix: batchCompositions.avgBrix,
@@ -133,7 +134,7 @@ export const batchRouter = router({
           varietyName: item.varietyName,
           lotCode: item.lotCode || "",
           inputWeightKg: parseFloat(item.inputWeightKg || "0"),
-          juiceVolumeL: parseFloat(item.juiceVolumeL || "0"),
+          juiceVolume: parseFloat(item.juiceVolume || "0"),
           fractionOfBatch: parseFloat(item.fractionOfBatch || "0"),
           materialCost: parseFloat(item.materialCost || "0"),
           avgBrix: item.avgBrix ? parseFloat(item.avgBrix) : undefined,
@@ -161,6 +162,7 @@ export const batchRouter = router({
           .select({
             id: batches.id,
             name: batches.name,
+            customName: batches.customName,
             status: batches.status,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
@@ -187,6 +189,7 @@ export const batchRouter = router({
         return {
           id: batch.id,
           name: batch.name,
+          customName: batch.customName,
           status: batch.status,
           vesselId: batch.vesselId,
           vesselName: batch.vesselName,
@@ -252,8 +255,12 @@ export const batchRouter = router({
             status: batches.status,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
-            vesselCapacity: vessels.capacityL,
-            currentVolumeL: batches.currentVolumeL,
+            vesselCapacity: vessels.capacity,
+            vesselCapacityUnit: vessels.capacityUnit,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
+            initialVolume: batches.initialVolume,
+            initialVolumeUnit: batches.initialVolumeUnit,
             startDate:
               sql<string>`COALESCE(${applePressRuns.endTime}, ${batches.startDate})`.as(
                 "startDate",
@@ -291,7 +298,8 @@ export const batchRouter = router({
           const measurementData = await db
             .select({
               batchId: batchMeasurements.batchId,
-              volumeL: batchMeasurements.volumeL,
+              volume: batchMeasurements.volume,
+              volumeUnit: batchMeasurements.volumeUnit,
               specificGravity: batchMeasurements.specificGravity,
               ph: batchMeasurements.ph,
               temperature: batchMeasurements.temperature,
@@ -313,9 +321,10 @@ export const batchRouter = router({
           measurementData.forEach((row) => {
             if (!batchMeasurementsMap[row.batchId]) {
               batchMeasurementsMap[row.batchId] = {
-                volumeL: row.volumeL
-                  ? parseFloat(row.volumeL.toString())
+                volume: row.volume
+                  ? parseFloat(row.volume.toString())
                   : null,
+                volumeUnit: row.volumeUnit,
                 specificGravity: row.specificGravity,
                 ph: row.ph,
                 temperature: row.temperature,
@@ -334,15 +343,18 @@ export const batchRouter = router({
           );
           const measurement = batchMeasurementsMap[batch.id] || {};
 
-          // Use batch's currentVolumeL or fall back to latest measurement
-          const currentVolume = batch.currentVolumeL
-            ? parseFloat(batch.currentVolumeL.toString())
-            : measurement.volumeL || 0;
+          // Use batch's currentVolume or fall back to latest measurement
+          const currentVolumeValue = batch.currentVolume
+            ? parseFloat(batch.currentVolume.toString())
+            : measurement.volume || 0;
 
           return {
             ...batch,
-            currentVolume,
-            currentVolumeL: batch.currentVolumeL,
+            currentVolume: currentVolumeValue,
+            currentVolumeUnit: batch.currentVolumeUnit,
+            initialVolume: batch.initialVolume ? parseFloat(batch.initialVolume.toString()) : null,
+            initialVolumeUnit: batch.initialVolumeUnit,
+            vesselCapacityUnit: batch.vesselCapacityUnit,
             daysActive,
             latestMeasurement: measurement,
           };
@@ -378,6 +390,7 @@ export const batchRouter = router({
           .select({
             id: batches.id,
             name: batches.name,
+            customName: batches.customName,
             status: batches.status,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
@@ -405,7 +418,7 @@ export const batchRouter = router({
             vendorName: vendors.name,
             varietyName: baseFruitVarieties.name,
             inputWeightKg: batchCompositions.inputWeightKg,
-            juiceVolumeL: batchCompositions.juiceVolumeL,
+            juiceVolume: batchCompositions.juiceVolume,
             fractionOfBatch: batchCompositions.fractionOfBatch,
             materialCost: batchCompositions.materialCost,
             avgBrix: batchCompositions.avgBrix,
@@ -434,7 +447,8 @@ export const batchRouter = router({
             ph: batchMeasurements.ph,
             totalAcidity: batchMeasurements.totalAcidity,
             temperature: batchMeasurements.temperature,
-            volumeL: batchMeasurements.volumeL,
+            volume: batchMeasurements.volume,
+            volumeUnit: batchMeasurements.volumeUnit,
             notes: batchMeasurements.notes,
             takenBy: batchMeasurements.takenBy,
           })
@@ -477,7 +491,8 @@ export const batchRouter = router({
               pressRunName: applePressRuns.pressRunName,
               pressedDate: applePressRuns.startTime,
               totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
-              totalJuiceVolumeL: applePressRuns.totalJuiceVolumeL,
+              totalJuiceVolume: applePressRuns.totalJuiceVolume,
+              totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
               extractionRate: applePressRuns.extractionRate,
             })
             .from(applePressRuns)
@@ -496,7 +511,7 @@ export const batchRouter = router({
             vendorName: item.vendorName,
             varietyName: item.varietyName,
             inputWeightKg: parseFloat(item.inputWeightKg || "0"),
-            juiceVolumeL: parseFloat(item.juiceVolumeL || "0"),
+            juiceVolume: parseFloat(item.juiceVolume || "0"),
             fractionOfBatch: parseFloat(item.fractionOfBatch || "0"),
             materialCost: parseFloat(item.materialCost || "0"),
             avgBrix: item.avgBrix ? parseFloat(item.avgBrix) : undefined,
@@ -514,7 +529,8 @@ export const batchRouter = router({
             temperature: m.temperature
               ? parseFloat(m.temperature.toString())
               : undefined,
-            volumeL: m.volumeL ? parseFloat(m.volumeL.toString()) : undefined,
+            volume: m.volume ? parseFloat(m.volume.toString()) : undefined,
+            volumeUnit: m.volumeUnit,
           })),
           additives: additives.map((a) => ({
             ...a,
@@ -563,7 +579,8 @@ export const batchRouter = router({
             ph: input.ph?.toString(),
             totalAcidity: input.totalAcidity?.toString(),
             temperature: input.temperature?.toString(),
-            volumeL: input.volumeL?.toString(),
+            volume: input.volume?.toString(),
+            volumeUnit: input.volumeUnit,
             notes: input.notes,
             takenBy: input.takenBy,
           })
@@ -774,9 +791,12 @@ export const batchRouter = router({
           .select({
             id: batches.id,
             name: batches.name,
+            customName: batches.customName,
             createdAt: batches.startDate,
-            initialVolumeL: batches.initialVolumeL,
-            currentVolumeL: batches.currentVolumeL,
+            initialVolume: batches.initialVolume,
+            initialVolumeUnit: batches.initialVolumeUnit,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
             status: batches.status,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
@@ -808,9 +828,9 @@ export const batchRouter = router({
           timestamp: batch[0].createdAt,
           description: `Batch created from ${batch[0].pressRunName ? `Press Run ${batch[0].pressRunName}` : "manual entry"}`,
           details:
-            batch[0].initialVolumeL || batch[0].vesselName
+            batch[0].initialVolume || batch[0].vesselName
               ? {
-                  initialVolume: batch[0].initialVolumeL || null,
+                  initialVolume: batch[0].initialVolume ? `${batch[0].initialVolume}${batch[0].initialVolumeUnit || 'L'}` : null,
                   vessel: batch[0].vesselName || null,
                 }
               : {},
@@ -826,7 +846,8 @@ export const batchRouter = router({
             ph: batchMeasurements.ph,
             totalAcidity: batchMeasurements.totalAcidity,
             temperature: batchMeasurements.temperature,
-            volumeL: batchMeasurements.volumeL,
+            volume: batchMeasurements.volume,
+            volumeUnit: batchMeasurements.volumeUnit,
             notes: batchMeasurements.notes,
             takenBy: batchMeasurements.takenBy,
           })
@@ -845,7 +866,7 @@ export const batchRouter = router({
           if (m.ph) details.push(`pH: ${m.ph}`);
           if (m.totalAcidity) details.push(`TA: ${m.totalAcidity}`);
           if (m.temperature) details.push(`Temp: ${m.temperature}°C`);
-          if (m.volumeL) details.push(`Volume: ${m.volumeL}L`);
+          if (m.volume) details.push(`Volume: ${m.volume}${m.volumeUnit || 'L'}`);
 
           activities.push({
             id: `measurement-${m.id}`,
@@ -901,9 +922,12 @@ export const batchRouter = router({
           .select({
             id: batchMergeHistory.id,
             mergedAt: batchMergeHistory.mergedAt,
-            volumeAddedL: batchMergeHistory.volumeAddedL,
-            targetVolumeBeforeL: batchMergeHistory.targetVolumeBeforeL,
-            targetVolumeAfterL: batchMergeHistory.targetVolumeAfterL,
+            volumeAdded: batchMergeHistory.volumeAdded,
+            volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
+            targetVolumeBefore: batchMergeHistory.targetVolumeBefore,
+            targetVolumeBeforeUnit: batchMergeHistory.targetVolumeBeforeUnit,
+            targetVolumeAfter: batchMergeHistory.targetVolumeAfter,
+            targetVolumeAfterUnit: batchMergeHistory.targetVolumeAfterUnit,
             sourceType: batchMergeHistory.sourceType,
             notes: batchMergeHistory.notes,
             pressRunName: applePressRuns.pressRunName,
@@ -927,8 +951,8 @@ export const batchRouter = router({
             timestamp: m.mergedAt,
             description: `Merged with juice from ${m.sourceType === "press_run" && m.pressRunName ? `Press Run ${m.pressRunName}` : "another batch"}`,
             details: {
-              volumeAdded: `${m.volumeAddedL}L`,
-              volumeChange: `${m.targetVolumeBeforeL}L → ${m.targetVolumeAfterL}L`,
+              volumeAdded: `${m.volumeAdded}${m.volumeAddedUnit || 'L'}`,
+              volumeChange: `${m.targetVolumeBefore}${m.targetVolumeBeforeUnit || 'L'} → ${m.targetVolumeAfter}${m.targetVolumeAfterUnit || 'L'}`,
               notes: m.notes || null,
             },
           });
@@ -939,7 +963,8 @@ export const batchRouter = router({
           .select({
             id: batchTransfers.id,
             transferredAt: batchTransfers.transferredAt,
-            volumeTransferredL: batchTransfers.volumeTransferredL,
+            volumeTransferred: batchTransfers.volumeTransferred,
+            volumeTransferredUnit: batchTransfers.volumeTransferredUnit,
             sourceBatchId: batchTransfers.sourceBatchId,
             destinationBatchId: batchTransfers.destinationBatchId,
             sourceBatchName: sql<string>`source_batch.name`.as(
@@ -992,9 +1017,9 @@ export const batchRouter = router({
               id: `transfer-${t.id}`,
               type: "transfer",
               timestamp: t.transferredAt,
-              description: `Moved ${t.volumeTransferredL}L from ${t.sourceVesselName || "vessel"} to ${t.destVesselName || "vessel"}`,
+              description: `Moved ${t.volumeTransferred}${t.volumeTransferredUnit || 'L'} from ${t.sourceVesselName || "vessel"} to ${t.destVesselName || "vessel"}`,
               details: {
-                volume: `${t.volumeTransferredL}L`,
+                volume: `${t.volumeTransferred}${t.volumeTransferredUnit || 'L'}`,
                 fromVessel: t.sourceVesselName || null,
                 toVessel: t.destVesselName || null,
                 notes: t.notes || null,
@@ -1008,10 +1033,10 @@ export const batchRouter = router({
               type: "transfer",
               timestamp: t.transferredAt,
               description: isSource
-                ? `Transferred ${t.volumeTransferredL}L to ${t.destVesselName || "vessel"}`
-                : `Received ${t.volumeTransferredL}L from ${t.sourceVesselName || "vessel"}`,
+                ? `Transferred ${t.volumeTransferred}${t.volumeTransferredUnit || 'L'} to ${t.destVesselName || "vessel"}`
+                : `Received ${t.volumeTransferred}${t.volumeTransferredUnit || 'L'} from ${t.sourceVesselName || "vessel"}`,
               details: {
-                volume: `${t.volumeTransferredL}L`,
+                volume: `${t.volumeTransferred}${t.volumeTransferredUnit || 'L'}`,
                 direction: isSource ? "outgoing" : "incoming",
                 notes: t.notes || null,
               },
@@ -1068,9 +1093,12 @@ export const batchRouter = router({
             id: batchMergeHistory.id,
             sourcePressRunId: batchMergeHistory.sourcePressRunId,
             sourceType: batchMergeHistory.sourceType,
-            volumeAddedL: batchMergeHistory.volumeAddedL,
-            targetVolumeBeforeL: batchMergeHistory.targetVolumeBeforeL,
-            targetVolumeAfterL: batchMergeHistory.targetVolumeAfterL,
+            volumeAdded: batchMergeHistory.volumeAdded,
+            volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
+            targetVolumeBefore: batchMergeHistory.targetVolumeBefore,
+            targetVolumeBeforeUnit: batchMergeHistory.targetVolumeBeforeUnit,
+            targetVolumeAfter: batchMergeHistory.targetVolumeAfter,
+            targetVolumeAfterUnit: batchMergeHistory.targetVolumeAfterUnit,
             compositionSnapshot: batchMergeHistory.compositionSnapshot,
             notes: batchMergeHistory.notes,
             mergedAt: batchMergeHistory.mergedAt,

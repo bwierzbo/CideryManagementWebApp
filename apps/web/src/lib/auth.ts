@@ -20,13 +20,17 @@ export const authOptions = {
 
         console.log("🔍 Auth attempt for:", credentials.email);
         console.log("🔗 DATABASE_URL available:", !!process.env.DATABASE_URL);
+        console.log("🔗 DATABASE_URL preview:", process.env.DATABASE_URL?.substring(0, 60) + "...");
 
         try {
+          console.log("📊 Querying database for user...");
           const user = await db
             .select()
             .from(users)
             .where(eq(users.email, credentials.email))
             .limit(1);
+
+          console.log("✅ Query successful, found user:", !!user[0]);
 
           if (!user[0] || !user[0].isActive) {
             return null;

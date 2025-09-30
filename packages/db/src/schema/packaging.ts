@@ -12,9 +12,8 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
-import { users } from "../schema";
-import { batches } from "../schema";
-import { vessels } from "../schema";
+import { unitEnum } from "./shared";
+import { batches, users, vessels } from "../schema";
 
 // Packaging-specific enums
 export const packageTypeEnum = pgEnum("package_type", ["bottle", "can", "keg"]);
@@ -75,21 +74,22 @@ export const packagingRuns = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     batchId: uuid("batch_id")
-      .notNull()
-      .references(() => batches.id),
+      .notNull(),
     vesselId: uuid("vessel_id")
-      .notNull()
-      .references(() => vessels.id),
+      .notNull(),
     packagedAt: timestamp("packaged_at").notNull(),
     packageType: packageTypeEnum("package_type").notNull(),
     packageSizeML: integer("package_size_ml").notNull(),
-    unitSizeL: decimal("unit_size_l", { precision: 10, scale: 4 }).notNull(), // Computed from package_size_ml
+    unitSize: decimal("unit_size", { precision: 10, scale: 4 }).notNull(), // Computed from package_size_ml
+    unitSizeUnit: unitEnum("unit_size_unit").notNull().default("L"),
     unitsProduced: integer("units_produced").notNull(),
-    volumeTakenL: decimal("volume_taken_l", {
+    volumeTaken: decimal("volume_taken", {
       precision: 10,
       scale: 2,
     }).notNull(),
-    lossL: decimal("loss_l", { precision: 10, scale: 2 }).notNull(),
+    volumeTakenUnit: unitEnum("volume_taken_unit").notNull().default("L"),
+    loss: decimal("loss", { precision: 10, scale: 2 }).notNull(),
+    lossUnit: unitEnum("loss_unit").notNull().default("L"),
     // Loss percentage (computed in application logic)
     lossPercentage: decimal("loss_percentage", { precision: 5, scale: 2 }),
 
@@ -100,7 +100,7 @@ export const packagingRuns = pgTable(
     fillVarianceML: decimal("fill_variance_ml", { precision: 6, scale: 2 }),
     testMethod: text("test_method"),
     testDate: timestamp("test_date"),
-    qaTechnicianId: uuid("qa_technician_id").references(() => users.id),
+    qaTechnicianId: uuid("qa_technician_id"),
     qaNotes: text("qa_notes"),
 
     // Metadata
@@ -108,14 +108,13 @@ export const packagingRuns = pgTable(
     status: packagingRunStatusEnum("status").default("completed"),
     voidReason: text("void_reason"),
     voidedAt: timestamp("voided_at"),
-    voidedBy: uuid("voided_by").references(() => users.id),
+    voidedBy: uuid("voided_by"),
 
     // Audit fields
     createdBy: uuid("created_by")
-      .notNull()
-      .references(() => users.id),
+      .notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
-    updatedBy: uuid("updated_by").references(() => users.id),
+    updatedBy: uuid("updated_by"),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -133,8 +132,8 @@ export const packagingRuns = pgTable(
 
     // Check constraints for data integrity
     unitsProducedPositive: sql`CHECK (units_produced >= 0)`,
-    volumeTakenLPositive: sql`CHECK (volume_taken_l > 0)`,
-    lossLNonNegative: sql`CHECK (loss_l >= 0)`,
+    volumeTakenPositive: sql`CHECK (volume_taken > 0)`,
+    lossNonNegative: sql`CHECK (loss >= 0)`,
   }),
 );
 
@@ -150,8 +149,7 @@ export const packagingRunPhotos = pgTable(
     photoType: packagingPhotoTypeEnum("photo_type"),
     caption: text("caption"),
     uploadedBy: uuid("uploaded_by")
-      .notNull()
-      .references(() => users.id),
+      .notNull(),
     uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
   },
   (table) => ({
@@ -225,7 +223,7 @@ export const inventoryItems = pgTable(
   "inventory_items",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    batchId: uuid("batch_id").references(() => batches.id),
+    batchId: uuid("batch_id"),
     lotCode: text("lot_code").unique(),
     packagingRunId: uuid("packaging_run_id").references(() => packagingRuns.id),
     packageType: text("package_type"),

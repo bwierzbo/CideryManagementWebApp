@@ -7,3 +7,19 @@
 
 // Unit conversion utilities
 export * from "./unitConversion";
+// Export only non-conflicting items from volumeConversion
+export {
+  type WeightUnit,
+  convertVolume,
+  convertWeight,
+  roundToDecimals,
+  toStorageVolume,
+  toStorageWeight,
+  formatWeight,
+  getVolumeUnitName,
+  getWeightUnitName,
+  isValidVolumeUnit,
+  isValidWeightUnit,
+  estimateWeightFromVolume,
+  calculateTotalVolume
+} from "./volumeConversion";

@@ -1508,7 +1508,8 @@ export const appRouter = router({
             id: pressRuns.id,
             runDate: pressRuns.runDate,
             totalAppleProcessedKg: pressRuns.totalAppleProcessedKg,
-            totalJuiceProducedL: pressRuns.totalJuiceProducedL,
+            totalJuiceProduced: pressRuns.totalJuiceProduced,
+            totalJuiceProducedUnit: pressRuns.totalJuiceProducedUnit,
             extractionRate: pressRuns.extractionRate,
             notes: pressRuns.notes,
             createdAt: pressRuns.createdAt,
@@ -1554,7 +1555,7 @@ export const appRouter = router({
           return await db.transaction(async (tx) => {
             // Calculate totals and validate purchase items
             let totalAppleProcessedKg = 0;
-            let totalJuiceProducedL = 0;
+            let totalJuiceProduced = 0;
             const processedItems = [];
 
             for (const item of input.items) {
@@ -1590,7 +1591,7 @@ export const appRouter = router({
 
               // Estimate juice production (60-70% extraction rate)
               const estimatedJuiceL = item.quantityUsedKg * 0.65; // 65% extraction rate
-              totalJuiceProducedL += estimatedJuiceL;
+              totalJuiceProduced += estimatedJuiceL;
 
               processedItems.push({
                 ...item,
@@ -1601,7 +1602,7 @@ export const appRouter = router({
             // Calculate overall extraction rate
             const extractionRate =
               totalAppleProcessedKg > 0
-                ? totalJuiceProducedL / totalAppleProcessedKg
+                ? totalJuiceProduced / totalAppleProcessedKg
                 : 0;
 
             // Create the press run
@@ -1611,7 +1612,8 @@ export const appRouter = router({
                 runDate: input.runDate,
                 notes: input.notes,
                 totalAppleProcessedKg: totalAppleProcessedKg.toString(),
-                totalJuiceProducedL: totalJuiceProducedL.toString(),
+                totalJuiceProduced: totalJuiceProduced.toString(),
+                totalJuiceProducedUnit: "L" as const,
                 extractionRate: extractionRate.toString(),
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -1628,7 +1630,8 @@ export const appRouter = router({
                   pressRunId,
                   purchaseItemId: item.purchaseItemId,
                   quantityUsedKg: item.quantityUsedKg.toString(),
-                  juiceProducedL: item.juiceProducedL.toString(),
+                  juiceProduced: item.juiceProducedL.toString(),
+                  juiceProducedUnit: "L" as const,
                   brixMeasured: item.brixMeasured?.toString(),
                   notes: item.notes,
                   createdAt: new Date(),
@@ -1644,7 +1647,8 @@ export const appRouter = router({
               {
                 pressRunId,
                 totalAppleKg: totalAppleProcessedKg,
-                totalJuiceL: totalJuiceProducedL,
+                totalJuiceL: totalJuiceProduced,
+                totalJuiceUnit: "L",
               },
               ctx.session?.user?.id,
               "Press run started via API",
@@ -1736,7 +1740,8 @@ export const appRouter = router({
             const updatedPressRun = await tx
               .update(pressRuns)
               .set({
-                totalJuiceProducedL: input.actualTotalJuiceProducedL.toString(),
+                totalJuiceProduced: input.actualTotalJuiceProducedL.toString(),
+                totalJuiceProducedUnit: "L" as const,
                 extractionRate: actualExtractionRate.toString(),
                 notes: input.notes || pressRun[0].notes,
                 updatedAt: new Date(),
@@ -1750,7 +1755,8 @@ export const appRouter = router({
               const updatedItem = await tx
                 .update(pressItems)
                 .set({
-                  juiceProducedL: item.actualJuiceProducedL.toString(),
+                  juiceProduced: item.actualJuiceProducedL.toString(),
+                  juiceProducedUnit: "L" as const,
                   brixMeasured: item.finalBrixMeasured?.toString(),
                   notes: item.notes,
                   updatedAt: new Date(),
@@ -1774,7 +1780,8 @@ export const appRouter = router({
               input.pressRunId,
               pressRun[0],
               {
-                totalJuiceProducedL: input.actualTotalJuiceProducedL,
+                totalJuiceProduced: input.actualTotalJuiceProducedL,
+                totalJuiceProducedUnit: "L",
                 extractionRate: actualExtractionRate,
               },
               ctx.session?.user?.id,
@@ -1855,8 +1862,10 @@ export const appRouter = router({
             vesselId: batches.vesselId,
             startDate: batches.startDate,
             endDate: batches.endDate,
-            initialVolumeL: batches.initialVolumeL,
-            currentVolumeL: batches.currentVolumeL,
+            initialVolume: batches.initialVolume,
+            initialVolumeUnit: batches.initialVolumeUnit,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
             createdAt: batches.createdAt,
           })
           .from(batches)
@@ -1952,7 +1961,7 @@ export const appRouter = router({
                 });
               }
 
-              const availableL = parseFloat(pressItem[0].juiceProducedL);
+              const availableL = parseFloat(pressItem[0].juiceProduced);
               if (item.volumeUsedL > availableL) {
                 throw new TRPCError({
                   code: "BAD_REQUEST",
@@ -1965,11 +1974,11 @@ export const appRouter = router({
             }
 
             // Check vessel capacity
-            const vesselCapacityL = parseFloat(vessel[0].capacityL);
+            const vesselCapacityL = parseFloat(vessel[0].capacity?.toString() || "0");
             if (totalVolumeL > vesselCapacityL) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Total volume (${totalVolumeL}L) exceeds vessel capacity (${vesselCapacityL}L)`,
+                message: `Total volume (${totalVolumeL}L) exceeds vessel capacity (${vesselCapacityL}${vessel[0].capacityUnit || 'L'})`,
               });
             }
 
@@ -1985,8 +1994,10 @@ export const appRouter = router({
                 originPressRunId: null, // This might need to be set based on your business logic
                 startDate: input.startDate,
                 endDate: input.targetCompletionDate || null,
-                initialVolumeL: totalVolumeL.toString(),
-                currentVolumeL: totalVolumeL.toString(),
+                initialVolume: totalVolumeL.toString(),
+                initialVolumeUnit: "L",
+                currentVolume: totalVolumeL.toString(),
+                currentVolumeUnit: "L",
                 createdAt: new Date(),
                 updatedAt: new Date(),
               })
@@ -2024,7 +2035,8 @@ export const appRouter = router({
                 batchId,
                 batchNumber: input.batchNumber,
                 vesselId: input.vesselId,
-                initialVolumeL: totalVolumeL,
+                initialVolume: totalVolumeL,
+                initialVolumeUnit: "L",
               },
               ctx.session?.user?.id,
               "Batch started from juice lot via API",
@@ -2092,7 +2104,8 @@ export const appRouter = router({
               ph: input.ph?.toString(),
               totalAcidity: input.totalAcidity?.toString(),
               temperature: input.temperature?.toString(),
-              volumeL: input.volumeL?.toString(),
+              volume: input.volumeL?.toString(),
+              volumeUnit: "L",
               notes: input.notes,
               takenBy:
                 input.takenBy ||
@@ -2106,7 +2119,8 @@ export const appRouter = router({
           // Update batch current volume and ABV if provided
           const updateData: any = { updatedAt: new Date() };
           if (input.volumeL) {
-            updateData.currentVolumeL = input.volumeL.toString();
+            updateData.currentVolume = input.volumeL.toString();
+            updateData.currentVolumeUnit = "L";
           }
           if (input.abv) {
             updateData.actualAbv = input.abv.toString();
@@ -2204,7 +2218,7 @@ export const appRouter = router({
             }
 
             // Check capacity
-            const newVesselCapacityL = parseFloat(newVessel[0].capacityL);
+            const newVesselCapacityL = parseFloat(newVessel[0].capacity?.toString() || "0");
             if (input.volumeTransferredL > newVesselCapacityL) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
@@ -2212,7 +2226,7 @@ export const appRouter = router({
               });
             }
 
-            const currentVolumeL = parseFloat(batch[0].currentVolumeL || "0");
+            const currentVolumeL = parseFloat(batch[0].currentVolume?.toString() || "0");
             if (input.volumeTransferredL > currentVolumeL) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
@@ -2225,7 +2239,8 @@ export const appRouter = router({
               .update(batches)
               .set({
                 vesselId: input.newVesselId,
-                currentVolumeL: input.volumeTransferredL.toString(),
+                currentVolume: input.volumeTransferredL.toString(),
+                currentVolumeUnit: "L",
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, input.batchId))
@@ -2258,7 +2273,8 @@ export const appRouter = router({
               batch[0],
               {
                 vesselId: input.newVesselId,
-                currentVolumeL: input.volumeTransferredL,
+                currentVolume: input.volumeTransferredL,
+                currentVolumeUnit: "L",
               },
               ctx.session?.user?.id,
               "Batch transferred to new vessel via API",
@@ -2370,7 +2386,7 @@ export const appRouter = router({
           .select({
             id: vessels.id,
             name: vessels.name,
-            capacityL: vessels.capacityL,
+            capacity: vessels.capacity,
             capacityUnit: vessels.capacityUnit,
             status: vessels.status,
             material: vessels.material,
@@ -2378,7 +2394,8 @@ export const appRouter = router({
             // Batch information (if exists)
             batchId: batches.id,
             batchName: batches.name,
-            currentVolumeL: batches.currentVolumeL,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
             batchStatus: batches.status,
           })
           .from(vessels)
@@ -2395,16 +2412,16 @@ export const appRouter = router({
 
         // Calculate remaining capacity for each vessel
         const vesselCapacities = vesselsWithBatches.map((vessel) => {
-          const capacity = parseFloat(vessel.capacityL);
-          const currentVolume = vessel.currentVolumeL
-            ? parseFloat(vessel.currentVolumeL)
+          const capacity = parseFloat(vessel.capacity?.toString() || "0");
+          const currentVolume = vessel.currentVolume
+            ? parseFloat(vessel.currentVolume.toString())
             : 0;
           const remainingCapacity = capacity - currentVolume;
 
           return {
             id: vessel.id,
             name: vessel.name,
-            capacityL: vessel.capacityL,
+            capacity: vessel.capacity,
             capacityUnit: vessel.capacityUnit,
             status: vessel.status,
             material: vessel.material,
@@ -2413,7 +2430,8 @@ export const appRouter = router({
               ? {
                   id: vessel.batchId,
                   name: vessel.batchName,
-                  currentVolumeL: vessel.currentVolumeL,
+                  currentVolume: vessel.currentVolume,
+                  currentVolumeUnit: vessel.currentVolumeUnit,
                   status: vessel.batchStatus,
                 }
               : null,
@@ -2483,8 +2501,8 @@ export const appRouter = router({
             .values({
               name: finalName,
               type: "storage", // Temporary default value until migration is applied
-              capacityL: capacityInLiters.toString(),
-              capacityUnit: input.capacityUnit,
+              capacity: capacityInLiters.toString(),
+              capacityUnit: input.capacityUnit || "L",
               material: input.material,
               jacketed: input.jacketed,
               location: input.location,
@@ -2568,7 +2586,7 @@ export const appRouter = router({
             if (input.capacityUnit === "gal") {
               capacityInLiters = input.capacityL * 3.78541;
             }
-            updateData.capacityL = capacityInLiters.toString();
+            updateData.capacity = capacityInLiters.toString();
           }
           if (input.capacityUnit !== undefined)
             updateData.capacityUnit = input.capacityUnit;
@@ -2713,18 +2731,20 @@ export const appRouter = router({
           .select({
             vesselId: vessels.id,
             vesselName: vessels.name,
-            vesselCapacityL: vessels.capacityL,
+            vesselCapacity: vessels.capacity,
             vesselCapacityUnit: vessels.capacityUnit,
             vesselStatus: vessels.status,
             vesselLocation: vessels.location,
             batchId: batches.id,
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
-            currentVolumeL: batches.currentVolumeL,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
             batchCustomName: batches.customName,
             // Include apple press run volume when no batch exists
             applePressRunId: applePressRuns.id,
-            applePressRunVolume: applePressRuns.totalJuiceVolumeL,
+            applePressRunVolume: applePressRuns.totalJuiceVolume,
+            applePressRunVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
           })
           .from(vessels)
           .leftJoin(
@@ -2782,7 +2802,7 @@ export const appRouter = router({
         const packagedInventory = await db
           .select({
             totalBottles: sql<number>`sum(${inventory.currentBottleCount})`,
-            totalVolumeL: sql<number>`sum(${packages.volumePackagedL}::decimal * ${inventory.currentBottleCount}::decimal / ${packages.bottleCount}::decimal)`,
+            totalVolumeL: sql<number>`sum(${packages.volumePackaged}::decimal * ${inventory.currentBottleCount}::decimal / ${packages.bottleCount}::decimal)`,
           })
           .from(inventory)
           .leftJoin(packages, eq(packages.id, inventory.packageId))
@@ -2791,10 +2811,10 @@ export const appRouter = router({
         // Calculate total liquid in cellar from both batches and apple press runs
         const cellarLiquid = vesselsWithBatches.reduce((total, vessel) => {
           // Prioritize batch volume if it exists, otherwise use apple press run volume
-          if (vessel.currentVolumeL) {
-            return total + parseFloat(vessel.currentVolumeL);
+          if (vessel.currentVolume) {
+            return total + parseFloat(vessel.currentVolume.toString());
           } else if (vessel.applePressRunVolume) {
-            return total + parseFloat(vessel.applePressRunVolume);
+            return total + parseFloat(vessel.applePressRunVolume.toString());
           }
           return total;
         }, 0);
@@ -2891,11 +2911,11 @@ export const appRouter = router({
             }
 
             // Check if destination vessel has enough capacity
-            const destCapacityL = parseFloat(destVessel[0].capacityL || "0");
+            const destCapacityL = parseFloat(destVessel[0].capacity?.toString() || "0");
             if (input.volumeL > destCapacityL) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Transfer volume (${input.volumeL}L) exceeds destination vessel capacity (${destCapacityL}L)`,
+                message: `Transfer volume (${input.volumeL}L) exceeds destination vessel capacity (${destCapacityL}${destVessel[0].capacityUnit || 'L'})`,
               });
             }
 
@@ -2920,14 +2940,14 @@ export const appRouter = router({
             }
 
             const currentVolumeL = parseFloat(
-              sourceBatch[0].currentVolumeL || "0",
+              sourceBatch[0].currentVolume?.toString() || "0",
             );
             const transferVolumeL = input.volumeL + (input.loss || 0);
 
             if (transferVolumeL > currentVolumeL) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Transfer volume plus loss (${transferVolumeL}L) exceeds current batch volume (${currentVolumeL}L)`,
+                message: `Transfer volume plus loss (${transferVolumeL}L) exceeds current batch volume (${currentVolumeL}${sourceBatch[0].currentVolumeUnit || 'L'})`,
               });
             }
 
@@ -2943,8 +2963,10 @@ export const appRouter = router({
                   vesselId: input.fromVesselId,
                   name: `${sourceBatch[0].name} - Remaining`,
                   batchNumber: `${sourceBatch[0].batchNumber}-R`,
-                  initialVolumeL: remainingVolumeL.toString(),
-                  currentVolumeL: remainingVolumeL.toString(),
+                  initialVolume: remainingVolumeL.toString(),
+                  initialVolumeUnit: sourceBatch[0].currentVolumeUnit || "L",
+                  currentVolume: remainingVolumeL.toString(),
+                  currentVolumeUnit: sourceBatch[0].currentVolumeUnit || "L",
                   status: "active",
                   juiceLotId: sourceBatch[0].juiceLotId,
                   originPressRunId: sourceBatch[0].originPressRunId,
@@ -2985,7 +3007,8 @@ export const appRouter = router({
               .update(batches)
               .set({
                 vesselId: input.toVesselId,
-                currentVolumeL: input.volumeL.toString(),
+                currentVolume: input.volumeL.toString(),
+                currentVolumeUnit: "L",
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, sourceBatch[0].id))
@@ -3007,7 +3030,8 @@ export const appRouter = router({
               sourceBatch[0],
               {
                 vesselId: input.toVesselId,
-                currentVolumeL: input.volumeL.toString(),
+                currentVolume: input.volumeL.toString(),
+                currentVolumeUnit: "L",
               },
               ctx.session?.user?.id,
               `Batch transferred to ${destVessel[0].name || "Unknown Vessel"} via API`,
@@ -3022,11 +3046,15 @@ export const appRouter = router({
                 destinationBatchId: sourceBatch[0].id, // Same batch moved
                 destinationVesselId: input.toVesselId,
                 remainingBatchId: remainingBatch?.id || null,
-                volumeTransferredL: input.volumeL.toString(),
-                lossL: (input.loss || 0).toString(),
-                totalVolumeProcessedL: transferVolumeL.toString(),
-                remainingVolumeL:
+                volumeTransferred: input.volumeL.toString(),
+                volumeTransferredUnit: "L",
+                loss: (input.loss || 0).toString(),
+                lossUnit: "L",
+                totalVolumeProcessed: transferVolumeL.toString(),
+                totalVolumeProcessedUnit: "L",
+                remainingVolume:
                   remainingVolumeL > 0 ? remainingVolumeL.toString() : null,
+                remainingVolumeUnit: "L",
                 notes: input.notes,
                 transferredBy: ctx.session?.user?.id,
                 transferredAt: new Date(),
@@ -3104,10 +3132,14 @@ export const appRouter = router({
               destinationVesselId: batchTransfers.destinationVesselId,
               destinationVesselName: dv.name,
               remainingBatchId: batchTransfers.remainingBatchId,
-              volumeTransferredL: batchTransfers.volumeTransferredL,
-              lossL: batchTransfers.lossL,
-              totalVolumeProcessedL: batchTransfers.totalVolumeProcessedL,
-              remainingVolumeL: batchTransfers.remainingVolumeL,
+              volumeTransferred: batchTransfers.volumeTransferred,
+              volumeTransferredUnit: batchTransfers.volumeTransferredUnit,
+              loss: batchTransfers.loss,
+              lossUnit: batchTransfers.lossUnit,
+              totalVolumeProcessed: batchTransfers.totalVolumeProcessed,
+              totalVolumeProcessedUnit: batchTransfers.totalVolumeProcessedUnit,
+              remainingVolume: batchTransfers.remainingVolume,
+              remainingVolumeUnit: batchTransfers.remainingVolumeUnit,
               notes: batchTransfers.notes,
               transferredAt: batchTransfers.transferredAt,
               transferredBy: batchTransfers.transferredBy,
@@ -3281,8 +3313,10 @@ export const appRouter = router({
             costPerBottle: string | null;
             costPerL: string | null;
             calculatedAt: Date | null;
-            initialVolumeL: string | null;
-            currentVolumeL: string | null;
+            initialVolume: string | null;
+            initialVolumeUnit: string | null;
+            currentVolume: string | null;
+            currentVolumeUnit: string | null;
           }>,
           count: 0,
         };
@@ -3299,8 +3333,10 @@ export const appRouter = router({
             costPerBottle: batchCosts.costPerBottle,
             costPerL: batchCosts.costPerL,
             calculatedAt: batchCosts.calculatedAt,
-            initialVolumeL: batches.initialVolumeL,
-            currentVolumeL: batches.currentVolumeL,
+            initialVolume: batches.initialVolume,
+            initialVolumeUnit: batches.initialVolumeUnit,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
           })
           .from(batchCosts)
           .leftJoin(batches, eq(batches.id, batchCosts.batchId))

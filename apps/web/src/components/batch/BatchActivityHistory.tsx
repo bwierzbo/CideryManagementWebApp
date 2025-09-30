@@ -277,7 +277,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
               <div>
                 <span className="text-muted-foreground">Current Volume:</span>
                 <span className="ml-2 font-medium">
-                  {batch.currentVolumeL}L
+                  {batch.currentVolume}L
                 </span>
               </div>
               <div>

@@ -573,11 +573,11 @@ export const pressRunRouter = router({
           }
 
           // Check vessel capacity
-          const vesselCapacityL = parseFloat(vessel[0].capacityL);
+          const vesselCapacityL = parseFloat(vessel[0].capacity?.toString() || "0");
           if (input.totalJuiceVolumeL > vesselCapacityL) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Total juice volume (${input.totalJuiceVolumeL}L) exceeds vessel capacity (${vesselCapacityL}L)`,
+              message: `Total juice volume (${input.totalJuiceVolumeL}L) exceeds vessel capacity (${vesselCapacityL}${vessel[0].capacityUnit || 'L'})`,
             });
           }
 
@@ -587,7 +587,8 @@ export const pressRunRouter = router({
             const updatedLoad = await tx
               .update(applePressRunLoads)
               .set({
-                juiceVolumeL: load.juiceVolumeL.toString(),
+                juiceVolume: load.juiceVolumeL.toString(),
+                juiceVolumeUnit: "L",
                 originalVolume: load.originalVolume.toString(),
                 originalVolumeUnit: load.originalVolumeUnit,
                 brixMeasured: load.brixMeasured?.toString(),
@@ -667,7 +668,8 @@ export const pressRunRouter = router({
               vesselId: input.vesselId,
               status: "completed",
               endTime: input.completionDate,
-              totalJuiceVolumeL: input.totalJuiceVolumeL.toString(),
+              totalJuiceVolume: input.totalJuiceVolumeL.toString(),
+              totalJuiceVolumeUnit: "L",
               extractionRate: extractionRate.toString(),
               laborHours: input.laborHours?.toString(),
               laborCostPerHour: input.laborCostPerHour?.toString(),
@@ -699,7 +701,8 @@ export const pressRunRouter = router({
               fruitVarietyId: applePressRunLoads.fruitVarietyId,
               varietyName: baseFruitVarieties.name,
               appleWeightKg: applePressRunLoads.appleWeightKg,
-              juiceVolumeL: applePressRunLoads.juiceVolumeL,
+              juiceVolume: applePressRunLoads.juiceVolume,
+              juiceVolumeUnit: applePressRunLoads.juiceVolumeUnit,
               brixMeasured: applePressRunLoads.brixMeasured,
               totalCost: basefruitPurchaseItems.totalCost,
             })
@@ -730,7 +733,7 @@ export const pressRunRouter = router({
             0,
           );
           const totalJuiceVolumeL = loads.reduce(
-            (sum, load) => sum + parseFloat(load.juiceVolumeL || "0"),
+            (sum, load) => sum + parseFloat(load.juiceVolume || "0"),
             0,
           );
 
@@ -759,8 +762,10 @@ export const pressRunRouter = router({
               vesselId: input.vesselId,
               name: batchName,
               batchNumber: batchName, // Using batch name as batch number for now
-              initialVolumeL: totalJuiceVolumeL.toString(),
-              currentVolumeL: totalJuiceVolumeL.toString(),
+              initialVolume: totalJuiceVolumeL.toString(),
+              initialVolumeUnit: "L",
+              currentVolume: totalJuiceVolumeL.toString(),
+              currentVolumeUnit: "L",
               status: "active",
               startDate: input.completionDate,
               originPressRunId: input.pressRunId,
@@ -801,7 +806,8 @@ export const pressRunRouter = router({
               vendorId: load.vendorId,
               varietyId: load.fruitVarietyId,
               inputWeightKg: load.appleWeightKg,
-              juiceVolumeL: juiceVolumeL.toString(),
+              juiceVolume: juiceVolumeL.toString(),
+              juiceVolumeUnit: "L" as const,
               fractionOfBatch: fraction.toString(),
               materialCost: materialCost.toString(),
               avgBrix: load.brixMeasured,
@@ -899,7 +905,7 @@ export const pressRunRouter = router({
           if (pressRun[0].status === "in_progress") {
             // Get total juice volume from loads
             const loads = await tx
-              .select({ juiceVolumeL: applePressRunLoads.juiceVolumeL })
+              .select({ juiceVolume: applePressRunLoads.juiceVolume })
               .from(applePressRunLoads)
               .where(
                 and(
@@ -911,7 +917,7 @@ export const pressRunRouter = router({
             const totalJuiceVolume =
               input.totalJuiceVolumeL ||
               loads.reduce(
-                (sum, load) => sum + parseFloat(load.juiceVolumeL || "0"),
+                (sum, load) => sum + parseFloat(load.juiceVolume || "0"),
                 0,
               );
 
@@ -955,7 +961,8 @@ export const pressRunRouter = router({
                 pressRunName,
                 status: "completed",
                 endTime: new Date(),
-                totalJuiceVolumeL: totalJuiceVolume.toString(),
+                totalJuiceVolume: totalJuiceVolume.toString(),
+                totalJuiceVolumeUnit: "L",
                 updatedAt: new Date(),
               })
               .where(eq(applePressRuns.id, input.pressRunId));
@@ -970,7 +977,8 @@ export const pressRunRouter = router({
           // Re-fetch press run to get updated juice volume and end time if it was just completed
           const updatedPressRun = await tx
             .select({
-              totalJuiceVolumeL: applePressRuns.totalJuiceVolumeL,
+              totalJuiceVolume: applePressRuns.totalJuiceVolume,
+              totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
               endTime: applePressRuns.endTime,
             })
             .from(applePressRuns)
@@ -979,7 +987,7 @@ export const pressRunRouter = router({
 
           const availableVolume =
             input.totalJuiceVolumeL ||
-            parseFloat(updatedPressRun[0].totalJuiceVolumeL || "0");
+            parseFloat(updatedPressRun[0].totalJuiceVolume || "0");
 
           if (totalAssignedVolume > availableVolume + 0.001) {
             // Allow 1mL tolerance
@@ -994,7 +1002,8 @@ export const pressRunRouter = router({
             const vessel = await tx
               .select({
                 id: vessels.id,
-                capacityL: vessels.capacityL,
+                capacity: vessels.capacity,
+                capacityUnit: vessels.capacityUnit,
                 name: vessels.name,
               })
               .from(vessels)
@@ -1018,7 +1027,8 @@ export const pressRunRouter = router({
               .select({
                 id: batches.id,
                 name: batches.name,
-                currentVolumeL: batches.currentVolumeL,
+                currentVolume: batches.currentVolume,
+                currentVolumeUnit: batches.currentVolumeUnit,
               })
               .from(batches)
               .where(
@@ -1030,10 +1040,10 @@ export const pressRunRouter = router({
               )
               .limit(1);
 
-            const vesselCapacity = parseFloat(vessel[0].capacityL);
+            const vesselCapacity = parseFloat(vessel[0].capacity?.toString() || "0");
             const currentVolume =
               existingBatch.length > 0
-                ? parseFloat(existingBatch[0].currentVolumeL || "0")
+                ? parseFloat(existingBatch[0].currentVolume?.toString() || "0")
                 : 0;
             const remainingCapacity = vesselCapacity - currentVolume;
 
@@ -1041,12 +1051,12 @@ export const pressRunRouter = router({
               if (existingBatch.length > 0) {
                 throw new TRPCError({
                   code: "BAD_REQUEST",
-                  message: `Assignment volume (${assignment.volumeL}L) exceeds remaining capacity (${remainingCapacity.toFixed(1)}L) in vessel ${vessel[0].name}. Current batch: ${existingBatch[0].name} (${currentVolume}L/${vesselCapacity}L)`,
+                  message: `Assignment volume (${assignment.volumeL}L) exceeds remaining capacity (${remainingCapacity.toFixed(1)}L) in vessel ${vessel[0].name}. Current batch: ${existingBatch[0].name} (${currentVolume}${existingBatch[0].currentVolumeUnit || 'L'}/${vesselCapacity}${vessel[0].capacityUnit || 'L'})`,
                 });
               } else {
                 throw new TRPCError({
                   code: "BAD_REQUEST",
-                  message: `Assignment volume (${assignment.volumeL}L) exceeds vessel capacity (${vesselCapacity}L) for vessel ${vessel[0].name}`,
+                  message: `Assignment volume (${assignment.volumeL}L) exceeds vessel capacity (${vesselCapacity}${vessel[0].capacityUnit || 'L'}) for vessel ${vessel[0].name}`,
                 });
               }
             }
@@ -1163,8 +1173,10 @@ export const pressRunRouter = router({
               .select({
                 id: batches.id,
                 name: batches.name,
-                currentVolumeL: batches.currentVolumeL,
-                initialVolumeL: batches.initialVolumeL,
+                currentVolume: batches.currentVolume,
+                currentVolumeUnit: batches.currentVolumeUnit,
+                initialVolume: batches.initialVolume,
+                initialVolumeUnit: batches.initialVolumeUnit,
               })
               .from(batches)
               .where(
@@ -1184,7 +1196,7 @@ export const pressRunRouter = router({
               batchId = existingBatch[0].id;
               batchName = existingBatch[0].name;
               const currentVolume = parseFloat(
-                existingBatch[0].currentVolumeL || "0",
+                existingBatch[0].currentVolume?.toString() || "0",
               );
               const newVolume = currentVolume + assignment.volumeL;
 
@@ -1192,7 +1204,8 @@ export const pressRunRouter = router({
               await tx
                 .update(batches)
                 .set({
-                  currentVolumeL: newVolume.toString(),
+                  currentVolume: newVolume.toString(),
+                  currentVolumeUnit: existingBatch[0].currentVolumeUnit || "L",
                   updatedAt: new Date(),
                 })
                 .where(eq(batches.id, batchId));
@@ -1234,8 +1247,10 @@ export const pressRunRouter = router({
                   vesselId: assignment.toVesselId,
                   name: batchName,
                   batchNumber: batchName, // Add batch_number for database compatibility
-                  initialVolumeL: assignment.volumeL.toString(),
-                  currentVolumeL: assignment.volumeL.toString(),
+                  initialVolume: assignment.volumeL.toString(),
+                  initialVolumeUnit: "L",
+                  currentVolume: assignment.volumeL.toString(),
+                  currentVolumeUnit: "L",
                   status: "active",
                   startDate: pressRunCompletionDate,
                   originPressRunId: input.pressRunId,
@@ -1300,7 +1315,7 @@ export const pressRunRouter = router({
             if (existingBatch.length > 0) {
               // For existing batch, we need to merge compositions
               const currentVolume = parseFloat(
-                existingBatch[0].currentVolumeL || "0",
+                existingBatch[0].currentVolume?.toString() || "0",
               );
               const newTotalVolume = currentVolume + assignment.volumeL;
 
@@ -1318,7 +1333,7 @@ export const pressRunRouter = router({
               // Update existing compositions with new fractions
               for (const existingComp of existingCompositions) {
                 const oldVolumeContribution = parseFloat(
-                  existingComp.juiceVolumeL || "0",
+                  existingComp.juiceVolume || "0",
                 );
                 const newFraction = oldVolumeContribution / newTotalVolume;
 
@@ -1367,7 +1382,7 @@ export const pressRunRouter = router({
                   const newWeight =
                     existingWeight + consolidatedLoad.totalAppleWeightKg;
                   const existingVolume = parseFloat(
-                    existingPurchaseComp.juiceVolumeL || "0",
+                    existingPurchaseComp.juiceVolume || "0",
                   );
                   const newVolume = existingVolume + juiceVolumeL;
                   const existingCost = parseFloat(
@@ -1380,7 +1395,8 @@ export const pressRunRouter = router({
                     .update(batchCompositions)
                     .set({
                       inputWeightKg: newWeight.toString(),
-                      juiceVolumeL: newVolume.toString(),
+                      juiceVolume: newVolume.toString(),
+                      juiceVolumeUnit: "L",
                       materialCost: newCost.toString(),
                       fractionOfBatch: newFraction.toString(),
                       avgBrix:
@@ -1397,7 +1413,8 @@ export const pressRunRouter = router({
                     varietyId: consolidatedLoad.varietyId,
                     inputWeightKg:
                       consolidatedLoad.totalAppleWeightKg.toString(),
-                    juiceVolumeL: juiceVolumeL.toString(),
+                    juiceVolume: juiceVolumeL.toString(),
+                    juiceVolumeUnit: "L",
                     fractionOfBatch: batchFraction.toString(),
                     materialCost: materialCost.toString(),
                     avgBrix: avgBrix ? avgBrix.toString() : null,
@@ -1446,7 +1463,8 @@ export const pressRunRouter = router({
                   vendorId: consolidatedLoad.vendorId,
                   varietyId: consolidatedLoad.varietyId,
                   inputWeightKg: consolidatedLoad.totalAppleWeightKg.toString(),
-                  juiceVolumeL: juiceVolumeL.toString(),
+                  juiceVolume: juiceVolumeL.toString(),
+                  juiceVolumeUnit: "L",
                   fractionOfBatch: fraction.toString(),
                   materialCost: materialCost.toString(),
                   avgBrix: avgBrix ? avgBrix.toString() : null,
@@ -1551,7 +1569,8 @@ export const pressRunRouter = router({
             startTime: applePressRuns.startTime,
             endTime: applePressRuns.endTime,
             totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
-            totalJuiceVolumeL: applePressRuns.totalJuiceVolumeL,
+            totalJuiceVolume: applePressRuns.totalJuiceVolume,
+            totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
             extractionRate: applePressRuns.extractionRate,
             laborHours: applePressRuns.laborHours,
             totalLaborCost: applePressRuns.totalLaborCost,
@@ -1686,13 +1705,15 @@ export const pressRunRouter = router({
             vesselId: applePressRuns.vesselId,
             vesselName: vessels.name,
             vesselType: vessels.type,
-            vesselCapacityL: vessels.capacityL,
+            vesselCapacity: vessels.capacity,
+            vesselCapacityUnit: vessels.capacityUnit,
             status: applePressRuns.status,
             scheduledDate: applePressRuns.scheduledDate,
             startTime: applePressRuns.startTime,
             endTime: applePressRuns.endTime,
             totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
-            totalJuiceVolumeL: applePressRuns.totalJuiceVolumeL,
+            totalJuiceVolume: applePressRuns.totalJuiceVolume,
+            totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
             extractionRate: applePressRuns.extractionRate,
             laborHours: applePressRuns.laborHours,
             laborCostPerHour: applePressRuns.laborCostPerHour,
@@ -1738,7 +1759,8 @@ export const pressRunRouter = router({
             appleWeightKg: applePressRunLoads.appleWeightKg,
             originalWeight: applePressRunLoads.originalWeight,
             originalWeightUnit: applePressRunLoads.originalWeightUnit,
-            juiceVolumeL: applePressRunLoads.juiceVolumeL,
+            juiceVolume: applePressRunLoads.juiceVolume,
+            juiceVolumeUnit: applePressRunLoads.juiceVolumeUnit,
             originalVolume: applePressRunLoads.originalVolume,
             originalVolumeUnit: applePressRunLoads.originalVolumeUnit,
             brixMeasured: applePressRunLoads.brixMeasured,
@@ -1817,8 +1839,8 @@ export const pressRunRouter = router({
           loads: loads.map((load) => ({
             ...load,
             individualExtractionRate:
-              load.appleWeightKg && load.juiceVolumeL
-                ? parseFloat(load.juiceVolumeL) / parseFloat(load.appleWeightKg)
+              load.appleWeightKg && load.juiceVolume
+                ? parseFloat(load.juiceVolume) / parseFloat(load.appleWeightKg)
                 : null,
           })),
           summary: {
@@ -1826,8 +1848,8 @@ export const pressRunRouter = router({
             totalAppleWeightKg: pressRun.totalAppleWeightKg
               ? parseFloat(pressRun.totalAppleWeightKg)
               : 0,
-            totalJuiceVolumeL: pressRun.totalJuiceVolumeL
-              ? parseFloat(pressRun.totalJuiceVolumeL)
+            totalJuiceVolume: pressRun.totalJuiceVolume
+              ? parseFloat(pressRun.totalJuiceVolume)
               : 0,
             averageBrix:
               loads.length > 0
@@ -1844,7 +1866,7 @@ export const pressRunRouter = router({
                 }
                 acc[variety].count++;
                 acc[variety].weightKg += parseFloat(load.appleWeightKg || "0");
-                acc[variety].juiceL += parseFloat(load.juiceVolumeL || "0");
+                acc[variety].juiceL += parseFloat(load.juiceVolume || "0");
                 return acc;
               },
               {} as Record<

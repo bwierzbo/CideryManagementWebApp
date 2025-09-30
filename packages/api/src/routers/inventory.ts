@@ -132,7 +132,7 @@ export const inventoryRouter = router({
           .select({
             id: sql<string>`CONCAT('juice-', ${juicePurchaseItems.id})`,
             packageId: sql<string | null>`NULL`,
-            currentBottleCount: sql<number>`COALESCE(CAST(${juicePurchaseItems.volumeL} AS NUMERIC), 0)`,
+            currentBottleCount: sql<number>`COALESCE(CAST(${juicePurchaseItems.volume} AS NUMERIC), 0)`,
             reservedBottleCount: sql<number>`0`,
             materialType: sql<string>`'juice'`,
             metadata: sql<unknown>`json_build_object(
@@ -640,7 +640,8 @@ export const inventoryRouter = router({
         .update(juicePurchaseItems)
         .set({
           ...updateData,
-          volumeL: volumeL?.toString(),
+          volume: volumeL?.toString(),
+          volumeUnit: "L" as const,
           specificGravity: specificGravity?.toString(),
           ph: ph?.toString(),
           updatedAt: new Date(),

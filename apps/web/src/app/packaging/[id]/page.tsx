@@ -411,7 +411,7 @@ export default function PackagingDetailPage() {
                   <div>
                     <p className="text-sm text-gray-500">Volume Taken</p>
                     <p className="font-medium">
-                      {runData.volumeTakenL.toFixed(1)}L
+                      {runData.volumeTaken.toFixed(1)}L
                     </p>
                   </div>
                 </div>
@@ -422,7 +422,7 @@ export default function PackagingDetailPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
                   <div>
                     <p className="text-sm text-gray-500">Loss Amount</p>
-                    <p className="font-medium">{runData.lossL.toFixed(2)}L</p>
+                    <p className="font-medium">{runData.loss.toFixed(2)}L</p>
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Loss Percentage</p>

@@ -34,6 +34,7 @@ import {
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 
 // Schema for base fruit items
 const baseFruitEditSchema = z.object({
@@ -249,7 +250,7 @@ export function InventoryEditDialog({
         case "juice":
           await updateJuice.mutateAsync({
             id: itemId,
-            volumeL: values.volumeL,
+            volumeL: values.volume,
             specificGravity: values.specificGravity,
             ph: values.ph,
             notes: values.notes,
@@ -506,7 +507,7 @@ export function InventoryEditDialog({
       case "juice":
         return (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div>
               <FormField
                 control={form.control}
                 name="volumeL"
@@ -514,39 +515,14 @@ export function InventoryEditDialog({
                   <FormItem>
                     <FormLabel>Volume</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        {...field}
-                        onChange={(e) =>
-                          field.onChange(parseFloat(e.target.value))
-                        }
+                      <VolumeInput
+                        value={field.value}
+                        unit={(form.watch("unit") as VolumeUnit) || "L"}
+                        onValueChange={(value) => field.onChange(value || 0)}
+                        onUnitChange={(unit) => form.setValue("unit", unit)}
+                        placeholder="Enter volume"
                       />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="unit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select unit" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="L">Liters (L)</SelectItem>
-                        <SelectItem value="gal">Gallons (gal)</SelectItem>
-                      </SelectContent>
-                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

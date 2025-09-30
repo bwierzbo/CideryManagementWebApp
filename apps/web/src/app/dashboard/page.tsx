@@ -52,6 +52,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
+import { VolumeDisplay } from "@/components/ui/volume-input";
 
 const stats = [
   {
@@ -327,9 +328,13 @@ function LiquidMap() {
                   </div>
 
                   <div className="text-sm text-gray-600 mb-2">
-                    <p>
+                    <p className="flex items-center gap-1">
                       Capacity:{" "}
-                      {(Number(vessel.vesselCapacityL) || 0).toFixed(1)}L
+                      <VolumeDisplay
+                        value={Number(vessel.vesselCapacity) || 0}
+                        unit={vessel.vesselCapacityUnit || "L"}
+                        showUnit={true}
+                      />
                     </p>
                     {vessel.vesselLocation && (
                       <p>Location: {vessel.vesselLocation}</p>
@@ -344,9 +349,13 @@ function LiquidMap() {
                           {vessel.batchNumber}
                         </span>
                       </div>
-                      <div className="text-xs text-blue-700">
+                      <div className="text-xs text-blue-700 flex items-center gap-1">
                         Volume:{" "}
-                        {(Number(vessel.currentVolumeL) || 0).toFixed(1)}L
+                        <VolumeDisplay
+                          value={Number(vessel.currentVolume) || 0}
+                          unit={vessel.currentVolumeUnit || "L"}
+                          showUnit={true}
+                        />
                       </div>
                       <div className="text-xs text-blue-700">
                         Status: {vessel.batchStatus}
@@ -359,10 +368,10 @@ function LiquidMap() {
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
                       <span>Utilization</span>
                       <span>
-                        {vessel.currentVolumeL
+                        {vessel.currentVolume
                           ? (
-                              (Number(vessel.currentVolumeL) /
-                                Number(vessel.vesselCapacityL)) *
+                              (Number(vessel.currentVolume) /
+                                Number(vessel.vesselCapacity)) *
                               100
                             ).toFixed(0)
                           : 0}
@@ -377,8 +386,8 @@ function LiquidMap() {
                             : "bg-gray-300"
                         }`}
                         style={{
-                          width: vessel.currentVolumeL
-                            ? `${Math.min((Number(vessel.currentVolumeL) / Number(vessel.vesselCapacityL)) * 100, 100)}%`
+                          width: vessel.currentVolume
+                            ? `${Math.min((Number(vessel.currentVolume) / Number(vessel.vesselCapacity)) * 100, 100)}%`
                             : "0%",
                         }}
                       />
@@ -574,8 +583,8 @@ function RecentPressRuns() {
                   </div>
                   <div className="text-right">
                     <p className="font-semibold text-gray-900">
-                      {pressRun.totalJuiceVolumeL
-                        ? `${parseFloat(pressRun.totalJuiceVolumeL).toFixed(1)}L`
+                      {pressRun.totalJuiceVolume
+                        ? `${parseFloat(pressRun.totalJuiceVolume).toFixed(1)}L`
                         : "—"}
                     </p>
                     <p className="text-xs text-gray-500">
@@ -702,8 +711,8 @@ function COGSReport() {
       batch.packagingCost,
       batch.costPerBottle || "",
       batch.costPerL || "",
-      batch.initialVolumeL,
-      batch.currentVolumeL,
+      batch.initialVolume,
+      batch.currentVolume,
     ]);
 
     const csvContent = [headers, ...rows]

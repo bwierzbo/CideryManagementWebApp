@@ -11,6 +11,7 @@ import {
   useSimpleSearch,
   type OptimizedSearchConfig,
 } from "@/hooks/useOptimizedSearch";
+import { useDebounce } from "@/hooks/useDebounce";
 import type { SearchCallback, MaterialType } from "@/types/inventory";
 import type { SearchableItem } from "@/utils/searchUtils";
 
@@ -53,11 +54,9 @@ export function InventorySearch({
   });
 
   // Fallback to legacy debounced search
-  const {
-    debouncedQuery,
-    setQuery: setLegacyQuery,
-    isDebouncing,
-  } = useDebouncedSearch(initialValue, debounceMs);
+  const [legacyQuery, setLegacyQuery] = useState(initialValue);
+  const debouncedQuery = useDebounce(legacyQuery, debounceMs);
+  const isDebouncing = legacyQuery !== debouncedQuery;
 
   // Current query state
   const [currentQuery, setCurrentQuery] = useState(initialValue);

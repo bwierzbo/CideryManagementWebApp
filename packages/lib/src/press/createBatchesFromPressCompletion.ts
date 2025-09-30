@@ -16,6 +16,7 @@ import {
   type BatchComposition,
 } from "../naming/batchName";
 import { auditEventBus, publishCreateEvent } from "../audit/eventBus";
+import { convertVolume, type VolumeUnit } from "../utils/volumeConversion";
 
 export type Assignment = {
   toVesselId: string;
@@ -60,7 +61,8 @@ export class InvariantError extends PressCompletionError {
  */
 interface PressRunData {
   id: string;
-  totalJuiceProducedL: number;
+  totalJuiceProduced: number;
+  totalJuiceProducedUnit: string;
   batchesCreated?: boolean;
 }
 
@@ -142,7 +144,8 @@ async function validateAndLoadData(
   const pressRunResult = await db
     .select({
       id: pressRuns.id,
-      totalJuiceProducedL: pressRuns.totalJuiceProducedL,
+      totalJuiceProduced: pressRuns.totalJuiceProduced,
+      totalJuiceProducedUnit: pressRuns.totalJuiceProducedUnit,
     })
     .from(pressRuns)
     .where(eq(pressRuns.id, pressRunId))
@@ -172,7 +175,13 @@ async function validateAndLoadData(
     (sum, a) => sum + a.volumeL,
     0,
   );
-  const availableVolume = Number(pressRunData.totalJuiceProducedL);
+
+  // Convert the stored volume to liters for comparison
+  const availableVolume = convertVolume(
+    Number(pressRunData.totalJuiceProduced),
+    pressRunData.totalJuiceProducedUnit as VolumeUnit,
+    'L'
+  );
 
   if (totalAssignedVolume > availableVolume + 0.001) {
     // Allow 1mL tolerance
@@ -193,7 +202,8 @@ async function validateAndLoadData(
     const vesselResult = await db
       .select({
         id: vessels.id,
-        capacityL: vessels.capacityL,
+        capacity: vessels.capacity,
+        capacityUnit: vessels.capacityUnit,
         name: vessels.name,
       })
       .from(vessels)
@@ -207,7 +217,7 @@ async function validateAndLoadData(
     }
 
     const vessel = vesselResult[0];
-    const vesselCapacity = Number(vessel.capacityL);
+    const vesselCapacity = Number(vessel.capacity);
 
     if (assignment.volumeL > vesselCapacity + 0.001) {
       // Allow 1mL tolerance
@@ -249,7 +259,8 @@ async function validateAndLoadData(
   return {
     pressRunData: {
       id: pressRunData.id,
-      totalJuiceProducedL: Number(pressRunData.totalJuiceProducedL),
+      totalJuiceProduced: Number(pressRunData.totalJuiceProduced),
+      totalJuiceProducedUnit: pressRunData.totalJuiceProducedUnit,
     },
     purchaseLines: purchaseLines.map((line) => ({
       id: line.id,
@@ -369,8 +380,10 @@ async function createBatchForAssignment(
     vesselId: assignment.toVesselId,
     name: batchName,
     batchNumber: batchName, // Using batch name as batch number
-    initialVolumeL: assignment.volumeL.toString(),
-    currentVolumeL: assignment.volumeL.toString(),
+    initialVolume: assignment.volumeL.toString(),
+    initialVolumeUnit: "L" as const,
+    currentVolume: assignment.volumeL.toString(),
+    currentVolumeUnit: "L" as const,
     status: "active" as const,
     startDate: new Date(),
     originPressRunId: pressRunData.id,

@@ -109,10 +109,12 @@ export const juicePurchasesRouter = router({
               : 0;
             totalCost += itemTotal;
 
+            const { volumeL, ...itemRest } = item;
             processedItems.push({
-              ...item,
+              ...itemRest,
               totalCost: itemTotal.toString(),
-              volumeL: item.volumeL.toString(),
+              volume: volumeL.toString(),
+              volumeUnit: "L" as const,
               pricePerLiter: item.pricePerLiter?.toString() || null,
               brix: item.brix?.toString() || null,
               ph: item.ph?.toString() || null,

@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
+import { VolumeDisplay } from "@/components/ui/volume-input";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import {
   DropdownMenu,
@@ -272,9 +273,6 @@ export function JuiceInventoryTable({
     return new Date(dateString).toLocaleDateString();
   };
 
-  const formatVolume = (volumeL: number) => {
-    return `${volumeL.toLocaleString()} L`;
-  };
 
   // Convert brix to specific gravity
   const convertBrixToSG = (brix: string | null) => {
@@ -478,7 +476,11 @@ export function JuiceInventoryTable({
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatVolume(item.currentBottleCount)}
+                        <VolumeDisplay
+                          value={item.currentBottleCount}
+                          unit="L"
+                          showUnit={true}
+                        />
                       </TableCell>
                       <TableCell>
                         {item.metadata?.specificGravity ? (

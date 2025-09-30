@@ -181,7 +181,7 @@ export default function BatchManagementPage() {
                         </TableCell>
                         <TableCell>{getStatusBadge(batch.status)}</TableCell>
                         <TableCell>{formatDate(batch.createdAt)}</TableCell>
-                        <TableCell>{batch.currentVolumeL || "N/A"}</TableCell>
+                        <TableCell>{batch.currentVolume || "N/A"}</TableCell>
                         <TableCell>{batch.vesselName || "No vessel"}</TableCell>
                         <TableCell>
                           <Button

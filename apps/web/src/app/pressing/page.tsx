@@ -466,8 +466,8 @@ function CompletedRunsSection({
                     <div>
                       <p className="text-xs text-gray-600">Juice</p>
                       <p className="font-medium text-sm">
-                        {run.totalJuiceVolumeL
-                          ? `${parseFloat(run.totalJuiceVolumeL).toFixed(1)} L`
+                        {run.totalJuiceVolume
+                          ? `${parseFloat(run.totalJuiceVolume).toFixed(1)} L`
                           : "—"}
                       </p>
                     </div>

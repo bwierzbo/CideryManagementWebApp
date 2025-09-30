@@ -167,8 +167,8 @@ export function BatchHistoryModal({
                     <div>
                       <p className="text-sm text-gray-600">Total Juice</p>
                       <p className="font-semibold">
-                        {origin.totalJuiceVolumeL
-                          ? `${parseFloat(origin.totalJuiceVolumeL).toFixed(1)} L`
+                        {origin.totalJuiceVolume
+                          ? `${parseFloat(origin.totalJuiceVolume).toFixed(1)} ${origin.totalJuiceVolumeUnit || 'L'}`
                           : "N/A"}
                       </p>
                     </div>
@@ -211,7 +211,7 @@ export function BatchHistoryModal({
                           {item.inputWeightKg.toFixed(1)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {item.juiceVolumeL.toFixed(1)}
+                          {item.juiceVolume.toFixed(1)}
                         </TableCell>
                         <TableCell className="text-right">
                           {(item.fractionOfBatch * 100).toFixed(1)}%
@@ -335,7 +335,7 @@ export function BatchHistoryModal({
                             {m.temperature?.toFixed(1) || "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {m.volumeL?.toFixed(1) || "-"}
+                            {m.volume?.toFixed(1) || "-"}
                           </TableCell>
                         </TableRow>
                       ))

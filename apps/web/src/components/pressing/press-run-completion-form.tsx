@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { VolumeInput, VolumeDisplay, type VolumeUnit } from "@/components/ui/volume-input";
 import {
   Card,
   CardContent,
@@ -73,7 +74,7 @@ const pressRunCompletionSchema = z.object({
   completionDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Please enter a valid date"),
-  totalJuiceVolumeL: z
+  totalJuiceVolume: z
     .number()
     .min(1, "Total juice volume must be at least 1L")
     .max(50000, "Total juice volume cannot exceed 50,000L"),
@@ -148,7 +149,7 @@ export function PressRunCompletionForm({
 
   const watchedValues = form.watch();
 
-  const canonicalVolumeL = watchedValues.totalJuiceVolumeL || 0;
+  const canonicalVolumeL = watchedValues.totalJuiceVolume || 0;
   const assignedVolumeL =
     watchedValues.assignments?.reduce(
       (sum, assignment) => sum + (assignment.volumeL || 0),
@@ -177,7 +178,7 @@ export function PressRunCompletionForm({
     const submissionPayload = {
       pressRunId,
       completionDate,
-      totalJuiceVolumeL: data.totalJuiceVolumeL,
+      totalJuiceVolume: data.totalJuiceVolume,
       assignments: data.assignments,
       laborHours: data.laborHours,
       notes: data.notes,
@@ -199,7 +200,7 @@ export function PressRunCompletionForm({
 
     if (value === "") {
       // Allow clearing the field
-      form.setValue("totalJuiceVolumeL", 0);
+      form.setValue("totalJuiceVolume", 0);
       return;
     }
 
@@ -210,21 +211,21 @@ export function PressRunCompletionForm({
         watchedValues.juiceVolumeUnit === "gal"
           ? gallonsToLiters(numValue)
           : numValue;
-      form.setValue("totalJuiceVolumeL", volumeInL);
+      form.setValue("totalJuiceVolume", volumeInL);
     }
   };
 
   const handleUnitChange = (newUnit: "L" | "gal") => {
-    const currentVolumeL = watchedValues.totalJuiceVolumeL || 0;
+    const currentVolume = watchedValues.totalJuiceVolume || 0;
     form.setValue("juiceVolumeUnit", newUnit);
 
     // Only convert if there's a positive value to convert
-    if (currentVolumeL > 0) {
+    if (currentVolume > 0) {
       // Convert current volume to display in new unit
       const newDisplayValue =
         newUnit === "gal"
-          ? litersToGallons(currentVolumeL).toString()
-          : currentVolumeL.toString();
+          ? litersToGallons(currentVolume).toString()
+          : currentVolume.toString();
 
       setDisplayValue(newDisplayValue);
     } else {
@@ -296,55 +297,32 @@ export function PressRunCompletionForm({
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Volume Input with Unit Selection */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <FormField
-                    control={form.control}
-                    name="totalJuiceVolumeL"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="Enter total volume..."
-                            value={displayValue}
-                            onChange={(e) => handleVolumeChange(e.target.value)}
-                            className="text-lg h-12"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="juiceVolumeUnit"
-                    render={({ field }) => (
-                      <FormItem>
-                        <Select
-                          onValueChange={handleUnitChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="h-12">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="L">Liters (L)</SelectItem>
-                            <SelectItem value="gal">Gallons (gal)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
+              <FormField
+                control={form.control}
+                name="totalJuiceVolume"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Total Juice Volume</FormLabel>
+                    <FormControl>
+                      <VolumeInput
+                        value={displayValue ? parseFloat(displayValue) : undefined}
+                        unit={watchedValues.juiceVolumeUnit as VolumeUnit}
+                        onValueChange={(value) => {
+                          handleVolumeChange(value?.toString() || "");
+                        }}
+                        onUnitChange={(unit) => {
+                          handleUnitChange(unit as "L" | "gal");
+                        }}
+                        placeholder="Enter total juice volume..."
+                        min={0}
+                        step={0.01}
+                        required
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Real-time Unit Conversion Display */}
               {canonicalVolumeL > 0 && (
@@ -451,14 +429,14 @@ export function PressRunCompletionForm({
                                           </span>
                                           <span className="text-xs text-gray-500 ml-2">
                                             {vessel.remainingCapacityL}L /{" "}
-                                            {vessel.capacityL}L
+                                            {vessel.capacity}L
                                           </span>
                                         </div>
                                         {vessel.currentBatch && (
                                           <div className="text-xs text-blue-600 mt-1">
                                             Current: {vessel.currentBatch.name}{" "}
                                             (
-                                            {vessel.currentBatch.currentVolumeL}
+                                            {vessel.currentBatch.currentVolume}
                                             L)
                                           </div>
                                         )}
@@ -538,7 +516,7 @@ export function PressRunCompletionForm({
                                 vessel?.remainingCapacityL || "0",
                               );
                               const totalL = parseFloat(
-                                vessel?.capacityL || "0",
+                                vessel?.capacity || "0",
                               );
 
                               if (watchedValues.juiceVolumeUnit === "gal") {
@@ -580,12 +558,12 @@ export function PressRunCompletionForm({
                             const remainingL = parseFloat(
                               vessel.remainingCapacityL,
                             );
-                            const totalL = parseFloat(vessel.capacityL);
+                            const totalL = parseFloat(vessel.capacity);
                             const volumeL = assignment.volumeL;
                             const currentBatchVolumeL =
                               vessel.currentBatch &&
-                              vessel.currentBatch.currentVolumeL
-                                ? parseFloat(vessel.currentBatch.currentVolumeL)
+                              vessel.currentBatch.currentVolume
+                                ? parseFloat(vessel.currentBatch.currentVolume)
                                 : 0;
                             const combinedVolumeL =
                               currentBatchVolumeL + volumeL;
