@@ -452,11 +452,21 @@ function TankTransferForm({
   const sourceLiquidMap = liquidMapQuery.data?.vessels?.find(
     (v) => v.vesselId === fromVesselId,
   );
-  const currentVolumeL = sourceLiquidMap?.currentVolume
-    ? parseFloat(sourceLiquidMap.currentVolume.toString())
-    : sourceLiquidMap?.applePressRunVolume
-      ? parseFloat(sourceLiquidMap.applePressRunVolume.toString())
-      : 0;
+
+  // Get source vessel's capacity unit for display
+  const sourceCapacityUnit = (sourceVessel?.capacityUnit || "L") as VolumeUnit;
+
+  // Get current volume in source vessel, converted to its capacity unit
+  let currentVolume = 0;
+  if (sourceLiquidMap?.currentVolume) {
+    const vol = parseFloat(sourceLiquidMap.currentVolume.toString());
+    const unit = (sourceLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
+    currentVolume = convertVolume(vol, unit, sourceCapacityUnit);
+  } else if (sourceLiquidMap?.applePressRunVolume) {
+    const vol = parseFloat(sourceLiquidMap.applePressRunVolume.toString());
+    const unit = (sourceLiquidMap.applePressRunVolumeUnit || "L") as VolumeUnit;
+    currentVolume = convertVolume(vol, unit, sourceCapacityUnit);
+  }
 
   // Get available destination vessels (exclude current vessel, allow both available and fermenting)
   const availableVessels =
@@ -469,12 +479,18 @@ function TankTransferForm({
   const watchedToVesselId = watch("toVesselId");
   const destVessel = availableVessels.find(v => v.id === watchedToVesselId);
   const destHasLiquid = destVessel?.status === "fermenting";
+  const destCapacityUnit = (destVessel?.capacityUnit || "L") as VolumeUnit;
   const destLiquidMap = liquidMapQuery.data?.vessels?.find(
     (v) => v.vesselId === watchedToVesselId,
   );
-  const destCurrentVolume = destLiquidMap?.currentVolume
-    ? parseFloat(destLiquidMap.currentVolume.toString())
-    : 0;
+
+  // Get destination current volume, converted to its capacity unit
+  let destCurrentVolume = 0;
+  if (destLiquidMap?.currentVolume) {
+    const vol = parseFloat(destLiquidMap.currentVolume.toString());
+    const unit = (destLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
+    destCurrentVolume = convertVolume(vol, unit, destCapacityUnit);
+  }
 
   const watchedVolumeL = watch("volumeL");
   const watchedLoss = watch("loss") || 0;
@@ -518,7 +534,7 @@ function TankTransferForm({
     handleSubmit(onSubmit)();
   };
 
-  const remainingVolume = currentVolumeL - (watchedVolumeL || 0) - watchedLoss;
+  const remainingVolume = currentVolume - (watchedVolumeL || 0) - watchedLoss;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -528,10 +544,7 @@ function TankTransferForm({
         </h4>
         <p className="text-sm text-blue-700">
           Current volume:{" "}
-          {formatVolume(
-            currentVolumeL,
-            sourceVessel?.capacityUnit as VolumeUnit,
-          )}
+          {formatVolume(currentVolume, sourceCapacityUnit)}
         </p>
       </div>
 
@@ -546,9 +559,19 @@ function TankTransferForm({
               const vesselLiquidMap = liquidMapQuery.data?.vessels?.find(
                 (v) => v.vesselId === vessel.id,
               );
-              const vesselCurrentVolume = vesselLiquidMap?.currentVolume
-                ? parseFloat(vesselLiquidMap.currentVolume.toString())
-                : 0;
+
+              // Capacity is stored in liters, convert to display unit
+              const capacityInLiters = parseFloat(vessel.capacity);
+              const capacityUnit = vessel.capacityUnit as VolumeUnit;
+              const capacity = convertVolume(capacityInLiters, "L", capacityUnit);
+
+              // Current volume - convert to vessel's capacity unit
+              let vesselCurrentVolume = 0;
+              if (vesselLiquidMap?.currentVolume) {
+                const currentVol = parseFloat(vesselLiquidMap.currentVolume.toString());
+                const currentUnit = (vesselLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
+                vesselCurrentVolume = convertVolume(currentVol, currentUnit, capacityUnit);
+              }
               const hasLiquid = vessel.status === "fermenting" && vesselCurrentVolume > 0;
 
               return (
@@ -556,15 +579,15 @@ function TankTransferForm({
                   <span className="flex items-center gap-2">
                     {vessel.name || "Unnamed"} (
                     <VolumeDisplay
-                      value={parseFloat(vessel.capacity)}
-                      unit={vessel.capacityUnit as VolumeUnit}
+                      value={capacity}
+                      unit={capacityUnit}
                       showUnit={true}
                       className="inline"
                     />
                     capacity)
                     {hasLiquid && (
                       <span className="text-xs text-orange-600 font-medium">
-                        • Contains {formatVolume(vesselCurrentVolume, vessel.capacityUnit as VolumeUnit)}
+                        • Contains {formatVolume(vesselCurrentVolume, capacityUnit)}
                       </span>
                     )}
                   </span>
@@ -591,7 +614,7 @@ function TankTransferForm({
             id="volumeL"
             type="number"
             step="0.1"
-            max={currentVolumeL}
+            max={currentVolume}
             placeholder="Amount to transfer"
             {...register("volumeL", { valueAsNumber: true })}
           />
@@ -626,10 +649,7 @@ function TankTransferForm({
                   : "text-gray-700"
               }
             >
-              {formatVolume(
-                remainingVolume,
-                sourceVessel?.capacityUnit as VolumeUnit,
-              )}
+              {formatVolume(remainingVolume, sourceCapacityUnit)}
             </span>
           </p>
           {remainingVolume < 0 && (
@@ -674,10 +694,10 @@ function TankTransferForm({
             <DialogDescription className="space-y-3">
               <p>
                 The destination tank <strong>{destVessel?.name || "Unknown"}</strong> already contains{" "}
-                {formatVolume(destCurrentVolume, destVessel?.capacityUnit as VolumeUnit)} of liquid.
+                {formatVolume(destCurrentVolume, destCapacityUnit)} of liquid.
               </p>
               <p>
-                Transferring {formatVolume(watchedVolumeL || 0, sourceVessel?.capacityUnit as VolumeUnit)} from{" "}
+                Transferring {formatVolume(watchedVolumeL || 0, sourceCapacityUnit)} from{" "}
                 <strong>{sourceVessel?.name || "Unknown"}</strong> will blend the contents of both tanks.
               </p>
               <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
@@ -686,7 +706,7 @@ function TankTransferForm({
                 </p>
                 <p className="text-sm text-orange-700 mt-1">
                   The batches will be combined and cannot be separated. The resulting blend will have a total volume of approximately{" "}
-                  {formatVolume((destCurrentVolume + (watchedVolumeL || 0)), destVessel?.capacityUnit as VolumeUnit)}.
+                  {formatVolume((destCurrentVolume + (watchedVolumeL || 0)), destCapacityUnit)}.
                 </p>
               </div>
               <p className="text-sm font-medium">Do you want to continue?</p>
@@ -1048,8 +1068,9 @@ function VesselMap() {
             const capacityUnit =
               vessel.capacityUnit || liquidMapVessel?.vesselCapacityUnit || "L";
 
-            // Get vessel capacity in its original unit
-            const capacity = parseFloat(vessel.capacity);
+            // Vessel capacity is always stored in liters in DB, convert to display unit
+            const capacityInLiters = parseFloat(vessel.capacity);
+            const capacity = convertVolume(capacityInLiters, "L", capacityUnit as VolumeUnit);
 
             // Get current volume and convert to vessel's capacity unit
             let currentVolume = 0;
