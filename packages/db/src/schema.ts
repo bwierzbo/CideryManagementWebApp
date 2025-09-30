@@ -21,6 +21,7 @@ export const batchStatusEnum = pgEnum("batch_status", [
   "planned",
   "active",
   "packaged",
+  "blended",
 ]);
 export const vesselStatusEnum = pgEnum("vessel_status", [
   "available",

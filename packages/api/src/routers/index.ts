@@ -2903,19 +2903,39 @@ export const appRouter = router({
               });
             }
 
-            if (destVessel[0].status !== "available") {
+            // Check if destination is available or fermenting (allow blending)
+            if (destVessel[0].status !== "available" && destVessel[0].status !== "fermenting") {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: "Destination vessel is not available",
+                message: `Destination vessel is ${destVessel[0].status} and cannot receive liquid`,
               });
             }
 
-            // Check if destination vessel has enough capacity
+            // Check if destination vessel exists has an active batch (blend scenario)
+            const destBatch = await tx
+              .select()
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.vesselId, input.toVesselId),
+                  eq(batches.status, "active"),
+                  isNull(batches.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            const isBlending = destBatch.length > 0;
+            const destCurrentVolumeL = isBlending
+              ? parseFloat(destBatch[0].currentVolume?.toString() || "0")
+              : 0;
+
+            // Check if destination vessel has enough capacity for the combined volume
             const destCapacityL = parseFloat(destVessel[0].capacity?.toString() || "0");
-            if (input.volumeL > destCapacityL) {
+            const totalVolumeAfterTransfer = destCurrentVolumeL + input.volumeL;
+            if (totalVolumeAfterTransfer > destCapacityL) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Transfer volume (${input.volumeL}L) exceeds destination vessel capacity (${destCapacityL}${destVessel[0].capacityUnit || 'L'})`,
+                message: `Transfer volume (${input.volumeL}L) plus existing volume (${destCurrentVolumeL}L) exceeds destination vessel capacity (${destCapacityL}${destVessel[0].capacityUnit || 'L'})`,
               });
             }
 
@@ -3002,40 +3022,97 @@ export const appRouter = router({
                 .where(eq(vessels.id, input.fromVesselId));
             }
 
-            // Move the original batch to the destination vessel
-            const updatedBatch = await tx
-              .update(batches)
-              .set({
-                vesselId: input.toVesselId,
-                currentVolume: input.volumeL.toString(),
-                currentVolumeUnit: "L",
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, sourceBatch[0].id))
-              .returning();
+            let updatedBatch;
+            let blendNote = "";
 
-            // Update destination vessel status to fermenting
-            await tx
-              .update(vessels)
-              .set({
-                status: "fermenting",
-                updatedAt: new Date(),
-              })
-              .where(eq(vessels.id, input.toVesselId));
+            if (isBlending) {
+              // BLENDING SCENARIO: Combine source batch into destination batch
+              const newVolumeL = destCurrentVolumeL + input.volumeL;
 
-            // Audit logging for batch transfer
-            await publishUpdateEvent(
-              "batches",
-              sourceBatch[0].id,
-              sourceBatch[0],
-              {
-                vesselId: input.toVesselId,
-                currentVolume: input.volumeL.toString(),
-                currentVolumeUnit: "L",
-              },
-              ctx.session?.user?.id,
-              `Batch transferred to ${destVessel[0].name || "Unknown Vessel"} via API`,
-            );
+              // Update destination batch with combined volume
+              updatedBatch = await tx
+                .update(batches)
+                .set({
+                  currentVolume: newVolumeL.toString(),
+                  currentVolumeUnit: "L",
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, destBatch[0].id))
+                .returning();
+
+              // Mark source batch as blended (soft delete with status update)
+              await tx
+                .update(batches)
+                .set({
+                  status: "blended",
+                  deletedAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, sourceBatch[0].id));
+
+              blendNote = `Blended ${input.volumeL}L from batch ${sourceBatch[0].name || sourceBatch[0].batchNumber} into existing batch ${destBatch[0].name || destBatch[0].batchNumber}. Total volume: ${newVolumeL}L`;
+
+              // Audit logging for blend
+              await publishUpdateEvent(
+                "batches",
+                destBatch[0].id,
+                destBatch[0],
+                {
+                  currentVolume: newVolumeL.toString(),
+                  currentVolumeUnit: "L",
+                },
+                ctx.session?.user?.id,
+                blendNote,
+              );
+
+              // Audit logging for source batch being blended
+              await publishUpdateEvent(
+                "batches",
+                sourceBatch[0].id,
+                sourceBatch[0],
+                {
+                  status: "blended",
+                  deletedAt: new Date(),
+                },
+                ctx.session?.user?.id,
+                `Batch blended into ${destBatch[0].name || destBatch[0].batchNumber} in ${destVessel[0].name || "Unknown Vessel"}`,
+              );
+            } else {
+              // NORMAL TRANSFER: Move the batch to the destination vessel
+              updatedBatch = await tx
+                .update(batches)
+                .set({
+                  vesselId: input.toVesselId,
+                  currentVolume: input.volumeL.toString(),
+                  currentVolumeUnit: "L",
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, sourceBatch[0].id))
+                .returning();
+
+              // Update destination vessel status to fermenting
+              await tx
+                .update(vessels)
+                .set({
+                  status: "fermenting",
+                  updatedAt: new Date(),
+                })
+                .where(eq(vessels.id, input.toVesselId));
+
+              // Audit logging for batch transfer
+              await publishUpdateEvent(
+                "batches",
+                sourceBatch[0].id,
+                sourceBatch[0],
+                {
+                  vesselId: input.toVesselId,
+                  currentVolume: input.volumeL.toString(),
+                  currentVolumeUnit: "L",
+                },
+                ctx.session?.user?.id,
+                `Batch transferred to ${destVessel[0].name || "Unknown Vessel"} via API`,
+              );
+            }
 
             // Record the transfer in batchTransfers table
             const transferRecord = await tx
@@ -3043,7 +3120,7 @@ export const appRouter = router({
               .values({
                 sourceBatchId: sourceBatch[0].id,
                 sourceVesselId: input.fromVesselId,
-                destinationBatchId: sourceBatch[0].id, // Same batch moved
+                destinationBatchId: isBlending ? destBatch[0].id : sourceBatch[0].id,
                 destinationVesselId: input.toVesselId,
                 remainingBatchId: remainingBatch?.id || null,
                 volumeTransferred: input.volumeL.toString(),
@@ -3055,7 +3132,9 @@ export const appRouter = router({
                 remainingVolume:
                   remainingVolumeL > 0 ? remainingVolumeL.toString() : null,
                 remainingVolumeUnit: "L",
-                notes: input.notes,
+                notes: isBlending
+                  ? `BLEND: ${blendNote}${input.notes ? ` | ${input.notes}` : ""}`
+                  : input.notes,
                 transferredBy: ctx.session?.user?.id,
                 transferredAt: new Date(),
                 createdAt: new Date(),
@@ -3063,12 +3142,17 @@ export const appRouter = router({
               })
               .returning();
 
+            const message = isBlending
+              ? `Successfully blended ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} into ${destVessel[0].name || "Unknown"}. ${blendNote}${remainingVolumeL > 0 ? ` Remaining batch created with ${remainingVolumeL}L` : ""}.`
+              : `Successfully transferred ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL}L` : ""}.`;
+
             return {
               success: true,
-              message: `Successfully transferred ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL}L` : ""}.`,
+              message,
               transferredBatch: updatedBatch[0],
               remainingSourceBatch: remainingBatch,
               transferRecord: transferRecord[0],
+              isBlend: isBlending,
             };
           });
         } catch (error) {

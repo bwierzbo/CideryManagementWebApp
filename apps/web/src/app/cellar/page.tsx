@@ -422,6 +422,9 @@ function TankTransferForm({
   fromVesselId: string;
   onClose: () => void;
 }) {
+  const [showBlendConfirm, setShowBlendConfirm] = useState(false);
+  const [selectedDestVesselId, setSelectedDestVesselId] = useState<string | null>(null);
+
   const {
     register,
     handleSubmit,
@@ -454,11 +457,23 @@ function TankTransferForm({
       ? parseFloat(sourceLiquidMap.applePressRunVolume.toString())
       : 0;
 
-  // Get available destination vessels (exclude current vessel and only available ones)
+  // Get available destination vessels (exclude current vessel, allow both available and fermenting)
   const availableVessels =
     vesselListQuery.data?.vessels?.filter(
-      (vessel) => vessel.id !== fromVesselId && vessel.status === "available",
+      (vessel) => vessel.id !== fromVesselId &&
+                  (vessel.status === "available" || vessel.status === "fermenting"),
     ) || [];
+
+  // Check if destination vessel has liquid (is fermenting)
+  const watchedToVesselId = watch("toVesselId");
+  const destVessel = availableVessels.find(v => v.id === watchedToVesselId);
+  const destHasLiquid = destVessel?.status === "fermenting";
+  const destLiquidMap = liquidMapQuery.data?.vessels?.find(
+    (v) => v.vesselId === watchedToVesselId,
+  );
+  const destCurrentVolume = destLiquidMap?.currentVolume
+    ? parseFloat(destLiquidMap.currentVolume.toString())
+    : 0;
 
   const watchedVolumeL = watch("volumeL");
   const watchedLoss = watch("loss") || 0;
@@ -467,17 +482,39 @@ function TankTransferForm({
     onSuccess: (result) => {
       utils.vessel.list.invalidate();
       utils.vessel.liquidMap.invalidate();
+      setShowBlendConfirm(false);
       onClose();
-      // TODO: Show success toast with result.message
+      toast({
+        title: "Transfer successful",
+        description: result.message || "Liquid transferred successfully",
+      });
     },
     onError: (error) => {
-      // TODO: Show error toast with error.message
+      setShowBlendConfirm(false);
+      toast({
+        title: "Transfer failed",
+        description: error.message,
+        variant: "destructive",
+      });
       console.error("Transfer failed:", error.message);
     },
   });
 
   const onSubmit = (data: any) => {
+    // Check if destination has liquid - if so, show blend confirmation
+    if (destHasLiquid && !showBlendConfirm) {
+      setSelectedDestVesselId(data.toVesselId);
+      setShowBlendConfirm(true);
+      return;
+    }
+
+    // Proceed with transfer
     transferMutation.mutate(data);
+  };
+
+  const handleBlendConfirm = () => {
+    // User confirmed blend, proceed with transfer
+    handleSubmit(onSubmit)();
   };
 
   const remainingVolume = currentVolumeL - (watchedVolumeL || 0) - watchedLoss;
@@ -504,24 +541,45 @@ function TankTransferForm({
             <SelectValue placeholder="Select destination tank" />
           </SelectTrigger>
           <SelectContent>
-            {availableVessels.map((vessel) => (
-              <SelectItem key={vessel.id} value={vessel.id}>
-                <span className="flex items-center gap-1">
-                  {vessel.name || "Unnamed"} (
-                  <VolumeDisplay
-                    value={parseFloat(vessel.capacity)}
-                    unit={vessel.capacityUnit as VolumeUnit}
-                    showUnit={true}
-                    className="inline"
-                  />
-                  capacity)
-                </span>
-              </SelectItem>
-            ))}
+            {availableVessels.map((vessel) => {
+              const vesselLiquidMap = liquidMapQuery.data?.vessels?.find(
+                (v) => v.vesselId === vessel.id,
+              );
+              const vesselCurrentVolume = vesselLiquidMap?.currentVolume
+                ? parseFloat(vesselLiquidMap.currentVolume.toString())
+                : 0;
+              const hasLiquid = vessel.status === "fermenting" && vesselCurrentVolume > 0;
+
+              return (
+                <SelectItem key={vessel.id} value={vessel.id}>
+                  <span className="flex items-center gap-2">
+                    {vessel.name || "Unnamed"} (
+                    <VolumeDisplay
+                      value={parseFloat(vessel.capacity)}
+                      unit={vessel.capacityUnit as VolumeUnit}
+                      showUnit={true}
+                      className="inline"
+                    />
+                    capacity)
+                    {hasLiquid && (
+                      <span className="text-xs text-orange-600 font-medium">
+                        • Contains {formatVolume(vesselCurrentVolume, vessel.capacityUnit as VolumeUnit)}
+                      </span>
+                    )}
+                  </span>
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
         {errors.toVesselId && (
           <p className="text-sm text-red-600">{errors.toVesselId.message}</p>
+        )}
+        {destHasLiquid && destCurrentVolume > 0 && (
+          <p className="text-sm text-orange-600 mt-1 flex items-center gap-1">
+            <AlertTriangle className="h-4 w-4" />
+            This tank contains liquid. Transferring will blend the contents.
+          </p>
         )}
       </div>
 
@@ -603,6 +661,56 @@ function TankTransferForm({
           Transfer Liquid
         </Button>
       </div>
+
+      {/* Blend Confirmation Modal */}
+      <Dialog open={showBlendConfirm} onOpenChange={setShowBlendConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <AlertTriangle className="h-5 w-5" />
+              Confirm Blend Operation
+            </DialogTitle>
+            <DialogDescription className="space-y-3">
+              <p>
+                The destination tank <strong>{destVessel?.name || "Unknown"}</strong> already contains{" "}
+                {formatVolume(destCurrentVolume, destVessel?.capacityUnit as VolumeUnit)} of liquid.
+              </p>
+              <p>
+                Transferring {formatVolume(watchedVolumeL || 0, sourceVessel?.capacityUnit as VolumeUnit)} from{" "}
+                <strong>{sourceVessel?.name || "Unknown"}</strong> will blend the contents of both tanks.
+              </p>
+              <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <p className="text-sm font-medium text-orange-900">
+                  ⚠️ This action is irreversible
+                </p>
+                <p className="text-sm text-orange-700 mt-1">
+                  The batches will be combined and cannot be separated. The resulting blend will have a total volume of approximately{" "}
+                  {formatVolume((destCurrentVolume + (watchedVolumeL || 0)), destVessel?.capacityUnit as VolumeUnit)}.
+                </p>
+              </div>
+              <p className="text-sm font-medium">Do you want to continue?</p>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowBlendConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={handleBlendConfirm}
+              disabled={transferMutation.isPending}
+            >
+              {transferMutation.isPending ? "Blending..." : "Confirm Blend"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

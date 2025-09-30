@@ -1,0 +1,203 @@
+/**
+ * batchMeasurements data export
+ * Generated: 2025-09-29T19:38:26.271Z
+ *
+ * IMPORTANT: You can manually edit this file to adjust for schema changes.
+ * - Add/remove fields as needed
+ * - Update field names to match new schema
+ * - Modify values
+ *
+ * When importing, the import script will validate against current schema.
+ */
+
+export const batchMeasurementsData = [
+  {
+    id: "60c58eda-55b5-4989-8497-bf69ddd8f835",
+    batchId: "f66b224a-bb9d-451b-b81a-dffeffc91892",
+    measurementDate: "2025-09-17T18:47:00.000Z",
+    specificGravity: "1.0420",
+    abv: null,
+    ph: null,
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-23T18:47:51.988Z",
+    updatedAt: "2025-09-23T18:47:51.988Z",
+    deletedAt: null
+  },
+  {
+    id: "e9339271-014a-4dfa-8505-91f8f6d267b0",
+    batchId: "e58d6eeb-5168-44a0-914a-5d9a353c73b4",
+    measurementDate: "2024-10-04T15:43:00.000Z",
+    specificGravity: "1.0450",
+    abv: null,
+    ph: "3.80",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-27T15:43:46.549Z",
+    updatedAt: "2025-09-27T15:43:46.549Z",
+    deletedAt: null
+  },
+  {
+    id: "3ea31307-8ed7-48b6-87e6-3e0aa5c3fe02",
+    batchId: "56291631-113d-4bea-ac91-932dbeb9c2e5",
+    measurementDate: "2024-10-05T15:50:00.000Z",
+    specificGravity: "1.0550",
+    abv: null,
+    ph: "3.40",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-27T15:50:55.440Z",
+    updatedAt: "2025-09-27T15:50:55.440Z",
+    deletedAt: null
+  },
+  {
+    id: "ce90f51c-6f93-4b8c-8968-b78d7921f9ec",
+    batchId: "c3598624-45aa-4587-ba47-a88eb8c8e73b",
+    measurementDate: "2024-10-05T15:14:00.000Z",
+    specificGravity: "1.0570",
+    abv: null,
+    ph: "3.60",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-28T15:14:20.865Z",
+    updatedAt: "2025-09-28T15:14:20.865Z",
+    deletedAt: null
+  },
+  {
+    id: "68ef9f88-200f-4102-945f-9e31bdda1cd5",
+    batchId: "c3598624-45aa-4587-ba47-a88eb8c8e73b",
+    measurementDate: "2024-10-20T15:17:00.000Z",
+    specificGravity: "1.0350",
+    abv: null,
+    ph: "3.60",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-28T15:17:23.013Z",
+    updatedAt: "2025-09-28T15:17:23.013Z",
+    deletedAt: null
+  },
+  {
+    id: "9987eff5-3357-43f5-ad3c-7605a14e7413",
+    batchId: "c3598624-45aa-4587-ba47-a88eb8c8e73b",
+    measurementDate: "2024-11-01T15:17:00.000Z",
+    specificGravity: "1.0220",
+    abv: null,
+    ph: "3.60",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-28T15:17:44.018Z",
+    updatedAt: "2025-09-28T15:17:44.018Z",
+    deletedAt: null
+  },
+  {
+    id: "9ef40ed3-8b23-45fb-a20c-9e7b0fbf3b6d",
+    batchId: "c3598624-45aa-4587-ba47-a88eb8c8e73b",
+    measurementDate: "2024-11-15T16:17:00.000Z",
+    specificGravity: "1.0150",
+    abv: null,
+    ph: "3.50",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: "cider is settling.  Fresh apple aroma.",
+    takenBy: null,
+    createdAt: "2025-09-28T15:18:27.692Z",
+    updatedAt: "2025-09-28T15:18:27.692Z",
+    deletedAt: null
+  },
+  {
+    id: "feefdd3c-8462-456d-a167-a2848a38c350",
+    batchId: "c3598624-45aa-4587-ba47-a88eb8c8e73b",
+    measurementDate: "2024-12-01T16:18:00.000Z",
+    specificGravity: "1.0050",
+    abv: null,
+    ph: "3.50",
+    totalAcidity: null,
+    temperature: "15.0",
+    volume: null,
+    volumeUnit: "L",
+    notes: "Slight yeasty aroma.",
+    takenBy: null,
+    createdAt: "2025-09-28T15:19:09.612Z",
+    updatedAt: "2025-09-28T15:19:09.612Z",
+    deletedAt: null
+  },
+  {
+    id: "5dcf6f2b-c8b2-4ed6-b6df-383640603939",
+    batchId: "c3598624-45aa-4587-ba47-a88eb8c8e73b",
+    measurementDate: "2024-12-20T16:19:00.000Z",
+    specificGravity: "0.9990",
+    abv: null,
+    ph: "3.50",
+    totalAcidity: null,
+    temperature: "15.0",
+    volume: null,
+    volumeUnit: "L",
+    notes: "All fermentation complete.",
+    takenBy: null,
+    createdAt: "2025-09-28T15:19:40.892Z",
+    updatedAt: "2025-09-28T15:19:40.892Z",
+    deletedAt: null
+  },
+  {
+    id: "0ad98f3a-4db1-4c53-b2ac-7a9cc3a189b7",
+    batchId: "7d697099-3114-4178-a396-fa367982a7b7",
+    measurementDate: "2025-09-28T15:22:00.000Z",
+    specificGravity: "1.0500",
+    abv: null,
+    ph: "3.60",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-28T15:22:16.752Z",
+    updatedAt: "2025-09-28T15:22:16.752Z",
+    deletedAt: null
+  },
+  {
+    id: "b27c47f4-9826-460b-855c-2ca21922ca53",
+    batchId: "c2436e1d-2e14-4d04-a68a-2258fcd64b16",
+    measurementDate: "2024-10-20T15:39:00.000Z",
+    specificGravity: "1.0450",
+    abv: null,
+    ph: "3.80",
+    totalAcidity: null,
+    temperature: null,
+    volume: null,
+    volumeUnit: "L",
+    notes: null,
+    takenBy: null,
+    createdAt: "2025-09-28T15:40:11.129Z",
+    updatedAt: "2025-09-28T15:40:11.129Z",
+    deletedAt: null
+  }
+] as const;
+
+export default batchMeasurementsData;
