@@ -73,6 +73,7 @@ import {
   formatVolumeRange,
   VolumeUnit,
 } from "lib";
+import { convertVolume } from "lib/src/utils/volumeConversion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -1047,27 +1048,27 @@ function VesselMap() {
             const capacityUnit =
               vessel.capacityUnit || liquidMapVessel?.vesselCapacityUnit || "L";
 
-            // Debug: Log vessel capacity unit data
-            console.log(
-              "Vessel:",
-              vessel.name,
-              "vessel.capacityUnit:",
-              vessel.capacityUnit,
-              "liquidMapVessel.vesselCapacityUnit:",
-              liquidMapVessel?.vesselCapacityUnit,
-              "final capacityUnit:",
-              capacityUnit,
-            );
+            // Get vessel capacity in its original unit
+            const capacity = parseFloat(vessel.capacity);
 
-            // Use batch volume if available, otherwise use apple press run volume
-            const currentVolumeL = liquidMapVessel?.currentVolume
-              ? parseFloat(liquidMapVessel.currentVolume.toString())
-              : liquidMapVessel?.applePressRunVolume
-                ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
-                : 0;
-            const capacityL = parseFloat(vessel.capacity);
+            // Get current volume and convert to vessel's capacity unit
+            let currentVolume = 0;
+            if (liquidMapVessel?.currentVolume) {
+              const volumeInOriginalUnit = parseFloat(liquidMapVessel.currentVolume.toString());
+              const volumeUnit = (liquidMapVessel.currentVolumeUnit || "L") as VolumeUnit;
+
+              // Convert from batch's unit to vessel's capacity unit
+              currentVolume = convertVolume(volumeInOriginalUnit, volumeUnit, capacityUnit as VolumeUnit);
+            } else if (liquidMapVessel?.applePressRunVolume) {
+              const volumeInOriginalUnit = parseFloat(liquidMapVessel.applePressRunVolume.toString());
+              const volumeUnit = (liquidMapVessel.applePressRunVolumeUnit || "L") as VolumeUnit;
+
+              // Convert from press run's unit to vessel's capacity unit
+              currentVolume = convertVolume(volumeInOriginalUnit, volumeUnit, capacityUnit as VolumeUnit);
+            }
+
             const fillPercentage =
-              capacityL > 0 ? (currentVolumeL / capacityL) * 100 : 0;
+              capacity > 0 ? (currentVolume / capacity) * 100 : 0;
 
             return (
               <div
@@ -1144,13 +1145,13 @@ function VesselMap() {
                     <span className="text-sm font-medium">Volume</span>
                     <div className="text-sm font-semibold flex items-center gap-1">
                       <VolumeDisplay
-                        value={currentVolumeL}
+                        value={currentVolume}
                         unit={capacityUnit as VolumeUnit}
                         showUnit={true}
                       />
                       <span>/</span>
                       <VolumeDisplay
-                        value={capacityL}
+                        value={capacity}
                         unit={capacityUnit as VolumeUnit}
                         showUnit={true}
                       />
@@ -1201,7 +1202,7 @@ function VesselMap() {
                       <DropdownMenuItem
                         onClick={() => handleBottle(vessel.id)}
                         disabled={
-                          !liquidMapVessel?.batchId || currentVolumeL <= 0
+                          !liquidMapVessel?.batchId || currentVolume <= 0
                         }
                       >
                         <Wine className="w-3 h-3 mr-2" />
@@ -1229,7 +1230,7 @@ function VesselMap() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleTankTransfer(vessel.id)}
-                        disabled={currentVolumeL <= 0}
+                        disabled={currentVolume <= 0}
                       >
                         <ArrowRight className="w-3 h-3 mr-2" />
                         Transfer to Another Tank
@@ -1246,7 +1247,7 @@ function VesselMap() {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handlePurgeTank(vessel.id, vessel.name)}
-                        disabled={currentVolumeL <= 0}
+                        disabled={currentVolume <= 0}
                         className="text-orange-600"
                       >
                         <Droplets className="w-3 h-3 mr-1" />
