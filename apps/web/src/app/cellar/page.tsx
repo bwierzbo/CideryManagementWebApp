@@ -218,9 +218,10 @@ function TankForm({
 
   const onSubmit = (data: TankForm) => {
     // Convert capacity to liters for storage (always stored in liters in DB)
+    // capacityUnit for vessels is always L or gal
     const capacityL = convertVolume(
       data.capacity,
-      data.capacityUnit as VolumeUnitType,
+      data.capacityUnit as "L" | "gal",
       "L"
     );
 
@@ -471,10 +472,10 @@ function TankTransferForm({
 
   // Helper functions for unit conversion using utility functions
   const toLiters = (value: number, unit: "L" | "gal"): number => {
-    return convertVolume(value, unit as VolumeUnitType, "L");
+    return convertVolume(value, unit, "L");
   };
   const fromLiters = (liters: number, unit: "L" | "gal"): number => {
-    return convertVolume(liters, "L", unit as VolumeUnitType);
+    return convertVolume(liters, "L", unit);
   };
   const formatDisplayVolume = (value: number, unit: "L" | "gal"): string => {
     const rounded = Math.round(value * 10) / 10;
@@ -1345,7 +1346,7 @@ function VesselMap() {
                         onClick={() =>
                           handleDeleteClick(vessel.id, vessel.name)
                         }
-                        disabled={vessel.status === "in_use"}
+                        disabled={vessel.status === "fermenting" || vessel.status === "aging"}
                         className="text-red-600"
                       >
                         <Trash2 className="w-3 h-3 mr-1" />

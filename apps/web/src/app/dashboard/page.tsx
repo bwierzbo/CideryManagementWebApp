@@ -381,7 +381,7 @@ function LiquidMap() {
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full ${
-                          vessel.vesselStatus === "in_use"
+                          vessel.vesselStatus === "fermenting" || vessel.vesselStatus === "aging"
                             ? "bg-blue-500"
                             : "bg-gray-300"
                         }`}
