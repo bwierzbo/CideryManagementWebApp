@@ -16,6 +16,7 @@
     "db:setup-neon": "tsx src/setup-neon.ts",
     "db:export": "tsx src/scripts/export-data.ts",
     "db:import": "tsx src/scripts/import-data.ts",
+    "db:reset-password": "tsx src/scripts/reset-password.ts",
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint \"**/*.{ts,tsx}\"",
