@@ -32,16 +32,27 @@ export const authOptions = {
 
           console.log("✅ Query successful, found user:", !!user[0]);
 
-          if (!user[0] || !user[0].isActive) {
+          if (!user[0]) {
+            console.log("❌ User not found in database");
             return null;
           }
 
+          if (!user[0].isActive) {
+            console.log("❌ User account is not active");
+            return null;
+          }
+
+          console.log("✅ User found and active:", user[0].email);
+
+          console.log("🔑 Comparing passwords...");
           const isPasswordValid = await bcrypt.compare(
             credentials.password,
             user[0].passwordHash,
           );
+          console.log("🔑 Password valid:", isPasswordValid);
 
           if (!isPasswordValid) {
+            console.log("❌ Password invalid, rejecting login");
             return null;
           }
 
