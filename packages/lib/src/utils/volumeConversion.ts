@@ -25,11 +25,13 @@ const WEIGHT_TO_KG: Record<WeightUnit, number> = {
 
 /**
  * Convert a volume from one unit to another
+ * Applies smart rounding to avoid floating point precision issues
  */
 export function convertVolume(
   value: number,
   fromUnit: VolumeUnit,
-  toUnit: VolumeUnit
+  toUnit: VolumeUnit,
+  applySmartRounding: boolean = true
 ): number {
   if (fromUnit === toUnit) return value;
 
@@ -37,7 +39,10 @@ export function convertVolume(
   const liters = value * VOLUME_TO_LITERS[fromUnit];
 
   // Convert from liters to target unit
-  return liters / VOLUME_TO_LITERS[toUnit];
+  const converted = liters / VOLUME_TO_LITERS[toUnit];
+
+  // Apply smart rounding to avoid floating point precision issues
+  return applySmartRounding ? smartRound(converted, toUnit) : converted;
 }
 
 /**
@@ -63,6 +68,41 @@ export function convertWeight(
 export function roundToDecimals(value: number, decimals: number = 3): number {
   const multiplier = Math.pow(10, decimals);
   return Math.round(value * multiplier) / multiplier;
+}
+
+/**
+ * Smart rounding that preserves common whole numbers
+ * This helps avoid floating point precision issues like 5 gallons becoming 4.999986791391157
+ */
+export function smartRound(value: number, unit: VolumeUnit): number {
+  // For display purposes, round to reasonable precision based on unit
+  const precision: Record<VolumeUnit, number> = {
+    'L': 2,      // 2 decimal places for liters (e.g., 18.93 L)
+    'gal': 3,    // 3 decimal places for gallons (e.g., 5.000 gal)
+    'oz': 1,     // 1 decimal place for fluid ounces
+    'ml': 0,     // whole numbers for milliliters
+  };
+
+  const rounded = roundToDecimals(value, precision[unit]);
+
+  // If we're very close to a whole number (within 0.0001), snap to it
+  const nearestWhole = Math.round(rounded);
+  if (Math.abs(rounded - nearestWhole) < 0.0001) {
+    return nearestWhole;
+  }
+
+  // For gallons and liters, also check if we're close to common fractions
+  if (unit === 'gal' || unit === 'L') {
+    const commonFractions = [0.25, 0.5, 0.75];
+    for (const frac of commonFractions) {
+      const wholeWithFraction = Math.floor(rounded) + frac;
+      if (Math.abs(rounded - wholeWithFraction) < 0.001) {
+        return wholeWithFraction;
+      }
+    }
+  }
+
+  return rounded;
 }
 
 /**

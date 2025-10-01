@@ -25,12 +25,9 @@ export const batchStatusEnum = pgEnum("batch_status", [
 ]);
 export const vesselStatusEnum = pgEnum("vessel_status", [
   "available",
-  "in_use",
+  "fermenting",
   "cleaning",
   "maintenance",
-  "empty",
-  "fermenting",
-  "storing",
   "aging",
 ]);
 export const vesselTypeEnum = pgEnum("vessel_type", [

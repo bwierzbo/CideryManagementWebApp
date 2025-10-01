@@ -119,10 +119,10 @@ export const packagingRouter = router({
           const vessel = vesselData[0];
 
           // Check vessel status
-          if (vessel.status !== "in_use" && vessel.status !== "fermenting") {
+          if (vessel.status !== "fermenting" && vessel.status !== "aging") {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Vessel must be in use or fermenting to package from. Current status: ${vessel.status}`,
+              message: `Vessel must be fermenting or aging to package from. Current status: ${vessel.status}`,
             });
           }
 

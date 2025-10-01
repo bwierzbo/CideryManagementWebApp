@@ -417,7 +417,7 @@ async function main() {
           type: "fermenter",
           capacity: "1000.0",
           capacityUnit: "L",
-          status: "in_use",
+          status: "fermenting",
           location: "Fermentation Room 1",
           notes: "Primary fermenter for large batches",
         },

@@ -9,7 +9,7 @@ export interface VesselData {
   id: string;
   name: string;
   capacityL: number;
-  status: "available" | "in_use" | "cleaning" | "maintenance";
+  status: "available" | "fermenting" | "cleaning" | "maintenance" | "aging";
   currentVolumeL?: number;
 }
 

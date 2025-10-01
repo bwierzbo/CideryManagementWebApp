@@ -5,7 +5,7 @@
 import { z } from "zod";
 import { VesselStateValidationError } from "./errors";
 
-export type VesselStatus = "available" | "in_use" | "cleaning" | "maintenance";
+export type VesselStatus = "available" | "fermenting" | "cleaning" | "maintenance" | "aging";
 
 export interface VesselStateData {
   id: string;
@@ -27,8 +27,9 @@ export interface StateTransition {
  * Valid state transitions for vessels
  */
 const VALID_TRANSITIONS: Record<VesselStatus, VesselStatus[]> = {
-  available: ["in_use", "cleaning", "maintenance"],
-  in_use: ["available", "cleaning", "maintenance"],
+  available: ["fermenting", "cleaning", "maintenance"],
+  fermenting: ["aging", "available", "cleaning", "maintenance"],
+  aging: ["available", "cleaning", "maintenance"],
   cleaning: ["available", "maintenance"],
   maintenance: ["available", "cleaning"],
 };
@@ -113,7 +114,7 @@ export function validateTransitionWithContent(
   }
 
   // Cannot set to available if vessel is actively being used for batches
-  if (newStatus === "available" && vessel.status === "in_use" && hasBatches) {
+  if (newStatus === "available" && (vessel.status === "fermenting" || vessel.status === "aging") && hasBatches) {
     throw new VesselStateValidationError(
       `Cannot set vessel to available while batches are active`,
       `Cannot set vessel "${vessel.name}" to available status - it has active batches. Please complete or transfer the batches first.`,
@@ -336,9 +337,9 @@ export const vesselStateValidationSchema = z
     id: z.string().uuid("Invalid vessel ID format"),
     name: z.string().min(1, "Vessel name is required"),
     status: z
-      .enum(["available", "in_use", "cleaning", "maintenance"] as const)
+      .enum(["available", "fermenting", "cleaning", "maintenance", "aging"] as const)
       .describe(
-        "Status must be one of: available, in_use, cleaning, maintenance",
+        "Status must be one of: available, fermenting, cleaning, maintenance, aging",
       ),
     currentVolumeL: z
       .number()
@@ -373,8 +374,8 @@ export const vesselStateValidationSchema = z
   );
 
 export const stateTransitionSchema = z.object({
-  fromStatus: z.enum(["available", "in_use", "cleaning", "maintenance"]),
-  toStatus: z.enum(["available", "in_use", "cleaning", "maintenance"]),
+  fromStatus: z.enum(["available", "fermenting", "cleaning", "maintenance", "aging"]),
+  toStatus: z.enum(["available", "fermenting", "cleaning", "maintenance", "aging"]),
   reason: z.string().max(500, "Reason cannot exceed 500 characters").optional(),
   notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
 });

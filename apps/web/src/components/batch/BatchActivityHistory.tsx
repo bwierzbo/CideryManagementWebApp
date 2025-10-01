@@ -43,6 +43,7 @@ const activityIcons = {
   additive: Plus,
   merge: Droplets,
   transfer: ArrowRight,
+  rack: FlaskConical,
   bottling: Package,
 };
 
@@ -52,6 +53,7 @@ const activityColors = {
   additive: "bg-purple-500/10 text-purple-700 border-purple-500/20",
   merge: "bg-orange-500/10 text-orange-700 border-orange-500/20",
   transfer: "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
+  rack: "bg-amber-500/10 text-amber-700 border-amber-500/20",
   bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
 };
 
@@ -264,7 +266,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
         {/* Summary stats */}
         {batch && (
           <div className="mt-8 pt-6 border-t">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Current Status:</span>
                 <Badge
@@ -283,16 +285,6 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
               <div>
                 <span className="text-muted-foreground">Total Events:</span>
                 <span className="ml-2 font-medium">{activities.length}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Days Active:</span>
-                <span className="ml-2 font-medium">
-                  {Math.floor(
-                    (new Date().getTime() -
-                      new Date(batch.createdAt).getTime()) /
-                      (1000 * 60 * 60 * 24),
-                  )}
-                </span>
               </div>
             </div>
           </div>

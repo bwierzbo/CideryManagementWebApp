@@ -194,11 +194,12 @@ function TankForm({
   React.useEffect(() => {
     if (vesselQuery.data?.vessel) {
       const vessel = vesselQuery.data.vessel;
-      let displayCapacity = parseFloat(vessel.capacity);
+      const storedCapacityL = parseFloat(vessel.capacity);
 
-      // Convert from liters to gallons for display if unit is gallons
+      // Convert from liters to display unit with smart rounding
+      let displayCapacity = storedCapacityL;
       if (vessel.capacityUnit === "gal") {
-        displayCapacity = displayCapacity / 3.78541;
+        displayCapacity = convertVolume(storedCapacityL, "L", "gal");
       }
 
       reset({
@@ -216,16 +217,16 @@ function TankForm({
   const watchedCapacityUnit = watch("capacityUnit");
 
   const onSubmit = (data: TankForm) => {
-    // Convert capacity to liters if unit is gallons
-    let capacityToSubmit = data.capacity;
-    if (data.capacityUnit === "gal") {
-      // User entered gallons, but we store in liters
-      capacityToSubmit = data.capacity * 3.78541;
-    }
+    // Convert capacity to liters for storage (always stored in liters in DB)
+    const capacityL = convertVolume(
+      data.capacity,
+      data.capacityUnit as VolumeUnitType,
+      "L"
+    );
 
     const submitData = {
       ...data,
-      capacityL: capacityToSubmit,
+      capacityL,
     };
 
     if (vesselId) {
@@ -436,14 +437,13 @@ function TankTransferForm({
     resolver: zodResolver(transferSchema),
     defaultValues: {
       fromVesselId: fromVesselId,
-      loss: 0,
+      loss: undefined,
     },
   });
 
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
-
 
   // Get source vessel info
   const sourceVessel = vesselListQuery.data?.vessels?.find(
@@ -456,17 +456,45 @@ function TankTransferForm({
   // Get source vessel's capacity unit for display
   const sourceCapacityUnit = (sourceVessel?.capacityUnit || "L") as VolumeUnit;
 
-  // Get current volume in source vessel, converted to its capacity unit
-  let currentVolume = 0;
+  // Unit selector state - default to source vessel's unit
+  const [displayUnit, setDisplayUnit] = useState<"L" | "gal">("L");
+
+  // Update display unit when vessel data loads
+  React.useEffect(() => {
+    if (sourceVessel?.capacityUnit) {
+      setDisplayUnit(sourceVessel.capacityUnit === "gal" ? "gal" : "L");
+    }
+  }, [sourceVessel?.capacityUnit]);
+
+  // Epsilon tolerance for validation (0.2 L ≈ 0.05 gal)
+  const EPSILON_L = 0.2;
+
+  // Helper functions for unit conversion using utility functions
+  const toLiters = (value: number, unit: "L" | "gal"): number => {
+    return convertVolume(value, unit as VolumeUnitType, "L");
+  };
+  const fromLiters = (liters: number, unit: "L" | "gal"): number => {
+    return convertVolume(liters, "L", unit as VolumeUnitType);
+  };
+  const formatDisplayVolume = (value: number, unit: "L" | "gal"): string => {
+    const rounded = Math.round(value * 10) / 10;
+    return `${rounded} ${unit}`;
+  };
+
+  // Get current volume in source vessel in liters (canonical)
+  let currentVolumeL = 0;
   if (sourceLiquidMap?.currentVolume) {
     const vol = parseFloat(sourceLiquidMap.currentVolume.toString());
     const unit = (sourceLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
-    currentVolume = convertVolume(vol, unit, sourceCapacityUnit);
+    currentVolumeL = convertVolume(vol, unit, "L");
   } else if (sourceLiquidMap?.applePressRunVolume) {
     const vol = parseFloat(sourceLiquidMap.applePressRunVolume.toString());
     const unit = (sourceLiquidMap.applePressRunVolumeUnit || "L") as VolumeUnit;
-    currentVolume = convertVolume(vol, unit, sourceCapacityUnit);
+    currentVolumeL = convertVolume(vol, unit, "L");
   }
+
+  // Convert current volume to display unit
+  const currentVolume = fromLiters(currentVolumeL, displayUnit);
 
   // Get available destination vessels (exclude current vessel, allow both available and fermenting)
   const availableVessels =
@@ -494,6 +522,13 @@ function TankTransferForm({
 
   const watchedVolumeL = watch("volumeL");
   const watchedLoss = watch("loss") || 0;
+
+  // Calculate remaining volume with epsilon tolerance
+  const transferInLiters = watchedVolumeL ? toLiters(watchedVolumeL, displayUnit) : 0;
+  const lossInLiters = toLiters(watchedLoss, displayUnit);
+  const totalUsedLiters = transferInLiters + lossInLiters;
+  const isVolumeValid = totalUsedLiters <= currentVolumeL + EPSILON_L;
+  const remainingVolume = currentVolume - watchedVolumeL - watchedLoss;
 
   const transferMutation = trpc.vessel.transfer.useMutation({
     onSuccess: (result) => {
@@ -525,16 +560,22 @@ function TankTransferForm({
       return;
     }
 
-    // Proceed with transfer
-    transferMutation.mutate(data);
+    // Convert display unit values to canonical liters for API
+    const volumeInLiters = toLiters(data.volumeL, displayUnit);
+    const lossInLiters = data.loss ? toLiters(data.loss, displayUnit) : 0;
+
+    // Proceed with transfer (API expects liters)
+    transferMutation.mutate({
+      ...data,
+      volumeL: volumeInLiters,
+      loss: lossInLiters,
+    });
   };
 
   const handleBlendConfirm = () => {
     // User confirmed blend, proceed with transfer
     handleSubmit(onSubmit)();
   };
-
-  const remainingVolume = currentVolume - (watchedVolumeL || 0) - watchedLoss;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -544,8 +585,25 @@ function TankTransferForm({
         </h4>
         <p className="text-sm text-blue-700">
           Current volume:{" "}
-          {formatVolume(currentVolume, sourceCapacityUnit)}
+          {formatDisplayVolume(currentVolume, displayUnit)}
         </p>
+      </div>
+
+      {/* Unit Selector */}
+      <div>
+        <Label>Display Units</Label>
+        <Select
+          value={displayUnit}
+          onValueChange={(value) => setDisplayUnit(value as "L" | "gal")}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="L">Liters (L)</SelectItem>
+            <SelectItem value="gal">Gallons (gal)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div>
@@ -609,7 +667,7 @@ function TankTransferForm({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="volumeL">Transfer Volume</Label>
+          <Label htmlFor="volumeL">Transfer Volume ({displayUnit})</Label>
           <Input
             id="volumeL"
             type="number"
@@ -623,7 +681,7 @@ function TankTransferForm({
           )}
         </div>
         <div>
-          <Label htmlFor="lossL">Loss/Waste (L)</Label>
+          <Label htmlFor="lossL">Loss/Waste ({displayUnit})</Label>
           <Input
             id="lossL"
             type="number"
@@ -644,15 +702,15 @@ function TankTransferForm({
             <span className="font-medium">Remaining in source tank:</span>{" "}
             <span
               className={
-                remainingVolume < 0
+                !isVolumeValid
                   ? "text-red-600 font-medium"
                   : "text-gray-700"
               }
             >
-              {formatVolume(remainingVolume, sourceCapacityUnit)}
+              {formatDisplayVolume(remainingVolume, displayUnit)}
             </span>
           </p>
-          {remainingVolume < 0 && (
+          {!isVolumeValid && (
             <p className="text-sm text-red-600 mt-1">
               ⚠️ Transfer volume exceeds available liquid
             </p>
@@ -676,7 +734,7 @@ function TankTransferForm({
         <Button
           type="submit"
           disabled={
-            remainingVolume < 0 || !watchedVolumeL || watchedVolumeL <= 0
+            !isVolumeValid || !watchedVolumeL || watchedVolumeL <= 0
           }
         >
           Transfer Liquid
@@ -697,7 +755,7 @@ function TankTransferForm({
                 {formatVolume(destCurrentVolume, destCapacityUnit)} of liquid.
               </p>
               <p>
-                Transferring {formatVolume(watchedVolumeL || 0, sourceCapacityUnit)} from{" "}
+                Transferring {formatDisplayVolume(watchedVolumeL || 0, displayUnit)} from{" "}
                 <strong>{sourceVessel?.name || "Unknown"}</strong> will blend the contents of both tanks.
               </p>
               <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
@@ -706,7 +764,7 @@ function TankTransferForm({
                 </p>
                 <p className="text-sm text-orange-700 mt-1">
                   The batches will be combined and cannot be separated. The resulting blend will have a total volume of approximately{" "}
-                  {formatVolume((destCurrentVolume + (watchedVolumeL || 0)), destCapacityUnit)}.
+                  {formatDisplayVolume(fromLiters(currentVolumeL, displayUnit), displayUnit)}.
                 </p>
               </div>
               <p className="text-sm font-medium">Do you want to continue?</p>
@@ -823,18 +881,12 @@ function VesselMap() {
     switch (status) {
       case "available":
         return "border-green-300 bg-green-50";
-      case "in_use":
-        return "border-blue-300 bg-blue-50";
+      case "fermenting":
+        return "border-purple-300 bg-purple-50";
       case "cleaning":
         return "border-yellow-300 bg-yellow-50";
       case "maintenance":
         return "border-red-300 bg-red-50";
-      case "empty":
-        return "border-gray-300 bg-gray-50";
-      case "fermenting":
-        return "border-purple-300 bg-purple-50";
-      case "storing":
-        return "border-indigo-300 bg-indigo-50";
       case "aging":
         return "border-amber-300 bg-amber-50";
       default:
@@ -846,18 +898,12 @@ function VesselMap() {
     switch (status) {
       case "available":
         return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case "in_use":
-        return <Activity className="w-4 h-4 text-blue-600" />;
+      case "fermenting":
+        return <Beaker className="w-4 h-4 text-purple-600" />;
       case "cleaning":
         return <RotateCcw className="w-4 h-4 text-yellow-600" />;
       case "maintenance":
         return <AlertTriangle className="w-4 h-4 text-red-600" />;
-      case "empty":
-        return <Droplets className="w-4 h-4 text-gray-600" />;
-      case "fermenting":
-        return <Beaker className="w-4 h-4 text-purple-600" />;
-      case "storing":
-        return <Waves className="w-4 h-4 text-indigo-600" />;
       case "aging":
         return <Clock className="w-4 h-4 text-amber-600" />;
       default:
@@ -916,6 +962,17 @@ function VesselMap() {
     updateStatusMutation.mutate({
       id: vesselId,
       status: "available",
+    });
+  };
+
+  const handleRack = (vesselId: string) => {
+    updateStatusMutation.mutate({
+      id: vesselId,
+      status: "aging",
+    });
+    toast({
+      title: "Racked",
+      description: "Vessel status changed to aging",
     });
   };
 
@@ -1220,15 +1277,25 @@ function VesselMap() {
                         <Settings className="w-3 h-3 mr-2" />
                         Edit Tank
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleBottle(vessel.id)}
-                        disabled={
-                          !liquidMapVessel?.batchId || currentVolume <= 0
-                        }
-                      >
-                        <Wine className="w-3 h-3 mr-2" />
-                        Bottle
-                      </DropdownMenuItem>
+                      {vessel.status === "fermenting" && (
+                        <DropdownMenuItem
+                          onClick={() => handleRack(vessel.id)}
+                        >
+                          <FlaskConical className="w-3 h-3 mr-2" />
+                          Rack
+                        </DropdownMenuItem>
+                      )}
+                      {vessel.status === "aging" && (
+                        <DropdownMenuItem
+                          onClick={() => handleBottle(vessel.id)}
+                          disabled={
+                            !liquidMapVessel?.batchId || currentVolume <= 0
+                          }
+                        >
+                          <Wine className="w-3 h-3 mr-2" />
+                          Bottle
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         onClick={() => handleTankMeasurement(vessel.id)}
                         disabled={!liquidMapVessel?.batchId}

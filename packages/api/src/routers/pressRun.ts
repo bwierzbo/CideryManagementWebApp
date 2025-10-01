@@ -685,7 +685,7 @@ export const pressRunRouter = router({
           await tx
             .update(vessels)
             .set({
-              status: "in_use",
+              status: "fermenting",
               updatedAt: new Date(),
             })
             .where(eq(vessels.id, input.vesselId));

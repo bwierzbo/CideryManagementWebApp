@@ -32,9 +32,10 @@ export const batchStatusSchema = z.enum([
 ]);
 export const vesselStatusSchema = z.enum([
   "available",
-  "in_use",
+  "fermenting",
   "cleaning",
   "maintenance",
+  "aging",
 ]);
 export const vesselTypeSchema = z.enum([
   "fermenter",

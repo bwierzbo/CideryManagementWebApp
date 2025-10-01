@@ -64,6 +64,7 @@ import {
   inArray,
 } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { convertVolume, roundToDecimals } from "lib/src/utils/volumeConversion";
 import {
   publishCreateEvent,
   publishUpdateEvent,
@@ -2490,11 +2491,11 @@ export const appRouter = router({
             finalName = `Tank ${nextNumber}`;
           }
 
-          // Convert capacity to canonical liters if needed
-          let capacityInLiters = input.capacityL;
-          if (input.capacityUnit === "gal") {
-            capacityInLiters = input.capacityL * 3.78541;
-          }
+          // Convert capacity to liters for storage (always store in liters)
+          const capacityInLiters = roundToDecimals(
+            convertVolume(input.capacityL, input.capacityUnit, "L"),
+            3
+          );
 
           const newVessel = await db
             .insert(vessels)
@@ -2550,13 +2551,10 @@ export const appRouter = router({
           status: z
             .enum([
               "available",
-              "in_use",
+              "fermenting",
               "cleaning",
               "maintenance",
-              "fermenting",
-              "storing",
               "aging",
-              "empty",
             ])
             .optional(),
           location: z.string().optional(),
@@ -2581,15 +2579,17 @@ export const appRouter = router({
           const updateData: any = { updatedAt: new Date() };
 
           if (input.name !== undefined) updateData.name = input.name;
-          if (input.capacityL !== undefined) {
-            let capacityInLiters = input.capacityL;
-            if (input.capacityUnit === "gal") {
-              capacityInLiters = input.capacityL * 3.78541;
-            }
+          if (input.capacityL !== undefined && input.capacityUnit !== undefined) {
+            // Convert capacity to liters for storage with proper rounding
+            const capacityInLiters = roundToDecimals(
+              convertVolume(input.capacityL, input.capacityUnit, "L"),
+              3
+            );
             updateData.capacity = capacityInLiters.toString();
-          }
-          if (input.capacityUnit !== undefined)
             updateData.capacityUnit = input.capacityUnit;
+          } else if (input.capacityUnit !== undefined) {
+            updateData.capacityUnit = input.capacityUnit;
+          }
           if (input.material !== undefined)
             updateData.material = input.material;
           if (input.jacketed !== undefined)
@@ -2649,9 +2649,7 @@ export const appRouter = router({
 
           // Check if vessel is in use (including fermenting)
           if (
-            existing[0].status === "in_use" ||
             existing[0].status === "fermenting" ||
-            existing[0].status === "storing" ||
             existing[0].status === "aging"
           ) {
             throw new TRPCError({
