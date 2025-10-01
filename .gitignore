@@ -116,3 +116,4 @@ performance-report.md
 # Analysis Reports (except baseline)
 analysis/reports/latest/
 analysis/reports/history/
+.vercel
