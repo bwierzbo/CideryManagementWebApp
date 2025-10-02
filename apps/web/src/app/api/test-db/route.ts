@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { Pool } from "pg";
+import { db } from "db";
+import { users, vendors, vessels } from "db/src/schema";
+import { isNull } from "drizzle-orm";
 
 export async function GET() {
   const response = {
@@ -27,42 +29,33 @@ export async function GET() {
     return NextResponse.json(response);
   }
 
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL.includes("neon.tech")
-      ? { rejectUnauthorized: false }
-      : false,
-  });
-
   try {
-    const client = await pool.connect();
+    // Test queries using Drizzle
+    const usersResult = await db
+      .select()
+      .from(users)
+      .where(isNull(users.deletedAt));
+    response.database.users = usersResult.length;
+
+    const vendorsResult = await db
+      .select()
+      .from(vendors)
+      .where(isNull(vendors.deletedAt));
+    response.database.vendors = vendorsResult.length;
+
+    const vesselsResult = await db
+      .select()
+      .from(vessels)
+      .where(isNull(vessels.deletedAt));
+    response.database.vessels = vesselsResult.length;
+
     response.database.connection = true;
-
-    // Test queries
-    const usersResult = await client.query(
-      "SELECT COUNT(*) FROM users WHERE deleted_at IS NULL"
-    );
-    response.database.users = parseInt(usersResult.rows[0].count);
-
-    const vendorsResult = await client.query(
-      "SELECT COUNT(*) FROM vendors WHERE deleted_at IS NULL"
-    );
-    response.database.vendors = parseInt(vendorsResult.rows[0].count);
-
-    const vesselsResult = await client.query(
-      "SELECT COUNT(*) FROM vessels WHERE deleted_at IS NULL"
-    );
-    response.database.vessels = parseInt(vesselsResult.rows[0].count);
-
-    client.release();
   } catch (error: any) {
     response.database.error = {
       message: error.message,
       code: error.code,
       detail: error.detail,
     };
-  } finally {
-    await pool.end();
   }
 
   return NextResponse.json(response);
