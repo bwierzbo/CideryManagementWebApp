@@ -1,7 +1,7 @@
 ---
 created: 2025-09-13T04:03:23Z
-last_updated: 2025-09-17T02:50:09Z
-version: 1.2
+last_updated: 2025-10-02T04:12:44Z
+version: 1.3
 author: Claude Code PM System
 ---
 
@@ -136,7 +136,9 @@ author: Claude Code PM System
 
 ### Database Package Dependencies
 - **ORM**: Drizzle ORM and Kit
-- **Database**: PostgreSQL driver
+- **Database**: PostgreSQL driver (pg)
+- **Connection Pooling**: Enhanced pool configuration for cloud databases
+- **Environment Priority**: NEON_DATABASE_URL > DATABASE_URL for Vercel compatibility
 - **Utilities**: TypeScript execution (tsx)
 
 ### Shared Library Dependencies

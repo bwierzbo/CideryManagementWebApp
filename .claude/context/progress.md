@@ -1,7 +1,7 @@
 ---
 created: 2025-09-13T04:03:23Z
-last_updated: 2025-09-26T01:28:07Z
-version: 1.7
+last_updated: 2025-10-02T04:12:44Z
+version: 1.8
 author: Claude Code PM System
 ---
 
@@ -9,10 +9,10 @@ author: Claude Code PM System
 
 ## Current Status
 
-**Project Phase**: Active Development - Bottling Flow Implementation
-**Branch**: main (with epic/bottlingcider worktree)
+**Project Phase**: Active Development - Production Deployment Fixed
+**Branch**: main
 **Repository**: https://github.com/bwierzbo/CideryManagementWebApp.git
-**Last Commit**: 7752c24 - Fix TypeScript errors for Vercel deployment
+**Last Commit**: 44c6541 - Use NEON_DATABASE_URL to bypass Vercel's auto-injected DATABASE_URL
 
 ## Recent Work Completed
 
@@ -131,32 +131,36 @@ author: Claude Code PM System
 - ✅ Updated batch history modal functionality
 
 ### Recent Commits (Last 10)
-- `7752c24` - Fix TypeScript errors for Vercel deployment
-- `3327faa` - Fix AdditiveVarietyManagement form validation to resolve build error
-- `0201a0e` - Fix remaining TypeScript build errors for Vercel deployment
-- `cd844ce` - Fix missing baseFruitPurchases router causing Vercel build failure
-- `d659bc8` - Fix all remaining ESLint errors for Vercel deployment
-- `8699211` - Fix ESLint errors for Vercel build
-- `5ee094a` - Add missing dependencies for UI components
-- `419e28c` - Add missing UI components for build
-- `a1d2b75` - Update batch management and vessel handling
-- `fbcaf42` - Fix inventory form navigation after transaction
+- `44c6541` - Use NEON_DATABASE_URL to bypass Vercel's auto-injected DATABASE_URL
+- `96263f5` - Add more debug info to test-db endpoint
+- `51656df` - Force database client to ignore conflicting PG* environment variables
+- `3f7f1ab` - Fix test-db endpoint to use Drizzle ORM
+- `1ea0c0f` - Add database connection test API endpoint
+- `8c6ea06` - Add Vercel auth testing script for debugging
+- `b7e5978` - Add detailed auth logging for debugging Vercel login issues
+- `f80654d` - Add flexible password reset script and fix NextAuth config
+- `af64038` - Add user verification diagnostic script
+- `c02362f` - Add database diagnostic and migration scripts
 
 ### Current Outstanding Work
 
-**Uncommitted Changes**:
-- Modified inventory component files (4 files)
-- New bottling epic created: `.claude/epics/bottlingcider/`
-- New PRD created: `.claude/prds/bottlingcider.md`
-- Context documentation updated
+**Recent Production Fixes (October 2025)**:
+- ✅ **Vercel Deployment Fixed**: Resolved critical database connection issue
+  - Vercel Storage integration was injecting wrong DATABASE_URL
+  - Implemented workaround using NEON_DATABASE_URL environment variable
+  - Database client now prioritizes NEON_DATABASE_URL to bypass injection
+  - Authentication and data access fully restored on production
 
-**Recently Added Key Components**:
-- `packages/api/src/routers/baseFruitPurchases.ts` - Complete purchase management router (257 lines)
-- Inventory management forms with improved validation
-- Enhanced vendor variety linking modals
-- Transaction forms for additives, juice, and packaging
+**Vessel Status Updates (October 2025)**:
+- ✅ Refined vessel statuses from 8 to 5 values
+  - Renamed "in_use" to "fermenting"
+  - Combined "storing" and "aging" into just "aging"
+  - Removed "empty" status (using "available")
+- ✅ Added "rack" action for fermenting vessels
+- ✅ Updated activity history to include rack/transfer actions
+- ✅ Fixed volume conversion precision issues with smart rounding
 
-**Branch Status**: Working on main branch with uncommitted changes
+**Branch Status**: Working on main branch, all changes committed
 
 ## Immediate Next Steps
 
@@ -195,8 +199,10 @@ author: Claude Code PM System
 
 ## Blockers & Dependencies
 
-### Current Blockers
-- **Vercel Deployment**: Module resolution issues preventing successful cloud builds
+### Recently Resolved
+- ✅ **Vercel Deployment**: Database connection issue resolved with NEON_DATABASE_URL workaround
+- ✅ **Authentication**: Production login fixed after resolving database connection
+- ✅ **Database Enum Migration**: Successfully migrated vessel_status enum in production
 - **Database Setup**: PostgreSQL database setup required for production
 - **Environment Configuration**: Production environment variables needed
 
@@ -241,6 +247,9 @@ Multiple development servers running concurrently:
 - **API Server**: tRPC API development server
 - **Database Studio**: Drizzle Studio for database management
 - **Worker**: Background job processing
+
+## Update History
+- 2025-10-02: Major update - Vercel deployment fix, vessel status refinements, volume conversion improvements
 
 ### Technology Stack Health
 - **Build System**: Stable after recent TypeScript fixes

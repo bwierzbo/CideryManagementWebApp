@@ -24,6 +24,7 @@ import { additiveVarietiesRouter } from "./additiveVarieties";
 import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
 import { packagingRouter } from "./packaging";
+import { userRouter } from "./user";
 import {
   db,
   vendors,
@@ -94,6 +95,9 @@ export const appRouter = router({
       timestamp: new Date().toISOString(),
     };
   }),
+
+  // User management
+  user: userRouter,
 
   // Vendor management with proper RBAC and audit logging
   vendor: vendorRouter,

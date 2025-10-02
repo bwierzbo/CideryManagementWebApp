@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import {
   BarChart3,
@@ -16,8 +17,22 @@ import {
   Menu,
   X,
   Building2,
+  User,
+  LogOut,
+  ChevronDown,
+  Shield,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 
 const navItems = [
   {
@@ -78,7 +93,17 @@ const navItems = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const getRoleBadgeVariant = (role: string) => {
+    const variants: Record<string, "default" | "secondary" | "destructive"> = {
+      admin: "destructive",
+      operator: "default",
+      viewer: "secondary",
+    };
+    return variants[role] || "default";
+  };
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -128,6 +153,63 @@ export function Navbar() {
                 </Link>
               );
             })}
+
+            {/* User Menu */}
+            <div className="ml-4 pl-4 border-l border-gray-200">
+              {session ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-gray-50 transition-colors">
+                      <User className="w-5 h-5" />
+                      <span className="max-w-[100px] truncate">{session.user?.name || session.user?.email}</span>
+                      <Badge variant={getRoleBadgeVariant(session.user?.role || "viewer")} className="text-xs">
+                        {session.user?.role}
+                      </Badge>
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>
+                      <div>
+                        <p className="font-medium">{session.user?.name}</p>
+                        <p className="text-xs text-gray-500">{session.user?.email}</p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/profile" className="flex items-center cursor-pointer">
+                        <User className="w-4 h-4 mr-2" />
+                        Profile Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    {session.user?.role === "admin" && (
+                      <DropdownMenuItem asChild>
+                        <Link href="/admin/users" className="flex items-center cursor-pointer">
+                          <Users className="w-4 h-4 mr-2" />
+                          Manage Users
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => signOut({ callbackUrl: "/auth/signin" })}
+                      className="text-red-600 cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Link
+                  href="/auth/signin"
+                  className="flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-gray-50 transition-colors"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>Sign In</span>
+                </Link>
+              )}
+            </div>
           </div>
 
           {/* Mobile menu button */}
@@ -179,6 +261,70 @@ export function Navbar() {
                   </Link>
                 );
               })}
+
+              {/* Mobile User Menu */}
+              <div className="border-t border-gray-200 pt-3 mt-3">
+                {session ? (
+                  <>
+                    <div className="px-3 py-2">
+                      <p className="text-sm font-medium text-gray-700">{session.user?.name}</p>
+                      <p className="text-xs text-gray-500">{session.user?.email}</p>
+                      <Badge variant={getRoleBadgeVariant(session.user?.role || "viewer")} className="text-xs mt-1">
+                        {session.user?.role}
+                      </Badge>
+                    </div>
+                    <Link
+                      href="/profile"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center px-3 py-3 rounded-lg text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-gray-50 transition-colors"
+                    >
+                      <User className="w-5 h-5 mr-3 text-gray-500" />
+                      <div>
+                        <div className="font-semibold">Profile</div>
+                        <div className="text-xs text-gray-500">Manage your account</div>
+                      </div>
+                    </Link>
+                    {session.user?.role === "admin" && (
+                      <Link
+                        href="/admin/users"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center px-3 py-3 rounded-lg text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-gray-50 transition-colors"
+                      >
+                        <Users className="w-5 h-5 mr-3 text-gray-500" />
+                        <div>
+                          <div className="font-semibold">Manage Users</div>
+                          <div className="text-xs text-gray-500">Admin only</div>
+                        </div>
+                      </Link>
+                    )}
+                    <button
+                      onClick={() => {
+                        signOut({ callbackUrl: "/auth/signin" });
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className="flex items-center w-full px-3 py-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <LogOut className="w-5 h-5 mr-3" />
+                      <div className="text-left">
+                        <div className="font-semibold">Sign Out</div>
+                        <div className="text-xs text-red-500">End your session</div>
+                      </div>
+                    </button>
+                  </>
+                ) : (
+                  <Link
+                    href="/auth/signin"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center px-3 py-3 rounded-lg text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-gray-50 transition-colors"
+                  >
+                    <LogOut className="w-5 h-5 mr-3 text-gray-500" />
+                    <div>
+                      <div className="font-semibold">Sign In</div>
+                      <div className="text-xs text-gray-500">Access your account</div>
+                    </div>
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         )}
