@@ -19,8 +19,9 @@ export const authOptions = {
         }
 
         console.log("🔍 Auth attempt for:", credentials.email);
-        console.log("🔗 DATABASE_URL available:", !!process.env.DATABASE_URL);
-        console.log("🔗 DATABASE_URL preview:", process.env.DATABASE_URL?.substring(0, 60) + "...");
+        const dbUrl = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+        console.log("🔗 Database URL available:", !!dbUrl);
+        console.log("🔗 Database host:", dbUrl?.split("@")[1]?.split("/")[0] || "unknown");
 
         try {
           console.log("📊 Querying database for user...");

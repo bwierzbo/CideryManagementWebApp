@@ -4,9 +4,13 @@ import { Pool } from "pg";
 import * as schema from "./schema";
 
 // Database configuration
-// IMPORTANT: Only use DATABASE_URL, ignore POSTGRES_* and PG* variables
+// IMPORTANT: Use NEON_DATABASE_URL first to bypass Vercel's auto-injected DATABASE_URL
 const connectionString =
-  process.env.DATABASE_URL || "postgresql://localhost:5432/cidery_management";
+  process.env.NEON_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  "postgresql://localhost:5432/cidery_management";
+
+console.log("🔗 Database connection:", connectionString.includes("ep-super-smoke") ? "✅ Correct database" : "❌ Wrong database");
 
 // Clear conflicting environment variables that pg might use
 if (process.env.DATABASE_URL) {
