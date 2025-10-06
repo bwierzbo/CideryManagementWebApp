@@ -924,8 +924,8 @@ export const pressRunRouter = router({
           // If press run is still in_progress, complete it first
           if (pressRun[0].status === "in_progress") {
 
-            // Generate press run name based on current date (YYYY-MM-DD-##)
-            const completionDateStr = new Date().toISOString().split("T")[0];
+            // Generate press run name based on user-selected completion date (YYYY-MM-DD-##)
+            const completionDateStr = input.completionDate.toISOString().split("T")[0];
 
             // Find existing press runs on the same date to determine sequence number
             const existingRuns = await tx
