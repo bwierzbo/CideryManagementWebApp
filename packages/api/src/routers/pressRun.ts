@@ -901,25 +901,27 @@ export const pressRunRouter = router({
             });
           }
 
+          // Calculate total juice volume (needed for validation and completion)
+          // Get total juice volume from loads
+          const juiceVolumeLoads = await tx
+            .select({ juiceVolume: applePressRunLoads.juiceVolume })
+            .from(applePressRunLoads)
+            .where(
+              and(
+                eq(applePressRunLoads.applePressRunId, input.pressRunId),
+                isNull(applePressRunLoads.deletedAt),
+              ),
+            );
+
+          const totalJuiceVolume =
+            input.totalJuiceVolumeL ||
+            juiceVolumeLoads.reduce(
+              (sum, load) => sum + parseFloat(load.juiceVolume || "0"),
+              0,
+            );
+
           // If press run is still in_progress, complete it first
           if (pressRun[0].status === "in_progress") {
-            // Get total juice volume from loads
-            const loads = await tx
-              .select({ juiceVolume: applePressRunLoads.juiceVolume })
-              .from(applePressRunLoads)
-              .where(
-                and(
-                  eq(applePressRunLoads.applePressRunId, input.pressRunId),
-                  isNull(applePressRunLoads.deletedAt),
-                ),
-              );
-
-            const totalJuiceVolume =
-              input.totalJuiceVolumeL ||
-              loads.reduce(
-                (sum, load) => sum + parseFloat(load.juiceVolume || "0"),
-                0,
-              );
 
             // Generate press run name based on current date (YYYY-MM-DD-##)
             const completionDateStr = new Date().toISOString().split("T")[0];
