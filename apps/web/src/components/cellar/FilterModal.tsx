@@ -30,7 +30,7 @@ import { convertVolume } from "lib/src/utils/volumeConversion";
 
 const filterSchema = z.object({
   filterType: z.enum(["coarse", "fine", "sterile"], {
-    required_error: "Please select a filter type",
+    errorMap: () => ({ message: "Please select a filter type" }),
   }),
   volumeBefore: z.number().positive("Volume must be positive"),
   volumeBeforeUnit: z.enum(["L", "gal"]).default("L"),
