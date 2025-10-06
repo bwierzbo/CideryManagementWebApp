@@ -129,7 +129,7 @@ export function PressRunCompletion({
       const apiPayload = {
         pressRunId: formData.pressRunId,
         assignments: formData.assignments,
-        totalJuiceVolumeL: formData.totalJuiceVolumeL,
+        totalJuiceVolumeL: formData.totalJuiceVolume, // Form sends totalJuiceVolume (already in liters)
         depletedPurchaseItemIds: Array.from(depletedPurchaseItems),
       };
 
