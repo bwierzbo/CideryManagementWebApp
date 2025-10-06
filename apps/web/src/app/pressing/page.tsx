@@ -462,9 +462,15 @@ function CompletedRunsSection({
                       <div>
                         <p className="text-xs text-gray-600">Yield</p>
                         <p className="font-medium text-sm text-green-600">
-                          {run.extractionRate
-                            ? `${(parseFloat(run.extractionRate) * 100).toFixed(1)}%`
-                            : "—"}
+                          {(() => {
+                            // Use stored extraction rate if available, otherwise calculate it
+                            const rate = run.extractionRate
+                              ? parseFloat(run.extractionRate)
+                              : run.totalJuiceVolume && run.totalAppleWeightKg
+                                ? parseFloat(run.totalJuiceVolume) / parseFloat(run.totalAppleWeightKg)
+                                : null;
+                            return rate ? `${(rate * 100).toFixed(1)}%` : "—";
+                          })()}
                         </p>
                       </div>
                     </div>
