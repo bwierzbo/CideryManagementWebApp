@@ -17,6 +17,20 @@ const nextConfig = {
 
   // Bundle optimization
   webpack: (config, { dev, isServer }) => {
+    // Mark @react-pdf/renderer as external for server bundle to avoid "self is not defined"
+    if (isServer) {
+      const originalExternals = config.externals || [];
+      config.externals = [
+        ...( Array.isArray(originalExternals) ? originalExternals : [originalExternals]),
+        ({ request }, callback) => {
+          if (request === '@react-pdf/renderer' || request?.startsWith('@react-pdf/')) {
+            return callback(null, `commonjs ${request}`);
+          }
+          callback();
+        },
+      ];
+    }
+
     // Enable SWC minification for better performance
     if (!dev) {
       config.optimization = {
@@ -79,7 +93,6 @@ const nextConfig = {
 
       // Tree shaking for better bundle size
       config.optimization.usedExports = true;
-      config.optimization.sideEffects = false;
     }
 
     // Optimize images
