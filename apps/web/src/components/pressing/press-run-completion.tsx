@@ -128,6 +128,7 @@ export function PressRunCompletion({
       // Extract only the fields needed for the backend API
       const apiPayload = {
         pressRunId: formData.pressRunId,
+        completionDate: formData.completionDate, // User-selected completion date
         assignments: formData.assignments,
         totalJuiceVolumeL: formData.totalJuiceVolume, // Form sends totalJuiceVolume (already in liters)
         depletedPurchaseItemIds: Array.from(depletedPurchaseItems),

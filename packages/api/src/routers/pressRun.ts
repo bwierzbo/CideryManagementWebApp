@@ -74,6 +74,7 @@ const deleteLoadSchema = z.object({
 
 const completeSchema = z.object({
   pressRunId: z.string().uuid("Invalid press run ID"),
+  completionDate: z.date().or(z.string().transform((val) => new Date(val))),
   assignments: z
     .array(
       z.object({
@@ -962,7 +963,7 @@ export const pressRunRouter = router({
               .set({
                 pressRunName,
                 status: "completed",
-                endTime: new Date(),
+                endTime: input.completionDate, // Use user-selected completion date
                 totalJuiceVolume: totalJuiceVolume.toString(),
                 totalJuiceVolumeUnit: "L",
                 updatedAt: new Date(),
@@ -1231,7 +1232,7 @@ export const pressRunRouter = router({
 
               // Use press run completion date for batch start date and naming
               const pressRunCompletionDate =
-                updatedPressRun[0].endTime || new Date();
+                updatedPressRun[0].endTime || input.completionDate;
 
               // Generate batch name using completion date
               batchName = generateBatchNameFromComposition({
