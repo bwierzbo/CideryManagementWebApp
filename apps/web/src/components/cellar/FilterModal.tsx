@@ -215,7 +215,7 @@ export function FilterModal({
               onUnitChange={(unit) => setValue("volumeBeforeUnit", unit as "L" | "gal")}
               placeholder="Current volume"
               className="mt-1"
-              readOnly
+              disabled
             />
             <p className="text-xs text-gray-500 mt-1">
               Current batch volume (read-only)
