@@ -25,6 +25,7 @@ import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
 import { packagingRouter } from "./packaging";
 import { userRouter } from "./user";
+import { dashboardRouter } from "./dashboard";
 import {
   db,
   vendors,
@@ -3581,6 +3582,9 @@ export const appRouter = router({
   additiveVarieties: additiveVarietiesRouter,
   juiceVarieties: juiceVarietiesRouter,
   packagingVarieties: packagingVarietiesRouter,
+
+  // Dashboard
+  dashboard: dashboardRouter,
 });
 
 export type AppRouter = typeof appRouter;

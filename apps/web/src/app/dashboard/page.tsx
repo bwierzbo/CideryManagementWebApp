@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
 import { toast } from "@/hooks/use-toast";
@@ -55,75 +56,16 @@ import {
 import { trpc } from "@/utils/trpc";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 
-const stats = [
-  {
-    icon: BarChart3,
-    label: "Active Batches",
-    value: "12",
-    change: "+2 from last month",
-    changeType: "positive" as const,
-    color: "bg-blue-50 text-blue-700 border-blue-200",
-  },
-  {
-    icon: Package,
-    label: "Bottles Ready",
-    value: "1,234",
-    change: "Ready to ship",
-    changeType: "neutral" as const,
-    color: "bg-green-50 text-green-700 border-green-200",
-  },
-  {
-    icon: TrendingUp,
-    label: "Monthly Revenue",
-    value: "$12,450",
-    change: "+15% from last month",
-    changeType: "positive" as const,
-    color: "bg-amber-50 text-amber-700 border-amber-200",
-  },
-  {
-    icon: Users,
-    label: "Active Vendors",
-    value: "8",
-    change: "All suppliers active",
-    changeType: "positive" as const,
-    color: "bg-purple-50 text-purple-700 border-purple-200",
-  },
-];
+// Dynamic imports to avoid SSR hydration mismatch
+const DashboardStats = dynamic(
+  () => import("@/components/dashboard/DashboardStats").then((mod) => mod.DashboardStats),
+  { ssr: false }
+);
 
-const recentBatches = [
-  {
-    id: "B-2024-001",
-    variety: "Honeycrisp",
-    status: "Fermenting",
-    abv: "4.2%",
-    daysLeft: 12,
-    statusColor: "bg-blue-100 text-blue-800",
-  },
-  {
-    id: "B-2024-002",
-    variety: "Gala Blend",
-    status: "Aging",
-    abv: "5.8%",
-    daysLeft: 28,
-    statusColor: "bg-amber-100 text-amber-800",
-  },
-  {
-    id: "B-2024-003",
-    variety: "Wild Apple",
-    status: "Ready",
-    abv: "6.1%",
-    daysLeft: 0,
-    statusColor: "bg-green-100 text-green-800",
-  },
-  {
-    id: "B-2024-004",
-    variety: "Granny Smith",
-    status: "Pressing",
-    abv: "—",
-    daysLeft: 45,
-    statusColor: "bg-gray-100 text-gray-800",
-  },
-];
+const RecentBatchesSection = dynamic(
+  () => import("@/components/dashboard/RecentBatchesSection").then((mod) => mod.RecentBatchesSection),
+  { ssr: false }
+);
 
 const quickActions = [
   {
@@ -153,25 +95,6 @@ const quickActions = [
     description: "Create COGS analysis",
     href: "/reports",
     color: "bg-amber-600 hover:bg-amber-700",
-  },
-];
-
-const alerts = [
-  {
-    type: "warning",
-    icon: AlertCircle,
-    title: "Batch B-2024-001 needs attention",
-    description: "Temperature reading is outside normal range",
-    time: "2 hours ago",
-    color: "border-l-amber-500 bg-amber-50",
-  },
-  {
-    type: "success",
-    icon: CheckCircle2,
-    title: "Packaging completed for Batch B-2023-089",
-    description: "456 bottles successfully packaged and labeled",
-    time: "4 hours ago",
-    color: "border-l-green-500 bg-green-50",
   },
 ];
 
@@ -1122,146 +1045,12 @@ export default function DashboardPage() {
             {/* Original Dashboard Content */}
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              {stats.map((stat, index) => {
-                const Icon = stat.icon;
-                return (
-                  <Card
-                    key={index}
-                    className="bg-white border-2 border-gray-100 hover:border-gray-200 transition-all duration-200 hover:shadow-md"
-                  >
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-600 mb-1">
-                            {stat.label}
-                          </p>
-                          <p className="text-3xl font-bold text-gray-900 mb-2">
-                            {stat.value}
-                          </p>
-                          <div className="flex items-center">
-                            {stat.changeType === "positive" && (
-                              <ArrowUpRight className="w-4 h-4 text-green-500 mr-1" />
-                            )}
-                            <p
-                              className={`text-sm ${stat.changeType === "positive" ? "text-green-600" : "text-gray-500"}`}
-                            >
-                              {stat.change}
-                            </p>
-                          </div>
-                        </div>
-                        <div
-                          className={`w-12 h-12 rounded-xl flex items-center justify-center border-2 ${stat.color}`}
-                        >
-                          <Icon className="w-6 h-6" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
-            {/* Alerts */}
-            <Card className="bg-white mb-8 border-2 border-gray-100">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-amber-600" />
-                  Recent Alerts & Updates
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {alerts.map((alert, index) => {
-                    const Icon = alert.icon;
-                    return (
-                      <div
-                        key={index}
-                        className={`p-4 rounded-lg border-l-4 ${alert.color}`}
-                      >
-                        <div className="flex items-start">
-                          <Icon className="w-5 h-5 mr-3 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900 mb-1">
-                              {alert.title}
-                            </h4>
-                            <p className="text-gray-600 text-sm mb-2">
-                              {alert.description}
-                            </p>
-                            <p className="text-xs text-gray-500 flex items-center">
-                              <Clock className="w-3 h-3 mr-1" />
-                              {alert.time}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+            <DashboardStats />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
               {/* Recent Batches */}
               <div className="lg:col-span-2">
-                <Card className="bg-white border-2 border-gray-100 h-full">
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>Active Batches</CardTitle>
-                        <CardDescription>
-                          Monitor your current fermentation batches
-                        </CardDescription>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        <Eye className="w-4 h-4 mr-2" />
-                        View All
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {recentBatches.map((batch, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                        >
-                          <div className="flex items-center space-x-4">
-                            <div className="w-12 h-12 bg-gradient-to-r from-purple-100 to-blue-100 rounded-lg flex items-center justify-center">
-                              <Beaker className="w-6 h-6 text-purple-600" />
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-gray-900">
-                                {batch.id}
-                              </h4>
-                              <p className="text-sm text-gray-600">
-                                {batch.variety}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-center">
-                            <span
-                              className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${batch.statusColor}`}
-                            >
-                              {batch.status}
-                            </span>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {batch.daysLeft > 0
-                                ? `${batch.daysLeft} days left`
-                                : "Complete"}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-gray-900">
-                              {batch.abv}
-                            </p>
-                            <p className="text-xs text-gray-500">ABV</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                <RecentBatchesSection />
               </div>
 
               {/* Quick Actions */}
