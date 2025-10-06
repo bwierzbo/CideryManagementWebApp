@@ -462,8 +462,8 @@ function CompletedRunsSection({
                       <div>
                         <p className="text-xs text-gray-600">Yield</p>
                         <p className="font-medium text-sm text-green-600">
-                          {run.extractionRatePercent
-                            ? `${run.extractionRatePercent.toFixed(1)}%`
+                          {run.extractionRate
+                            ? `${(parseFloat(run.extractionRate) * 100).toFixed(1)}%`
                             : "—"}
                         </p>
                       </div>
