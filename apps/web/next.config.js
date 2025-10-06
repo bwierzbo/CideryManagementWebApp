@@ -1,3 +1,8 @@
+// Polyfill self as global in Node.js environment
+if (typeof self === 'undefined') {
+  global.self = global;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -15,19 +20,19 @@ const nextConfig = {
     },
   },
 
-  // Server-side component configuration
-  serverComponentsExternalPackages: ['@react-pdf/renderer'],
-
   // Bundle optimization
   webpack: (config, { dev, isServer, webpack }) => {
-    // Replace @react-pdf/renderer with empty module on server to avoid "self is not defined"
+    // Replace undefined 'self' references with 'global' for server
     if (isServer) {
-      const path = require('path');
+      // Set up Node.js compatible globals
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+      };
+
       config.plugins.push(
-        new webpack.NormalModuleReplacementPlugin(
-          /@react-pdf/,
-          path.resolve(__dirname, 'src/lib/empty-module.js')
-        )
+        new webpack.DefinePlugin({
+          'typeof self': '"undefined"',
+        })
       );
     }
 

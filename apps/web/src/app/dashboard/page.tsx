@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
+import { toast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -730,8 +731,15 @@ function COGSReport() {
 
   const exportPDF = async () => {
     if (!cogsData?.batches) return;
-    if (typeof window === 'undefined') return; // Only run on client
 
+    // TODO: Re-implement PDF export with a server-compatible library
+    toast({
+      title: "PDF Export Coming Soon",
+      description: "PDF export functionality is temporarily disabled",
+    });
+    return;
+
+    /*
     try {
       // Dynamic import to avoid SSR issues
       const ReactPDF = await import("@react-pdf/renderer");
@@ -884,6 +892,7 @@ function COGSReport() {
       console.error("Error generating PDF:", error);
       alert("Error generating PDF. Please try again.");
     }
+    */
   };
 
   const refreshSnapshots = async () => {
