@@ -33,9 +33,9 @@ const filterSchema = z.object({
     message: "Please select a filter type",
   }),
   volumeBefore: z.number().positive("Volume must be positive"),
-  volumeBeforeUnit: z.enum(["L", "gal"]).default("L"),
+  volumeBeforeUnit: z.enum(["L", "gal"]),
   volumeAfter: z.number().positive("Volume must be positive"),
-  volumeAfterUnit: z.enum(["L", "gal"]).default("L"),
+  volumeAfterUnit: z.enum(["L", "gal"]),
   notes: z.string().optional(),
 });
 
