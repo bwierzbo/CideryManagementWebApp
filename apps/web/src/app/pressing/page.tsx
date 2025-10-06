@@ -451,6 +451,11 @@ function CompletedRunsSection({
                           ? `${parseFloat(run.totalJuiceVolume).toFixed(1)} L`
                           : "—"}
                       </p>
+                      {run.totalJuiceVolume && (
+                        <p className="text-xs text-gray-500">
+                          {(parseFloat(run.totalJuiceVolume) / 3.78541).toFixed(1)} gal
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center">
                       <TrendingUp className="w-3 h-3 text-green-600 mr-1" />
