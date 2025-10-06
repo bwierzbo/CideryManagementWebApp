@@ -131,7 +131,7 @@ function SignInForm() {
 
             <div className="mt-6 border-t border-gray-200 pt-6">
               <p className="text-sm text-gray-600 text-center">
-                Don't have an account?{" "}
+                Don&apos;t have an account?{" "}
                 <a href="/auth/signup" className="font-medium text-purple-600 hover:text-purple-500">
                   Sign up
                 </a>

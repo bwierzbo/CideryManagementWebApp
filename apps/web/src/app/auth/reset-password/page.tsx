@@ -64,14 +64,14 @@ function ResetPasswordForm() {
           <CardHeader>
             <CardTitle>Forgot Password</CardTitle>
             <CardDescription>
-              Enter your email address and we'll send you a link to reset your password
+              Enter your email address and we&apos;ll send you a link to reset your password
             </CardDescription>
           </CardHeader>
           <CardContent>
             {success ? (
               <div className="space-y-4">
                 <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md text-sm">
-                  If an account exists with that email, we've sent password reset instructions.
+                  If an account exists with that email, we&apos;ve sent password reset instructions.
                 </div>
                 <div className="text-center space-y-2">
                   <p className="text-sm text-gray-600">
