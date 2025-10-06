@@ -26,7 +26,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Filter, AlertTriangle } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
-import { convertVolume } from "lib/src/utils/volumeConversion";
+import { convertVolume } from "lib";
 
 const filterSchema = z.object({
   filterType: z.enum(["coarse", "fine", "sterile"], {
