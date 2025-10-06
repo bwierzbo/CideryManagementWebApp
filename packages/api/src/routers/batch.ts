@@ -15,6 +15,7 @@ import {
   basefruitPurchases,
   batchMergeHistory,
   batchTransfers,
+  batchFilterOperations,
 } from "db";
 import { eq, and, isNull, desc, asc, sql, or, like } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -57,6 +58,21 @@ const addAdditiveSchema = z.object({
   unit: z.string().min(1, "Unit is required"),
   notes: z.string().optional(),
   addedBy: z.string().optional(),
+});
+
+const filterBatchSchema = z.object({
+  batchId: z.string().uuid("Invalid batch ID"),
+  vesselId: z.string().uuid("Invalid vessel ID"),
+  filterType: z.enum(["coarse", "fine", "sterile"]),
+  volumeBefore: z.number().positive("Volume before must be positive"),
+  volumeBeforeUnit: z.enum(['L', 'gal']).default('L'),
+  volumeAfter: z.number().positive("Volume after must be positive"),
+  volumeAfterUnit: z.enum(['L', 'gal']).default('L'),
+  notes: z.string().optional(),
+  filteredBy: z.string().optional(),
+}).refine((data) => data.volumeAfter < data.volumeBefore, {
+  message: "Volume after filtering must be less than volume before",
+  path: ["volumeAfter"],
 });
 
 const updateBatchSchema = z.object({
@@ -1044,6 +1060,45 @@ export const batchRouter = router({
           }
         });
 
+        // Get filter operations
+        const filterOps = await db
+          .select({
+            id: batchFilterOperations.id,
+            filteredAt: batchFilterOperations.filteredAt,
+            filterType: batchFilterOperations.filterType,
+            volumeBefore: batchFilterOperations.volumeBefore,
+            volumeBeforeUnit: batchFilterOperations.volumeBeforeUnit,
+            volumeAfter: batchFilterOperations.volumeAfter,
+            volumeAfterUnit: batchFilterOperations.volumeAfterUnit,
+            volumeLoss: batchFilterOperations.volumeLoss,
+            filteredBy: batchFilterOperations.filteredBy,
+            notes: batchFilterOperations.notes,
+          })
+          .from(batchFilterOperations)
+          .where(
+            and(
+              eq(batchFilterOperations.batchId, input.batchId),
+              isNull(batchFilterOperations.deletedAt),
+            ),
+          );
+
+        filterOps.forEach((f) => {
+          activities.push({
+            id: `filter-${f.id}`,
+            type: "filter",
+            timestamp: f.filteredAt,
+            description: `Filtered with ${f.filterType} filter${f.filteredBy ? ` by ${f.filteredBy}` : ""}`,
+            details: {
+              filterType: f.filterType,
+              volumeBefore: `${f.volumeBefore}${f.volumeBeforeUnit || 'L'}`,
+              volumeAfter: `${f.volumeAfter}${f.volumeAfterUnit || 'L'}`,
+              volumeLoss: `${f.volumeLoss}L`,
+              lossPercentage: `${((parseFloat(f.volumeLoss) / parseFloat(f.volumeBefore)) * 100).toFixed(1)}%`,
+              notes: f.notes || null,
+            },
+          });
+        });
+
         // TODO: Add packaging/bottling events when implemented
 
         // Sort all activities by timestamp - true chronological order (oldest to newest)
@@ -1125,6 +1180,110 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch batch merge history",
+        });
+      }
+    }),
+
+  /**
+   * Filter batch - Record filtering operation with volume loss
+   * Only available for batches in aging status
+   */
+  filter: createRbacProcedure("create", "batch")
+    .input(filterBatchSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify batch exists and get current state
+        const batchData = await db
+          .select({
+            id: batches.id,
+            status: batches.status,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
+            vesselId: batches.vesselId,
+          })
+          .from(batches)
+          .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
+          .limit(1);
+
+        if (!batchData.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Batch not found",
+          });
+        }
+
+        const batch = batchData[0];
+
+        // Verify batch is in correct vessel
+        if (batch.vesselId !== input.vesselId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Batch is not in the specified vessel",
+          });
+        }
+
+        // Verify vessel is in aging status
+        const vesselData = await db
+          .select({ status: vessels.status })
+          .from(vessels)
+          .where(eq(vessels.id, input.vesselId))
+          .limit(1);
+
+        if (!vesselData.length || vesselData[0].status !== "aging") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Filtering is only available for vessels in aging status",
+          });
+        }
+
+        // Calculate volume loss (in liters for consistency)
+        const volumeBeforeL = input.volumeBeforeUnit === 'gal'
+          ? input.volumeBefore * 3.78541
+          : input.volumeBefore;
+        const volumeAfterL = input.volumeAfterUnit === 'gal'
+          ? input.volumeAfter * 3.78541
+          : input.volumeAfter;
+        const volumeLossL = volumeBeforeL - volumeAfterL;
+
+        // Create filter operation record
+        const filterOperation = await db
+          .insert(batchFilterOperations)
+          .values({
+            batchId: input.batchId,
+            vesselId: input.vesselId,
+            filterType: input.filterType,
+            volumeBefore: input.volumeBefore.toString(),
+            volumeBeforeUnit: input.volumeBeforeUnit,
+            volumeAfter: input.volumeAfter.toString(),
+            volumeAfterUnit: input.volumeAfterUnit,
+            volumeLoss: volumeLossL.toFixed(3),
+            notes: input.notes,
+            filteredBy: input.filteredBy,
+          })
+          .returning();
+
+        // Update batch current volume
+        await db
+          .update(batches)
+          .set({
+            currentVolume: volumeAfterL.toFixed(3),
+            currentVolumeUnit: 'L',
+            updatedAt: new Date(),
+          })
+          .where(eq(batches.id, input.batchId));
+
+        return {
+          success: true,
+          filterOperation: filterOperation[0],
+          volumeLoss: volumeLossL,
+          message: `Batch filtered with ${input.filterType} filter. Loss: ${volumeLossL.toFixed(2)}L`,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error filtering batch:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to filter batch",
         });
       }
     }),

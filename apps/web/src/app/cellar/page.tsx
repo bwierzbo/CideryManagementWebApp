@@ -82,6 +82,7 @@ import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BottleModal } from "@/components/packaging/bottle-modal";
+import { FilterModal } from "@/components/cellar/FilterModal";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 
 // Form schemas
@@ -828,6 +829,15 @@ function VesselMap() {
     currentVolumeL: number;
   } | null>(null);
 
+  // Filter modal state
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [selectedVesselForFiltering, setSelectedVesselForFiltering] = useState<{
+    id: string;
+    name: string;
+    batchId: string;
+    currentVolumeL: number;
+  } | null>(null);
+
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
@@ -1067,6 +1077,59 @@ function VesselMap() {
     setShowBottleModal(true);
   };
 
+  const handleFilter = (vesselId: string) => {
+    const vessel = vesselListQuery.data?.vessels?.find(
+      (v) => v.id === vesselId,
+    );
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
+
+    if (!vessel || !batchId) {
+      toast({
+        title: "Cannot Filter",
+        description: "This vessel doesn't have an active batch.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Calculate current volume
+    const currentVolumeL = liquidMapVessel?.currentVolume
+      ? parseFloat(liquidMapVessel.currentVolume.toString())
+      : liquidMapVessel?.applePressRunVolume
+        ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
+        : 0;
+
+    if (currentVolumeL <= 0) {
+      toast({
+        title: "Cannot Filter",
+        description: "This vessel is empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if vessel is in aging status
+    if (vessel.status !== "aging") {
+      toast({
+        title: "Cannot Filter",
+        description: "Filtering is only available for vessels in aging status.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedVesselForFiltering({
+      id: vesselId,
+      name: vessel.name || "Unnamed Vessel",
+      batchId,
+      currentVolumeL,
+    });
+    setShowFilterModal(true);
+  };
+
   if (vesselListQuery.isLoading) {
     return (
       <Card>
@@ -1287,15 +1350,26 @@ function VesselMap() {
                         </DropdownMenuItem>
                       )}
                       {vessel.status === "aging" && (
-                        <DropdownMenuItem
-                          onClick={() => handleBottle(vessel.id)}
-                          disabled={
-                            !liquidMapVessel?.batchId || currentVolume <= 0
-                          }
-                        >
-                          <Wine className="w-3 h-3 mr-2" />
-                          Bottle
-                        </DropdownMenuItem>
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => handleFilter(vessel.id)}
+                            disabled={
+                              !liquidMapVessel?.batchId || currentVolume <= 0
+                            }
+                          >
+                            <Filter className="w-3 h-3 mr-2" />
+                            Filter
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleBottle(vessel.id)}
+                            disabled={
+                              !liquidMapVessel?.batchId || currentVolume <= 0
+                            }
+                          >
+                            <Wine className="w-3 h-3 mr-2" />
+                            Bottle
+                          </DropdownMenuItem>
+                        </>
                       )}
                       <DropdownMenuItem
                         onClick={() => handleTankMeasurement(vessel.id)}
@@ -1490,6 +1564,21 @@ function VesselMap() {
             vesselName={selectedVesselForBottling.name}
             batchId={selectedVesselForBottling.batchId}
             currentVolumeL={selectedVesselForBottling.currentVolumeL}
+          />
+        )}
+
+        {/* Filter Modal */}
+        {selectedVesselForFiltering && (
+          <FilterModal
+            open={showFilterModal}
+            onClose={() => {
+              setShowFilterModal(false);
+              setSelectedVesselForFiltering(null);
+            }}
+            vesselId={selectedVesselForFiltering.id}
+            vesselName={selectedVesselForFiltering.name}
+            batchId={selectedVesselForFiltering.batchId}
+            currentVolumeL={selectedVesselForFiltering.currentVolumeL}
           />
         )}
 

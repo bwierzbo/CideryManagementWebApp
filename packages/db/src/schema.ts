@@ -30,6 +30,11 @@ export const vesselStatusEnum = pgEnum("vessel_status", [
   "maintenance",
   "aging",
 ]);
+export const filterTypeEnum = pgEnum("filter_type", [
+  "coarse",
+  "fine",
+  "sterile",
+]);
 export const vesselTypeEnum = pgEnum("vessel_type", [
   "fermenter",
   "conditioning_tank",
@@ -1030,6 +1035,54 @@ export const batchTransfers = pgTable(
   }),
 );
 
+// Batch filter operations for tracking filtering with volume loss
+export const batchFilterOperations = pgTable(
+  "batch_filter_operations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id, { onDelete: "cascade" }),
+    vesselId: uuid("vessel_id")
+      .notNull()
+      .references(() => vessels.id, { onDelete: "cascade" }),
+    filterType: filterTypeEnum("filter_type").notNull(),
+    // Volume tracking
+    volumeBefore: decimal("volume_before", {
+      precision: 10,
+      scale: 3,
+    }).notNull(),
+    volumeBeforeUnit: unitEnum("volume_before_unit").notNull().default("L"),
+    volumeAfter: decimal("volume_after", {
+      precision: 10,
+      scale: 3,
+    }).notNull(),
+    volumeAfterUnit: unitEnum("volume_after_unit").notNull().default("L"),
+    volumeLoss: decimal("volume_loss", {
+      precision: 10,
+      scale: 3,
+    })
+      .notNull()
+      .default("0"),
+    // Metadata
+    notes: text("notes"),
+    filteredBy: text("filtered_by"),
+    filteredAt: timestamp("filtered_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    batchIdx: index("batch_filter_operations_batch_id_idx").on(table.batchId),
+    vesselIdx: index("batch_filter_operations_vessel_id_idx").on(
+      table.vesselId,
+    ),
+    filteredAtIdx: index("batch_filter_operations_filtered_at_idx").on(
+      table.filteredAt,
+    ),
+  }),
+);
+
 // Batch merge history for tracking when batches are combined
 export const batchMergeHistory = pgTable(
   "batch_merge_history",
@@ -1336,6 +1389,8 @@ export const batchesRelations = relations(batches, ({ one, many }) => ({
   }),
   // Merge history
   mergeHistory: many(batchMergeHistory),
+  // Filter operations
+  filterOperations: many(batchFilterOperations),
 }));
 
 export const batchMergeHistoryRelations = relations(
@@ -1348,6 +1403,20 @@ export const batchMergeHistoryRelations = relations(
     sourcePressRun: one(applePressRuns, {
       fields: [batchMergeHistory.sourcePressRunId],
       references: [applePressRuns.id],
+    }),
+  }),
+);
+
+export const batchFilterOperationsRelations = relations(
+  batchFilterOperations,
+  ({ one }) => ({
+    batch: one(batches, {
+      fields: [batchFilterOperations.batchId],
+      references: [batches.id],
+    }),
+    vessel: one(vessels, {
+      fields: [batchFilterOperations.vesselId],
+      references: [vessels.id],
     }),
   }),
 );

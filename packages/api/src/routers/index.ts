@@ -2495,11 +2495,8 @@ export const appRouter = router({
             finalName = `Tank ${nextNumber}`;
           }
 
-          // Convert capacity to liters for storage (always store in liters)
-          const capacityInLiters = roundToDecimals(
-            convertVolume(input.capacityL, input.capacityUnit, "L"),
-            3
-          );
+          // capacityL is already in liters from the frontend, just round it
+          const capacityInLiters = roundToDecimals(input.capacityL, 3);
 
           const newVessel = await db
             .insert(vessels)
@@ -2584,11 +2581,8 @@ export const appRouter = router({
 
           if (input.name !== undefined) updateData.name = input.name;
           if (input.capacityL !== undefined && input.capacityUnit !== undefined) {
-            // Convert capacity to liters for storage with proper rounding
-            const capacityInLiters = roundToDecimals(
-              convertVolume(input.capacityL, input.capacityUnit, "L"),
-              3
-            );
+            // capacityL is already in liters from the frontend, just round it
+            const capacityInLiters = roundToDecimals(input.capacityL, 3);
             updateData.capacity = capacityInLiters.toString();
             updateData.capacityUnit = input.capacityUnit;
           } else if (input.capacityUnit !== undefined) {

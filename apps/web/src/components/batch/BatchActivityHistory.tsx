@@ -28,6 +28,7 @@ import {
   TestTube,
   Thermometer,
   Scale,
+  Filter,
 } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
@@ -45,6 +46,7 @@ const activityIcons = {
   transfer: ArrowRight,
   rack: FlaskConical,
   bottling: Package,
+  filter: Filter,
 };
 
 const activityColors = {
@@ -55,6 +57,7 @@ const activityColors = {
   transfer: "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
   rack: "bg-amber-500/10 text-amber-700 border-amber-500/20",
   bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
+  filter: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
 };
 
 export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
@@ -250,6 +253,31 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                                   {activity.details.vessel
                                     ? ` in ${activity.details.vessel}`
                                     : ""}
+                                </div>
+                              )}
+                              {activity.details.filterType && (
+                                <div className="space-y-1">
+                                  <div className="text-sm text-muted-foreground capitalize">
+                                    Filter Type: <span className="font-medium">{activity.details.filterType}</span>
+                                  </div>
+                                  {activity.details.volumeBefore && (
+                                    <div className="text-sm text-muted-foreground">
+                                      Before: {activity.details.volumeBefore}
+                                    </div>
+                                  )}
+                                  {activity.details.volumeAfter && (
+                                    <div className="text-sm text-muted-foreground">
+                                      After: {activity.details.volumeAfter}
+                                    </div>
+                                  )}
+                                  {activity.details.volumeLoss && (
+                                    <div className="text-sm text-muted-foreground">
+                                      Loss: <span className="text-red-600 font-medium">{activity.details.volumeLoss}</span>
+                                      {activity.details.lossPercentage && (
+                                        <span className="ml-1">({activity.details.lossPercentage})</span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
