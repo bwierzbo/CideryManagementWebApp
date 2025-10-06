@@ -362,6 +362,9 @@ export const basefruitPurchaseItems = pgTable("basefruit_purchase_items", {
   deletedAt: timestamp("deleted_at"),
 });
 
+// TODO: Additive, Juice, and Packaging Purchases - Not yet implemented
+// Commented out to avoid schema drift until these features are ready
+/*
 // Additive Purchases
 export const additivePurchases = pgTable("additive_purchases", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -388,12 +391,11 @@ export const additivePurchaseItems = pgTable("additive_purchase_items", {
   additiveVarietyId: uuid("additive_variety_id").references(
     () => additiveVarieties.id,
   ),
-  // Legacy fields for backward compatibility - can be removed once migrated
-  additiveType: text("additive_type"), // enzyme, nutrient, clarifier, preservative, acid, other
+  additiveType: text("additive_type"),
   brandManufacturer: text("brand_manufacturer"),
   productName: text("product_name"),
   quantity: decimal("quantity", { precision: 10, scale: 3 }).notNull(),
-  unit: text("unit").notNull(), // g, kg, oz, lb
+  unit: text("unit").notNull(),
   lotBatchNumber: text("lot_batch_number"),
   expirationDate: date("expiration_date"),
   storageRequirements: text("storage_requirements"),
@@ -429,15 +431,14 @@ export const juicePurchaseItems = pgTable("juice_purchase_items", {
     .notNull()
     .references(() => juicePurchases.id),
   juiceVarietyId: uuid("juice_variety_id").references(() => juiceVarieties.id),
-  // Legacy fields for backward compatibility - can be removed once migrated
   juiceType: text("juice_type"),
   varietyName: text("variety_name"),
   volume: decimal("volume", { precision: 10, scale: 3 }).notNull(),
   volumeUnit: unitEnum("volume_unit").notNull().default("L"),
   brix: decimal("brix", { precision: 5, scale: 2 }),
-  ph: decimal("ph", { precision: 3, scale: 2 }), // pH measurement instead of storing in notes
-  specificGravity: decimal("specific_gravity", { precision: 5, scale: 4 }), // SG measurement
-  containerType: text("container_type"), // drum, tote, tank
+  ph: decimal("ph", { precision: 3, scale: 2 }),
+  specificGravity: decimal("specific_gravity", { precision: 5, scale: 4 }),
+  containerType: text("container_type"),
   pricePerLiter: decimal("price_per_liter", { precision: 8, scale: 4 }),
   totalCost: decimal("total_cost", { precision: 10, scale: 2 }),
   notes: text("notes"),
@@ -472,10 +473,9 @@ export const packagingPurchaseItems = pgTable("packaging_purchase_items", {
   packagingVarietyId: uuid("packaging_variety_id").references(
     () => packagingVarieties.id,
   ),
-  // Legacy fields for backward compatibility - can be removed once migrated
-  packageType: text("package_type"), // bottles, cans, kegs, labels, caps
-  materialType: text("material_type"), // glass, aluminum, stainless, paper
-  size: text("size").notNull(), // 12oz, 16oz, 750ml, 5gal, etc
+  packageType: text("package_type"),
+  materialType: text("material_type"),
+  size: text("size").notNull(),
   quantity: integer("quantity").notNull(),
   pricePerUnit: decimal("price_per_unit", { precision: 8, scale: 4 }),
   totalCost: decimal("total_cost", { precision: 10, scale: 2 }),
@@ -484,6 +484,7 @@ export const packagingPurchaseItems = pgTable("packaging_purchase_items", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
 });
+*/
 
 export const pressRuns = pgTable("press_runs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -1082,6 +1083,64 @@ export const batchFilterOperations = pgTable(
   }),
 );
 
+// Batch racking operations for tracking racking with volume loss
+export const batchRackingOperations = pgTable(
+  "batch_racking_operations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id, { onDelete: "cascade" }),
+    // Source vessel (where batch is being racked from)
+    sourceVesselId: uuid("source_vessel_id")
+      .notNull()
+      .references(() => vessels.id, { onDelete: "cascade" }),
+    // Destination vessel (where batch is being racked to)
+    destinationVesselId: uuid("destination_vessel_id")
+      .notNull()
+      .references(() => vessels.id, { onDelete: "cascade" }),
+    // Volume tracking
+    volumeBefore: decimal("volume_before", {
+      precision: 10,
+      scale: 3,
+    }).notNull(),
+    volumeBeforeUnit: unitEnum("volume_before_unit").notNull().default("L"),
+    volumeAfter: decimal("volume_after", {
+      precision: 10,
+      scale: 3,
+    }).notNull(),
+    volumeAfterUnit: unitEnum("volume_after_unit").notNull().default("L"),
+    volumeLoss: decimal("volume_loss", {
+      precision: 10,
+      scale: 3,
+    })
+      .notNull()
+      .default("0"),
+    volumeLossUnit: unitEnum("volume_loss_unit").notNull().default("L"),
+    // Racking reason and notes
+    reason: text("reason"), // e.g., "primary to secondary", "aging transfer"
+    notes: text("notes"),
+    // Metadata
+    rackedBy: uuid("racked_by").references(() => users.id),
+    rackedAt: timestamp("racked_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    batchIdx: index("batch_racking_operations_batch_id_idx").on(table.batchId),
+    sourceVesselIdx: index("batch_racking_operations_source_vessel_id_idx").on(
+      table.sourceVesselId,
+    ),
+    destinationVesselIdx: index(
+      "batch_racking_operations_destination_vessel_id_idx",
+    ).on(table.destinationVesselId),
+    rackedAtIdx: index("batch_racking_operations_racked_at_idx").on(
+      table.rackedAt,
+    ),
+  }),
+);
+
 // Batch merge history for tracking when batches are combined
 export const batchMergeHistory = pgTable(
   "batch_merge_history",
@@ -1135,9 +1194,9 @@ export const batchMergeHistory = pgTable(
 // Relations
 export const vendorsRelations = relations(vendors, ({ many }) => ({
   basefruitPurchases: many(basefruitPurchases),
-  additivePurchases: many(additivePurchases),
-  juicePurchases: many(juicePurchases),
-  packagingPurchases: many(packagingPurchases),
+  // additivePurchases: many(additivePurchases), // Commented out - not yet implemented
+  // juicePurchases: many(juicePurchases), // Commented out - not yet implemented
+  // packagingPurchases: many(packagingPurchases), // Commented out - not yet implemented
   vendorVarieties: many(vendorVarieties),
   vendorAdditiveVarieties: many(vendorAdditiveVarieties),
   vendorJuiceVarieties: many(vendorJuiceVarieties),
@@ -1261,7 +1320,8 @@ export const basefruitPurchaseItemsRelations = relations(
   }),
 );
 
-// Additive Purchase Relations
+/*
+// Additive Purchase Relations - Commented out - not yet implemented
 export const additivePurchasesRelations = relations(
   additivePurchases,
   ({ one, many }) => ({
@@ -1283,7 +1343,7 @@ export const additivePurchaseItemsRelations = relations(
   }),
 );
 
-// Juice Purchase Relations
+// Juice Purchase Relations - Commented out - not yet implemented
 export const juicePurchasesRelations = relations(
   juicePurchases,
   ({ one, many }) => ({
@@ -1305,7 +1365,7 @@ export const juicePurchaseItemsRelations = relations(
   }),
 );
 
-// Packaging Purchase Relations
+// Packaging Purchase Relations - Commented out - not yet implemented
 export const packagingPurchasesRelations = relations(
   packagingPurchases,
   ({ one, many }) => ({
@@ -1326,6 +1386,7 @@ export const packagingPurchaseItemsRelations = relations(
     }),
   }),
 );
+*/
 
 export const pressRunsRelations = relations(pressRuns, ({ many }) => ({
   items: many(pressItems),
@@ -1416,6 +1477,28 @@ export const batchFilterOperationsRelations = relations(
     vessel: one(vessels, {
       fields: [batchFilterOperations.vesselId],
       references: [vessels.id],
+    }),
+  }),
+);
+
+export const batchRackingOperationsRelations = relations(
+  batchRackingOperations,
+  ({ one }) => ({
+    batch: one(batches, {
+      fields: [batchRackingOperations.batchId],
+      references: [batches.id],
+    }),
+    sourceVessel: one(vessels, {
+      fields: [batchRackingOperations.sourceVesselId],
+      references: [vessels.id],
+    }),
+    destinationVessel: one(vessels, {
+      fields: [batchRackingOperations.destinationVesselId],
+      references: [vessels.id],
+    }),
+    rackedByUser: one(users, {
+      fields: [batchRackingOperations.rackedBy],
+      references: [users.id],
     }),
   }),
 );
