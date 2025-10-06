@@ -15,20 +15,20 @@ const nextConfig = {
     },
   },
 
+  // Server-side component configuration
+  serverComponentsExternalPackages: ['@react-pdf/renderer'],
+
   // Bundle optimization
-  webpack: (config, { dev, isServer }) => {
-    // Mark @react-pdf/renderer as external for server bundle to avoid "self is not defined"
+  webpack: (config, { dev, isServer, webpack }) => {
+    // Replace @react-pdf/renderer with empty module on server to avoid "self is not defined"
     if (isServer) {
-      const originalExternals = config.externals || [];
-      config.externals = [
-        ...( Array.isArray(originalExternals) ? originalExternals : [originalExternals]),
-        ({ request }, callback) => {
-          if (request === '@react-pdf/renderer' || request?.startsWith('@react-pdf/')) {
-            return callback(null, `commonjs ${request}`);
-          }
-          callback();
-        },
-      ];
+      const path = require('path');
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /@react-pdf/,
+          path.resolve(__dirname, 'src/lib/empty-module.js')
+        )
+      );
     }
 
     // Enable SWC minification for better performance

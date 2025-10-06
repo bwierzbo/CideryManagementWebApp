@@ -730,12 +730,12 @@ function COGSReport() {
 
   const exportPDF = async () => {
     if (!cogsData?.batches) return;
+    if (typeof window === 'undefined') return; // Only run on client
 
     try {
       // Dynamic import to avoid SSR issues
-      const { Document, Page, Text, View, StyleSheet, pdf } = await import(
-        "@react-pdf/renderer"
-      );
+      const ReactPDF = await import("@react-pdf/renderer");
+      const { Document, Page, Text, View, StyleSheet, pdf } = ReactPDF;
 
       const COGSReportPDF = () => (
         <Document>
