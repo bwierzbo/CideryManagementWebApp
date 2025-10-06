@@ -9,13 +9,14 @@ import {
   baseFruitVarieties,
 } from "db";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
-import { PdfService } from "../services/pdf/PdfService";
-import {
-  mapPurchaseToOrderData,
-  mapPurchasesToDateRangeData,
-} from "../services/pdf/reportDataMapper";
+// TODO: Re-enable PDF service when server-compatible solution is available
+// import { PdfService } from "../services/pdf/PdfService";
+// import {
+//   mapPurchaseToOrderData,
+//   mapPurchasesToDateRangeData,
+// } from "../services/pdf/reportDataMapper";
 
-const pdfService = new PdfService();
+// const pdfService = new PdfService();
 
 // Input schemas
 const purchaseOrderPdfInput = z.object({
@@ -31,6 +32,7 @@ const dateRangeReportInput = z.object({
 });
 
 export const reportsRouter = router({
+  /* TODO: Re-enable when PDF service is server-compatible
   // Generate PDF for a single purchase order
   generatePurchaseOrderPdf: createRbacProcedure("read", "purchase")
     .input(purchaseOrderPdfInput)
@@ -154,6 +156,7 @@ export const reportsRouter = router({
         });
       }
     }),
+  */
 
   // Get available vendors for filtering
   getVendors: protectedProcedure.query(async () => {

@@ -1,8 +1,3 @@
-// Polyfill self as global in Node.js environment
-if (typeof self === 'undefined') {
-  global.self = global;
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -22,22 +17,20 @@ const nextConfig = {
 
   // Bundle optimization
   webpack: (config, { dev, isServer, webpack }) => {
-    // Replace undefined 'self' references with 'global' for server
+    // Inject self polyfill at the top of server bundles
     if (isServer) {
-      // Set up Node.js compatible globals
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-      };
-
       config.plugins.push(
-        new webpack.DefinePlugin({
-          'typeof self': '"undefined"',
+        new webpack.BannerPlugin({
+          banner: 'if (typeof self === "undefined") { var self = global; }',
+          raw: true,
+          entryOnly: false,
         })
       );
     }
 
     // Enable SWC minification for better performance
-    if (!dev) {
+    if (!dev && !isServer) {
+      // Only apply aggressive code splitting for client bundles
       config.optimization = {
         ...config.optimization,
         splitChunks: {

@@ -77,8 +77,8 @@ export default function ReportsPage() {
   // Get vendors for PDF filtering
   const { data: reportVendors } = trpc.pdfReports.getVendors.useQuery();
 
-  // PDF generation mutations
-  const generateDateRangeReport =
+  // TODO: PDF generation mutations - Temporarily disabled
+  /* const generateDateRangeReport =
     trpc.pdfReports.generateDateRangeReportPdf.useMutation({
       onSuccess: (result) => {
         if (result.success && result.data) {
@@ -93,6 +93,7 @@ export default function ReportsPage() {
         setIsGeneratingPdf(false);
       },
     });
+  */
 
   // Calculate date range
   const getDateRange = () => {
@@ -120,7 +121,9 @@ export default function ReportsPage() {
   };
 
   const handleGeneratePdf = () => {
-    setIsGeneratingPdf(true);
+    // TODO: Re-implement PDF generation
+    alert("PDF generation is temporarily disabled");
+    /* setIsGeneratingPdf(true);
     const { startDate, endDate } = getDateRange();
 
     generateDateRangeReport.mutate({
@@ -129,6 +132,7 @@ export default function ReportsPage() {
       reportType,
       vendorId: selectedVendor !== "all" ? selectedVendor : undefined,
     });
+    */
   };
 
   // Calculate COGS data - simplified for demo

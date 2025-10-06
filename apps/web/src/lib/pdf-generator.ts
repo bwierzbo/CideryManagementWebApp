@@ -1,4 +1,5 @@
-import jsPDF from "jspdf";
+// TODO: Re-enable when server-compatible PDF library is available
+// import jsPDF from "jspdf";
 
 // Type definitions for packaging run data
 export interface PackagingRunPDFData {
@@ -74,9 +75,11 @@ export interface PDFGeneratorOptions {
 /**
  * Professional PDF Generator for Packaging Runs
  * Creates a comprehensive production report with all QA fields and measurements
+ * TODO: Re-enable when server-compatible PDF library is available
  */
 export class PackagingPDFGenerator {
-  private doc: jsPDF;
+  // private doc: jsPDF;
+  private doc: any;
   private options: PDFGeneratorOptions;
   private currentY: number = 20;
   private pageHeight: number;
@@ -85,7 +88,8 @@ export class PackagingPDFGenerator {
   private marginRight: number = 20;
 
   constructor(options: PDFGeneratorOptions = {}) {
-    this.doc = new jsPDF();
+    // this.doc = new jsPDF();
+    throw new Error("PDF generation is temporarily disabled");
     this.pageHeight = this.doc.internal.pageSize.height;
     this.pageWidth = this.doc.internal.pageSize.width;
     this.options = {
