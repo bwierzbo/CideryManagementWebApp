@@ -957,6 +957,15 @@ export const pressRunRouter = router({
 
             const pressRunName = `${completionDateStr}-${String(sequenceNumber).padStart(2, "0")}`;
 
+            // Calculate extraction rate (L of juice per kg of apples)
+            const totalAppleWeightKg = parseFloat(
+              pressRun[0].totalAppleWeightKg || "0",
+            );
+            const extractionRate =
+              totalAppleWeightKg > 0
+                ? totalJuiceVolume / totalAppleWeightKg
+                : 0;
+
             // Complete the press run
             await tx
               .update(applePressRuns)
@@ -966,6 +975,7 @@ export const pressRunRouter = router({
                 endTime: input.completionDate, // Use user-selected completion date
                 totalJuiceVolume: totalJuiceVolume.toString(),
                 totalJuiceVolumeUnit: "L",
+                extractionRate: extractionRate.toString(),
                 updatedAt: new Date(),
               })
               .where(eq(applePressRuns.id, input.pressRunId));
