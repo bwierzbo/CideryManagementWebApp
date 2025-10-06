@@ -34,7 +34,6 @@ interface PressRunSummaryProps {
     id: string;
     vendorName: string;
     status: string;
-    startTime?: string;
     totalAppleWeightKg: number;
     loads: Array<{
       id: string;

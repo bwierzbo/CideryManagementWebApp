@@ -808,8 +808,7 @@ export const applePressRuns = pgTable(
     status: pressRunStatusEnum("status").notNull().default("draft"),
 
     // Timing fields for session management
-    startTime: timestamp("start_time"),
-    endTime: timestamp("end_time"),
+    dateCompleted: date("date_completed"), // Date when press run was completed
     scheduledDate: date("scheduled_date"), // Planning/scheduling support
 
     // Aggregate measurements (calculated from loads)
@@ -835,8 +834,6 @@ export const applePressRuns = pgTable(
 
     // Operational metadata
     notes: text("notes"),
-    pressingMethod: text("pressing_method"), // e.g., "hydraulic", "screw_press", "bladder_press"
-    weatherConditions: text("weather_conditions"), // External factors affecting pressing
 
     // Full audit trail following existing pattern from schema.ts
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -852,7 +849,9 @@ export const applePressRuns = pgTable(
     scheduledDateIdx: index("apple_press_runs_scheduled_date_idx").on(
       table.scheduledDate,
     ),
-    startTimeIdx: index("apple_press_runs_start_time_idx").on(table.startTime),
+    dateCompletedIdx: index("apple_press_runs_date_completed_idx").on(
+      table.dateCompleted,
+    ),
 
     // Composite indexes for common filtered queries
     vendorStatusIdx: index("apple_press_runs_vendor_status_idx").on(

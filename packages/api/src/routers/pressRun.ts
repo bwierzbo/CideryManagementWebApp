@@ -29,13 +29,7 @@ const createPressRunSchema = z.object({
     .date()
     .or(z.string().transform((val) => new Date(val)))
     .optional(),
-  startTime: z
-    .date()
-    .or(z.string().transform((val) => new Date(val)))
-    .optional(),
   notes: z.string().optional(),
-  pressingMethod: z.string().optional(),
-  weatherConditions: z.string().optional(),
 });
 
 const addLoadSchema = z.object({
@@ -139,10 +133,7 @@ export const pressRunRouter = router({
               scheduledDate: input.scheduledDate
                 ? input.scheduledDate.toISOString().split("T")[0]
                 : null,
-              startTime: input.startTime || new Date(),
               notes: input.notes,
-              pressingMethod: input.pressingMethod,
-              weatherConditions: input.weatherConditions,
               createdBy: ctx.session?.user?.id,
               updatedBy: ctx.session?.user?.id,
               createdAt: new Date(),
@@ -298,7 +289,6 @@ export const pressRunRouter = router({
               .update(applePressRuns)
               .set({
                 status: "in_progress",
-                startTime: new Date(),
                 updatedBy: ctx.session?.user?.id,
                 updatedAt: new Date(),
               })
@@ -668,7 +658,7 @@ export const pressRunRouter = router({
               pressRunName,
               vesselId: input.vesselId,
               status: "completed",
-              endTime: input.completionDate,
+              dateCompleted: input.completionDate.toISOString().split("T")[0],
               totalJuiceVolume: input.totalJuiceVolumeL.toString(),
               totalJuiceVolumeUnit: "L",
               extractionRate: extractionRate.toString(),
@@ -825,7 +815,7 @@ export const pressRunRouter = router({
               vesselId: input.vesselId,
               totalJuiceVolumeL: input.totalJuiceVolumeL,
               extractionRate: extractionRate,
-              endTime: new Date(),
+              dateCompleted: input.completionDate.toISOString().split("T")[0],
             },
             ctx.session?.user?.id,
             "Press run completed and juice assigned to vessel",
@@ -972,7 +962,7 @@ export const pressRunRouter = router({
               .set({
                 pressRunName,
                 status: "completed",
-                endTime: input.completionDate, // Use user-selected completion date
+                dateCompleted: input.completionDate.toISOString().split("T")[0], // Use user-selected completion date
                 totalJuiceVolume: totalJuiceVolume.toString(),
                 totalJuiceVolumeUnit: "L",
                 extractionRate: extractionRate.toString(),
@@ -987,12 +977,12 @@ export const pressRunRouter = router({
             0,
           );
 
-          // Re-fetch press run to get updated juice volume and end time if it was just completed
+          // Re-fetch press run to get updated juice volume and completion date if it was just completed
           const updatedPressRun = await tx
             .select({
               totalJuiceVolume: applePressRuns.totalJuiceVolume,
               totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
-              endTime: applePressRuns.endTime,
+              dateCompleted: applePressRuns.dateCompleted,
             })
             .from(applePressRuns)
             .where(eq(applePressRuns.id, input.pressRunId))
@@ -1241,8 +1231,9 @@ export const pressRunRouter = router({
               );
 
               // Use press run completion date for batch start date and naming
-              const pressRunCompletionDate =
-                updatedPressRun[0].endTime || input.completionDate;
+              const pressRunCompletionDate = updatedPressRun[0].dateCompleted
+                ? new Date(updatedPressRun[0].dateCompleted)
+                : input.completionDate;
 
               // Generate batch name using completion date
               batchName = generateBatchNameFromComposition({
@@ -1561,7 +1552,7 @@ export const pressRunRouter = router({
         const sortColumn = {
           created: applePressRuns.createdAt,
           scheduled: applePressRuns.scheduledDate,
-          started: applePressRuns.startTime,
+          started: applePressRuns.dateCompleted, // Using dateCompleted for sorting
           updated: applePressRuns.updatedAt,
         }[input.sortBy];
 
@@ -1579,8 +1570,7 @@ export const pressRunRouter = router({
             vesselName: vessels.name,
             status: applePressRuns.status,
             scheduledDate: applePressRuns.scheduledDate,
-            startTime: applePressRuns.startTime,
-            endTime: applePressRuns.endTime,
+            dateCompleted: applePressRuns.dateCompleted,
             totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
             totalJuiceVolume: applePressRuns.totalJuiceVolume,
             totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
@@ -1722,8 +1712,7 @@ export const pressRunRouter = router({
             vesselCapacityUnit: vessels.capacityUnit,
             status: applePressRuns.status,
             scheduledDate: applePressRuns.scheduledDate,
-            startTime: applePressRuns.startTime,
-            endTime: applePressRuns.endTime,
+            dateCompleted: applePressRuns.dateCompleted,
             totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
             totalJuiceVolume: applePressRuns.totalJuiceVolume,
             totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
@@ -1732,8 +1721,6 @@ export const pressRunRouter = router({
             laborCostPerHour: applePressRuns.laborCostPerHour,
             totalLaborCost: applePressRuns.totalLaborCost,
             notes: applePressRuns.notes,
-            pressingMethod: applePressRuns.pressingMethod,
-            weatherConditions: applePressRuns.weatherConditions,
             createdAt: applePressRuns.createdAt,
             updatedAt: applePressRuns.updatedAt,
             createdByUserId: applePressRuns.createdBy,
@@ -2026,7 +2013,6 @@ export const pressRunRouter = router({
             notes: existingPressRun[0].notes
               ? `${existingPressRun[0].notes}\n\nCANCELLED: ${input.reason}`
               : `CANCELLED: ${input.reason}`,
-            endTime: new Date(),
             updatedBy: ctx.session?.user?.id,
             updatedAt: new Date(),
           })

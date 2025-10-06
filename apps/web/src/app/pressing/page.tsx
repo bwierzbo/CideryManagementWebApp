@@ -69,28 +69,15 @@ function ActiveRunsSection({
     pressRunsData?.pressRuns?.map((run) => ({
       id: run.id,
       pressRunName: run.pressRunName,
-      startDate: run.startTime
-        ? new Date(run.startTime).toLocaleDateString()
-        : "Unknown",
       totalAppleKg: parseFloat(run.totalAppleWeightKg || "0"),
       varieties:
         run.varieties && run.varieties.length > 0
           ? run.varieties
           : ["No varieties"],
       status: run.status as "in_progress" | "completed",
-      duration: run.startTime ? calculateDuration(run.startTime) : "Unknown",
       loadCount: run.loadCount || 0,
       vendorName: run.vendorName,
     })) || [];
-
-  function calculateDuration(startTime: string): string {
-    const start = new Date(startTime);
-    const now = new Date();
-    const diffMs = now.getTime() - start.getTime();
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
-  }
 
   if (isLoading) {
     return (
@@ -156,7 +143,7 @@ function ActiveRunsSection({
                     {run.pressRunName || `Run ${run.id.slice(0, 8)}`}
                   </h4>
                   <p className="text-sm text-gray-600">
-                    Started {run.startDate}
+                    {run.vendorName || "No vendor"}
                   </p>
                 </div>
                 <Badge
@@ -267,8 +254,8 @@ function CompletedRunsSection({
       const searchLower = searchTerm.toLowerCase();
       const varietiesText = pressRun.varieties.join(" ").toLowerCase();
       const vesselText = pressRun.vesselName?.toLowerCase() || "";
-      const dateText = pressRun.endTime
-        ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase()
+      const dateText = pressRun.dateCompleted
+        ? new Date(pressRun.dateCompleted).toLocaleDateString().toLowerCase()
         : "";
 
       return (
@@ -398,15 +385,15 @@ function CompletedRunsSection({
                     router.push(`/pressing/${run.id}`);
                   }
                 }}
-                aria-label={`View press run details for ${run.pressRunName || (run.endTime ? new Date(run.endTime).toLocaleDateString() : "Recent")}`}
+                aria-label={`View press run details for ${run.pressRunName || (run.dateCompleted ? new Date(run.dateCompleted).toLocaleDateString() : "Recent")}`}
               >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex-1">
                       <h4 className="font-medium text-gray-900">
                         {run.pressRunName ||
-                          (run.endTime
-                            ? new Date(run.endTime).toLocaleDateString()
+                          (run.dateCompleted
+                            ? new Date(run.dateCompleted).toLocaleDateString()
                             : "Recent")}
                       </h4>
                       <p className="text-sm text-gray-600">
@@ -719,7 +706,6 @@ export default function PressingPage() {
   const handleStartNewRun = () => {
     // Create press run directly and navigate to the details page
     createPressRunMutation.mutate({
-      startTime: new Date(),
       notes: undefined,
     });
   };

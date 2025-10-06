@@ -344,14 +344,14 @@ export default function PressRunDetailsPage() {
               )}
             </div>
             {pressRun?.pressRun?.status === "completed" &&
-              pressRun?.pressRun?.endTime && (
+              pressRun?.pressRun?.dateCompleted && (
                 <div className="pt-2 border-t">
                   <div className="flex items-center">
                     <CheckCircle2 className="w-4 h-4 text-green-600 mr-2" />
                     <div>
                       <p className="text-sm text-gray-600">Completed On</p>
                       <p className="font-medium">
-                        {new Date(pressRun.pressRun.endTime).toLocaleDateString(
+                        {new Date(pressRun.pressRun.dateCompleted).toLocaleDateString(
                           "en-US",
                           {
                             year: "numeric",

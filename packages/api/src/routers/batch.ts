@@ -255,7 +255,7 @@ export const batchRouter = router({
         // Build ORDER BY clause
         const sortColumn = {
           name: batches.name,
-          startDate: sql`COALESCE(${applePressRuns.endTime}, ${batches.startDate})`,
+          startDate: sql`COALESCE(${applePressRuns.dateCompleted}, ${batches.startDate})`,
           status: batches.status,
         }[input.sortBy || "startDate"];
 
@@ -278,7 +278,7 @@ export const batchRouter = router({
             initialVolume: batches.initialVolume,
             initialVolumeUnit: batches.initialVolumeUnit,
             startDate:
-              sql<string>`COALESCE(${applePressRuns.endTime}, ${batches.startDate})`.as(
+              sql<string>`COALESCE(${applePressRuns.dateCompleted}, ${batches.startDate})`.as(
                 "startDate",
               ),
             endDate: batches.endDate,
@@ -505,7 +505,7 @@ export const batchRouter = router({
             .select({
               id: applePressRuns.id,
               pressRunName: applePressRuns.pressRunName,
-              pressedDate: applePressRuns.startTime,
+              pressedDate: applePressRuns.dateCompleted,
               totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
               totalJuiceVolume: applePressRuns.totalJuiceVolume,
               totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,

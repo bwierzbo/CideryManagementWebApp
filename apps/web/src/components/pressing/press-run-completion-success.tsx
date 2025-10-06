@@ -29,7 +29,7 @@ interface PressRunCompletionSuccessProps {
     extractionRate: number;
     createdBatchIds: string[];
     totalAppleWeightKg?: number;
-    endTime: string;
+    dateCompleted: string;
     laborHours?: number;
     laborCost?: number;
   };
@@ -50,7 +50,7 @@ export function PressRunCompletionSuccess({
   const extractionPercentage = completedPressRun.extractionRate * 100;
 
   // Format completion time
-  const completionTime = new Date(completedPressRun.endTime).toLocaleString();
+  const completionTime = new Date(completedPressRun.dateCompleted).toLocaleString();
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

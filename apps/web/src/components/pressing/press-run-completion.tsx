@@ -74,7 +74,7 @@ export function PressRunCompletion({
         totalAppleWeightKg: parseFloat(
           pressRunData?.pressRun?.totalAppleWeightKg || "0",
         ),
-        endTime: new Date().toISOString(),
+        dateCompleted: new Date().toISOString(),
         laborHours: originalFormData?.laborHours || 0,
       });
       setCurrentStep("success");
@@ -227,7 +227,6 @@ export function PressRunCompletion({
             id: pressRunData.pressRun.id,
             vendorName: pressRunData.pressRun.vendorName || "Unknown Vendor",
             status: pressRunData.pressRun.status,
-            startTime: pressRunData.pressRun.startTime || undefined,
             totalAppleWeightKg: parseFloat(
               pressRunData.pressRun.totalAppleWeightKg || "0",
             ),

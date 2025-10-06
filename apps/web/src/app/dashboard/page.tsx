@@ -351,8 +351,8 @@ function RecentPressRuns() {
       const searchLower = searchTerm.toLowerCase();
       const varietiesText = pressRun.varieties.join(" ").toLowerCase();
       const vesselText = pressRun.vesselName?.toLowerCase() || "";
-      const dateText = pressRun.endTime
-        ? new Date(pressRun.endTime).toLocaleDateString().toLowerCase()
+      const dateText = pressRun.dateCompleted
+        ? new Date(pressRun.dateCompleted).toLocaleDateString().toLowerCase()
         : "";
 
       return (
@@ -480,8 +480,8 @@ function RecentPressRuns() {
                     </div>
                     <div>
                       <h4 className="font-semibold text-gray-900">
-                        {pressRun.endTime
-                          ? new Date(pressRun.endTime).toLocaleDateString()
+                        {pressRun.dateCompleted
+                          ? new Date(pressRun.dateCompleted).toLocaleDateString()
                           : "Recent"}
                       </h4>
                       <p className="text-sm text-gray-600">
