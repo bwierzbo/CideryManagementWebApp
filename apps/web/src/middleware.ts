@@ -1,25 +1,22 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
+import type { NextRequestWithAuth } from "next-auth/middleware";
 
 export default withAuth(
-  function middleware(req) {
-    const token = req.nextauth.token;
+  function middleware(req: NextRequestWithAuth) {
+    const token = req.nextauth?.token;
     const path = req.nextUrl.pathname;
+
+    // If no token, let the authorized callback handle it
+    if (!token) {
+      return NextResponse.next();
+    }
 
     // Define role-based access rules
     const adminOnlyPaths = [
       "/admin",
       "/settings/users",
       "/reports/financial",
-    ];
-
-    const operatorPaths = [
-      "/pressing",
-      "/cellar",
-      "/packaging",
-      "/inventory",
-      "/vendors",
-      "/purchase",
     ];
 
     const viewerRestrictedPaths = [
@@ -29,13 +26,13 @@ export default withAuth(
 
     // Check admin-only paths
     if (adminOnlyPaths.some(p => path.startsWith(p))) {
-      if (token?.role !== "admin") {
+      if (token.role !== "admin") {
         return NextResponse.redirect(new URL("/unauthorized", req.url));
       }
     }
 
     // Check viewer restrictions
-    if (token?.role === "viewer") {
+    if (token.role === "viewer") {
       // Viewers can't access certain paths
       if (viewerRestrictedPaths.some(p => path.startsWith(p))) {
         return NextResponse.redirect(new URL("/unauthorized", req.url));
