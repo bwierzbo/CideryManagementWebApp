@@ -16,6 +16,7 @@ import {
   batchMergeHistory,
   batchTransfers,
   batchFilterOperations,
+  batchRackingOperations,
 } from "db";
 import { eq, and, isNull, desc, asc, sql, or, like } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -1284,6 +1285,175 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to filter batch",
+        });
+      }
+    }),
+
+  /**
+   * Rack a batch to a different vessel
+   * Records the racking operation with volume loss tracking
+   */
+  rackBatch: createRbacProcedure("update", "batch")
+    .input(
+      z.object({
+        batchId: z.string().uuid("Invalid batch ID"),
+        destinationVesselId: z.string().uuid("Invalid destination vessel ID"),
+        volumeAfter: z.number().positive("Volume after must be positive"),
+        volumeAfterUnit: z.enum(['L', 'gal']).default('L'),
+        volumeLoss: z.number().min(0).default(0),
+        volumeLossUnit: z.enum(['L', 'gal']).default('L'),
+        reason: z.string().optional(),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // 1. Get current batch and verify it exists
+          const batch = await tx
+            .select({
+              id: batches.id,
+              vesselId: batches.vesselId,
+              currentVolume: batches.currentVolume,
+              currentVolumeUnit: batches.currentVolumeUnit,
+              status: batches.status,
+            })
+            .from(batches)
+            .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
+            .limit(1);
+
+          if (!batch.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Batch not found",
+            });
+          }
+
+          if (!batch[0].vesselId) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Batch must be assigned to a vessel before racking",
+            });
+          }
+
+          // 2. Verify destination vessel exists and is available
+          const destinationVessel = await tx
+            .select({
+              id: vessels.id,
+              name: vessels.name,
+              status: vessels.status,
+              capacity: vessels.capacity,
+              capacityUnit: vessels.capacityUnit,
+            })
+            .from(vessels)
+            .where(
+              and(
+                eq(vessels.id, input.destinationVesselId),
+                isNull(vessels.deletedAt)
+              )
+            )
+            .limit(1);
+
+          if (!destinationVessel.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Destination vessel not found",
+            });
+          }
+
+          if (destinationVessel[0].status !== "available") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Destination vessel is ${destinationVessel[0].status}, must be available`,
+            });
+          }
+
+          const sourceVesselId = batch[0].vesselId;
+
+          // Convert volumes to liters for calculations
+          const volumeAfterL = input.volumeAfterUnit === 'gal'
+            ? input.volumeAfter * 3.78541
+            : input.volumeAfter;
+          const volumeLossL = input.volumeLossUnit === 'gal'
+            ? input.volumeLoss * 3.78541
+            : input.volumeLoss;
+          const volumeBeforeL = batch[0].currentVolume
+            ? parseFloat(batch[0].currentVolume)
+            : 0;
+
+          // 3. Validate volume calculations
+          const expectedVolumeAfter = volumeBeforeL - volumeLossL;
+          if (Math.abs(volumeAfterL - expectedVolumeAfter) > 0.1) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Volume mismatch: ${volumeBeforeL}L - ${volumeLossL}L loss should equal ${expectedVolumeAfter.toFixed(1)}L, but got ${volumeAfterL}L`,
+            });
+          }
+
+          // 4. Record the racking operation
+          const rackingOperation = await tx
+            .insert(batchRackingOperations)
+            .values({
+              batchId: input.batchId,
+              sourceVesselId: sourceVesselId,
+              destinationVesselId: input.destinationVesselId,
+              volumeBefore: volumeBeforeL.toString(),
+              volumeBeforeUnit: 'L',
+              volumeAfter: volumeAfterL.toString(),
+              volumeAfterUnit: 'L',
+              volumeLoss: volumeLossL.toString(),
+              volumeLossUnit: 'L',
+              reason: input.reason,
+              notes: input.notes,
+              rackedBy: ctx.session?.user?.id,
+            })
+            .returning();
+
+          // 5. Update batch vessel and volume
+          const updatedBatch = await tx
+            .update(batches)
+            .set({
+              vesselId: input.destinationVesselId,
+              currentVolume: volumeAfterL.toString(),
+              currentVolumeUnit: 'L',
+              status: batch[0].status === 'active' ? 'active' : 'active', // Set to aging if needed
+              updatedAt: new Date(),
+              updatedBy: ctx.session?.user?.id,
+            })
+            .where(eq(batches.id, input.batchId))
+            .returning();
+
+          // 6. Update source vessel status to available
+          await tx
+            .update(vessels)
+            .set({
+              status: "available",
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, sourceVesselId));
+
+          // 7. Update destination vessel status to fermenting/aging
+          await tx
+            .update(vessels)
+            .set({
+              status: "fermenting", // or "aging" based on batch status
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, input.destinationVesselId));
+
+          return {
+            success: true,
+            message: `Batch racked from source vessel to ${destinationVessel[0].name}`,
+            rackingOperation: rackingOperation[0],
+            batch: updatedBatch[0],
+          };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error racking batch:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to rack batch",
         });
       }
     }),
