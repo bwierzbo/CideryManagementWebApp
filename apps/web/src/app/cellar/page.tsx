@@ -84,6 +84,7 @@ import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurement
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BottleModal } from "@/components/packaging/bottle-modal";
 import { FilterModal } from "@/components/cellar/FilterModal";
+import { RackingModal } from "@/components/cellar/RackingModal";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 
 // Form schemas
@@ -839,6 +840,16 @@ function VesselMap() {
     currentVolumeL: number;
   } | null>(null);
 
+  // Racking modal state
+  const [showRackingModal, setShowRackingModal] = useState(false);
+  const [selectedVesselForRacking, setSelectedVesselForRacking] = useState<{
+    id: string;
+    name: string;
+    batchId: string;
+    batchName: string;
+    currentVolumeL: number;
+  } | null>(null);
+
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
@@ -978,14 +989,34 @@ function VesselMap() {
   };
 
   const handleRack = (vesselId: string) => {
-    updateStatusMutation.mutate({
-      id: vesselId,
-      status: "aging",
+    const vessel = vesselListQuery.data?.vessels?.find(
+      (v) => v.id === vesselId,
+    );
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
+    const batchName = liquidMapVessel?.batchCustomName || liquidMapVessel?.batchNumber || '';
+
+    if (!vessel || !batchId) {
+      toast({
+        title: "Cannot Rack",
+        description: "No batch found in this vessel",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const currentVolumeL = parseFloat(liquidMapVessel.currentVolume || "0");
+
+    setSelectedVesselForRacking({
+      id: vessel.id,
+      name: vessel.name || '',
+      batchId: batchId,
+      batchName: batchName || '',
+      currentVolumeL: currentVolumeL,
     });
-    toast({
-      title: "Racked",
-      description: "Vessel status changed to aging",
-    });
+    setShowRackingModal(true);
   };
 
   const handleTankMeasurement = (vesselId: string) => {
@@ -1580,6 +1611,22 @@ function VesselMap() {
             vesselName={selectedVesselForFiltering.name}
             batchId={selectedVesselForFiltering.batchId}
             currentVolumeL={selectedVesselForFiltering.currentVolumeL}
+          />
+        )}
+
+        {/* Racking Modal */}
+        {selectedVesselForRacking && (
+          <RackingModal
+            open={showRackingModal}
+            onClose={() => {
+              setShowRackingModal(false);
+              setSelectedVesselForRacking(null);
+            }}
+            batchId={selectedVesselForRacking.batchId}
+            batchName={selectedVesselForRacking.batchName}
+            sourceVesselId={selectedVesselForRacking.id}
+            sourceVesselName={selectedVesselForRacking.name}
+            currentVolumeL={selectedVesselForRacking.currentVolumeL}
           />
         )}
 
