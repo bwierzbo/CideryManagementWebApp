@@ -63,6 +63,8 @@ export default withAuth(
     pages: {
       signIn: "/auth/signin",
     },
+    // Configure JWT secret for Edge Runtime (doesn't import authOptions)
+    secret: process.env.NEXTAUTH_SECRET,
   }
 );
 
