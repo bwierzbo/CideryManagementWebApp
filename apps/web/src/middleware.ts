@@ -1,19 +1,46 @@
-import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
-import type { NextRequestWithAuth } from "next-auth/middleware";
+import type { NextRequest } from "next/server";
+import { getToken } from "next-auth/jwt";
 
-export default withAuth(
-  function middleware(req: NextRequestWithAuth) {
-    try {
-      const token = req.nextauth?.token;
-      const path = req.nextUrl.pathname;
+export async function middleware(req: NextRequest) {
+  try {
+    const path = req.nextUrl.pathname;
 
-      // If no token, let the authorized callback handle it
-      if (!token) {
-        return NextResponse.next();
-      }
+    // Get the token from the JWT
+    const token = await getToken({
+      req,
+      secret: process.env.NEXTAUTH_SECRET
+    });
 
-      // Define role-based access rules
+    // Define protected paths
+    const protectedPaths = [
+      "/dashboard",
+      "/profile",
+      "/admin",
+      "/pressing",
+      "/cellar",
+      "/packaging",
+      "/inventory",
+      "/vendors",
+      "/purchase",
+      "/reports",
+      "/settings",
+      "/batch",
+      "/api/trpc",
+    ];
+
+    // Check if path requires authentication
+    const isProtectedPath = protectedPaths.some(p => path.startsWith(p));
+
+    // If protected path and no token, redirect to signin
+    if (isProtectedPath && !token) {
+      const signInUrl = new URL("/auth/signin", req.url);
+      signInUrl.searchParams.set("callbackUrl", path);
+      return NextResponse.redirect(signInUrl);
+    }
+
+    // If token exists, check role-based access
+    if (token) {
       const adminOnlyPaths = [
         "/admin",
         "/settings/users",
@@ -34,12 +61,11 @@ export default withAuth(
 
       // Check viewer restrictions
       if (token.role === "viewer") {
-        // Viewers can't access certain paths
         if (viewerRestrictedPaths.some(p => path.startsWith(p))) {
           return NextResponse.redirect(new URL("/unauthorized", req.url));
         }
 
-        // Viewers can't access any POST/PUT/DELETE operations
+        // Viewers can't access POST/PUT/DELETE operations
         if (req.method !== "GET" && path.startsWith("/api/")) {
           return NextResponse.json(
             { error: "Viewers cannot modify data" },
@@ -47,26 +73,14 @@ export default withAuth(
           );
         }
       }
-
-      // All authenticated users can proceed
-      return NextResponse.next();
-    } catch (error) {
-      // Log error and allow request to proceed
-      console.error("Middleware error:", error);
-      return NextResponse.next();
     }
-  },
-  {
-    callbacks: {
-      authorized: ({ token }) => !!token,
-    },
-    pages: {
-      signIn: "/auth/signin",
-    },
-    // Configure JWT secret for Edge Runtime (doesn't import authOptions)
-    secret: process.env.NEXTAUTH_SECRET,
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error("Middleware error:", error);
+    return NextResponse.next();
   }
-);
+}
 
 // Specify which routes require authentication
 export const config = {
