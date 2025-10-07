@@ -362,9 +362,6 @@ export const basefruitPurchaseItems = pgTable("basefruit_purchase_items", {
   deletedAt: timestamp("deleted_at"),
 });
 
-// TODO: Additive, Juice, and Packaging Purchases - Not yet implemented
-// Commented out to avoid schema drift until these features are ready
-/*
 // Additive Purchases
 export const additivePurchases = pgTable("additive_purchases", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -484,7 +481,6 @@ export const packagingPurchaseItems = pgTable("packaging_purchase_items", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
 });
-*/
 
 export const pressRuns = pgTable("press_runs", {
   id: uuid("id").primaryKey().defaultRandom(),

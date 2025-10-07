@@ -97,6 +97,6 @@ describe("Validation Integration Tests", () => {
       type: "fermenter" as const,
     };
 
-    expect(() => validateVesselState(vessel, "in_use")).not.toThrow();
+    expect(() => validateVesselState(vessel, "fermenting")).not.toThrow();
   });
 });

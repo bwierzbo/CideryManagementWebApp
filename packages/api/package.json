@@ -19,6 +19,7 @@
     "@trpc/server": "^11.5.1",
     "bcryptjs": "^3.0.2",
     "db": "workspace:^",
+    "jspdf": "^3.0.3",
     "lib": "workspace:^",
     "typescript": "^5.3.0",
     "zod": "^4.1.8"

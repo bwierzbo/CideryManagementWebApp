@@ -1418,7 +1418,6 @@ export const batchRouter = router({
               currentVolumeUnit: 'L',
               status: batch[0].status === 'active' ? 'active' : 'active', // Set to aging if needed
               updatedAt: new Date(),
-              updatedBy: ctx.session?.user?.id,
             })
             .where(eq(batches.id, input.batchId))
             .returning();

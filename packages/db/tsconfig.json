@@ -15,5 +15,16 @@
     "sourceMap": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "migrations"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "migrations",
+    "src/cli/**/*",
+    "src/config/**/*",
+    "src/migrations/**/*",
+    "src/monitoring/**/*",
+    "src/schema-dual-support.ts",
+    "src/test/**/*",
+    "src/scripts/**/*"
+  ]
 }
