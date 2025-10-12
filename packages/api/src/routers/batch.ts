@@ -1677,7 +1677,7 @@ export const batchRouter = router({
                 volumeTransferredUnit: 'L',
                 loss: volumeLossL.toString(),
                 lossUnit: 'L',
-                totalVolumeProcessed: currentVolumeL.toString(),
+                totalVolumeProcessed: volumeBeforeL.toString(),
                 totalVolumeProcessedUnit: 'L',
                 notes: 'Racking merge operation',
                 transferredAt: input.rackedAt || new Date(),
