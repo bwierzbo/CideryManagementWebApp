@@ -77,6 +77,11 @@ export function AddBatchAdditiveForm({
   const [notes, setNotes] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [addedDate, setAddedDate] = useState(() => {
+    // Default to today's date in YYYY-MM-DD format
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
 
   // Fetch available additives from inventory, filtered by type if selected
   const { data: additiveData, isLoading: isLoadingAdditives } =
@@ -131,7 +136,7 @@ export function AddBatchAdditiveForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedAdditiveType || !selectedAdditive || !amount || !unit) {
+    if (!selectedAdditiveType || !selectedAdditive || !amount || !unit || !addedDate) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -146,6 +151,7 @@ export function AddBatchAdditiveForm({
       additiveName: selectedAdditive.name,
       amount: parseFloat(amount),
       unit,
+      addedAt: new Date(addedDate + 'T00:00:00'),
       notes: notes || undefined,
     };
 
@@ -325,6 +331,17 @@ export function AddBatchAdditiveForm({
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="addedDate">Date Added *</Label>
+        <Input
+          id="addedDate"
+          type="date"
+          value={addedDate}
+          onChange={(e) => setAddedDate(e.target.value)}
+          required
+        />
       </div>
 
       <div className="space-y-2">
