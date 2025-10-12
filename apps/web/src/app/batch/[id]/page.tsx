@@ -53,7 +53,6 @@ import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurement
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Activity } from "lucide-react";
 
 export default function BatchDetailsPage() {
   const params = useParams();
@@ -115,7 +114,6 @@ export default function BatchDetailsPage() {
         refetchOnMount: "always",
         refetchOnWindowFocus: false,
         staleTime: 0, // Always consider data stale
-        cacheTime: 0, // Don't cache
       }
     );
 
