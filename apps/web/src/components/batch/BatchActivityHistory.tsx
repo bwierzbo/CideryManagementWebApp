@@ -29,6 +29,8 @@ import {
   Thermometer,
   Scale,
   Filter,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
@@ -62,9 +64,22 @@ const activityColors = {
 
 export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   const [isReversed, setIsReversed] = useState(false);
+  const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
   const { data, isLoading, error } = trpc.batch.getActivityHistory.useQuery({
     batchId,
   });
+
+  const toggleActivity = (activityId: string) => {
+    setExpandedActivities(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(activityId)) {
+        newSet.delete(activityId);
+      } else {
+        newSet.add(activityId);
+      }
+      return newSet;
+    });
+  };
 
   if (isLoading) {
     return (
@@ -167,6 +182,8 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
               const colorClass =
                 activityColors[activity.type as keyof typeof activityColors] ||
                 "bg-gray-500/10 text-gray-700 border-gray-500/20";
+              const isExpanded = expandedActivities.has(activity.id);
+              const hasDetails = activity.details && typeof activity.details === "object" && Object.keys(activity.details).length > 0;
 
               return (
                 <div key={activity.id} className="relative flex gap-4">
@@ -182,7 +199,13 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
 
                   {/* Content */}
                   <div className="flex-1 pt-1">
-                    <div className="flex items-start justify-between gap-2">
+                    <div
+                      className={cn(
+                        "flex items-start justify-between gap-2",
+                        hasDetails && "cursor-pointer hover:bg-gray-50 rounded-lg p-2 -ml-2 transition-colors"
+                      )}
+                      onClick={() => hasDetails && toggleActivity(activity.id)}
+                    >
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <Badge
@@ -203,7 +226,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                           {activity.description}
                         </p>
 
-                        {activity.details &&
+                        {isExpanded && activity.details &&
                           typeof activity.details === "object" && (
                             <div className="mt-2 space-y-1">
                               {activity.details.values && (
@@ -249,7 +272,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                               {activity.details.initialVolume && (
                                 <div className="text-sm text-muted-foreground">
                                   Initial volume:{" "}
-                                  {activity.details.initialVolume}L
+                                  {activity.details.initialVolume}
                                   {activity.details.vessel
                                     ? ` in ${activity.details.vessel}`
                                     : ""}
@@ -280,9 +303,40 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                                   )}
                                 </div>
                               )}
+                              {activity.details.fromVessel && activity.details.toVessel && (
+                                <div className="space-y-1">
+                                  {activity.details.volumeBefore && (
+                                    <div className="text-sm text-muted-foreground">
+                                      Before: {activity.details.volumeBefore}
+                                    </div>
+                                  )}
+                                  {activity.details.volumeAfter && (
+                                    <div className="text-sm text-muted-foreground">
+                                      After: {activity.details.volumeAfter}
+                                    </div>
+                                  )}
+                                  {activity.details.volumeLoss && (
+                                    <div className="text-sm text-muted-foreground">
+                                      Loss: <span className="text-red-600 font-medium">{activity.details.volumeLoss}</span>
+                                      {activity.details.lossPercentage && (
+                                        <span className="ml-1">({activity.details.lossPercentage})</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           )}
                       </div>
+                      {hasDetails && (
+                        <div className="flex-shrink-0 ml-2">
+                          {isExpanded ? (
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -299,7 +353,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                 <span className="text-muted-foreground">Current Status:</span>
                 <Badge
                   className="ml-2"
-                  variant={batch.status === "active" ? "default" : "secondary"}
+                  variant={["fermentation", "aging", "conditioning"].includes(batch.status) ? "default" : "secondary"}
                 >
                   {batch.status}
                 </Badge>

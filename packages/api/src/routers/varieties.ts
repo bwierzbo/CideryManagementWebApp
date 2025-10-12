@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, createRbacProcedure, publicProcedure } from "../trpc";
-import { db, appleVarieties, auditLog } from "db";
+import { db, appleVarieties, auditLogs } from "db";
 import { eq, and, isNull, ilike, or, sql, ne } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import {

@@ -32,6 +32,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast-provider";
+import { formatDate } from "@/utils/date-format";
 
 interface PressRun {
   id: string;
@@ -255,7 +256,7 @@ function CompletedRunsSection({
       const varietiesText = pressRun.varieties.join(" ").toLowerCase();
       const vesselText = pressRun.vesselName?.toLowerCase() || "";
       const dateText = pressRun.dateCompleted
-        ? new Date(pressRun.dateCompleted).toLocaleDateString().toLowerCase()
+        ? formatDate(new Date(pressRun.dateCompleted)).toLowerCase()
         : "";
 
       return (
@@ -385,7 +386,7 @@ function CompletedRunsSection({
                     router.push(`/pressing/${run.id}`);
                   }
                 }}
-                aria-label={`View press run details for ${run.pressRunName || (run.dateCompleted ? new Date(run.dateCompleted).toLocaleDateString() : "Recent")}`}
+                aria-label={`View press run details for ${run.pressRunName || (run.dateCompleted ? formatDate(new Date(run.dateCompleted)) : "Recent")}`}
               >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-2">
@@ -393,7 +394,7 @@ function CompletedRunsSection({
                       <h4 className="font-medium text-gray-900">
                         {run.pressRunName ||
                           (run.dateCompleted
-                            ? new Date(run.dateCompleted).toLocaleDateString()
+                            ? formatDate(new Date(run.dateCompleted))
                             : "Recent")}
                       </h4>
                       <p className="text-sm text-gray-600">

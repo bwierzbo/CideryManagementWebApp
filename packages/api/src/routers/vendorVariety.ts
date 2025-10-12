@@ -5,7 +5,7 @@ import {
   vendorVarieties,
   baseFruitVarieties,
   vendors,
-  auditLog,
+  auditLogs,
   vendorAdditiveVarieties,
   additiveVarieties,
   vendorJuiceVarieties,
@@ -33,7 +33,6 @@ export const vendorVarietyRouter = router({
             name: baseFruitVarieties.name,
             isActive: baseFruitVarieties.isActive,
             vendorVarietyId: vendorVarieties.id,
-            notes: vendorVarieties.notes,
             linkedAt: vendorVarieties.createdAt,
             varietyType: sql<string>`'baseFruit'`,
           })
@@ -58,7 +57,6 @@ export const vendorVarietyRouter = router({
             name: additiveVarieties.name,
             isActive: additiveVarieties.isActive,
             vendorVarietyId: vendorAdditiveVarieties.id,
-            notes: vendorAdditiveVarieties.notes,
             linkedAt: vendorAdditiveVarieties.createdAt,
             varietyType: sql<string>`'additive'`,
             category: additiveVarieties.itemType,
@@ -84,7 +82,6 @@ export const vendorVarietyRouter = router({
             name: juiceVarieties.name,
             isActive: juiceVarieties.isActive,
             vendorVarietyId: vendorJuiceVarieties.id,
-            notes: vendorJuiceVarieties.notes,
             linkedAt: vendorJuiceVarieties.createdAt,
             varietyType: sql<string>`'juice'`,
           })
@@ -109,7 +106,6 @@ export const vendorVarietyRouter = router({
             name: packagingVarieties.name,
             isActive: packagingVarieties.isActive,
             vendorVarietyId: vendorPackagingVarieties.id,
-            notes: vendorPackagingVarieties.notes,
             linkedAt: vendorPackagingVarieties.createdAt,
             varietyType: sql<string>`'packaging'`,
             category: packagingVarieties.itemType,
@@ -157,7 +153,6 @@ export const vendorVarietyRouter = router({
       z.object({
         vendorId: z.string().uuid("Invalid vendor ID"),
         varietyNameOrId: z.string().min(1, "Variety name or ID is required"),
-        notes: z.string().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -249,7 +244,7 @@ export const vendorVarietyRouter = router({
               varietyName = newVariety[0].name;
 
               // Audit log for variety creation
-              await tx.insert(auditLog).values({
+              await tx.insert(auditLogs).values({
                 tableName: "base_fruit_varieties",
                 recordId: varietyId,
                 operation: "create",
@@ -289,14 +284,13 @@ export const vendorVarietyRouter = router({
             .values({
               vendorId: input.vendorId,
               varietyId,
-              notes: input.notes,
               createdAt: new Date(),
               updatedAt: new Date(),
             })
             .returning();
 
           // Audit log for vendor-variety link creation
-          await tx.insert(auditLog).values({
+          await tx.insert(auditLogs).values({
             tableName: "vendor_varieties",
             recordId: newLink[0].id,
             operation: "create",
@@ -378,7 +372,7 @@ export const vendorVarietyRouter = router({
             .where(eq(vendorVarieties.id, existingLink[0].id));
 
           // Audit log for detachment
-          await tx.insert(auditLog).values({
+          await tx.insert(auditLogs).values({
             tableName: "vendor_varieties",
             recordId: existingLink[0].id,
             operation: "delete",

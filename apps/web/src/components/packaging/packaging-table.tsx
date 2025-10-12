@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
+import { formatDate } from "@/utils/date-format";
 
 // Type for packaging run from API
 interface PackagingRun {
@@ -272,12 +273,8 @@ export function PackagingTable({
   );
 
   // Format date display
-  const formatDate = useCallback((date: string) => {
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+  const formatDateDisplay = useCallback((date: string) => {
+    return formatDate(new Date(date));
   }, []);
 
   // Get status badge color
@@ -360,7 +357,7 @@ export function PackagingTable({
       ];
 
       const rows = items.map((item) => [
-        formatDate(item.packagedAt),
+        formatDateDisplay(item.packagedAt),
         item.batch.name || `Batch ${item.batchId.slice(0, 8)}`,
         item.vessel.name || `Vessel ${item.vesselId.slice(0, 8)}`,
         item.packageType,
@@ -375,11 +372,11 @@ export function PackagingTable({
         item.fillCheck || "",
         item.fillVarianceML?.toFixed(1) || "",
         item.testMethod || "",
-        item.testDate ? formatDate(item.testDate) : "",
+        item.testDate ? formatDateDisplay(item.testDate) : "",
         item.qaTechnicianName || "",
         item.qaNotes || "",
         item.productionNotes || "",
-        formatDate(item.createdAt),
+        formatDateDisplay(item.createdAt),
         item.id,
       ]);
 
@@ -387,7 +384,7 @@ export function PackagingTable({
         .map((row) => row.map((field) => `"${field}"`).join(","))
         .join("\n");
     },
-    [formatDate, formatPackageSize],
+    [formatDateDisplay, formatPackageSize],
   );
 
   // Export all visible items
@@ -544,7 +541,7 @@ export function PackagingTable({
                         <div className="flex items-center gap-2 mb-1">
                           <Calendar className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                           <span className="font-medium text-sm">
-                            {formatDate(item.packagedAt)}
+                            {formatDateDisplay(item.packagedAt)}
                           </span>
                         </div>
                         <div className="font-semibold text-base truncate">
@@ -759,7 +756,7 @@ export function PackagingTable({
                         <div className="flex items-center gap-2">
                           <Calendar className="w-3 h-3 text-muted-foreground" />
                           <span className="font-medium">
-                            {formatDate(item.packagedAt)}
+                            {formatDateDisplay(item.packagedAt)}
                           </span>
                         </div>
                       </TableCell>

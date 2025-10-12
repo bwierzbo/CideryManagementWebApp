@@ -199,7 +199,6 @@ export function BatchHistoryModal({
                       <TableHead className="text-right">Weight (kg)</TableHead>
                       <TableHead className="text-right">Volume (L)</TableHead>
                       <TableHead className="text-right">Percentage</TableHead>
-                      <TableHead className="text-right">Brix</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -215,9 +214,6 @@ export function BatchHistoryModal({
                         </TableCell>
                         <TableCell className="text-right">
                           {(item.fractionOfBatch * 100).toFixed(1)}%
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.avgBrix?.toFixed(1) || "-"}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -9,7 +9,7 @@ export interface VesselData {
   id: string;
   name: string;
   capacityL: number;
-  status: "available" | "fermenting" | "cleaning" | "maintenance" | "aging";
+  status: "available" | "in_use" | "cleaning" | "maintenance";
   currentVolumeL?: number;
 }
 
@@ -17,7 +17,7 @@ export interface BatchData {
   id: string;
   batchNumber: string;
   currentVolumeL: number;
-  status: "planned" | "active" | "completed" | "cancelled";
+  status: "fermentation" | "aging" | "conditioning" | "completed" | "discarded";
   vesselId?: string;
 }
 
@@ -113,10 +113,10 @@ export function validateBatchVolume(
     );
   }
 
-  if (batch.status === "cancelled") {
+  if (batch.status === "discarded") {
     throw new TransferValidationError(
-      `Cannot transfer from cancelled batch`,
-      `Batch "${batch.batchNumber}" is cancelled and cannot be transferred.`,
+      `Cannot transfer from discarded batch`,
+      `Batch "${batch.batchNumber}" is discarded and cannot be transferred.`,
       {
         batchId: batch.id,
         batchNumber: batch.batchNumber,

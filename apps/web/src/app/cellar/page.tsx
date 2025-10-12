@@ -66,7 +66,7 @@ import {
   MoreVertical,
   FlaskConical,
   Wine,
-  Filter,
+  Filter as FilterIcon,
 } from "lucide-react";
 import {
   litersToGallons,
@@ -500,17 +500,15 @@ function TankTransferForm({
   // Convert current volume to display unit
   const currentVolume = fromLiters(currentVolumeL, displayUnit);
 
-  // Get available destination vessels (exclude current vessel, allow both available and fermenting)
+  // Get available destination vessels (exclude current vessel, only available vessels)
   const availableVessels =
     vesselListQuery.data?.vessels?.filter(
-      (vessel) => vessel.id !== fromVesselId &&
-                  (vessel.status === "available" || vessel.status === "fermenting"),
+      (vessel) => vessel.id !== fromVesselId && vessel.status === "available",
     ) || [];
 
   // Check if destination vessel has liquid (is fermenting)
   const watchedToVesselId = watch("toVesselId");
   const destVessel = availableVessels.find(v => v.id === watchedToVesselId);
-  const destHasLiquid = destVessel?.status === "fermenting";
   const destCapacityUnit = (destVessel?.capacityUnit || "L") as VolumeUnit;
   const destLiquidMap = liquidMapQuery.data?.vessels?.find(
     (v) => v.vesselId === watchedToVesselId,
@@ -523,6 +521,9 @@ function TankTransferForm({
     const unit = (destLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
     destCurrentVolume = convertVolume(vol, unit, destCapacityUnit);
   }
+
+  // Check if destination has liquid based on actual volume, not status
+  const destHasLiquid = destCurrentVolume > 0;
 
   const watchedVolumeL = watch("volumeL");
   const watchedLoss = watch("loss") || 0;
@@ -634,7 +635,7 @@ function TankTransferForm({
                 const currentUnit = (vesselLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
                 vesselCurrentVolume = convertVolume(currentVol, currentUnit, capacityUnit);
               }
-              const hasLiquid = vessel.status === "fermenting" && vesselCurrentVolume > 0;
+              const hasLiquid = vessel.status === "available" && vesselCurrentVolume > 0;
 
               return (
                 <SelectItem key={vessel.id} value={vessel.id}>
@@ -753,7 +754,7 @@ function TankTransferForm({
               <AlertTriangle className="h-5 w-5" />
               Confirm Blend Operation
             </DialogTitle>
-            <DialogDescription className="space-y-3">
+            <div className="space-y-3 text-sm text-muted-foreground">
               <p>
                 The destination tank <strong>{destVessel?.name || "Unknown"}</strong> already contains{" "}
                 {formatVolume(destCurrentVolume, destCapacityUnit)} of liquid.
@@ -772,7 +773,7 @@ function TankTransferForm({
                 </p>
               </div>
               <p className="text-sm font-medium">Do you want to continue?</p>
-            </DialogDescription>
+            </div>
           </DialogHeader>
           <div className="flex justify-end space-x-2 mt-4">
             <Button
@@ -900,35 +901,66 @@ function VesselMap() {
 
   const vessels = vesselListQuery.data?.vessels || [];
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  // Get color based on batch status if batch exists, otherwise vessel status
+  const getStatusColor = (vesselStatus: string, batchStatus?: string | null) => {
+    // If vessel has a batch, color based on batch status
+    if (batchStatus) {
+      switch (batchStatus) {
+        case "fermentation":
+          return "border-purple-300 bg-purple-50";
+        case "aging":
+          return "border-blue-300 bg-blue-50";
+        case "conditioning":
+          return "border-indigo-300 bg-indigo-50";
+        case "completed":
+          return "border-gray-300 bg-gray-50";
+        case "discarded":
+          return "border-gray-400 bg-gray-100";
+        default:
+          return "border-purple-300 bg-purple-50";
+      }
+    }
+
+    // No batch, use vessel status
+    switch (vesselStatus) {
       case "available":
         return "border-green-300 bg-green-50";
-      case "fermenting":
-        return "border-purple-300 bg-purple-50";
       case "cleaning":
         return "border-yellow-300 bg-yellow-50";
       case "maintenance":
         return "border-red-300 bg-red-50";
-      case "aging":
-        return "border-amber-300 bg-amber-50";
       default:
         return "border-gray-300 bg-gray-50";
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
+  const getStatusIcon = (vesselStatus: string, batchStatus?: string | null) => {
+    // If vessel has a batch, icon based on batch status
+    if (batchStatus) {
+      switch (batchStatus) {
+        case "fermentation":
+          return <Beaker className="w-4 h-4 text-purple-600" />;
+        case "aging":
+          return <Clock className="w-4 h-4 text-blue-600" />;
+        case "conditioning":
+          return <Waves className="w-4 h-4 text-indigo-600" />;
+        case "completed":
+          return <CheckCircle className="w-4 h-4 text-gray-600" />;
+        case "discarded":
+          return <AlertTriangle className="w-4 h-4 text-gray-600" />;
+        default:
+          return <Beaker className="w-4 h-4 text-purple-600" />;
+      }
+    }
+
+    // No batch, use vessel status
+    switch (vesselStatus) {
       case "available":
         return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case "fermenting":
-        return <Beaker className="w-4 h-4 text-purple-600" />;
       case "cleaning":
         return <RotateCcw className="w-4 h-4 text-yellow-600" />;
       case "maintenance":
         return <AlertTriangle className="w-4 h-4 text-red-600" />;
-      case "aging":
-        return <Clock className="w-4 h-4 text-amber-600" />;
       default:
         return <Clock className="w-4 h-4 text-gray-600" />;
     }
@@ -1144,7 +1176,7 @@ function VesselMap() {
     }
 
     // Check if vessel is in aging status
-    if (vessel.status !== "aging") {
+    if (vessel.status !== "available") {
       toast({
         title: "Cannot Filter",
         description: "Filtering is only available for vessels in aging status.",
@@ -1247,7 +1279,7 @@ function VesselMap() {
             return (
               <div
                 key={vessel.id}
-                className={`border-2 rounded-lg p-3 sm:p-4 transition-all hover:shadow-md ${getStatusColor(vessel.status)}`}
+                className={`border-2 rounded-lg p-3 sm:p-4 transition-all hover:shadow-md ${getStatusColor(vessel.status, liquidMapVessel?.batchStatus)}`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
@@ -1259,17 +1291,16 @@ function VesselMap() {
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
-                    {getStatusIcon(vessel.status)}
+                    {getStatusIcon(vessel.status, liquidMapVessel?.batchStatus)}
                   </div>
                 </div>
 
-                {/* Batch Info */}
-                {liquidMapVessel?.batchId && (
-                  <div className="mb-3 space-y-2">
-                    {/* Custom Name and Batch Number */}
-                    {(liquidMapVessel.batchCustomName ||
-                      liquidMapVessel.batchNumber) && (
-                      <div className="pb-2 border-b">
+                {/* Batch Info - Always render both sections for consistent spacing */}
+                <div className="mb-3 space-y-2">
+                  {/* Custom Name and Batch Number - Always rendered with fixed height */}
+                  <div className="pb-2 border-b h-[44px] flex flex-col justify-start">
+                    {liquidMapVessel?.batchId ? (
+                      <>
                         {liquidMapVessel.batchCustomName && (
                           <p className="text-sm font-medium text-gray-900">
                             {liquidMapVessel.batchCustomName}
@@ -1280,38 +1311,46 @@ function VesselMap() {
                             Batch ID: {liquidMapVessel.batchNumber}
                           </p>
                         )}
-                      </div>
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">
+                        No active batch
+                      </p>
                     )}
-
-                    {/* Latest Measurements */}
-                    <div className="space-y-1 text-xs">
-                      {liquidMapVessel.latestMeasurement?.specificGravity && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">SG:</span>
-                          <span className="font-medium">
-                            {liquidMapVessel.latestMeasurement.specificGravity}
-                          </span>
-                        </div>
-                      )}
-                      {liquidMapVessel.latestMeasurement?.ph && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">pH:</span>
-                          <span className="font-medium">
-                            {liquidMapVessel.latestMeasurement.ph}
-                          </span>
-                        </div>
-                      )}
-                      {liquidMapVessel.latestMeasurement?.temperature && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Temp:</span>
-                          <span className="font-medium">
-                            {liquidMapVessel.latestMeasurement.temperature}°C
-                          </span>
-                        </div>
-                      )}
-                    </div>
                   </div>
-                )}
+
+                  {/* Latest Measurements - Always rendered with fixed height */}
+                  <div className="space-y-1 text-xs h-[60px]">
+                    {liquidMapVessel?.batchId && liquidMapVessel.latestMeasurement ? (
+                      <>
+                        {liquidMapVessel.latestMeasurement?.specificGravity && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">SG:</span>
+                            <span className="font-medium">
+                              {liquidMapVessel.latestMeasurement.specificGravity}
+                            </span>
+                          </div>
+                        )}
+                        {liquidMapVessel.latestMeasurement?.ph && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">pH:</span>
+                            <span className="font-medium">
+                              {liquidMapVessel.latestMeasurement.ph}
+                            </span>
+                          </div>
+                        )}
+                        {liquidMapVessel.latestMeasurement?.temperature && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Temp:</span>
+                            <span className="font-medium">
+                              {liquidMapVessel.latestMeasurement.temperature}°C
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+                </div>
 
                 {/* Volume Indicator */}
                 <div className="mb-3">
@@ -1367,70 +1406,9 @@ function VesselMap() {
                     >
                       <DropdownMenuLabel>Tank Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => setEditingVesselId(vessel.id)}
-                      >
-                        <Settings className="w-3 h-3 mr-2" />
-                        Edit Tank
-                      </DropdownMenuItem>
-                      {vessel.status === "fermenting" && (
-                        <DropdownMenuItem
-                          onClick={() => handleRack(vessel.id)}
-                        >
-                          <FlaskConical className="w-3 h-3 mr-2" />
-                          Rack
-                        </DropdownMenuItem>
-                      )}
-                      {vessel.status === "aging" && (
-                        <>
-                          <DropdownMenuItem
-                            onClick={() => handleFilter(vessel.id)}
-                            disabled={
-                              !liquidMapVessel?.batchId || currentVolume <= 0
-                            }
-                          >
-                            <Filter className="w-3 h-3 mr-2" />
-                            Filter
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleBottle(vessel.id)}
-                            disabled={
-                              !liquidMapVessel?.batchId || currentVolume <= 0
-                            }
-                          >
-                            <Wine className="w-3 h-3 mr-2" />
-                            Bottle
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                      <DropdownMenuItem
-                        onClick={() => handleTankMeasurement(vessel.id)}
-                        disabled={!liquidMapVessel?.batchId}
-                      >
-                        <Thermometer className="w-3 h-3 mr-2" />
-                        Add Measurement
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleTankAdditive(vessel.id)}
-                      >
-                        <Droplets className="w-3 h-3 mr-2" />
-                        Add Additive
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleViewBatch(vessel.id)}
-                        disabled={!liquidMapVessel?.batchId}
-                      >
-                        <Eye className="w-3 h-3 mr-2" />
-                        View Batch
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleTankTransfer(vessel.id)}
-                        disabled={currentVolume <= 0}
-                      >
-                        <ArrowRight className="w-3 h-3 mr-2" />
-                        Transfer to Another Tank
-                      </DropdownMenuItem>
-                      {vessel.status === "cleaning" && (
+
+                      {/* When vessel is cleaning, only show Clean Tank action */}
+                      {vessel.status === "cleaning" ? (
                         <DropdownMenuItem
                           onClick={() => handleCleanTank(vessel.id)}
                           className="text-green-600"
@@ -1438,26 +1416,96 @@ function VesselMap() {
                           <CheckCircle className="w-3 h-3 mr-2" />
                           Clean Tank (Mark as Available)
                         </DropdownMenuItem>
+                      ) : (
+                        <>
+                          <DropdownMenuItem
+                            onClick={() => setEditingVesselId(vessel.id)}
+                          >
+                            <Settings className="w-3 h-3 mr-2" />
+                            Edit Tank
+                          </DropdownMenuItem>
+                          {/* Batch-specific actions based on fermentation stage */}
+                          {liquidMapVessel?.batchStatus === "fermentation" && (
+                            <DropdownMenuItem
+                              onClick={() => handleRack(vessel.id)}
+                            >
+                              <FlaskConical className="w-3 h-3 mr-2" />
+                              Rack Batch
+                            </DropdownMenuItem>
+                          )}
+                          {liquidMapVessel?.batchStatus === "aging" && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => handleFilter(vessel.id)}
+                                disabled={
+                                  !liquidMapVessel?.batchId || currentVolume <= 0
+                                }
+                              >
+                                <FilterIcon className="w-3 h-3 mr-2" />
+                                Filter
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleBottle(vessel.id)}
+                                disabled={
+                                  !liquidMapVessel?.batchId || currentVolume <= 0
+                                }
+                              >
+                                <Wine className="w-3 h-3 mr-2" />
+                                Bottle
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {liquidMapVessel?.batchId && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => handleTankMeasurement(vessel.id)}
+                              >
+                                <Thermometer className="w-3 h-3 mr-2" />
+                                Add Measurement
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleTankAdditive(vessel.id)}
+                              >
+                                <Droplets className="w-3 h-3 mr-2" />
+                                Add Additive
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          <DropdownMenuItem
+                            onClick={() => handleViewBatch(vessel.id)}
+                            disabled={!liquidMapVessel?.batchId}
+                          >
+                            <Eye className="w-3 h-3 mr-2" />
+                            View Batch
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleTankTransfer(vessel.id)}
+                            disabled={currentVolume <= 0}
+                          >
+                            <ArrowRight className="w-3 h-3 mr-2" />
+                            Transfer to Another Tank
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handlePurgeTank(vessel.id, vessel.name)}
+                            disabled={currentVolume <= 0}
+                            className="text-orange-600"
+                          >
+                            <Droplets className="w-3 h-3 mr-1" />
+                            Purge Tank
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() =>
+                              handleDeleteClick(vessel.id, vessel.name)
+                            }
+                            disabled={vessel.status === "available"}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="w-3 h-3 mr-1" />
+                            Delete
+                          </DropdownMenuItem>
+                        </>
                       )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => handlePurgeTank(vessel.id, vessel.name)}
-                        disabled={currentVolume <= 0}
-                        className="text-orange-600"
-                      >
-                        <Droplets className="w-3 h-3 mr-1" />
-                        Purge Tank
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          handleDeleteClick(vessel.id, vessel.name)
-                        }
-                        disabled={vessel.status === "fermenting" || vessel.status === "aging"}
-                        className="text-red-600"
-                      >
-                        <Trash2 className="w-3 h-3 mr-1" />
-                        Delete
-                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>

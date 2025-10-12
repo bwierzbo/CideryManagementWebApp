@@ -46,6 +46,7 @@ import {
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
+import { formatDate } from "@/utils/date-format";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -278,9 +279,9 @@ export function BaseFruitTable({
     [sortState.columns],
   );
 
-  const formatDate = (dateString: string | null) => {
+  const formatDateDisplay = (dateString: string | null) => {
     if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString();
+    return formatDate(dateString);
   };
 
   const formatQuantity = (quantity: number, unit: string) => {
@@ -485,7 +486,7 @@ export function BaseFruitTable({
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm">
                           <Calendar className="w-3 h-3 text-muted-foreground" />
-                          <span>{formatDate(item.harvestDate)}</span>
+                          <span>{formatDateDisplay(item.harvestDate)}</span>
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
@@ -507,7 +508,7 @@ export function BaseFruitTable({
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
-                          {formatDate(item.createdAt)}
+                          {formatDateDisplay(item.createdAt)}
                         </div>
                       </TableCell>
                       <TableCell>

@@ -1,5 +1,6 @@
 // TODO: Re-enable when server-compatible PDF library is available
 // import jsPDF from "jspdf";
+import { formatDate, formatDateTime } from "@/utils/date-format";
 
 // Type definitions for packaging run data
 export interface PackagingRunPDFData {
@@ -186,7 +187,7 @@ export class PackagingPDFGenerator {
     this.doc.setFontSize(12);
     this.doc.setFont("helvetica", "normal");
     const runIdText = `Run ID: ${data.id.slice(0, 8)}`;
-    const dateText = `Generated: ${new Date().toLocaleString()}`;
+    const dateText = `Generated: ${formatDateTime(new Date())}`;
 
     this.doc.text(runIdText, this.marginLeft, this.currentY);
     this.doc.text(dateText, this.pageWidth - this.marginRight, this.currentY, {
@@ -238,7 +239,7 @@ export class PackagingPDFGenerator {
     this.doc.text("Packaged:", leftCol, this.currentY + lineHeight * 2);
     this.doc.setFont("helvetica", "normal");
     this.doc.text(
-      new Date(data.packagedAt).toLocaleDateString(),
+      formatDate(new Date(data.packagedAt)),
       leftCol + 25,
       this.currentY + lineHeight * 2,
     );
@@ -336,7 +337,7 @@ export class PackagingPDFGenerator {
     );
     this.doc.setFont("helvetica", "normal");
     this.doc.text(
-      new Date(data.createdAt).toLocaleString(),
+      formatDateTime(new Date(data.createdAt)),
       this.marginLeft + 25,
       this.currentY + lineHeight * 3,
     );
@@ -424,7 +425,7 @@ export class PackagingPDFGenerator {
     this.doc.setFont("helvetica", "normal");
     this.doc.text(
       data.testDate
-        ? new Date(data.testDate).toLocaleDateString()
+        ? formatDate(new Date(data.testDate))
         : "Not specified",
       rightCol + 30,
       this.currentY + lineHeight * 2,
@@ -509,7 +510,7 @@ export class PackagingPDFGenerator {
         item.lotCode,
         item.packageType,
         this.formatPackageSize(item.packageSizeML, item.packageType),
-        new Date(item.expirationDate).toLocaleDateString(),
+        formatDate(new Date(item.expirationDate)),
       ];
 
       rowData.forEach((cellData, index) => {
@@ -553,7 +554,7 @@ export class PackagingPDFGenerator {
     this.doc.setFont("helvetica", "normal");
 
     // Timestamp
-    const timestamp = `Generated on ${new Date().toLocaleString()}`;
+    const timestamp = `Generated on ${formatDateTime(new Date())}`;
     this.doc.text(timestamp, this.marginLeft, footerY);
 
     // Page number

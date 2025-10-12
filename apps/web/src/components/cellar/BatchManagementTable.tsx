@@ -411,25 +411,41 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() =>
-                                handleStatusChange(batch.id, "active")
+                                handleStatusChange(batch.id, "fermentation")
                               }
-                              disabled={batch.status === "active"}
+                              disabled={batch.status === "fermentation"}
                             >
-                              Set Active
+                              Set Fermenting
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() =>
-                                handleStatusChange(batch.id, "packaged")
+                                handleStatusChange(batch.id, "aging")
                               }
-                              disabled={batch.status === "packaged"}
+                              disabled={batch.status === "aging"}
                             >
-                              Set Packaged
+                              Set Aging
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusChange(batch.id, "conditioning")
+                              }
+                              disabled={batch.status === "conditioning"}
+                            >
+                              Set Conditioning
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleStatusChange(batch.id, "completed")
+                              }
+                              disabled={batch.status === "completed"}
+                            >
+                              Mark Completed
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleDeleteClick(batch)}
                               className="text-red-600"
-                              disabled={batch.status === "packaged"}
+                              disabled={batch.status === "completed"}
                             >
                               <Trash2 className="w-4 h-4 mr-2" />
                               Delete

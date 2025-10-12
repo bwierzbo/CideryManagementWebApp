@@ -2,12 +2,10 @@ import { z } from "zod";
 import { router, createRbacProcedure, protectedProcedure } from "../trpc";
 import {
   db,
-  inventory,
-  inventoryTransactions,
-  packages,
+  // inventory, inventoryTransactions, packages - dropped in migration 0024
   appleVarieties,
   vendors,
-  auditLog,
+  auditLogs,
   basefruitPurchases,
   basefruitPurchaseItems,
   baseFruitVarieties,
@@ -53,7 +51,7 @@ export const inventoryRouter = router({
           .select({
             id: sql<string>`CONCAT('basefruit-', ${basefruitPurchaseItems.id})`,
             packageId: sql<string | null>`NULL`,
-            currentBottleCount: sql<number>`COALESCE(CAST(${basefruitPurchaseItems.originalQuantity} AS NUMERIC), 0)`,
+            currentBottleCount: sql<number>`COALESCE(CAST(${basefruitPurchaseItems.quantity} AS NUMERIC), 0)`,
             reservedBottleCount: sql<number>`0`,
             materialType: sql<string>`'apple'`,
             metadata: sql<unknown>`json_build_object(
@@ -62,7 +60,7 @@ export const inventoryRouter = router({
               'varietyName', ${baseFruitVarieties.name},
               'harvestDate', ${basefruitPurchaseItems.harvestDate},
               'purchaseDate', ${basefruitPurchases.purchaseDate},
-              'unit', ${basefruitPurchaseItems.originalUnit}
+              'unit', ${basefruitPurchaseItems.unit}
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: basefruitPurchaseItems.notes,
@@ -132,10 +130,11 @@ export const inventoryRouter = router({
           .select({
             id: sql<string>`CONCAT('juice-', ${juicePurchaseItems.id})`,
             packageId: sql<string | null>`NULL`,
-            currentBottleCount: sql<number>`COALESCE(CAST(${juicePurchaseItems.volume} AS NUMERIC), 0)`,
-            reservedBottleCount: sql<number>`0`,
+            currentBottleCount: sql<number>`COALESCE(CAST(${juicePurchaseItems.volume} AS NUMERIC) - CAST(COALESCE(${juicePurchaseItems.volumeAllocated}, 0) AS NUMERIC), 0)`,
+            reservedBottleCount: sql<number>`CAST(COALESCE(${juicePurchaseItems.volumeAllocated}, 0) AS NUMERIC)`,
             materialType: sql<string>`'juice'`,
             metadata: sql<unknown>`json_build_object(
+              'itemId', ${juicePurchaseItems.id},
               'purchaseId', ${juicePurchases.id},
               'vendorName', ${vendors.name},
               'juiceType', ${juicePurchaseItems.juiceType},
@@ -285,71 +284,11 @@ export const inventoryRouter = router({
       // }
     }),
 
-  // Get inventory item by ID - accessible by both admin and operator
-  getById: createRbacProcedure("read", "inventory")
-    .input(z.object({ id: z.string().uuid() }))
-    .query(async ({ input }) => {
-      const inventoryItem = await db
-        .select()
-        .from(inventory)
-        .where(and(eq(inventory.id, input.id), isNull(inventory.deletedAt)))
-        .limit(1);
+  // DROPPED: getById procedure removed - uses dropped inventory table
+  // TODO: Implement when proper inventory system is ready
 
-      if (!inventoryItem.length) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Inventory item not found",
-        });
-      }
-
-      // Get transaction history
-      const transactions = await db
-        .select()
-        .from(inventoryTransactions)
-        .where(eq(inventoryTransactions.inventoryId, input.id))
-        .orderBy(desc(inventoryTransactions.transactionDate));
-
-      return {
-        item: inventoryItem[0],
-        transactions,
-      };
-    }),
-
-  // Search inventory items - accessible by both admin and operator
-  search: createRbacProcedure("list", "inventory")
-    .input(inventorySearchSchema)
-    .query(async ({ input }) => {
-      const { query, materialTypes, limit } = input;
-
-      let searchQuery = db
-        .select()
-        .from(inventory)
-        .where(
-          and(
-            or(
-              like(inventory.notes, `%${query}%`),
-              like(inventory.location, `%${query}%`),
-            ),
-            isNull(inventory.deletedAt),
-            materialTypes?.length
-              ? or(
-                  ...materialTypes.map((type) =>
-                    eq(inventory.materialType, type),
-                  ),
-                )
-              : undefined,
-          ),
-        )
-        .orderBy(desc(inventory.updatedAt))
-        .limit(limit);
-
-      const results = await searchQuery;
-
-      return {
-        items: results,
-        count: results.length,
-      };
-    }),
+  // DROPPED: search procedure removed - uses dropped inventory table
+  // TODO: Implement when proper inventory system is ready
 
   // Record inventory transaction - accessible by both admin and operator
   // Uses the comprehensive service layer for enhanced validation and business logic
@@ -467,64 +406,11 @@ export const inventoryRouter = router({
       );
     }),
 
-  // Get transaction history for an inventory item - accessible by both admin and operator
-  getTransactionHistory: createRbacProcedure("read", "inventory")
-    .input(
-      z.object({
-        inventoryId: z.string().uuid(),
-        limit: z.number().int().positive().max(100).default(50),
-        offset: z.number().int().min(0).default(0),
-      }),
-    )
-    .query(async ({ input }) => {
-      const { inventoryId, limit, offset } = input;
+  // DROPPED: getTransactionHistory procedure removed - uses dropped inventoryTransactions table
+  // TODO: Implement when proper inventory system is ready
 
-      const transactions = await db
-        .select()
-        .from(inventoryTransactions)
-        .where(eq(inventoryTransactions.inventoryId, inventoryId))
-        .orderBy(desc(inventoryTransactions.transactionDate))
-        .limit(limit)
-        .offset(offset);
-
-      const totalCount = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(inventoryTransactions)
-        .where(eq(inventoryTransactions.inventoryId, inventoryId));
-
-      return {
-        transactions,
-        pagination: {
-          total: totalCount[0]?.count || 0,
-          limit,
-          offset,
-          hasMore: (totalCount[0]?.count || 0) > offset + limit,
-        },
-      };
-    }),
-
-  // Get inventory summary by material type - accessible by both admin and operator
-  getSummaryByMaterialType: createRbacProcedure("list", "inventory").query(
-    async () => {
-      const summary = await db
-        .select({
-          materialType: inventory.materialType,
-          totalItems: sql<number>`count(*)`,
-          totalQuantity: sql<number>`sum(${inventory.currentBottleCount})`,
-        })
-        .from(inventory)
-        .where(isNull(inventory.deletedAt))
-        .groupBy(inventory.materialType);
-
-      return {
-        summary,
-        totalItems: summary.reduce(
-          (acc, item) => acc + (item.totalItems || 0),
-          0,
-        ),
-      };
-    },
-  ),
+  // DROPPED: getSummaryByMaterialType procedure removed - uses dropped inventory table
+  // TODO: Implement when proper inventory system is ready
 
   // Get transaction summary for inventory items - accessible by both admin and operator
   getTransactionSummary: createRbacProcedure("read", "inventory")
@@ -550,20 +436,20 @@ export const inventoryRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        originalQuantity: z.number().min(0).optional(),
-        originalUnit: z.enum(["kg", "lb", "L", "gal"]).optional(),
+        quantity: z.number().min(0).optional(),
+        unit: z.enum(["kg", "lb", "L", "gal"]).optional(),
         harvestDate: z.date().optional().nullable(),
         notes: z.string().optional().nullable(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const { id, harvestDate, originalQuantity, ...updateData } = input;
+      const { id, harvestDate, quantity, ...updateData } = input;
 
       await db
         .update(basefruitPurchaseItems)
         .set({
           ...updateData,
-          originalQuantity: originalQuantity?.toString(),
+          quantity: quantity?.toString(),
           harvestDate: harvestDate
             ? harvestDate.toISOString().split("T")[0]
             : null,
@@ -572,7 +458,7 @@ export const inventoryRouter = router({
         .where(eq(basefruitPurchaseItems.id, id));
 
       // Log audit
-      await db.insert(auditLog).values({
+      await db.insert(auditLogs).values({
         tableName: "basefruit_purchase_items",
         recordId: id,
         operation: "update",
@@ -611,7 +497,7 @@ export const inventoryRouter = router({
         .where(eq(additivePurchaseItems.id, id));
 
       // Log audit
-      await db.insert(auditLog).values({
+      await db.insert(auditLogs).values({
         tableName: "additive_purchase_items",
         recordId: id,
         operation: "update",
@@ -649,7 +535,7 @@ export const inventoryRouter = router({
         .where(eq(juicePurchaseItems.id, id));
 
       // Log audit
-      await db.insert(auditLog).values({
+      await db.insert(auditLogs).values({
         tableName: "juice_purchase_items",
         recordId: id,
         operation: "update",
@@ -682,7 +568,7 @@ export const inventoryRouter = router({
         .where(eq(packagingPurchaseItems.id, id));
 
       // Log audit
-      await db.insert(auditLog).values({
+      await db.insert(auditLogs).values({
         tableName: "packaging_purchase_items",
         recordId: id,
         operation: "update",
@@ -748,7 +634,7 @@ export const inventoryRouter = router({
         }
 
         // Log audit
-        await db.insert(auditLog).values({
+        await db.insert(auditLogs).values({
           tableName: `${itemType}_purchase_items`,
           recordId: actualId,
           operation: "delete",

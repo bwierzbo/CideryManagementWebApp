@@ -233,8 +233,8 @@ export function InventoryEditDialog({
         case "basefruit":
           await updateBaseFruit.mutateAsync({
             id: itemId,
-            originalQuantity: values.quantity,
-            originalUnit: values.unit,
+            quantity: values.quantity,
+            unit: values.unit,
             harvestDate: values.harvestDate,
             notes: values.notes,
           });

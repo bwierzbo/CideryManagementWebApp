@@ -59,6 +59,7 @@ import {
 } from "lucide-react";
 import { gallonsToLiters, litersToGallons, formatUnitConversion } from "lib";
 import { trpc } from "@/utils/trpc";
+import { formatDate } from "@/utils/date-format";
 
 // Assignment schema for vessel assignments
 const assignmentSchema = z.object({
@@ -864,9 +865,7 @@ export function PressRunCompletionForm({
                   </p>
                   <p>
                     <strong>Completion Date:</strong>{" "}
-                    {new Date(
-                      watchedValues.completionDate,
-                    ).toLocaleDateString()}
+                    {formatDate(new Date(watchedValues.completionDate))}
                   </p>
                   <p>
                     <strong>Total Juice Volume:</strong>{" "}

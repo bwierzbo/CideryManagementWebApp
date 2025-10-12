@@ -97,3 +97,4 @@ Required for development:
 - `NEXTAUTH_URL` - App URL (http://localhost:3000 for dev)
 - stop worrying about ports its me hosting it on a different tab
 - everytime you want to push the migration just tell me to do it because you have problems doing the interactive prompt on your own
+- dont worry what ports you are hosting i typically will host it in another terminal tab

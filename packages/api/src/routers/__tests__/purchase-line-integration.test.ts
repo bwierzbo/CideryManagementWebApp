@@ -6,8 +6,8 @@ import {
   purchaseItems,
   vendors,
   appleVarieties,
-  applePressRunLoads,
-  applePressRuns,
+  pressRunLoads,
+  pressRuns,
   vessels,
 } from "db";
 import { eq, and } from "drizzle-orm";
@@ -34,8 +34,8 @@ describe("Purchase Line Integration for Apple Press", () => {
 
   beforeEach(async () => {
     // Clean up existing test data in proper order
-    await db.delete(applePressRunLoads);
-    await db.delete(applePressRuns);
+    await db.delete(pressRunLoads);
+    await db.delete(pressRuns);
     await db.delete(purchaseItems);
     await db.delete(purchases);
     await db.delete(vessels);
@@ -331,7 +331,7 @@ describe("Purchase Line Integration for Apple Press", () => {
     it("should calculate consumed quantities correctly", async () => {
       // Create apple press run
       const pressRun = await db
-        .insert(applePressRuns)
+        .insert(pressRuns)
         .values({
           vendorId: testVendorId,
           vesselId: testVesselId,
@@ -347,8 +347,8 @@ describe("Purchase Line Integration for Apple Press", () => {
         .returning();
 
       // Create apple press run load that consumes part of purchase item
-      await db.insert(applePressRunLoads).values({
-        applePressRunId: pressRun[0].id,
+      await db.insert(pressRunLoads).values({
+        pressRunId: pressRun[0].id,
         purchaseItemId: testPurchaseItemId,
         appleVarietyId: testAppleVarietyId,
         loadSequence: 1,
@@ -384,7 +384,7 @@ describe("Purchase Line Integration for Apple Press", () => {
     it("should exclude fully consumed purchase items", async () => {
       // Create apple press run that fully consumes the purchase item
       const pressRun = await db
-        .insert(applePressRuns)
+        .insert(pressRuns)
         .values({
           vendorId: testVendorId,
           vesselId: testVesselId,
@@ -400,8 +400,8 @@ describe("Purchase Line Integration for Apple Press", () => {
         .returning();
 
       // Create apple press run load that fully consumes purchase item
-      await db.insert(applePressRunLoads).values({
-        applePressRunId: pressRun[0].id,
+      await db.insert(pressRunLoads).values({
+        pressRunId: pressRun[0].id,
         purchaseItemId: testPurchaseItemId,
         appleVarietyId: testAppleVarietyId,
         loadSequence: 1,
@@ -432,7 +432,7 @@ describe("Purchase Line Integration for Apple Press", () => {
     it("should handle multiple loads consuming same purchase item", async () => {
       // Create apple press run
       const pressRun = await db
-        .insert(applePressRuns)
+        .insert(pressRuns)
         .values({
           vendorId: testVendorId,
           vesselId: testVesselId,
@@ -448,9 +448,9 @@ describe("Purchase Line Integration for Apple Press", () => {
         .returning();
 
       // Create multiple apple press run loads consuming same purchase item
-      await db.insert(applePressRunLoads).values([
+      await db.insert(pressRunLoads).values([
         {
-          applePressRunId: pressRun[0].id,
+          pressRunId: pressRun[0].id,
           purchaseItemId: testPurchaseItemId,
           appleVarietyId: testAppleVarietyId,
           loadSequence: 1,
@@ -467,7 +467,7 @@ describe("Purchase Line Integration for Apple Press", () => {
           updatedAt: new Date(),
         },
         {
-          applePressRunId: pressRun[0].id,
+          pressRunId: pressRun[0].id,
           purchaseItemId: testPurchaseItemId,
           appleVarietyId: testAppleVarietyId,
           loadSequence: 2,
@@ -539,7 +539,7 @@ describe("Purchase Line Integration for Apple Press", () => {
     it("should account for consumed quantities in validation", async () => {
       // Create apple press run that partially consumes the item
       const pressRun = await db
-        .insert(applePressRuns)
+        .insert(pressRuns)
         .values({
           vendorId: testVendorId,
           vesselId: testVesselId,
@@ -554,8 +554,8 @@ describe("Purchase Line Integration for Apple Press", () => {
         })
         .returning();
 
-      await db.insert(applePressRunLoads).values({
-        applePressRunId: pressRun[0].id,
+      await db.insert(pressRunLoads).values({
+        pressRunId: pressRun[0].id,
         purchaseItemId: testPurchaseItemId,
         appleVarietyId: testAppleVarietyId,
         loadSequence: 1,

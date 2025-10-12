@@ -13,7 +13,7 @@ export interface BatchPackagingData {
   id: string;
   batchNumber: string;
   currentVolumeL: number;
-  status: "planned" | "active" | "completed" | "cancelled";
+  status: "fermentation" | "aging" | "conditioning" | "completed" | "discarded";
   vesselId?: string;
 }
 
@@ -42,10 +42,10 @@ export interface ExistingPackagingData {
 export function validateBatchReadyForPackaging(
   batch: BatchPackagingData,
 ): void {
-  if (batch.status === "planned") {
+  if (batch.status === "discarded") {
     throw new PackagingValidationError(
-      `Batch ${batch.batchNumber} is still in planning`,
-      `Batch "${batch.batchNumber}" is still in planning phase and cannot be packaged yet. Please start the batch before packaging.`,
+      `Batch ${batch.batchNumber} is discarded`,
+      `Batch "${batch.batchNumber}" is discarded and cannot be packaged.`,
       {
         batchId: batch.id,
         batchNumber: batch.batchNumber,
@@ -54,10 +54,10 @@ export function validateBatchReadyForPackaging(
     );
   }
 
-  if (batch.status === "cancelled") {
+  if (batch.status !== "aging") {
     throw new PackagingValidationError(
-      `Batch ${batch.batchNumber} is cancelled`,
-      `Batch "${batch.batchNumber}" is cancelled and cannot be packaged.`,
+      `Batch ${batch.batchNumber} is not ready for packaging`,
+      `Batch "${batch.batchNumber}" must be in aging stage to be packaged. Current status: ${batch.status}`,
       {
         batchId: batch.id,
         batchNumber: batch.batchNumber,

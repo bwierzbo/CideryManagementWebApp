@@ -3,7 +3,7 @@ import { router, createRbacProcedure } from "../trpc";
 import {
   db,
   vendors,
-  auditLog,
+  auditLogs,
   vendorVarieties,
   vendorAdditiveVarieties,
   vendorJuiceVarieties,
@@ -33,10 +33,18 @@ const vendorUpdateSchema = vendorSchema.partial().extend({
 const eventBus = {
   publish: async (event: string, data: any, userId?: string) => {
     try {
-      await db.insert(auditLog).values({
-        tableName: event.split(".")[0],
+      const eventParts = event.split(".");
+      const operationMap: Record<string, "create" | "update" | "delete"> = {
+        created: "create",
+        updated: "update",
+        deleted: "delete",
+      };
+      const operation = operationMap[eventParts[1]] || "create";
+
+      await db.insert(auditLogs).values({
+        tableName: eventParts[0],
         recordId: data.vendorId || "",
-        operation: event.split(".")[1],
+        operation,
         newData: data,
         changedBy: userId || null,
       });

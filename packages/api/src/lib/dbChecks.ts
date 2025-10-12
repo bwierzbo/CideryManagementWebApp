@@ -105,7 +105,6 @@ export async function createVendorVariety(
     await db.insert(vendorVarieties).values({
       vendorId,
       varietyId,
-      notes: notes || undefined,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

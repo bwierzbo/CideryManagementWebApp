@@ -2,14 +2,14 @@ import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
 import {
   db,
-  applePressRuns,
-  applePressRunLoads,
+  pressRuns,
+  pressRunLoads,
   vendors,
   vessels,
   basefruitPurchaseItems,
   basefruitPurchases,
   baseFruitVarieties,
-  auditLog,
+  auditLogs,
   users,
   batches,
   batchCompositions,
@@ -25,10 +25,6 @@ import { generateBatchNameFromComposition, type BatchComposition } from "lib";
 
 // Input validation schemas
 const createPressRunSchema = z.object({
-  scheduledDate: z
-    .date()
-    .or(z.string().transform((val) => new Date(val)))
-    .optional(),
   notes: z.string().optional(),
 });
 
@@ -40,10 +36,6 @@ const addLoadSchema = z.object({
   appleWeightKg: z.number().positive("Apple weight must be positive"),
   originalWeight: z.number().positive("Original weight must be positive"),
   originalWeightUnit: z.enum(["kg", "lb", "bushel"]),
-  brixMeasured: z.number().min(0).max(30).optional(),
-  phMeasured: z.number().min(2).max(5).optional(),
-  appleCondition: z.enum(["excellent", "good", "fair", "poor"]).optional(),
-  defectPercentage: z.number().min(0).max(100).optional(),
   notes: z.string().optional(),
 });
 
@@ -55,10 +47,6 @@ const updateLoadSchema = z.object({
   appleWeightKg: z.number().positive("Apple weight must be positive"),
   originalWeight: z.number().positive("Original weight must be positive"),
   originalWeightUnit: z.enum(["kg", "lb", "bushel"]),
-  brixMeasured: z.number().min(0).max(30).optional(),
-  phMeasured: z.number().min(2).max(5).optional(),
-  appleCondition: z.enum(["excellent", "good", "fair", "poor"]).optional(),
-  defectPercentage: z.number().min(0).max(100).optional(),
   notes: z.string().optional(),
 });
 
@@ -99,8 +87,6 @@ const finishPressRunSchema = z.object({
         juiceVolumeL: z.number().positive("Juice volume must be positive"),
         originalVolume: z.number().positive("Original volume must be positive"),
         originalVolumeUnit: z.enum(["L", "gal"]),
-        brixMeasured: z.number().min(0).max(30).optional(),
-        phMeasured: z.number().min(2).max(5).optional(),
       }),
     )
     .min(1, "At least one load with juice volume is required"),
@@ -112,7 +98,7 @@ const listPressRunsSchema = z.object({
   limit: z.number().int().positive().max(100).default(20),
   offset: z.number().int().min(0).default(0),
   sortBy: z
-    .enum(["created", "scheduled", "started", "updated"])
+    .enum(["created", "started", "updated"])
     .default("created"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
@@ -126,13 +112,10 @@ export const pressRunRouter = router({
         return await db.transaction(async (tx) => {
           // Create new press run (name will be set when completed)
           const newPressRun = await tx
-            .insert(applePressRuns)
+            .insert(pressRuns)
             .values({
               pressRunName: null, // Name will be set when completing the press run
               status: "in_progress",
-              scheduledDate: input.scheduledDate
-                ? input.scheduledDate.toISOString().split("T")[0]
-                : null,
               notes: input.notes,
               createdBy: ctx.session?.user?.id,
               updatedBy: ctx.session?.user?.id,
@@ -145,12 +128,11 @@ export const pressRunRouter = router({
 
           // Publish audit event
           await publishCreateEvent(
-            "apple_press_runs",
+            "press_runs",
             pressRunId,
             {
               pressRunId,
               status: "in_progress",
-              scheduledDate: input.scheduledDate,
             },
             ctx.session?.user?.id,
             "Press run created via mobile app",
@@ -181,11 +163,11 @@ export const pressRunRouter = router({
           // Verify press run exists and is editable - lock the row to prevent concurrent modifications
           const pressRun = await tx
             .select()
-            .from(applePressRuns)
+            .from(pressRuns)
             .where(
               and(
-                eq(applePressRuns.id, input.pressRunId),
-                isNull(applePressRuns.deletedAt),
+                eq(pressRuns.id, input.pressRunId),
+                isNull(pressRuns.deletedAt),
               ),
             )
             .limit(1)
@@ -247,13 +229,13 @@ export const pressRunRouter = router({
           // Get next load sequence number (press run is already locked above, preventing race conditions)
           const maxSequenceResult = await tx
             .select({
-              maxSequence: sql<number>`COALESCE(MAX(${applePressRunLoads.loadSequence}), 0)`,
+              maxSequence: sql<number>`COALESCE(MAX(${pressRunLoads.loadSequence}), 0)`,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .where(
               and(
-                eq(applePressRunLoads.applePressRunId, input.pressRunId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.pressRunId, input.pressRunId),
+                isNull(pressRunLoads.deletedAt),
               ),
             );
 
@@ -261,21 +243,16 @@ export const pressRunRouter = router({
 
           // Create the load
           const newLoad = await tx
-            .insert(applePressRunLoads)
+            .insert(pressRunLoads)
             .values({
-              applePressRunId: input.pressRunId,
+              pressRunId: input.pressRunId,
               purchaseItemId: input.purchaseItemId,
               fruitVarietyId: input.fruitVarietyId,
               loadSequence: nextSequence,
               appleWeightKg: input.appleWeightKg.toString(),
               originalWeight: input.originalWeight.toString(),
               originalWeightUnit: input.originalWeightUnit,
-              brixMeasured: input.brixMeasured?.toString(),
-              phMeasured: input.phMeasured?.toString(),
-              appleCondition: input.appleCondition,
-              defectPercentage: input.defectPercentage?.toString(),
               notes: input.notes,
-              pressedAt: new Date(),
               createdBy: ctx.session?.user?.id,
               updatedBy: ctx.session?.user?.id,
               createdAt: new Date(),
@@ -286,23 +263,23 @@ export const pressRunRouter = router({
           // Update press run status if still in draft
           if (pressRun[0].status === "draft") {
             await tx
-              .update(applePressRuns)
+              .update(pressRuns)
               .set({
                 status: "in_progress",
                 updatedBy: ctx.session?.user?.id,
                 updatedAt: new Date(),
               })
-              .where(eq(applePressRuns.id, input.pressRunId));
+              .where(eq(pressRuns.id, input.pressRunId));
           }
 
           // Update press run totals
           const allLoads = await tx
-            .select({ appleWeightKg: applePressRunLoads.appleWeightKg })
-            .from(applePressRunLoads)
+            .select({ appleWeightKg: pressRunLoads.appleWeightKg })
+            .from(pressRunLoads)
             .where(
               and(
-                eq(applePressRunLoads.applePressRunId, input.pressRunId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.pressRunId, input.pressRunId),
+                isNull(pressRunLoads.deletedAt),
               ),
             );
 
@@ -312,17 +289,17 @@ export const pressRunRouter = router({
           );
 
           await tx
-            .update(applePressRuns)
+            .update(pressRuns)
             .set({
               totalAppleWeightKg: totalAppleWeightKg.toString(),
               updatedBy: ctx.session?.user?.id,
               updatedAt: new Date(),
             })
-            .where(eq(applePressRuns.id, input.pressRunId));
+            .where(eq(pressRuns.id, input.pressRunId));
 
           // Publish audit events
           await publishCreateEvent(
-            "apple_press_run_loads",
+            "press_run_loads",
             newLoad[0].id,
             {
               loadId: newLoad[0].id,
@@ -361,19 +338,19 @@ export const pressRunRouter = router({
           // Verify load exists and get press run info
           const existingLoad = await tx
             .select({
-              loadId: applePressRunLoads.id,
-              pressRunId: applePressRunLoads.applePressRunId,
-              pressRunStatus: applePressRuns.status,
+              loadId: pressRunLoads.id,
+              pressRunId: pressRunLoads.pressRunId,
+              pressRunStatus: pressRuns.status,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .leftJoin(
-              applePressRuns,
-              eq(applePressRunLoads.applePressRunId, applePressRuns.id),
+              pressRuns,
+              eq(pressRunLoads.pressRunId, pressRuns.id),
             )
             .where(
               and(
-                eq(applePressRunLoads.id, input.loadId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.id, input.loadId),
+                isNull(pressRunLoads.deletedAt),
               ),
             )
             .limit(1);
@@ -432,35 +409,31 @@ export const pressRunRouter = router({
 
           // Update the load
           const updatedLoad = await tx
-            .update(applePressRunLoads)
+            .update(pressRunLoads)
             .set({
               purchaseItemId: input.purchaseItemId,
               fruitVarietyId: input.fruitVarietyId,
               appleWeightKg: input.appleWeightKg.toString(),
               originalWeight: input.originalWeight.toString(),
               originalWeightUnit: input.originalWeightUnit,
-              brixMeasured: input.brixMeasured?.toString(),
-              phMeasured: input.phMeasured?.toString(),
-              appleCondition: input.appleCondition,
-              defectPercentage: input.defectPercentage?.toString(),
               notes: input.notes,
               updatedBy: ctx.session?.user?.id,
               updatedAt: new Date(),
             })
-            .where(eq(applePressRunLoads.id, input.loadId))
+            .where(eq(pressRunLoads.id, input.loadId))
             .returning();
 
           // Update press run totals
           const allLoads = await tx
-            .select({ appleWeightKg: applePressRunLoads.appleWeightKg })
-            .from(applePressRunLoads)
+            .select({ appleWeightKg: pressRunLoads.appleWeightKg })
+            .from(pressRunLoads)
             .where(
               and(
                 eq(
-                  applePressRunLoads.applePressRunId,
+                  pressRunLoads.pressRunId,
                   existingLoad[0].pressRunId,
                 ),
-                isNull(applePressRunLoads.deletedAt),
+                isNull(pressRunLoads.deletedAt),
               ),
             );
 
@@ -470,17 +443,17 @@ export const pressRunRouter = router({
           );
 
           await tx
-            .update(applePressRuns)
+            .update(pressRuns)
             .set({
               totalAppleWeightKg: totalAppleWeightKg.toString(),
               updatedBy: ctx.session?.user?.id,
               updatedAt: new Date(),
             })
-            .where(eq(applePressRuns.id, existingLoad[0].pressRunId));
+            .where(eq(pressRuns.id, existingLoad[0].pressRunId));
 
           // Publish audit event
           await publishUpdateEvent(
-            "apple_press_run_loads",
+            "press_run_loads",
             input.loadId,
             existingLoad[0],
             {
@@ -517,11 +490,11 @@ export const pressRunRouter = router({
           // Verify press run exists and is in progress
           const pressRun = await tx
             .select()
-            .from(applePressRuns)
+            .from(pressRuns)
             .where(
               and(
-                eq(applePressRuns.id, input.pressRunId),
-                isNull(applePressRuns.deletedAt),
+                eq(pressRuns.id, input.pressRunId),
+                isNull(pressRuns.deletedAt),
               ),
             )
             .limit(1);
@@ -576,21 +549,19 @@ export const pressRunRouter = router({
           const updatedLoads = [];
           for (const load of input.loads) {
             const updatedLoad = await tx
-              .update(applePressRunLoads)
+              .update(pressRunLoads)
               .set({
                 juiceVolume: load.juiceVolumeL.toString(),
                 juiceVolumeUnit: "L",
                 originalVolume: load.originalVolume.toString(),
                 originalVolumeUnit: load.originalVolumeUnit,
-                brixMeasured: load.brixMeasured?.toString(),
-                phMeasured: load.phMeasured?.toString(),
                 updatedBy: ctx.session?.user?.id,
                 updatedAt: new Date(),
               })
               .where(
                 and(
-                  eq(applePressRunLoads.id, load.loadId),
-                  eq(applePressRunLoads.applePressRunId, input.pressRunId),
+                  eq(pressRunLoads.id, load.loadId),
+                  eq(pressRunLoads.pressRunId, input.pressRunId),
                 ),
               )
               .returning();
@@ -622,15 +593,15 @@ export const pressRunRouter = router({
 
           // Find existing press runs on the same date to determine sequence number
           const existingRuns = await tx
-            .select({ pressRunName: applePressRuns.pressRunName })
-            .from(applePressRuns)
+            .select({ pressRunName: pressRuns.pressRunName })
+            .from(pressRuns)
             .where(
               and(
-                sql`${applePressRuns.pressRunName} LIKE ${completionDateStr + "-%"}`,
-                isNull(applePressRuns.deletedAt),
+                sql`${pressRuns.pressRunName} LIKE ${completionDateStr + "-%"}`,
+                isNull(pressRuns.deletedAt),
               ),
             )
-            .orderBy(desc(applePressRuns.pressRunName));
+            .orderBy(desc(pressRuns.pressRunName));
 
           // Extract the highest sequence number for this date
           let sequenceNumber = 1;
@@ -653,7 +624,7 @@ export const pressRunRouter = router({
 
           // Complete the press run
           const completedPressRun = await tx
-            .update(applePressRuns)
+            .update(pressRuns)
             .set({
               pressRunName,
               vesselId: input.vesselId,
@@ -669,14 +640,14 @@ export const pressRunRouter = router({
               updatedBy: ctx.session?.user?.id,
               updatedAt: new Date(),
             })
-            .where(eq(applePressRuns.id, input.pressRunId))
+            .where(eq(pressRuns.id, input.pressRunId))
             .returning();
 
           // Update vessel status
           await tx
             .update(vessels)
             .set({
-              status: "fermenting",
+              status: "available",
               updatedAt: new Date(),
             })
             .where(eq(vessels.id, input.vesselId));
@@ -685,22 +656,21 @@ export const pressRunRouter = router({
           // Get all loads with vendor and variety information for batch composition
           const loads = await tx
             .select({
-              id: applePressRunLoads.id,
-              purchaseItemId: applePressRunLoads.purchaseItemId,
+              id: pressRunLoads.id,
+              purchaseItemId: pressRunLoads.purchaseItemId,
               vendorId: basefruitPurchases.vendorId,
               vendorName: vendors.name,
-              fruitVarietyId: applePressRunLoads.fruitVarietyId,
+              fruitVarietyId: pressRunLoads.fruitVarietyId,
               varietyName: baseFruitVarieties.name,
-              appleWeightKg: applePressRunLoads.appleWeightKg,
-              juiceVolume: applePressRunLoads.juiceVolume,
-              juiceVolumeUnit: applePressRunLoads.juiceVolumeUnit,
-              brixMeasured: applePressRunLoads.brixMeasured,
+              appleWeightKg: pressRunLoads.appleWeightKg,
+              juiceVolume: pressRunLoads.juiceVolume,
+              juiceVolumeUnit: pressRunLoads.juiceVolumeUnit,
               totalCost: basefruitPurchaseItems.totalCost,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .innerJoin(
               basefruitPurchaseItems,
-              eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id),
+              eq(pressRunLoads.purchaseItemId, basefruitPurchaseItems.id),
             )
             .innerJoin(
               basefruitPurchases,
@@ -709,12 +679,12 @@ export const pressRunRouter = router({
             .innerJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
             .innerJoin(
               baseFruitVarieties,
-              eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id),
+              eq(pressRunLoads.fruitVarietyId, baseFruitVarieties.id),
             )
             .where(
               and(
-                eq(applePressRunLoads.applePressRunId, input.pressRunId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.pressRunId, input.pressRunId),
+                isNull(pressRunLoads.deletedAt),
               ),
             );
 
@@ -757,7 +727,7 @@ export const pressRunRouter = router({
               initialVolumeUnit: "L",
               currentVolume: totalJuiceVolumeL.toString(),
               currentVolumeUnit: "L",
-              status: "active",
+              status: "fermentation",
               startDate: input.completionDate,
               originPressRunId: input.pressRunId,
             })
@@ -769,7 +739,7 @@ export const pressRunRouter = router({
           await tx
             .update(vessels)
             .set({
-              status: "fermenting",
+              status: "available",
               updatedAt: new Date(),
             })
             .where(eq(vessels.id, input.vesselId));
@@ -779,7 +749,7 @@ export const pressRunRouter = router({
             "vessels",
             input.vesselId,
             { status: "available" },
-            { status: "fermenting" },
+            { status: "available" },
             ctx.session?.user?.id,
             "Vessel status changed to fermenting when batch was created from press run completion",
           );
@@ -801,13 +771,12 @@ export const pressRunRouter = router({
               juiceVolumeUnit: "L" as const,
               fractionOfBatch: fraction.toString(),
               materialCost: materialCost.toString(),
-              avgBrix: load.brixMeasured,
             });
           }
 
           // Publish audit events
           await publishUpdateEvent(
-            "apple_press_runs",
+            "press_runs",
             input.pressRunId,
             pressRun[0],
             {
@@ -850,11 +819,11 @@ export const pressRunRouter = router({
           // Verify press run exists
           const pressRun = await tx
             .select()
-            .from(applePressRuns)
+            .from(pressRuns)
             .where(
               and(
-                eq(applePressRuns.id, input.pressRunId),
-                isNull(applePressRuns.deletedAt),
+                eq(pressRuns.id, input.pressRunId),
+                isNull(pressRuns.deletedAt),
               ),
             )
             .limit(1);
@@ -895,12 +864,12 @@ export const pressRunRouter = router({
           // Calculate total juice volume (needed for validation and completion)
           // Get total juice volume from loads
           const juiceVolumeLoads = await tx
-            .select({ juiceVolume: applePressRunLoads.juiceVolume })
-            .from(applePressRunLoads)
+            .select({ juiceVolume: pressRunLoads.juiceVolume })
+            .from(pressRunLoads)
             .where(
               and(
-                eq(applePressRunLoads.applePressRunId, input.pressRunId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.pressRunId, input.pressRunId),
+                isNull(pressRunLoads.deletedAt),
               ),
             );
 
@@ -919,15 +888,15 @@ export const pressRunRouter = router({
 
             // Find existing press runs on the same date to determine sequence number
             const existingRuns = await tx
-              .select({ pressRunName: applePressRuns.pressRunName })
-              .from(applePressRuns)
+              .select({ pressRunName: pressRuns.pressRunName })
+              .from(pressRuns)
               .where(
                 and(
-                  sql`${applePressRuns.pressRunName} LIKE ${completionDateStr + "-%"}`,
-                  isNull(applePressRuns.deletedAt),
+                  sql`${pressRuns.pressRunName} LIKE ${completionDateStr + "-%"}`,
+                  isNull(pressRuns.deletedAt),
                 ),
               )
-              .orderBy(desc(applePressRuns.pressRunName));
+              .orderBy(desc(pressRuns.pressRunName));
 
             let sequenceNumber = 1;
             if (existingRuns.length > 0) {
@@ -958,7 +927,7 @@ export const pressRunRouter = router({
 
             // Complete the press run
             await tx
-              .update(applePressRuns)
+              .update(pressRuns)
               .set({
                 pressRunName,
                 status: "completed",
@@ -968,7 +937,7 @@ export const pressRunRouter = router({
                 extractionRate: extractionRate.toString(),
                 updatedAt: new Date(),
               })
-              .where(eq(applePressRuns.id, input.pressRunId));
+              .where(eq(pressRuns.id, input.pressRunId));
           }
 
           // Validate total assigned volume doesn't exceed available juice
@@ -980,12 +949,12 @@ export const pressRunRouter = router({
           // Re-fetch press run to get updated juice volume and completion date if it was just completed
           const updatedPressRun = await tx
             .select({
-              totalJuiceVolume: applePressRuns.totalJuiceVolume,
-              totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
-              dateCompleted: applePressRuns.dateCompleted,
+              totalJuiceVolume: pressRuns.totalJuiceVolume,
+              totalJuiceVolumeUnit: pressRuns.totalJuiceVolumeUnit,
+              dateCompleted: pressRuns.dateCompleted,
             })
-            .from(applePressRuns)
-            .where(eq(applePressRuns.id, input.pressRunId))
+            .from(pressRuns)
+            .where(eq(pressRuns.id, input.pressRunId))
             .limit(1);
 
           const availableVolume =
@@ -1037,7 +1006,7 @@ export const pressRunRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, assignment.toVesselId),
-                  eq(batches.status, "active"),
+                  eq(batches.status, "fermentation"),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -1109,19 +1078,18 @@ export const pressRunRouter = router({
           // Load press run loads for composition calculation
           const loads = await tx
             .select({
-              id: applePressRunLoads.id,
-              purchaseItemId: applePressRunLoads.purchaseItemId,
-              fruitVarietyId: applePressRunLoads.fruitVarietyId,
+              id: pressRunLoads.id,
+              purchaseItemId: pressRunLoads.purchaseItemId,
+              fruitVarietyId: pressRunLoads.fruitVarietyId,
               varietyName: baseFruitVarieties.name,
-              appleWeightKg: applePressRunLoads.appleWeightKg,
-              brixMeasured: applePressRunLoads.brixMeasured,
+              appleWeightKg: pressRunLoads.appleWeightKg,
               vendorId: vendors.id,
               totalCost: basefruitPurchaseItems.totalCost,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .innerJoin(
               basefruitPurchaseItems,
-              eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id),
+              eq(pressRunLoads.purchaseItemId, basefruitPurchaseItems.id),
             )
             .innerJoin(
               basefruitPurchases,
@@ -1130,12 +1098,12 @@ export const pressRunRouter = router({
             .innerJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
             .innerJoin(
               baseFruitVarieties,
-              eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id),
+              eq(pressRunLoads.fruitVarietyId, baseFruitVarieties.id),
             )
             .where(
               and(
-                eq(applePressRunLoads.applePressRunId, input.pressRunId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.pressRunId, input.pressRunId),
+                isNull(pressRunLoads.deletedAt),
               ),
             );
 
@@ -1185,7 +1153,7 @@ export const pressRunRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, assignment.toVesselId),
-                  eq(batches.status, "active"),
+                  eq(batches.status, "fermentation"),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -1255,7 +1223,7 @@ export const pressRunRouter = router({
                   initialVolumeUnit: "L",
                   currentVolume: assignment.volumeL.toString(),
                   currentVolumeUnit: "L",
-                  status: "active",
+                  status: "fermentation",
                   startDate: pressRunCompletionDate,
                   originPressRunId: input.pressRunId,
                 })
@@ -1270,7 +1238,7 @@ export const pressRunRouter = router({
             await tx
               .update(vessels)
               .set({
-                status: "fermenting",
+                status: "available",
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, assignment.toVesselId));
@@ -1280,7 +1248,7 @@ export const pressRunRouter = router({
               "vessels",
               assignment.toVesselId,
               { status: "available" },
-              { status: "fermenting" },
+              { status: "available" },
               ctx.session?.user?.id,
               "Vessel status changed to fermenting when batch was created from press run completion",
             );
@@ -1308,9 +1276,6 @@ export const pressRunRouter = router({
                   load.appleWeightKg || "0",
                 );
                 acc[key].totalCost += parseFloat(load.totalCost || "0");
-                if (load.brixMeasured) {
-                  acc[key].brixMeasurements.push(load.brixMeasured);
-                }
                 return acc;
               },
               {} as Record<string, any>,
@@ -1508,7 +1473,7 @@ export const pressRunRouter = router({
 
           // Publish press completion audit event
           await publishUpdateEvent(
-            "apple_press_runs",
+            "press_runs",
             input.pressRunId,
             pressRun[0],
             { batchesCreated: true },
@@ -1538,22 +1503,21 @@ export const pressRunRouter = router({
     .query(async ({ input }) => {
       try {
         // Build WHERE conditions
-        const conditions = [isNull(applePressRuns.deletedAt)];
+        const conditions = [isNull(pressRuns.deletedAt)];
 
         if (input.status) {
-          conditions.push(eq(applePressRuns.status, input.status));
+          conditions.push(eq(pressRuns.status, input.status));
         }
 
         if (input.vendorId) {
-          conditions.push(eq(applePressRuns.vendorId, input.vendorId));
+          conditions.push(eq(pressRuns.vendorId, input.vendorId));
         }
 
         // Build ORDER BY clause
         const sortColumn = {
-          created: applePressRuns.createdAt,
-          scheduled: applePressRuns.scheduledDate,
-          started: applePressRuns.dateCompleted, // Using dateCompleted for sorting
-          updated: applePressRuns.updatedAt,
+          created: pressRuns.createdAt,
+          started: pressRuns.dateCompleted, // Using dateCompleted for sorting
+          updated: pressRuns.updatedAt,
         }[input.sortBy];
 
         const orderBy =
@@ -1562,28 +1526,27 @@ export const pressRunRouter = router({
         // Query press runs with vendor and vessel info
         const pressRunsList = await db
           .select({
-            id: applePressRuns.id,
-            pressRunName: applePressRuns.pressRunName,
-            vendorId: applePressRuns.vendorId,
+            id: pressRuns.id,
+            pressRunName: pressRuns.pressRunName,
+            vendorId: pressRuns.vendorId,
             vendorName: vendors.name,
-            vesselId: applePressRuns.vesselId,
+            vesselId: pressRuns.vesselId,
             vesselName: vessels.name,
-            status: applePressRuns.status,
-            scheduledDate: applePressRuns.scheduledDate,
-            dateCompleted: applePressRuns.dateCompleted,
-            totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
-            totalJuiceVolume: applePressRuns.totalJuiceVolume,
-            totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
-            extractionRate: applePressRuns.extractionRate,
-            laborHours: applePressRuns.laborHours,
-            totalLaborCost: applePressRuns.totalLaborCost,
-            notes: applePressRuns.notes,
-            createdAt: applePressRuns.createdAt,
-            updatedAt: applePressRuns.updatedAt,
+            status: pressRuns.status,
+            dateCompleted: pressRuns.dateCompleted,
+            totalAppleWeightKg: pressRuns.totalAppleWeightKg,
+            totalJuiceVolume: pressRuns.totalJuiceVolume,
+            totalJuiceVolumeUnit: pressRuns.totalJuiceVolumeUnit,
+            extractionRate: pressRuns.extractionRate,
+            laborHours: pressRuns.laborHours,
+            totalLaborCost: pressRuns.totalLaborCost,
+            notes: pressRuns.notes,
+            createdAt: pressRuns.createdAt,
+            updatedAt: pressRuns.updatedAt,
           })
-          .from(applePressRuns)
-          .leftJoin(vendors, eq(applePressRuns.vendorId, vendors.id))
-          .leftJoin(vessels, eq(applePressRuns.vesselId, vessels.id))
+          .from(pressRuns)
+          .leftJoin(vendors, eq(pressRuns.vendorId, vendors.id))
+          .leftJoin(vessels, eq(pressRuns.vesselId, vessels.id))
           .where(and(...conditions))
           .orderBy(orderBy)
           .limit(input.limit)
@@ -1592,7 +1555,7 @@ export const pressRunRouter = router({
         // Get total count for pagination
         const totalCountResult = await db
           .select({ count: sql<number>`count(*)` })
-          .from(applePressRuns)
+          .from(pressRuns)
           .where(and(...conditions));
 
         const totalCount = totalCountResult[0]?.count || 0;
@@ -1605,17 +1568,17 @@ export const pressRunRouter = router({
         if (pressRunIds.length > 0) {
           const loadCountsResult = await db
             .select({
-              pressRunId: applePressRunLoads.applePressRunId,
+              pressRunId: pressRunLoads.pressRunId,
               count: sql<number>`count(*)`,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .where(
               and(
-                inArray(applePressRunLoads.applePressRunId, pressRunIds),
-                isNull(applePressRunLoads.deletedAt),
+                inArray(pressRunLoads.pressRunId, pressRunIds),
+                isNull(pressRunLoads.deletedAt),
               ),
             )
-            .groupBy(applePressRunLoads.applePressRunId);
+            .groupBy(pressRunLoads.pressRunId);
 
           loadCounts = loadCountsResult.reduce(
             (acc, row) => {
@@ -1628,22 +1591,22 @@ export const pressRunRouter = router({
           // Get varieties for each press run
           const varietiesResult = await db
             .select({
-              pressRunId: applePressRunLoads.applePressRunId,
+              pressRunId: pressRunLoads.pressRunId,
               varietyName: baseFruitVarieties.name,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .leftJoin(
               baseFruitVarieties,
-              eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id),
+              eq(pressRunLoads.fruitVarietyId, baseFruitVarieties.id),
             )
             .where(
               and(
-                inArray(applePressRunLoads.applePressRunId, pressRunIds),
-                isNull(applePressRunLoads.deletedAt),
+                inArray(pressRunLoads.pressRunId, pressRunIds),
+                isNull(pressRunLoads.deletedAt),
               ),
             )
             .groupBy(
-              applePressRunLoads.applePressRunId,
+              pressRunLoads.pressRunId,
               baseFruitVarieties.name,
             );
 
@@ -1700,39 +1663,38 @@ export const pressRunRouter = router({
         // Get press run with vendor and vessel info
         const pressRunResult = await db
           .select({
-            id: applePressRuns.id,
-            pressRunName: applePressRuns.pressRunName,
-            vendorId: applePressRuns.vendorId,
+            id: pressRuns.id,
+            pressRunName: pressRuns.pressRunName,
+            vendorId: pressRuns.vendorId,
             vendorName: vendors.name,
             vendorContactInfo: vendors.contactInfo,
-            vesselId: applePressRuns.vesselId,
+            vesselId: pressRuns.vesselId,
             vesselName: vessels.name,
             vesselType: vessels.type,
             vesselCapacity: vessels.capacity,
             vesselCapacityUnit: vessels.capacityUnit,
-            status: applePressRuns.status,
-            scheduledDate: applePressRuns.scheduledDate,
-            dateCompleted: applePressRuns.dateCompleted,
-            totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
-            totalJuiceVolume: applePressRuns.totalJuiceVolume,
-            totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
-            extractionRate: applePressRuns.extractionRate,
-            laborHours: applePressRuns.laborHours,
-            laborCostPerHour: applePressRuns.laborCostPerHour,
-            totalLaborCost: applePressRuns.totalLaborCost,
-            notes: applePressRuns.notes,
-            createdAt: applePressRuns.createdAt,
-            updatedAt: applePressRuns.updatedAt,
-            createdByUserId: applePressRuns.createdBy,
-            updatedByUserId: applePressRuns.updatedBy,
+            status: pressRuns.status,
+            dateCompleted: pressRuns.dateCompleted,
+            totalAppleWeightKg: pressRuns.totalAppleWeightKg,
+            totalJuiceVolume: pressRuns.totalJuiceVolume,
+            totalJuiceVolumeUnit: pressRuns.totalJuiceVolumeUnit,
+            extractionRate: pressRuns.extractionRate,
+            laborHours: pressRuns.laborHours,
+            laborCostPerHour: pressRuns.laborCostPerHour,
+            totalLaborCost: pressRuns.totalLaborCost,
+            notes: pressRuns.notes,
+            createdAt: pressRuns.createdAt,
+            updatedAt: pressRuns.updatedAt,
+            createdByUserId: pressRuns.createdBy,
+            updatedByUserId: pressRuns.updatedBy,
           })
-          .from(applePressRuns)
-          .leftJoin(vendors, eq(applePressRuns.vendorId, vendors.id))
-          .leftJoin(vessels, eq(applePressRuns.vesselId, vessels.id))
+          .from(pressRuns)
+          .leftJoin(vendors, eq(pressRuns.vendorId, vendors.id))
+          .leftJoin(vessels, eq(pressRuns.vesselId, vessels.id))
           .where(
             and(
-              eq(applePressRuns.id, input.id),
-              isNull(applePressRuns.deletedAt),
+              eq(pressRuns.id, input.id),
+              isNull(pressRuns.deletedAt),
             ),
           )
           .limit(1);
@@ -1749,40 +1711,35 @@ export const pressRunRouter = router({
         // Get loads with apple variety and purchase item info including vendor details
         const loads = await db
           .select({
-            id: applePressRunLoads.id,
-            purchaseItemId: applePressRunLoads.purchaseItemId,
-            fruitVarietyId: applePressRunLoads.fruitVarietyId,
+            id: pressRunLoads.id,
+            purchaseItemId: pressRunLoads.purchaseItemId,
+            fruitVarietyId: pressRunLoads.fruitVarietyId,
             appleVarietyName: baseFruitVarieties.name,
             vendorId: basefruitPurchases.vendorId,
             vendorName: vendors.name,
-            loadSequence: applePressRunLoads.loadSequence,
-            appleWeightKg: applePressRunLoads.appleWeightKg,
-            originalWeight: applePressRunLoads.originalWeight,
-            originalWeightUnit: applePressRunLoads.originalWeightUnit,
-            juiceVolume: applePressRunLoads.juiceVolume,
-            juiceVolumeUnit: applePressRunLoads.juiceVolumeUnit,
-            originalVolume: applePressRunLoads.originalVolume,
-            originalVolumeUnit: applePressRunLoads.originalVolumeUnit,
-            brixMeasured: applePressRunLoads.brixMeasured,
-            phMeasured: applePressRunLoads.phMeasured,
-            appleCondition: applePressRunLoads.appleCondition,
-            defectPercentage: applePressRunLoads.defectPercentage,
-            notes: applePressRunLoads.notes,
-            pressedAt: applePressRunLoads.pressedAt,
-            createdAt: applePressRunLoads.createdAt,
+            loadSequence: pressRunLoads.loadSequence,
+            appleWeightKg: pressRunLoads.appleWeightKg,
+            originalWeight: pressRunLoads.originalWeight,
+            originalWeightUnit: pressRunLoads.originalWeightUnit,
+            juiceVolume: pressRunLoads.juiceVolume,
+            juiceVolumeUnit: pressRunLoads.juiceVolumeUnit,
+            originalVolume: pressRunLoads.originalVolume,
+            originalVolumeUnit: pressRunLoads.originalVolumeUnit,
+            notes: pressRunLoads.notes,
+            createdAt: pressRunLoads.createdAt,
             // Purchase item original quantities
             purchaseItemOriginalQuantityKg: basefruitPurchaseItems.quantityKg,
             purchaseItemOriginalQuantity: basefruitPurchaseItems.quantity,
             purchaseItemOriginalUnit: basefruitPurchaseItems.unit,
           })
-          .from(applePressRunLoads)
+          .from(pressRunLoads)
           .leftJoin(
             baseFruitVarieties,
-            eq(applePressRunLoads.fruitVarietyId, baseFruitVarieties.id),
+            eq(pressRunLoads.fruitVarietyId, baseFruitVarieties.id),
           )
           .leftJoin(
             basefruitPurchaseItems,
-            eq(applePressRunLoads.purchaseItemId, basefruitPurchaseItems.id),
+            eq(pressRunLoads.purchaseItemId, basefruitPurchaseItems.id),
           )
           .leftJoin(
             basefruitPurchases,
@@ -1791,11 +1748,11 @@ export const pressRunRouter = router({
           .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
           .where(
             and(
-              eq(applePressRunLoads.applePressRunId, input.id),
-              isNull(applePressRunLoads.deletedAt),
+              eq(pressRunLoads.pressRunId, input.id),
+              isNull(pressRunLoads.deletedAt),
             ),
           )
-          .orderBy(asc(applePressRunLoads.loadSequence));
+          .orderBy(asc(pressRunLoads.loadSequence));
 
         // Get user info for created/updated by
         const userIds = [
@@ -1851,13 +1808,6 @@ export const pressRunRouter = router({
             totalJuiceVolume: pressRun.totalJuiceVolume
               ? parseFloat(pressRun.totalJuiceVolume)
               : 0,
-            averageBrix:
-              loads.length > 0
-                ? loads.reduce(
-                    (sum, load) => sum + parseFloat(load.brixMeasured || "0"),
-                    0,
-                  ) / loads.length
-                : null,
             varietyBreakdown: loads.reduce(
               (acc, load) => {
                 const variety = load.appleVarietyName || "Unknown";
@@ -1891,10 +1841,6 @@ export const pressRunRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        scheduledDate: z
-          .date()
-          .or(z.string().transform((val) => new Date(val)))
-          .optional(),
         notes: z.string().optional(),
         pressingMethod: z.string().optional(),
         weatherConditions: z.string().optional(),
@@ -1906,9 +1852,9 @@ export const pressRunRouter = router({
 
         const existingPressRun = await db
           .select()
-          .from(applePressRuns)
+          .from(pressRuns)
           .where(
-            and(eq(applePressRuns.id, id), isNull(applePressRuns.deletedAt)),
+            and(eq(pressRuns.id, id), isNull(pressRuns.deletedAt)),
           )
           .limit(1);
 
@@ -1927,21 +1873,18 @@ export const pressRunRouter = router({
         }
 
         const updatedPressRun = await db
-          .update(applePressRuns)
+          .update(pressRuns)
           .set({
             ...updateData,
-            scheduledDate: updateData.scheduledDate
-              ? updateData.scheduledDate.toISOString().split("T")[0]
-              : undefined,
             updatedBy: ctx.session?.user?.id,
             updatedAt: new Date(),
           })
-          .where(eq(applePressRuns.id, id))
+          .where(eq(pressRuns.id, id))
           .returning();
 
         // Publish audit event
         await publishUpdateEvent(
-          "apple_press_runs",
+          "press_runs",
           id,
           existingPressRun[0],
           updateData,
@@ -1976,11 +1919,11 @@ export const pressRunRouter = router({
       try {
         const existingPressRun = await db
           .select()
-          .from(applePressRuns)
+          .from(pressRuns)
           .where(
             and(
-              eq(applePressRuns.id, input.id),
-              isNull(applePressRuns.deletedAt),
+              eq(pressRuns.id, input.id),
+              isNull(pressRuns.deletedAt),
             ),
           )
           .limit(1);
@@ -2007,7 +1950,7 @@ export const pressRunRouter = router({
         }
 
         const cancelledPressRun = await db
-          .update(applePressRuns)
+          .update(pressRuns)
           .set({
             status: "cancelled",
             notes: existingPressRun[0].notes
@@ -2016,12 +1959,12 @@ export const pressRunRouter = router({
             updatedBy: ctx.session?.user?.id,
             updatedAt: new Date(),
           })
-          .where(eq(applePressRuns.id, input.id))
+          .where(eq(pressRuns.id, input.id))
           .returning();
 
         // Publish audit event
         await publishUpdateEvent(
-          "apple_press_runs",
+          "press_runs",
           input.id,
           existingPressRun[0],
           { status: "cancelled", cancellationReason: input.reason },
@@ -2052,11 +1995,11 @@ export const pressRunRouter = router({
         return await db.transaction(async (tx) => {
           const existingPressRun = await tx
             .select()
-            .from(applePressRuns)
+            .from(pressRuns)
             .where(
               and(
-                eq(applePressRuns.id, input.id),
-                isNull(applePressRuns.deletedAt),
+                eq(pressRuns.id, input.id),
+                isNull(pressRuns.deletedAt),
               ),
             )
             .limit(1);
@@ -2095,27 +2038,27 @@ export const pressRunRouter = router({
 
           // Soft delete press run and all loads
           const deletedPressRun = await tx
-            .update(applePressRuns)
+            .update(pressRuns)
             .set({
               deletedAt: new Date(),
               updatedBy: ctx.session?.user?.id,
               updatedAt: new Date(),
             })
-            .where(eq(applePressRuns.id, input.id))
+            .where(eq(pressRuns.id, input.id))
             .returning();
 
           await tx
-            .update(applePressRunLoads)
+            .update(pressRunLoads)
             .set({
               deletedAt: new Date(),
               updatedBy: ctx.session?.user?.id,
               updatedAt: new Date(),
             })
-            .where(eq(applePressRunLoads.applePressRunId, input.id));
+            .where(eq(pressRunLoads.pressRunId, input.id));
 
           // Publish audit event
           await publishDeleteEvent(
-            "apple_press_runs",
+            "press_runs",
             input.id,
             existingPressRun[0],
             ctx.session?.user?.id,
@@ -2147,15 +2090,15 @@ export const pressRunRouter = router({
           // Verify load exists and get press run info
           const load = await tx
             .select({
-              id: applePressRunLoads.id,
-              applePressRunId: applePressRunLoads.applePressRunId,
-              loadSequence: applePressRunLoads.loadSequence,
+              id: pressRunLoads.id,
+              pressRunId: pressRunLoads.pressRunId,
+              loadSequence: pressRunLoads.loadSequence,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .where(
               and(
-                eq(applePressRunLoads.id, input.loadId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.id, input.loadId),
+                isNull(pressRunLoads.deletedAt),
               ),
             )
             .limit(1);
@@ -2169,12 +2112,12 @@ export const pressRunRouter = router({
 
           // Verify press run is still in progress
           const pressRun = await tx
-            .select({ status: applePressRuns.status })
-            .from(applePressRuns)
+            .select({ status: pressRuns.status })
+            .from(pressRuns)
             .where(
               and(
-                eq(applePressRuns.id, load[0].applePressRunId),
-                isNull(applePressRuns.deletedAt),
+                eq(pressRuns.id, load[0].pressRunId),
+                isNull(pressRuns.deletedAt),
               ),
             )
             .limit(1);
@@ -2188,40 +2131,40 @@ export const pressRunRouter = router({
 
           // Soft delete the load
           const deletedLoad = await tx
-            .update(applePressRunLoads)
+            .update(pressRunLoads)
             .set({
               deletedAt: new Date(),
               updatedAt: new Date(),
             })
-            .where(eq(applePressRunLoads.id, input.loadId))
+            .where(eq(pressRunLoads.id, input.loadId))
             .returning();
 
           // Resequence remaining loads to maintain consecutive numbering
           const remainingLoads = await tx
             .select({
-              id: applePressRunLoads.id,
-              loadSequence: applePressRunLoads.loadSequence,
+              id: pressRunLoads.id,
+              loadSequence: pressRunLoads.loadSequence,
             })
-            .from(applePressRunLoads)
+            .from(pressRunLoads)
             .where(
               and(
-                eq(applePressRunLoads.applePressRunId, load[0].applePressRunId),
-                isNull(applePressRunLoads.deletedAt),
+                eq(pressRunLoads.pressRunId, load[0].pressRunId),
+                isNull(pressRunLoads.deletedAt),
               ),
             )
-            .orderBy(asc(applePressRunLoads.loadSequence));
+            .orderBy(asc(pressRunLoads.loadSequence));
 
           // Update sequence numbers to be consecutive (1, 2, 3, ...)
           for (let i = 0; i < remainingLoads.length; i++) {
             const newSequence = i + 1;
             if (remainingLoads[i].loadSequence !== newSequence) {
               await tx
-                .update(applePressRunLoads)
+                .update(pressRunLoads)
                 .set({
                   loadSequence: newSequence,
                   updatedAt: new Date(),
                 })
-                .where(eq(applePressRunLoads.id, remainingLoads[i].id));
+                .where(eq(pressRunLoads.id, remainingLoads[i].id));
             }
           }
 
@@ -2264,12 +2207,12 @@ export const pressRunRouter = router({
       try {
         // Verify press run exists
         const pressRunExists = await db
-          .select({ id: applePressRuns.id })
-          .from(applePressRuns)
+          .select({ id: pressRuns.id })
+          .from(pressRuns)
           .where(
             and(
-              eq(applePressRuns.id, input.pressRunId),
-              isNull(applePressRuns.deletedAt),
+              eq(pressRuns.id, input.pressRunId),
+              isNull(pressRuns.deletedAt),
             ),
           )
           .limit(1);
@@ -2342,21 +2285,21 @@ export const pressRunRouter = router({
         // Get allocation data for this press run - sum up all existing loads by purchaseItemId
         const allocations = await db
           .select({
-            purchaseItemId: applePressRunLoads.purchaseItemId,
-            allocatedKg: sql<number>`COALESCE(SUM(CAST(${applePressRunLoads.appleWeightKg} AS NUMERIC)), 0)`,
+            purchaseItemId: pressRunLoads.purchaseItemId,
+            allocatedKg: sql<number>`COALESCE(SUM(CAST(${pressRunLoads.appleWeightKg} AS NUMERIC)), 0)`,
           })
-          .from(applePressRunLoads)
+          .from(pressRunLoads)
           .where(
             and(
-              eq(applePressRunLoads.applePressRunId, input.pressRunId),
-              isNull(applePressRunLoads.deletedAt),
+              eq(pressRunLoads.pressRunId, input.pressRunId),
+              isNull(pressRunLoads.deletedAt),
               inArray(
-                applePressRunLoads.purchaseItemId,
+                pressRunLoads.purchaseItemId,
                 purchaseItems.map((item) => item.purchaseItemId),
               ),
             ),
           )
-          .groupBy(applePressRunLoads.purchaseItemId);
+          .groupBy(pressRunLoads.purchaseItemId);
 
         // Create allocation map for quick lookup
         const allocationMap = new Map();

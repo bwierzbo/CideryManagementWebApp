@@ -36,6 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
+import { formatDate } from "@/utils/date-format";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -256,9 +257,9 @@ export function AdditivesInventoryTable({
     [sortState.columns],
   );
 
-  const formatDate = (dateString: string | null) => {
+  const formatDateDisplay = (dateString: string | null) => {
     if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString();
+    return formatDate(dateString);
   };
 
   const formatQuantity = (quantity: number, unit: string) => {
@@ -488,7 +489,7 @@ export function AdditivesInventoryTable({
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
-                          {formatDate(
+                          {formatDateDisplay(
                             item.metadata?.purchaseDate || item.createdAt,
                           )}
                         </div>

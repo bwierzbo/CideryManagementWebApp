@@ -32,7 +32,7 @@ describe("Validation Integration Tests", () => {
       id: "batch-1",
       batchNumber: "B001",
       currentVolumeL: 500,
-      status: "active" as const,
+      status: "fermentation" as const,
       vesselId: "vessel-1",
     };
 
@@ -59,7 +59,7 @@ describe("Validation Integration Tests", () => {
       id: "batch-1",
       batchNumber: "B001",
       currentVolumeL: 500,
-      status: "active" as const,
+      status: "aging" as const,
       vesselId: "vessel-1",
     };
 

@@ -71,7 +71,7 @@ export interface MaterialTypeInfo {
 export const MATERIAL_TYPE_CONFIG: Record<MaterialType, MaterialTypeInfo> = {
   apple: {
     value: "apple",
-    label: "Base Fruit",
+    label: "Fruit",
     icon: "🍎",
     color: "bg-red-100 text-red-800 border-red-200",
     description: "Base fruit varieties for pressing",

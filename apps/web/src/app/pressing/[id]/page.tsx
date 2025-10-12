@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { FruitLoadFormWithTRPC } from "@/components/pressing/FruitLoadFormWithTRPC";
 import { trpc } from "@/utils/trpc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { formatDateTime } from "@/utils/date-format";
 import {
   ArrowLeft,
   Plus,
@@ -128,10 +129,6 @@ export default function PressRunDetailsPage() {
       appleWeightKg: loadData.appleWeightKg,
       originalWeight: loadData.originalWeight,
       originalWeightUnit: loadData.originalWeightUnit,
-      brixMeasured: loadData.brixMeasured,
-      phMeasured: loadData.phMeasured,
-      appleCondition: loadData.appleCondition,
-      defectPercentage: loadData.defectPercentage,
       notes: loadData.notes,
     });
   };
@@ -147,10 +144,6 @@ export default function PressRunDetailsPage() {
       appleWeightKg: loadData.appleWeightKg,
       originalWeight: loadData.originalWeight,
       originalWeightUnit: loadData.originalWeightUnit,
-      brixMeasured: loadData.brixMeasured,
-      phMeasured: loadData.phMeasured,
-      appleCondition: loadData.appleCondition,
-      defectPercentage: loadData.defectPercentage,
       notes: loadData.notes,
     });
   };
@@ -351,16 +344,7 @@ export default function PressRunDetailsPage() {
                     <div>
                       <p className="text-sm text-gray-600">Completed On</p>
                       <p className="font-medium">
-                        {new Date(pressRun.pressRun.dateCompleted).toLocaleDateString(
-                          "en-US",
-                          {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          },
-                        )}
+                        {formatDateTime(new Date(pressRun.pressRun.dateCompleted))}
                       </p>
                     </div>
                   </div>
@@ -477,36 +461,12 @@ export default function PressRunDetailsPage() {
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      {load.brixMeasured && (
-                        <div>
-                          <p className="text-gray-600">Brix</p>
-                          <p className="font-medium">{load.brixMeasured}°</p>
-                        </div>
-                      )}
-                      {load.phMeasured && (
-                        <div>
-                          <p className="text-gray-600">pH</p>
-                          <p className="font-medium">{load.phMeasured}</p>
-                        </div>
-                      )}
-                      {load.appleCondition && (
-                        <div>
-                          <p className="text-gray-600">Condition</p>
-                          <p className="font-medium capitalize">
-                            {load.appleCondition}
-                          </p>
-                        </div>
-                      )}
-                      {load.defectPercentage && (
-                        <div>
-                          <p className="text-gray-600">Defects</p>
-                          <p className="font-medium">
-                            {load.defectPercentage}%
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                    {load.vendorName && (
+                      <div className="text-sm">
+                        <p className="text-gray-600">Vendor</p>
+                        <p className="font-medium">{load.vendorName}</p>
+                      </div>
+                    )}
 
                     {load.notes && (
                       <div className="mt-3 pt-3 border-t border-gray-200">

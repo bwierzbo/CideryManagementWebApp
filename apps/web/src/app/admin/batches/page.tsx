@@ -37,6 +37,7 @@ import {
   showSuccess,
   showLoading,
 } from "@/utils/error-handling";
+import { formatDate } from "@/utils/date-format";
 
 export default function BatchManagementPage() {
   const { data: session } = useSession();
@@ -109,8 +110,8 @@ export default function BatchManagementPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
+  const formatDateDisplay = (dateString: string) => {
+    return formatDate(new Date(dateString));
   };
 
   const batches = batchesData?.batches || [];
@@ -180,7 +181,7 @@ export default function BatchManagementPage() {
                           {batch.name}
                         </TableCell>
                         <TableCell>{getStatusBadge(batch.status)}</TableCell>
-                        <TableCell>{formatDate(batch.createdAt)}</TableCell>
+                        <TableCell>{formatDateDisplay(batch.createdAt)}</TableCell>
                         <TableCell>{batch.currentVolume || "N/A"}</TableCell>
                         <TableCell>{batch.vesselName || "No vessel"}</TableCell>
                         <TableCell>

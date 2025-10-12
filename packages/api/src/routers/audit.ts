@@ -266,68 +266,70 @@ export const auditRouter = router({
 
   /**
    * Write audit metadata (admin only)
+   * TODO: Implement writeAuditMetadata method in AuditDatabase class
    */
-  writeMetadata: createRbacProcedure("create", "audit")
-    .input(
-      z.object({
-        metadataType: z.string().min(1, "Metadata type is required"),
-        data: z.record(z.string(), z.any()),
-        tableName: z.string().optional(),
-        validUntil: z
-          .date()
-          .or(z.string().transform((val) => new Date(val)))
-          .optional(),
-      }),
-    )
-    .mutation(async ({ input }) => {
-      try {
-        const metadataId = await auditDatabase.writeAuditMetadata(
-          input.metadataType,
-          input.data,
-          input.tableName,
-          input.validUntil,
-        );
-
-        return {
-          success: true,
-          metadataId,
-          message: "Audit metadata written successfully",
-        };
-      } catch (error) {
-        console.error("Error writing audit metadata:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to write audit metadata",
-        });
-      }
-    }),
+  // writeMetadata: createRbacProcedure("create", "audit")
+  //   .input(
+  //     z.object({
+  //       metadataType: z.string().min(1, "Metadata type is required"),
+  //       data: z.record(z.string(), z.any()),
+  //       tableName: z.string().optional(),
+  //       validUntil: z
+  //         .date()
+  //         .or(z.string().transform((val) => new Date(val)))
+  //         .optional(),
+  //     }),
+  //   )
+  //   .mutation(async ({ input }) => {
+  //     try {
+  //       const metadataId = await auditDatabase.writeAuditMetadata(
+  //         input.metadataType,
+  //         input.data,
+  //         input.tableName,
+  //         input.validUntil,
+  //       );
+  //
+  //       return {
+  //         success: true,
+  //         metadataId,
+  //         message: "Audit metadata written successfully",
+  //       };
+  //     } catch (error) {
+  //       console.error("Error writing audit metadata:", error);
+  //       throw new TRPCError({
+  //         code: "INTERNAL_SERVER_ERROR",
+  //         message: "Failed to write audit metadata",
+  //       });
+  //     }
+  //   }),
 
   /**
    * Get audit metadata
+   * TODO: Implement getAuditMetadata method in AuditDatabase class
    */
-  getMetadata: createRbacProcedure("list", "audit")
-    .input(
-      z.object({
-        metadataType: z.string().min(1, "Metadata type is required"),
-        tableName: z.string().optional(),
-        includeExpired: z.boolean().default(false),
-      }),
-    )
-    .query(async ({ input }) => {
-      try {
-        return await auditDatabase.getAuditMetadata(
-          input.metadataType,
-          input.tableName,
-          input.includeExpired,
-        );
-      } catch (error) {
-        console.error("Error getting audit metadata:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to get audit metadata",
-        });
-      }
-    }),
+  // getMetadata: createRbacProcedure("list", "audit")
+  //   .input(
+  //     z.object({
+  //       metadataType: z.string().min(1, "Metadata type is required"),
+  //       tableName: z.string().optional(),
+  //       includeExpired: z.boolean().default(false),
+  //     }),
+  //   )
+  //   .query(async ({ input }) => {
+  //     try {
+  //       return await auditDatabase.getAuditMetadata(
+  //         input.metadataType,
+  //         input.tableName,
+  //         input.includeExpired,
+  //       );
+  //     } catch (error) {
+  //       console.error("Error getting audit metadata:", error);
+  //       throw new TRPCError({
+  //         code: "INTERNAL_SERVER_ERROR",
+  //         message: "Failed to get audit metadata",
+  //       });
+  //     }
+  //   }),
 
   /**
    * Cleanup old audit logs (admin only)

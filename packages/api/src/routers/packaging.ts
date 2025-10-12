@@ -118,19 +118,12 @@ export const packagingRouter = router({
 
           const vessel = vesselData[0];
 
-          // Check vessel status
-          if (vessel.status !== "fermenting" && vessel.status !== "aging") {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Vessel must be fermenting or aging to package from. Current status: ${vessel.status}`,
-            });
-          }
-
-          // Get current vessel volume from active batch
+          // Get batch data including status
           const batchData = await tx
             .select({
               id: batches.id,
               name: batches.name,
+              status: batches.status,
               currentVolume: batches.currentVolume,
               currentVolumeUnit: batches.currentVolumeUnit,
               vesselId: batches.vesselId,
@@ -153,6 +146,14 @@ export const packagingRouter = router({
           }
 
           const batch = batchData[0];
+
+          // Check batch status - only "aging" batches can be bottled
+          if (batch.status !== "aging") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Batch must be in aging stage to package. Current status: ${batch.status}`,
+            });
+          }
           const currentVolumeL = parseFloat(
             batch.currentVolume?.toString() || "0",
           );

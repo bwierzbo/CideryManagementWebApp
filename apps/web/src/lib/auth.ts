@@ -90,6 +90,22 @@ export const authOptions = {
       }
       return session;
     },
+    async redirect({ url, baseUrl }: any) {
+      // If url is relative (starts with /), prepend baseUrl
+      if (url?.startsWith("/")) {
+        // Don't redirect to signin page
+        if (url === "/auth/signin") {
+          return `${baseUrl}/dashboard`;
+        }
+        return `${baseUrl}${url}`;
+      }
+      // If url starts with baseUrl, it's already absolute and on our domain
+      if (url?.startsWith(baseUrl)) {
+        return url;
+      }
+      // Default to dashboard for any other case
+      return `${baseUrl}/dashboard`;
+    },
   },
   pages: {
     signIn: "/auth/signin",

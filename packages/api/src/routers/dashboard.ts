@@ -3,11 +3,10 @@ import {
   db,
   batches,
   vendors,
-  inventory,
   batchMeasurements,
   vessels,
 } from "db";
-import { eq, and, isNull, sql, desc, or } from "drizzle-orm";
+import { eq, and, isNull, sql, desc, or, inArray } from "drizzle-orm";
 
 /**
  * Dashboard Router
@@ -20,29 +19,30 @@ export const dashboardRouter = router({
    */
   getStats: protectedProcedure.query(async () => {
     try {
-      // Get active batches count
+      // Get in-progress batches count (fermentation, aging, conditioning)
       const activeBatchesResult = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(batches)
         .where(
           and(
-            eq(batches.status, "active"),
+            inArray(batches.status, ["fermentation", "aging", "conditioning"]),
             isNull(batches.deletedAt)
           )
         );
       const activeBatches = activeBatchesResult[0]?.count || 0;
 
       // Get total bottles ready (packaged inventory)
-      const bottlesReadyResult = await db
-        .select({ total: sql<number>`COALESCE(SUM(quantity)::int, 0)` })
-        .from(inventory)
-        .where(
-          and(
-            isNull(inventory.deletedAt),
-            sql`quantity > 0`
-          )
-        );
-      const bottlesReady = bottlesReadyResult[0]?.total || 0;
+      // DROPPED TABLE: inventory table no longer exists
+      // const bottlesReadyResult = await db
+      //   .select({ total: sql<number>`COALESCE(SUM(quantity)::int, 0)` })
+      //   .from(inventory)
+      //   .where(
+      //     and(
+      //       isNull(inventory.deletedAt),
+      //       sql`quantity > 0`
+      //     )
+      //   );
+      const bottlesReady = 0; // TODO: Implement when inventory system is ready
 
       // Get active vendors count
       const activeVendorsResult = await db
@@ -63,13 +63,13 @@ export const dashboardRouter = router({
         .where(isNull(batches.deletedAt));
       const allBatches = allBatchesResult[0]?.count || 0;
 
-      // Get packaged batches count for comparison
+      // Get conditioning batches count for comparison
       const packagedBatchesResult = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(batches)
         .where(
           and(
-            eq(batches.status, "packaged"),
+            eq(batches.status, "conditioning"),
             isNull(batches.deletedAt)
           )
         );
@@ -117,10 +117,7 @@ export const dashboardRouter = router({
         .where(
           and(
             isNull(batches.deletedAt),
-            or(
-              eq(batches.status, "active"),
-              eq(batches.status, "planned")
-            )
+            inArray(batches.status, ["fermentation", "aging", "conditioning"])
           )
         )
         .orderBy(desc(batches.startDate))

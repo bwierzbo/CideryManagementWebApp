@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Filter, AlertTriangle } from "lucide-react";
@@ -36,7 +35,7 @@ const filterSchema = z.object({
   volumeBeforeUnit: z.enum(["L", "gal"]),
   volumeAfter: z.number().positive("Volume must be positive"),
   volumeAfterUnit: z.enum(["L", "gal"]),
-  notes: z.string().optional(),
+  filteredAt: z.date(),
 });
 
 type FilterForm = z.infer<typeof filterSchema>;
@@ -76,6 +75,7 @@ export function FilterModal({
       volumeBeforeUnit: "L",
       volumeAfterUnit: "L",
       volumeBefore: currentVolumeL,
+      filteredAt: new Date(),
     },
   });
 
@@ -84,6 +84,7 @@ export function FilterModal({
   const volumeBeforeUnit = watch("volumeBeforeUnit");
   const volumeAfter = watch("volumeAfter");
   const volumeAfterUnit = watch("volumeAfterUnit");
+  const filteredAt = watch("filteredAt");
 
   // Calculate loss whenever volumes change
   useEffect(() => {
@@ -118,6 +119,7 @@ export function FilterModal({
         volumeBefore: currentVolumeL,
         volumeBeforeUnit: "L",
         volumeAfterUnit: "L",
+        filteredAt: new Date(),
       });
     }
   }, [open, currentVolumeL, reset]);
@@ -161,7 +163,7 @@ export function FilterModal({
       volumeBeforeUnit: data.volumeBeforeUnit,
       volumeAfter: data.volumeAfter,
       volumeAfterUnit: data.volumeAfterUnit,
-      notes: data.notes,
+      filteredAt: data.filteredAt,
       filteredBy: undefined, // Could be populated from user session
     });
   };
@@ -180,6 +182,23 @@ export function FilterModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div>
+            <Label htmlFor="filteredAt">
+              Filter Date <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              type="date"
+              value={filteredAt ? filteredAt.toISOString().split('T')[0] : ''}
+              onChange={(e) => setValue("filteredAt", new Date(e.target.value))}
+              className="w-full mt-1"
+            />
+            {errors.filteredAt && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.filteredAt.message}
+              </p>
+            )}
+          </div>
+
           <div>
             <Label htmlFor="filterType">Filter Type</Label>
             <Select
@@ -266,16 +285,6 @@ export function FilterModal({
               </div>
             </div>
           )}
-
-          <div>
-            <Label htmlFor="notes">Notes (Optional)</Label>
-            <Textarea
-              id="notes"
-              placeholder="Add any notes about the filtering process..."
-              className="mt-1"
-              {...register("notes")}
-            />
-          </div>
 
           <div className="flex justify-end space-x-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>

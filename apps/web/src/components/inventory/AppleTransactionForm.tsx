@@ -276,7 +276,7 @@ export function AppleTransactionForm({
       addNotification(
         "success",
         "Purchase Created Successfully!",
-        `Invoice ${result.purchase.invoiceNumber} has been generated`,
+        `Purchase #${result.purchase.id.substring(0, 8)} has been created`,
       );
       // Reset form
       reset();

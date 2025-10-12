@@ -241,7 +241,6 @@ export const juiceVarietiesRouter = router({
           id: vendorJuiceVarieties.id,
           vendorId: vendorJuiceVarieties.vendorId,
           varietyId: vendorJuiceVarieties.varietyId,
-          notes: vendorJuiceVarieties.notes,
           createdAt: vendorJuiceVarieties.createdAt,
           variety: {
             id: juiceVarieties.id,
@@ -272,11 +271,10 @@ export const juiceVarietiesRouter = router({
       z.object({
         vendorId: z.string().uuid(),
         varietyId: z.string().uuid(),
-        notes: z.string().optional(),
       }),
     )
     .mutation(async ({ input }) => {
-      const { vendorId, varietyId, notes } = input;
+      const { vendorId, varietyId } = input;
 
       // Check if link already exists
       const existing = await db
@@ -303,7 +301,6 @@ export const juiceVarietiesRouter = router({
         .values({
           vendorId,
           varietyId,
-          notes,
         })
         .returning();
 

@@ -32,10 +32,7 @@ const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
   volumeAfter: z.number().positive("Volume must be positive"),
   volumeAfterUnit: z.enum(["L", "gal"]),
-  volumeLoss: z.number().min(0, "Volume loss cannot be negative"),
-  volumeLossUnit: z.enum(["L", "gal"]),
-  reason: z.string().optional(),
-  notes: z.string().optional(),
+  rackedAt: z.date(),
 });
 
 type RackingForm = z.infer<typeof rackingSchema>;
@@ -60,7 +57,7 @@ export function RackingModal({
   currentVolumeL,
 }: RackingModalProps) {
   const utils = trpc.useUtils();
-  const [showLossWarning, setShowLossWarning] = useState(false);
+  const [calculatedLoss, setCalculatedLoss] = useState(0);
   const [lossPercentage, setLossPercentage] = useState(0);
 
   // Fetch available vessels
@@ -80,50 +77,44 @@ export function RackingModal({
     resolver: zodResolver(rackingSchema),
     defaultValues: {
       volumeAfterUnit: "L",
-      volumeLossUnit: "L",
-      volumeLoss: 0,
+      rackedAt: new Date(),
     },
   });
 
   const volumeAfter = watch("volumeAfter");
   const volumeAfterUnit = watch("volumeAfterUnit");
-  const volumeLoss = watch("volumeLoss");
-  const volumeLossUnit = watch("volumeLossUnit");
   const destinationVesselId = watch("destinationVesselId");
+  const rackedAt = watch("rackedAt");
 
-  // Calculate loss whenever volumes change
+  // Calculate loss whenever volumeAfter changes
   useEffect(() => {
-    if (volumeAfter !== undefined && volumeLoss !== undefined) {
-      // Convert both to liters for calculation
+    if (volumeAfter !== undefined) {
+      // Convert volumeAfter to liters for calculation
       const afterL = volumeAfterUnit === "gal"
         ? convertVolume(volumeAfter, "gal", "L")
         : volumeAfter;
-      const lossL = volumeLossUnit === "gal"
-        ? convertVolume(volumeLoss, "gal", "L")
-        : volumeLoss;
 
-      const expectedAfter = currentVolumeL - lossL;
+      const lossL = currentVolumeL - afterL;
       const lossPercent = (lossL / currentVolumeL) * 100;
 
+      setCalculatedLoss(lossL);
       setLossPercentage(lossPercent);
-      setShowLossWarning(lossPercent > 10); // Warn if loss > 10%
-
-      // Auto-calculate volumeAfter if only loss is entered
-      if (volumeLoss > 0 && !volumeAfter) {
-        setValue("volumeAfter", expectedAfter);
-      }
+    } else {
+      setCalculatedLoss(0);
+      setLossPercentage(0);
     }
-  }, [volumeAfter, volumeAfterUnit, volumeLoss, volumeLossUnit, currentVolumeL, setValue]);
+  }, [volumeAfter, volumeAfterUnit, currentVolumeL]);
 
   // Reset form when modal closes
   useEffect(() => {
     if (!open) {
       reset();
-      setShowLossWarning(false);
+      setCalculatedLoss(0);
       setLossPercentage(0);
     } else {
-      // Set initial volume to current volume
+      // Set initial volume to current volume (no loss)
       setValue("volumeAfter", currentVolumeL);
+      setValue("rackedAt", new Date());
     }
   }, [open, reset, setValue, currentVolumeL]);
 
@@ -180,6 +171,22 @@ export function RackingModal({
             </p>
           </div>
 
+          {/* Date */}
+          <div className="space-y-2">
+            <Label htmlFor="rackedAt">
+              Racking Date <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              type="date"
+              value={rackedAt ? rackedAt.toISOString().split('T')[0] : ''}
+              onChange={(e) => setValue("rackedAt", new Date(e.target.value))}
+              className="w-full"
+            />
+            {errors.rackedAt && (
+              <p className="text-sm text-red-500">{errors.rackedAt.message}</p>
+            )}
+          </div>
+
           {/* Destination Vessel Selection */}
           <div className="space-y-2">
             <Label htmlFor="destinationVesselId">
@@ -211,36 +218,6 @@ export function RackingModal({
             )}
           </div>
 
-          {/* Volume Loss */}
-          <div className="space-y-2">
-            <Label htmlFor="volumeLoss">
-              Volume Loss (Lees/Sediment)
-            </Label>
-            <VolumeInput
-              value={volumeLoss || 0}
-              unit={volumeLossUnit}
-              onValueChange={(value) => setValue("volumeLoss", value || 0)}
-              onUnitChange={(unit) => {
-                if (unit === "L" || unit === "gal") {
-                  setValue("volumeLossUnit", unit);
-                }
-              }}
-              placeholder="Enter volume lost to lees"
-            />
-            {showLossWarning && (
-              <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
-                <div className="text-sm text-amber-800">
-                  <p className="font-medium">High volume loss detected</p>
-                  <p>Loss of {lossPercentage.toFixed(1)}% is higher than typical (5-10%). Please verify.</p>
-                </div>
-              </div>
-            )}
-            {errors.volumeLoss && (
-              <p className="text-sm text-red-500">{errors.volumeLoss.message}</p>
-            )}
-          </div>
-
           {/* Volume After Racking */}
           <div className="space-y-2">
             <Label htmlFor="volumeAfter">
@@ -257,13 +234,38 @@ export function RackingModal({
               }}
               placeholder="Enter volume after racking"
             />
-            <p className="text-xs text-gray-500">
-              Expected: {(currentVolumeL - (volumeLossUnit === "gal" ? volumeLoss * 3.78541 : volumeLoss || 0)).toFixed(1)} L
-            </p>
             {errors.volumeAfter && (
               <p className="text-sm text-red-500">{errors.volumeAfter.message}</p>
             )}
           </div>
+
+          {/* Calculated Volume Loss Display */}
+          {volumeAfter !== undefined && calculatedLoss > 0 && (
+            <div className={`p-4 rounded-lg border ${
+              lossPercentage > 10
+                ? "bg-amber-50 border-amber-200"
+                : "bg-blue-50 border-blue-200"
+            }`}>
+              <div className="flex items-start gap-2">
+                {lossPercentage > 10 && (
+                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-medium">
+                    Calculated Volume Loss: {calculatedLoss.toFixed(1)} L ({(calculatedLoss / 3.78541).toFixed(1)} gal)
+                  </p>
+                  <p className="text-xs mt-1">
+                    Loss percentage: {lossPercentage.toFixed(1)}%
+                  </p>
+                  {lossPercentage > 10 && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      ⚠️ Loss is higher than typical (5-10%). Please verify your measurements.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Capacity Check */}
           {selectedVessel && volumeAfter && (
@@ -282,36 +284,6 @@ export function RackingModal({
               </p>
             </div>
           )}
-
-          {/* Reason */}
-          <div className="space-y-2">
-            <Label htmlFor="reason">Reason</Label>
-            <Select
-              value={watch("reason")}
-              onValueChange={(value) => setValue("reason", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a reason (optional)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="primary_to_secondary">Primary to Secondary Fermentation</SelectItem>
-                <SelectItem value="aging_transfer">Aging Transfer</SelectItem>
-                <SelectItem value="clarification">Clarification</SelectItem>
-                <SelectItem value="vessel_maintenance">Vessel Maintenance</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              {...register("notes")}
-              placeholder="Any additional notes about this racking operation"
-              rows={3}
-            />
-          </div>
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">

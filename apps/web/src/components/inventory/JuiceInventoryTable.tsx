@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
+import { formatDate } from "@/utils/date-format";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import {
@@ -57,6 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { InventoryEditDialog } from "@/components/inventory/InventoryEditDialog";
+import { TransferToTankModal } from "@/components/juice/TransferToTankModal";
 import { toast } from "@/hooks/use-toast";
 
 // Type for juice inventory item from API
@@ -67,6 +69,7 @@ interface JuiceInventoryItem {
   reservedBottleCount: number;
   materialType: string;
   metadata: {
+    itemId: string;
     purchaseId: string;
     vendorName: string;
     varietyName: string | null;
@@ -100,6 +103,7 @@ export function JuiceInventoryTable({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [deleteItem, setDeleteItem] = useState<JuiceInventoryItem | null>(null);
   const [editItem, setEditItem] = useState<JuiceInventoryItem | null>(null);
+  const [transferItem, setTransferItem] = useState<JuiceInventoryItem | null>(null);
 
   // Sorting state using the reusable hook
   const {
@@ -268,9 +272,9 @@ export function JuiceInventoryTable({
     [sortState.columns],
   );
 
-  const formatDate = (dateString: string | null) => {
+  const formatDateDisplay = (dateString: string | null) => {
     if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString();
+    return formatDate(dateString);
   };
 
 
@@ -508,7 +512,7 @@ export function JuiceInventoryTable({
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
-                          {formatDate(item.createdAt)}
+                          {formatDateDisplay(item.createdAt)}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -524,6 +528,16 @@ export function JuiceInventoryTable({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTransferItem(item);
+                              }}
+                            >
+                              <Droplets className="mr-2 h-4 w-4" />
+                              Transfer to Tank
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -625,6 +639,21 @@ export function JuiceInventoryTable({
           onSuccess={() => {
             refetch();
             setEditItem(null);
+          }}
+        />
+      )}
+
+      {/* Transfer to Tank Modal */}
+      {transferItem && (
+        <TransferToTankModal
+          open={!!transferItem}
+          onClose={() => setTransferItem(null)}
+          juicePurchaseItemId={transferItem.metadata.itemId}
+          juiceLabel={`${transferItem.metadata.varietyName || "Unknown Variety"} from ${transferItem.metadata.vendorName || "Unknown Vendor"}`}
+          availableVolumeL={Number(transferItem.currentBottleCount) || 0}
+          onSuccess={() => {
+            refetch();
+            setTransferItem(null);
           }}
         />
       )}

@@ -7,17 +7,10 @@ import {
   purchases,
   purchaseItems,
   pressRuns,
-  pressItems,
   vessels,
-  juiceLots,
   batches,
   batchCompositions,
   batchMeasurements,
-  packages,
-  inventory,
-  inventoryTransactions,
-  batchCosts,
-  cogsItems,
 } from "./schema";
 import { seedPackageSizes } from "./seed/packageSizes";
 import bcrypt from "bcryptjs";
@@ -157,49 +150,40 @@ async function main() {
         {
           vendorId: seedVendors[0].id,
           varietyId: seedVarieties[0].id, // Honeycrisp
-          notes: "Premium grade, excellent for single varietal ciders",
         },
         {
           vendorId: seedVendors[0].id,
           varietyId: seedVarieties[1].id, // Granny Smith
-          notes: "Consistent quality, great for blending",
         },
         {
           vendorId: seedVendors[0].id,
           varietyId: seedVarieties[2].id, // Gala
-          notes: "Mild flavor, good for entry-level ciders",
         },
         // Sunrise Apple Farm (vendor 1) - offers Gala, Fuji, Northern Spy
         {
           vendorId: seedVendors[1].id,
           varietyId: seedVarieties[2].id, // Gala
-          notes: "Bulk quantities available",
         },
         {
           vendorId: seedVendors[1].id,
           varietyId: seedVarieties[3].id, // Fuji
-          notes: "High sugar content, perfect for sweet ciders",
         },
         {
           vendorId: seedVendors[1].id,
           varietyId: seedVarieties[4].id, // Northern Spy
-          notes: "Traditional variety, small batches",
         },
         // Heritage Fruit Co. (vendor 2) - offers Northern Spy, Rhode Island Greening, Honeycrisp
         {
           vendorId: seedVendors[2].id,
           varietyId: seedVarieties[4].id, // Northern Spy
-          notes: "Heirloom quality, premium pricing",
         },
         {
           vendorId: seedVendors[2].id,
           varietyId: seedVarieties[5].id, // Rhode Island Greening
-          notes: "Heritage variety specialist",
         },
         {
           vendorId: seedVendors[2].id,
           varietyId: seedVarieties[0].id, // Honeycrisp
-          notes: "Organic certification available",
         },
       ])
       .returning();
@@ -213,21 +197,18 @@ async function main() {
           vendorId: seedVendors[0].id,
           purchaseDate: new Date("2024-09-01"),
           totalCost: "2450.00",
-          invoiceNumber: "MVO-2024-001",
           notes: "First fall harvest delivery",
         },
         {
           vendorId: seedVendors[1].id,
           purchaseDate: new Date("2024-08-15"),
           totalCost: "1875.50",
-          invoiceNumber: "SAF-2024-027",
           notes: "Early season varieties",
         },
         {
           vendorId: seedVendors[2].id,
           purchaseDate: new Date("2024-07-20"),
           totalCost: "3200.75",
-          invoiceNumber: "HFC-2024-112",
           notes: "Premium heritage varieties",
         },
       ])
@@ -247,7 +228,6 @@ async function main() {
           pricePerUnit: "2.50",
           totalCost: "1250.00",
           quantityKg: "500.0",
-          quantityL: null,
           notes: "Premium grade A apples",
         },
         {
@@ -258,7 +238,6 @@ async function main() {
           pricePerUnit: "2.00",
           totalCost: "1200.00",
           quantityKg: "600.0",
-          quantityL: null,
           notes: "Good for acid balance",
         },
         // Purchase 2 items
@@ -270,7 +249,6 @@ async function main() {
           pricePerUnit: "1.80",
           totalCost: "1350.00",
           quantityKg: "750.0",
-          quantityL: null,
           notes: "Bulk order discount applied",
         },
         {
@@ -281,7 +259,6 @@ async function main() {
           pricePerUnit: "1.75",
           totalCost: "525.50",
           quantityKg: "300.0",
-          quantityL: null,
           notes: "Small batch for testing",
         },
         // Purchase 3 items
@@ -293,7 +270,6 @@ async function main() {
           pricePerUnit: "2.25",
           totalCost: "1800.00",
           quantityKg: "800.0",
-          quantityL: null,
           notes: "Heritage variety premium",
         },
         {
@@ -304,108 +280,21 @@ async function main() {
           pricePerUnit: "2.15",
           totalCost: "1397.50",
           quantityKg: "650.0",
-          quantityL: null,
           notes: "Traditional cider apple",
         },
       ])
       .returning();
 
-    // Seed press runs
-    console.log("🏭 Seeding press runs...");
-    const seedPressRuns = await db
-      .insert(pressRuns)
-      .values([
-        {
-          runDate: new Date("2024-09-05"),
-          notes: "First major press run of the season",
-          totalAppleProcessedKg: "1100.0",
-          totalJuiceProduced: "660.0",
-          totalJuiceProducedUnit: "L" as const,
-          extractionRate: "0.6000",
-        },
-        {
-          runDate: new Date("2024-08-20"),
-          notes: "Testing run with new varieties",
-          totalAppleProcessedKg: "800.0",
-          totalJuiceProduced: "480.0",
-          totalJuiceProducedUnit: "L" as const,
-          extractionRate: "0.6000",
-        },
-        {
-          runDate: new Date("2024-07-25"),
-          notes: "Heritage varieties pressing",
-          totalAppleProcessedKg: "1200.0",
-          totalJuiceProduced: "780.0",
-          totalJuiceProducedUnit: "L" as const,
-          extractionRate: "0.6500",
-        },
-      ])
-      .returning();
+    // COMMENTED OUT: Old pressRuns and pressItems tables dropped in migration 0024
+    // The new pressRuns/pressRunLoads schema (renamed from applePressRuns) has a different structure
+    // TODO: Add seed data for new pressRuns/pressRunLoads schema if needed
 
-    // Seed press items
-    console.log("🍎➡️🧃 Seeding press items...");
-    const seedPressItems = await db
-      .insert(pressItems)
-      .values([
-        // Press Run 1
-        {
-          pressRunId: seedPressRuns[0].id,
-          purchaseItemId: seedPurchaseItems[0].id, // Honeycrisp 500kg
-          quantityUsedKg: "500.0",
-          juiceProduced: "300.0",
-          juiceProducedUnit: "L" as const,
-          brixMeasured: "14.8",
-          notes: "Excellent juice quality",
-        },
-        {
-          pressRunId: seedPressRuns[0].id,
-          purchaseItemId: seedPurchaseItems[1].id, // Granny Smith 600kg
-          quantityUsedKg: "600.0",
-          juiceProduced: "360.0",
-          juiceProducedUnit: "L" as const,
-          brixMeasured: "12.5",
-          notes: "Good acid content",
-        },
-        // Press Run 2
-        {
-          pressRunId: seedPressRuns[1].id,
-          purchaseItemId: seedPurchaseItems[2].id, // Gala 750kg
-          quantityUsedKg: "500.0",
-          juiceProduced: "300.0",
-          juiceProducedUnit: "L" as const,
-          brixMeasured: "13.0",
-          notes: "Mild flavor profile",
-        },
-        {
-          pressRunId: seedPressRuns[1].id,
-          purchaseItemId: seedPurchaseItems[3].id, // Fuji 300kg
-          quantityUsedKg: "300.0",
-          juiceProduced: "180.0",
-          juiceProducedUnit: "L" as const,
-          brixMeasured: "15.5",
-          notes: "Very sweet juice",
-        },
-        // Press Run 3
-        {
-          pressRunId: seedPressRuns[2].id,
-          purchaseItemId: seedPurchaseItems[4].id, // Northern Spy 800kg
-          quantityUsedKg: "700.0",
-          juiceProduced: "455.0",
-          juiceProducedUnit: "L" as const,
-          brixMeasured: "14.2",
-          notes: "Traditional cider character",
-        },
-        {
-          pressRunId: seedPressRuns[2].id,
-          purchaseItemId: seedPurchaseItems[5].id, // Rhode Island Greening 650kg
-          quantityUsedKg: "500.0",
-          juiceProduced: "325.0",
-          juiceProducedUnit: "L" as const,
-          brixMeasured: "12.8",
-          notes: "Heritage variety excellence",
-        },
-      ])
-      .returning();
+    // Placeholder for press runs seed data (using null IDs since juiceLots/batches need them)
+    const seedPressRuns: any[] = [
+      { id: null }, // Placeholder
+      { id: null }, // Placeholder
+      { id: null }, // Placeholder
+    ];
 
     // Seed vessels
     console.log("🏺 Seeding vessels...");
@@ -417,7 +306,7 @@ async function main() {
           type: "fermenter",
           capacity: "1000.0",
           capacityUnit: "L",
-          status: "fermenting",
+          status: "available",
           location: "Fermentation Room 1",
           notes: "Primary fermenter for large batches",
         },
@@ -451,26 +340,6 @@ async function main() {
       ])
       .returning();
 
-    // Seed juice lots
-    console.log("🧃 Seeding juice lots...");
-    const seedJuiceLots = await db
-      .insert(juiceLots)
-      .values([
-        {
-          pressRunId: seedPressRuns[0].id,
-          volume: "600.0",
-          volumeUnit: "L",
-          brix: "11.5",
-        },
-        {
-          pressRunId: seedPressRuns[1].id,
-          volume: "420.0",
-          volumeUnit: "L",
-          brix: "12.2",
-        },
-      ])
-      .returning();
-
     // Seed batches
     console.log("🍺 Seeding batches...");
     const seedBatches = await db
@@ -483,9 +352,8 @@ async function main() {
           initialVolumeUnit: "L",
           currentVolume: "480.0",
           currentVolumeUnit: "L",
-          status: "active",
+          status: "fermentation",
           vesselId: seedVessels[0].id,
-          juiceLotId: seedJuiceLots[0].id,
           originPressRunId: seedPressRuns[0].id,
           startDate: new Date("2024-09-10"),
         },
@@ -496,9 +364,8 @@ async function main() {
           initialVolumeUnit: "L",
           currentVolume: "0",
           currentVolumeUnit: "L",
-          status: "packaged",
+          status: "completed",
           vesselId: null,
-          juiceLotId: seedJuiceLots[1].id,
           originPressRunId: seedPressRuns[1].id,
           startDate: new Date("2024-07-30"),
           endDate: new Date("2024-09-25"),
@@ -510,9 +377,8 @@ async function main() {
           initialVolumeUnit: "L",
           currentVolume: "740.0",
           currentVolumeUnit: "L",
-          status: "active",
+          status: "fermentation",
           vesselId: seedVessels[2].id,
-          juiceLotId: seedJuiceLots[2].id,
           originPressRunId: seedPressRuns[2].id,
           startDate: new Date("2024-07-26"),
         },
@@ -525,7 +391,7 @@ async function main() {
       // Batch 1 ingredients
       {
         batchId: seedBatches[0].id,
-        purchaseItemId: seedPressItems[0].id, // Using pressItems ID as proxy for purchase
+        purchaseItemId: seedPurchaseItems[0].id,
         vendorId: seedVendors[0].id,
         varietyId: seedVarieties[0].id, // Honeycrisp
         lotCode: "LOT-2024-HC-001",
@@ -539,7 +405,7 @@ async function main() {
       },
       {
         batchId: seedBatches[0].id,
-        purchaseItemId: seedPressItems[1].id, // Using pressItems ID as proxy
+        purchaseItemId: seedPurchaseItems[1].id,
         vendorId: seedVendors[0].id,
         varietyId: seedVarieties[1].id, // Granny Smith
         lotCode: "LOT-2024-GS-001",
@@ -554,7 +420,7 @@ async function main() {
       // Batch 2 ingredients
       {
         batchId: seedBatches[1].id,
-        purchaseItemId: seedPressItems[2].id,
+        purchaseItemId: seedPurchaseItems[2].id,
         vendorId: seedVendors[1].id,
         varietyId: seedVarieties[2].id, // Gala
         lotCode: "LOT-2024-GL-001",
@@ -568,7 +434,7 @@ async function main() {
       },
       {
         batchId: seedBatches[1].id,
-        purchaseItemId: seedPressItems[3].id,
+        purchaseItemId: seedPurchaseItems[3].id,
         vendorId: seedVendors[1].id,
         varietyId: seedVarieties[3].id, // Fuji
         lotCode: "LOT-2024-FJ-001",
@@ -583,7 +449,7 @@ async function main() {
       // Batch 3 ingredients
       {
         batchId: seedBatches[2].id,
-        purchaseItemId: seedPressItems[4].id,
+        purchaseItemId: seedPurchaseItems[4].id,
         vendorId: seedVendors[2].id,
         varietyId: seedVarieties[4].id, // Northern Spy
         lotCode: "LOT-2024-NS-001",
@@ -597,7 +463,7 @@ async function main() {
       },
       {
         batchId: seedBatches[2].id,
-        purchaseItemId: seedPressItems[5].id,
+        purchaseItemId: seedPurchaseItems[5].id,
         vendorId: seedVendors[2].id,
         varietyId: seedVarieties[5].id, // Rhode Island Greening
         lotCode: "LOT-2024-RIG-001",
@@ -670,278 +536,278 @@ async function main() {
       },
     ]);
 
-    // Seed packages (only for completed batch)
-    console.log("📦 Seeding packages...");
-    const seedPackages = await db
-      .insert(packages)
-      .values([
-        {
-          batchId: seedBatches[1].id, // Completed batch
-          packageDate: new Date("2024-09-26"),
-          volumePackaged: "420.0",
-          volumePackagedUnit: "L",
-          bottleSize: "750ml",
-          bottleCount: 560,
-          abvAtPackaging: "5.9",
-          notes: "First packaging run of completed batch",
-        },
-        {
-          batchId: seedBatches[1].id, // Same batch, different bottle size
-          packageDate: new Date("2024-09-27"),
-          volumePackaged: "15.0",
-          volumePackagedUnit: "L",
-          bottleSize: "375ml",
-          bottleCount: 40,
-          abvAtPackaging: "5.9",
-          notes: "Small format bottles for tasting room",
-        },
-      ])
-      .returning();
+// DROPPED TABLE:     // Seed packages (only for completed batch)
+// DROPPED TABLE:     console.log("📦 Seeding packages...");
+// DROPPED TABLE:     const seedPackages = await db
+// DROPPED TABLE:       .insert(packages)
+// DROPPED TABLE:       .values([
+// DROPPED TABLE:         {
+// DROPPED TABLE:           batchId: seedBatches[1].id, // Completed batch
+// DROPPED TABLE:           packageDate: new Date("2024-09-26"),
+// DROPPED TABLE:           volumePackaged: "420.0",
+// DROPPED TABLE:           volumePackagedUnit: "L",
+// DROPPED TABLE:           bottleSize: "750ml",
+// DROPPED TABLE:           bottleCount: 560,
+// DROPPED TABLE:           abvAtPackaging: "5.9",
+// DROPPED TABLE:           notes: "First packaging run of completed batch",
+// DROPPED TABLE:         },
+// DROPPED TABLE:         {
+// DROPPED TABLE:           batchId: seedBatches[1].id, // Same batch, different bottle size
+// DROPPED TABLE:           packageDate: new Date("2024-09-27"),
+// DROPPED TABLE:           volumePackaged: "15.0",
+// DROPPED TABLE:           volumePackagedUnit: "L",
+// DROPPED TABLE:           bottleSize: "375ml",
+// DROPPED TABLE:           bottleCount: 40,
+// DROPPED TABLE:           abvAtPackaging: "5.9",
+// DROPPED TABLE:           notes: "Small format bottles for tasting room",
+// DROPPED TABLE:         },
+// DROPPED TABLE:       ])
+// DROPPED TABLE:       .returning();
 
-    // Seed inventory
-    console.log("📋 Seeding inventory...");
-    const seedInventory = await db
-      .insert(inventory)
-      .values([
-        {
-          packageId: seedPackages[0].id,
-          currentBottleCount: 485,
-          reservedBottleCount: 25,
-          materialType: "apple",
-          metadata: {
-            abv: 5.9,
-            batchNumber: "B-2024-002",
-            varietyBlend: ["Gala", "Fuji"],
-            packageDate: "2024-09-26",
-            expirationDate: "2026-09-26",
-            bottleSize: "750ml",
-            qualityGrade: "A",
-            fermentationNotes:
-              "Primary fermentation completed, well-balanced sweetness and acidity",
-            tastingNotes:
-              "Light golden color with crisp apple flavor and subtle fruitiness",
-          },
-          location: "Warehouse A, Shelf 1-3",
-          notes: "Ready for distribution",
-        },
-        {
-          packageId: seedPackages[1].id,
-          currentBottleCount: 38,
-          reservedBottleCount: 2,
-          materialType: "apple",
-          metadata: {
-            abv: 5.9,
-            batchNumber: "B-2024-002",
-            varietyBlend: ["Gala", "Fuji"],
-            packageDate: "2024-09-27",
-            expirationDate: "2026-09-27",
-            bottleSize: "375ml",
-            qualityGrade: "A",
-            specialUse: "tasting room",
-            samplingNotes: "Perfect portion size for tastings and events",
-          },
-          location: "Tasting Room Storage",
-          notes: "Small format for tastings and events",
-        },
-        // Note: The following entries are conceptual examples to demonstrate different material types
-        // In a production system, raw materials would typically have a separate inventory table
-        {
-          packageId: seedPackages[0].id, // Reusing package ID for demo purposes
-          currentBottleCount: 50, // Representing 50 units of additive
-          reservedBottleCount: 0,
-          materialType: "additive",
-          metadata: {
-            additiveType: "potassium_metabisulfite",
-            concentration: "10%",
-            supplier: "Vintner Supply Co.",
-            lotNumber: "KMS-2024-087",
-            expirationDate: "2025-12-31",
-            applicationRate: "1.5g per 10L",
-            safetyNotes: "Handle with gloves, avoid inhalation",
-            storageTemperature: "room temperature",
-            moistureContent: "< 0.5%",
-          },
-          location: "Chemical Storage Room, Shelf B2",
-          notes: "Sulfite for preservation and oxidation prevention",
-        },
-        {
-          packageId: seedPackages[1].id, // Reusing package ID for demo purposes
-          currentBottleCount: 200, // Representing 200L of juice
-          reservedBottleCount: 50,
-          materialType: "juice",
-          metadata: {
-            juiceType: "apple_blend",
-            varietyComposition: {
-              Honeycrisp: "60%",
-              "Granny Smith": "40%",
-            },
-            brix: 14.2,
-            ph: 3.8,
-            pressDate: "2024-09-15",
-            expirationDate: "2024-10-15",
-            storageCondition: "refrigerated",
-            clarification: "enzyme treated",
-            yeastStrain: "ready for EC-1118",
-            volumeL: 200,
-          },
-          location: "Cold Storage Tank T-05",
-          notes: "Fresh pressed juice ready for fermentation",
-        },
-        {
-          packageId: seedPackages[0].id, // Reusing package ID for demo purposes
-          currentBottleCount: 1000, // Representing 1000 bottles
-          reservedBottleCount: 100,
-          materialType: "packaging",
-          metadata: {
-            packageType: "glass_bottle",
-            size: "750ml",
-            color: "antique_green",
-            supplier: "Premium Glass Solutions",
-            lotNumber: "PGS-750-AG-2024-Q3",
-            quality: "food_grade",
-            closureType: "cork_compatible",
-            orderDate: "2024-08-15",
-            deliveryDate: "2024-09-01",
-            shelfLife: "indefinite",
-            dimensions: {
-              height: "315mm",
-              diameter: "77mm",
-              weight: "550g",
-            },
-          },
-          location: "Packaging Warehouse, Aisle C",
-          notes: "Premium glass bottles for main product line",
-        },
-      ])
-      .returning();
+// DROPPED TABLE:     // Seed inventory
+// DROPPED TABLE:     console.log("📋 Seeding inventory...");
+// DROPPED TABLE:     const seedInventory = await db
+// DROPPED TABLE:       .insert(inventory)
+// DROPPED TABLE:       .values([
+// DROPPED TABLE:         {
+// DROPPED TABLE:           packageId: seedPackages[0].id,
+// DROPPED TABLE:           currentBottleCount: 485,
+// DROPPED TABLE:           reservedBottleCount: 25,
+// DROPPED TABLE:           materialType: "apple",
+// DROPPED TABLE:           metadata: {
+// DROPPED TABLE:             abv: 5.9,
+// DROPPED TABLE:             batchNumber: "B-2024-002",
+// DROPPED TABLE:             varietyBlend: ["Gala", "Fuji"],
+// DROPPED TABLE:             packageDate: "2024-09-26",
+// DROPPED TABLE:             expirationDate: "2026-09-26",
+// DROPPED TABLE:             bottleSize: "750ml",
+// DROPPED TABLE:             qualityGrade: "A",
+// DROPPED TABLE:             fermentationNotes:
+// DROPPED TABLE:               "Primary fermentation completed, well-balanced sweetness and acidity",
+// DROPPED TABLE:             tastingNotes:
+// DROPPED TABLE:               "Light golden color with crisp apple flavor and subtle fruitiness",
+// DROPPED TABLE:           },
+// DROPPED TABLE:           location: "Warehouse A, Shelf 1-3",
+// DROPPED TABLE:           notes: "Ready for distribution",
+// DROPPED TABLE:         },
+// DROPPED TABLE:         {
+// DROPPED TABLE:           packageId: seedPackages[1].id,
+// DROPPED TABLE:           currentBottleCount: 38,
+// DROPPED TABLE:           reservedBottleCount: 2,
+// DROPPED TABLE:           materialType: "apple",
+// DROPPED TABLE:           metadata: {
+// DROPPED TABLE:             abv: 5.9,
+// DROPPED TABLE:             batchNumber: "B-2024-002",
+// DROPPED TABLE:             varietyBlend: ["Gala", "Fuji"],
+// DROPPED TABLE:             packageDate: "2024-09-27",
+// DROPPED TABLE:             expirationDate: "2026-09-27",
+// DROPPED TABLE:             bottleSize: "375ml",
+// DROPPED TABLE:             qualityGrade: "A",
+// DROPPED TABLE:             specialUse: "tasting room",
+// DROPPED TABLE:             samplingNotes: "Perfect portion size for tastings and events",
+// DROPPED TABLE:           },
+// DROPPED TABLE:           location: "Tasting Room Storage",
+// DROPPED TABLE:           notes: "Small format for tastings and events",
+// DROPPED TABLE:         },
+// DROPPED TABLE:         // Note: The following entries are conceptual examples to demonstrate different material types
+// DROPPED TABLE:         // In a production system, raw materials would typically have a separate inventory table
+// DROPPED TABLE:         {
+// DROPPED TABLE:           packageId: seedPackages[0].id, // Reusing package ID for demo purposes
+// DROPPED TABLE:           currentBottleCount: 50, // Representing 50 units of additive
+// DROPPED TABLE:           reservedBottleCount: 0,
+// DROPPED TABLE:           materialType: "additive",
+// DROPPED TABLE:           metadata: {
+// DROPPED TABLE:             additiveType: "potassium_metabisulfite",
+// DROPPED TABLE:             concentration: "10%",
+// DROPPED TABLE:             supplier: "Vintner Supply Co.",
+// DROPPED TABLE:             lotNumber: "KMS-2024-087",
+// DROPPED TABLE:             expirationDate: "2025-12-31",
+// DROPPED TABLE:             applicationRate: "1.5g per 10L",
+// DROPPED TABLE:             safetyNotes: "Handle with gloves, avoid inhalation",
+// DROPPED TABLE:             storageTemperature: "room temperature",
+// DROPPED TABLE:             moistureContent: "< 0.5%",
+// DROPPED TABLE:           },
+// DROPPED TABLE:           location: "Chemical Storage Room, Shelf B2",
+// DROPPED TABLE:           notes: "Sulfite for preservation and oxidation prevention",
+// DROPPED TABLE:         },
+// DROPPED TABLE:         {
+// DROPPED TABLE:           packageId: seedPackages[1].id, // Reusing package ID for demo purposes
+// DROPPED TABLE:           currentBottleCount: 200, // Representing 200L of juice
+// DROPPED TABLE:           reservedBottleCount: 50,
+// DROPPED TABLE:           materialType: "juice",
+// DROPPED TABLE:           metadata: {
+// DROPPED TABLE:             juiceType: "apple_blend",
+// DROPPED TABLE:             varietyComposition: {
+// DROPPED TABLE:               Honeycrisp: "60%",
+// DROPPED TABLE:               "Granny Smith": "40%",
+// DROPPED TABLE:             },
+// DROPPED TABLE:             brix: 14.2,
+// DROPPED TABLE:             ph: 3.8,
+// DROPPED TABLE:             pressDate: "2024-09-15",
+// DROPPED TABLE:             expirationDate: "2024-10-15",
+// DROPPED TABLE:             storageCondition: "refrigerated",
+// DROPPED TABLE:             clarification: "enzyme treated",
+// DROPPED TABLE:             yeastStrain: "ready for EC-1118",
+// DROPPED TABLE:             volumeL: 200,
+// DROPPED TABLE:           },
+// DROPPED TABLE:           location: "Cold Storage Tank T-05",
+// DROPPED TABLE:           notes: "Fresh pressed juice ready for fermentation",
+// DROPPED TABLE:         },
+// DROPPED TABLE:         {
+// DROPPED TABLE:           packageId: seedPackages[0].id, // Reusing package ID for demo purposes
+// DROPPED TABLE:           currentBottleCount: 1000, // Representing 1000 bottles
+// DROPPED TABLE:           reservedBottleCount: 100,
+// DROPPED TABLE:           materialType: "packaging",
+// DROPPED TABLE:           metadata: {
+// DROPPED TABLE:             packageType: "glass_bottle",
+// DROPPED TABLE:             size: "750ml",
+// DROPPED TABLE:             color: "antique_green",
+// DROPPED TABLE:             supplier: "Premium Glass Solutions",
+// DROPPED TABLE:             lotNumber: "PGS-750-AG-2024-Q3",
+// DROPPED TABLE:             quality: "food_grade",
+// DROPPED TABLE:             closureType: "cork_compatible",
+// DROPPED TABLE:             orderDate: "2024-08-15",
+// DROPPED TABLE:             deliveryDate: "2024-09-01",
+// DROPPED TABLE:             shelfLife: "indefinite",
+// DROPPED TABLE:             dimensions: {
+// DROPPED TABLE:               height: "315mm",
+// DROPPED TABLE:               diameter: "77mm",
+// DROPPED TABLE:               weight: "550g",
+// DROPPED TABLE:             },
+// DROPPED TABLE:           },
+// DROPPED TABLE:           location: "Packaging Warehouse, Aisle C",
+// DROPPED TABLE:           notes: "Premium glass bottles for main product line",
+// DROPPED TABLE:         },
+// DROPPED TABLE:       ])
+// DROPPED TABLE:       .returning();
 
-    // Seed inventory transactions
-    console.log("📝 Seeding inventory transactions...");
-    await db.insert(inventoryTransactions).values([
-      {
-        inventoryId: seedInventory[0].id,
-        transactionType: "sale",
-        quantityChange: -50,
-        transactionDate: new Date("2024-09-28"),
-        reason: "Farmers market sales",
-        notes: "Weekend market sales",
-      },
-      {
-        inventoryId: seedInventory[0].id,
-        transactionType: "sale",
-        quantityChange: -25,
-        transactionDate: new Date("2024-10-01"),
-        reason: "Restaurant order",
-        notes: "Local restaurant wholesale",
-      },
-      {
-        inventoryId: seedInventory[1].id,
-        transactionType: "sale",
-        quantityChange: -2,
-        transactionDate: new Date("2024-09-29"),
-        reason: "Tasting room samples",
-        notes: "Used for customer tastings",
-      },
-      {
-        inventoryId: seedInventory[2].id, // Additive inventory
-        transactionType: "transfer",
-        quantityChange: -5,
-        transactionDate: new Date("2024-09-20"),
-        reason: "Production use",
-        notes: "Used in batch B-2024-003 for stabilization",
-      },
-      {
-        inventoryId: seedInventory[3].id, // Juice inventory
-        transactionType: "transfer",
-        quantityChange: -50,
-        transactionDate: new Date("2024-09-16"),
-        reason: "Fermentation start",
-        notes: "Transferred to fermenter for new batch",
-      },
-      {
-        inventoryId: seedInventory[4].id, // Packaging inventory
-        transactionType: "transfer",
-        quantityChange: -560,
-        transactionDate: new Date("2024-09-26"),
-        reason: "Packaging run",
-        notes: "Used for batch B-2024-002 packaging",
-      },
-    ]);
+// DROPPED TABLE:     // Seed inventory transactions
+// DROPPED TABLE:     console.log("📝 Seeding inventory transactions...");
+// DROPPED TABLE:     await db.insert(inventoryTransactions).values([
+// DROPPED TABLE:       {
+// DROPPED TABLE:         inventoryId: seedInventory[0].id,
+// DROPPED TABLE:         transactionType: "sale",
+// DROPPED TABLE:         quantityChange: -50,
+// DROPPED TABLE:         transactionDate: new Date("2024-09-28"),
+// DROPPED TABLE:         reason: "Farmers market sales",
+// DROPPED TABLE:         notes: "Weekend market sales",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         inventoryId: seedInventory[0].id,
+// DROPPED TABLE:         transactionType: "sale",
+// DROPPED TABLE:         quantityChange: -25,
+// DROPPED TABLE:         transactionDate: new Date("2024-10-01"),
+// DROPPED TABLE:         reason: "Restaurant order",
+// DROPPED TABLE:         notes: "Local restaurant wholesale",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         inventoryId: seedInventory[1].id,
+// DROPPED TABLE:         transactionType: "sale",
+// DROPPED TABLE:         quantityChange: -2,
+// DROPPED TABLE:         transactionDate: new Date("2024-09-29"),
+// DROPPED TABLE:         reason: "Tasting room samples",
+// DROPPED TABLE:         notes: "Used for customer tastings",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         inventoryId: seedInventory[2].id, // Additive inventory
+// DROPPED TABLE:         transactionType: "transfer",
+// DROPPED TABLE:         quantityChange: -5,
+// DROPPED TABLE:         transactionDate: new Date("2024-09-20"),
+// DROPPED TABLE:         reason: "Production use",
+// DROPPED TABLE:         notes: "Used in batch B-2024-003 for stabilization",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         inventoryId: seedInventory[3].id, // Juice inventory
+// DROPPED TABLE:         transactionType: "transfer",
+// DROPPED TABLE:         quantityChange: -50,
+// DROPPED TABLE:         transactionDate: new Date("2024-09-16"),
+// DROPPED TABLE:         reason: "Fermentation start",
+// DROPPED TABLE:         notes: "Transferred to fermenter for new batch",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         inventoryId: seedInventory[4].id, // Packaging inventory
+// DROPPED TABLE:         transactionType: "transfer",
+// DROPPED TABLE:         quantityChange: -560,
+// DROPPED TABLE:         transactionDate: new Date("2024-09-26"),
+// DROPPED TABLE:         reason: "Packaging run",
+// DROPPED TABLE:         notes: "Used for batch B-2024-002 packaging",
+// DROPPED TABLE:       },
+// DROPPED TABLE:     ]);
 
-    // Seed batch costs
-    console.log("💲 Seeding batch costs...");
-    await db.insert(batchCosts).values([
-      {
-        batchId: seedBatches[1].id, // Completed batch
-        totalAppleCost: "875.50",
-        laborCost: "150.00",
-        overheadCost: "75.25",
-        packagingCost: "168.00", // ~$0.30 per bottle
-        totalCost: "1268.75",
-        costPerBottle: "2.27",
-        costPerL: "3.02",
-        calculatedAt: new Date("2024-09-26"),
-        notes: "Final cost calculation at packaging",
-      },
-      {
-        batchId: seedBatches[0].id, // Active batch - projected
-        totalAppleCost: "1250.00",
-        laborCost: "120.00",
-        overheadCost: "60.00",
-        packagingCost: "0.00", // Not yet packaged
-        totalCost: "1430.00",
-        costPerBottle: null,
-        costPerL: "2.38",
-        calculatedAt: new Date("2024-09-17"),
-        notes: "Interim cost calculation - packaging costs TBD",
-      },
-    ]);
+// DROPPED TABLE:     // Seed batch costs
+// DROPPED TABLE:     console.log("💲 Seeding batch costs...");
+// DROPPED TABLE:     await db.insert(batchCosts).values([
+// DROPPED TABLE:       {
+// DROPPED TABLE:         batchId: seedBatches[1].id, // Completed batch
+// DROPPED TABLE:         totalAppleCost: "875.50",
+// DROPPED TABLE:         laborCost: "150.00",
+// DROPPED TABLE:         overheadCost: "75.25",
+// DROPPED TABLE:         packagingCost: "168.00", // ~$0.30 per bottle
+// DROPPED TABLE:         totalCost: "1268.75",
+// DROPPED TABLE:         costPerBottle: "2.27",
+// DROPPED TABLE:         costPerL: "3.02",
+// DROPPED TABLE:         calculatedAt: new Date("2024-09-26"),
+// DROPPED TABLE:         notes: "Final cost calculation at packaging",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         batchId: seedBatches[0].id, // Active batch - projected
+// DROPPED TABLE:         totalAppleCost: "1250.00",
+// DROPPED TABLE:         laborCost: "120.00",
+// DROPPED TABLE:         overheadCost: "60.00",
+// DROPPED TABLE:         packagingCost: "0.00", // Not yet packaged
+// DROPPED TABLE:         totalCost: "1430.00",
+// DROPPED TABLE:         costPerBottle: null,
+// DROPPED TABLE:         costPerL: "2.38",
+// DROPPED TABLE:         calculatedAt: new Date("2024-09-17"),
+// DROPPED TABLE:         notes: "Interim cost calculation - packaging costs TBD",
+// DROPPED TABLE:       },
+// DROPPED TABLE:     ]);
 
-    // Seed COGS items for detailed tracking
-    console.log("🧾 Seeding COGS items...");
-    await db.insert(cogsItems).values([
-      // Detailed costs for completed batch
-      {
-        batchId: seedBatches[1].id,
-        itemType: "apple_cost",
-        description: "Gala apples from Sunrise Farm",
-        cost: "450.00",
-        quantity: "250.0",
-        unit: "L",
-        appliedAt: new Date("2024-08-20"),
-        notes: "Juice volume used in batch",
-      },
-      {
-        batchId: seedBatches[1].id,
-        itemType: "apple_cost",
-        description: "Fuji apples from Sunrise Farm",
-        cost: "425.50",
-        quantity: "180.0",
-        unit: "L",
-        appliedAt: new Date("2024-08-20"),
-        notes: "Juice volume used in batch",
-      },
-      {
-        batchId: seedBatches[1].id,
-        itemType: "labor",
-        description: "Fermentation monitoring and management",
-        cost: "150.00",
-        quantity: "8.0",
-        unit: null,
-        appliedAt: new Date("2024-09-25"),
-        notes: "Labor hours at $18.75/hour",
-      },
-      {
-        batchId: seedBatches[1].id,
-        itemType: "packaging",
-        description: "750ml bottles and caps",
-        cost: "168.00",
-        quantity: "560.0",
-        unit: null,
-        appliedAt: new Date("2024-09-26"),
-        notes: "560 bottles at $0.30 each",
-      },
-    ]);
+// DROPPED TABLE:     // Seed COGS items for detailed tracking
+// DROPPED TABLE:     console.log("🧾 Seeding COGS items...");
+// DROPPED TABLE:     await db.insert(cogsItems).values([
+// DROPPED TABLE:       // Detailed costs for completed batch
+// DROPPED TABLE:       {
+// DROPPED TABLE:         batchId: seedBatches[1].id,
+// DROPPED TABLE:         itemType: "apple_cost",
+// DROPPED TABLE:         description: "Gala apples from Sunrise Farm",
+// DROPPED TABLE:         cost: "450.00",
+// DROPPED TABLE:         quantity: "250.0",
+// DROPPED TABLE:         unit: "L",
+// DROPPED TABLE:         appliedAt: new Date("2024-08-20"),
+// DROPPED TABLE:         notes: "Juice volume used in batch",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         batchId: seedBatches[1].id,
+// DROPPED TABLE:         itemType: "apple_cost",
+// DROPPED TABLE:         description: "Fuji apples from Sunrise Farm",
+// DROPPED TABLE:         cost: "425.50",
+// DROPPED TABLE:         quantity: "180.0",
+// DROPPED TABLE:         unit: "L",
+// DROPPED TABLE:         appliedAt: new Date("2024-08-20"),
+// DROPPED TABLE:         notes: "Juice volume used in batch",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         batchId: seedBatches[1].id,
+// DROPPED TABLE:         itemType: "labor",
+// DROPPED TABLE:         description: "Fermentation monitoring and management",
+// DROPPED TABLE:         cost: "150.00",
+// DROPPED TABLE:         quantity: "8.0",
+// DROPPED TABLE:         unit: null,
+// DROPPED TABLE:         appliedAt: new Date("2024-09-25"),
+// DROPPED TABLE:         notes: "Labor hours at $18.75/hour",
+// DROPPED TABLE:       },
+// DROPPED TABLE:       {
+// DROPPED TABLE:         batchId: seedBatches[1].id,
+// DROPPED TABLE:         itemType: "packaging",
+// DROPPED TABLE:         description: "750ml bottles and caps",
+// DROPPED TABLE:         cost: "168.00",
+// DROPPED TABLE:         quantity: "560.0",
+// DROPPED TABLE:         unit: null,
+// DROPPED TABLE:         appliedAt: new Date("2024-09-26"),
+// DROPPED TABLE:         notes: "560 bottles at $0.30 each",
+// DROPPED TABLE:       },
+// DROPPED TABLE:     ]);
 
     console.log("✅ Database seeding completed successfully!");
     console.log(`   • ${seedVendors.length} vendors`);
@@ -952,20 +818,12 @@ async function main() {
     console.log(
       `   • ${seedPurchases.length} purchases with ${seedPurchaseItems.length} items`,
     );
-    console.log(
-      `   • ${seedPressRuns.length} press runs with ${seedPressItems.length} items`,
-    );
     console.log(`   • ${seedVessels.length} vessels`);
     console.log(
       `   • ${seedBatches.length} batches with ingredients and measurements`,
     );
-    console.log(
-      `   • ${seedPackages.length} packages with ${seedInventory.length} inventory items (apple, additive, juice, packaging)`,
-    );
-    console.log("   • Complete cost tracking and COGS breakdown");
-    console.log(
-      "   • Material type tracking with detailed metadata for inventory management",
-    );
+    console.log("   • Note: Press runs, packages, inventory, and cost tracking seed data");
+    console.log("     commented out due to schema cleanup (migration 0024)");
   } catch (error) {
     console.error("❌ Error seeding database:", error);
     throw error;

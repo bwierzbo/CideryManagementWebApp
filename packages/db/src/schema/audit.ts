@@ -100,33 +100,4 @@ export type AuditOperation =
   | "soft_delete"
   | "restore";
 
-// Audit log metadata for tracking audit system health
-export const auditMetadata = pgTable(
-  "audit_metadata",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-
-    // Metadata type (e.g., 'coverage_check', 'integrity_check', 'performance_stats')
-    metadataType: text("metadata_type").notNull(),
-
-    // Table being audited
-    tableName: text("table_name"),
-
-    // Metadata content (flexible JSON for different types of metadata)
-    data: jsonb("data").notNull(),
-
-    // Timestamps
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    validUntil: timestamp("valid_until", { withTimezone: true }), // For time-bounded metadata
-  },
-  (table) => ({
-    typeIdx: index("audit_metadata_type_idx").on(table.metadataType),
-    tableIdx: index("audit_metadata_table_idx").on(table.tableName),
-    createdAtIdx: index("audit_metadata_created_at_idx").on(table.createdAt),
-  }),
-);
-
-export type AuditMetadata = typeof auditMetadata.$inferSelect;
-export type NewAuditMetadata = typeof auditMetadata.$inferInsert;
+// auditMetadata table removed - was not being used

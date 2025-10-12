@@ -43,6 +43,7 @@ import {
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
+import { formatDate } from "@/utils/date-format";
 
 // Type for purchase order from unified API
 interface PurchaseOrder {
@@ -245,8 +246,8 @@ export function PurchaseOrdersTable({
     [sortState.columns],
   );
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
+  const formatDateDisplay = (dateString: string) => {
+    return formatDate(new Date(dateString));
   };
 
   const formatCurrency = (amount: number | null) => {
@@ -561,7 +562,7 @@ export function PurchaseOrdersTable({
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm">
                           <Calendar className="w-3 h-3 text-muted-foreground" />
-                          <span>{formatDate(order.purchaseDate)}</span>
+                          <span>{formatDateDisplay(order.purchaseDate)}</span>
                         </div>
                       </TableCell>
                       <TableCell>

@@ -2,11 +2,8 @@ import { eq, and, desc, asc, gte, lte, inArray, sql } from "drizzle-orm";
 import { type Database } from "db";
 import {
   auditLogs,
-  auditMetadata,
   type AuditLog,
   type NewAuditLog,
-  type AuditMetadata,
-  type NewAuditMetadata,
 } from "db/src/schema/audit";
 import type { AuditLogEntry, AuditSnapshot } from "./service";
 import { createAuditLogEntry, validateAuditSnapshot } from "./service";
@@ -327,57 +324,7 @@ export class AuditDatabase {
     return result;
   }
 
-  /**
-   * Writes audit metadata for system tracking
-   */
-  async writeAuditMetadata(
-    metadataType: string,
-    data: Record<string, any>,
-    tableName?: string,
-    validUntil?: Date,
-  ): Promise<string> {
-    const metadata: NewAuditMetadata = {
-      metadataType,
-      tableName,
-      data,
-      validUntil,
-    };
-
-    const result = await this.db
-      .insert(auditMetadata)
-      .values(metadata)
-      .returning({ id: auditMetadata.id });
-
-    return result[0].id;
-  }
-
-  /**
-   * Gets audit metadata by type and table
-   */
-  async getAuditMetadata(
-    metadataType: string,
-    tableName?: string,
-    includeExpired: boolean = false,
-  ): Promise<AuditMetadata[]> {
-    const conditions = [eq(auditMetadata.metadataType, metadataType)];
-
-    if (tableName) {
-      conditions.push(eq(auditMetadata.tableName, tableName));
-    }
-
-    if (!includeExpired) {
-      const now = new Date();
-      conditions.push(
-        sql`${auditMetadata.validUntil} IS NULL OR ${auditMetadata.validUntil} > ${now}`,
-      );
-    }
-
-    return await this.db
-      .select()
-      .from(auditMetadata)
-      .where(and(...conditions))
-      .orderBy(desc(auditMetadata.createdAt));
-  }
+  // auditMetadata methods removed - table no longer exists
 
   /**
    * Cleans up old audit logs beyond retention period

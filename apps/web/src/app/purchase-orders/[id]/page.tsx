@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/utils/date-format";
 
 export default function PurchaseOrderDetailPage() {
   const router = useRouter();
@@ -76,12 +77,8 @@ export default function PurchaseOrderDetailPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+  const formatDateDisplay = (dateString: string) => {
+    return formatDate(new Date(dateString));
   };
 
   const formatCurrency = (amount: number | null) => {
@@ -159,7 +156,7 @@ export default function PurchaseOrderDetailPage() {
     if (item.fruitVarietyName) {
       return {
         name: item.fruitVarietyName,
-        details: `${item.quantity} ${item.unit}${item.harvestDate ? ` • Harvested: ${formatDate(item.harvestDate)}` : ""}`,
+        details: `${item.quantity} ${item.unit}${item.harvestDate ? ` • Harvested: ${formatDateDisplay(item.harvestDate)}` : ""}`,
         unitCost: item.pricePerUnit,
       };
     } else if (item.additiveName) {
@@ -317,7 +314,7 @@ export default function PurchaseOrderDetailPage() {
                     <div>
                       <p className="text-sm text-gray-600">Purchase Date</p>
                       <p className="font-semibold">
-                        {formatDate(purchaseData.purchase.purchaseDate)}
+                        {formatDateDisplay(purchaseData.purchase.purchaseDate)}
                       </p>
                     </div>
                   </div>

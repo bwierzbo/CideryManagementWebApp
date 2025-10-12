@@ -120,7 +120,15 @@ export function VolumeDisplay({
     return <span className={cn("text-muted-foreground", className)}>—</span>;
   }
 
-  const displayValue = value.toFixed(2);
+  // Convert to number if it's a string (from database decimal type)
+  const numericValue = typeof value === "string" ? parseFloat(value) : value;
+
+  // Handle NaN or invalid numbers
+  if (typeof numericValue !== "number" || isNaN(numericValue)) {
+    return <span className={cn("text-muted-foreground", className)}>—</span>;
+  }
+
+  const displayValue = numericValue.toFixed(2);
   const unitDisplay = unit || "L";
 
   return (

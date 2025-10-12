@@ -26,6 +26,7 @@ import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useDebounce } from "@/hooks/useDebounce";
+import { formatDate } from "@/utils/date-format";
 
 export interface PackagingFiltersState {
   dateFrom: Date | null;
@@ -297,10 +298,10 @@ export function PackagingFilters({
                 >
                   <Calendar className="w-3 h-3" />
                   <span className="hidden sm:inline">
-                    From: {filters.dateFrom.toLocaleDateString()}
+                    From: {formatDate(filters.dateFrom)}
                   </span>
                   <span className="sm:hidden">
-                    {filters.dateFrom.toLocaleDateString()}
+                    {formatDate(filters.dateFrom)}
                   </span>
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
@@ -317,10 +318,10 @@ export function PackagingFilters({
                 >
                   <Calendar className="w-3 h-3" />
                   <span className="hidden sm:inline">
-                    To: {filters.dateTo.toLocaleDateString()}
+                    To: {formatDate(filters.dateTo)}
                   </span>
                   <span className="sm:hidden">
-                    {filters.dateTo.toLocaleDateString()}
+                    {formatDate(filters.dateTo)}
                   </span>
                   <X
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"

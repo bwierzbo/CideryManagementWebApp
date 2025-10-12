@@ -63,6 +63,7 @@ import { trpc } from "@/utils/trpc";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { formatDate } from "@/utils/date-format";
 
 // Form schemas
 const userSchema = z.object({
@@ -679,7 +680,7 @@ function ReferenceValues() {
                     </TableCell>
                     <TableCell>
                       {variety.createdAt
-                        ? new Date(variety.createdAt).toLocaleDateString()
+                        ? formatDate(new Date(variety.createdAt))
                         : "—"}
                     </TableCell>
                     <TableCell>
@@ -777,7 +778,7 @@ function ReferenceValues() {
                     <p>
                       Created:{" "}
                       {variety.createdAt
-                        ? new Date(variety.createdAt).toLocaleDateString()
+                        ? formatDate(new Date(variety.createdAt))
                         : "—"}
                     </p>
                   </div>

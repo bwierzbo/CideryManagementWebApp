@@ -45,6 +45,8 @@ import {
   Edit3,
   Check,
   X,
+  Activity,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
@@ -57,6 +59,8 @@ export default function BatchDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const batchId = params.id as string;
+
+  console.log("🔍 BatchDetailsPage rendering with batchId:", batchId);
 
   const [showMeasurementForm, setShowMeasurementForm] = useState(false);
   const [showAdditiveForm, setShowAdditiveForm] = useState(false);
@@ -98,11 +102,32 @@ export default function BatchDetailsPage() {
       batchId,
     });
 
-  // Fetch batch composition
-  const { data: composition, isLoading: compositionLoading } =
-    trpc.batch.getComposition.useQuery({
+  // Fetch batch composition (with cache busting)
+  const [compositionCacheBuster, setCompositionCacheBuster] = useState(0);
+  const { data: composition, isLoading: compositionLoading, error: compositionError, refetch: refetchComposition } =
+    trpc.batch.getComposition.useQuery(
+      {
+        batchId,
+        _cacheBuster: compositionCacheBuster, // Force new query on change
+      } as any,
+      {
+        enabled: !!batchId,
+        refetchOnMount: "always",
+        refetchOnWindowFocus: false,
+        staleTime: 0, // Always consider data stale
+        cacheTime: 0, // Don't cache
+      }
+    );
+
+  // Debug composition data
+  React.useEffect(() => {
+    console.log("🎨 Composition query result:", {
       batchId,
+      composition,
+      isLoading: compositionLoading,
+      error: compositionError,
     });
+  }, [batchId, composition, compositionLoading, compositionError]);
 
   // Fetch transfer history
   const { data: transfers, isLoading: transfersLoading } =
@@ -316,7 +341,17 @@ export default function BatchDetailsPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs
+        defaultValue="overview"
+        className="space-y-6"
+        onValueChange={(value) => {
+          console.log("🔄 Tab changed to:", value);
+          if (value === "composition") {
+            console.log("🔄 Forcing composition refetch with cache buster");
+            setCompositionCacheBuster(Date.now());
+          }
+        }}
+      >
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="activity">

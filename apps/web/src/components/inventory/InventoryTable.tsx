@@ -29,6 +29,7 @@ import {
   MoreVertical,
   X,
   Trash2,
+  Droplets,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -37,6 +38,8 @@ import { MaterialTypeIndicator } from "./MaterialTypeIndicator";
 import { InventorySearch } from "./InventorySearch";
 import { InventoryFilters } from "./InventoryFilters";
 import { InventoryEditDialog } from "./InventoryEditDialog";
+import { TransferToTankModal } from "@/components/juice/TransferToTankModal";
+import { formatDate } from "@/utils/date-format";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -103,6 +106,7 @@ export function InventoryTable({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
+  const [transferItem, setTransferItem] = useState<InventoryItem | null>(null);
   const [filters, setFilters] = useState<InventoryFiltersState>({
     materialTypes: [],
     location: "all",
@@ -173,7 +177,7 @@ export function InventoryTable({
     isLoading: isSearchLoading,
     error: searchError,
     refetch: refetchSearch,
-  } = trpc.inventory.search.useQuery(searchParams, {
+  } = trpc.inventory.list.useQuery(searchParams, {
     enabled: useSearch,
   });
 
@@ -201,7 +205,7 @@ export function InventoryTable({
     [useSearch, searchData?.items, listData?.items],
   );
   const totalCount = useSearch
-    ? searchData?.count || 0
+    ? searchData?.pagination?.total || 0
     : listData?.pagination?.total || 0;
   const hasMore = useSearch ? false : listData?.pagination?.hasMore || false;
 
@@ -578,7 +582,7 @@ export function InventoryTable({
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Calendar className="w-3 h-3" />
                           <span>
-                            {new Date(item.createdAt).toLocaleDateString()}
+                            {formatDate(item.createdAt)}
                           </span>
                         </div>
                       </TableCell>
@@ -595,6 +599,20 @@ export function InventoryTable({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {item.materialType === "juice" && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTransferItem(item);
+                                  }}
+                                >
+                                  <Droplets className="mr-2 h-4 w-4" />
+                                  Transfer to Tank
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -702,6 +720,25 @@ export function InventoryTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Transfer to Tank Modal */}
+      {transferItem && transferItem.materialType === "juice" && (
+        <TransferToTankModal
+          open={!!transferItem}
+          onClose={() => setTransferItem(null)}
+          juicePurchaseItemId={(transferItem.metadata as any)?.itemId || ""}
+          juiceLabel={getItemDisplayName(transferItem)}
+          availableVolumeL={Number(transferItem.currentBottleCount) || 0}
+          onSuccess={() => {
+            setTransferItem(null);
+            if (useSearch) {
+              refetchSearch();
+            } else {
+              refetchList();
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

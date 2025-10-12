@@ -33,6 +33,7 @@ import {
   FileText,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
+import { formatDate } from "@/utils/date-format";
 
 // Helper function to download blob as file
 const downloadBlob = (blob: Blob, filename: string) => {
@@ -553,9 +554,7 @@ export default function ReportsPage() {
                                 {vendor.lastOrder ? (
                                   <div className="flex items-center text-sm text-gray-500">
                                     <Calendar className="w-4 h-4 mr-1" />
-                                    {new Date(
-                                      vendor.lastOrder,
-                                    ).toLocaleDateString()}
+                                    {formatDate(new Date(vendor.lastOrder))}
                                   </div>
                                 ) : (
                                   "No orders"

@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { performanceMonitor } from "@/lib/performance-monitor";
+import { formatDateTime } from "@/utils/date-format";
 
 // Lazy load heavy components
 const QAUpdateModal = lazy(() =>
@@ -96,15 +97,9 @@ export default function PackagingDetailPage() {
   const userRole = (session?.user as any)?.role;
   const canUpdateQA = userRole === "admin" || userRole === "operator";
 
-  // Format date display
-  const formatDate = (date: string | Date) => {
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  // Format date display - using imported formatDateTime
+  const formatDateDisplay = (date: string | Date) => {
+    return formatDateTime(new Date(date));
   };
 
   // Format package size display
@@ -389,7 +384,7 @@ export default function PackagingDetailPage() {
                     <p className="font-medium flex items-center gap-2">
                       <Calendar className="w-4 h-4 flex-shrink-0" />
                       <span className="truncate">
-                        {formatDate(runData.packagedAt)}
+                        {formatDateDisplay(runData.packagedAt)}
                       </span>
                     </p>
                   </div>
@@ -515,7 +510,7 @@ export default function PackagingDetailPage() {
                         <div>
                           <p className="text-sm text-gray-500">Test Date</p>
                           <p className="font-medium">
-                            {formatDate(runData.testDate)}
+                            {formatDateDisplay(runData.testDate)}
                           </p>
                         </div>
                       )}
@@ -609,7 +604,7 @@ export default function PackagingDetailPage() {
                       <p className="text-sm text-gray-500">
                         Expires:{" "}
                         {item.expirationDate
-                          ? new Date(item.expirationDate).toLocaleDateString()
+                          ? formatDateDisplay(item.expirationDate)
                           : "Not set"}
                       </p>
                     </div>
@@ -633,7 +628,7 @@ export default function PackagingDetailPage() {
                 <div>
                   <p className="text-sm text-gray-500">Created At</p>
                   <p className="font-medium text-sm md:text-base">
-                    {formatDate(runData.createdAt)}
+                    {formatDateDisplay(runData.createdAt)}
                   </p>
                 </div>
                 {runData.updatedAt &&
@@ -641,7 +636,7 @@ export default function PackagingDetailPage() {
                     <div>
                       <p className="text-sm text-gray-500">Last Updated</p>
                       <p className="font-medium text-sm md:text-base">
-                        {formatDate(runData.updatedAt)}
+                        {formatDateDisplay(runData.updatedAt)}
                       </p>
                     </div>
                   )}
@@ -676,7 +671,7 @@ export default function PackagingDetailPage() {
                         </p>
                       )}
                       <p className="text-xs text-gray-500 break-words">
-                        {photo.uploaderName} • {formatDate(photo.uploadedAt)}
+                        {photo.uploaderName} • {formatDateDisplay(photo.uploadedAt)}
                       </p>
                     </div>
                   ))}

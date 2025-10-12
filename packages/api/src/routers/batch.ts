@@ -10,13 +10,15 @@ import {
   vessels,
   batchMeasurements,
   batchAdditives,
-  applePressRuns,
+  pressRuns,
   basefruitPurchaseItems,
   basefruitPurchases,
   batchMergeHistory,
   batchTransfers,
   batchFilterOperations,
   batchRackingOperations,
+  juicePurchaseItems,
+  juicePurchases,
 } from "db";
 import { eq, and, isNull, desc, asc, sql, or, like } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -27,7 +29,7 @@ const batchIdSchema = z.object({
 });
 
 const listBatchesSchema = z.object({
-  status: z.enum(["planned", "active", "packaged"]).optional(),
+  status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
   vesselId: z.string().uuid().optional(),
   search: z.string().optional(),
   limit: z.number().int().positive().max(100).default(50),
@@ -69,7 +71,7 @@ const filterBatchSchema = z.object({
   volumeBeforeUnit: z.enum(['L', 'gal']).default('L'),
   volumeAfter: z.number().positive("Volume after must be positive"),
   volumeAfterUnit: z.enum(['L', 'gal']).default('L'),
-  notes: z.string().optional(),
+  filteredAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   filteredBy: z.string().optional(),
 }).refine((data) => data.volumeAfter < data.volumeBefore, {
   message: "Volume after filtering must be less than volume before",
@@ -78,7 +80,7 @@ const filterBatchSchema = z.object({
 
 const updateBatchSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
-  status: z.enum(["planned", "active", "packaged"]).optional(),
+  status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
   customName: z.string().optional(),
   startDate: z
     .date()
@@ -88,6 +90,15 @@ const updateBatchSchema = z.object({
     .date()
     .or(z.string().transform((val) => new Date(val)))
     .optional(),
+  notes: z.string().optional(),
+});
+
+const transferJuiceToTankSchema = z.object({
+  juicePurchaseItemId: z.string().uuid("Invalid juice purchase item ID"),
+  vesselId: z.string().uuid("Invalid vessel ID"),
+  volumeToTransfer: z.number().positive("Volume must be positive"),
+  volumeUnit: z.enum(["L", "gal"]).default("L"),
+  transferDate: z.date().or(z.string().transform((val) => new Date(val))),
   notes: z.string().optional(),
 });
 
@@ -104,6 +115,7 @@ export const batchRouter = router({
   getComposition: createRbacProcedure("read", "batch")
     .input(batchIdSchema)
     .query(async ({ input }) => {
+      console.log("🎨 getComposition called for batchId:", input.batchId);
       try {
         // First verify the batch exists
         const batchExists = await db
@@ -112,6 +124,8 @@ export const batchRouter = router({
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
           .limit(1);
 
+        console.log("✅ Batch exists:", batchExists.length > 0);
+
         if (!batchExists.length) {
           throw new TRPCError({
             code: "NOT_FOUND",
@@ -119,7 +133,7 @@ export const batchRouter = router({
           });
         }
 
-        // Get composition details with optimized single query
+        // Get base fruit composition
         const compositionData = await db
           .select({
             vendorName: vendors.name,
@@ -130,6 +144,7 @@ export const batchRouter = router({
             fractionOfBatch: batchCompositions.fractionOfBatch,
             materialCost: batchCompositions.materialCost,
             avgBrix: batchCompositions.avgBrix,
+            sourceType: sql<string>`'base_fruit'`,
           })
           .from(batchCompositions)
           .innerJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
@@ -142,19 +157,107 @@ export const batchRouter = router({
               eq(batchCompositions.batchId, input.batchId),
               isNull(batchCompositions.deletedAt),
             ),
+          );
+
+        // Get juice composition from merge history
+        const juiceCompositionData = await db
+          .select({
+            vendorName: vendors.name,
+            varietyName: sql<string>`COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})`,
+            lotCode: sql<string>`NULL`,
+            inputWeightKg: sql<string>`NULL`,
+            juiceVolume: batchMergeHistory.volumeAdded,
+            fractionOfBatch: sql<string>`NULL`,
+            materialCost: sql<string>`COALESCE(${juicePurchaseItems.totalCost}, 0)`,
+            avgBrix: juicePurchaseItems.brix,
+            sourceType: sql<string>`'juice_purchase'`,
+          })
+          .from(batchMergeHistory)
+          .innerJoin(
+            juicePurchaseItems,
+            eq(batchMergeHistory.sourceJuicePurchaseItemId, juicePurchaseItems.id)
           )
-          .orderBy(batchCompositions.fractionOfBatch); // Order by fraction for consistent display
+          .innerJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
+          .innerJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
+          .where(eq(batchMergeHistory.targetBatchId, input.batchId));
+
+        // Get origin juice if batch was created from juice purchase
+        const batch = batchExists[0];
+        const batchDetails = await db
+          .select({
+            originJuicePurchaseItemId: batches.originJuicePurchaseItemId,
+            currentVolume: batches.currentVolume,
+          })
+          .from(batches)
+          .where(eq(batches.id, input.batchId))
+          .limit(1);
+
+        console.log("🔍 Batch details:", batchDetails[0]);
+
+        const originJuiceData = [];
+        if (batchDetails[0]?.originJuicePurchaseItemId) {
+          console.log("📦 Querying origin juice with ID:", batchDetails[0].originJuicePurchaseItemId);
+
+          // Query for batch's initial volume to show the amount actually transferred
+          const batchVolumeData = await db
+            .select({
+              initialVolume: batches.initialVolume,
+            })
+            .from(batches)
+            .where(eq(batches.id, input.batchId))
+            .limit(1);
+
+          const originJuice = await db
+            .select({
+              vendorName: vendors.name,
+              varietyName: sql<string>`COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})`,
+              lotCode: sql<string>`NULL`,
+              inputWeightKg: sql<string>`NULL`,
+              // Use batch's initialVolume instead of juice purchase's total volume
+              juiceVolume: sql<string>`${batchVolumeData[0]?.initialVolume || '0'}`,
+              fractionOfBatch: sql<string>`NULL`,
+              materialCost: sql<string>`COALESCE(${juicePurchaseItems.totalCost}, 0)`,
+              avgBrix: juicePurchaseItems.brix,
+              sourceType: sql<string>`'juice_purchase'`,
+            })
+            .from(juicePurchaseItems)
+            .innerJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
+            .innerJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
+            .where(eq(juicePurchaseItems.id, batchDetails[0].originJuicePurchaseItemId))
+            // Note: We don't filter by deletedAt here because we want to show archived juice in composition
+            .limit(1);
+
+          console.log("🧃 Origin juice result:", originJuice);
+
+          if (originJuice.length > 0) {
+            originJuiceData.push(originJuice[0]);
+          }
+        }
+
+        console.log("📊 Composition data counts:", {
+          baseFruit: compositionData.length,
+          originJuice: originJuiceData.length,
+          mergedJuice: juiceCompositionData.length,
+        });
+
+        // Combine all composition data
+        const allComposition = [
+          ...compositionData,
+          ...originJuiceData,
+          ...juiceCompositionData,
+        ];
 
         // Convert string fields to numbers for the response
-        return compositionData.map((item) => ({
+        return allComposition.map((item) => ({
           vendorName: item.vendorName,
-          varietyName: item.varietyName,
+          varietyName: item.varietyName || "Unknown",
           lotCode: item.lotCode || "",
-          inputWeightKg: parseFloat(item.inputWeightKg || "0"),
+          inputWeightKg: item.inputWeightKg ? parseFloat(item.inputWeightKg) : 0,
           juiceVolume: parseFloat(item.juiceVolume || "0"),
-          fractionOfBatch: parseFloat(item.fractionOfBatch || "0"),
+          fractionOfBatch: item.fractionOfBatch ? parseFloat(item.fractionOfBatch) : 0,
           materialCost: parseFloat(item.materialCost || "0"),
           avgBrix: item.avgBrix ? parseFloat(item.avgBrix) : undefined,
+          sourceType: item.sourceType,
         }));
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -256,7 +359,7 @@ export const batchRouter = router({
         // Build ORDER BY clause
         const sortColumn = {
           name: batches.name,
-          startDate: sql`COALESCE(${applePressRuns.dateCompleted}, ${batches.startDate})`,
+          startDate: sql`COALESCE(${pressRuns.dateCompleted}, ${batches.startDate})`,
           status: batches.status,
         }[input.sortBy || "startDate"];
 
@@ -279,7 +382,7 @@ export const batchRouter = router({
             initialVolume: batches.initialVolume,
             initialVolumeUnit: batches.initialVolumeUnit,
             startDate:
-              sql<string>`COALESCE(${applePressRuns.dateCompleted}, ${batches.startDate})`.as(
+              sql<string>`COALESCE(${pressRuns.dateCompleted}, ${batches.startDate})`.as(
                 "startDate",
               ),
             endDate: batches.endDate,
@@ -291,8 +394,8 @@ export const batchRouter = router({
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
           .leftJoin(
-            applePressRuns,
-            eq(batches.originPressRunId, applePressRuns.id),
+            pressRuns,
+            eq(batches.originPressRunId, pressRuns.id),
           )
           .where(conditions.length > 0 ? and(...conditions) : undefined)
           .orderBy(orderBy)
@@ -504,16 +607,16 @@ export const batchRouter = router({
         if (batch.originPressRunId) {
           const pressRunData = await db
             .select({
-              id: applePressRuns.id,
-              pressRunName: applePressRuns.pressRunName,
-              pressedDate: applePressRuns.dateCompleted,
-              totalAppleWeightKg: applePressRuns.totalAppleWeightKg,
-              totalJuiceVolume: applePressRuns.totalJuiceVolume,
-              totalJuiceVolumeUnit: applePressRuns.totalJuiceVolumeUnit,
-              extractionRate: applePressRuns.extractionRate,
+              id: pressRuns.id,
+              pressRunName: pressRuns.pressRunName,
+              pressedDate: pressRuns.dateCompleted,
+              totalAppleWeightKg: pressRuns.totalAppleWeightKg,
+              totalJuiceVolume: pressRuns.totalJuiceVolume,
+              totalJuiceVolumeUnit: pressRuns.totalJuiceVolumeUnit,
+              extractionRate: pressRuns.extractionRate,
             })
-            .from(applePressRuns)
-            .where(eq(applePressRuns.id, batch.originPressRunId))
+            .from(pressRuns)
+            .where(eq(pressRuns.id, batch.originPressRunId))
             .limit(1);
 
           if (pressRunData.length) {
@@ -818,13 +921,35 @@ export const batchRouter = router({
             vesselId: batches.vesselId,
             vesselName: vessels.name,
             originPressRunId: batches.originPressRunId,
-            pressRunName: applePressRuns.pressRunName,
+            pressRunName: pressRuns.pressRunName,
+            pressRunVesselId: pressRuns.vesselId,
+            pressRunVesselName: sql<string>`press_run_vessel.name`.as("pressRunVesselName"),
+            originJuicePurchaseItemId: batches.originJuicePurchaseItemId,
+            juiceType: juicePurchaseItems.juiceType,
+            juiceVarietyName: juicePurchaseItems.varietyName,
+            juiceVendorName: sql<string>`juice_vendor.name`.as("juiceVendorName"),
           })
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
           .leftJoin(
-            applePressRuns,
-            eq(batches.originPressRunId, applePressRuns.id),
+            pressRuns,
+            eq(batches.originPressRunId, pressRuns.id),
+          )
+          .leftJoin(
+            sql`vessels AS press_run_vessel`,
+            sql`press_run_vessel.id = ${pressRuns.vesselId}`,
+          )
+          .leftJoin(
+            juicePurchaseItems,
+            eq(batches.originJuicePurchaseItemId, juicePurchaseItems.id),
+          )
+          .leftJoin(
+            juicePurchases,
+            eq(juicePurchaseItems.purchaseId, juicePurchases.id),
+          )
+          .leftJoin(
+            sql`vendors AS juice_vendor`,
+            sql`juice_vendor.id = ${juicePurchases.vendorId}`,
           )
           .where(eq(batches.id, input.batchId))
           .limit(1);
@@ -838,17 +963,28 @@ export const batchRouter = router({
 
         const activities: any[] = [];
 
-        // Add batch creation event
+        // Add batch creation event - handle press run or juice purchase origins
+        const creationVessel = batch[0].pressRunVesselName || batch[0].vesselName;
+
+        let originDescription = "manual entry";
+        if (batch[0].originPressRunId && batch[0].pressRunName) {
+          originDescription = `Press Run ${batch[0].pressRunName}`;
+        } else if (batch[0].originJuicePurchaseItemId) {
+          const juiceLabel = batch[0].juiceType || batch[0].juiceVarietyName || "Purchased Juice";
+          const vendorLabel = batch[0].juiceVendorName ? ` from ${batch[0].juiceVendorName}` : "";
+          originDescription = `${juiceLabel}${vendorLabel}`;
+        }
+
         activities.push({
           id: `creation-${batch[0].id}`,
           type: "creation",
           timestamp: batch[0].createdAt,
-          description: `Batch created from ${batch[0].pressRunName ? `Press Run ${batch[0].pressRunName}` : "manual entry"}`,
+          description: `Batch created from ${originDescription}`,
           details:
-            batch[0].initialVolume || batch[0].vesselName
+            batch[0].initialVolume || creationVessel
               ? {
-                  initialVolume: batch[0].initialVolume ? `${batch[0].initialVolume}${batch[0].initialVolumeUnit || 'L'}` : null,
-                  vessel: batch[0].vesselName || null,
+                  initialVolume: batch[0].initialVolume ? `${parseFloat(batch[0].initialVolume).toFixed(1)}${batch[0].initialVolumeUnit || 'L'}` : null,
+                  vessel: creationVessel || null,
                 }
               : {},
         });
@@ -947,12 +1083,27 @@ export const batchRouter = router({
             targetVolumeAfterUnit: batchMergeHistory.targetVolumeAfterUnit,
             sourceType: batchMergeHistory.sourceType,
             notes: batchMergeHistory.notes,
-            pressRunName: applePressRuns.pressRunName,
+            pressRunName: pressRuns.pressRunName,
+            juiceType: juicePurchaseItems.juiceType,
+            juiceVarietyName: juicePurchaseItems.varietyName,
+            juiceVendorName: sql<string>`merge_juice_vendor.name`.as("juiceVendorName"),
           })
           .from(batchMergeHistory)
           .leftJoin(
-            applePressRuns,
-            eq(batchMergeHistory.sourcePressRunId, applePressRuns.id),
+            pressRuns,
+            eq(batchMergeHistory.sourcePressRunId, pressRuns.id),
+          )
+          .leftJoin(
+            juicePurchaseItems,
+            eq(batchMergeHistory.sourceJuicePurchaseItemId, juicePurchaseItems.id),
+          )
+          .leftJoin(
+            juicePurchases,
+            eq(juicePurchaseItems.purchaseId, juicePurchases.id),
+          )
+          .leftJoin(
+            sql`vendors AS merge_juice_vendor`,
+            sql`merge_juice_vendor.id = ${juicePurchases.vendorId}`,
           )
           .where(
             and(
@@ -962,11 +1113,20 @@ export const batchRouter = router({
           );
 
         merges.forEach((m) => {
+          let sourceDescription = "another batch";
+          if (m.sourceType === "press_run" && m.pressRunName) {
+            sourceDescription = `Press Run ${m.pressRunName}`;
+          } else if (m.sourceType === "juice_purchase") {
+            const juiceLabel = m.juiceType || m.juiceVarietyName || "Purchased Juice";
+            const vendorLabel = m.juiceVendorName ? ` from ${m.juiceVendorName}` : "";
+            sourceDescription = `${juiceLabel}${vendorLabel}`;
+          }
+
           activities.push({
             id: `merge-${m.id}`,
             type: "merge",
             timestamp: m.mergedAt,
-            description: `Merged with juice from ${m.sourceType === "press_run" && m.pressRunName ? `Press Run ${m.pressRunName}` : "another batch"}`,
+            description: `Merged with juice from ${sourceDescription}`,
             details: {
               volumeAdded: `${m.volumeAdded}${m.volumeAddedUnit || 'L'}`,
               volumeChange: `${m.targetVolumeBefore}${m.targetVolumeBeforeUnit || 'L'} → ${m.targetVolumeAfter}${m.targetVolumeAfterUnit || 'L'}`,
@@ -1061,6 +1221,56 @@ export const batchRouter = router({
           }
         });
 
+        // Get racking operations
+        const rackingOps = await db
+          .select({
+            id: batchRackingOperations.id,
+            rackedAt: batchRackingOperations.rackedAt,
+            sourceVesselId: batchRackingOperations.sourceVesselId,
+            destinationVesselId: batchRackingOperations.destinationVesselId,
+            sourceVesselName: sql<string>`source_vessel.name`.as("sourceVesselName"),
+            destVesselName: sql<string>`dest_vessel.name`.as("destVesselName"),
+            volumeBefore: batchRackingOperations.volumeBefore,
+            volumeBeforeUnit: batchRackingOperations.volumeBeforeUnit,
+            volumeAfter: batchRackingOperations.volumeAfter,
+            volumeAfterUnit: batchRackingOperations.volumeAfterUnit,
+            volumeLoss: batchRackingOperations.volumeLoss,
+            volumeLossUnit: batchRackingOperations.volumeLossUnit,
+            rackedBy: batchRackingOperations.rackedBy,
+          })
+          .from(batchRackingOperations)
+          .leftJoin(
+            sql`vessels AS source_vessel`,
+            sql`source_vessel.id = ${batchRackingOperations.sourceVesselId}`,
+          )
+          .leftJoin(
+            sql`vessels AS dest_vessel`,
+            sql`dest_vessel.id = ${batchRackingOperations.destinationVesselId}`,
+          )
+          .where(
+            and(
+              eq(batchRackingOperations.batchId, input.batchId),
+              isNull(batchRackingOperations.deletedAt),
+            ),
+          );
+
+        rackingOps.forEach((r) => {
+          activities.push({
+            id: `rack-${r.id}`,
+            type: "rack",
+            timestamp: r.rackedAt,
+            description: `Racked from ${r.sourceVesselName || "vessel"} to ${r.destVesselName || "vessel"}`,
+            details: {
+              volumeBefore: `${r.volumeBefore}${r.volumeBeforeUnit || 'L'}`,
+              volumeAfter: `${r.volumeAfter}${r.volumeAfterUnit || 'L'}`,
+              volumeLoss: `${r.volumeLoss}${r.volumeLossUnit || 'L'}`,
+              lossPercentage: `${((parseFloat(r.volumeLoss) / parseFloat(r.volumeBefore)) * 100).toFixed(1)}%`,
+              fromVessel: r.sourceVesselName || null,
+              toVessel: r.destVesselName || null,
+            },
+          });
+        });
+
         // Get filter operations
         const filterOps = await db
           .select({
@@ -1073,7 +1283,6 @@ export const batchRouter = router({
             volumeAfterUnit: batchFilterOperations.volumeAfterUnit,
             volumeLoss: batchFilterOperations.volumeLoss,
             filteredBy: batchFilterOperations.filteredBy,
-            notes: batchFilterOperations.notes,
           })
           .from(batchFilterOperations)
           .where(
@@ -1095,7 +1304,6 @@ export const batchRouter = router({
               volumeAfter: `${f.volumeAfter}${f.volumeAfterUnit || 'L'}`,
               volumeLoss: `${f.volumeLoss}L`,
               lossPercentage: `${((parseFloat(f.volumeLoss) / parseFloat(f.volumeBefore)) * 100).toFixed(1)}%`,
-              notes: f.notes || null,
             },
           });
         });
@@ -1158,12 +1366,12 @@ export const batchRouter = router({
             compositionSnapshot: batchMergeHistory.compositionSnapshot,
             notes: batchMergeHistory.notes,
             mergedAt: batchMergeHistory.mergedAt,
-            pressRunName: applePressRuns.pressRunName,
+            pressRunName: pressRuns.pressRunName,
           })
           .from(batchMergeHistory)
           .leftJoin(
-            applePressRuns,
-            eq(batchMergeHistory.sourcePressRunId, applePressRuns.id),
+            pressRuns,
+            eq(batchMergeHistory.sourcePressRunId, pressRuns.id),
           )
           .where(
             and(
@@ -1223,17 +1431,17 @@ export const batchRouter = router({
           });
         }
 
-        // Verify vessel is in aging status
+        // Verify vessel is in use
         const vesselData = await db
           .select({ status: vessels.status })
           .from(vessels)
           .where(eq(vessels.id, input.vesselId))
           .limit(1);
 
-        if (!vesselData.length || vesselData[0].status !== "aging") {
+        if (!vesselData.length || vesselData[0].status !== "available") {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Filtering is only available for vessels in aging status",
+            message: `Filtering is only available when vessel is available (current status: ${vesselData[0]?.status || 'unknown'})`,
           });
         }
 
@@ -1258,7 +1466,7 @@ export const batchRouter = router({
             volumeAfter: input.volumeAfter.toString(),
             volumeAfterUnit: input.volumeAfterUnit,
             volumeLoss: volumeLossL.toFixed(3),
-            notes: input.notes,
+            filteredAt: input.filteredAt || new Date(),
             filteredBy: input.filteredBy,
           })
           .returning();
@@ -1300,10 +1508,7 @@ export const batchRouter = router({
         destinationVesselId: z.string().uuid("Invalid destination vessel ID"),
         volumeAfter: z.number().positive("Volume after must be positive"),
         volumeAfterUnit: z.enum(['L', 'gal']).default('L'),
-        volumeLoss: z.number().min(0).default(0),
-        volumeLossUnit: z.enum(['L', 'gal']).default('L'),
-        reason: z.string().optional(),
-        notes: z.string().optional(),
+        rackedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -1374,19 +1579,26 @@ export const batchRouter = router({
           const volumeAfterL = input.volumeAfterUnit === 'gal'
             ? input.volumeAfter * 3.78541
             : input.volumeAfter;
-          const volumeLossL = input.volumeLossUnit === 'gal'
-            ? input.volumeLoss * 3.78541
-            : input.volumeLoss;
           const volumeBeforeL = batch[0].currentVolume
             ? parseFloat(batch[0].currentVolume)
             : 0;
 
-          // 3. Validate volume calculations
-          const expectedVolumeAfter = volumeBeforeL - volumeLossL;
-          if (Math.abs(volumeAfterL - expectedVolumeAfter) > 0.1) {
+          // 3. Calculate volume loss
+          const volumeLossL = volumeBeforeL - volumeAfterL;
+
+          // Validate that volumeAfter is not greater than volumeBefore
+          if (volumeAfterL > volumeBeforeL) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Volume mismatch: ${volumeBeforeL}L - ${volumeLossL}L loss should equal ${expectedVolumeAfter.toFixed(1)}L, but got ${volumeAfterL}L`,
+              message: `Volume after racking (${volumeAfterL.toFixed(1)}L) cannot be greater than current volume (${volumeBeforeL.toFixed(1)}L)`,
+            });
+          }
+
+          // Validate that loss is not negative (should be impossible due to check above, but for safety)
+          if (volumeLossL < 0) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Calculated volume loss is negative. This should not happen.`,
             });
           }
 
@@ -1403,39 +1615,39 @@ export const batchRouter = router({
               volumeAfterUnit: 'L',
               volumeLoss: volumeLossL.toString(),
               volumeLossUnit: 'L',
-              reason: input.reason,
-              notes: input.notes,
+              rackedAt: input.rackedAt || new Date(),
               rackedBy: ctx.session?.user?.id,
             })
             .returning();
 
-          // 5. Update batch vessel and volume
+          // 5. Update batch vessel, volume, and status
+          // Racking transitions batch from "fermentation" to "aging"
           const updatedBatch = await tx
             .update(batches)
             .set({
               vesselId: input.destinationVesselId,
               currentVolume: volumeAfterL.toString(),
               currentVolumeUnit: 'L',
-              status: batch[0].status === 'active' ? 'active' : 'active', // Set to aging if needed
+              status: "aging", // Racking always moves batch to aging stage
               updatedAt: new Date(),
             })
             .where(eq(batches.id, input.batchId))
             .returning();
 
-          // 6. Update source vessel status to available
+          // 6. Update source vessel status to cleaning (liquid removed, needs cleaning)
           await tx
             .update(vessels)
             .set({
-              status: "available",
+              status: "cleaning",
               updatedAt: new Date(),
             })
             .where(eq(vessels.id, sourceVesselId));
 
-          // 7. Update destination vessel status to fermenting/aging
+          // 7. Update destination vessel status to in_use (now contains batch)
           await tx
             .update(vessels)
             .set({
-              status: "fermenting", // or "aging" based on batch status
+              status: "available",
               updatedAt: new Date(),
             })
             .where(eq(vessels.id, input.destinationVesselId));
@@ -1453,6 +1665,240 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to rack batch",
+        });
+      }
+    }),
+
+  /**
+   * Transfer juice from purchase to tank
+   * Creates new batch if vessel empty, or merges with existing batch
+   * Cache-bust: 2025-10-11-v2
+   */
+  transferJuiceToTank: createRbacProcedure("create", "batch")
+    .input(transferJuiceToTankSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // 1. Validate juice purchase item and get details
+          const juiceItem = await tx
+            .select({
+              id: juicePurchaseItems.id,
+              purchaseId: juicePurchaseItems.purchaseId,
+              juiceType: juicePurchaseItems.juiceType,
+              varietyName: juicePurchaseItems.varietyName,
+              volume: juicePurchaseItems.volume,
+              volumeUnit: juicePurchaseItems.volumeUnit,
+              volumeAllocated: juicePurchaseItems.volumeAllocated,
+              vendorId: juicePurchases.vendorId,
+              vendorName: sql<string>`vendors.name`.as("vendorName"),
+              brix: juicePurchaseItems.brix,
+              ph: juicePurchaseItems.ph,
+              specificGravity: juicePurchaseItems.specificGravity,
+            })
+            .from(juicePurchaseItems)
+            .leftJoin(
+              juicePurchases,
+              eq(juicePurchaseItems.purchaseId, juicePurchases.id)
+            )
+            .leftJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
+            .where(
+              and(
+                eq(juicePurchaseItems.id, input.juicePurchaseItemId),
+                isNull(juicePurchaseItems.deletedAt)
+              )
+            )
+            .limit(1);
+
+          if (!juiceItem.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Juice purchase item not found",
+            });
+          }
+
+          const juice = juiceItem[0];
+          console.log("🧃 Juice purchase item data:", {
+            id: juice.id,
+            volume: juice.volume,
+            volumeUnit: juice.volumeUnit,
+            volumeAllocated: juice.volumeAllocated,
+          });
+
+          const totalVolumeL = parseFloat(juice.volume || "0");
+          const allocatedVolumeL = parseFloat(juice.volumeAllocated || "0");
+          const availableVolumeL = totalVolumeL - allocatedVolumeL;
+
+          console.log("📊 Volume calculation:", {
+            totalVolumeL,
+            allocatedVolumeL,
+            availableVolumeL,
+          });
+
+          // Convert transfer volume to liters for comparison
+          const transferVolumeL =
+            input.volumeUnit === "gal"
+              ? input.volumeToTransfer * 3.78541
+              : input.volumeToTransfer;
+
+          if (transferVolumeL > availableVolumeL) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Insufficient juice available. Available: ${availableVolumeL.toFixed(2)}L (Total: ${totalVolumeL.toFixed(2)}L, Allocated: ${allocatedVolumeL.toFixed(2)}L), Requested: ${transferVolumeL.toFixed(2)}L`,
+            });
+          }
+
+          // 2. Get vessel details and check if it has an active batch
+          const vesselData = await tx
+            .select({
+              id: vessels.id,
+              name: vessels.name,
+              status: vessels.status,
+            })
+            .from(vessels)
+            .where(
+              and(eq(vessels.id, input.vesselId), isNull(vessels.deletedAt))
+            )
+            .limit(1);
+
+          if (!vesselData.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Vessel not found",
+            });
+          }
+
+          const vessel = vesselData[0];
+
+          // Check for existing batch in vessel
+          const existingBatch = await tx
+            .select({
+              id: batches.id,
+              name: batches.name,
+              currentVolume: batches.currentVolume,
+              currentVolumeUnit: batches.currentVolumeUnit,
+              status: batches.status,
+            })
+            .from(batches)
+            .where(
+              and(
+                eq(batches.vesselId, input.vesselId),
+                isNull(batches.deletedAt)
+              )
+            )
+            .limit(1);
+
+          let batchId: string;
+          let batchName: string;
+          let isNewBatch = false;
+
+          if (existingBatch.length === 0) {
+            // 3a. Create new batch
+            // Generate unique batch name with timestamp to avoid collisions
+            const baseDate = input.transferDate.toISOString().slice(0, 10);
+            const timestamp = Date.now().toString().slice(-6); // Last 6 digits of timestamp
+            const newBatchName = `${juice.juiceType || juice.varietyName || "JUICE"}-${baseDate}-${vessel.name}-${timestamp}`;
+
+            console.log("🏭 Creating new batch with originJuicePurchaseItemId:", input.juicePurchaseItemId);
+
+            const newBatch = await tx
+              .insert(batches)
+              .values({
+                vesselId: input.vesselId,
+                name: newBatchName,
+                batchNumber: newBatchName,
+                initialVolume: transferVolumeL.toString(),
+                initialVolumeUnit: "L",
+                currentVolume: transferVolumeL.toString(),
+                currentVolumeUnit: "L",
+                status: "fermentation",
+                startDate: input.transferDate,
+                originJuicePurchaseItemId: input.juicePurchaseItemId,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .returning();
+
+            console.log("✅ Batch created:", {
+              batchId: newBatch[0].id,
+              batchName: newBatch[0].name,
+              originJuicePurchaseItemId: newBatch[0].originJuicePurchaseItemId,
+            });
+
+            batchId = newBatch[0].id;
+            batchName = newBatch[0].name;
+            isNewBatch = true;
+
+            // Vessel status remains as-is when batch is assigned
+            // The presence of a batch is tracked via the batch.vesselId relationship
+          } else {
+            // 3b. Merge with existing batch
+            const batch = existingBatch[0];
+            batchId = batch.id;
+            batchName = batch.name;
+
+            const currentVolumeL = parseFloat(batch.currentVolume || "0");
+            const newVolumeL = currentVolumeL + transferVolumeL;
+
+            // Update batch volume
+            await tx
+              .update(batches)
+              .set({
+                currentVolume: newVolumeL.toString(),
+                currentVolumeUnit: "L",
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, batchId));
+
+            // Create merge history entry
+            await tx.insert(batchMergeHistory).values({
+              targetBatchId: batchId,
+              sourceJuicePurchaseItemId: input.juicePurchaseItemId,
+              sourceType: "juice_purchase",
+              volumeAdded: transferVolumeL.toString(),
+              volumeAddedUnit: "L",
+              targetVolumeBefore: currentVolumeL.toString(),
+              targetVolumeBeforeUnit: "L",
+              targetVolumeAfter: newVolumeL.toString(),
+              targetVolumeAfterUnit: "L",
+              notes: input.notes,
+              mergedAt: input.transferDate,
+              mergedBy: ctx.session?.user?.id,
+              createdAt: new Date(),
+            });
+          }
+
+          // 4. Update juice purchase item's allocated volume
+          const newAllocatedVolume = allocatedVolumeL + transferVolumeL;
+          const isFullyAllocated = newAllocatedVolume >= totalVolumeL;
+
+          await tx
+            .update(juicePurchaseItems)
+            .set({
+              volumeAllocated: newAllocatedVolume.toString(),
+              updatedAt: new Date(),
+              // Archive (soft delete) if fully allocated
+              deletedAt: isFullyAllocated ? new Date() : undefined,
+            })
+            .where(eq(juicePurchaseItems.id, input.juicePurchaseItemId));
+
+          return {
+            success: true,
+            message: isNewBatch
+              ? `New batch created in ${vessel.name} with ${transferVolumeL.toFixed(1)}L of ${juice.juiceType || juice.varietyName}`
+              : `Added ${transferVolumeL.toFixed(1)}L of ${juice.juiceType || juice.varietyName} to existing batch in ${vessel.name}`,
+            batchId,
+            batchName,
+            isNewBatch,
+            volumeTransferredL: transferVolumeL,
+            remainingVolumeL: availableVolumeL - transferVolumeL,
+          };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error transferring juice to tank:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to transfer juice to tank",
         });
       }
     }),

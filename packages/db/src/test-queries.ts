@@ -4,17 +4,13 @@ import {
   appleVarieties,
   purchases,
   purchaseItems,
-  pressRuns,
-  pressItems,
+  pressRuns, // Renamed from applePressRuns in migration 0024
+  pressRunLoads, // Renamed from applePressRunLoads in migration 0024
   vessels,
   batches,
   batchIngredients,
   batchMeasurements,
-  packages,
-  inventory,
-  batchCosts,
-  applePressRuns,
-  applePressRunLoads,
+  // Dropped tables: pressItems, packages, inventory, batchCosts
 } from "./schema";
 import { eq, desc, sql, and, isNull } from "drizzle-orm";
 
@@ -86,7 +82,7 @@ async function testQueries() {
         startDate: batches.startDate,
       })
       .from(batches)
-      .where(eq(batches.status, "active"))
+      .where(eq(batches.status, "fermentation"))
       .orderBy(batches.startDate);
 
     console.log(`   Active batches (${activeBatches.length}):`);
@@ -96,63 +92,63 @@ async function testQueries() {
 
     // Test 5: Inventory availability
     console.log("\n5. 📋 Testing inventory queries...");
-    const availableInventory = await db
-      .select({
-        batchNumber: batches.batchNumber,
-        bottleSize: packages.bottleSize,
-        totalBottles: packages.bottleCount,
-        currentBottles: inventory.currentBottleCount,
-        reservedBottles: inventory.reservedBottleCount,
-        availableBottles: sql<number>`${inventory.currentBottleCount} - ${inventory.reservedBottleCount}`,
-        abv: packages.abvAtPackaging,
-        location: inventory.location,
-      })
-      .from(inventory)
-      .innerJoin(packages, eq(inventory.packageId, packages.id))
-      .innerJoin(batches, eq(packages.batchId, batches.id));
-
-    console.log(`   Inventory available:`);
-    availableInventory.forEach((i) => {
-      console.log(
-        `   - ${i.batchNumber}: ${i.availableBottles} bottles available (${i.bottleSize}, ${i.abv}% ABV)`,
-      );
-    });
+// DROPPED TABLE:     const availableInventory = await db
+// DROPPED TABLE:       .select({
+// DROPPED TABLE:         batchNumber: batches.batchNumber,
+// DROPPED TABLE:         bottleSize: packages.bottleSize,
+// DROPPED TABLE:         totalBottles: packages.bottleCount,
+// DROPPED TABLE:         currentBottles: inventory.currentBottleCount,
+// DROPPED TABLE:         reservedBottles: inventory.reservedBottleCount,
+// DROPPED TABLE:         availableBottles: sql<number>`${inventory.currentBottleCount} - ${inventory.reservedBottleCount}`,
+// DROPPED TABLE:         abv: packages.abvAtPackaging,
+// DROPPED TABLE:         location: inventory.location,
+// DROPPED TABLE:       })
+// DROPPED TABLE:       .from(inventory)
+// DROPPED TABLE:       .innerJoin(packages, eq(inventory.packageId, packages.id))
+// DROPPED TABLE:       .innerJoin(batches, eq(packages.batchId, batches.id));
+// DROPPED TABLE:
+// DROPPED TABLE:     console.log(`   Inventory available:`);
+// DROPPED TABLE:     availableInventory.forEach((i) => {
+// DROPPED TABLE:       console.log(
+// DROPPED TABLE:         `   - ${i.batchNumber}: ${i.availableBottles} bottles available (${i.bottleSize}, ${i.abv}% ABV)`,
+// DROPPED TABLE:       );
+// DROPPED TABLE:     });
 
     // Test 6: Cost analysis
     console.log("\n6. 💲 Testing cost analysis queries...");
-    const costAnalysis = await db
-      .select({
-        batchNumber: batches.batchNumber,
-        totalCost: batchCosts.totalCost,
-        costPerBottle: batchCosts.costPerBottle,
-        costPerL: batchCosts.costPerL,
-        appleCost: batchCosts.totalAppleCost,
-        laborCost: batchCosts.laborCost,
-        overheadCost: batchCosts.overheadCost,
-        packagingCost: batchCosts.packagingCost,
-      })
-      .from(batchCosts)
-      .innerJoin(batches, eq(batchCosts.batchId, batches.id))
-      .orderBy(desc(batchCosts.calculatedAt));
-
-    console.log(`   Cost breakdown:`);
-    costAnalysis.forEach((c) => {
-      console.log(
-        `   - ${c.batchNumber}: Total $${c.totalCost} (Apple: $${c.appleCost}, Labor: $${c.laborCost}, Packaging: $${c.packagingCost})`,
-      );
-      if (c.costPerBottle) {
-        console.log(`     Cost per bottle: $${c.costPerBottle}`);
-      }
-    });
-
+// DROPPED TABLE:     const costAnalysis = await db
+// DROPPED TABLE:       .select({
+// DROPPED TABLE:         batchNumber: batches.batchNumber,
+// DROPPED TABLE:         totalCost: batchCosts.totalCost,
+// DROPPED TABLE:         costPerBottle: batchCosts.costPerBottle,
+// DROPPED TABLE:         costPerL: batchCosts.costPerL,
+// DROPPED TABLE:         appleCost: batchCosts.totalAppleCost,
+// DROPPED TABLE:         laborCost: batchCosts.laborCost,
+// DROPPED TABLE:         overheadCost: batchCosts.overheadCost,
+// DROPPED TABLE:         packagingCost: batchCosts.packagingCost,
+// DROPPED TABLE:       })
+// DROPPED TABLE:       .from(batchCosts)
+// DROPPED TABLE:       .innerJoin(batches, eq(batchCosts.batchId, batches.id))
+// DROPPED TABLE:       .orderBy(desc(batchCosts.calculatedAt));
+// DROPPED TABLE: 
+// DROPPED TABLE:     console.log(`   Cost breakdown:`);
+// DROPPED TABLE:     costAnalysis.forEach((c) => {
+// DROPPED TABLE:       console.log(
+// DROPPED TABLE:         `   - ${c.batchNumber}: Total $${c.totalCost} (Apple: $${c.appleCost}, Labor: $${c.laborCost}, Packaging: $${c.packagingCost})`,
+// DROPPED TABLE:       );
+// DROPPED TABLE:       if (c.costPerBottle) {
+// DROPPED TABLE:         console.log(`     Cost per bottle: $${c.costPerBottle}`);
+// DROPPED TABLE:       }
+// DROPPED TABLE:     });
+// DROPPED TABLE: 
     // Test 7: Production efficiency metrics
     console.log("\n7. 📊 Testing production efficiency queries...");
     const pressEfficiency = await db
       .select({
-        runDate: pressRuns.runDate,
-        totalApples: pressRuns.totalAppleProcessedKg,
-        totalJuice: pressRuns.totalJuiceProduced,
-        totalJuiceUnit: pressRuns.totalJuiceProducedUnit,
+        runDate: pressRuns.dateCompleted,
+        totalApples: pressRuns.totalAppleWeightKg,
+        totalJuice: pressRuns.totalJuiceVolume,
+        totalJuiceUnit: pressRuns.totalJuiceVolumeUnit,
         extractionRate: pressRuns.extractionRate,
         costPerKg: sql<number>`
           COALESCE(
@@ -164,12 +160,13 @@ async function testQueries() {
           )`,
       })
       .from(pressRuns)
-      .orderBy(desc(pressRuns.runDate));
+      .orderBy(desc(pressRuns.dateCompleted));
 
     console.log(`   Press efficiency:`);
     pressEfficiency.forEach((p) => {
+      const dateStr = p.runDate ? new Date(p.runDate).toDateString() : 'No date';
       console.log(
-        `   - ${p.runDate.toDateString()}: ${p.extractionRate} extraction (${p.totalApples}kg → ${p.totalJuice}${p.totalJuiceUnit})`,
+        `   - ${dateStr}: ${p.extractionRate} extraction (${p.totalApples}kg → ${p.totalJuice}${p.totalJuiceUnit})`,
       );
     });
 
@@ -187,7 +184,7 @@ async function testQueries() {
       })
       .from(batchMeasurements)
       .innerJoin(batches, eq(batchMeasurements.batchId, batches.id))
-      .where(eq(batches.status, "active"))
+      .where(eq(batches.status, "fermentation"))
       .orderBy(desc(batchMeasurements.measurementDate))
       .limit(10);
 
@@ -243,7 +240,7 @@ async function testQueries() {
       .from(vessels)
       .leftJoin(
         batches,
-        and(eq(batches.vesselId, vessels.id), eq(batches.status, "active")),
+        and(eq(batches.vesselId, vessels.id), eq(batches.status, "fermentation")),
       )
       .orderBy(vessels.name);
 
@@ -266,10 +263,10 @@ async function testQueries() {
     // Test table existence and basic operations
     const applePressRunCount = await db
       .select({ count: sql<number>`count(*)` })
-      .from(applePressRuns);
+      .from(pressRuns);
     const applePressLoadCount = await db
       .select({ count: sql<number>`count(*)` })
-      .from(applePressRunLoads);
+      .from(pressRunLoads);
 
     console.log(
       `   ApplePress runs table: ✅ (${applePressRunCount[0].count} records)`,
@@ -282,8 +279,8 @@ async function testQueries() {
     try {
       await db
         .select()
-        .from(applePressRuns)
-        .where(eq(applePressRuns.status, "draft"))
+        .from(pressRuns)
+        .where(eq(pressRuns.status, "draft"))
         .limit(1);
       console.log(`   Status enum constraint: ✅ (draft status queryable)`);
     } catch (error) {
@@ -293,13 +290,13 @@ async function testQueries() {
     // Test foreign key relationships
     const foreignKeyTest = await db
       .select({
-        applePressRunId: applePressRuns.id,
+        applePressRunId: pressRuns.id,
         vendorName: vendors.name,
         vesselName: sql<string>`COALESCE(${vessels.name}, 'No vessel assigned')`,
       })
-      .from(applePressRuns)
-      .innerJoin(vendors, eq(applePressRuns.vendorId, vendors.id))
-      .leftJoin(vessels, eq(applePressRuns.vesselId, vessels.id))
+      .from(pressRuns)
+      .innerJoin(vendors, eq(pressRuns.vendorId, vendors.id))
+      .leftJoin(vessels, eq(pressRuns.vesselId, vessels.id))
       .limit(5);
 
     console.log(`   Foreign key relationships: ✅ (joins working)`);
@@ -307,11 +304,11 @@ async function testQueries() {
     // Test composite indexes
     const indexTest = await db
       .select()
-      .from(applePressRuns)
+      .from(pressRuns)
       .where(
         and(
-          eq(applePressRuns.status, "draft"),
-          isNull(applePressRuns.deletedAt),
+          eq(pressRuns.status, "draft"),
+          isNull(pressRuns.deletedAt),
         ),
       )
       .limit(1);

@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
+import { formatDate } from "@/utils/date-format";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import {
   DropdownMenu,
@@ -253,9 +254,9 @@ export function PackagingInventoryTable({
     [sortState.columns],
   );
 
-  const formatDate = (dateString: string | null) => {
+  const formatDateDisplay = (dateString: string | null) => {
     if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString();
+    return formatDate(dateString);
   };
 
   const formatQuantity = (quantity: number) => {
@@ -526,7 +527,7 @@ export function PackagingInventoryTable({
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
-                          {formatDate(item.createdAt)}
+                          {formatDateDisplay(item.createdAt)}
                         </div>
                       </TableCell>
                       <TableCell>

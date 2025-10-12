@@ -238,8 +238,6 @@ export function PressRunCompletion({
                 originalWeight: parseFloat(load.originalWeight || "0"),
                 originalWeightUnit: load.originalWeightUnit || "kg",
                 loadSequence: load.loadSequence || 0,
-                appleCondition: load.appleCondition || undefined,
-                brixMeasured: load.brixMeasured || undefined,
                 notes: load.notes || undefined,
                 purchaseItemId: load.purchaseItemId || undefined,
                 vendorName: load.vendorName || undefined,
