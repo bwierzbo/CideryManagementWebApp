@@ -227,11 +227,18 @@ export const batchRouter = router({
             // Note: We don't filter by deletedAt here because we want to show archived juice in composition
             .limit(1);
 
-          console.log("🧃 Origin juice result:", originJuice);
+          console.log("🧃 Origin juice query result:", {
+            found: originJuice.length > 0,
+            data: originJuice.length > 0 ? originJuice[0] : null,
+          });
 
           if (originJuice.length > 0) {
             originJuiceData.push(originJuice[0]);
+          } else {
+            console.warn("⚠️ Origin juice not found for originJuicePurchaseItemId:", batchDetails[0].originJuicePurchaseItemId);
           }
+        } else {
+          console.log("ℹ️ No originJuicePurchaseItemId set for this batch");
         }
 
         console.log("📊 Composition data counts:", {
