@@ -536,29 +536,34 @@ export const batchCompositions = pgTable(
     batchId: uuid("batch_id")
       .notNull()
       .references(() => batches.id, { onDelete: "cascade" }),
+    // Source type: 'base_fruit' or 'juice_purchase'
+    sourceType: text("source_type").notNull().default("base_fruit"),
+    // Base fruit fields (nullable for juice purchases)
     purchaseItemId: uuid("purchase_item_id")
-      .notNull()
       .references(() => basefruitPurchaseItems.id),
-    vendorId: uuid("vendor_id")
-      .notNull()
-      .references(() => vendors.id),
     varietyId: uuid("variety_id")
-      .notNull()
       .references(() => baseFruitVarieties.id),
-    lotCode: text("lot_code"),
     inputWeightKg: decimal("input_weight_kg", {
       precision: 12,
       scale: 3,
-    }).notNull(),
+    }),
+    fractionOfBatch: decimal("fraction_of_batch", {
+      precision: 8,
+      scale: 6,
+    }),
+    // Juice purchase fields (nullable for base fruit)
+    juicePurchaseItemId: uuid("juice_purchase_item_id")
+      .references(() => juicePurchaseItems.id),
+    // Common fields for both types
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendors.id),
+    lotCode: text("lot_code"),
     juiceVolume: decimal("juice_volume", {
       precision: 12,
       scale: 3,
     }).notNull(),
     juiceVolumeUnit: unitEnum("juice_volume_unit").notNull().default("L"),
-    fractionOfBatch: decimal("fraction_of_batch", {
-      precision: 8,
-      scale: 6,
-    }).notNull(),
     materialCost: decimal("material_cost", {
       precision: 12,
       scale: 2,
@@ -570,17 +575,29 @@ export const batchCompositions = pgTable(
     deletedAt: timestamp("deleted_at"),
   },
   (table) => ({
-    batchCompositionUniqueIdx: uniqueIndex(
-      "batch_compositions_batch_purchase_item_unique_idx",
-    ).on(table.batchId, table.purchaseItemId),
     batchIdx: index("batch_compositions_batch_idx").on(table.batchId),
     purchaseItemIdx: index("batch_compositions_purchase_item_idx").on(
       table.purchaseItemId,
     ),
+    juicePurchaseItemIdx: index("batch_compositions_juice_purchase_item_idx").on(
+      table.juicePurchaseItemId,
+    ),
+    // Unique constraints for both source types
+    batchFruitItemUniqueIdx: uniqueIndex(
+      "batch_compositions_batch_fruit_item_unique_idx",
+    ).on(table.batchId, table.purchaseItemId),
+    batchJuiceItemUniqueIdx: uniqueIndex(
+      "batch_compositions_batch_juice_item_unique_idx",
+    ).on(table.batchId, table.juicePurchaseItemId),
     // CHECK constraints for data integrity
-    inputWeightKgPositive: sql`CHECK (input_weight_kg >= 0)`,
+    sourceTypeCheck: sql`CHECK (source_type IN ('base_fruit', 'juice_purchase'))`,
+    sourceCheck: sql`CHECK (
+      (source_type = 'base_fruit' AND purchase_item_id IS NOT NULL AND juice_purchase_item_id IS NULL) OR
+      (source_type = 'juice_purchase' AND juice_purchase_item_id IS NOT NULL AND purchase_item_id IS NULL)
+    )`,
+    inputWeightKgPositive: sql`CHECK (input_weight_kg IS NULL OR input_weight_kg >= 0)`,
     juiceVolumePositive: sql`CHECK (juice_volume >= 0)`,
-    fractionOfBatchValid: sql`CHECK (fraction_of_batch >= 0 AND fraction_of_batch <= 1)`,
+    fractionOfBatchValid: sql`CHECK (fraction_of_batch IS NULL OR (fraction_of_batch >= 0 AND fraction_of_batch <= 1))`,
     materialCostPositive: sql`CHECK (material_cost >= 0)`,
   }),
 );

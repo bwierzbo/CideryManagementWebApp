@@ -133,24 +133,34 @@ export const batchRouter = router({
           });
         }
 
-        // Get base fruit composition
+        // Get all composition (base fruit AND juice purchases)
         const compositionData = await db
           .select({
             vendorName: vendors.name,
-            varietyName: baseFruitVarieties.name,
+            varietyName: sql<string>`
+              CASE
+                WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                ELSE 'Unknown'
+              END
+            `,
             lotCode: batchCompositions.lotCode,
             inputWeightKg: batchCompositions.inputWeightKg,
             juiceVolume: batchCompositions.juiceVolume,
             fractionOfBatch: batchCompositions.fractionOfBatch,
             materialCost: batchCompositions.materialCost,
             avgBrix: batchCompositions.avgBrix,
-            sourceType: sql<string>`'base_fruit'`,
+            sourceType: batchCompositions.sourceType,
           })
           .from(batchCompositions)
           .innerJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
-          .innerJoin(
+          .leftJoin(
             baseFruitVarieties,
             eq(batchCompositions.varietyId, baseFruitVarieties.id),
+          )
+          .leftJoin(
+            juicePurchaseItems,
+            eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id),
           )
           .where(
             and(
@@ -159,100 +169,10 @@ export const batchRouter = router({
             ),
           );
 
-        // Get juice composition from merge history
-        const juiceCompositionData = await db
-          .select({
-            vendorName: vendors.name,
-            varietyName: sql<string>`COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})`,
-            lotCode: sql<string>`NULL`,
-            inputWeightKg: sql<string>`NULL`,
-            juiceVolume: batchMergeHistory.volumeAdded,
-            fractionOfBatch: sql<string>`NULL`,
-            materialCost: sql<string>`COALESCE(${juicePurchaseItems.totalCost}, 0)`,
-            avgBrix: juicePurchaseItems.brix,
-            sourceType: sql<string>`'juice_purchase'`,
-          })
-          .from(batchMergeHistory)
-          .innerJoin(
-            juicePurchaseItems,
-            eq(batchMergeHistory.sourceJuicePurchaseItemId, juicePurchaseItems.id)
-          )
-          .innerJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
-          .innerJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
-          .where(eq(batchMergeHistory.targetBatchId, input.batchId));
+        console.log("📊 Composition data count:", compositionData.length);
 
-        // Get origin juice if batch was created from juice purchase
-        const batch = batchExists[0];
-        const batchDetails = await db
-          .select({
-            originJuicePurchaseItemId: batches.originJuicePurchaseItemId,
-            currentVolume: batches.currentVolume,
-          })
-          .from(batches)
-          .where(eq(batches.id, input.batchId))
-          .limit(1);
-
-        console.log("🔍 Batch details:", batchDetails[0]);
-
-        const originJuiceData = [];
-        if (batchDetails[0]?.originJuicePurchaseItemId) {
-          console.log("📦 Querying origin juice with ID:", batchDetails[0].originJuicePurchaseItemId);
-
-          // Query for batch's initial volume to show the amount actually transferred
-          const batchVolumeData = await db
-            .select({
-              initialVolume: batches.initialVolume,
-            })
-            .from(batches)
-            .where(eq(batches.id, input.batchId))
-            .limit(1);
-
-          const originJuice = await db
-            .select({
-              vendorName: vendors.name,
-              varietyName: sql<string>`COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})`,
-              lotCode: sql<string>`NULL`,
-              inputWeightKg: sql<string>`NULL`,
-              // Use batch's initialVolume instead of juice purchase's total volume
-              juiceVolume: sql<string>`${batchVolumeData[0]?.initialVolume || '0'}`,
-              fractionOfBatch: sql<string>`NULL`,
-              materialCost: sql<string>`COALESCE(${juicePurchaseItems.totalCost}, 0)`,
-              avgBrix: juicePurchaseItems.brix,
-              sourceType: sql<string>`'juice_purchase'`,
-            })
-            .from(juicePurchaseItems)
-            .innerJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
-            .innerJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
-            .where(eq(juicePurchaseItems.id, batchDetails[0].originJuicePurchaseItemId))
-            // Note: We don't filter by deletedAt here because we want to show archived juice in composition
-            .limit(1);
-
-          console.log("🧃 Origin juice query result:", {
-            found: originJuice.length > 0,
-            data: originJuice.length > 0 ? originJuice[0] : null,
-          });
-
-          if (originJuice.length > 0) {
-            originJuiceData.push(originJuice[0]);
-          } else {
-            console.warn("⚠️ Origin juice not found for originJuicePurchaseItemId:", batchDetails[0].originJuicePurchaseItemId);
-          }
-        } else {
-          console.log("ℹ️ No originJuicePurchaseItemId set for this batch");
-        }
-
-        console.log("📊 Composition data counts:", {
-          baseFruit: compositionData.length,
-          originJuice: originJuiceData.length,
-          mergedJuice: juiceCompositionData.length,
-        });
-
-        // Combine all composition data
-        const allComposition = [
-          ...compositionData,
-          ...originJuiceData,
-          ...juiceCompositionData,
-        ];
+        // All composition is now in batch_compositions table
+        const allComposition = compositionData;
 
         // Convert string fields to numbers for the response
         return allComposition.map((item) => ({
@@ -1773,6 +1693,7 @@ export const batchRouter = router({
               brix: juicePurchaseItems.brix,
               ph: juicePurchaseItems.ph,
               specificGravity: juicePurchaseItems.specificGravity,
+              totalCost: juicePurchaseItems.totalCost,
             })
             .from(juicePurchaseItems)
             .leftJoin(
@@ -1907,6 +1828,22 @@ export const batchRouter = router({
             batchName = newBatch[0].name;
             isNewBatch = true;
 
+            // Create batch composition entry for the juice
+            await tx.insert(batchCompositions).values({
+              batchId: batchId,
+              sourceType: "juice_purchase",
+              juicePurchaseItemId: input.juicePurchaseItemId,
+              vendorId: juice.vendorId!,
+              juiceVolume: transferVolumeL.toString(),
+              juiceVolumeUnit: "L",
+              materialCost: juice.totalCost?.toString() || "0",
+              avgBrix: juice.brix?.toString(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+
+            console.log("✅ Batch composition created for juice purchase");
+
             // Vessel status remains as-is when batch is assigned
             // The presence of a batch is tracked via the batch.vesselId relationship
           } else {
@@ -1944,6 +1881,22 @@ export const batchRouter = router({
               mergedBy: ctx.session?.user?.id,
               createdAt: new Date(),
             });
+
+            // Create batch composition entry for the merged juice
+            await tx.insert(batchCompositions).values({
+              batchId: batchId,
+              sourceType: "juice_purchase",
+              juicePurchaseItemId: input.juicePurchaseItemId,
+              vendorId: juice.vendorId!,
+              juiceVolume: transferVolumeL.toString(),
+              juiceVolumeUnit: "L",
+              materialCost: juice.totalCost?.toString() || "0",
+              avgBrix: juice.brix?.toString(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+
+            console.log("✅ Batch composition created for merged juice purchase");
           }
 
           // 4. Update juice purchase item's allocated volume
