@@ -1670,12 +1670,12 @@ export const batchRouter = router({
               .insert(batchTransfers)
               .values({
                 sourceBatchId: input.batchId,
+                sourceVesselId: sourceVesselId,
                 destinationBatchId: destBatch.id,
-                fromVesselId: sourceVesselId,
-                toVesselId: input.destinationVesselId,
+                destinationVesselId: input.destinationVesselId,
                 volumeTransferred: volumeAfterL.toString(),
                 volumeTransferredUnit: 'L',
-                transferType: 'merge',
+                notes: 'Racking merge operation',
                 transferredAt: input.rackedAt || new Date(),
                 transferredBy: ctx.session?.user?.id,
               });
@@ -1708,14 +1708,16 @@ export const batchRouter = router({
             })
             .where(eq(vessels.id, sourceVesselId));
 
-          // 7. Update destination vessel status (stays available - batch presence tracked via batch.vesselId)
-          await tx
-            .update(vessels)
-            .set({
-              status: "available",
-              updatedAt: new Date(),
-            })
-            .where(eq(vessels.id, input.destinationVesselId));
+          // 7. Update destination vessel status (only if it doesn't have a batch already - merge scenario)
+          if (!hasBatchInDestination) {
+            await tx
+              .update(vessels)
+              .set({
+                status: "available",
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, input.destinationVesselId));
+          }
 
           return {
             success: true,
