@@ -24,9 +24,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { FlaskConical, AlertTriangle, Loader2 } from "lucide-react";
+import { FlaskConical, AlertTriangle, Loader2, Info } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
+import { Badge } from "@/components/ui/badge";
 
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
@@ -59,11 +60,13 @@ export function RackingModal({
   const utils = trpc.useUtils();
   const [calculatedLoss, setCalculatedLoss] = useState(0);
   const [lossPercentage, setLossPercentage] = useState(0);
+  const [selectedVesselHasBatch, setSelectedVesselHasBatch] = useState(false);
+  const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<string | null>(null);
 
-  // Fetch available vessels
+  // Fetch all vessels (not just available ones, to allow merging)
   const { data: vesselsData } = trpc.vessel.liquidMap.useQuery();
   const availableVessels = vesselsData?.vessels?.filter(
-    (v) => v.vesselStatus === "available" && v.vesselId !== sourceVesselId
+    (v) => v.vesselId !== sourceVesselId && (v.vesselStatus === "available" || v.batchId)
   ) || [];
 
   const {
@@ -85,6 +88,24 @@ export function RackingModal({
   const volumeAfterUnit = watch("volumeAfterUnit");
   const destinationVesselId = watch("destinationVesselId");
   const rackedAt = watch("rackedAt");
+
+  // Check if selected vessel has a batch (for merge warning)
+  useEffect(() => {
+    if (destinationVesselId && vesselsData) {
+      const vesselMap = vesselsData.vessels.find(
+        (v) => v.vesselId === destinationVesselId
+      );
+      if (vesselMap?.batchId) {
+        setSelectedVesselHasBatch(true);
+        setSelectedVesselBatchName(
+          vesselMap.batchCustomName || vesselMap.batchNumber || "Unnamed Batch"
+        );
+      } else {
+        setSelectedVesselHasBatch(false);
+        setSelectedVesselBatchName(null);
+      }
+    }
+  }, [destinationVesselId, vesselsData]);
 
   // Calculate loss whenever volumeAfter changes
   useEffect(() => {
@@ -205,16 +226,50 @@ export function RackingModal({
                     No available vessels
                   </SelectItem>
                 ) : (
-                  availableVessels.map((vessel) => (
-                    <SelectItem key={vessel.vesselId} value={vessel.vesselId}>
-                      {vessel.vesselName} ({vessel.vesselCapacity} {vessel.vesselCapacityUnit})
-                    </SelectItem>
-                  ))
+                  availableVessels.map((vessel) => {
+                    const hasBatch = !!vessel.batchId;
+                    const isEmpty = vessel.vesselStatus === "available" && !vessel.batchId;
+
+                    return (
+                      <SelectItem key={vessel.vesselId} value={vessel.vesselId}>
+                        <div className="flex items-center gap-2">
+                          <span>{vessel.vesselName} ({vessel.vesselCapacity} {vessel.vesselCapacityUnit})</span>
+                          {hasBatch && (
+                            <Badge variant="secondary" className="text-xs">
+                              In Use
+                            </Badge>
+                          )}
+                          {isEmpty && (
+                            <Badge variant="outline" className="text-xs">
+                              Empty
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    );
+                  })
                 )}
               </SelectContent>
             </Select>
             {errors.destinationVesselId && (
               <p className="text-sm text-red-500">{errors.destinationVesselId.message}</p>
+            )}
+
+            {/* Show batch merge warning if destination has a batch */}
+            {selectedVesselHasBatch && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <p className="font-medium">
+                      This vessel contains an active batch
+                    </p>
+                    <p className="text-xs mt-1">
+                      Batches will be merged: <span className="font-semibold">{selectedVesselBatchName}</span> + {batchName}
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 

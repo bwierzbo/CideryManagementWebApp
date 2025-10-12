@@ -1541,7 +1541,7 @@ export const batchRouter = router({
             });
           }
 
-          // 2. Verify destination vessel exists and is available
+          // 2. Verify destination vessel exists
           const destinationVessel = await tx
             .select({
               id: vessels.id,
@@ -1566,12 +1566,26 @@ export const batchRouter = router({
             });
           }
 
-          if (destinationVessel[0].status !== "available") {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Destination vessel is ${destinationVessel[0].status}, must be available`,
-            });
-          }
+          // Check for existing batch in destination vessel
+          const destinationBatch = await tx
+            .select({
+              id: batches.id,
+              name: batches.name,
+              customName: batches.customName,
+              currentVolume: batches.currentVolume,
+              currentVolumeUnit: batches.currentVolumeUnit,
+              status: batches.status,
+            })
+            .from(batches)
+            .where(
+              and(
+                eq(batches.vesselId, input.destinationVesselId),
+                isNull(batches.deletedAt)
+              )
+            )
+            .limit(1);
+
+          const hasBatchInDestination = destinationBatch.length > 0;
 
           const sourceVesselId = batch[0].vesselId;
 
@@ -1620,19 +1634,70 @@ export const batchRouter = router({
             })
             .returning();
 
-          // 5. Update batch vessel, volume, and status
-          // Racking transitions batch from "fermentation" to "aging"
-          const updatedBatch = await tx
-            .update(batches)
-            .set({
-              vesselId: input.destinationVesselId,
-              currentVolume: volumeAfterL.toString(),
-              currentVolumeUnit: 'L',
-              status: "aging", // Racking always moves batch to aging stage
-              updatedAt: new Date(),
-            })
-            .where(eq(batches.id, input.batchId))
-            .returning();
+          let updatedBatch;
+          let resultMessage: string;
+
+          if (hasBatchInDestination) {
+            // 5a. MERGE: Add volume to existing destination batch, then mark source batch as completed
+            const destBatch = destinationBatch[0];
+            const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
+            const mergedVolumeL = destCurrentVolumeL + volumeAfterL;
+
+            // Update destination batch with merged volume
+            updatedBatch = await tx
+              .update(batches)
+              .set({
+                currentVolume: mergedVolumeL.toString(),
+                currentVolumeUnit: 'L',
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, destBatch.id))
+              .returning();
+
+            // Mark source batch as completed (not deleted - preserve history)
+            await tx
+              .update(batches)
+              .set({
+                vesselId: null, // Remove vessel assignment
+                status: "completed",
+                currentVolume: "0",
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
+
+            // Create batch transfer record for merge
+            await tx
+              .insert(batchTransfers)
+              .values({
+                sourceBatchId: input.batchId,
+                destinationBatchId: destBatch.id,
+                fromVesselId: sourceVesselId,
+                toVesselId: input.destinationVesselId,
+                volumeTransferred: volumeAfterL.toString(),
+                volumeTransferredUnit: 'L',
+                transferType: 'merge',
+                transferredAt: input.rackedAt || new Date(),
+                transferredBy: ctx.session?.user?.id,
+              });
+
+            resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
+          } else {
+            // 5b. MOVE: Transfer batch to new empty vessel
+            // Racking transitions batch from "fermentation" to "aging"
+            updatedBatch = await tx
+              .update(batches)
+              .set({
+                vesselId: input.destinationVesselId,
+                currentVolume: volumeAfterL.toString(),
+                currentVolumeUnit: 'L',
+                status: "aging", // Racking always moves batch to aging stage
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId))
+              .returning();
+
+            resultMessage = `Batch racked to ${destinationVessel[0].name}`;
+          }
 
           // 6. Update source vessel status to cleaning (liquid removed, needs cleaning)
           await tx
@@ -1643,7 +1708,7 @@ export const batchRouter = router({
             })
             .where(eq(vessels.id, sourceVesselId));
 
-          // 7. Update destination vessel status to in_use (now contains batch)
+          // 7. Update destination vessel status (stays available - batch presence tracked via batch.vesselId)
           await tx
             .update(vessels)
             .set({
@@ -1654,9 +1719,10 @@ export const batchRouter = router({
 
           return {
             success: true,
-            message: `Batch racked from source vessel to ${destinationVessel[0].name}`,
+            message: resultMessage,
             rackingOperation: rackingOperation[0],
             batch: updatedBatch[0],
+            merged: hasBatchInDestination,
           };
         });
       } catch (error) {
