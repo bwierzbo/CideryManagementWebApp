@@ -124,39 +124,42 @@ export function PackagingInventoryTable({
   // Router for navigation
   const router = useRouter();
 
-  // API queries - using inventory.list with materialType filter
+  // API queries - using packagingPurchases.listInventory
   const {
     data: inventoryData,
     isLoading,
     error,
     refetch,
-  } = trpc.inventory.list.useQuery({
-    limit: 100, // Max allowed by API
+  } = trpc.packagingPurchases.listInventory.useQuery({
+    limit: 100,
     offset: 0,
   });
 
-  // Transform and filter inventory data to show only packaging
+  // Transform packaging purchase items
   const packagingItems = useMemo(() => {
     if (!inventoryData?.items) return [];
 
-    // Filter for packaging items only
-    const items = inventoryData.items
-      .filter((item: any) => item.materialType === "packaging")
-      .map(
-        (item: any) =>
-          ({
-            id: item.id,
-            packageId: item.packageId,
-            currentBottleCount: item.currentBottleCount,
-            reservedBottleCount: item.reservedBottleCount,
-            materialType: item.materialType,
-            metadata: item.metadata || {},
-            location: item.location,
-            notes: item.notes,
-            createdAt: item.createdAt,
-            updatedAt: item.updatedAt,
-          }) as PackagingInventoryItem,
-      );
+    const items = inventoryData.items.map((item: any) => ({
+      id: item.id,
+      packageId: item.purchaseId,
+      currentBottleCount: item.quantity || 0,
+      reservedBottleCount: 0,
+      materialType: item.varietyItemType || item.materialType || "packaging",
+      metadata: {
+        purchaseId: item.purchaseId,
+        vendorName: item.vendorName,
+        packageType: item.packageType,
+        materialType: item.materialType,
+        size: item.size || item.varietyName,
+        itemType: item.varietyItemType,
+        unitCost: item.unitCost,
+        totalCost: item.totalCost,
+      },
+      location: null,
+      notes: item.notes,
+      createdAt: item.purchaseDate,
+      updatedAt: item.purchaseDate,
+    })) as PackagingInventoryItem[];
 
     return items;
   }, [inventoryData]);
@@ -404,26 +407,19 @@ export function PackagingInventoryTable({
                   >
                     Vendor
                   </SortableHeader>
-                  <SortableHeader
-                    sortDirection={getSortDirectionForDisplay("packageType")}
-                    sortIndex={getSortIndex("packageType")}
-                    onSort={() => handleColumnSort("packageType")}
-                  >
-                    Type
+                  <SortableHeader canSort={false}>
+                    Item Type
                   </SortableHeader>
                   <SortableHeader
-                    align="right"
                     sortDirection={getSortDirectionForDisplay("quantity")}
                     sortIndex={getSortIndex("quantity")}
                     onSort={() => handleColumnSort("quantity")}
+                    align="right"
                   >
                     Quantity
                   </SortableHeader>
                   <SortableHeader canSort={false} align="right">
                     Unit Cost
-                  </SortableHeader>
-                  <SortableHeader canSort={false} align="right">
-                    Total Cost
                   </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay("createdAt")}
@@ -451,8 +447,8 @@ export function PackagingInventoryTable({
                       <TableCell>
                         <Skeleton className="h-4 w-20" />
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Skeleton className="h-4 w-16 ml-auto" />
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
                       </TableCell>
                       <TableCell className="text-right">
                         <Skeleton className="h-4 w-16 ml-auto" />
@@ -471,7 +467,7 @@ export function PackagingInventoryTable({
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={7}
                       className="text-center py-8 text-muted-foreground"
                     >
                       {searchQuery
@@ -500,15 +496,9 @@ export function PackagingInventoryTable({
                         </div>
                       </TableCell>
                       <TableCell>
-                        {item.metadata?.packageType ? (
-                          <Badge
-                            variant="secondary"
-                            className={
-                              getPackageTypeBadge(item.metadata.packageType) ??
-                              "bg-gray-100 text-gray-800"
-                            }
-                          >
-                            {item.metadata.packageType}
+                        {item.metadata?.itemType ? (
+                          <Badge variant="secondary">
+                            {item.metadata.itemType}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground text-sm">
@@ -520,10 +510,9 @@ export function PackagingInventoryTable({
                         {formatQuantity(item.currentBottleCount)}
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        <span className="text-muted-foreground text-sm">—</span>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        <span className="text-muted-foreground text-sm">—</span>
+                        {item.metadata?.unitCost ? formatCurrency(item.metadata.unitCost) : (
+                          <span className="text-muted-foreground text-sm">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">

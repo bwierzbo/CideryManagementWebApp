@@ -220,6 +220,8 @@ export const packagingPurchasesRouter = router({
             materialType: packagingPurchaseItems.materialType,
             size: packagingPurchaseItems.size,
             quantity: packagingPurchaseItems.quantity,
+            unitCost: packagingPurchaseItems.unitCost,
+            totalCost: packagingPurchaseItems.totalCost,
             notes: packagingPurchaseItems.notes,
             purchaseDate: packagingPurchases.purchaseDate,
             vendorName: vendors.name,
