@@ -29,7 +29,8 @@ import { toast } from "@/hooks/use-toast";
 // Form validation schema
 const bottleFormSchema = z.object({
   volumeTakenL: z.number().positive("Volume must be positive"),
-  packageSizeMl: z.number().positive("Please select a package size"),
+  packagingItemId: z.string().min(1, "Please select a packaging type"),
+  packageSizeMl: z.number().positive("Package size must be positive"),
   unitsProduced: z.number().int().min(0, "Units cannot be negative"),
   packagedAt: z.string().min(1, "Date/time is required"),
   notes: z.string().optional(),
@@ -55,9 +56,13 @@ export function BottleModal({
   currentVolumeL,
 }: BottleModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedPackaging, setSelectedPackaging] = useState<any>(null);
 
   // tRPC queries and mutations
-  const packageSizesQuery = trpc.packaging.getPackageSizes.useQuery();
+  const packagingInventoryQuery = trpc.packagingPurchases.listInventory.useQuery({
+    itemType: "Primary Packaging",
+    limit: 100,
+  });
   const createPackagingRunMutation =
     trpc.packaging.createFromCellar.useMutation();
   const utils = trpc.useUtils();
@@ -79,8 +84,21 @@ export function BottleModal({
 
   // Watch form values for real-time calculations
   const volumeTakenL = watch("volumeTakenL");
+  const packagingItemId = watch("packagingItemId");
   const packageSizeMl = watch("packageSizeMl");
   const unitsProduced = watch("unitsProduced");
+
+  // Update selectedPackaging when packagingItemId changes
+  useEffect(() => {
+    if (packagingItemId && packagingInventoryQuery.data?.items) {
+      const selected = packagingInventoryQuery.data.items.find(
+        (item) => item.id === packagingItemId
+      );
+      setSelectedPackaging(selected);
+    } else {
+      setSelectedPackaging(null);
+    }
+  }, [packagingItemId, packagingInventoryQuery.data]);
 
   // Calculate loss and loss percentage
   const unitSizeL = packageSizeMl / 1000;
@@ -205,13 +223,23 @@ export function BottleModal({
           onSubmit={handleSubmit(handleFormSubmit)}
           className="space-y-4 md:space-y-6"
         >
+          {/* Available tank volume - display only */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <Label className="text-sm font-medium text-blue-900">
+              Available Volume in Tank
+            </Label>
+            <p className="text-2xl font-bold text-blue-700 mt-1">
+              {currentVolumeL.toFixed(1)}L
+            </p>
+          </div>
+
           {/* Volume taken */}
           <div>
             <Label
               htmlFor="volumeTakenL"
               className="text-sm md:text-base font-medium"
             >
-              Volume taken (L) *
+              Volume to use for bottling (L) *
             </Label>
             <Input
               id="volumeTakenL"
@@ -228,49 +256,93 @@ export function BottleModal({
               </p>
             )}
             <p className="text-xs text-gray-500 mt-1">
-              Liters removed from vessel for packaging
+              Liters to be removed from tank for bottling
             </p>
           </div>
 
-          {/* Package size */}
+          {/* Select packaging type from inventory */}
+          <div>
+            <Label
+              htmlFor="packagingItemId"
+              className="text-sm md:text-base font-medium"
+            >
+              Packaging Type *
+            </Label>
+            <Select
+              onValueChange={(value) => {
+                setValue("packagingItemId", value);
+                // Reset package size when packaging type changes
+                setValue("packageSizeMl", 0);
+              }}
+            >
+              <SelectTrigger className="h-10 md:h-11">
+                <SelectValue placeholder="Select packaging from inventory" />
+              </SelectTrigger>
+              <SelectContent>
+                {packagingInventoryQuery.isLoading ? (
+                  <SelectItem value="loading" disabled>
+                    Loading packaging...
+                  </SelectItem>
+                ) : packagingInventoryQuery.data?.items?.length ? (
+                  packagingInventoryQuery.data.items.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">
+                          {item.varietyName || item.size}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          Available: {item.quantity} units | {item.vendorName || "Unknown vendor"}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="none" disabled>
+                    No primary packaging available in inventory
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {errors.packagingItemId && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.packagingItemId.message}
+              </p>
+            )}
+            {selectedPackaging && (
+              <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-xs">
+                <p><strong>Selected:</strong> {selectedPackaging.varietyName || selectedPackaging.size}</p>
+                <p><strong>Available:</strong> {selectedPackaging.quantity} units</p>
+                {selectedPackaging.notes && <p><strong>Notes:</strong> {selectedPackaging.notes}</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Package size input */}
           <div>
             <Label
               htmlFor="packageSizeMl"
               className="text-sm md:text-base font-medium"
             >
-              Package size *
+              Volume each package holds (mL) *
             </Label>
-            <Select
-              onValueChange={(value) =>
-                setValue("packageSizeMl", parseInt(value))
-              }
-            >
-              <SelectTrigger className="h-10 md:h-11">
-                <SelectValue placeholder="Select package size" />
-              </SelectTrigger>
-              <SelectContent>
-                {packageSizesQuery.isLoading ? (
-                  <SelectItem value="loading" disabled>
-                    Loading package sizes...
-                  </SelectItem>
-                ) : packageSizesQuery.data?.length ? (
-                  packageSizesQuery.data.map((size) => (
-                    <SelectItem key={size.id} value={size.sizeML.toString()}>
-                      {size.displayName}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="none" disabled>
-                    No package sizes available
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+            <Input
+              id="packageSizeMl"
+              type="number"
+              step="1"
+              min="1"
+              placeholder="e.g., 355, 500, 750"
+              className="h-10 md:h-11 text-base"
+              {...register("packageSizeMl", { valueAsNumber: true })}
+              disabled={!packagingItemId}
+            />
             {errors.packageSizeMl && (
               <p className="text-sm text-red-600 mt-1">
                 {errors.packageSizeMl.message}
               </p>
             )}
+            <p className="text-xs text-gray-500 mt-1">
+              Volume in milliliters (mL) that each package holds
+            </p>
           </div>
 
           {/* Units produced */}
@@ -383,6 +455,7 @@ export function BottleModal({
                 createPackagingRunMutation.isPending ||
                 lossL < 0 ||
                 !volumeTakenL ||
+                !packagingItemId ||
                 !packageSizeMl ||
                 unitsProduced === undefined
               }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
-import { db, packagingPurchases, packagingPurchaseItems, vendors } from "db";
+import { db, packagingPurchases, packagingPurchaseItems, packagingVarieties, vendors } from "db";
 import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
@@ -191,6 +191,78 @@ export const packagingPurchasesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch packaging purchase",
+        });
+      }
+    }),
+
+  // List packaging inventory with available quantities
+  listInventory: createRbacProcedure("list", "purchase")
+    .input(
+      z.object({
+        itemType: z.enum(["Primary Packaging", "Closures", "Secondary Packaging"]).optional(),
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        const { itemType, limit, offset } = input;
+
+        const conditions = [isNull(packagingPurchaseItems.deletedAt)];
+
+        // Query packaging purchase items with variety info
+        const items = await db
+          .select({
+            id: packagingPurchaseItems.id,
+            purchaseId: packagingPurchaseItems.purchaseId,
+            packagingVarietyId: packagingPurchaseItems.packagingVarietyId,
+            packageType: packagingPurchaseItems.packageType,
+            materialType: packagingPurchaseItems.materialType,
+            size: packagingPurchaseItems.size,
+            quantity: packagingPurchaseItems.quantity,
+            notes: packagingPurchaseItems.notes,
+            purchaseDate: packagingPurchases.purchaseDate,
+            vendorName: vendors.name,
+            // Get variety info for filtering by itemType
+            varietyName: sql<string>`${packagingVarieties.name}`,
+            varietyItemType: sql<string>`${packagingVarieties.itemType}`,
+          })
+          .from(packagingPurchaseItems)
+          .leftJoin(
+            packagingPurchases,
+            eq(packagingPurchaseItems.purchaseId, packagingPurchases.id),
+          )
+          .leftJoin(vendors, eq(packagingPurchases.vendorId, vendors.id))
+          .leftJoin(
+            packagingVarieties,
+            eq(packagingPurchaseItems.packagingVarietyId, packagingVarieties.id),
+          )
+          .where(and(...conditions))
+          .orderBy(desc(packagingPurchases.purchaseDate));
+
+        // Filter by itemType if provided (client-side for now since itemType is in varieties table)
+        const filteredItems = itemType
+          ? items.filter((item) => item.varietyItemType === itemType)
+          : items;
+
+        // Apply pagination
+        const paginatedItems = filteredItems.slice(offset, offset + limit);
+        const totalCount = filteredItems.length;
+
+        return {
+          items: paginatedItems,
+          pagination: {
+            total: totalCount,
+            limit,
+            offset,
+            hasMore: totalCount > offset + limit,
+          },
+        };
+      } catch (error) {
+        console.error("Error listing packaging inventory:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to list packaging inventory",
         });
       }
     }),
