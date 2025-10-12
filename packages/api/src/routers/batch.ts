@@ -1897,54 +1897,10 @@ export const batchRouter = router({
             // Vessel status remains as-is when batch is assigned
             // The presence of a batch is tracked via the batch.vesselId relationship
           } else {
-            // 3b. Merge with existing batch
+            // 3b. Merge with existing batch - add volumes together and recalculate composition
             const batch = existingBatch[0];
             batchId = batch.id;
             batchName = batch.name;
-
-            // Check batch composition for juice compatibility
-            const batchComposition = await tx
-              .select({
-                juiceType: batchCompositions.juiceType,
-                varietyName: batchCompositions.varietyName,
-              })
-              .from(batchCompositions)
-              .where(
-                and(
-                  eq(batchCompositions.batchId, batchId),
-                  isNull(batchCompositions.deletedAt)
-                )
-              );
-
-            // If batch has composition, validate juice compatibility
-            if (batchComposition.length > 0) {
-              const incomingJuiceType = juice.juiceType?.toLowerCase();
-              const incomingVariety = juice.varietyName?.toLowerCase();
-
-              // Check if the juice type or variety already exists in the batch
-              const isCompatible = batchComposition.some(comp => {
-                const existingJuiceType = comp.juiceType?.toLowerCase();
-                const existingVariety = comp.varietyName?.toLowerCase();
-
-                return (
-                  (incomingJuiceType && existingJuiceType === incomingJuiceType) ||
-                  (incomingVariety && existingVariety === incomingVariety)
-                );
-              });
-
-              if (!isCompatible) {
-                const existingTypes = batchComposition
-                  .map(c => c.varietyName || c.juiceType)
-                  .filter(Boolean)
-                  .join(", ");
-                const incomingType = juice.varietyName || juice.juiceType;
-
-                throw new TRPCError({
-                  code: "BAD_REQUEST",
-                  message: `Cannot merge incompatible juice types. Batch contains: ${existingTypes}. Trying to add: ${incomingType}. Please create a new batch in an empty vessel for this juice.`,
-                });
-              }
-            }
 
             const currentVolumeL = parseFloat(batch.currentVolume || "0");
             const newVolumeL = currentVolumeL + transferVolumeL;
