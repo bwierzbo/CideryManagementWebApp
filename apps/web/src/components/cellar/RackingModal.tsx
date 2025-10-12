@@ -200,7 +200,14 @@ export function RackingModal({
             <Input
               type="date"
               value={rackedAt ? rackedAt.toISOString().split('T')[0] : ''}
-              onChange={(e) => setValue("rackedAt", new Date(e.target.value))}
+              onChange={(e) => {
+                const dateValue = e.target.value;
+                if (dateValue && !isNaN(new Date(dateValue).getTime())) {
+                  setValue("rackedAt", new Date(dateValue));
+                } else if (!dateValue) {
+                  setValue("rackedAt", new Date());
+                }
+              }}
               className="w-full"
             />
             {errors.rackedAt && (

@@ -234,6 +234,7 @@ export default function BatchDetailsPage() {
   const latestMeasurement = history?.measurements?.[0];
   const totalCompositionWeight =
     composition?.reduce((sum, comp) => sum + comp.inputWeightKg, 0) || 0;
+  const totalCompositionWeightLbs = totalCompositionWeight * 2.20462;
   const totalCompositionVolume =
     composition?.reduce((sum, comp) => sum + comp.juiceVolume, 0) || 0;
 
@@ -545,7 +546,8 @@ export default function BatchDetailsPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-3 gap-4 text-sm font-medium bg-gray-50 p-3 rounded-lg">
                     <div>
-                      Total Input Weight: {totalCompositionWeight.toFixed(1)} kg
+                      Total Input Weight: {totalCompositionWeightLbs.toFixed(1)} lbs
+                      <span className="text-xs text-gray-500 ml-1">({totalCompositionWeight.toFixed(1)} kg)</span>
                     </div>
                     <div>
                       Total Juice Volume: {totalCompositionVolume.toFixed(1)} L
@@ -568,7 +570,7 @@ export default function BatchDetailsPage() {
                         <TableHead>Vendor</TableHead>
                         <TableHead>Variety</TableHead>
                         <TableHead className="text-right">
-                          Weight (kg)
+                          Weight (lbs)
                         </TableHead>
                         <TableHead className="text-right">Volume (L)</TableHead>
                         <TableHead className="text-right">% of Batch</TableHead>
@@ -584,7 +586,7 @@ export default function BatchDetailsPage() {
                           </TableCell>
                           <TableCell>{comp.varietyName}</TableCell>
                           <TableCell className="text-right">
-                            {comp.inputWeightKg.toFixed(1)}
+                            {(comp.inputWeightKg * 2.20462).toFixed(1)}
                           </TableCell>
                           <TableCell className="text-right">
                             {comp.juiceVolume.toFixed(1)}
