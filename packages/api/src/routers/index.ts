@@ -2669,14 +2669,18 @@ export const appRouter = router({
       )
       .mutation(async ({ input, ctx }) => {
         try {
-          // Find active batch in vessel
+          // Find active batch in vessel (fermentation, conditioning, or aging)
           const activeBatch = await db
             .select()
             .from(batches)
             .where(
               and(
                 eq(batches.vesselId, input.vesselId),
-                eq(batches.status, "fermentation"),
+                or(
+                  eq(batches.status, "fermentation"),
+                  eq(batches.status, "conditioning"),
+                  eq(batches.status, "aging")
+                ),
                 isNull(batches.deletedAt),
               ),
             )
