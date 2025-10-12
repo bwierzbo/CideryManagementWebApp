@@ -874,10 +874,13 @@ function VesselMap() {
   });
 
   const purgeMutation = trpc.vessel.purge.useMutation({
-    onSuccess: () => {
-      utils.vessel.list.invalidate();
-      utils.vessel.liquidMap.invalidate();
-      utils.batch.list.invalidate();
+    onSuccess: async () => {
+      // Invalidate and refetch to ensure UI updates
+      await Promise.all([
+        utils.vessel.list.invalidate(),
+        utils.vessel.liquidMap.invalidate(),
+        utils.batch.list.invalidate(),
+      ]);
       toast({
         title: "Tank Purged",
         description: "The tank has been purged and the batch removed.",
