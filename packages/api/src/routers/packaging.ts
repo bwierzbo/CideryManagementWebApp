@@ -500,16 +500,17 @@ export const packagingRouter = router({
             })),
             history: {
               measurements: measurements.map((m) => ({
-                measurementType: m.measurementType,
-                value: m.value,
-                measuredAt: m.measuredAt,
+                measurementDate: m.measurementDate,
+                specificGravity: m.specificGravity ? parseFloat(m.specificGravity.toString()) : null,
+                abv: m.abv ? parseFloat(m.abv.toString()) : null,
+                ph: m.ph ? parseFloat(m.ph.toString()) : null,
+                totalAcidity: m.totalAcidity ? parseFloat(m.totalAcidity.toString()) : null,
+                temperature: m.temperature ? parseFloat(m.temperature.toString()) : null,
               })),
               additives: additives.map((a) => ({
                 additiveName: a.additiveName,
-                amountAdded: a.amountAdded
-                  ? parseFloat(a.amountAdded.toString())
-                  : 0,
-                unitType: a.unitType,
+                amount: a.amount ? parseFloat(a.amount.toString()) : 0,
+                unit: a.unit,
                 addedAt: a.addedAt,
               })),
               transfers: transfers.map((t) => ({
