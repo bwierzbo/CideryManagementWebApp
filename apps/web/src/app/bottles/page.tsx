@@ -11,18 +11,18 @@ import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
 
 // Lazy load heavy components
 const PackagingTable = lazy(() =>
-  import("@/components/bottles/bottles-table").then((m) => ({
+  import("@/components/bottles/bottle-table").then((m) => ({
     default: m.PackagingTable,
   })),
 );
 const PackagingFilters = lazy(() =>
-  import("@/components/bottles/bottles-filters").then((m) => ({
+  import("@/components/bottles/bottle-filters").then((m) => ({
     default: m.PackagingFilters,
   })),
 );
 
 // Types
-import type { PackagingFiltersState } from "@/components/bottles/bottles-filters";
+import type { PackagingFiltersState } from "@/components/bottles/bottle-filters";
 
 export default function PackagingPage() {
   const [filters, setFilters] = useState<PackagingFiltersState>({

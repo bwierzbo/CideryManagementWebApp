@@ -42,12 +42,12 @@ const QAUpdateModal = lazy(() =>
   })),
 );
 const AdvancedPDFExport = lazy(() =>
-  import("@/components/bottles/bottles-pdf-template").then((m) => ({
+  import("@/components/bottles/bottle-pdf-template").then((m) => ({
     default: m.AdvancedPDFExport,
   })),
 );
 const QuickPDFExport = lazy(() =>
-  import("@/components/bottles/bottles-pdf-template").then((m) => ({
+  import("@/components/bottles/bottle-pdf-template").then((m) => ({
     default: m.QuickPDFExport,
   })),
 );
