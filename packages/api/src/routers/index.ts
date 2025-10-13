@@ -2050,12 +2050,23 @@ export const appRouter = router({
             });
           }
 
-          // Check if vessel is in use
-          if (existing[0].status === "available") {
+          // Check if vessel has any active batches
+          const activeBatch = await db
+            .select()
+            .from(batches)
+            .where(
+              and(
+                eq(batches.vesselId, input.id),
+                isNull(batches.deletedAt),
+              ),
+            )
+            .limit(1);
+
+          if (activeBatch.length) {
             throw new TRPCError({
               code: "BAD_REQUEST",
               message:
-                "Cannot delete vessel that contains liquid or is actively in use",
+                "Cannot delete vessel that contains an active batch. Purge the vessel first.",
             });
           }
 
@@ -2686,6 +2697,19 @@ export const appRouter = router({
             )
             .limit(1);
 
+          // Find completed batches still assigned to vessel (data integrity issue)
+          const stuckCompletedBatch = await db
+            .select()
+            .from(batches)
+            .where(
+              and(
+                eq(batches.vesselId, input.vesselId),
+                eq(batches.status, "completed"),
+                isNull(batches.deletedAt),
+              ),
+            )
+            .limit(1);
+
           // Find completed press runs in vessel
           const completedPressRuns = await db
             .select()
@@ -2698,7 +2722,7 @@ export const appRouter = router({
               ),
             );
 
-          if (!activeBatch.length && !completedPressRuns.length) {
+          if (!activeBatch.length && !stuckCompletedBatch.length && !completedPressRuns.length) {
             throw new TRPCError({
               code: "NOT_FOUND",
               message: "No liquid found in this vessel",
@@ -2729,6 +2753,17 @@ export const appRouter = router({
             );
           }
 
+          // Clear vessel assignment from stuck completed batches (shouldn't happen, but fix if it does)
+          if (stuckCompletedBatch.length) {
+            await db
+              .update(batches)
+              .set({
+                vesselId: null,
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, stuckCompletedBatch[0].id));
+          }
+
           // Clear vessel association from completed press runs
           if (completedPressRuns.length) {
             for (const pressRun of completedPressRuns) {
@@ -2754,6 +2789,9 @@ export const appRouter = router({
           const messages = [];
           if (activeBatch.length) {
             messages.push(`batch ${activeBatch[0].batchNumber} deleted`);
+          }
+          if (stuckCompletedBatch.length) {
+            messages.push(`completed batch ${stuckCompletedBatch[0].batchNumber} released from vessel`);
           }
           if (completedPressRuns.length) {
             messages.push(
