@@ -418,19 +418,15 @@ export const packagingRouter = router({
         // Get batch composition
         const compositionData = await db
           .select({
-            varietyName: sql<string>`COALESCE(${baseFruitVarieties.name}, ${juiceVarieties.name})`,
+            varietyName: baseFruitVarieties.name,
             vendorName: vendors.name,
-            volumeL: batchCompositions.volumeL,
-            percentageOfBatch: batchCompositions.percentageOfBatch,
+            volumeL: batchCompositions.juiceVolume,
+            percentageOfBatch: batchCompositions.fractionOfBatch,
           })
           .from(batchCompositions)
           .leftJoin(
             baseFruitVarieties,
-            eq(batchCompositions.baseFruitVarietyId, baseFruitVarieties.id),
-          )
-          .leftJoin(
-            juiceVarieties,
-            eq(batchCompositions.juiceVarietyId, juiceVarieties.id),
+            eq(batchCompositions.varietyId, baseFruitVarieties.id),
           )
           .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
           .where(eq(batchCompositions.batchId, run.batchId));
