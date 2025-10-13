@@ -37,17 +37,17 @@ import { formatDateTime } from "@/utils/date-format";
 
 // Lazy load heavy components
 const QAUpdateModal = lazy(() =>
-  import("@/components/packaging/qa-update-modal").then((m) => ({
+  import("@/components/bottles/qa-update-modal").then((m) => ({
     default: m.QAUpdateModal,
   })),
 );
 const AdvancedPDFExport = lazy(() =>
-  import("@/components/packaging/packaging-pdf-template").then((m) => ({
+  import("@/components/bottles/bottles-pdf-template").then((m) => ({
     default: m.AdvancedPDFExport,
   })),
 );
 const QuickPDFExport = lazy(() =>
-  import("@/components/packaging/packaging-pdf-template").then((m) => ({
+  import("@/components/bottles/bottles-pdf-template").then((m) => ({
     default: m.QuickPDFExport,
   })),
 );
@@ -77,7 +77,7 @@ export default function PackagingDetailPage() {
   useEffect(() => {
     performanceMonitor.recordUserInteraction({
       type: "navigation",
-      target: `/packaging/${runId}`,
+      target: `/bottles/${runId}`,
       timestamp: performance.now(),
       metadata: { runId },
     });
@@ -89,7 +89,7 @@ export default function PackagingDetailPage() {
     isLoading,
     error,
     refetch,
-  } = trpc.packaging.get.useQuery(runId, {
+  } = trpc.bottles.get.useQuery(runId, {
     enabled: !!runId,
   });
 

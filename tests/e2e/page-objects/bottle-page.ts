@@ -6,7 +6,7 @@ import { BasePage } from './base-page';
  */
 export class PackagingPage extends BasePage {
   // Selectors
-  private readonly createPackagingRunButton = '[data-testid="create-packaging-run-button"]';
+  private readonly createBottleRunButton = '[data-testid="create-packaging-run-button"]';
   private readonly packagingForm = '[data-testid="packaging-form"]';
   private readonly batchSelect = '[data-testid="batch-select"]';
   private readonly packageDateInput = '[data-testid="package-date-input"]';
@@ -42,7 +42,7 @@ export class PackagingPage extends BasePage {
    * Navigate to packaging page
    */
   async navigate(): Promise<void> {
-    await this.goto('/packaging');
+    await this.goto('/bottles');
     await this.waitForLoad();
   }
 
@@ -50,14 +50,14 @@ export class PackagingPage extends BasePage {
    * Wait for packaging page to load
    */
   async waitForPageLoad(): Promise<void> {
-    await this.waitForElement('[data-testid="packaging-page"]');
+    await this.waitForElement('[data-testid="bottle-page"]');
     await this.waitForLoadingToComplete();
   }
 
   /**
    * Create a new packaging run
    */
-  async createPackagingRun(packagingData: {
+  async createBottleRun(packagingData: {
     batchNumber: string;
     packageDate?: string;
     bottleSize: string;
@@ -73,7 +73,7 @@ export class PackagingPage extends BasePage {
     };
   }): Promise<void> {
     // Click create packaging run button
-    await this.page.locator(this.createPackagingRunButton).click();
+    await this.page.locator(this.createBottleRunButton).click();
     await this.waitForElement(this.packagingForm);
 
     // Fill packaging details
@@ -168,7 +168,7 @@ export class PackagingPage extends BasePage {
   /**
    * Get packaging run details from current page
    */
-  async getPackagingRunDetails(): Promise<{
+  async getBottleRunDetails(): Promise<{
     packageNumber: string;
     batchNumber: string;
     packageDate: string;
@@ -202,7 +202,7 @@ export class PackagingPage extends BasePage {
   /**
    * Search for packaging runs by criteria
    */
-  async searchPackagingRuns(criteria: {
+  async searchBottleRuns(criteria: {
     packageNumber?: string;
     batchNumber?: string;
     dateFrom?: string;
@@ -241,7 +241,7 @@ export class PackagingPage extends BasePage {
   /**
    * Get list of packaging runs from search results
    */
-  async getPackagingRunList(): Promise<Array<{
+  async getBottleRunList(): Promise<Array<{
     id: string;
     packageNumber: string;
     batchNumber: string;
@@ -251,7 +251,7 @@ export class PackagingPage extends BasePage {
     location: string;
     status: string;
   }>> {
-    const packagingRuns = [];
+    const bottleRuns = [];
     const runElements = await this.page.locator('[data-testid="packaging-run-row"]').all();
 
     for (const element of runElements) {
@@ -264,7 +264,7 @@ export class PackagingPage extends BasePage {
       const location = await element.locator('[data-testid="location"]').textContent() || '';
       const status = await element.locator('[data-testid="status"]').textContent() || '';
 
-      packagingRuns.push({
+      bottleRuns.push({
         id,
         packageNumber,
         batchNumber,
@@ -276,13 +276,13 @@ export class PackagingPage extends BasePage {
       });
     }
 
-    return packagingRuns;
+    return bottleRuns;
   }
 
   /**
    * View packaging run details by ID
    */
-  async viewPackagingRun(packageId: string): Promise<void> {
+  async viewBottleRun(packageId: string): Promise<void> {
     await this.page.locator(`[data-testid="view-package-${packageId}"]`).click();
     await this.waitForLoadingToComplete();
   }
@@ -370,7 +370,7 @@ export class PackagingPage extends BasePage {
   /**
    * Schedule packaging run for future date
    */
-  async schedulePackagingRun(scheduleData: {
+  async scheduleBottleRun(scheduleData: {
     batchNumber: string;
     scheduledDate: string;
     bottleSize: string;
@@ -398,7 +398,7 @@ export class PackagingPage extends BasePage {
   /**
    * Verify packaging run was created successfully
    */
-  async verifyPackagingRunCreated(): Promise<boolean> {
+  async verifyBottleRunCreated(): Promise<boolean> {
     return await this.isVisible(this.successMessage);
   }
 
@@ -431,7 +431,7 @@ export class PackagingPage extends BasePage {
    * Get packaging statistics from dashboard
    */
   async getPackagingStatistics(): Promise<{
-    totalPackagingRuns: number;
+    totalBottleRuns: number;
     totalBottlesPackaged: number;
     packagingEfficiency: string;
     mostPopularBottleSize: string;
@@ -444,7 +444,7 @@ export class PackagingPage extends BasePage {
     const totalVolume = await this.getTextContent('[data-testid="stat-total-volume"]') || '0';
 
     return {
-      totalPackagingRuns: parseInt(totalRuns),
+      totalBottleRuns: parseInt(totalRuns),
       totalBottlesPackaged: parseInt(totalBottles.replace(/[^\d]/g, '')),
       packagingEfficiency: efficiency,
       mostPopularBottleSize: popularSize,

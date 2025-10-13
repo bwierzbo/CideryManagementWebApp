@@ -92,7 +92,7 @@ function calculateUnitSizeL(packageSizeMl: number): number {
  * Handles packaging operations from cellar to finished goods inventory
  * RBAC: Operator and above can create and read packaging runs
  */
-export const packagingRouter = router({
+export const bottlesRouter = router({
   /**
    * Create packaging run from cellar modal
    * Creates run, updates vessel volume, creates inventory
@@ -905,4 +905,4 @@ export const packagingRouter = router({
     }),
 });
 
-export type PackagingRouter = typeof packagingRouter;
+export type BottlesRouter = typeof bottlesRouter;

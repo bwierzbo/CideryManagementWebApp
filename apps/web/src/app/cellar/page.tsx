@@ -82,7 +82,7 @@ import { BatchManagementTable } from "@/components/cellar/BatchManagementTable";
 import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
-import { BottleModal } from "@/components/packaging/bottle-modal";
+import { BottleModal } from "@/components/bottles/bottle-modal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";

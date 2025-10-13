@@ -176,7 +176,7 @@ export class PageDiscovery {
           enriched.testDataNeeds = ['vessels', 'batches', 'measurements'];
           break;
 
-        case '/packaging':
+        case '/bottles':
           enriched.expectedTitle = 'Packaging';
           enriched.criticalComponents = ['navigation', 'packaging-runs', 'inventory-items'];
           enriched.testDataNeeds = ['batches', 'packaging-runs', 'inventory'];
@@ -238,7 +238,7 @@ export class PageDiscovery {
     pages.forEach(page => {
       if (page.routePath.startsWith('/auth')) {
         sections.auth.push(page);
-      } else if (['/pressing', '/cellar', '/packaging'].includes(page.routePath)) {
+      } else if (['/pressing', '/cellar', '/bottles'].includes(page.routePath)) {
         sections.production.push(page);
       } else if (page.routePath === '/admin') {
         sections.admin.push(page);
@@ -265,7 +265,7 @@ export class PageDiscovery {
       '/purchasing',
       '/pressing',
       '/cellar',
-      '/packaging',
+      '/bottles',
       '/admin'
     ];
 

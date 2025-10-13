@@ -23,7 +23,7 @@ import { packagingPurchasesRouter } from "./packagingPurchases";
 import { additiveVarietiesRouter } from "./additiveVarieties";
 import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
-import { packagingRouter } from "./packaging";
+import { bottlesRouter } from "./packaging";
 import { userRouter } from "./user";
 import { dashboardRouter } from "./dashboard";
 import {
@@ -1761,7 +1761,7 @@ export const appRouter = router({
   }),
 
   // Packaging management
-  packaging: packagingRouter,
+  packaging: bottlesRouter,
 
   // Apple Varieties management - comprehensive CRUD with new enriched fields
   fruitVariety: varietiesRouter,

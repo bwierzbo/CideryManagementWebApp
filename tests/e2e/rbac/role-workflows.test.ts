@@ -214,7 +214,7 @@ test.describe('Role-Specific Workflow Testing', () => {
     });
 
     test('should manage packaging operations', async ({ page }) => {
-      await page.goto('/packaging');
+      await page.goto('/bottles');
 
       // Should create packaging runs
       const createPackagingButton = page.locator('[data-testid="create-packaging"], [data-testid="new-packaging-run"]');
@@ -333,7 +333,7 @@ test.describe('Role-Specific Workflow Testing', () => {
     });
 
     test('should view packaging information without action capabilities', async ({ page }) => {
-      await page.goto('/packaging');
+      await page.goto('/bottles');
 
       // Should see packaging runs
       const packagingList = page.locator('[data-testid="packaging-list"], .packaging-run');

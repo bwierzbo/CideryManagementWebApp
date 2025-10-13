@@ -255,7 +255,7 @@ test.describe('Golden Path Workflow - Performance and Scale Testing', () => {
     const finalVolume = parseFloat(pressResults.totalJuiceProduced) * 0.94;
 
     // Multiple packaging runs for different bottle sizes
-    const packagingRuns = [
+    const bottleRuns = [
       {
         bottleSize: '750ml',
         volume: Math.floor(finalVolume * 0.5),
@@ -277,10 +277,10 @@ test.describe('Golden Path Workflow - Performance and Scale Testing', () => {
     ];
 
     const packageNumbers = [];
-    for (const [index, run] of packagingRuns.entries()) {
+    for (const [index, run] of bottleRuns.entries()) {
       const packagingRunTimer = performanceMonitor.startTimer(`packaging-run-${index + 1}`);
 
-      await packagingPage.createPackagingRun({
+      await packagingPage.createBottleRun({
         batchNumber: batchNumber,
         bottleSize: run.bottleSize,
         volumeToPackage: run.volume.toString(),

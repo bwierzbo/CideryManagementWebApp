@@ -272,7 +272,7 @@ test.describe('Golden Path Workflow - Realistic Production Scenarios', () => {
     let totalVolumePackaged = 0;
 
     for (const packaging of packagingStrategy) {
-      await packagingPage.createPackagingRun({
+      await packagingPage.createBottleRun({
         batchNumber: batchNumber,
         bottleSize: packaging.bottleSize,
         volumeToPackage: packaging.volume.toString(),
@@ -448,7 +448,7 @@ test.describe('Golden Path Workflow - Realistic Production Scenarios', () => {
     const batchDetails = await batchPage.getBatchDetails();
     const limitedVolume = parseFloat(batchDetails.currentVolume) * 0.95; // Minimal losses for craft production
 
-    await packagingPage.createPackagingRun({
+    await packagingPage.createBottleRun({
       batchNumber: batchNumber,
       bottleSize: '750ml',
       volumeToPackage: limitedVolume.toString(),
@@ -593,7 +593,7 @@ test.describe('Golden Path Workflow - Realistic Production Scenarios', () => {
     await dashboardPage.navigateToPackaging();
     const packageVolume = actualJuiceL * knownCosts.expectedPackagingEfficiency;
 
-    await packagingPage.createPackagingRun({
+    await packagingPage.createBottleRun({
       batchNumber: 'COGS-BATCH-001',
       bottleSize: knownCosts.expectedBottleSize,
       volumeToPackage: packageVolume.toString(),

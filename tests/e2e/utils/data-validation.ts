@@ -467,7 +467,7 @@ export class DataValidator {
     const dbPackages = await db.select().from(packages);
     const dbCount = dbPackages.length;
 
-    await this.page.goto('/packaging');
+    await this.page.goto('/bottles');
     await this.page.waitForLoadState('networkidle');
 
     const issues: string[] = [];

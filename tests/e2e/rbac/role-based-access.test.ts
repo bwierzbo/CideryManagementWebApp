@@ -37,7 +37,7 @@ test.describe('Role-Based Access Control - Comprehensive Testing', () => {
         '/purchasing',
         '/pressing',
         '/cellar',
-        '/packaging',
+        '/bottles',
         '/dashboard'
       ];
 
@@ -54,7 +54,7 @@ test.describe('Role-Based Access Control - Comprehensive Testing', () => {
     });
 
     test('should see create, edit, and delete buttons on all pages', async ({ page }) => {
-      const operationalPages = ['/purchasing', '/pressing', '/cellar', '/packaging'];
+      const operationalPages = ['/purchasing', '/pressing', '/cellar', '/bottles'];
 
       for (const operationalPage of operationalPages) {
         await page.goto(operationalPage);
@@ -93,7 +93,7 @@ test.describe('Role-Based Access Control - Comprehensive Testing', () => {
 
     test('should have access to operational pages but not admin', async ({ page }) => {
       // Should access operational pages
-      const allowedPages = ['/dashboard', '/purchasing', '/pressing', '/cellar', '/packaging'];
+      const allowedPages = ['/dashboard', '/purchasing', '/pressing', '/cellar', '/bottles'];
 
       for (const allowedPage of allowedPages) {
         await page.goto(allowedPage);
@@ -163,7 +163,7 @@ test.describe('Role-Based Access Control - Comprehensive Testing', () => {
     });
 
     test('should have read-only access to operational pages', async ({ page }) => {
-      const allowedPages = ['/dashboard', '/cellar', '/packaging'];
+      const allowedPages = ['/dashboard', '/cellar', '/bottles'];
 
       for (const allowedPage of allowedPages) {
         await page.goto(allowedPage);
@@ -212,7 +212,7 @@ test.describe('Role-Based Access Control - Comprehensive Testing', () => {
     });
 
     test('should not see any create, edit, or delete buttons', async ({ page }) => {
-      const viewablePages = ['/dashboard', '/cellar', '/packaging'];
+      const viewablePages = ['/dashboard', '/cellar', '/bottles'];
 
       for (const viewablePage of viewablePages) {
         await page.goto(viewablePage);

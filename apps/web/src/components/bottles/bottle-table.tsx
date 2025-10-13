@@ -167,7 +167,7 @@ export function PackagingTable({
 
   // API query
   const { data, isLoading, error, refetch } =
-    trpc.packaging.list.useQuery(apiParams);
+    trpc.bottles.list.useQuery(apiParams);
 
   // Derived state
   const totalCount = data?.total || 0;
@@ -251,7 +251,7 @@ export function PackagingTable({
         onItemClick(item);
       } else {
         // Default navigation to detail page
-        router.push(`/packaging/${item.id}`);
+        router.push(`/bottles/${item.id}`);
       }
     },
     [onItemClick, router],

@@ -16,7 +16,7 @@ test.describe('Security Boundary Validation', () => {
         '/purchasing',
         '/pressing',
         '/cellar',
-        '/packaging'
+        '/bottles'
       ];
 
       for (const protectedPage of protectedPages) {

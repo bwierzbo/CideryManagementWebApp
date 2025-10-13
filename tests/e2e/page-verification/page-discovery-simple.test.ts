@@ -30,7 +30,7 @@ test.describe('Page Discovery System - Simple Tests', () => {
     expect(routePaths).toContain('/auth/signin');
 
     // Check for production workflow pages
-    const expectedPages = ['/purchasing', '/pressing', '/cellar', '/packaging', '/admin'];
+    const expectedPages = ['/purchasing', '/pressing', '/cellar', '/bottles', '/admin'];
     expectedPages.forEach(expectedPath => {
       if (!routePaths.includes(expectedPath)) {
         console.warn(`Expected page ${expectedPath} not found`);

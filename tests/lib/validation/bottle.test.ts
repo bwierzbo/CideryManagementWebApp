@@ -12,9 +12,9 @@ import {
   validatePackaging,
   packagingValidationSchema,
   type BatchPackagingData,
-  type PackagingRunData,
+  type BottleRunData,
   type ExistingPackagingData
-} from './packages/lib/src/validation/packaging';
+} from './packages/lib/src/validation/bottles';
 import { PackagingValidationError } from './packages/lib/src/validation/errors';
 
 describe('Packaging Validation', () => {
@@ -26,7 +26,7 @@ describe('Packaging Validation', () => {
     vesselId: 'vessel-1'
   };
 
-  const mockPackagingData: PackagingRunData = {
+  const mockPackagingData: BottleRunData = {
     batchId: 'batch-1',
     packageDate: new Date('2023-01-01'),
     volumePackagedL: 200,
@@ -38,7 +38,7 @@ describe('Packaging Validation', () => {
 
   const mockExistingPackaging: ExistingPackagingData = {
     totalVolumePackagedL: 100,
-    packagingRuns: [
+    bottleRuns: [
       {
         id: 'pkg-1',
         volumePackagedL: 100,

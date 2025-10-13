@@ -64,7 +64,7 @@ export function BottleModal({
     limit: 100,
   });
   const createPackagingRunMutation =
-    trpc.packaging.createFromCellar.useMutation();
+    trpc.bottles.createFromCellar.useMutation();
   const utils = trpc.useUtils();
 
   const {
@@ -464,7 +464,7 @@ export function BottleModal({
               <span className="hidden sm:inline">
                 {isSubmitting || createPackagingRunMutation.isPending
                   ? "Creating..."
-                  : "Complete & Go to /packaging"}
+                  : "Complete & Go to /bottles"}
               </span>
               <span className="sm:hidden">
                 {isSubmitting || createPackagingRunMutation.isPending

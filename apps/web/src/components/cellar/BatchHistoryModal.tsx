@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { trpc } from "@/utils/trpc";
 import {
   Dialog,
@@ -20,6 +20,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Calendar,
   Droplets,
@@ -29,9 +31,13 @@ import {
   TrendingUp,
   Activity,
   Beaker,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
+import { useToast } from "@/hooks/use-toast";
 
 interface BatchHistoryModalProps {
   batchId: string;
@@ -44,10 +50,49 @@ export function BatchHistoryModal({
   open,
   onClose,
 }: BatchHistoryModalProps) {
-  const { data, isLoading, error } = trpc.batch.getHistory.useQuery(
+  const { toast } = useToast();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
+
+  const { data, isLoading, error, refetch } = trpc.batch.getHistory.useQuery(
     { batchId },
     { enabled: open },
   );
+
+  const updateBatch = trpc.batch.update.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Batch name updated successfully",
+      });
+      refetch();
+      setIsEditingName(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update batch name",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEditName = () => {
+    setEditedName(data?.batch.customName || "");
+    setIsEditingName(true);
+  };
+
+  const handleSaveName = () => {
+    updateBatch.mutate({
+      batchId,
+      customName: editedName,
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false);
+    setEditedName("");
+  };
 
   if (!open) return null;
 
@@ -111,13 +156,53 @@ export function BatchHistoryModal({
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Batch Name</p>
-                    <p className="font-semibold">
-                      {batch.customName || (
-                        <span className="text-gray-400 font-normal">
-                          No name set
-                        </span>
-                      )}
-                    </p>
+                    {isEditingName ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <Input
+                          value={editedName}
+                          onChange={(e) => setEditedName(e.target.value)}
+                          placeholder="Enter batch name"
+                          className="h-8 max-w-xs"
+                          autoFocus
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleSaveName}
+                          disabled={updateBatch.isLoading}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleCancelEdit}
+                          disabled={updateBatch.isLoading}
+                          className="h-8 w-8 p-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold">
+                          {batch.customName || (
+                            <span className="text-gray-400 font-normal">
+                              No name set
+                            </span>
+                          )}
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={handleEditName}
+                          className="h-6 w-6 p-0"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Status</p>

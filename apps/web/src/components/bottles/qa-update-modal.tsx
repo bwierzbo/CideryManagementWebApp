@@ -76,7 +76,7 @@ export function QAUpdateModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // tRPC queries and mutations
-  const updateQAMutation = trpc.packaging.updateQA.useMutation();
+  const updateQAMutation = trpc.bottles.updateQA.useMutation();
   const utils = trpc.useUtils();
 
   const {

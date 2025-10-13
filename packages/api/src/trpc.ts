@@ -70,7 +70,7 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
  */
 export const createRbacProcedure = (action: string, entity: string) =>
   protectedProcedure.use(({ ctx, next }) => {
-    const userRole = ctx.session?.user?.role as "admin" | "operator";
+    const userRole = ctx.session?.user?.role as "admin" | "operator" | "viewer";
 
     if (!userRole || !can(userRole, action as any, entity as any)) {
       throw new TRPCError({

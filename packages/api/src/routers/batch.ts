@@ -63,6 +63,31 @@ const addAdditiveSchema = z.object({
   addedBy: z.string().optional(),
 });
 
+const updateMeasurementSchema = z.object({
+  measurementId: z.string().uuid("Invalid measurement ID"),
+  measurementDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  specificGravity: z.number().min(0.99).max(1.2).optional(),
+  abv: z.number().min(0).max(20).optional(),
+  ph: z.number().min(2).max(5).optional(),
+  totalAcidity: z.number().min(0).max(20).optional(),
+  temperature: z.number().min(0).max(40).optional(),
+  volume: z.number().positive().optional(),
+  volumeUnit: z.enum(['L', 'gal']).optional(),
+  notes: z.string().optional(),
+  takenBy: z.string().optional(),
+});
+
+const updateAdditiveSchema = z.object({
+  additiveId: z.string().uuid("Invalid additive ID"),
+  additiveType: z.string().min(1).optional(),
+  additiveName: z.string().min(1).optional(),
+  amount: z.number().positive().optional(),
+  unit: z.string().min(1).optional(),
+  addedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  notes: z.string().optional(),
+  addedBy: z.string().optional(),
+});
+
 const filterBatchSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
   vesselId: z.string().uuid("Invalid vessel ID"),
@@ -705,6 +730,131 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to add additive",
+        });
+      }
+    }),
+
+  /**
+   * Update measurement
+   */
+  updateMeasurement: createRbacProcedure("update", "batch")
+    .input(updateMeasurementSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify measurement exists
+        const existingMeasurement = await db
+          .select()
+          .from(batchMeasurements)
+          .where(
+            and(
+              eq(batchMeasurements.id, input.measurementId),
+              isNull(batchMeasurements.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingMeasurement.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Measurement not found",
+          });
+        }
+
+        // Build update object
+        const updateData: any = {
+          updatedAt: new Date(),
+        };
+
+        if (input.measurementDate) updateData.measurementDate = input.measurementDate;
+        if (input.specificGravity !== undefined) updateData.specificGravity = input.specificGravity.toString();
+        if (input.abv !== undefined) updateData.abv = input.abv.toString();
+        if (input.ph !== undefined) updateData.ph = input.ph.toString();
+        if (input.totalAcidity !== undefined) updateData.totalAcidity = input.totalAcidity.toString();
+        if (input.temperature !== undefined) updateData.temperature = input.temperature.toString();
+        if (input.volume !== undefined) updateData.volume = input.volume.toString();
+        if (input.volumeUnit) updateData.volumeUnit = input.volumeUnit;
+        if (input.notes !== undefined) updateData.notes = input.notes;
+        if (input.takenBy !== undefined) updateData.takenBy = input.takenBy;
+
+        // Update measurement
+        const updatedMeasurement = await db
+          .update(batchMeasurements)
+          .set(updateData)
+          .where(eq(batchMeasurements.id, input.measurementId))
+          .returning();
+
+        return {
+          success: true,
+          measurement: updatedMeasurement[0],
+          message: "Measurement updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating measurement:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update measurement",
+        });
+      }
+    }),
+
+  /**
+   * Update additive
+   */
+  updateAdditive: createRbacProcedure("update", "batch")
+    .input(updateAdditiveSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify additive exists
+        const existingAdditive = await db
+          .select()
+          .from(batchAdditives)
+          .where(
+            and(
+              eq(batchAdditives.id, input.additiveId),
+              isNull(batchAdditives.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingAdditive.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Additive not found",
+          });
+        }
+
+        // Build update object
+        const updateData: any = {
+          updatedAt: new Date(),
+        };
+
+        if (input.additiveType) updateData.additiveType = input.additiveType;
+        if (input.additiveName) updateData.additiveName = input.additiveName;
+        if (input.amount !== undefined) updateData.amount = input.amount.toString();
+        if (input.unit) updateData.unit = input.unit;
+        if (input.addedAt) updateData.addedAt = input.addedAt;
+        if (input.notes !== undefined) updateData.notes = input.notes;
+        if (input.addedBy !== undefined) updateData.addedBy = input.addedBy;
+
+        // Update additive
+        const updatedAdditive = await db
+          .update(batchAdditives)
+          .set(updateData)
+          .where(eq(batchAdditives.id, input.additiveId))
+          .returning();
+
+        return {
+          success: true,
+          additive: updatedAdditive[0],
+          message: "Additive updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating additive:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update additive",
         });
       }
     }),

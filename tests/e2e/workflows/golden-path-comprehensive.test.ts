@@ -227,7 +227,7 @@ test.describe('Golden Path Workflow - Comprehensive Integration Suite', () => {
     // Execute packaging operations
     await dashboardPage.navigateToPackaging();
 
-    const packagingRuns = [
+    const bottleRuns = [
       {
         bottleSize: '750ml',
         volume: '1650', // 60% of volume
@@ -242,8 +242,8 @@ test.describe('Golden Path Workflow - Comprehensive Integration Suite', () => {
       }
     ];
 
-    for (const packaging of packagingRuns) {
-      await packagingPage.createPackagingRun({
+    for (const packaging of bottleRuns) {
+      await packagingPage.createBottleRun({
         batchNumber: workflowState.batchNumber,
         bottleSize: packaging.bottleSize,
         volumeToPackage: packaging.volume,

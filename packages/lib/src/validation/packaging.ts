@@ -17,7 +17,7 @@ export interface BatchPackagingData {
   vesselId?: string;
 }
 
-export interface PackagingRunData {
+export interface BottleRunData {
   batchId: string;
   packageDate: Date;
   volumePackagedL: number;
@@ -29,7 +29,7 @@ export interface PackagingRunData {
 
 export interface ExistingPackagingData {
   totalVolumePackagedL: number;
-  packagingRuns: Array<{
+  bottleRuns: Array<{
     id: string;
     volumePackagedL: number;
     packageDate: Date;
@@ -84,12 +84,12 @@ export function validateBatchReadyForPackaging(
  */
 export function validatePackagingVolume(
   batch: BatchPackagingData,
-  packagingData: PackagingRunData,
+  bottleData: BottleRunData,
   existingPackaging?: ExistingPackagingData,
 ): void {
   // Validate positive packaging volume
   validatePositiveVolume(
-    packagingData.volumePackagedL,
+    bottleData.volumePackagedL,
     "Packaging volume",
     `batch ${batch.batchNumber}`,
   );
@@ -97,18 +97,18 @@ export function validatePackagingVolume(
   const totalPreviouslyPackaged = existingPackaging?.totalVolumePackagedL || 0;
   const remainingVolume = batch.currentVolumeL - totalPreviouslyPackaged;
 
-  if (packagingData.volumePackagedL > remainingVolume) {
+  if (bottleData.volumePackagedL > remainingVolume) {
     throw new PackagingValidationError(
-      `Packaging volume ${packagingData.volumePackagedL}L exceeds remaining batch volume ${remainingVolume}L`,
-      `Cannot package ${packagingData.volumePackagedL}L from batch "${batch.batchNumber}". Only ${remainingVolume}L remains available (batch volume: ${batch.currentVolumeL}L, previously packaged: ${totalPreviouslyPackaged}L). Please reduce the packaging volume to ${remainingVolume}L or less.`,
+      `Packaging volume ${bottleData.volumePackagedL}L exceeds remaining batch volume ${remainingVolume}L`,
+      `Cannot package ${bottleData.volumePackagedL}L from batch "${batch.batchNumber}". Only ${remainingVolume}L remains available (batch volume: ${batch.currentVolumeL}L, previously packaged: ${totalPreviouslyPackaged}L). Please reduce the packaging volume to ${remainingVolume}L or less.`,
       {
         batchId: batch.id,
         batchNumber: batch.batchNumber,
         batchVolumeL: batch.currentVolumeL,
         previouslyPackagedL: totalPreviouslyPackaged,
         remainingVolumeL: remainingVolume,
-        requestedVolumeL: packagingData.volumePackagedL,
-        excessVolumeL: packagingData.volumePackagedL - remainingVolume,
+        requestedVolumeL: bottleData.volumePackagedL,
+        excessVolumeL: bottleData.volumePackagedL - remainingVolume,
       },
     );
   }
@@ -118,33 +118,33 @@ export function validatePackagingVolume(
  * Validates bottle count and size consistency
  */
 export function validateBottleConsistency(
-  packagingData: PackagingRunData,
+  bottleData: BottleRunData,
 ): void {
   validatePositiveCount(
-    packagingData.bottleCount,
+    bottleData.bottleCount,
     "Bottle count",
     `packaging run`,
   );
 
   // Parse bottle size to extract volume
-  const bottleSizeMatch = packagingData.bottleSize.match(/(\d+(?:\.\d+)?)/);
+  const bottleSizeMatch = bottleData.bottleSize.match(/(\d+(?:\.\d+)?)/);
   if (!bottleSizeMatch) {
     throw new PackagingValidationError(
-      `Invalid bottle size format: ${packagingData.bottleSize}`,
-      `Bottle size "${packagingData.bottleSize}" is not in a valid format. Please use a format like "750ml", "500mL", "12oz", etc.`,
-      { bottleSize: packagingData.bottleSize },
+      `Invalid bottle size format: ${bottleData.bottleSize}`,
+      `Bottle size "${bottleData.bottleSize}" is not in a valid format. Please use a format like "750ml", "500mL", "12oz", etc.`,
+      { bottleSize: bottleData.bottleSize },
     );
   }
 
   const bottleVolume = parseFloat(bottleSizeMatch[1]);
   const isMetric =
-    packagingData.bottleSize.toLowerCase().includes("ml") ||
-    packagingData.bottleSize.toLowerCase().includes("l");
+    bottleData.bottleSize.toLowerCase().includes("ml") ||
+    bottleData.bottleSize.toLowerCase().includes("l");
 
   // Convert to liters if needed
   let bottleVolumeL: number;
   if (isMetric) {
-    bottleVolumeL = packagingData.bottleSize.toLowerCase().includes("ml")
+    bottleVolumeL = bottleData.bottleSize.toLowerCase().includes("ml")
       ? bottleVolume / 1000
       : bottleVolume;
   } else {
@@ -152,22 +152,22 @@ export function validateBottleConsistency(
     bottleVolumeL = bottleVolume * 0.0295735;
   }
 
-  const calculatedTotalVolume = bottleVolumeL * packagingData.bottleCount;
+  const calculatedTotalVolume = bottleVolumeL * bottleData.bottleCount;
   const volumeDifference = Math.abs(
-    calculatedTotalVolume - packagingData.volumePackagedL,
+    calculatedTotalVolume - bottleData.volumePackagedL,
   );
   const tolerance = 0.05; // 50ml tolerance
 
   if (volumeDifference > tolerance) {
     throw new PackagingValidationError(
-      `Volume mismatch: ${packagingData.bottleCount} × ${packagingData.bottleSize} ≠ ${packagingData.volumePackagedL}L`,
-      `The bottle count and size don't match the packaging volume. ${packagingData.bottleCount} bottles of ${packagingData.bottleSize} should equal approximately ${calculatedTotalVolume.toFixed(2)}L, but ${packagingData.volumePackagedL}L was specified. Please verify your calculations.`,
+      `Volume mismatch: ${bottleData.bottleCount} × ${bottleData.bottleSize} ≠ ${bottleData.volumePackagedL}L`,
+      `The bottle count and size don't match the packaging volume. ${bottleData.bottleCount} bottles of ${bottleData.bottleSize} should equal approximately ${calculatedTotalVolume.toFixed(2)}L, but ${bottleData.volumePackagedL}L was specified. Please verify your calculations.`,
       {
-        bottleCount: packagingData.bottleCount,
-        bottleSize: packagingData.bottleSize,
+        bottleCount: bottleData.bottleCount,
+        bottleSize: bottleData.bottleSize,
         bottleVolumeL,
         calculatedTotalVolumeL: calculatedTotalVolume,
-        specifiedVolumeL: packagingData.volumePackagedL,
+        specifiedVolumeL: bottleData.volumePackagedL,
         volumeDifferenceL: volumeDifference,
         toleranceL: tolerance,
       },
@@ -227,23 +227,23 @@ export function validatePackagingDate(packageDate: Date): void {
  */
 export function validatePackaging(
   batch: BatchPackagingData,
-  packagingData: PackagingRunData,
+  bottleData: BottleRunData,
   existingPackaging?: ExistingPackagingData,
 ): void {
   // Validate batch is ready for packaging
   validateBatchReadyForPackaging(batch);
 
   // Validate packaging date
-  validatePackagingDate(packagingData.packageDate);
+  validatePackagingDate(bottleData.packageDate);
 
   // Validate packaging volume doesn't exceed available volume
-  validatePackagingVolume(batch, packagingData, existingPackaging);
+  validatePackagingVolume(batch, bottleData, existingPackaging);
 
   // Validate bottle count and size consistency
-  validateBottleConsistency(packagingData);
+  validateBottleConsistency(bottleData);
 
   // Validate ABV if provided
-  validatePackagingAbv(packagingData.abvAtPackaging);
+  validatePackagingAbv(bottleData.abvAtPackaging);
 }
 
 /**

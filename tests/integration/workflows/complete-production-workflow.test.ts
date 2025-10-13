@@ -292,7 +292,7 @@ describe('Complete Production Workflow Integration Tests', () => {
       console.log('PHASE 7: Packaging operations...')
 
       const packagingDate = new Date('2024-10-20')
-      const packagingRuns = [
+      const bottleRuns = [
         {
           volume: Math.floor(finalVolume * 0.6), // 60% in 750ml bottles
           bottleSize: '750ml',
@@ -307,7 +307,7 @@ describe('Complete Production Workflow Integration Tests', () => {
 
       const packageIds: string[] = []
 
-      for (const [index, run] of packagingRuns.entries()) {
+      for (const [index, run] of bottleRuns.entries()) {
         const bottleCount = run.bottleSize === '750ml'
           ? Math.floor(run.volume / 0.75)
           : Math.floor(run.volume / 0.5)

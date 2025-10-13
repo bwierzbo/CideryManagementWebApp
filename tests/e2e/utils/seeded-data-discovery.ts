@@ -494,7 +494,7 @@ export class SeededDataDiscovery {
         latest,
         span
       },
-      estimatedUIPages: ['/packaging', '/batches/[id]', '/production-runs']
+      estimatedUIPages: ['/bottles', '/batches/[id]', '/production-runs']
     };
   }
 

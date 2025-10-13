@@ -5,7 +5,7 @@ import { DashboardPage } from '../page-objects/dashboard-page';
 import { PurchasePage } from '../page-objects/purchase-page';
 import { PressPage } from '../page-objects/press-page';
 import { BatchPage } from '../page-objects/batch-page';
-import { PackagingPage } from '../page-objects/packaging-page';
+import { PackagingPage } from '../page-objects/bottle-page';
 import { ReportsPage } from '../page-objects/reports-page';
 import { PerformanceMonitor } from '../utils/performance-monitor';
 
@@ -270,7 +270,7 @@ test.describe('Golden Path Workflow - Complete Production Flow', () => {
     await packagingPage.waitForPageLoad();
 
     // Create packaging runs
-    const packagingRuns = [
+    const bottleRuns = [
       {
         batchNumber: batchNumber,
         bottleSize: '750ml',
@@ -288,8 +288,8 @@ test.describe('Golden Path Workflow - Complete Production Flow', () => {
     ];
 
     const packageNumbers = [];
-    for (const runData of packagingRuns) {
-      await packagingPage.createPackagingRun(runData);
+    for (const runData of bottleRuns) {
+      await packagingPage.createBottleRun(runData);
       const packageNumber = await packagingPage.getCurrentPackageNumber();
       packageNumbers.push(packageNumber);
     }

@@ -302,7 +302,7 @@ test.describe('Golden Path Workflow - Business Process Validation', () => {
       notes: 'Testing excessive packaging volume'
     };
 
-    await packagingPage.createPackagingRun(excessivePackagingData);
+    await packagingPage.createBottleRun(excessivePackagingData);
 
     const packagingErrors = await packagingPage.getValidationErrors();
     expect(packagingErrors.some(error =>
@@ -326,7 +326,7 @@ test.describe('Golden Path Workflow - Business Process Validation', () => {
       }
     };
 
-    await packagingPage.createPackagingRun(qcFailData);
+    await packagingPage.createBottleRun(qcFailData);
 
     const qcErrors = await packagingPage.getValidationErrors();
     expect(qcErrors.some(error =>
@@ -489,7 +489,7 @@ test.describe('Golden Path Workflow - Business Process Validation', () => {
       }
     };
 
-    await packagingPage.createPackagingRun(packagingData);
+    await packagingPage.createBottleRun(packagingData);
     const packagingResults = await packagingPage.getPackagingResults();
 
     consistencyTracker.packagingData = {

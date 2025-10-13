@@ -503,7 +503,7 @@ describe('Packaging Workflow Integration Tests', () => {
         updatedAt: new Date()
       }).returning()
 
-      const packagingRuns = [
+      const bottleRuns = [
         { volume: 375, bottles: 500, size: '750ml', location: 'Warehouse A' },
         { volume: 300, bottles: 600, size: '500ml', location: 'Warehouse B' },
         { volume: 300, bottles: 400, size: '750ml', location: 'Warehouse A' }
@@ -511,7 +511,7 @@ describe('Packaging Workflow Integration Tests', () => {
 
       const packageIds: string[] = []
 
-      for (const [index, run] of packagingRuns.entries()) {
+      for (const [index, run] of bottleRuns.entries()) {
         await db.transaction(async (tx) => {
           const currentBatch = await tx.select()
             .from(schema.batches)

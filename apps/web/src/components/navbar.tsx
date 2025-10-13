@@ -66,8 +66,8 @@ const navItems = [
     description: "Fermentation & Aging",
   },
   {
-    name: "Packaging",
-    href: "/packaging",
+    name: "Bottles",
+    href: "/bottles",
     icon: Package,
     description: "Bottling & Canning",
   },

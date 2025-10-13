@@ -110,7 +110,7 @@ test.describe('Page Discovery System', () => {
 
     // Verify production section contains expected pages
     const productionPaths = pagesBySection.production.map(p => p.routePath);
-    const expectedProductionPages = ['/pressing', '/cellar', '/packaging'];
+    const expectedProductionPages = ['/pressing', '/cellar', '/bottles'];
     expectedProductionPages.forEach(expectedPage => {
       if (productionPaths.length > 0) {
         // Only check if we have production pages

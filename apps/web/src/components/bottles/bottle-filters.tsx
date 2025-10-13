@@ -73,7 +73,7 @@ export function PackagingFilters({
 
   // Get package sizes for dropdown
   const { data: packageSizes, isLoading: isLoadingPackageSizes } =
-    trpc.packaging.getPackageSizes.useQuery();
+    trpc.bottles.getPackageSizes.useQuery();
 
   // Update filters when debounced search changes
   useEffect(() => {
