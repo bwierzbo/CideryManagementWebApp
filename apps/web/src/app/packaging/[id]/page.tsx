@@ -413,23 +413,6 @@ export default function PackagingDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {/* Origin */}
-                    {runData.batch.history.origin && (
-                      <div className="border-l-2 border-blue-500 pl-4">
-                        <p className="text-sm font-medium text-blue-600">Origin</p>
-                        <p className="text-sm">
-                          {runData.batch.history.origin.originType === "press_run"
-                            ? "Apple Press Run"
-                            : "Juice Purchase"}
-                        </p>
-                        {runData.batch.history.origin.originDate && (
-                          <p className="text-xs text-gray-500">
-                            {formatDateDisplay(runData.batch.history.origin.originDate)}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
                     {/* Measurements */}
                     {runData.batch.history.measurements &&
                       runData.batch.history.measurements.length > 0 && (
