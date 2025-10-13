@@ -27,7 +27,7 @@ export const fillCheckEnum = pgEnum("fill_check", [
   "fail",
   "not_tested",
 ]);
-export const packagingRunStatusEnum = pgEnum("packaging_run_status", [
+export const bottleRunStatusEnum = pgEnum("bottle_run_status", [
   "completed",
   "voided",
 ]);
@@ -36,7 +36,7 @@ export const packageSizeTypeEnum = pgEnum("package_size_type", [
   "can",
   "keg",
 ]);
-export const packagingPhotoTypeEnum = pgEnum("packaging_photo_type", [
+export const bottleRunPhotoTypeEnum = pgEnum("bottle_run_photo_type", [
   "fill_level",
   "label_placement",
   "other",
@@ -68,9 +68,9 @@ export const packageSizes = pgTable(
   }),
 );
 
-// Core packaging operation record
-export const packagingRuns = pgTable(
-  "packaging_runs",
+// Core bottling operation record
+export const bottleRuns = pgTable(
+  "bottle_runs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     batchId: uuid("batch_id")
@@ -105,7 +105,7 @@ export const packagingRuns = pgTable(
 
     // Metadata
     productionNotes: text("production_notes"),
-    status: packagingRunStatusEnum("status").default("completed"),
+    status: bottleRunStatusEnum("status").default("completed"),
     voidReason: text("void_reason"),
     voidedAt: timestamp("voided_at"),
     voidedBy: uuid("voided_by"),
@@ -119,13 +119,13 @@ export const packagingRuns = pgTable(
   },
   (table) => ({
     // Performance indexes
-    batchIdx: index("packaging_runs_batch_idx").on(table.batchId),
-    vesselIdx: index("packaging_runs_vessel_idx").on(table.vesselId),
-    packagedAtIdx: index("packaging_runs_packaged_at_idx").on(table.packagedAt),
-    statusIdx: index("packaging_runs_status_idx").on(table.status),
+    batchIdx: index("bottle_runs_batch_idx").on(table.batchId),
+    vesselIdx: index("bottle_runs_vessel_idx").on(table.vesselId),
+    packagedAtIdx: index("bottle_runs_packaged_at_idx").on(table.packagedAt),
+    statusIdx: index("bottle_runs_status_idx").on(table.status),
 
     // Composite indexes for common queries
-    batchStatusIdx: index("packaging_runs_batch_status_idx").on(
+    batchStatusIdx: index("bottle_runs_batch_status_idx").on(
       table.batchId,
       table.status,
     ),
@@ -137,26 +137,26 @@ export const packagingRuns = pgTable(
   }),
 );
 
-// Optional QA photos for packaging runs
-export const packagingRunPhotos = pgTable(
-  "packaging_run_photos",
+// Optional QA photos for bottle runs
+export const bottleRunPhotos = pgTable(
+  "bottle_run_photos",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    packagingRunId: uuid("packaging_run_id")
+    bottleRunId: uuid("bottle_run_id")
       .notNull()
-      .references(() => packagingRuns.id, { onDelete: "cascade" }),
+      .references(() => bottleRuns.id, { onDelete: "cascade" }),
     photoUrl: text("photo_url").notNull(),
-    photoType: packagingPhotoTypeEnum("photo_type"),
+    photoType: bottleRunPhotoTypeEnum("photo_type"),
     caption: text("caption"),
     uploadedBy: uuid("uploaded_by")
       .notNull(),
     uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
   },
   (table) => ({
-    packagingRunIdx: index("packaging_run_photos_packaging_run_idx").on(
-      table.packagingRunId,
+    bottleRunIdx: index("bottle_run_photos_bottle_run_idx").on(
+      table.bottleRunId,
     ),
-    uploadedByIdx: index("packaging_run_photos_uploaded_by_idx").on(
+    uploadedByIdx: index("bottle_run_photos_uploaded_by_idx").on(
       table.uploadedBy,
     ),
   }),
@@ -167,52 +167,52 @@ export const packageSizesRelations = relations(packageSizes, ({ many }) => ({
   // No direct relations needed as this is a reference table
 }));
 
-export const packagingRunsRelations = relations(
-  packagingRuns,
+export const bottleRunsRelations = relations(
+  bottleRuns,
   ({ one, many }) => ({
     // Core relationships
     batch: one(batches, {
-      fields: [packagingRuns.batchId],
+      fields: [bottleRuns.batchId],
       references: [batches.id],
     }),
     vessel: one(vessels, {
-      fields: [packagingRuns.vesselId],
+      fields: [bottleRuns.vesselId],
       references: [vessels.id],
     }),
 
     // User relationships
     qaTechnician: one(users, {
-      fields: [packagingRuns.qaTechnicianId],
+      fields: [bottleRuns.qaTechnicianId],
       references: [users.id],
     }),
     voidedByUser: one(users, {
-      fields: [packagingRuns.voidedBy],
+      fields: [bottleRuns.voidedBy],
       references: [users.id],
     }),
     createdByUser: one(users, {
-      fields: [packagingRuns.createdBy],
+      fields: [bottleRuns.createdBy],
       references: [users.id],
     }),
     updatedByUser: one(users, {
-      fields: [packagingRuns.updatedBy],
+      fields: [bottleRuns.updatedBy],
       references: [users.id],
     }),
 
     // Child relationships
-    photos: many(packagingRunPhotos),
+    photos: many(bottleRunPhotos),
     inventoryItems: many(inventoryItems),
   }),
 );
 
-export const packagingRunPhotosRelations = relations(
-  packagingRunPhotos,
+export const bottleRunPhotosRelations = relations(
+  bottleRunPhotos,
   ({ one }) => ({
-    packagingRun: one(packagingRuns, {
-      fields: [packagingRunPhotos.packagingRunId],
-      references: [packagingRuns.id],
+    bottleRun: one(bottleRuns, {
+      fields: [bottleRunPhotos.bottleRunId],
+      references: [bottleRuns.id],
     }),
     uploadedByUser: one(users, {
-      fields: [packagingRunPhotos.uploadedBy],
+      fields: [bottleRunPhotos.uploadedBy],
       references: [users.id],
     }),
   }),
@@ -225,7 +225,7 @@ export const inventoryItems = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     batchId: uuid("batch_id"),
     lotCode: text("lot_code").unique(),
-    packagingRunId: uuid("packaging_run_id").references(() => packagingRuns.id),
+    bottleRunId: uuid("bottle_run_id").references(() => bottleRuns.id),
     packageType: text("package_type"),
     packageSizeML: integer("package_size_ml"),
     expirationDate: date("expiration_date"),
@@ -243,8 +243,8 @@ export const inventoryItems = pgTable(
     // Index for lot code lookups as specified in PRD
     lotCodeIdx: index("idx_inventory_lot_code").on(table.lotCode),
     batchIdx: index("inventory_items_batch_idx").on(table.batchId),
-    packagingRunIdx: index("inventory_items_packaging_run_idx").on(
-      table.packagingRunId,
+    bottleRunIdx: index("inventory_items_bottle_run_idx").on(
+      table.bottleRunId,
     ),
     expirationDateIdx: index("inventory_items_expiration_date_idx").on(
       table.expirationDate,
@@ -261,8 +261,8 @@ export const inventoryItemsRelations = relations(inventoryItems, ({ one }) => ({
     fields: [inventoryItems.batchId],
     references: [batches.id],
   }),
-  packagingRun: one(packagingRuns, {
-    fields: [inventoryItems.packagingRunId],
-    references: [packagingRuns.id],
+  bottleRun: one(bottleRuns, {
+    fields: [inventoryItems.bottleRunId],
+    references: [bottleRuns.id],
   }),
 }));

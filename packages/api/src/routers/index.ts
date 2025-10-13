@@ -2161,6 +2161,7 @@ export const appRouter = router({
             and(
               eq(batches.vesselId, vessels.id),
               isNull(batches.deletedAt),
+              ne(batches.status, "completed"),
             ),
           )
           .leftJoin(

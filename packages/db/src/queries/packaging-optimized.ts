@@ -11,13 +11,13 @@
 
 import {
   db,
-  packagingRuns,
+  bottleRuns,
   inventoryItems,
   packageSizes,
   batches,
   vessels,
   users,
-  packagingRunPhotos,
+  bottleRunPhotos,
 } from "..";
 import {
   eq,
@@ -36,7 +36,7 @@ import {
 import type { PgSelect } from "drizzle-orm/pg-core";
 
 // Types for optimized queries
-export interface PackagingRunListItem {
+export interface BottleRunListItem {
   id: string;
   batchId: string;
   batchName: string | null;
@@ -104,17 +104,17 @@ export function withCursorPagination<T extends PgSelect<any, any, any>>(
         // For backward pagination, reverse the comparison
         return qb
           .where(
-            sql`(${packagingRuns.packagedAt}, ${packagingRuns.id}) > (${packagedAt}, ${id})`,
+            sql`(${bottleRuns.packagedAt}, ${bottleRuns.id}) > (${packagedAt}, ${id})`,
           )
-          .orderBy(asc(packagingRuns.packagedAt), asc(packagingRuns.id))
+          .orderBy(asc(bottleRuns.packagedAt), asc(bottleRuns.id))
           .limit(limit);
       } else {
         // Forward pagination (default)
         return qb
           .where(
-            sql`(${packagingRuns.packagedAt}, ${packagingRuns.id}) < (${packagedAt}, ${id})`,
+            sql`(${bottleRuns.packagedAt}, ${bottleRuns.id}) < (${packagedAt}, ${id})`,
           )
-          .orderBy(desc(packagingRuns.packagedAt), desc(packagingRuns.id))
+          .orderBy(desc(bottleRuns.packagedAt), desc(bottleRuns.id))
           .limit(limit);
       }
     } catch (error) {
@@ -124,7 +124,7 @@ export function withCursorPagination<T extends PgSelect<any, any, any>>(
 
   // No cursor, start from beginning
   return qb
-    .orderBy(desc(packagingRuns.packagedAt), desc(packagingRuns.id))
+    .orderBy(desc(bottleRuns.packagedAt), desc(bottleRuns.id))
     .limit(limit);
 }
 
@@ -141,74 +141,74 @@ export function generateCursor(packagedAt: Date, id: string): string {
  * Optimized list query with selective field loading and cursor pagination
  * Uses composite indexes for efficient filtering and sorting
  */
-export async function getPackagingRunsOptimized(
+export async function getBottleRunsOptimized(
   filters: PackagingRunFilters = {},
   pagination: CursorPaginationParams = {},
-): Promise<PaginatedResult<PackagingRunListItem>> {
+): Promise<PaginatedResult<BottleRunListItem>> {
   // Build WHERE conditions leveraging indexes
   const conditions = [];
 
   // Use packaging_runs_status_type_date_idx for status + type + date filtering
   if (filters.status) {
-    conditions.push(eq(packagingRuns.status, filters.status as any));
+    conditions.push(eq(bottleRuns.status, filters.status as any));
   }
 
   if (filters.packageType) {
-    conditions.push(eq(packagingRuns.packageType, filters.packageType as any));
+    conditions.push(eq(bottleRuns.packageType, filters.packageType as any));
   }
 
   if (filters.dateFrom) {
-    conditions.push(gte(packagingRuns.packagedAt, filters.dateFrom));
+    conditions.push(gte(bottleRuns.packagedAt, filters.dateFrom));
   }
 
   if (filters.dateTo) {
-    conditions.push(lte(packagingRuns.packagedAt, filters.dateTo));
+    conditions.push(lte(bottleRuns.packagedAt, filters.dateTo));
   }
 
   if (filters.batchId) {
-    conditions.push(eq(packagingRuns.batchId, filters.batchId));
+    conditions.push(eq(bottleRuns.batchId, filters.batchId));
   }
 
   if (filters.packageSizeML) {
-    conditions.push(eq(packagingRuns.packageSizeML, filters.packageSizeML));
+    conditions.push(eq(bottleRuns.packageSizeML, filters.packageSizeML));
   }
 
   if (filters.qaTechnicianId) {
-    conditions.push(eq(packagingRuns.qaTechnicianId, filters.qaTechnicianId));
+    conditions.push(eq(bottleRuns.qaTechnicianId, filters.qaTechnicianId));
   }
 
   // Base query with optimized joins and selective fields
   let query = db
     .select({
-      id: packagingRuns.id,
-      batchId: packagingRuns.batchId,
-      vesselId: packagingRuns.vesselId,
-      packagedAt: packagingRuns.packagedAt,
-      packageType: packagingRuns.packageType,
-      packageSizeML: packagingRuns.packageSizeML,
-      unitsProduced: packagingRuns.unitsProduced,
-      volumeTaken: packagingRuns.volumeTaken,
-      volumeTakenUnit: packagingRuns.volumeTakenUnit,
-      loss: packagingRuns.loss,
-      lossUnit: packagingRuns.lossUnit,
-      lossPercentage: packagingRuns.lossPercentage,
-      status: packagingRuns.status,
-      createdAt: packagingRuns.createdAt,
+      id: bottleRuns.id,
+      batchId: bottleRuns.batchId,
+      vesselId: bottleRuns.vesselId,
+      packagedAt: bottleRuns.packagedAt,
+      packageType: bottleRuns.packageType,
+      packageSizeML: bottleRuns.packageSizeML,
+      unitsProduced: bottleRuns.unitsProduced,
+      volumeTaken: bottleRuns.volumeTaken,
+      volumeTakenUnit: bottleRuns.volumeTakenUnit,
+      loss: bottleRuns.loss,
+      lossUnit: bottleRuns.lossUnit,
+      lossPercentage: bottleRuns.lossPercentage,
+      status: bottleRuns.status,
+      createdAt: bottleRuns.createdAt,
       // QA summary fields
-      fillCheck: packagingRuns.fillCheck,
-      abvAtPackaging: packagingRuns.abvAtPackaging,
-      qaTechnicianId: packagingRuns.qaTechnicianId,
+      fillCheck: bottleRuns.fillCheck,
+      abvAtPackaging: bottleRuns.abvAtPackaging,
+      qaTechnicianId: bottleRuns.qaTechnicianId,
       // Related data
       batchName: batches.name,
       vesselName: vessels.name,
       qaTechnicianName: sql<string>`qa_tech.name`.as("qaTechnicianName"),
     })
-    .from(packagingRuns)
-    .leftJoin(batches, eq(packagingRuns.batchId, batches.id))
-    .leftJoin(vessels, eq(packagingRuns.vesselId, vessels.id))
+    .from(bottleRuns)
+    .leftJoin(batches, eq(bottleRuns.batchId, batches.id))
+    .leftJoin(vessels, eq(bottleRuns.vesselId, vessels.id))
     .leftJoin(
       sql`users AS qa_tech`,
-      sql`qa_tech.id = ${packagingRuns.qaTechnicianId}`,
+      sql`qa_tech.id = ${bottleRuns.qaTechnicianId}`,
     );
 
   // Add batch search if needed (uses packaging_runs_batch_status_idx)
@@ -230,12 +230,12 @@ export async function getPackagingRunsOptimized(
   // Get total count for metadata (optimized with same indexes)
   let countQuery = db
     .select({ count: sql<number>`count(*)` })
-    .from(packagingRuns);
+    .from(bottleRuns);
 
   if (filters.batchSearch) {
     countQuery = countQuery.leftJoin(
       batches,
-      eq(packagingRuns.batchId, batches.id),
+      eq(bottleRuns.batchId, batches.id),
     );
   }
 
@@ -264,7 +264,7 @@ export async function getPackagingRunsOptimized(
   }
 
   // Format results
-  const formattedResults: PackagingRunListItem[] = results.map((item) => ({
+  const formattedResults: BottleRunListItem[] = results.map((item) => ({
     ...item,
     volumeTakenL: parseFloat(item.volumeTaken?.toString() || "0"),
     lossL: parseFloat(item.loss?.toString() || "0"),
@@ -288,46 +288,46 @@ export async function getPackagingRunsOptimized(
  * Efficient batch loading for packaging run details
  * Uses packaging_runs_batch_created_idx for optimal performance
  */
-export async function getBatchPackagingRuns(
+export async function getBatchBottleRuns(
   batchIds: string[],
-): Promise<Map<string, PackagingRunListItem[]>> {
+): Promise<Map<string, BottleRunListItem[]>> {
   if (batchIds.length === 0) return new Map();
 
   const results = await db
     .select({
-      id: packagingRuns.id,
-      batchId: packagingRuns.batchId,
-      vesselId: packagingRuns.vesselId,
-      packagedAt: packagingRuns.packagedAt,
-      packageType: packagingRuns.packageType,
-      packageSizeML: packagingRuns.packageSizeML,
-      unitsProduced: packagingRuns.unitsProduced,
-      volumeTaken: packagingRuns.volumeTaken,
-      volumeTakenUnit: packagingRuns.volumeTakenUnit,
-      loss: packagingRuns.loss,
-      lossUnit: packagingRuns.lossUnit,
-      lossPercentage: packagingRuns.lossPercentage,
-      status: packagingRuns.status,
-      createdAt: packagingRuns.createdAt,
-      fillCheck: packagingRuns.fillCheck,
-      abvAtPackaging: packagingRuns.abvAtPackaging,
-      qaTechnicianId: packagingRuns.qaTechnicianId,
+      id: bottleRuns.id,
+      batchId: bottleRuns.batchId,
+      vesselId: bottleRuns.vesselId,
+      packagedAt: bottleRuns.packagedAt,
+      packageType: bottleRuns.packageType,
+      packageSizeML: bottleRuns.packageSizeML,
+      unitsProduced: bottleRuns.unitsProduced,
+      volumeTaken: bottleRuns.volumeTaken,
+      volumeTakenUnit: bottleRuns.volumeTakenUnit,
+      loss: bottleRuns.loss,
+      lossUnit: bottleRuns.lossUnit,
+      lossPercentage: bottleRuns.lossPercentage,
+      status: bottleRuns.status,
+      createdAt: bottleRuns.createdAt,
+      fillCheck: bottleRuns.fillCheck,
+      abvAtPackaging: bottleRuns.abvAtPackaging,
+      qaTechnicianId: bottleRuns.qaTechnicianId,
       batchName: batches.name,
       vesselName: vessels.name,
       qaTechnicianName: sql<string>`qa_tech.name`.as("qaTechnicianName"),
     })
-    .from(packagingRuns)
-    .leftJoin(batches, eq(packagingRuns.batchId, batches.id))
-    .leftJoin(vessels, eq(packagingRuns.vesselId, vessels.id))
+    .from(bottleRuns)
+    .leftJoin(batches, eq(bottleRuns.batchId, batches.id))
+    .leftJoin(vessels, eq(bottleRuns.vesselId, vessels.id))
     .leftJoin(
       sql`users AS qa_tech`,
-      sql`qa_tech.id = ${packagingRuns.qaTechnicianId}`,
+      sql`qa_tech.id = ${bottleRuns.qaTechnicianId}`,
     )
-    .where(sql`${packagingRuns.batchId} = ANY(${batchIds})`)
-    .orderBy(desc(packagingRuns.packagedAt));
+    .where(sql`${bottleRuns.batchId} = ANY(${batchIds})`)
+    .orderBy(desc(bottleRuns.packagedAt));
 
   // Group by batch ID
-  const grouped = new Map<string, PackagingRunListItem[]>();
+  const grouped = new Map<string, BottleRunListItem[]>();
 
   for (const item of results) {
     if (!grouped.has(item.batchId)) {
@@ -406,13 +406,13 @@ export function clearPackageSizesCache() {
  * Optimized inventory lookup for packaging runs
  * Uses inventory_items_packaging_run_created_idx for efficient joins
  */
-export async function getPackagingRunInventory(packagingRunIds: string[]) {
-  if (packagingRunIds.length === 0) return new Map();
+export async function getBottleRunInventory(bottleRunIds: string[]) {
+  if (bottleRunIds.length === 0) return new Map();
 
   const inventory = await db
     .select({
       id: inventoryItems.id,
-      packagingRunId: inventoryItems.packagingRunId,
+      bottleRunId: inventoryItems.bottleRunId,
       lotCode: inventoryItems.lotCode,
       packageType: inventoryItems.packageType,
       packageSizeML: inventoryItems.packageSizeML,
@@ -422,7 +422,7 @@ export async function getPackagingRunInventory(packagingRunIds: string[]) {
     .from(inventoryItems)
     .where(
       and(
-        inArray(inventoryItems.packagingRunId, packagingRunIds),
+        inArray(inventoryItems.bottleRunId, bottleRunIds),
         isNull(inventoryItems.deletedAt),
       ),
     )
@@ -432,13 +432,13 @@ export async function getPackagingRunInventory(packagingRunIds: string[]) {
   const grouped = new Map<string, typeof inventory>();
 
   for (const item of inventory) {
-    if (!item.packagingRunId) continue;
+    if (!item.bottleRunId) continue;
 
-    if (!grouped.has(item.packagingRunId)) {
-      grouped.set(item.packagingRunId, []);
+    if (!grouped.has(item.bottleRunId)) {
+      grouped.set(item.bottleRunId, []);
     }
 
-    grouped.get(item.packagingRunId)!.push(item);
+    grouped.get(item.bottleRunId)!.push(item);
   }
 
   return grouped;

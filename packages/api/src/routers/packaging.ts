@@ -2,12 +2,12 @@ import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
 import {
   db,
-  packagingRuns,
+  bottleRuns,
   vessels,
   batches,
   inventoryItems,
   packageSizes,
-  packagingRunPhotos,
+  bottleRunPhotos,
   users,
   batchCompositions,
   baseFruitVarieties,
@@ -22,10 +22,10 @@ import { eq, and, desc, isNull, sql, gte, lte, like, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { publishCreateEvent, publishUpdateEvent } from "lib";
 import {
-  getPackagingRunsOptimized,
-  getBatchPackagingRuns,
+  getBottleRunsOptimized,
+  getBatchBottleRuns,
   getPackageSizesCached,
-  getPackagingRunInventory,
+  getBottleRunInventory,
   measureQuery,
   type CursorPaginationParams,
   type PackagingRunFilters,
@@ -186,11 +186,11 @@ export const packagingRouter = router({
           // Get count of packaging runs for this batch to determine sequence
           const runCountResult = await tx
             .select({ count: sql<number>`count(*)` })
-            .from(packagingRuns)
+            .from(bottleRuns)
             .where(
               and(
-                eq(packagingRuns.batchId, input.batchId),
-                eq(packagingRuns.status, "completed"),
+                eq(bottleRuns.batchId, input.batchId),
+                eq(bottleRuns.status, "completed"),
               ),
             );
 
@@ -220,7 +220,7 @@ export const packagingRouter = router({
           }
 
           const newPackagingRun = await tx
-            .insert(packagingRuns)
+            .insert(bottleRuns)
             .values(packagingRunData)
             .returning();
 
@@ -281,7 +281,7 @@ export const packagingRouter = router({
             .values({
               batchId: input.batchId,
               lotCode: lotCode,
-              packagingRunId: packagingRun.id,
+              bottleRunId: packagingRun.id,
               packageType: packageType,
               packageSizeML: input.packageSizeMl,
               expirationDate: expirationDate.toISOString().slice(0, 10) as any,
@@ -329,36 +329,36 @@ export const packagingRouter = router({
       try {
         const packagingRunData = await db
           .select({
-            id: packagingRuns.id,
-            batchId: packagingRuns.batchId,
-            vesselId: packagingRuns.vesselId,
-            packagedAt: packagingRuns.packagedAt,
-            packageType: packagingRuns.packageType,
-            packageSizeML: packagingRuns.packageSizeML,
-            unitSize: packagingRuns.unitSize,
-            unitSizeUnit: packagingRuns.unitSizeUnit,
-            unitsProduced: packagingRuns.unitsProduced,
-            volumeTaken: packagingRuns.volumeTaken,
-            volumeTakenUnit: packagingRuns.volumeTakenUnit,
-            loss: packagingRuns.loss,
-            lossUnit: packagingRuns.lossUnit,
-            lossPercentage: packagingRuns.lossPercentage,
-            abvAtPackaging: packagingRuns.abvAtPackaging,
-            carbonationLevel: packagingRuns.carbonationLevel,
-            fillCheck: packagingRuns.fillCheck,
-            fillVarianceML: packagingRuns.fillVarianceML,
-            testMethod: packagingRuns.testMethod,
-            testDate: packagingRuns.testDate,
-            qaTechnicianId: packagingRuns.qaTechnicianId,
-            qaNotes: packagingRuns.qaNotes,
-            productionNotes: packagingRuns.productionNotes,
-            status: packagingRuns.status,
-            voidReason: packagingRuns.voidReason,
-            voidedAt: packagingRuns.voidedAt,
-            voidedBy: packagingRuns.voidedBy,
-            createdBy: packagingRuns.createdBy,
-            createdAt: packagingRuns.createdAt,
-            updatedAt: packagingRuns.updatedAt,
+            id: bottleRuns.id,
+            batchId: bottleRuns.batchId,
+            vesselId: bottleRuns.vesselId,
+            packagedAt: bottleRuns.packagedAt,
+            packageType: bottleRuns.packageType,
+            packageSizeML: bottleRuns.packageSizeML,
+            unitSize: bottleRuns.unitSize,
+            unitSizeUnit: bottleRuns.unitSizeUnit,
+            unitsProduced: bottleRuns.unitsProduced,
+            volumeTaken: bottleRuns.volumeTaken,
+            volumeTakenUnit: bottleRuns.volumeTakenUnit,
+            loss: bottleRuns.loss,
+            lossUnit: bottleRuns.lossUnit,
+            lossPercentage: bottleRuns.lossPercentage,
+            abvAtPackaging: bottleRuns.abvAtPackaging,
+            carbonationLevel: bottleRuns.carbonationLevel,
+            fillCheck: bottleRuns.fillCheck,
+            fillVarianceML: bottleRuns.fillVarianceML,
+            testMethod: bottleRuns.testMethod,
+            testDate: bottleRuns.testDate,
+            qaTechnicianId: bottleRuns.qaTechnicianId,
+            qaNotes: bottleRuns.qaNotes,
+            productionNotes: bottleRuns.productionNotes,
+            status: bottleRuns.status,
+            voidReason: bottleRuns.voidReason,
+            voidedAt: bottleRuns.voidedAt,
+            voidedBy: bottleRuns.voidedBy,
+            createdBy: bottleRuns.createdBy,
+            createdAt: bottleRuns.createdAt,
+            updatedAt: bottleRuns.updatedAt,
             // Batch details
             batchName: batches.name,
             batchNumber: batches.batchNumber,
@@ -374,22 +374,22 @@ export const packagingRouter = router({
             voidedByName: sql<string>`voided_user.name`.as("voidedByName"),
             createdByName: sql<string>`created_user.name`.as("createdByName"),
           })
-          .from(packagingRuns)
-          .leftJoin(batches, eq(packagingRuns.batchId, batches.id))
-          .leftJoin(vessels, eq(packagingRuns.vesselId, vessels.id))
+          .from(bottleRuns)
+          .leftJoin(batches, eq(bottleRuns.batchId, batches.id))
+          .leftJoin(vessels, eq(bottleRuns.vesselId, vessels.id))
           .leftJoin(
             sql`users AS qa_tech`,
-            sql`qa_tech.id = ${packagingRuns.qaTechnicianId}`,
+            sql`qa_tech.id = ${bottleRuns.qaTechnicianId}`,
           )
           .leftJoin(
             sql`users AS voided_user`,
-            sql`voided_user.id = ${packagingRuns.voidedBy}`,
+            sql`voided_user.id = ${bottleRuns.voidedBy}`,
           )
           .leftJoin(
             sql`users AS created_user`,
-            sql`created_user.id = ${packagingRuns.createdBy}`,
+            sql`created_user.id = ${bottleRuns.createdBy}`,
           )
-          .where(eq(packagingRuns.id, runId))
+          .where(eq(bottleRuns.id, runId))
           .limit(1);
 
         if (!packagingRunData.length) {
@@ -405,7 +405,7 @@ export const packagingRouter = router({
         // Get inventory items for this run (optimized)
         let inventory: any[] = [];
         try {
-          const inventoryMap = await getPackagingRunInventory([runId]);
+          const inventoryMap = await getBottleRunInventory([runId]);
           inventory = inventoryMap.get(runId) || [];
           console.log("✅ Inventory fetched:", inventory.length, "items");
         } catch (inventoryError) {
@@ -416,18 +416,18 @@ export const packagingRouter = router({
         // Get photos for this run
         const photos = await db
           .select({
-            id: packagingRunPhotos.id,
-            photoUrl: packagingRunPhotos.photoUrl,
-            photoType: packagingRunPhotos.photoType,
-            caption: packagingRunPhotos.caption,
-            uploadedBy: packagingRunPhotos.uploadedBy,
-            uploadedAt: packagingRunPhotos.uploadedAt,
+            id: bottleRunPhotos.id,
+            photoUrl: bottleRunPhotos.photoUrl,
+            photoType: bottleRunPhotos.photoType,
+            caption: bottleRunPhotos.caption,
+            uploadedBy: bottleRunPhotos.uploadedBy,
+            uploadedAt: bottleRunPhotos.uploadedAt,
             uploaderName: users.name,
           })
-          .from(packagingRunPhotos)
-          .leftJoin(users, eq(packagingRunPhotos.uploadedBy, users.id))
-          .where(eq(packagingRunPhotos.packagingRunId, runId))
-          .orderBy(desc(packagingRunPhotos.uploadedAt));
+          .from(bottleRunPhotos)
+          .leftJoin(users, eq(bottleRunPhotos.uploadedBy, users.id))
+          .where(eq(bottleRunPhotos.bottleRunId, runId))
+          .orderBy(desc(bottleRunPhotos.uploadedAt));
 
         // Get batch composition
         const compositionData = await db
@@ -594,7 +594,7 @@ export const packagingRouter = router({
         // Use optimized query with performance measurement
         const { result, metrics } = await measureQuery(
           "list-packaging-runs",
-          () => getPackagingRunsOptimized(filters, pagination),
+          () => getBottleRunsOptimized(filters, pagination),
         );
 
         // Log performance metrics for monitoring
@@ -663,20 +663,20 @@ export const packagingRouter = router({
           // 1. Get current packaging run data for audit logging
           const currentRun = await tx
             .select({
-              id: packagingRuns.id,
-              batchId: packagingRuns.batchId,
-              fillCheck: packagingRuns.fillCheck,
-              fillVarianceML: packagingRuns.fillVarianceML,
-              abvAtPackaging: packagingRuns.abvAtPackaging,
-              carbonationLevel: packagingRuns.carbonationLevel,
-              testMethod: packagingRuns.testMethod,
-              testDate: packagingRuns.testDate,
-              qaTechnicianId: packagingRuns.qaTechnicianId,
-              qaNotes: packagingRuns.qaNotes,
-              status: packagingRuns.status,
+              id: bottleRuns.id,
+              batchId: bottleRuns.batchId,
+              fillCheck: bottleRuns.fillCheck,
+              fillVarianceML: bottleRuns.fillVarianceML,
+              abvAtPackaging: bottleRuns.abvAtPackaging,
+              carbonationLevel: bottleRuns.carbonationLevel,
+              testMethod: bottleRuns.testMethod,
+              testDate: bottleRuns.testDate,
+              qaTechnicianId: bottleRuns.qaTechnicianId,
+              qaNotes: bottleRuns.qaNotes,
+              status: bottleRuns.status,
             })
-            .from(packagingRuns)
-            .where(eq(packagingRuns.id, input.runId))
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, input.runId))
             .limit(1);
 
           if (!currentRun.length) {
@@ -727,9 +727,9 @@ export const packagingRouter = router({
 
           // 4. Update the packaging run
           const updatedRun = await tx
-            .update(packagingRuns)
+            .update(bottleRuns)
             .set(updateData)
-            .where(eq(packagingRuns.id, input.runId))
+            .where(eq(bottleRuns.id, input.runId))
             .returning();
 
           if (!updatedRun.length) {
@@ -875,7 +875,7 @@ export const packagingRouter = router({
       try {
         const { result, metrics } = await measureQuery(
           "get-batch-packaging-runs",
-          () => getBatchPackagingRuns(batchIds),
+          () => getBatchBottleRuns(batchIds),
         );
 
         // Convert Map to object for JSON serialization
