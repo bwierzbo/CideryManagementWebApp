@@ -425,7 +425,12 @@ export default function PackagingDetailPage() {
                               .slice(0, 3)
                               .map((m: any, idx: number) => (
                                 <p key={idx} className="text-xs text-gray-600">
-                                  {m.measurementType}: {m.value} • {formatDateDisplay(m.measuredAt)}
+                                  {m.abv && `ABV: ${m.abv}%`}
+                                  {m.specificGravity && ` SG: ${m.specificGravity}`}
+                                  {m.ph && ` pH: ${m.ph}`}
+                                  {m.temperature && ` ${m.temperature}°C`}
+                                  {" • "}
+                                  {formatDateDisplay(m.measurementDate)}
                                 </p>
                               ))}
                             {runData.batch.history.measurements.length > 3 && (
@@ -449,8 +454,8 @@ export default function PackagingDetailPage() {
                               .slice(0, 3)
                               .map((a: any, idx: number) => (
                                 <p key={idx} className="text-xs text-gray-600">
-                                  {a.additiveName}: {a.amountAdded}
-                                  {a.unitType} • {formatDateDisplay(a.addedAt)}
+                                  {a.additiveName}: {a.amount}
+                                  {a.unit} • {formatDateDisplay(a.addedAt)}
                                 </p>
                               ))}
                             {runData.batch.history.additives.length > 3 && (
