@@ -69,7 +69,7 @@ const navItems = [
     name: "Bottles",
     href: "/bottles",
     icon: Package,
-    description: "Bottling & Canning",
+    description: "Bottles & Kegs",
   },
   {
     name: "Reports",
