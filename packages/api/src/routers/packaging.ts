@@ -389,13 +389,14 @@ export const packagingRouter = router({
 
         console.log("📦 Fetching inventory for runId:", runId);
         // Get inventory items for this run (optimized)
+        let inventory: any[] = [];
         try {
           const inventoryMap = await getPackagingRunInventory([runId]);
-          var inventory = inventoryMap.get(runId) || [];
+          inventory = inventoryMap.get(runId) || [];
           console.log("✅ Inventory fetched:", inventory.length, "items");
         } catch (inventoryError) {
           console.error("❌ Inventory fetch error:", inventoryError);
-          var inventory = [];
+          inventory = [];
         }
 
         // Get photos for this run
