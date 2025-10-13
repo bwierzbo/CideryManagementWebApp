@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useCallback, lazy, Suspense, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, X, Loader2 } from "lucide-react";
+import { Plus, Download, X, Loader2, Beaker } from "lucide-react";
 import { performanceMonitor } from "@/lib/performance-monitor";
 import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
 
@@ -25,6 +26,7 @@ const PackagingFilters = lazy(() =>
 import type { PackagingFiltersState } from "@/components/bottles/bottle-filters";
 
 export default function PackagingPage() {
+  const router = useRouter();
   const [filters, setFilters] = useState<PackagingFiltersState>({
     dateFrom: null,
     dateTo: null,
@@ -136,6 +138,10 @@ export default function PackagingPage() {
     setShowBulkActions(false);
   }, []);
 
+  const handleNewBottleRun = useCallback(() => {
+    router.push("/cellar");
+  }, [router]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -145,17 +151,22 @@ export default function PackagingPage() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
-                Packaging Runs
+                Bottle Runs
               </h1>
               <p className="text-gray-600 mt-1 text-sm sm:text-base">
-                View and manage all packaging operations and production runs.
+                View and manage all bottling operations and production runs.
               </p>
             </div>
             <div className="flex-shrink-0">
-              <Button className="w-full sm:w-auto" size={"sm"}>
-                <Plus className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">New Packaging Run</span>
-                <span className="sm:hidden">New Run</span>
+              <Button
+                className="w-full sm:w-auto"
+                size={"sm"}
+                onClick={handleNewBottleRun}
+                title="Create bottle runs from the Cellar page"
+              >
+                <Beaker className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Bottle from Cellar</span>
+                <span className="sm:hidden">Bottle</span>
               </Button>
             </div>
           </div>
@@ -187,8 +198,8 @@ export default function PackagingPage() {
                   <span className="text-sm text-blue-700 truncate">
                     <span className="hidden sm:inline">
                       {selectedItems.length === 1
-                        ? "1 packaging run selected"
-                        : `${selectedItems.length} packaging runs selected`}
+                        ? "1 bottle run selected"
+                        : `${selectedItems.length} bottle runs selected`}
                     </span>
                     <span className="sm:hidden">
                       {selectedItems.length === 1
