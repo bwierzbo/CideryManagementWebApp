@@ -159,37 +159,19 @@ export function InventoryTable({
     [searchQuery, filters.materialTypes, itemsPerPage],
   );
 
-  // Determine whether to use search or list endpoint
-  const useSearch = searchQuery.trim().length > 0;
-
-  // API queries
+  // API query (no separate search endpoint - filter client-side)
   const {
     data: listData,
     isLoading: isListLoading,
     error: listError,
     refetch: refetchList,
-  } = trpc.inventory.list.useQuery(apiParams, {
-    enabled: !useSearch,
-  });
-
-  const {
-    data: searchData,
-    isLoading: isSearchLoading,
-    error: searchError,
-    refetch: refetchSearch,
-  } = trpc.inventory.list.useQuery(searchParams, {
-    enabled: useSearch,
-  });
+  } = trpc.inventory.list.useQuery(apiParams);
 
   // Delete mutation
   const deleteMutation = trpc.inventory.deleteItem.useMutation({
     onSuccess: () => {
       setDeleteItem(null);
-      if (useSearch) {
-        refetchSearch();
-      } else {
-        refetchList();
-      }
+      refetchList();
     },
     onError: (error) => {
       console.error("Error deleting item:", error);
@@ -197,17 +179,38 @@ export function InventoryTable({
     },
   });
 
-  // Derived state
-  const isLoading = useSearch ? isSearchLoading : isListLoading;
-  const error = useSearch ? searchError : listError;
-  const items = useMemo(
-    () => (useSearch ? searchData?.items || [] : listData?.items || []),
-    [useSearch, searchData?.items, listData?.items],
-  );
-  const totalCount = useSearch
-    ? searchData?.pagination?.total || 0
-    : listData?.pagination?.total || 0;
-  const hasMore = useSearch ? false : listData?.pagination?.hasMore || false;
+  // Derived state with client-side search filtering
+  const isLoading = isListLoading;
+  const error = listError;
+  const allItems = useMemo(() => listData?.items || [], [listData?.items]);
+
+  // Client-side search filtering
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return allItems;
+
+    const query = searchQuery.toLowerCase();
+    return allItems.filter((item: any) => {
+      const varietyName = item.metadata?.varietyName?.toLowerCase() || '';
+      const vendorName = item.metadata?.vendorName?.toLowerCase() || '';
+      const productName = item.metadata?.productName?.toLowerCase() || '';
+      const brandManufacturer = item.metadata?.brandManufacturer?.toLowerCase() || '';
+      const juiceType = item.metadata?.juiceType?.toLowerCase() || '';
+      const notes = item.notes?.toLowerCase() || '';
+
+      return (
+        varietyName.includes(query) ||
+        vendorName.includes(query) ||
+        productName.includes(query) ||
+        brandManufacturer.includes(query) ||
+        juiceType.includes(query) ||
+        notes.includes(query)
+      );
+    });
+  }, [allItems, searchQuery]);
+
+  const items = filteredItems;
+  const totalCount = listData?.pagination?.total || 0;
+  const hasMore = listData?.pagination?.hasMore || false;
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
