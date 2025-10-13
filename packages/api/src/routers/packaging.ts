@@ -229,19 +229,21 @@ export const packagingRouter = router({
           // 5. Update vessel/batch volume
           const newVolumeL = currentVolumeL - input.volumeTakenL;
 
-          await tx
-            .update(batches)
-            .set({
-              currentVolume: newVolumeL.toString(),
-              currentVolumeUnit: batch.currentVolumeUnit || "L",
-              updatedAt: new Date(),
-            })
-            .where(eq(batches.id, input.batchId));
-
-          // Update vessel status if volume is depleted
-          let vesselStatus = vessel.status;
+          // If batch is fully packaged, mark as completed and clear vessel assignment
           if (newVolumeL <= 0) {
-            vesselStatus = "cleaning" as any;
+            await tx
+              .update(batches)
+              .set({
+                currentVolume: "0",
+                currentVolumeUnit: batch.currentVolumeUnit || "L",
+                status: "completed",
+                vesselId: null,
+                endDate: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
+
+            // Set vessel to cleaning status
             await tx
               .update(vessels)
               .set({
@@ -249,7 +251,19 @@ export const packagingRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, input.vesselId));
+          } else {
+            // Partial packaging - just update volume
+            await tx
+              .update(batches)
+              .set({
+                currentVolume: newVolumeL.toString(),
+                currentVolumeUnit: batch.currentVolumeUnit || "L",
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
           }
+
+          let vesselStatus = newVolumeL <= 0 ? ("cleaning" as any) : vessel.status;
 
           // 6. Generate lot code and create inventory item
           const lotCode = generateLotCode(
