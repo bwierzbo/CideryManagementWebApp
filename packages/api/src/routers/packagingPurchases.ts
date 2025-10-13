@@ -199,7 +199,7 @@ export const packagingPurchasesRouter = router({
   listInventory: createRbacProcedure("list", "purchase")
     .input(
       z.object({
-        itemType: z.enum(["Primary Packaging", "Closures", "Secondary Packaging"]).optional(),
+        itemType: z.string().optional(),
         limit: z.number().int().positive().max(100).default(50),
         offset: z.number().int().min(0).default(0),
       }),
@@ -220,7 +220,7 @@ export const packagingPurchasesRouter = router({
             materialType: packagingPurchaseItems.materialType,
             size: packagingPurchaseItems.size,
             quantity: packagingPurchaseItems.quantity,
-            unitCost: packagingPurchaseItems.unitCost,
+            unitCost: packagingPurchaseItems.pricePerUnit,
             totalCost: packagingPurchaseItems.totalCost,
             notes: packagingPurchaseItems.notes,
             purchaseDate: packagingPurchases.purchaseDate,
@@ -240,7 +240,7 @@ export const packagingPurchasesRouter = router({
             eq(packagingPurchaseItems.packagingVarietyId, packagingVarieties.id),
           )
           .where(and(...conditions))
-          .orderBy(desc(packagingPurchases.purchaseDate));
+          .orderBy(desc(packagingPurchaseItems.createdAt));
 
         // Filter by itemType if provided (client-side for now since itemType is in varieties table)
         const filteredItems = itemType

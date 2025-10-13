@@ -315,11 +315,11 @@ export function PackagingTable({
         filterParams.push(`batch-${filters.batchSearch.slice(0, 10)}`);
       if (filters?.status && filters.status !== "all")
         filterParams.push(`status-${filters.status}`);
-      if (filters?.dateFrom)
+      if (filters?.dateFrom && filters.dateFrom instanceof Date)
         filterParams.push(
           `from-${filters.dateFrom.toISOString().split("T")[0]}`,
         );
-      if (filters?.dateTo)
+      if (filters?.dateTo && filters.dateTo instanceof Date)
         filterParams.push(`to-${filters.dateTo.toISOString().split("T")[0]}`);
 
       const filterSuffix =

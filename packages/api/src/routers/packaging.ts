@@ -9,6 +9,14 @@ import {
   packageSizes,
   packagingRunPhotos,
   users,
+  batchCompositions,
+  baseFruitVarieties,
+  juiceVarieties,
+  vendors,
+  batchMeasurements,
+  batchAdditives,
+  additiveVarieties,
+  batchTransfers,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -27,7 +35,7 @@ import {
 const createFromCellarSchema = z.object({
   batchId: z.string().uuid(),
   vesselId: z.string().uuid(),
-  packagedAt: z.date().default(() => new Date()),
+  packagedAt: z.date().or(z.string().transform((val) => new Date(val))).default(() => new Date()),
   packageSizeMl: z.number().positive(),
   unitsProduced: z.number().int().min(0),
   volumeTakenL: z.number().positive(),
@@ -89,7 +97,7 @@ export const packagingRouter = router({
    * Create packaging run from cellar modal
    * Creates run, updates vessel volume, creates inventory
    */
-  createFromCellar: createRbacProcedure("create", "packaging")
+  createFromCellar: createRbacProcedure("create", "package")
     .input(createFromCellarSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -301,7 +309,7 @@ export const packagingRouter = router({
    * Get single packaging run by ID
    * Returns full run details with relations
    */
-  get: createRbacProcedure("read", "packaging")
+  get: createRbacProcedure("read", "package")
     .input(z.string().uuid())
     .query(async ({ input: runId }) => {
       try {
@@ -337,9 +345,17 @@ export const packagingRouter = router({
             createdBy: packagingRuns.createdBy,
             createdAt: packagingRuns.createdAt,
             updatedAt: packagingRuns.updatedAt,
-            // Relations
+            // Batch details
             batchName: batches.name,
+            batchNumber: batches.batchNumber,
+            batchStatus: batches.status,
+            batchInitialVolume: batches.initialVolume,
+            batchCurrentVolume: batches.currentVolume,
+            batchStartDate: batches.startDate,
+            batchEndDate: batches.endDate,
+            // Vessel details
             vesselName: vessels.name,
+            // User relations
             qaTechnicianName: sql<string>`qa_tech.name`.as("qaTechnicianName"),
             voidedByName: sql<string>`voided_user.name`.as("voidedByName"),
             createdByName: sql<string>`created_user.name`.as("createdByName"),
@@ -371,9 +387,16 @@ export const packagingRouter = router({
 
         const run = packagingRunData[0];
 
+        console.log("📦 Fetching inventory for runId:", runId);
         // Get inventory items for this run (optimized)
-        const inventoryMap = await getPackagingRunInventory([runId]);
-        const inventory = inventoryMap.get(runId) || [];
+        try {
+          const inventoryMap = await getPackagingRunInventory([runId]);
+          var inventory = inventoryMap.get(runId) || [];
+          console.log("✅ Inventory fetched:", inventory.length, "items");
+        } catch (inventoryError) {
+          console.error("❌ Inventory fetch error:", inventoryError);
+          var inventory = [];
+        }
 
         // Get photos for this run
         const photos = await db
@@ -391,11 +414,116 @@ export const packagingRouter = router({
           .where(eq(packagingRunPhotos.packagingRunId, runId))
           .orderBy(desc(packagingRunPhotos.uploadedAt));
 
+        // Get batch composition
+        const compositionData = await db
+          .select({
+            varietyName: sql<string>`COALESCE(${baseFruitVarieties.name}, ${juiceVarieties.name})`,
+            vendorName: vendors.name,
+            volumeL: batchCompositions.volumeL,
+            percentageOfBatch: batchCompositions.percentageOfBatch,
+          })
+          .from(batchCompositions)
+          .leftJoin(
+            baseFruitVarieties,
+            eq(batchCompositions.baseFruitVarietyId, baseFruitVarieties.id),
+          )
+          .leftJoin(
+            juiceVarieties,
+            eq(batchCompositions.juiceVarietyId, juiceVarieties.id),
+          )
+          .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+          .where(eq(batchCompositions.batchId, run.batchId));
+
+        // Get batch measurements (last 5)
+        const measurements = await db
+          .select({
+            measurementType: batchMeasurements.measurementType,
+            value: batchMeasurements.value,
+            measuredAt: batchMeasurements.measuredAt,
+          })
+          .from(batchMeasurements)
+          .where(eq(batchMeasurements.batchId, run.batchId))
+          .orderBy(desc(batchMeasurements.measuredAt))
+          .limit(5);
+
+        // Get batch additives (last 5)
+        const additives = await db
+          .select({
+            additiveName: additiveVarieties.name,
+            amountAdded: batchAdditives.amountAdded,
+            unitType: batchAdditives.unitType,
+            addedAt: batchAdditives.addedAt,
+          })
+          .from(batchAdditives)
+          .leftJoin(
+            additiveVarieties,
+            eq(batchAdditives.additiveId, additiveVarieties.id),
+          )
+          .where(eq(batchAdditives.batchId, run.batchId))
+          .orderBy(desc(batchAdditives.addedAt))
+          .limit(5);
+
+        // Get batch transfers (last 5)
+        const transfers = await db
+          .select({
+            volumeTransferred: batchTransfers.volumeTransferred,
+            destinationVesselName: sql<string>`dest_vessel.name`,
+            transferredAt: batchTransfers.transferDate,
+          })
+          .from(batchTransfers)
+          .leftJoin(
+            sql`vessels AS dest_vessel`,
+            sql`dest_vessel.id = ${batchTransfers.destinationVesselId}`,
+          )
+          .where(eq(batchTransfers.sourceBatchId, run.batchId))
+          .orderBy(desc(batchTransfers.transferDate))
+          .limit(5);
+
         return {
           ...run,
           batch: {
             id: run.batchId,
             name: run.batchName,
+            batchNumber: run.batchNumber,
+            status: run.batchStatus,
+            initialVolume: run.batchInitialVolume
+              ? parseFloat(run.batchInitialVolume.toString())
+              : undefined,
+            currentVolume: run.batchCurrentVolume
+              ? parseFloat(run.batchCurrentVolume.toString())
+              : undefined,
+            startDate: run.batchStartDate,
+            endDate: run.batchEndDate,
+            composition: compositionData.map((c) => ({
+              varietyName: c.varietyName,
+              vendorName: c.vendorName,
+              volumeL: c.volumeL ? parseFloat(c.volumeL.toString()) : 0,
+              percentageOfBatch: c.percentageOfBatch
+                ? parseFloat(c.percentageOfBatch.toString())
+                : 0,
+            })),
+            history: {
+              measurements: measurements.map((m) => ({
+                measurementType: m.measurementType,
+                value: m.value,
+                measuredAt: m.measuredAt,
+              })),
+              additives: additives.map((a) => ({
+                additiveName: a.additiveName,
+                amountAdded: a.amountAdded
+                  ? parseFloat(a.amountAdded.toString())
+                  : 0,
+                unitType: a.unitType,
+                addedAt: a.addedAt,
+              })),
+              transfers: transfers.map((t) => ({
+                volumeTransferred: t.volumeTransferred
+                  ? parseFloat(t.volumeTransferred.toString())
+                  : 0,
+                destinationVesselName: t.destinationVesselName,
+                transferredAt: t.transferredAt,
+              })),
+            },
           },
           vessel: {
             id: run.vesselId,
@@ -430,7 +558,7 @@ export const packagingRouter = router({
    * List packaging runs with optimized filters and cursor-based pagination
    * Uses optimized queries with proper index utilization and caching
    */
-  list: createRbacProcedure("list", "packaging")
+  list: createRbacProcedure("list", "package")
     .input(listPackagingRunsSchema.optional())
     .query(async ({ input = {} }) => {
       try {
@@ -502,7 +630,7 @@ export const packagingRouter = router({
    * Update QA fields for a packaging run
    * Updates QA-specific fields with validation and audit logging
    */
-  updateQA: createRbacProcedure("update", "packaging")
+  updateQA: createRbacProcedure("update", "package")
     .input(
       z.object({
         runId: z.string().uuid(),
@@ -709,7 +837,7 @@ export const packagingRouter = router({
    * Get package sizes for dropdown population (with caching)
    * Uses optimized cached query for frequently accessed reference data
    */
-  getPackageSizes: createRbacProcedure("read", "packaging").query(async () => {
+  getPackageSizes: createRbacProcedure("read", "package").query(async () => {
     try {
       // Use cached query for better performance
       const { result, metrics } = await measureQuery("get-package-sizes", () =>
@@ -730,7 +858,7 @@ export const packagingRouter = router({
    * Get packaging runs for specific batches (batch loading)
    * Optimized for bulk operations and dashboard views
    */
-  getBatchRuns: createRbacProcedure("read", "packaging")
+  getBatchRuns: createRbacProcedure("read", "package")
     .input(z.array(z.string().uuid()).max(50)) // Limit batch size
     .query(async ({ input: batchIds }) => {
       try {

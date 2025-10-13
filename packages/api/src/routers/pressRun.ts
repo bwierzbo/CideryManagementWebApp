@@ -708,9 +708,9 @@ export const pressRunRouter = router({
             };
           });
 
-          // Generate batch name
+          // Generate batch name using press run completion date
           const batchName = generateBatchNameFromComposition({
-            date: new Date(),
+            date: input.completionDate,
             vesselCode:
               vessel[0].name || input.vesselId.substring(0, 6).toUpperCase(),
             batchCompositions: batchCompositionData,

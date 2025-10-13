@@ -355,6 +355,159 @@ export default function PackagingDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Main Production Details */}
           <div className="lg:col-span-2 space-y-4 md:space-y-6">
+            {/* Batch Composition */}
+            {runData.batch.composition && runData.batch.composition.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Beaker className="w-5 h-5" />
+                    Batch Composition
+                  </CardTitle>
+                  <CardDescription>
+                    Source materials for{" "}
+                    {runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {runData.batch.composition.map((comp: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">
+                            {comp.varietyName || "Unknown variety"}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">
+                            {comp.vendorName || "Unknown vendor"}
+                          </p>
+                        </div>
+                        <div className="text-right ml-4 flex-shrink-0">
+                          <p className="font-medium">
+                            {comp.percentageOfBatch?.toFixed(1)}%
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {comp.volumeL?.toFixed(1)}L
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Batch History */}
+            {runData.batch.history && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Batch History
+                  </CardTitle>
+                  <CardDescription>
+                    Key events for{" "}
+                    {runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Origin */}
+                    {runData.batch.history.origin && (
+                      <div className="border-l-2 border-blue-500 pl-4">
+                        <p className="text-sm font-medium text-blue-600">Origin</p>
+                        <p className="text-sm">
+                          {runData.batch.history.origin.originType === "press_run"
+                            ? "Apple Press Run"
+                            : "Juice Purchase"}
+                        </p>
+                        {runData.batch.history.origin.originDate && (
+                          <p className="text-xs text-gray-500">
+                            {formatDateDisplay(runData.batch.history.origin.originDate)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Measurements */}
+                    {runData.batch.history.measurements &&
+                      runData.batch.history.measurements.length > 0 && (
+                        <div className="border-l-2 border-green-500 pl-4">
+                          <p className="text-sm font-medium text-green-600">
+                            Measurements ({runData.batch.history.measurements.length})
+                          </p>
+                          <div className="space-y-1">
+                            {runData.batch.history.measurements
+                              .slice(0, 3)
+                              .map((m: any, idx: number) => (
+                                <p key={idx} className="text-xs text-gray-600">
+                                  {m.measurementType}: {m.value} • {formatDateDisplay(m.measuredAt)}
+                                </p>
+                              ))}
+                            {runData.batch.history.measurements.length > 3 && (
+                              <p className="text-xs text-gray-400">
+                                +{runData.batch.history.measurements.length - 3} more
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Additives */}
+                    {runData.batch.history.additives &&
+                      runData.batch.history.additives.length > 0 && (
+                        <div className="border-l-2 border-purple-500 pl-4">
+                          <p className="text-sm font-medium text-purple-600">
+                            Additives ({runData.batch.history.additives.length})
+                          </p>
+                          <div className="space-y-1">
+                            {runData.batch.history.additives
+                              .slice(0, 3)
+                              .map((a: any, idx: number) => (
+                                <p key={idx} className="text-xs text-gray-600">
+                                  {a.additiveName}: {a.amountAdded}
+                                  {a.unitType} • {formatDateDisplay(a.addedAt)}
+                                </p>
+                              ))}
+                            {runData.batch.history.additives.length > 3 && (
+                              <p className="text-xs text-gray-400">
+                                +{runData.batch.history.additives.length - 3} more
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Transfers */}
+                    {runData.batch.history.transfers &&
+                      runData.batch.history.transfers.length > 0 && (
+                        <div className="border-l-2 border-orange-500 pl-4">
+                          <p className="text-sm font-medium text-orange-600">
+                            Transfers ({runData.batch.history.transfers.length})
+                          </p>
+                          <div className="space-y-1">
+                            {runData.batch.history.transfers
+                              .slice(0, 3)
+                              .map((t: any, idx: number) => (
+                                <p key={idx} className="text-xs text-gray-600">
+                                  {t.volumeTransferred}L to {t.destinationVesselName} •{" "}
+                                  {formatDateDisplay(t.transferredAt)}
+                                </p>
+                              ))}
+                            {runData.batch.history.transfers.length > 3 && (
+                              <p className="text-xs text-gray-400">
+                                +{runData.batch.history.transfers.length - 3} more
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Production Information */}
             <Card>
               <CardHeader>
@@ -365,20 +518,6 @@ export default function PackagingDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3 md:space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Batch</p>
-                    <p className="font-medium truncate">
-                      {runData.batch.name ||
-                        `Batch ${runData.batchId.slice(0, 8)}`}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Vessel</p>
-                    <p className="font-medium truncate">
-                      {runData.vessel.name ||
-                        `Vessel ${runData.vesselId.slice(0, 8)}`}
-                    </p>
-                  </div>
                   <div>
                     <p className="text-sm text-gray-500">Packaged Date</p>
                     <p className="font-medium flex items-center gap-2">

@@ -28,6 +28,7 @@ import {
   sql,
   gte,
   lte,
+  inArray,
   like,
   gt,
   lt,
@@ -421,7 +422,7 @@ export async function getPackagingRunInventory(packagingRunIds: string[]) {
     .from(inventoryItems)
     .where(
       and(
-        sql`${inventoryItems.packagingRunId} = ANY(${packagingRunIds})`,
+        inArray(inventoryItems.packagingRunId, packagingRunIds),
         isNull(inventoryItems.deletedAt),
       ),
     )
