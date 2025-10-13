@@ -434,28 +434,27 @@ export const packagingRouter = router({
         // Get batch measurements (last 5)
         const measurements = await db
           .select({
-            measurementType: batchMeasurements.measurementType,
-            value: batchMeasurements.value,
-            measuredAt: batchMeasurements.measuredAt,
+            measurementDate: batchMeasurements.measurementDate,
+            specificGravity: batchMeasurements.specificGravity,
+            abv: batchMeasurements.abv,
+            ph: batchMeasurements.ph,
+            totalAcidity: batchMeasurements.totalAcidity,
+            temperature: batchMeasurements.temperature,
           })
           .from(batchMeasurements)
           .where(eq(batchMeasurements.batchId, run.batchId))
-          .orderBy(desc(batchMeasurements.measuredAt))
+          .orderBy(desc(batchMeasurements.measurementDate))
           .limit(5);
 
         // Get batch additives (last 5)
         const additives = await db
           .select({
-            additiveName: additiveVarieties.name,
-            amountAdded: batchAdditives.amountAdded,
-            unitType: batchAdditives.unitType,
+            additiveName: batchAdditives.additiveName,
+            amount: batchAdditives.amount,
+            unit: batchAdditives.unit,
             addedAt: batchAdditives.addedAt,
           })
           .from(batchAdditives)
-          .leftJoin(
-            additiveVarieties,
-            eq(batchAdditives.additiveId, additiveVarieties.id),
-          )
           .where(eq(batchAdditives.batchId, run.batchId))
           .orderBy(desc(batchAdditives.addedAt))
           .limit(5);
@@ -465,7 +464,7 @@ export const packagingRouter = router({
           .select({
             volumeTransferred: batchTransfers.volumeTransferred,
             destinationVesselName: sql<string>`dest_vessel.name`,
-            transferredAt: batchTransfers.transferDate,
+            transferredAt: batchTransfers.transferredAt,
           })
           .from(batchTransfers)
           .leftJoin(
@@ -473,7 +472,7 @@ export const packagingRouter = router({
             sql`dest_vessel.id = ${batchTransfers.destinationVesselId}`,
           )
           .where(eq(batchTransfers.sourceBatchId, run.batchId))
-          .orderBy(desc(batchTransfers.transferDate))
+          .orderBy(desc(batchTransfers.transferredAt))
           .limit(5);
 
         return {
