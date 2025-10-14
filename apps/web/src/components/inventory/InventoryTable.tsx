@@ -20,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import {
   Calendar,
   Package,
@@ -30,12 +31,12 @@ import {
   X,
   Trash2,
   Droplets,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import { MaterialTypeIndicator } from "./MaterialTypeIndicator";
-import { InventorySearch } from "./InventorySearch";
 import { InventoryFilters } from "./InventoryFilters";
 import { InventoryEditDialog } from "./InventoryEditDialog";
 import { TransferToTankModal } from "@/components/juice/TransferToTankModal";
@@ -60,7 +61,6 @@ import {
 import type {
   MaterialType,
   InventoryFiltersState,
-  SearchCallback,
   FilterCallback,
 } from "@/types/inventory";
 
@@ -236,11 +236,6 @@ export function InventoryTable({
   }, [items, sortData]);
 
   // Event handlers
-  const handleSearch: SearchCallback = useCallback((query: string) => {
-    setSearchQuery(query);
-    setCurrentPage(0); // Reset pagination when searching
-  }, []);
-
   const handleFiltersChange: FilterCallback = useCallback(
     (newFilters: Partial<InventoryFiltersState>) => {
       setFilters((prev) => ({ ...prev, ...newFilters }));
@@ -398,11 +393,18 @@ export function InventoryTable({
           <CardContent className="p-6">
             <div className="space-y-4">
               {showSearch && (
-                <InventorySearch
-                  onSearch={handleSearch}
-                  placeholder="Search inventory items..."
-                  className="max-w-md"
-                />
+                <div className="relative max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Input
+                    placeholder="Search by variety or vendor..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(0); // Reset to first page when searching
+                    }}
+                    className="pl-10"
+                  />
+                </div>
               )}
               {showFilters && (
                 <InventoryFilters
