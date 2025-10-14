@@ -173,7 +173,7 @@ export function BatchHistoryModal({
                           size="sm"
                           variant="ghost"
                           onClick={handleSaveName}
-                          disabled={updateBatch.isLoading}
+                          disabled={updateBatch.isPending}
                           className="h-8 w-8 p-0"
                         >
                           <Check className="h-4 w-4" />
@@ -182,7 +182,7 @@ export function BatchHistoryModal({
                           size="sm"
                           variant="ghost"
                           onClick={handleCancelEdit}
-                          disabled={updateBatch.isLoading}
+                          disabled={updateBatch.isPending}
                           className="h-8 w-8 p-0"
                         >
                           <X className="h-4 w-4" />
