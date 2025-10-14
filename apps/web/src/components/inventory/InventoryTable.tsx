@@ -268,12 +268,8 @@ export function InventoryTable({
   );
 
   const handleRefresh = useCallback(() => {
-    if (useSearch) {
-      refetchSearch();
-    } else {
-      refetchList();
-    }
-  }, [useSearch, refetchSearch, refetchList]);
+    refetchList();
+  }, [refetchList]);
 
   // Get unit from metadata
   const getUnit = (item: InventoryItem) => {
