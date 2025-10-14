@@ -232,12 +232,12 @@ export function EditAdditiveDialog({
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={updateAdditive.isLoading}
+              disabled={updateAdditive.isPending}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={updateAdditive.isLoading}>
-              {updateAdditive.isLoading && (
+            <Button type="submit" disabled={updateAdditive.isPending}>
+              {updateAdditive.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Save Changes
