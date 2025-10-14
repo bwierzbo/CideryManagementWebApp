@@ -788,11 +788,10 @@ export const pressRunLoads = pgTable(
       table.updatedBy,
     ),
 
-    // Unique constraint to prevent duplicate sequences within a press run
-    uniqueSequence: uniqueIndex("press_run_loads_unique_sequence").on(
-      table.pressRunId,
-      table.loadSequence,
-    ),
+    // Unique constraint to prevent duplicate sequences within a press run (excluding deleted)
+    uniqueSequence: uniqueIndex("press_run_loads_unique_sequence")
+      .on(table.pressRunId, table.loadSequence)
+      .where(sql`${table.deletedAt} IS NULL`),
   }),
 );
 
