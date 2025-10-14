@@ -681,11 +681,7 @@ export function InventoryTable({
           item={editItem}
           onSuccess={() => {
             setEditItem(null);
-            if (useSearch) {
-              refetchSearch();
-            } else {
-              refetchList();
-            }
+            refetchList();
           }}
         />
       )}
@@ -730,11 +726,7 @@ export function InventoryTable({
           availableVolumeL={Number(transferItem.currentBottleCount) || 0}
           onSuccess={() => {
             setTransferItem(null);
-            if (useSearch) {
-              refetchSearch();
-            } else {
-              refetchList();
-            }
+            refetchList();
           }}
         />
       )}
