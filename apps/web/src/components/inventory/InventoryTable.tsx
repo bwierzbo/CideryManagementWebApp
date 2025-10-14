@@ -643,7 +643,7 @@ export function InventoryTable({
           </div>
 
           {/* Pagination for list view */}
-          {!useSearch && listData?.pagination && (
+          {!searchQuery && listData?.pagination && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
                 Showing {currentPage * itemsPerPage + 1} to{" "}
