@@ -1760,8 +1760,8 @@ export const appRouter = router({
       }),
   }),
 
-  // Packaging management
-  packaging: bottlesRouter,
+  // Bottle runs management
+  bottles: bottlesRouter,
 
   // Apple Varieties management - comprehensive CRUD with new enriched fields
   fruitVariety: varietiesRouter,
