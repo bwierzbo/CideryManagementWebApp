@@ -1110,6 +1110,7 @@ export const batchRouter = router({
                     notes: m.notes || null,
                   }
                 : {},
+            metadata: m, // Include full measurement object for editing
           });
         });
 
@@ -1144,6 +1145,7 @@ export const batchRouter = router({
               addedBy: a.addedBy || null,
               notes: a.notes || null,
             },
+            metadata: a, // Include full additive object for editing
           });
         });
 

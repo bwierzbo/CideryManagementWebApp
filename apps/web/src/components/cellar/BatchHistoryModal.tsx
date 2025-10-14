@@ -38,6 +38,8 @@ import {
 import { format } from "date-fns";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { useToast } from "@/hooks/use-toast";
+import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
+import { EditAdditiveDialog } from "@/components/cellar/EditAdditiveDialog";
 
 interface BatchHistoryModalProps {
   batchId: string;
@@ -53,6 +55,8 @@ export function BatchHistoryModal({
   const { toast } = useToast();
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
+  const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
+  const [editingAdditive, setEditingAdditive] = useState<any>(null);
 
   const { data, isLoading, error, refetch } = trpc.batch.getHistory.useQuery(
     { batchId },
@@ -379,13 +383,14 @@ export function BatchHistoryModal({
                       <TableHead className="text-right">TA (g/L)</TableHead>
                       <TableHead className="text-right">Temp (°C)</TableHead>
                       <TableHead className="text-right">Volume (L)</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {measurements.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={7}
+                          colSpan={8}
                           className="text-center text-gray-500"
                         >
                           No measurements recorded
@@ -418,6 +423,16 @@ export function BatchHistoryModal({
                           <TableCell className="text-right">
                             {m.volume?.toFixed(1) || "-"}
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingMeasurement(m)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -446,13 +461,14 @@ export function BatchHistoryModal({
                       <TableHead>Unit</TableHead>
                       <TableHead>Added By</TableHead>
                       <TableHead>Notes</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {additives.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={7}
+                          colSpan={8}
                           className="text-center text-gray-500"
                         >
                           No additives recorded
@@ -472,6 +488,16 @@ export function BatchHistoryModal({
                           <TableCell>{a.unit}</TableCell>
                           <TableCell>{a.addedBy || "-"}</TableCell>
                           <TableCell>{a.notes || "-"}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingAdditive(a)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -486,16 +512,39 @@ export function BatchHistoryModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-5xl max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle>Batch History</DialogTitle>
-          <DialogDescription>
-            Complete history and details for this batch
-          </DialogDescription>
-        </DialogHeader>
-        {renderContent()}
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={() => onClose()}>
+        <DialogContent className="max-w-5xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Batch History</DialogTitle>
+            <DialogDescription>
+              Complete history and details for this batch
+            </DialogDescription>
+          </DialogHeader>
+          {renderContent()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialogs */}
+      <EditMeasurementDialog
+        measurement={editingMeasurement}
+        open={!!editingMeasurement}
+        onClose={() => setEditingMeasurement(null)}
+        onSuccess={() => {
+          refetch();
+          setEditingMeasurement(null);
+        }}
+      />
+
+      <EditAdditiveDialog
+        additive={editingAdditive}
+        open={!!editingAdditive}
+        onClose={() => setEditingAdditive(null)}
+        onSuccess={() => {
+          refetch();
+          setEditingAdditive(null);
+        }}
+      />
+    </>
   );
 }

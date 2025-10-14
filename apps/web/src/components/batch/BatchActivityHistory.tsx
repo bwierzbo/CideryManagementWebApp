@@ -31,10 +31,13 @@ import {
   Filter,
   ChevronDown,
   ChevronRight,
+  Pencil,
 } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
+import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
+import { EditAdditiveDialog } from "@/components/cellar/EditAdditiveDialog";
 
 interface BatchActivityHistoryProps {
   batchId: string;
@@ -65,7 +68,10 @@ const activityColors = {
 export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   const [isReversed, setIsReversed] = useState(false);
   const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
-  const { data, isLoading, error } = trpc.batch.getActivityHistory.useQuery({
+  const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
+  const [editingAdditive, setEditingAdditive] = useState<any>(null);
+
+  const { data, isLoading, error, refetch } = trpc.batch.getActivityHistory.useQuery({
     batchId,
   });
 
@@ -325,6 +331,28 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                                   )}
                                 </div>
                               )}
+
+                              {/* Edit button for measurements and additives */}
+                              {(activity.type === "measurement" || activity.type === "additive") && activity.metadata && (
+                                <div className="mt-2 pt-2 border-t">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (activity.type === "measurement") {
+                                        setEditingMeasurement(activity.metadata);
+                                      } else if (activity.type === "additive") {
+                                        setEditingAdditive(activity.metadata);
+                                      }
+                                    }}
+                                    className="h-8"
+                                  >
+                                    <Pencil className="h-3 w-3 mr-2" />
+                                    Edit {activity.type === "measurement" ? "Measurement" : "Additive"}
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
                       </div>
@@ -372,6 +400,27 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
           </div>
         )}
       </CardContent>
+
+      {/* Edit Dialogs */}
+      <EditMeasurementDialog
+        measurement={editingMeasurement}
+        open={!!editingMeasurement}
+        onClose={() => setEditingMeasurement(null)}
+        onSuccess={() => {
+          refetch();
+          setEditingMeasurement(null);
+        }}
+      />
+
+      <EditAdditiveDialog
+        additive={editingAdditive}
+        open={!!editingAdditive}
+        onClose={() => setEditingAdditive(null)}
+        onSuccess={() => {
+          refetch();
+          setEditingAdditive(null);
+        }}
+      />
     </Card>
   );
 }
