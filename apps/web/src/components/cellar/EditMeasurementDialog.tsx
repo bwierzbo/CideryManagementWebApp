@@ -271,12 +271,12 @@ export function EditMeasurementDialog({
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={updateMeasurement.isLoading}
+              disabled={updateMeasurement.isPending}
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={updateMeasurement.isLoading}>
-              {updateMeasurement.isLoading && (
+            <Button type="submit" disabled={updateMeasurement.isPending}>
+              {updateMeasurement.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Save Changes
