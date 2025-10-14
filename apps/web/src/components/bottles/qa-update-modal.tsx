@@ -206,8 +206,8 @@ export function QAUpdateModal({
       await updateQAMutation.mutateAsync(updateData);
 
       // Invalidate relevant queries to refresh data
-      utils.packaging.get.invalidate(runId);
-      utils.packaging.list.invalidate();
+      utils.bottles.get.invalidate(runId);
+      utils.bottles.list.invalidate();
 
       // Show success toast
       toast({
