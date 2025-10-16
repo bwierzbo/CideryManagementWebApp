@@ -88,6 +88,10 @@ export const bottleRuns = pgTable(
       scale: 2,
     }).notNull(),
     volumeTakenUnit: unitEnum("volume_taken_unit").notNull().default("L"),
+    volumeTakenLiters: decimal("volume_taken_liters", {
+      precision: 10,
+      scale: 3,
+    }), // Normalized volume in liters (auto-maintained by trigger)
     loss: decimal("loss", { precision: 10, scale: 2 }).notNull(),
     lossUnit: unitEnum("loss_unit").notNull().default("L"),
     // Loss percentage (computed in application logic)

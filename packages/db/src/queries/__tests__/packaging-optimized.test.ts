@@ -19,10 +19,10 @@ import {
   vi,
 } from "vitest";
 import {
-  getPackagingRunsOptimized,
-  getBatchPackagingRuns,
+  getBottleRunsOptimized,
+  getBatchBottleRuns,
   getPackageSizesCached,
-  getPackagingRunInventory,
+  getBottleRunInventory,
   measureQuery,
   clearPackageSizesCache,
   generateCursor,
@@ -39,7 +39,7 @@ describe("Packaging Optimized Queries", () => {
     clearPackageSizesCache();
   });
 
-  describe("getPackagingRunsOptimized", () => {
+  describe("getBottleRunsOptimized", () => {
     it("should return correct data structure", async () => {
       // Mock the query since we don't have a database connection
       const mockResult = {
@@ -50,10 +50,10 @@ describe("Packaging Optimized Queries", () => {
       };
 
       // Test that the function exists and returns the expected structure
-      expect(typeof getPackagingRunsOptimized).toBe("function");
+      expect(typeof getBottleRunsOptimized).toBe("function");
 
       // This would test with actual database when available
-      // const result = await getPackagingRunsOptimized({}, { limit: 10 })
+      // const result = await getBottleRunsOptimized({}, { limit: 10 })
       // expect(result).toHaveProperty('items')
       // expect(result).toHaveProperty('totalCount')
       // expect(result).toHaveProperty('hasNext')
@@ -80,14 +80,14 @@ describe("Packaging Optimized Queries", () => {
       // Test that function accepts the correct parameter types
       expect(() => {
         // This would actually call the function with real database
-        // getPackagingRunsOptimized(filters, pagination)
+        // getBottleRunsOptimized(filters, pagination)
       }).not.toThrow();
     });
   });
 
-  describe("getBatchPackagingRuns", () => {
+  describe("getBatchBottleRuns", () => {
     it("should handle empty batch ID array", async () => {
-      const result = await getBatchPackagingRuns([]);
+      const result = await getBatchBottleRuns([]);
       expect(result).toBeInstanceOf(Map);
       expect(result.size).toBe(0);
     });
@@ -96,10 +96,10 @@ describe("Packaging Optimized Queries", () => {
       const batchIds = [testBatchId, "another-batch-id"];
 
       // Test function signature
-      expect(typeof getBatchPackagingRuns).toBe("function");
+      expect(typeof getBatchBottleRuns).toBe("function");
       expect(() => {
         // This would call with real database
-        // getBatchPackagingRuns(batchIds)
+        // getBatchBottleRuns(batchIds)
       }).not.toThrow();
     });
   });
@@ -125,9 +125,9 @@ describe("Packaging Optimized Queries", () => {
     });
   });
 
-  describe("getPackagingRunInventory", () => {
+  describe("getBottleRunInventory", () => {
     it("should handle empty run ID array", async () => {
-      const result = await getPackagingRunInventory([]);
+      const result = await getBottleRunInventory([]);
       expect(result).toBeInstanceOf(Map);
       expect(result.size).toBe(0);
     });
@@ -135,10 +135,10 @@ describe("Packaging Optimized Queries", () => {
     it("should accept array of packaging run IDs", () => {
       const runIds = [testPackagingRunId, "another-run-id"];
 
-      expect(typeof getPackagingRunInventory).toBe("function");
+      expect(typeof getBottleRunInventory).toBe("function");
       expect(() => {
         // This would call with real database
-        // getPackagingRunInventory(runIds)
+        // getBottleRunInventory(runIds)
       }).not.toThrow();
     });
   });
@@ -265,8 +265,8 @@ describe("Packaging Optimized Queries", () => {
       const start = Date.now();
 
       // Test just the function call overhead (no DB operations)
-      await getBatchPackagingRuns([]);
-      await getPackagingRunInventory([]);
+      await getBatchBottleRuns([]);
+      await getBottleRunInventory([]);
       clearPackageSizesCache();
       generateCursor(new Date(), "test-id");
 

@@ -45,6 +45,7 @@ export const vesselMaterialEnum = pgEnum("vessel_material", [
   "plastic",
 ]);
 export const vesselJacketedEnum = pgEnum("vessel_jacketed", ["yes", "no"]);
+export const vesselPressureEnum = pgEnum("vessel_pressure", ["yes", "no"]);
 export const transactionTypeEnum = pgEnum("transaction_type", [
   "purchase",
   "transfer",
@@ -477,8 +478,13 @@ export const vessels = pgTable("vessels", {
   type: vesselTypeEnum("type"), // TEMPORARY: Keep for DB compatibility until migration
   capacity: decimal("capacity", { precision: 10, scale: 3 }).notNull(),
   capacityUnit: unitEnum("capacity_unit").notNull().default("L"),
+  capacityLiters: decimal("capacity_liters", {
+    precision: 10,
+    scale: 3,
+  }), // Normalized capacity in liters (auto-maintained by trigger)
   material: vesselMaterialEnum("material"),
   jacketed: vesselJacketedEnum("jacketed"),
+  isPressureVessel: vesselPressureEnum("is_pressure_vessel"),
   status: vesselStatusEnum("status").notNull().default("available"),
   location: text("location"),
   notes: text("notes"),
@@ -500,8 +506,16 @@ export const batches = pgTable(
       scale: 3,
     }).notNull(),
     initialVolumeUnit: unitEnum("initial_volume_unit").notNull().default("L"),
+    initialVolumeLiters: decimal("initial_volume_liters", {
+      precision: 10,
+      scale: 3,
+    }), // Normalized volume in liters (auto-maintained by trigger)
     currentVolume: decimal("current_volume", { precision: 10, scale: 3 }),
     currentVolumeUnit: unitEnum("current_volume_unit").notNull().default("L"),
+    currentVolumeLiters: decimal("current_volume_liters", {
+      precision: 10,
+      scale: 3,
+    }), // Normalized volume in liters (auto-maintained by trigger)
     status: batchStatusEnum("status").notNull().default("fermentation"),
     startDate: timestamp("start_date", { withTimezone: true })
       .notNull()
@@ -526,6 +540,9 @@ export const batches = pgTable(
     originJuicePurchaseIdx: index("batches_origin_juice_purchase_idx").on(
       table.originJuicePurchaseItemId,
     ),
+    volumeLitersIdx: index("idx_batches_volume_liters")
+      .on(table.currentVolumeLiters)
+      .where(sql`${table.deletedAt} IS NULL`),
   }),
 );
 
@@ -615,6 +632,7 @@ export const batchMeasurements = pgTable("batch_measurements", {
   temperature: decimal("temperature", { precision: 4, scale: 1 }),
   volume: decimal("volume", { precision: 10, scale: 3 }),
   volumeUnit: unitEnum("volume_unit").notNull().default("L"),
+  volumeLiters: decimal("volume_liters", { precision: 10, scale: 3 }), // Normalized volume in liters (auto-maintained by trigger)
   notes: text("notes"),
   takenBy: text("taken_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -678,6 +696,10 @@ export const pressRuns = pgTable(
       scale: 3,
     }),
     totalJuiceVolumeUnit: unitEnum("total_juice_volume_unit").notNull().default("L"),
+    totalJuiceVolumeLiters: decimal("total_juice_volume_liters", {
+      precision: 10,
+      scale: 3,
+    }), // Normalized volume in liters (auto-maintained by trigger)
     extractionRate: decimal("extraction_rate", { precision: 5, scale: 4 }), // Percentage with 4 decimal precision
 
     // Labor cost tracking following existing cost field patterns

@@ -22,6 +22,7 @@ import {
 } from "db";
 import { eq, and, isNull, desc, asc, sql, or, like } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { convertToLiters } from "lib/src/units/conversions";
 
 // Input validation schemas
 const batchIdSchema = z.object({
@@ -1525,12 +1526,14 @@ export const batchRouter = router({
         }
 
         // Calculate volume loss (in liters for consistency)
-        const volumeBeforeL = input.volumeBeforeUnit === 'gal'
-          ? input.volumeBefore * 3.78541
-          : input.volumeBefore;
-        const volumeAfterL = input.volumeAfterUnit === 'gal'
-          ? input.volumeAfter * 3.78541
-          : input.volumeAfter;
+        const volumeBeforeL = convertToLiters(
+          input.volumeBefore,
+          input.volumeBeforeUnit as "L" | "gal" | "mL"
+        );
+        const volumeAfterL = convertToLiters(
+          input.volumeAfter,
+          input.volumeAfterUnit as "L" | "gal" | "mL"
+        );
         const volumeLossL = volumeBeforeL - volumeAfterL;
 
         // Create filter operation record
@@ -1669,9 +1672,10 @@ export const batchRouter = router({
           const sourceVesselId = batch[0].vesselId;
 
           // Convert volumes to liters for calculations
-          const volumeAfterL = input.volumeAfterUnit === 'gal'
-            ? input.volumeAfter * 3.78541
-            : input.volumeAfter;
+          const volumeAfterL = convertToLiters(
+            input.volumeAfter,
+            input.volumeAfterUnit as "L" | "gal" | "mL"
+          );
           const volumeBeforeL = batch[0].currentVolume
             ? parseFloat(batch[0].currentVolume)
             : 0;
@@ -1887,10 +1891,10 @@ export const batchRouter = router({
           });
 
           // Convert transfer volume to liters for comparison
-          const transferVolumeL =
-            input.volumeUnit === "gal"
-              ? input.volumeToTransfer * 3.78541
-              : input.volumeToTransfer;
+          const transferVolumeL = convertToLiters(
+            input.volumeToTransfer,
+            input.volumeUnit as "L" | "gal" | "mL"
+          );
 
           if (transferVolumeL > availableVolumeL) {
             throw new TRPCError({
