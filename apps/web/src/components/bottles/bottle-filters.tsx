@@ -33,7 +33,7 @@ export interface PackagingFiltersState {
   dateTo: Date | null;
   packageSizeML: number | null;
   batchSearch: string;
-  status: "all" | "completed" | "voided";
+  status: "active" | "completed";
 }
 
 export interface PackagingFiltersProps {
@@ -50,7 +50,7 @@ const defaultFilters: PackagingFiltersState = {
   dateTo: null,
   packageSizeML: null,
   batchSearch: "",
-  status: "all",
+  status: "active",
 };
 
 export function PackagingFilters({
@@ -106,14 +106,13 @@ export function PackagingFilters({
     setShowAdvanced(false);
   }, [onFiltersChange]);
 
-  // Calculate active filter count
+  // Calculate active filter count (excluding status since it's now a tab)
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (filters.dateFrom) count++;
     if (filters.dateTo) count++;
     if (filters.packageSizeML) count++;
     if (filters.batchSearch.trim()) count++;
-    if (filters.status !== "all") count++;
     return count;
   }, [filters]);
 
@@ -129,6 +128,32 @@ export function PackagingFilters({
     <Card className={cn("mb-4 md:mb-6", className)}>
       <CardContent className="p-3 md:p-4">
         <div className="space-y-3 md:space-y-4">
+          {/* Status Tabs */}
+          <div className="flex items-center gap-2 border-b">
+            <button
+              onClick={() => handleFilterChange("status", "active")}
+              className={cn(
+                "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+                filters.status === "active"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => handleFilterChange("status", "completed")}
+              className={cn(
+                "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+                filters.status === "completed"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Completed
+            </button>
+          </div>
+
           {/* Top row - Search and Quick Filters */}
           <div className="flex flex-col gap-3 md:gap-4">
             {/* Batch Search */}
@@ -191,7 +216,7 @@ export function PackagingFilters({
           {/* Advanced Filters */}
           {showAdvanced && (
             <div className="border-t pt-3 md:pt-4 space-y-3 md:space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                 {/* Date From */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">From Date</Label>
@@ -247,26 +272,6 @@ export function PackagingFilters({
                           </SelectItem>
                         ))
                       )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Status */}
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">Status</Label>
-                  <Select
-                    value={filters.status}
-                    onValueChange={(value: "all" | "completed" | "voided") =>
-                      handleFilterChange("status", value)
-                    }
-                  >
-                    <SelectTrigger className="h-9 md:h-10">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="voided">Voided</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -364,23 +369,6 @@ export function PackagingFilters({
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px] flex-shrink-0"
                     onClick={() => handleSearchChange("")}
                     aria-label="Clear search filter"
-                  />
-                </Badge>
-              )}
-
-              {filters.status !== "all" && (
-                <Badge
-                  variant="secondary"
-                  className="flex items-center gap-1 text-xs h-6"
-                >
-                  <span className="hidden sm:inline">
-                    Status: {filters.status}
-                  </span>
-                  <span className="sm:hidden">{filters.status}</span>
-                  <X
-                    className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
-                    onClick={() => handleFilterChange("status", "all")}
-                    aria-label="Remove status filter"
                   />
                 </Badge>
               )}
