@@ -314,7 +314,7 @@ export function PackagingTable({
 
       if (filters?.batchSearch)
         filterParams.push(`batch-${filters.batchSearch.slice(0, 10)}`);
-      if (filters?.status && filters.status !== "all")
+      if (filters?.status)
         filterParams.push(`status-${filters.status}`);
       if (filters?.dateFrom && filters.dateFrom instanceof Date)
         filterParams.push(
