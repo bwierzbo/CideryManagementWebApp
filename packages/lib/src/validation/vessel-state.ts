@@ -13,7 +13,8 @@ export interface VesselStateData {
   status: VesselStatus;
   currentVolumeL?: number;
   capacityL: number;
-  type: "fermenter" | "conditioning_tank" | "bright_tank" | "storage";
+  // TODO: Remove vessel type logic after migration
+  // type: "fermenter" | "conditioning_tank" | "bright_tank" | "storage";
 }
 
 export interface StateTransition {
@@ -274,33 +275,35 @@ export function validateVesselUsability(
 
 /**
  * Validates vessel type is appropriate for operation
+ * TODO: Remove vessel type logic after migration
+ * This function is deprecated - vessels are now identified by capabilities
  */
-export function validateVesselTypeForOperation(
-  vessel: VesselStateData,
-  operation: "fermentation" | "conditioning" | "packaging" | "storage",
-): void {
-  const typeOperationMap: Record<typeof vessel.type, string[]> = {
-    fermenter: ["fermentation", "storage"],
-    conditioning_tank: ["conditioning", "storage"],
-    bright_tank: ["packaging", "storage"],
-    storage: ["storage"],
-  };
-
-  const allowedOperations = typeOperationMap[vessel.type];
-  if (!allowedOperations.includes(operation)) {
-    throw new VesselStateValidationError(
-      `Vessel type ${vessel.type} not suitable for ${operation}`,
-      `Vessel "${vessel.name}" is a ${vessel.type.replace("_", " ")} and is not typically used for ${operation}. Consider using a more appropriate vessel type for optimal results.`,
-      {
-        vesselId: vessel.id,
-        vesselName: vessel.name,
-        vesselType: vessel.type,
-        operation,
-        allowedOperations,
-      },
-    );
-  }
-}
+// export function validateVesselTypeForOperation(
+//   vessel: VesselStateData,
+//   operation: "fermentation" | "conditioning" | "packaging" | "storage",
+// ): void {
+//   const typeOperationMap: Record<typeof vessel.type, string[]> = {
+//     fermenter: ["fermentation", "storage"],
+//     conditioning_tank: ["conditioning", "storage"],
+//     bright_tank: ["packaging", "storage"],
+//     storage: ["storage"],
+//   };
+//
+//   const allowedOperations = typeOperationMap[vessel.type];
+//   if (!allowedOperations.includes(operation)) {
+//     throw new VesselStateValidationError(
+//       `Vessel type ${vessel.type} not suitable for ${operation}`,
+//       `Vessel "${vessel.name}" is a ${vessel.type.replace("_", " ")} and is not typically used for ${operation}. Consider using a more appropriate vessel type for optimal results.`,
+//       {
+//         vesselId: vessel.id,
+//         vesselName: vessel.name,
+//         vesselType: vessel.type,
+//         operation,
+//         allowedOperations,
+//       },
+//     );
+//   }
+// }
 
 /**
  * Comprehensive vessel state validation function
@@ -331,6 +334,7 @@ export function validateVesselState(
 
 /**
  * Enhanced Zod schema for vessel state validation
+ * TODO: Remove vessel type logic after migration
  */
 export const vesselStateValidationSchema = z
   .object({
@@ -346,16 +350,17 @@ export const vesselStateValidationSchema = z
       .nonnegative("Current volume cannot be negative")
       .optional(),
     capacityL: z.number().positive("Capacity must be greater than 0L"),
-    type: z
-      .enum([
-        "fermenter",
-        "conditioning_tank",
-        "bright_tank",
-        "storage",
-      ] as const)
-      .describe(
-        "Type must be one of: fermenter, conditioning_tank, bright_tank, storage",
-      ),
+    // TODO: Remove vessel type logic after migration
+    // type: z
+    //   .enum([
+    //     "fermenter",
+    //     "conditioning_tank",
+    //     "bright_tank",
+    //     "storage",
+    //   ] as const)
+    //   .describe(
+    //     "Type must be one of: fermenter, conditioning_tank, bright_tank, storage",
+    //   ),
   })
   .refine(
     (data) => {

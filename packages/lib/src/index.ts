@@ -1,7 +1,6 @@
 export const placeholder = "lib package";
 
 // Re-export validation functions and schemas (client-safe)
-export * from "./validation";
 export * from "./schemas";
 
 // Re-export utility functions (client-safe)

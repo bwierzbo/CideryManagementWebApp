@@ -10,6 +10,12 @@
 import { validatePositiveQuantity } from "../validation/volume-quantity";
 
 /**
+ * Floating-point tolerance for volume calculations (0.01 L = 10 mL)
+ * Matches the epsilon used in validation functions
+ */
+const VOLUME_EPSILON = 0.01;
+
+/**
  * Conversion factor: 1 bushel = 40 lb = 18.14 kg
  * Source: US Dry Bushel standard for apples
  */
@@ -28,10 +34,13 @@ export const GAL_TO_L_FACTOR = 3.78541;
  * @throws QuantityValidationError for invalid inputs
  */
 export function bushelsToKg(bushels: number): number {
-  validatePositiveQuantity(bushels, "Bushels", "bushels", "unit conversion");
+  // Clamp near-zero values to exactly 0 to handle floating-point imprecision
+  const clampedBushels = Math.abs(bushels) < VOLUME_EPSILON ? 0 : bushels;
+
+  validatePositiveQuantity(clampedBushels, "Bushels", "bushels", "unit conversion");
 
   // Convert and round to 0.01 kg precision
-  return Math.round(bushels * BUSHEL_TO_KG_FACTOR * 100) / 100;
+  return Math.round(clampedBushels * BUSHEL_TO_KG_FACTOR * 100) / 100;
 }
 
 /**
@@ -41,10 +50,13 @@ export function bushelsToKg(bushels: number): number {
  * @throws QuantityValidationError for invalid inputs
  */
 export function kgToBushels(kg: number): number {
-  validatePositiveQuantity(kg, "Kilograms", "kg", "unit conversion");
+  // Clamp near-zero values to exactly 0 to handle floating-point imprecision
+  const clampedKg = Math.abs(kg) < VOLUME_EPSILON ? 0 : kg;
+
+  validatePositiveQuantity(clampedKg, "Kilograms", "kg", "unit conversion");
 
   // Convert and round to 0.01 bushel precision
-  return Math.round((kg / BUSHEL_TO_KG_FACTOR) * 100) / 100;
+  return Math.round((clampedKg / BUSHEL_TO_KG_FACTOR) * 100) / 100;
 }
 
 /**
@@ -54,10 +66,13 @@ export function kgToBushels(kg: number): number {
  * @throws QuantityValidationError for invalid inputs
  */
 export function gallonsToLiters(gallons: number): number {
-  validatePositiveQuantity(gallons, "Gallons", "gal", "unit conversion");
+  // Clamp near-zero values to exactly 0 to handle floating-point imprecision
+  const clampedGallons = Math.abs(gallons) < VOLUME_EPSILON ? 0 : gallons;
+
+  validatePositiveQuantity(clampedGallons, "Gallons", "gal", "unit conversion");
 
   // Convert and round to 0.01 L precision
-  return Math.round(gallons * GAL_TO_L_FACTOR * 100) / 100;
+  return Math.round(clampedGallons * GAL_TO_L_FACTOR * 100) / 100;
 }
 
 /**
@@ -67,10 +82,13 @@ export function gallonsToLiters(gallons: number): number {
  * @throws QuantityValidationError for invalid inputs
  */
 export function litersToGallons(liters: number): number {
-  validatePositiveQuantity(liters, "Liters", "L", "unit conversion");
+  // Clamp near-zero values to exactly 0 to handle floating-point imprecision
+  const clampedLiters = Math.abs(liters) < VOLUME_EPSILON ? 0 : liters;
+
+  validatePositiveQuantity(clampedLiters, "Liters", "L", "unit conversion");
 
   // Convert and round to 0.01 gallon precision
-  return Math.round((liters / GAL_TO_L_FACTOR) * 100) / 100;
+  return Math.round((clampedLiters / GAL_TO_L_FACTOR) * 100) / 100;
 }
 
 /**

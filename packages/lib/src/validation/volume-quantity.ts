@@ -6,6 +6,12 @@ import { z } from "zod";
 import { VolumeValidationError, QuantityValidationError } from "./errors";
 
 /**
+ * Floating-point tolerance for volume calculations (0.01 L = 10 mL)
+ * This accounts for JavaScript floating-point arithmetic imprecision
+ */
+const VOLUME_EPSILON = 0.01;
+
+/**
  * Validates that volume is positive and within reasonable bounds
  */
 export function validatePositiveVolume(
@@ -13,18 +19,18 @@ export function validatePositiveVolume(
   fieldName: string = "Volume",
   context: string = "",
 ): void {
+  // Allow values within epsilon tolerance of zero (floating-point imprecision)
+  // Values like -0.01 to +0.01 L are treated as acceptable zero values
+  if (Math.abs(volume) < VOLUME_EPSILON) {
+    // Within tolerance of zero - treat as valid zero, no error
+    return;
+  }
+
+  // For values outside epsilon range, check if truly negative
   if (volume < 0) {
     throw new VolumeValidationError(
       `${fieldName} cannot be negative: ${volume}`,
       `${fieldName} cannot be negative. Please enter a positive value${context ? ` for ${context}` : ""}.`,
-      { fieldName, volume, context },
-    );
-  }
-
-  if (volume === 0) {
-    throw new VolumeValidationError(
-      `${fieldName} cannot be zero: ${volume}`,
-      `${fieldName} must be greater than 0L${context ? ` for ${context}` : ""}. Please enter a positive volume.`,
       { fieldName, volume, context },
     );
   }
@@ -56,18 +62,18 @@ export function validatePositiveQuantity(
   unit: string = "",
   context: string = "",
 ): void {
+  // Allow values within epsilon tolerance of zero (floating-point imprecision)
+  // Values like -0.01 to +0.01 are treated as acceptable zero values
+  if (Math.abs(quantity) < VOLUME_EPSILON) {
+    // Within tolerance of zero - treat as valid zero, no error
+    return;
+  }
+
+  // For values outside epsilon range, check if truly negative
   if (quantity < 0) {
     throw new QuantityValidationError(
       `${fieldName} cannot be negative: ${quantity}`,
       `${fieldName} cannot be negative. Please enter a positive value${context ? ` for ${context}` : ""}.`,
-      { fieldName, quantity, unit, context },
-    );
-  }
-
-  if (quantity === 0) {
-    throw new QuantityValidationError(
-      `${fieldName} cannot be zero: ${quantity}`,
-      `${fieldName} must be greater than 0${unit ? ` ${unit}` : ""}${context ? ` for ${context}` : ""}. Please enter a positive quantity.`,
       { fieldName, quantity, unit, context },
     );
   }
