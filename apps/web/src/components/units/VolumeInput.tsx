@@ -127,8 +127,9 @@ export function VolumeInput({
     // Value stays the same in liters, just changes display
   };
 
-  // Generate unique ID if not provided
-  const inputId = id || React.useId();
+  // Generate unique ID - must be called unconditionally
+  const generatedId = React.useId();
+  const inputId = id || generatedId;
 
   return (
     <div className={cn("space-y-2", className)}>
