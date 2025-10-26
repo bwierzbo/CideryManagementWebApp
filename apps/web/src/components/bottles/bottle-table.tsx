@@ -35,7 +35,7 @@ import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import { formatDate } from "@/utils/date-format";
 
-// Type for packaging run from API
+// Type for bottling run from API
 interface PackagingRun {
   id: string;
   batchId: string;
@@ -87,7 +87,7 @@ interface PackagingTableProps {
     dateTo?: Date | null;
     packageSizeML?: number | null;
     batchSearch?: string;
-    status?: "all" | "completed" | "voided";
+    status?: "active" | "completed";
   };
   onDataChange?: (data: {
     items: PackagingRun[];
@@ -158,7 +158,8 @@ export function PackagingTable({
     if (filters.batchSearch) {
       params.batchSearch = filters.batchSearch;
     }
-    if (filters.status && filters.status !== "all") {
+    // Status is now always provided (either "active" or "completed")
+    if (filters.status) {
       params.status = filters.status;
     }
 
@@ -307,7 +308,7 @@ export function PackagingTable({
 
   // Helper function to generate CSV filename with filter parameters
   const generateFilename = useCallback(
-    (prefix: string = "packaging-runs") => {
+    (prefix: string = "bottling-runs") => {
       const date = new Date().toISOString().split("T")[0];
       const filterParams = [];
 
@@ -422,7 +423,7 @@ export function PackagingTable({
         const a = document.createElement("a");
         a.href = url;
         a.download = generateFilename(
-          `packaging-runs-selected-${selectedIds.length}`,
+          `bottling-runs-selected-${selectedIds.length}`,
         );
         a.click();
         URL.revokeObjectURL(url);
@@ -462,12 +463,12 @@ export function PackagingTable({
             <div className="min-w-0 flex-1">
               <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
                 <Package className="w-5 h-5" />
-                <span className="truncate">Packaging Runs</span>
+                <span className="truncate">Bottle Runs</span>
               </CardTitle>
               <CardDescription className="text-sm">
                 {totalCount > 0
-                  ? `${totalCount} packaging runs found`
-                  : "No packaging runs found"}
+                  ? `${totalCount} bottling runs found`
+                  : "No bottling runs found"}
               </CardDescription>
             </div>
             <Button
@@ -486,7 +487,7 @@ export function PackagingTable({
             <div className="flex items-center gap-2 p-3 md:p-4 text-red-600 bg-red-50 rounded-lg mb-4 mx-3 md:mx-0">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span className="text-sm md:text-base">
-                Error loading packaging runs: {error.message}
+                Error loading bottling runs: {error.message}
               </span>
             </div>
           )}
@@ -513,10 +514,10 @@ export function PackagingTable({
               <div className="text-center py-12 px-3 text-muted-foreground">
                 <Package2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
                 <div className="text-lg font-medium">
-                  No packaging runs found
+                  No bottling runs found
                 </div>
                 <div className="text-sm mt-1">
-                  Packaging runs will appear here once created
+                  Bottling runs will appear here once created
                 </div>
               </div>
             ) : (
@@ -717,9 +718,9 @@ export function PackagingTable({
                     >
                       <div className="flex flex-col items-center gap-2">
                         <Package2 className="w-8 h-8 text-muted-foreground/50" />
-                        <span>No packaging runs found</span>
+                        <span>No bottling runs found</span>
                         <span className="text-sm">
-                          Packaging runs will appear here once created
+                          Bottling runs will appear here once created
                         </span>
                       </div>
                     </TableCell>

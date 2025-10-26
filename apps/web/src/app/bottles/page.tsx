@@ -32,7 +32,7 @@ export default function PackagingPage() {
     dateTo: null,
     packageSizeML: null,
     batchSearch: "",
-    status: "all",
+    status: "active",
   });
 
   const [isExporting, setIsExporting] = useState(false);
@@ -92,7 +92,7 @@ export default function PackagingPage() {
 
     performanceMonitor.recordUserInteraction({
       type: "export",
-      target: "packaging-export-all",
+      target: "bottling-export-all",
       timestamp: startTime,
     });
 
@@ -100,7 +100,7 @@ export default function PackagingPage() {
       await tableData.exportCSV();
       const duration = performance.now() - startTime;
       performanceMonitor.completeUserInteraction(
-        "packaging-export-all",
+        "bottling-export-all",
         duration,
       );
     } finally {
@@ -116,7 +116,7 @@ export default function PackagingPage() {
 
     performanceMonitor.recordUserInteraction({
       type: "export",
-      target: "packaging-export-selected",
+      target: "bottling-export-selected",
       timestamp: startTime,
       metadata: { selectedCount: selectedItems.length },
     });
@@ -125,7 +125,7 @@ export default function PackagingPage() {
       await tableData.exportSelectedCSV(selectedItems);
       const duration = performance.now() - startTime;
       performanceMonitor.completeUserInteraction(
-        "packaging-export-selected",
+        "bottling-export-selected",
         duration,
       );
     } finally {
@@ -148,27 +148,13 @@ export default function PackagingPage() {
 
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="mb-6 md:mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
-                Bottle Runs
-              </h1>
-              <p className="text-gray-600 mt-1 text-sm sm:text-base">
-                View and manage all bottling operations and production runs.
-              </p>
-            </div>
-            <div className="flex-shrink-0">
-              <Button
-                className="w-full sm:w-auto"
-                size={"sm"}
-                onClick={handleNewBottleRun}
-                title="Create bottle runs from the Cellar page"
-              >
-                <Beaker className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Bottle from Cellar</span>
-                <span className="sm:hidden">Bottle</span>
-              </Button>
-            </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
+              Bottling Runs
+            </h1>
+            <p className="text-gray-600 mt-1 text-sm sm:text-base">
+              View and manage all bottling operations and production runs.
+            </p>
           </div>
         </div>
 
@@ -198,8 +184,8 @@ export default function PackagingPage() {
                   <span className="text-sm text-blue-700 truncate">
                     <span className="hidden sm:inline">
                       {selectedItems.length === 1
-                        ? "1 bottle run selected"
-                        : `${selectedItems.length} bottle runs selected`}
+                        ? "1 bottling run selected"
+                        : `${selectedItems.length} bottling runs selected`}
                     </span>
                     <span className="sm:hidden">
                       {selectedItems.length === 1

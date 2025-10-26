@@ -24,6 +24,7 @@ import { AdditivesInventoryTable } from "@/components/inventory/AdditivesInvento
 import { JuiceInventoryTable } from "@/components/inventory/JuiceInventoryTable";
 import { PackagingInventoryTable } from "@/components/inventory/PackagingInventoryTable";
 import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable";
+import { PackagingTable as BottleTable } from "@/components/bottles/bottle-table";
 import {
   Package,
   Plus,
@@ -34,6 +35,7 @@ import {
   Droplets,
   Apple,
   ShoppingCart,
+  Wine,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import {
@@ -382,62 +384,149 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {/* Main Content with Tabs */}
-        <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
-          className="space-y-4 lg:space-y-6"
-        >
-          <TabsList className="grid w-full grid-cols-6 h-auto">
-            <TabsTrigger
-              value="inventory"
-              className="flex items-center justify-center space-x-1 lg:space-x-2 py-2"
-            >
-              <Package className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Inventory</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="apple"
-              className="flex items-center justify-center space-x-1 lg:space-x-2 py-2"
-            >
-              <Apple className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Base Fruit</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="additives"
-              className="flex items-center justify-center space-x-1 lg:space-x-2 py-2"
-            >
-              <Beaker className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Additives</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="juice"
-              className="flex items-center justify-center space-x-1 lg:space-x-2 py-2"
-            >
-              <Droplets className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Juice</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="packaging"
-              className="flex items-center justify-center space-x-1 lg:space-x-2 py-2"
-            >
-              <Package className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Packaging</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="purchase-orders"
-              className="flex items-center justify-center space-x-1 lg:space-x-2 py-2"
-            >
-              <ShoppingCart className="w-4 h-4" />
-              <span className="text-xs lg:text-sm">Transaction History</span>
-            </TabsTrigger>
-          </TabsList>
+        {/* Main Content with Sidebar Navigation */}
+        <div className="flex flex-col lg:flex-row gap-6">
+          {/* Sidebar Navigation */}
+          <aside className="lg:w-64 flex-shrink-0">
+            <Card>
+              <CardContent className="p-4">
+                <nav className="space-y-1">
+                  {/* Primary Views Section */}
+                  <div className="mb-4">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3">
+                      Overview
+                    </h3>
+                    <button
+                      onClick={() => setActiveTab("inventory")}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === "inventory"
+                          ? "bg-amber-50 text-amber-900 border border-amber-200"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <Package className="w-5 h-5 flex-shrink-0" />
+                      <span>All Inventory</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("ciders")}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === "ciders"
+                          ? "bg-amber-50 text-amber-900 border border-amber-200"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <Wine className="w-5 h-5 flex-shrink-0" />
+                      <span>Finished Ciders</span>
+                    </button>
+                  </div>
+
+                  {/* Materials Section */}
+                  <div className="mb-4">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3 pt-2 border-t">
+                      Raw Materials
+                    </h3>
+                    <button
+                      onClick={() => setActiveTab("apple")}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === "apple"
+                          ? "bg-amber-50 text-amber-900 border border-amber-200"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <Apple className="w-5 h-5 flex-shrink-0" />
+                      <span>Base Fruit</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("juice")}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === "juice"
+                          ? "bg-amber-50 text-amber-900 border border-amber-200"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <Droplets className="w-5 h-5 flex-shrink-0" />
+                      <span>Juice</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("additives")}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === "additives"
+                          ? "bg-amber-50 text-amber-900 border border-amber-200"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <Beaker className="w-5 h-5 flex-shrink-0" />
+                      <span>Additives</span>
+                    </button>
+                  </div>
+
+                  {/* Packaging Section */}
+                  <div className="mb-4">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3 pt-2 border-t">
+                      Packaging
+                    </h3>
+                    <button
+                      onClick={() => setActiveTab("packaging")}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === "packaging"
+                          ? "bg-amber-50 text-amber-900 border border-amber-200"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <Package className="w-5 h-5 flex-shrink-0" />
+                      <span>Packaging Materials</span>
+                    </button>
+                  </div>
+
+                  {/* Management Section */}
+                  <div>
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3 pt-2 border-t">
+                      Management
+                    </h3>
+                    <button
+                      onClick={() => setActiveTab("purchase-orders")}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        activeTab === "purchase-orders"
+                          ? "bg-amber-50 text-amber-900 border border-amber-200"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      <ShoppingCart className="w-5 h-5 flex-shrink-0" />
+                      <span>Transaction History</span>
+                    </button>
+                  </div>
+                </nav>
+              </CardContent>
+            </Card>
+          </aside>
+
+          {/* Main Content Area */}
+          <div className="flex-1 min-w-0">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="hidden">
+                <TabsTrigger value="inventory">Inventory</TabsTrigger>
+                <TabsTrigger value="ciders">Ciders</TabsTrigger>
+                <TabsTrigger value="apple">Base Fruit</TabsTrigger>
+                <TabsTrigger value="additives">Additives</TabsTrigger>
+                <TabsTrigger value="juice">Juice</TabsTrigger>
+                <TabsTrigger value="packaging">Packaging</TabsTrigger>
+                <TabsTrigger value="purchase-orders">Transaction History</TabsTrigger>
+              </TabsList>
 
           <TabsContent value="inventory" className="space-y-6">
-            {/* Enhanced Inventory Table with Search and Filters */}
+            {/* Enhanced Inventory Table with Search */}
             <InventoryTable
               showSearch={true}
-              showFilters={true}
+              itemsPerPage={50}
+              className=""
+            />
+          </TabsContent>
+
+          <TabsContent value="ciders" className="space-y-6">
+            <BottleTable
+              filters={{
+                status: "completed",
+              }}
               itemsPerPage={50}
               className=""
             />
@@ -517,7 +606,9 @@ export default function InventoryPage() {
               className=""
             />
           </TabsContent>
-        </Tabs>
+            </Tabs>
+          </div>
+        </div>
 
         {/* Transaction Type Selector Modal */}
         <TransactionTypeSelector

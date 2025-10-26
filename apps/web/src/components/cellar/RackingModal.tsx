@@ -65,8 +65,12 @@ export function RackingModal({
 
   // Fetch all vessels (not just available ones, to allow merging)
   const { data: vesselsData } = trpc.vessel.liquidMap.useQuery();
-  const availableVessels = vesselsData?.vessels?.filter(
-    (v) => v.vesselId !== sourceVesselId && (v.vesselStatus === "available" || v.batchId)
+  const availableVessels = Array.from(
+    new Map(
+      vesselsData?.vessels
+        ?.filter((v) => v.vesselId !== sourceVesselId && (v.vesselStatus === "available" || v.batchId))
+        .map((v) => [v.vesselId, v])
+    ).values()
   ) || [];
 
   const {
