@@ -34,12 +34,8 @@ export const filterTypeEnum = pgEnum("filter_type", [
   "fine",
   "sterile",
 ]);
-export const vesselTypeEnum = pgEnum("vessel_type", [
-  "fermenter",
-  "conditioning_tank",
-  "bright_tank",
-  "storage",
-]);
+// TODO: vesselTypeEnum removed - vessels now identified by capabilities (is_pressure_vessel, jacketed)
+// and properties (capacity, material, name) rather than rigid type categories.
 export const vesselMaterialEnum = pgEnum("vessel_material", [
   "stainless_steel",
   "plastic",
@@ -475,7 +471,7 @@ export const packagingPurchaseItems = pgTable("packaging_purchase_items", {
 export const vessels = pgTable("vessels", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name"),
-  type: vesselTypeEnum("type"), // TEMPORARY: Keep for DB compatibility until migration
+  // TODO: type field removed - vessels now identified by capabilities and properties
   capacity: decimal("capacity", { precision: 10, scale: 3 }).notNull(),
   capacityUnit: unitEnum("capacity_unit").notNull().default("L"),
   capacityLiters: decimal("capacity_liters", {
@@ -485,6 +481,11 @@ export const vessels = pgTable("vessels", {
   material: vesselMaterialEnum("material"),
   jacketed: vesselJacketedEnum("jacketed"),
   isPressureVessel: vesselPressureEnum("is_pressure_vessel"),
+  /**
+   * Maximum safe pressure in PSI for this vessel
+   * @default 30.0 - Standard pressure rating for most tanks
+   */
+  maxPressure: decimal("max_pressure", { precision: 5, scale: 1 }).default("30.0"),
   status: vesselStatusEnum("status").notNull().default("available"),
   location: text("location"),
   notes: text("notes"),
@@ -1481,3 +1482,6 @@ export * from "./schema/audit";
 
 // Re-export packaging schema
 export * from "./schema/packaging";
+
+// Re-export carbonation schema
+export * from "./schema/carbonation";

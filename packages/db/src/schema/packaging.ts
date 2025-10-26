@@ -14,9 +14,15 @@ import {
 import { relations, sql } from "drizzle-orm";
 import { unitEnum } from "./shared";
 import { batches, users, vessels } from "../schema";
+import { batchCarbonationOperations } from "./carbonation";
 
 // Packaging-specific enums
 export const packageTypeEnum = pgEnum("package_type", ["bottle", "can", "keg"]);
+export const carbonationMethodEnum = pgEnum("carbonation_method", [
+  "natural",
+  "forced",
+  "none",
+]);
 export const carbonationLevelEnum = pgEnum("carbonation_level", [
   "still",
   "petillant",
@@ -107,6 +113,23 @@ export const bottleRuns = pgTable(
     qaTechnicianId: uuid("qa_technician_id"),
     qaNotes: text("qa_notes"),
 
+    // Carbonation tracking
+    /**
+     * How this batch was carbonated
+     * - 'natural': Bottle/keg conditioning with residual sugars
+     * - 'forced': Tank/keg pressurized with CO2
+     * - 'none': Still cider, no carbonation
+     */
+    carbonationMethod: carbonationMethodEnum("carbonation_method").default(
+      "none",
+    ),
+    /**
+     * Links to the carbonation operation if forced carbonation was used
+     * NULL for natural or no carbonation
+     */
+    sourceCarbonationOperationId: uuid("source_carbonation_operation_id")
+      .references(() => batchCarbonationOperations.id),
+
     // Metadata
     productionNotes: text("production_notes"),
     status: bottleRunStatusEnum("status").default("completed"),
@@ -166,6 +189,36 @@ export const bottleRunPhotos = pgTable(
   }),
 );
 
+// Junction table for tracking packaging materials used in each bottle run
+export const bottleRunMaterials = pgTable(
+  "bottle_run_materials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bottleRunId: uuid("bottle_run_id")
+      .notNull()
+      .references(() => bottleRuns.id, { onDelete: "cascade" }),
+    // Reference to the packaging purchase line item used
+    packagingPurchaseItemId: uuid("packaging_purchase_item_id")
+      .notNull(),
+    // Quantity used from this specific purchase line
+    quantityUsed: integer("quantity_used").notNull(),
+    // Material type for reporting (bottles, caps, labels, etc.)
+    materialType: text("material_type").notNull(), // e.g., "Primary Packaging", "Caps", "Labels"
+    // Audit fields
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by")
+      .notNull(),
+  },
+  (table) => ({
+    bottleRunIdx: index("bottle_run_materials_bottle_run_idx").on(
+      table.bottleRunId,
+    ),
+    packagingItemIdx: index("bottle_run_materials_packaging_item_idx").on(
+      table.packagingPurchaseItemId,
+    ),
+  }),
+);
+
 // Relations
 export const packageSizesRelations = relations(packageSizes, ({ many }) => ({
   // No direct relations needed as this is a reference table
@@ -182,6 +235,12 @@ export const bottleRunsRelations = relations(
     vessel: one(vessels, {
       fields: [bottleRuns.vesselId],
       references: [vessels.id],
+    }),
+
+    // Carbonation operation relation
+    sourceCarbonationOperation: one(batchCarbonationOperations, {
+      fields: [bottleRuns.sourceCarbonationOperationId],
+      references: [batchCarbonationOperations.id],
     }),
 
     // User relationships
@@ -205,6 +264,7 @@ export const bottleRunsRelations = relations(
     // Child relationships
     photos: many(bottleRunPhotos),
     inventoryItems: many(inventoryItems),
+    materials: many(bottleRunMaterials),
   }),
 );
 
@@ -217,6 +277,20 @@ export const bottleRunPhotosRelations = relations(
     }),
     uploadedByUser: one(users, {
       fields: [bottleRunPhotos.uploadedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const bottleRunMaterialsRelations = relations(
+  bottleRunMaterials,
+  ({ one }) => ({
+    bottleRun: one(bottleRuns, {
+      fields: [bottleRunMaterials.bottleRunId],
+      references: [bottleRuns.id],
+    }),
+    createdByUser: one(users, {
+      fields: [bottleRunMaterials.createdBy],
       references: [users.id],
     }),
   }),

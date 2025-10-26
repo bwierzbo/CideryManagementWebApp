@@ -22,6 +22,8 @@ import {
 import {
   eq,
   and,
+  or,
+  ne,
   desc,
   asc,
   isNull,
@@ -70,7 +72,7 @@ export interface PackagingRunFilters {
   batchSearch?: string;
   packageType?: string;
   packageSizeML?: number;
-  status?: "completed" | "voided";
+  status?: "active" | "completed";
   qaTechnicianId?: string;
 }
 
@@ -150,7 +152,15 @@ export async function getBottleRunsOptimized(
 
   // Use packaging_runs_status_type_date_idx for status + type + date filtering
   if (filters.status) {
-    conditions.push(eq(bottleRuns.status, filters.status as any));
+    if (filters.status === "active") {
+      // Active means NOT completed (null or any other status)
+      conditions.push(
+        or(isNull(bottleRuns.status), ne(bottleRuns.status, "completed"))!,
+      );
+    } else if (filters.status === "completed") {
+      // Completed means explicitly completed
+      conditions.push(eq(bottleRuns.status, "completed"));
+    }
   }
 
   if (filters.packageType) {
