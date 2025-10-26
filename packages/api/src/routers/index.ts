@@ -8,6 +8,7 @@ import {
 } from "../trpc";
 import { auditRouter } from "./audit";
 import { batchRouter } from "./batch";
+import { carbonationRouter } from "./carbonation";
 import { healthRouter } from "./health";
 import { inventoryRouter } from "./inventory";
 // import { invoiceNumberRouter } from "./invoiceNumber"; // DROPPED: invoiceNumber field removed in migration 0024
@@ -45,6 +46,9 @@ import {
   batchTransfers,
   vessels,
   baseFruitVarieties,
+  additiveVarieties,
+  juiceVarieties,
+  packagingVarieties,
   auditLogs,
   users,
 } from "db";
@@ -936,21 +940,35 @@ export const appRouter = router({
               .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
               .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-            // Get depletion status for basefruit purchases
+            // Get depletion status and item names for basefruit purchases
             for (const purchase of basefruitResults) {
               const items = await db
                 .select({
                   id: basefruitPurchaseItems.id,
                   isDepleted: basefruitPurchaseItems.isDepleted,
                   depletedAt: basefruitPurchaseItems.depletedAt,
+                  varietyName: baseFruitVarieties.name,
                 })
                 .from(basefruitPurchaseItems)
+                .leftJoin(
+                  baseFruitVarieties,
+                  eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+                )
                 .where(eq(basefruitPurchaseItems.purchaseId, purchase.id));
 
               const totalItems = items.length;
               const depletedItems = items.filter(
                 (item) => item.isDepleted,
               ).length;
+
+              // Get unique variety names
+              const itemNames = Array.from(
+                new Set(
+                  items
+                    .map((item) => item.varietyName)
+                    .filter((name): name is string => name !== null),
+                ),
+              ).join(", ");
 
               let status = "active";
               if (purchase.deletedAt) {
@@ -967,6 +985,7 @@ export const appRouter = router({
                 status,
                 totalItems,
                 depletedItems,
+                itemNames,
               });
             }
           }
@@ -1011,9 +1030,25 @@ export const appRouter = router({
 
             for (const purchase of additiveResults) {
               const items = await db
-                .select({ id: additivePurchaseItems.id })
+                .select({
+                  id: additivePurchaseItems.id,
+                  varietyName: additiveVarieties.name,
+                })
                 .from(additivePurchaseItems)
+                .leftJoin(
+                  additiveVarieties,
+                  eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id),
+                )
                 .where(eq(additivePurchaseItems.purchaseId, purchase.id));
+
+              // Get unique variety names
+              const itemNames = Array.from(
+                new Set(
+                  items
+                    .map((item) => item.varietyName)
+                    .filter((name): name is string => name !== null),
+                ),
+              ).join(", ");
 
               const status = purchase.deletedAt ? "archived" : "active";
 
@@ -1023,6 +1058,7 @@ export const appRouter = router({
                 status,
                 totalItems: items.length,
                 depletedItems: 0,
+                itemNames,
               });
             }
           }
@@ -1064,9 +1100,25 @@ export const appRouter = router({
 
             for (const purchase of juiceResults) {
               const items = await db
-                .select({ id: juicePurchaseItems.id })
+                .select({
+                  id: juicePurchaseItems.id,
+                  varietyName: juiceVarieties.name,
+                })
                 .from(juicePurchaseItems)
+                .leftJoin(
+                  juiceVarieties,
+                  eq(juicePurchaseItems.juiceVarietyId, juiceVarieties.id),
+                )
                 .where(eq(juicePurchaseItems.purchaseId, purchase.id));
+
+              // Get unique variety names
+              const itemNames = Array.from(
+                new Set(
+                  items
+                    .map((item) => item.varietyName)
+                    .filter((name): name is string => name !== null),
+                ),
+              ).join(", ");
 
               const status = purchase.deletedAt ? "archived" : "active";
 
@@ -1076,6 +1128,7 @@ export const appRouter = router({
                 status,
                 totalItems: items.length,
                 depletedItems: 0,
+                itemNames,
               });
             }
           }
@@ -1120,9 +1173,25 @@ export const appRouter = router({
 
             for (const purchase of packagingResults) {
               const items = await db
-                .select({ id: packagingPurchaseItems.id })
+                .select({
+                  id: packagingPurchaseItems.id,
+                  varietyName: packagingVarieties.name,
+                })
                 .from(packagingPurchaseItems)
+                .leftJoin(
+                  packagingVarieties,
+                  eq(packagingPurchaseItems.packagingVarietyId, packagingVarieties.id),
+                )
                 .where(eq(packagingPurchaseItems.purchaseId, purchase.id));
+
+              // Get unique variety names
+              const itemNames = Array.from(
+                new Set(
+                  items
+                    .map((item) => item.varietyName)
+                    .filter((name): name is string => name !== null),
+                ),
+              ).join(", ");
 
               const status = purchase.deletedAt ? "archived" : "active";
 
@@ -1132,6 +1201,7 @@ export const appRouter = router({
                 status,
                 totalItems: items.length,
                 depletedItems: 0,
+                itemNames,
               });
             }
           }
@@ -1432,6 +1502,9 @@ export const appRouter = router({
 
   // Batch management (imported from batch.ts)
   batch: batchRouter,
+
+  // Carbonation operations for batches
+  carbonation: carbonationRouter,
 
   // Batch transfer operations
   batchTransfer: router({
@@ -1871,6 +1944,7 @@ export const appRouter = router({
           capacityUnit: z.enum(["L", "gal"]).default("L"),
           material: z.enum(["stainless_steel", "plastic"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
+          isPressureVessel: z.enum(["yes", "no"]).optional(),
           location: z.string().optional(),
           notes: z.string().optional(),
         }),
@@ -1912,6 +1986,7 @@ export const appRouter = router({
               capacityUnit: input.capacityUnit || "L",
               material: input.material,
               jacketed: input.jacketed,
+              isPressureVessel: input.isPressureVessel,
               location: input.location,
               notes: input.notes,
               createdAt: new Date(),
@@ -1954,6 +2029,7 @@ export const appRouter = router({
           capacityUnit: z.enum(["L", "gal"]).optional(),
           material: z.enum(["stainless_steel", "plastic"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
+          isPressureVessel: z.enum(["yes", "no"]).optional(),
           status: z
             .enum([
               "available",
@@ -1997,6 +2073,8 @@ export const appRouter = router({
             updateData.material = input.material;
           if (input.jacketed !== undefined)
             updateData.jacketed = input.jacketed;
+          if (input.isPressureVessel !== undefined)
+            updateData.isPressureVessel = input.isPressureVessel;
           if (input.status !== undefined) updateData.status = input.status;
           if (input.location !== undefined)
             updateData.location = input.location;

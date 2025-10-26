@@ -5,16 +5,11 @@ import {
   enhancedAuditMiddleware,
   createAuditMiddleware,
 } from "./middleware/audit";
+import type { Session } from "next-auth";
 
 export interface Context {
-  session?: {
-    user?: {
-      id?: string;
-      email?: string;
-      name?: string;
-      role?: string;
-    };
-  } | null;
+  session: Session | null;
+  user: Session["user"] | null;
 }
 
 /**
@@ -34,13 +29,17 @@ export const publicProcedure = t.procedure;
  * Protected procedure that requires authentication
  */
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.session?.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED" });
+  if (!ctx.session || !ctx.user) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "You must be signed in to perform this action",
+    });
   }
   return next({
     ctx: {
       ...ctx,
       session: ctx.session,
+      user: ctx.user,
     },
   });
 });
@@ -54,14 +53,14 @@ export const auditedProcedure = protectedProcedure.use(auditMiddleware);
  * Admin-only procedure that requires admin role
  */
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.session?.user?.role !== "admin") {
-    throw new TRPCError({ code: "FORBIDDEN" });
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "You must be an admin to perform this action",
+    });
   }
   return next({
-    ctx: {
-      ...ctx,
-      session: ctx.session,
-    },
+    ctx,
   });
 });
 
@@ -70,7 +69,7 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
  */
 export const createRbacProcedure = (action: string, entity: string) =>
   protectedProcedure.use(({ ctx, next }) => {
-    const userRole = ctx.session?.user?.role as "admin" | "operator" | "viewer";
+    const userRole = ctx.user.role as "admin" | "operator" | "viewer";
 
     if (!userRole || !can(userRole, action as any, entity as any)) {
       throw new TRPCError({
@@ -80,10 +79,7 @@ export const createRbacProcedure = (action: string, entity: string) =>
     }
 
     return next({
-      ctx: {
-        ...ctx,
-        session: ctx.session,
-      },
+      ctx,
     });
   });
 
@@ -92,6 +88,37 @@ export const createRbacProcedure = (action: string, entity: string) =>
  */
 export const createAuditedRbacProcedure = (action: string, entity: string) =>
   createRbacProcedure(action, entity).use(auditMiddleware);
+
+/**
+ * Create a procedure that requires specific permission
+ * Alternative to RBAC for simple permission checks
+ */
+export function createPermissionProcedure(permission: string) {
+  return protectedProcedure.use(({ ctx, next }) => {
+    // Admin has all permissions
+    if (ctx.user.role === "admin") {
+      return next({ ctx });
+    }
+
+    // Check operator permissions
+    const operatorPermissions = [
+      "batches:read",
+      "batches:create",
+      "batches:update",
+      "measurements:create",
+      "press_runs:create",
+    ];
+
+    if (!operatorPermissions.includes(permission)) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: `You don't have permission to: ${permission}`,
+      });
+    }
+
+    return next({ ctx });
+  });
+}
 
 /**
  * Create a procedure with specific audit configuration
