@@ -257,7 +257,7 @@ export default function PackagingDetailPage() {
                       onClick={() => pasteurizeMutation.mutate({ runId })}
                       size="sm"
                       variant="outline"
-                      disabled={pasteurizeMutation.isLoading}
+                      disabled={pasteurizeMutation.isPending}
                     >
                       <Flame className="w-4 h-4 mr-2" />
                       Pasteurize
@@ -266,7 +266,7 @@ export default function PackagingDetailPage() {
                       onClick={() => labelMutation.mutate({ runId })}
                       size="sm"
                       variant="outline"
-                      disabled={labelMutation.isLoading}
+                      disabled={labelMutation.isPending}
                     >
                       <Tag className="w-4 h-4 mr-2" />
                       Label
@@ -275,7 +275,7 @@ export default function PackagingDetailPage() {
                       onClick={() => markCompleteMutation.mutate({ runId })}
                       size="sm"
                       variant="default"
-                      disabled={markCompleteMutation.isLoading}
+                      disabled={markCompleteMutation.isPending}
                     >
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       Mark Complete
