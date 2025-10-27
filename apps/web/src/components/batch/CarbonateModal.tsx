@@ -98,7 +98,7 @@ const bottleConditioningSchema = z.object({
     .number()
     .min(0.1, "Target must be at least 0.1 volumes")
     .max(5, "Target must be at most 5 volumes"),
-  sugarType: z.enum(["sucrose", "dextrose", "honey"]).default("sucrose"),
+  sugarType: z.enum(["sucrose", "dextrose", "honey"]),
   additivePurchaseItemId: z.string().uuid("Please select a sugar source").optional(),
   notes: z.string().optional(),
 });
