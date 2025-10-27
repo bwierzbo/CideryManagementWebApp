@@ -432,9 +432,12 @@ function CompletedRunsSection({
                           : "Mixed varieties"}
                       </p>
                       {run.vesselName && (
-                        <p className="text-xs text-gray-500">
-                          → {run.vesselName}
-                        </p>
+                        <div className="flex items-center gap-1 mt-1">
+                          <Droplets className="w-3.5 h-3.5 text-blue-600" />
+                          <p className="text-sm text-blue-700 font-medium">
+                            {run.vesselName}
+                          </p>
+                        </div>
                       )}
                     </div>
                     <div className="flex items-center space-x-2">
