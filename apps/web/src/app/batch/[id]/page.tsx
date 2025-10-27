@@ -314,18 +314,12 @@ export default function BatchDetailsPage() {
                   (batch.status === "conditioning" ||
                     batch.status === "aging" ||
                     batch.status === "completed") &&
-                  batch.vesselId &&
-                  batch.vesselData?.isPressureVessel === "yes"
+                  batch.vesselId
                 )
               }
             >
               <Sparkles className="w-4 h-4 mr-2" />
               Carbonate
-              {batch.vesselData?.isPressureVessel !== "yes" && (
-                <span className="ml-auto text-xs text-muted-foreground">
-                  (Requires pressure vessel)
-                </span>
-              )}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
