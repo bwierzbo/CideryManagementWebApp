@@ -1029,7 +1029,6 @@ export const bottlesRouter = router({
         const [updated] = await db
           .update(bottleRuns)
           .set({
-            labeledAt: input.labeledAt || new Date(),
             productionNotes: input.notes
               ? `${input.notes}\n\nLabeled at ${new Date().toISOString()}`
               : `Labeled at ${new Date().toISOString()}`,
