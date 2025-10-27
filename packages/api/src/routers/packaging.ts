@@ -48,7 +48,8 @@ const createFromCellarSchema = z.object({
   volumeTakenL: z.number().positive(),
   notes: z.string().optional(),
   // Array of packaging materials used (bottles, caps, labels, etc.)
-  materials: z.array(packagingMaterialSchema).min(1, "At least one packaging material is required"),
+  // TODO: Make required once materials tracking UI is fully implemented
+  materials: z.array(packagingMaterialSchema).optional(),
 });
 
 const listPackagingRunsSchema = z.object({
@@ -299,27 +300,29 @@ export const bottlesRouter = router({
 
           const inventoryItem = newInventoryItem[0];
 
-          // 7. Track packaging materials used and deduct from inventory
-          for (const material of input.materials) {
-            // Insert material tracking record
-            await tx.insert(bottleRunMaterials).values({
-              bottleRunId: packagingRun.id,
-              packagingPurchaseItemId: material.packagingPurchaseItemId,
-              quantityUsed: material.quantityUsed,
-              materialType: material.materialType,
-              createdBy: ctx.session?.user?.id || "",
-            });
+          // 7. Track packaging materials used and deduct from inventory (if provided)
+          if (input.materials && input.materials.length > 0) {
+            for (const material of input.materials) {
+              // Insert material tracking record
+              await tx.insert(bottleRunMaterials).values({
+                bottleRunId: packagingRun.id,
+                packagingPurchaseItemId: material.packagingPurchaseItemId,
+                quantityUsed: material.quantityUsed,
+                materialType: material.materialType,
+                createdBy: ctx.session?.user?.id || "",
+              });
 
-            // Deduct quantity from packaging inventory
-            // Note: This assumes packaging inventory is tracked in a table
-            // You may need to adjust this based on your actual inventory structure
-            await tx.execute(sql`
-              UPDATE packaging_purchase_items
-              SET quantity = quantity - ${material.quantityUsed},
-                  updated_at = NOW()
-              WHERE id = ${material.packagingPurchaseItemId}
-              AND quantity >= ${material.quantityUsed}
-            `);
+              // Deduct quantity from packaging inventory
+              // Note: This assumes packaging inventory is tracked in a table
+              // You may need to adjust this based on your actual inventory structure
+              await tx.execute(sql`
+                UPDATE packaging_purchase_items
+                SET quantity = quantity - ${material.quantityUsed},
+                    updated_at = NOW()
+                WHERE id = ${material.packagingPurchaseItemId}
+                AND quantity >= ${material.quantityUsed}
+              `);
+            }
           }
 
           // 8. Publish audit event
