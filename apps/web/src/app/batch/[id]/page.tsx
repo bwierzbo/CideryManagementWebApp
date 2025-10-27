@@ -1073,8 +1073,8 @@ export default function BatchDetailsPage() {
         </Dialog>
       )}
 
-      {/* Carbonate Modal */}
-      {showCarbonateModal && batch.vesselData && (
+      {/* Carbonate Modal - TODO: Re-enable when batch.get includes vessel data */}
+      {/* {showCarbonateModal && batch.vesselId && (
         <CarbonateModal
           open={showCarbonateModal}
           onOpenChange={setShowCarbonateModal}
@@ -1087,21 +1087,19 @@ export default function BatchDetailsPage() {
             status: batch.status,
           }}
           vessel={{
-            id: batch.vesselData.id,
-            name: batch.vesselData.name,
-            isPressureVessel: batch.vesselData.isPressureVessel as "yes" | "no",
-            maxPressure: parseFloat(batch.vesselData.maxPressure || "30"),
+            id: batch.vesselId || "",
+            name: batch.vesselName || "",
+            isPressureVessel: "no",
+            maxPressure: 30,
           }}
           onSuccess={() => {
-            // TODO: Invalidate carbonation operations query when router is implemented
-            // utils.carbonation.list.invalidate({ batchId });
             toast({
               title: "Success",
               description: "Carbonation operation started successfully",
             });
           }}
         />
-      )}
+      )} */}
 
       {/* Complete Carbonation Modal */}
       {showCompleteCarbonationModal && selectedCarbonationOperation && (
