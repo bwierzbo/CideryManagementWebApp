@@ -95,10 +95,15 @@ const finishPressRunSchema = z.object({
 const listPressRunsSchema = z.object({
   status: z.enum(["draft", "in_progress", "completed", "cancelled"]).optional(),
   vendorId: z.string().uuid().optional(),
-  limit: z.number().int().positive().max(100).default(20),
-  offset: z.number().int().min(0).default(0),
+  // Legacy pagination (backward compatibility)
+  limit: z.number().int().positive().max(100).optional(),
+  offset: z.number().int().min(0).optional(),
+  // New pagination parameters
+  page: z.number().int().positive().optional(),
+  pageSize: z.number().int().positive().min(1).max(100).optional(),
+  // Sorting
   sortBy: z
-    .enum(["created", "started", "updated"])
+    .enum(["created", "started", "updated", "completed"])
     .default("created"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
@@ -961,11 +966,12 @@ export const pressRunRouter = router({
             input.totalJuiceVolumeL ||
             parseFloat(updatedPressRun[0].totalJuiceVolume || "0");
 
-          if (totalAssignedVolume > availableVolume + 0.001) {
-            // Allow 1mL tolerance
+          // Allow 0.02L (20mL) tolerance for floating-point precision errors from unit conversions
+          const VOLUME_TOLERANCE = 0.02;
+          if (totalAssignedVolume > availableVolume + VOLUME_TOLERANCE) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Total assigned volume (${totalAssignedVolume}L) exceeds available juice (${availableVolume}L)`,
+              message: `Total assigned volume (${totalAssignedVolume.toFixed(2)}L) exceeds available juice (${availableVolume.toFixed(2)}L)`,
             });
           }
 
@@ -1513,11 +1519,27 @@ export const pressRunRouter = router({
           conditions.push(eq(pressRuns.vendorId, input.vendorId));
         }
 
+        // Calculate limit and offset
+        // Support both legacy (limit/offset) and new (page/pageSize) pagination
+        let limit: number;
+        let offset: number;
+
+        if (input.page !== undefined && input.pageSize !== undefined) {
+          // New pagination: page/pageSize
+          limit = input.pageSize;
+          offset = (input.page - 1) * input.pageSize;
+        } else {
+          // Legacy pagination: limit/offset
+          limit = input.limit ?? 20;
+          offset = input.offset ?? 0;
+        }
+
         // Build ORDER BY clause
         const sortColumn = {
           created: pressRuns.createdAt,
-          started: pressRuns.dateCompleted, // Using dateCompleted for sorting
+          started: pressRuns.dateCompleted,
           updated: pressRuns.updatedAt,
+          completed: pressRuns.dateCompleted,
         }[input.sortBy];
 
         const orderBy =
@@ -1549,8 +1571,8 @@ export const pressRunRouter = router({
           .leftJoin(vessels, eq(pressRuns.vesselId, vessels.id))
           .where(and(...conditions))
           .orderBy(orderBy)
-          .limit(input.limit)
-          .offset(input.offset);
+          .limit(limit)
+          .offset(offset);
 
         // Get total count for pagination
         const totalCountResult = await db
@@ -1670,7 +1692,8 @@ export const pressRunRouter = router({
             vendorContactInfo: vendors.contactInfo,
             vesselId: pressRuns.vesselId,
             vesselName: vessels.name,
-            vesselType: vessels.type,
+            // TODO: Remove vessel type logic after migration
+            // vesselType: vessels.type,
             vesselCapacity: vessels.capacity,
             vesselCapacityUnit: vessels.capacityUnit,
             status: pressRuns.status,
