@@ -21,6 +21,7 @@ const handler = (req: Request) =>
       const session = await getServerSession(authOptions);
       return {
         session,
+        user: session?.user || null,
       };
     },
   });
