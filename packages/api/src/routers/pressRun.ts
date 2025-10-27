@@ -1663,9 +1663,9 @@ export const pressRunRouter = router({
           pressRuns: enhancedPressRuns,
           pagination: {
             total: totalCount,
-            limit: input.limit,
-            offset: input.offset,
-            hasMore: input.offset + input.limit < totalCount,
+            limit,
+            offset,
+            hasMore: offset + limit < totalCount,
           },
         };
       } catch (error) {
