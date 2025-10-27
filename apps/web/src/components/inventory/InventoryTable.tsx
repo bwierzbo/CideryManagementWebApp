@@ -514,7 +514,7 @@ export function InventoryTable({
                       colSpan={6}
                       className="text-center py-8 text-muted-foreground"
                     >
-                      {itemSearch || vendorSearch
+                      {searchQuery
                         ? "No items match your search"
                         : "No inventory items found"}
                     </TableCell>
@@ -716,7 +716,6 @@ export function SimpleInventoryTable({
   return (
     <InventoryTable
       showSearch={false}
-      showFilters={false}
       className={className}
       itemsPerPage={limit}
     />

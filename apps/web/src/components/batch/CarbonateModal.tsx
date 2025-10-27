@@ -98,7 +98,6 @@ const bottleConditioningSchema = z.object({
     .number()
     .min(0.1, "Target must be at least 0.1 volumes")
     .max(5, "Target must be at most 5 volumes"),
-  sugarType: z.enum(["sucrose", "dextrose", "honey"]),
   additivePurchaseItemId: z.string().uuid("Please select a sugar source").optional(),
   notes: z.string().optional(),
 });
@@ -171,7 +170,6 @@ export function CarbonateModal({
       targetCo2Volumes: 3.0, // Default to sparkling
       carbonationProcess: "headspace",
       pressureApplied: 0,
-      sugarType: "sucrose",
       residualCo2Volumes: 0,
     } as any,
   });
@@ -181,7 +179,6 @@ export function CarbonateModal({
   const targetCo2Volumes = watch("targetCo2Volumes");
   const pressureApplied = watch("pressureApplied" as any);
   const startingCo2Volumes = watch("startingCo2Volumes" as any);
-  const sugarType = watch("sugarType" as any) || "sucrose"; // Default to sucrose for bottle conditioning
   const residualCo2Volumes = watch("residualCo2Volumes" as any) || 0;
   const startingVolume = watch("startingVolume");
   const startingVolumeUnit = watch("startingVolumeUnit");
@@ -208,11 +205,11 @@ export function CarbonateModal({
         targetCo2Volumes,
         residualCo2Volumes,
         volumeInLiters,
-        sugarType as "sucrose" | "dextrose" | "honey"
+        "sucrose" // Always use sucrose as the default sugar type
       );
     }
     return 0;
-  }, [carbonationMethod, targetCo2Volumes, residualCo2Volumes, volumeInLiters, sugarType]);
+  }, [carbonationMethod, targetCo2Volumes, residualCo2Volumes, volumeInLiters]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -225,7 +222,6 @@ export function CarbonateModal({
         targetCo2Volumes: 3.0,
         carbonationProcess: "headspace",
         pressureApplied: 0,
-        sugarType: "sucrose",
         residualCo2Volumes: 0,
       } as any);
       setPresetSelection("3.0");
@@ -388,7 +384,7 @@ export function CarbonateModal({
         ...(additivePurchaseId && {
           additivePurchaseId,
           primingSugarAmount: typeof requiredSugarGrams === 'number' && !isNaN(requiredSugarGrams) ? requiredSugarGrams : undefined,
-          primingSugarType: ((data as any).sugarType || "sucrose") as "sucrose" | "dextrose" | "honey",
+          primingSugarType: "sucrose" as const, // Always use sucrose as the sugar type
         }),
       };
       console.log("🍾 Bottle conditioning data:", bottleConditioningData);
@@ -506,9 +502,9 @@ export function CarbonateModal({
                   placeholder="4"
                   {...register("startingTemperature", { valueAsNumber: true })}
                 />
-                {errors.startingTemperature && (
+                {(errors as any).startingTemperature && (
                   <p className="text-sm text-destructive mt-1">
-                    {errors.startingTemperature.message}
+                    {(errors as any).startingTemperature.message}
                   </p>
                 )}
               </div>
@@ -526,9 +522,9 @@ export function CarbonateModal({
                 placeholder="0"
                 {...register("startingCo2Volumes", { valueAsNumber: true })}
               />
-              {errors.startingCo2Volumes && (
+              {(errors as any).startingCo2Volumes && (
                 <p className="text-sm text-destructive mt-1">
-                  {errors.startingCo2Volumes.message}
+                  {(errors as any).startingCo2Volumes.message}
                 </p>
               )}
             </div>

@@ -919,63 +919,6 @@ export const batchRouter = router({
     }),
 
   /**
-   * Delete batch (soft delete)
-   */
-  delete: createRbacProcedure("delete", "batch")
-    .input(batchIdSchema)
-    .mutation(async ({ input }) => {
-      try {
-        // Verify batch exists and get vessel info
-        const existingBatch = await db
-          .select({ status: batches.status, vesselId: batches.vesselId })
-          .from(batches)
-          .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
-          .limit(1);
-
-        if (!existingBatch.length) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Batch not found",
-          });
-        }
-
-        const batch = existingBatch[0];
-
-        // Soft delete batch
-        await db
-          .update(batches)
-          .set({
-            deletedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(batches.id, input.batchId));
-
-        // Update vessel status to needs_cleaning if batch was in a vessel
-        if (batch.vesselId) {
-          await db
-            .update(vessels)
-            .set({
-              status: "cleaning",
-              updatedAt: new Date(),
-            })
-            .where(eq(vessels.id, batch.vesselId));
-        }
-
-        return {
-          success: true,
-          message: "Batch deleted successfully",
-        };
-      } catch (error) {
-        if (error instanceof TRPCError) throw error;
-        console.error("Error deleting batch:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to delete batch",
-        });
-      }
-    }),
-
-  /**
    * Get complete batch activity history
    * Returns all events related to this batch in chronological order
    */
@@ -2109,6 +2052,7 @@ export const batchRouter = router({
             id: batches.id,
             name: batches.name,
             status: batches.status,
+            vesselId: batches.vesselId,
             deletedAt: batches.deletedAt,
           })
           .from(batches)
@@ -2138,6 +2082,17 @@ export const batchRouter = router({
             updatedAt: new Date(),
           })
           .where(eq(batches.id, input.batchId));
+
+        // Update vessel status to cleaning if batch was in a vessel
+        if (batch.vesselId) {
+          await db
+            .update(vessels)
+            .set({
+              status: "cleaning",
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, batch.vesselId));
+        }
 
         return {
           success: true,

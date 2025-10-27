@@ -27,6 +27,7 @@ export const carbonationProcessTypeEnum = pgEnum("carbonation_process_type", [
   "headspace",
   "inline",
   "stone",
+  "bottle_conditioning",
 ]);
 
 /**
@@ -42,14 +43,15 @@ export const carbonationQualityEnum = pgEnum("carbonation_quality", [
 /**
  * Batch Carbonation Operations
  *
- * Tracks forced carbonation operations where CO2 is added to batches under
- * pressure in sealed vessels.
+ * Tracks carbonation operations including:
+ * - Forced carbonation where CO2 is added to batches under pressure in sealed vessels
+ * - Bottle conditioning where priming sugar is added before bottling
  *
  * @example
- * // Start a carbonation operation
+ * // Start a forced carbonation operation
  * const carbonation = await db.insert(batchCarbonationOperations).values({
  *   batchId: batch.id,
- *   vesselId: pressureVessel.id,
+ *   vesselId: pressureVessel.id, // Optional - null for bottle conditioning
  *   startingVolume: 500,
  *   startingTemperature: 4,
  *   targetCo2Volumes: 2.5,
@@ -65,9 +67,7 @@ export const batchCarbonationOperations = pgTable(
     batchId: uuid("batch_id")
       .notNull()
       .references(() => batches.id, { onDelete: "cascade" }),
-    vesselId: uuid("vessel_id")
-      .notNull()
-      .references(() => vessels.id),
+    vesselId: uuid("vessel_id").references(() => vessels.id),
 
     // Timing
     startedAt: timestamp("started_at").notNull().defaultNow(),
