@@ -709,7 +709,7 @@ export default function BatchDetailsPage() {
                   {batch.status === "conditioning" ||
                   batch.status === "aging" ||
                   batch.status === "completed" ? (
-                    batch.vesselData?.isPressureVessel === "yes" ? (
+                    batch.vesselId ? (
                       <Button
                         onClick={() => setShowCarbonateModal(true)}
                         size="sm"
@@ -719,7 +719,7 @@ export default function BatchDetailsPage() {
                       </Button>
                     ) : (
                       <p className="text-sm text-muted-foreground">
-                        Batch must be in a pressure-rated vessel to carbonate
+                        Batch must be in a vessel to carbonate
                       </p>
                     )
                   ) : (
