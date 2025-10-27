@@ -117,6 +117,123 @@ The system tracks the cidery production flow through these key entities:
 - **Yield Tracking** - Volume tracking through production stages
 - **COGS Reporting** - Cost of goods sold per batch
 
+## Common Vercel Build Errors & Prevention
+
+### 1. Database Schema Drift (Most Common)
+**Problem:** Code references database fields removed in migrations.
+
+**Examples:**
+- `vessels.type` - removed in migration but still referenced
+- `pasteurizedAt`, `labeledAt` - non-existent fields on tables
+
+**Prevention:**
+```bash
+# When removing a field, search entire codebase for references
+grep -r "vessels\.type" packages/
+grep -r "fieldName" packages/
+```
+- Update both queries AND mutations that reference the field
+- Search for both `table.field` patterns and string literals
+
+### 2. Enum/Type Changes Not Propagated
+**Problem:** Updating an enum in one place but not all usages.
+
+**Examples:**
+- Status changed from `["all", "completed", "voided"]` to `["active", "completed"]`
+- Forgot to update: filters, API schemas, UI components, type guards
+
+**Prevention:**
+```bash
+# Search for all string literal references
+grep -r '"completed"' packages/
+grep -r '"all"' packages/
+```
+- Check schema definitions, type definitions, AND runtime comparisons
+- Look for both direct values and type guards
+
+### 3. Uncommitted Files/Migrations
+**Problem:** Local dev works but Vercel fails due to missing files.
+
+**Examples:**
+- Components imported but not committed
+- Migrations applied locally but not pushed
+- Missing utility files
+
+**Prevention:**
+```bash
+# Always check before deployment
+git status
+```
+- Commit migrations IMMEDIATELY after generating them
+- Don't import files that haven't been committed
+
+### 4. Dependency Management
+**Problem:** Packages in wrong section or lockfile out of sync.
+
+**Examples:**
+- `next-auth` in devDependencies but imported in production code
+- Lockfile doesn't match package.json
+
+**Prevention:**
+- **Rule:** Runtime imports go in `dependencies`, NOT `devDependencies`
+- Types-only imports can stay in devDependencies
+- Always run `pnpm install` after changing package.json
+- Commit package.json AND pnpm-lock.yaml together
+
+### 5. React Hooks Rules
+**Problem:** Calling hooks conditionally breaks React's rules.
+
+**Wrong:**
+```typescript
+const inputId = id || React.useId(); // ❌ Conditional hook call
+```
+
+**Correct:**
+```typescript
+const generatedId = React.useId();   // ✅ Unconditional hook call
+const inputId = id || generatedId;    // Use value conditionally
+```
+
+### 6. Optional Field Assumptions
+**Problem:** Using optional values as if they're guaranteed.
+
+**Wrong:**
+```typescript
+hasMore: input.offset + input.limit < totalCount  // ❌ input.offset might be undefined
+```
+
+**Correct:**
+```typescript
+const offset = input.offset ?? 0;  // ✅ Compute required values first
+hasMore: offset + limit < totalCount
+```
+
+### Pre-Deployment Checklist
+```bash
+# 1. Check uncommitted changes
+git status
+
+# 2. Type check locally
+pnpm typecheck
+
+# 3. Check for removed fields still referenced
+grep -r "\.type" packages/api/src/routers/
+grep -r "vessels\.type\|pasteurizedAt\|labeledAt" packages/
+
+# 4. Verify dependencies are correct
+grep -A20 '"dependencies"' packages/*/package.json
+grep -A20 '"devDependencies"' packages/*/package.json
+
+# 5. Ensure lockfile is synced
+pnpm install
+git diff pnpm-lock.yaml  # Should show no changes
+```
+
+**Golden Rule:** When making breaking schema/type changes:
+1. Search the ENTIRE codebase for all references
+2. Update them ALL before committing
+3. Don't commit schema changes without updating dependent code
+
 ## Environment Variables
 
 Required for development:
