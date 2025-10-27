@@ -123,9 +123,8 @@ export const carbonationRouter = router({
         );
       }
 
-      // Handle inventory depletion for bottle conditioning
-      if (input.carbonationProcess === "bottle_conditioning" && input.additivePurchaseId && input.primingSugarAmount) {
-        // Get current inventory for the additive purchase
+      // Validate additive purchase exists for bottle conditioning
+      if (input.carbonationProcess === "bottle_conditioning" && input.additivePurchaseId) {
         const [additivePurchase] = await db
           .select()
           .from(additivePurchases)
@@ -139,28 +138,12 @@ export const carbonationRouter = router({
           });
         }
 
-        // Check if enough sugar is available
-        // Convert sugar amount from grams to kg for comparison with inventory
-        const sugarKg = input.primingSugarAmount / 1000;
-        const availableKg = additivePurchase.quantity
-          ? parseFloat(additivePurchase.quantity)
-          : 0;
-
-        if (availableKg < sugarKg) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Insufficient sugar in inventory. Required: ${sugarKg.toFixed(2)} kg, Available: ${availableKg.toFixed(2)} kg`,
-          });
-        }
-
-        // Deplete inventory
-        await db
-          .update(additivePurchases)
-          .set({
-            quantity: (availableKg - sugarKg).toString(),
-            updatedAt: new Date(),
-          })
-          .where(eq(additivePurchases.id, input.additivePurchaseId));
+        // TODO: Implement proper inventory tracking for additives
+        // Currently additivePurchases table doesn't have quantity field
+        // Need to implement proper additive inventory management with:
+        // - additive_purchase_items table for line items with quantities
+        // - Tracking quantity used vs available
+        // - Depletion of inventory when used
       }
 
       // Create carbonation operation
