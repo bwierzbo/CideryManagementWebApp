@@ -3,6 +3,7 @@ import { router, createRbacProcedure } from "../trpc";
 import {
   db,
   bottleRuns,
+  bottleRunMaterials,
   vessels,
   batches,
   inventoryItems,
@@ -32,6 +33,12 @@ import {
 } from "db";
 
 // Input validation schemas
+const packagingMaterialSchema = z.object({
+  packagingPurchaseItemId: z.string().uuid(),
+  quantityUsed: z.number().int().positive(),
+  materialType: z.string(), // e.g., "Primary Packaging", "Caps", "Labels"
+});
+
 const createFromCellarSchema = z.object({
   batchId: z.string().uuid(),
   vesselId: z.string().uuid(),
@@ -40,6 +47,8 @@ const createFromCellarSchema = z.object({
   unitsProduced: z.number().int().min(0),
   volumeTakenL: z.number().positive(),
   notes: z.string().optional(),
+  // Array of packaging materials used (bottles, caps, labels, etc.)
+  materials: z.array(packagingMaterialSchema).min(1, "At least one packaging material is required"),
 });
 
 const listPackagingRunsSchema = z.object({
@@ -49,7 +58,7 @@ const listPackagingRunsSchema = z.object({
   batchSearch: z.string().optional(),
   packageType: z.string().optional(),
   packageSizeML: z.number().optional(),
-  status: z.enum(["completed", "voided"]).optional(),
+  status: z.enum(["active", "completed"]).optional(),
   limit: z.number().max(100).default(50), // Cap at 100 for performance
   offset: z.number().default(0),
   // Cursor-based pagination (preferred for performance)
@@ -211,7 +220,7 @@ export const bottlesRouter = router({
             loss: lossL.toString(),
             lossUnit: "L",
             lossPercentage: lossPercentage.toString(),
-            status: "completed" as any,
+            // Don't set status - let it default to null (active)
             createdBy: ctx.session?.user?.id || "",
           };
 
@@ -290,7 +299,30 @@ export const bottlesRouter = router({
 
           const inventoryItem = newInventoryItem[0];
 
-          // 7. Publish audit event
+          // 7. Track packaging materials used and deduct from inventory
+          for (const material of input.materials) {
+            // Insert material tracking record
+            await tx.insert(bottleRunMaterials).values({
+              bottleRunId: packagingRun.id,
+              packagingPurchaseItemId: material.packagingPurchaseItemId,
+              quantityUsed: material.quantityUsed,
+              materialType: material.materialType,
+              createdBy: ctx.session?.user?.id || "",
+            });
+
+            // Deduct quantity from packaging inventory
+            // Note: This assumes packaging inventory is tracked in a table
+            // You may need to adjust this based on your actual inventory structure
+            await tx.execute(sql`
+              UPDATE packaging_purchase_items
+              SET quantity = quantity - ${material.quantityUsed},
+                  updated_at = NOW()
+              WHERE id = ${material.packagingPurchaseItemId}
+              AND quantity >= ${material.quantityUsed}
+            `);
+          }
+
+          // 8. Publish audit event
           await publishCreateEvent("packaging_run", packagingRun.id, {
             batchId: input.batchId,
             vesselId: input.vesselId,
@@ -900,6 +932,123 @@ export const bottlesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to get batch packaging runs",
+        });
+      }
+    }),
+
+  /**
+   * Mark a bottle run as completed
+   */
+  markComplete: createRbacProcedure("update", "package")
+    .input(z.object({ runId: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      try {
+        const [updated] = await db
+          .update(bottleRuns)
+          .set({
+            status: "completed",
+            updatedAt: new Date(),
+          })
+          .where(eq(bottleRuns.id, input.runId))
+          .returning();
+
+        if (!updated) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Bottle run not found",
+          });
+        }
+
+        return updated;
+      } catch (error) {
+        console.error("Error marking bottle run as complete:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to mark bottle run as complete",
+        });
+      }
+    }),
+
+  /**
+   * Mark a bottle run as pasteurized
+   */
+  pasteurize: createRbacProcedure("update", "package")
+    .input(
+      z.object({
+        runId: z.string().uuid(),
+        pasteurizedAt: z.date().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      try {
+        const [updated] = await db
+          .update(bottleRuns)
+          .set({
+            pasteurizedAt: input.pasteurizedAt || new Date(),
+            productionNotes: input.notes
+              ? `${input.notes}\n\nPasteurized at ${new Date().toISOString()}`
+              : `Pasteurized at ${new Date().toISOString()}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(bottleRuns.id, input.runId))
+          .returning();
+
+        if (!updated) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Bottle run not found",
+          });
+        }
+
+        return updated;
+      } catch (error) {
+        console.error("Error pasteurizing bottle run:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to pasteurize bottle run",
+        });
+      }
+    }),
+
+  /**
+   * Mark a bottle run as labeled
+   */
+  label: createRbacProcedure("update", "package")
+    .input(
+      z.object({
+        runId: z.string().uuid(),
+        labeledAt: z.date().optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      try {
+        const [updated] = await db
+          .update(bottleRuns)
+          .set({
+            labeledAt: input.labeledAt || new Date(),
+            productionNotes: input.notes
+              ? `${input.notes}\n\nLabeled at ${new Date().toISOString()}`
+              : `Labeled at ${new Date().toISOString()}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(bottleRuns.id, input.runId))
+          .returning();
+
+        if (!updated) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Bottle run not found",
+          });
+        }
+
+        return updated;
+      } catch (error) {
+        console.error("Error labeling bottle run:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to label bottle run",
         });
       }
     }),
