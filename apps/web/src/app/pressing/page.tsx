@@ -267,7 +267,7 @@ function CompletedRunsSection({
     sortOrder: "desc",
   });
 
-  const totalCount = pressRunsData?.totalCount || 0;
+  const totalCount = pressRunsData?.pagination?.total || 0;
   const totalPages = Math.ceil(totalCount / pageSize);
   const pressRuns = pressRunsData?.pressRuns || [];
 
