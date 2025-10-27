@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -832,9 +832,22 @@ export default function PressingPage() {
         />
 
         {/* Recent Completed Runs */}
-        <CompletedRunsSection
-          onDeletePressRun={handleDeleteCompletedPressRun}
-        />
+        <Suspense
+          fallback={
+            <Card>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
+                  <div className="h-10 bg-gray-200 rounded mb-4"></div>
+                  <div className="h-32 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          }
+        >
+          <CompletedRunsSection
+            onDeletePressRun={handleDeleteCompletedPressRun}
+          />
+        </Suspense>
       </main>
 
       {/* Cancel Confirmation Dialog */}
