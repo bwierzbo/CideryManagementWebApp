@@ -8,7 +8,8 @@ import {
 } from "../trpc";
 import { auditRouter } from "./audit";
 import { batchRouter } from "./batch";
-import { carbonationRouter } from "./carbonation";
+// TODO: Re-enable carbonation router after fixing schema type issues
+// import { carbonationRouter } from "./carbonation";
 import { healthRouter } from "./health";
 import { inventoryRouter } from "./inventory";
 // import { invoiceNumberRouter } from "./invoiceNumber"; // DROPPED: invoiceNumber field removed in migration 0024
@@ -1503,8 +1504,8 @@ export const appRouter = router({
   // Batch management (imported from batch.ts)
   batch: batchRouter,
 
-  // Carbonation operations for batches
-  carbonation: carbonationRouter,
+  // TODO: Re-enable carbonation router after fixing schema type issues
+  // carbonation: carbonationRouter,
 
   // Batch transfer operations
   batchTransfer: router({
