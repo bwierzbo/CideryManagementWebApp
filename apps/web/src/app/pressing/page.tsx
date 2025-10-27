@@ -35,6 +35,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Droplets,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
