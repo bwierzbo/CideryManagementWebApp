@@ -1628,11 +1628,11 @@ export const pressRunRouter = router({
             {} as Record<string, number>,
           );
 
-          // Get varieties for each press run
+          // Get varieties for each press run (using array_agg to prevent duplicates)
           const varietiesResult = await db
             .select({
               pressRunId: pressRunLoads.pressRunId,
-              varietyName: baseFruitVarieties.name,
+              varieties: sql<string[]>`array_agg(DISTINCT ${baseFruitVarieties.name}) FILTER (WHERE ${baseFruitVarieties.name} IS NOT NULL)`,
             })
             .from(pressRunLoads)
             .leftJoin(
@@ -1645,22 +1645,11 @@ export const pressRunRouter = router({
                 isNull(pressRunLoads.deletedAt),
               ),
             )
-            .groupBy(
-              pressRunLoads.pressRunId,
-              baseFruitVarieties.name,
-            );
+            .groupBy(pressRunLoads.pressRunId);
 
           pressRunVarieties = varietiesResult.reduce(
             (acc, row) => {
-              if (!acc[row.pressRunId]) {
-                acc[row.pressRunId] = [];
-              }
-              if (
-                row.varietyName &&
-                !acc[row.pressRunId].includes(row.varietyName)
-              ) {
-                acc[row.pressRunId].push(row.varietyName);
-              }
+              acc[row.pressRunId] = row.varieties || [];
               return acc;
             },
             {} as Record<string, string[]>,
