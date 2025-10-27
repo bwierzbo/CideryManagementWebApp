@@ -21,6 +21,7 @@
     "db": "workspace:^",
     "jspdf": "^3.0.3",
     "lib": "workspace:^",
+    "next-auth": "^4.24.11",
     "typescript": "^5.3.0",
     "zod": "^4.1.8"
   },
