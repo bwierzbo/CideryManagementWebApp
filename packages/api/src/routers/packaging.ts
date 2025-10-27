@@ -988,7 +988,6 @@ export const bottlesRouter = router({
         const [updated] = await db
           .update(bottleRuns)
           .set({
-            pasteurizedAt: input.pasteurizedAt || new Date(),
             productionNotes: input.notes
               ? `${input.notes}\n\nPasteurized at ${new Date().toISOString()}`
               : `Pasteurized at ${new Date().toISOString()}`,
