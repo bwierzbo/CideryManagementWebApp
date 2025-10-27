@@ -156,7 +156,11 @@ export function PressRunCompletionForm({
       (sum, assignment) => sum + (assignment.volumeL || 0),
       0,
     ) || 0;
-  const remainingVolumeL = canonicalVolumeL - assignedVolumeL;
+
+  // Calculate remaining with floating-point tolerance clamping
+  const VOLUME_EPSILON = 0.01; // 10mL tolerance
+  const rawRemainingVolumeL = canonicalVolumeL - assignedVolumeL;
+  const remainingVolumeL = Math.abs(rawRemainingVolumeL) < VOLUME_EPSILON ? 0 : rawRemainingVolumeL;
 
   // Calculate yield percentage
   const totalAppleKg = pressRun?.totalAppleWeightKg || 0;
@@ -666,10 +670,10 @@ export function PressRunCompletionForm({
                           ? 0
                           : assignedVolumeL;
                     const displayRemaining =
-                      isGallons && Math.abs(remainingVolumeL) > 0
+                      isGallons && remainingVolumeL > 0
                         ? litersToGallons(remainingVolumeL)
                         : isGallons
-                          ? 0
+                          ? remainingVolumeL / 3.78541 // Convert negative/zero values directly without validation
                           : remainingVolumeL;
 
                     return (

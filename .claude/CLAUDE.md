@@ -58,8 +58,29 @@ Using the test-runner agent ensures:
 - NO CODE DUPLICATION : check existing codebase to reuse functions and constants Read files before writing new functions. Use common sense function name to find them easily.
 - NO DEAD CODE : either use or delete from codebase completely
 - IMPLEMENT TEST FOR EVERY FUNCTIONS
-- NO CHEATER TESTS : test must be accurate, reflect real usage and be designed to reveal flaws. No useless tests! Design tests to be verbose so we can use them for debuging.
+- NO CHEATER TESTS : test must be accurate, reflect real usage and be designed to reveal flaws. No useless tests! Design tests to be verbose so we can use them for debugging.
 - NO INCONSISTENT NAMING - read existing codebase naming patterns.
 - NO OVER-ENGINEERING - Don't add unnecessary abstractions, factory patterns, or middleware when simple functions would work. Don't think "enterprise" when you need "working"
 - NO MIXED CONCERNS - Don't put validation logic inside API handlers, database queries inside UI components, etc. instead of proper separation
 - NO RESOURCE LEAKS - Don't forget to close database connections, clear timeouts, remove event listeners, or clean up file handles
+
+## PROJECT-SPECIFIC PATTERNS
+
+### Authentication (Completed October 2025)
+- **NextAuth is configured** - Use existing auth utilities, don't recreate
+- **Middleware protects all routes** - `/apps/web/middleware.ts` handles route protection
+- **Server-side utils** - Use `requireAuth()`, `requireAdmin()` from `/apps/web/src/lib/auth/server.ts`
+- **Client-side hooks** - Use `useUser()`, `useIsAdmin()` from `/apps/web/src/lib/auth/hooks.ts`
+- **tRPC procedures** - Use `protectedProcedure`, `adminProcedure`, `auditedProcedure` from `/packages/api/src/trpc.ts`
+- **Session management** - IdleTimeoutProvider handles 30-min timeout automatically
+
+### Database Schema Patterns
+- **Core entities** in `/packages/db/src/schema.ts` (batches, vessels, users, etc.)
+- **Specialized schemas** in `/packages/db/src/schema/` subdirectory (carbonation, packaging, audit)
+- **Import pattern**: Import core entities from `../schema`, NOT from separate files
+- **Migrations** in `/packages/db/migrations/` - Sequential numbering (0001, 0002, etc.)
+
+### Domain Calculations
+- **CO2/Carbonation**: Use `/packages/lib/src/calculations/co2.ts` - Henry's Law implementation
+- **ABV**: Alcohol by volume calculations for batches
+- **Volume tracking**: Through production stages (pressing → fermentation → packaging)

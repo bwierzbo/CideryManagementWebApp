@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { SessionIndicator } from "@/components/auth/session-indicator";
 
 const navItems = [
   {
@@ -155,7 +156,8 @@ export function Navbar() {
             })}
 
             {/* User Menu */}
-            <div className="ml-4 pl-4 border-l border-gray-200">
+            <div className="ml-4 pl-4 border-l border-gray-200 flex items-center space-x-3">
+              <SessionIndicator />
               {session ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>

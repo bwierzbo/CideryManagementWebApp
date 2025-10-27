@@ -7,6 +7,7 @@ import { useState } from "react";
 import { trpc } from "../utils/trpc";
 import { ToastProvider } from "../components/ui/toast-provider";
 import { performanceMonitor } from "../lib/performance-monitor";
+import { IdleTimeoutProvider } from "../components/providers/idle-timeout-provider";
 
 // Enhanced QueryClient with performance optimizations
 function createOptimizedQueryClient() {
@@ -102,11 +103,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionProvider>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <ToastProvider>{children}</ToastProvider>
-        </QueryClientProvider>
-      </trpc.Provider>
+      <IdleTimeoutProvider>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>{children}</ToastProvider>
+          </QueryClientProvider>
+        </trpc.Provider>
+      </IdleTimeoutProvider>
     </SessionProvider>
   );
 }

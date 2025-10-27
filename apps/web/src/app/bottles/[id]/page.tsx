@@ -29,6 +29,9 @@ import {
   Target,
   FileText,
   Eye,
+  Flame,
+  Tag,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -96,6 +99,25 @@ export default function PackagingDetailPage() {
   // Permission check: Admins and operators can update QA data
   const userRole = (session?.user as any)?.role;
   const canUpdateQA = userRole === "admin" || userRole === "operator";
+
+  // Mutations for bottle run actions
+  const markCompleteMutation = trpc.bottles.markComplete.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+  });
+
+  const pasteurizeMutation = trpc.bottles.pasteurize.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+  });
+
+  const labelMutation = trpc.bottles.label.useMutation({
+    onSuccess: () => {
+      refetch();
+    },
+  });
 
   // Format date display - using imported formatDateTime
   const formatDateDisplay = (date: string | Date) => {
@@ -210,7 +232,7 @@ export default function PackagingDetailPage() {
             <div className="min-w-0 flex-1">
               <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2 md:gap-3">
                 <Package className="w-6 h-6 md:w-8 md:h-8 flex-shrink-0" />
-                <span className="truncate">Packaging Run Details</span>
+                <span className="truncate">Bottle Run Details</span>
               </h1>
               <p className="text-gray-600 mt-1 text-sm md:text-base break-words">
                 {runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`} •{" "}
@@ -228,6 +250,38 @@ export default function PackagingDetailPage() {
                 {runData.status || "pending"}
               </Badge>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                {/* Action buttons for active runs */}
+                {canUpdateQA && runData.status !== "completed" && (
+                  <>
+                    <Button
+                      onClick={() => pasteurizeMutation.mutate({ runId })}
+                      size="sm"
+                      variant="outline"
+                      disabled={pasteurizeMutation.isLoading}
+                    >
+                      <Flame className="w-4 h-4 mr-2" />
+                      Pasteurize
+                    </Button>
+                    <Button
+                      onClick={() => labelMutation.mutate({ runId })}
+                      size="sm"
+                      variant="outline"
+                      disabled={labelMutation.isLoading}
+                    >
+                      <Tag className="w-4 h-4 mr-2" />
+                      Label
+                    </Button>
+                    <Button
+                      onClick={() => markCompleteMutation.mutate({ runId })}
+                      size="sm"
+                      variant="default"
+                      disabled={markCompleteMutation.isLoading}
+                    >
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      Mark Complete
+                    </Button>
+                  </>
+                )}
                 <div className="hidden sm:block">
                   <Suspense fallback={<PDFExportSkeleton />}>
                     <QuickPDFExport

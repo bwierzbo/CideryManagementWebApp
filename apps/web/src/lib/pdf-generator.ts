@@ -74,7 +74,7 @@ export interface PDFGeneratorOptions {
 }
 
 /**
- * Professional PDF Generator for Packaging Runs
+ * Professional PDF Generator for Bottle Runs
  * Creates a comprehensive production report with all QA fields and measurements
  * TODO: Re-enable when server-compatible PDF library is available
  */

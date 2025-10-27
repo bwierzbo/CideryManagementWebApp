@@ -59,6 +59,7 @@ interface PurchaseOrder {
   createdAt: string;
   deletedAt: string | null;
   depletedItems: number;
+  itemNames: string;
 }
 
 // Table column configuration
@@ -151,7 +152,8 @@ export function PurchaseOrdersTable({
             order.vendorName.toLowerCase().includes(query)) ||
           order.id.toLowerCase().includes(query) ||
           (order.notes && order.notes.toLowerCase().includes(query)) ||
-          order.materialType.toLowerCase().includes(query),
+          order.materialType.toLowerCase().includes(query) ||
+          (order.itemNames && order.itemNames.toLowerCase().includes(query)),
       );
     }
 
@@ -330,12 +332,11 @@ export function PurchaseOrdersTable({
               <div className="flex flex-col lg:flex-row gap-4 flex-1">
                 {/* Search */}
                 <div className="flex-1 min-w-0">
-                  <Label htmlFor="search">Search</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <Input
                       id="search"
-                      placeholder="Search transactions, vendors..."
+                      placeholder="Search by item or vendor..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"

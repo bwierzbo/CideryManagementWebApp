@@ -32,17 +32,13 @@ export const batchStatusSchema = z.enum([
 ]);
 export const vesselStatusSchema = z.enum([
   "available",
-  "fermenting",
   "cleaning",
   "maintenance",
-  "aging",
 ]);
-export const vesselTypeSchema = z.enum([
-  "fermenter",
-  "conditioning_tank",
-  "bright_tank",
-  "storage",
-]);
+// Vessel capability enums
+export const vesselMaterialSchema = z.enum(["stainless_steel", "plastic"]);
+export const vesselJacketedSchema = z.enum(["yes", "no"]);
+export const vesselPressureSchema = z.enum(["yes", "no"]);
 export const transactionTypeSchema = z.enum([
   "purchase",
   "transfer",
@@ -244,8 +240,12 @@ export const pressRunSchema = z.object({
 // Vessel schemas
 export const createVesselSchema = z.object({
   name: z.string().min(1, "Vessel name is required").max(100, "Name too long"),
-  type: vesselTypeSchema,
-  capacityL: positiveNumberSchema,
+  capacity: positiveNumberSchema,
+  capacityUnit: unitSchema.default("L"),
+  material: vesselMaterialSchema.optional(),
+  jacketed: vesselJacketedSchema.optional(),
+  isPressureVessel: vesselPressureSchema.optional(),
+  maxPressure: z.number().positive().default(30.0).optional(),
   status: vesselStatusSchema.default("available"),
   location: z.string().max(200, "Location too long").optional(),
   notes: z.string().max(1000, "Notes too long").optional(),
@@ -256,8 +256,13 @@ export const updateVesselSchema = createVesselSchema.partial();
 export const vesselSchema = z.object({
   id: uuidSchema,
   name: z.string(),
-  type: vesselTypeSchema,
-  capacityL: z.number(),
+  capacity: z.number(),
+  capacityUnit: unitSchema,
+  capacityLiters: z.number().nullable(),
+  material: vesselMaterialSchema.nullable(),
+  jacketed: vesselJacketedSchema.nullable(),
+  isPressureVessel: vesselPressureSchema.nullable(),
+  maxPressure: z.number().nullable(),
   status: vesselStatusSchema,
   location: z.string().nullable(),
   notes: z.string().nullable(),

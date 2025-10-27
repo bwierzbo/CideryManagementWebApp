@@ -22,21 +22,36 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle, CheckCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle, Plus, X } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { Card } from "@/components/ui/card";
 
 // Form validation schema
+const packagingMaterialSchema = z.object({
+  packagingPurchaseItemId: z.string().uuid(),
+  quantityUsed: z.number().int().positive(),
+  materialType: z.string(),
+});
+
 const bottleFormSchema = z.object({
   volumeTakenL: z.number().positive("Volume must be positive"),
-  packagingItemId: z.string().min(1, "Please select a packaging type"),
   packageSizeMl: z.number().positive("Package size must be positive"),
   unitsProduced: z.number().int().min(0, "Units cannot be negative"),
   packagedAt: z.string().min(1, "Date/time is required"),
   notes: z.string().optional(),
+  materials: z.array(packagingMaterialSchema).min(1, "Please select at least one packaging material"),
 });
 
 type BottleFormData = z.infer<typeof bottleFormSchema>;
+
+interface SelectedMaterial {
+  packagingPurchaseItemId: string;
+  quantityUsed: number;
+  materialType: string;
+  itemName: string;
+  availableQuantity: number;
+}
 
 interface BottleModalProps {
   open: boolean;
@@ -56,11 +71,21 @@ export function BottleModal({
   currentVolumeL,
 }: BottleModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedPackaging, setSelectedPackaging] = useState<any>(null);
+  const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
+  const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
+  const [currentQuantity, setCurrentQuantity] = useState<number>(1);
 
-  // tRPC queries and mutations
-  const packagingInventoryQuery = trpc.packagingPurchases.listInventory.useQuery({
+  // tRPC queries for different packaging types
+  const primaryPackagingQuery = trpc.packagingPurchases.listInventory.useQuery({
     itemType: "Primary Packaging",
+    limit: 100,
+  });
+  const capsQuery = trpc.packagingPurchases.listInventory.useQuery({
+    itemType: "Caps",
+    limit: 100,
+  });
+  const labelsQuery = trpc.packagingPurchases.listInventory.useQuery({
+    itemType: "Labels",
     limit: 100,
   });
   const createPackagingRunMutation =
@@ -84,31 +109,79 @@ export function BottleModal({
 
   // Watch form values for real-time calculations
   const volumeTakenL = watch("volumeTakenL");
-  const packagingItemId = watch("packagingItemId");
   const packageSizeMl = watch("packageSizeMl");
   const unitsProduced = watch("unitsProduced");
 
-  // Update selectedPackaging when packagingItemId changes
-  useEffect(() => {
-    if (packagingItemId && packagingInventoryQuery.data?.items) {
-      const selected = packagingInventoryQuery.data.items.find(
-        (item) => item.id === packagingItemId
-      );
-      setSelectedPackaging(selected);
-    } else {
-      setSelectedPackaging(null);
+  // Combine all packaging inventory into one list
+  const allPackagingItems = [
+    ...(primaryPackagingQuery.data?.items || []).map(item => ({ ...item, type: "Primary Packaging" })),
+    ...(capsQuery.data?.items || []).map(item => ({ ...item, type: "Caps" })),
+    ...(labelsQuery.data?.items || []).map(item => ({ ...item, type: "Labels" })),
+  ];
+
+  // Add material to the list
+  const handleAddMaterial = () => {
+    if (!currentMaterialId || currentQuantity <= 0) return;
+
+    const selectedItem = allPackagingItems.find(item => item.id === currentMaterialId);
+    if (!selectedItem) return;
+
+    // Check if already added
+    if (selectedMaterials.some(m => m.packagingPurchaseItemId === currentMaterialId)) {
+      toast({
+        title: "Material Already Added",
+        description: "This material is already in the list. Remove it first to change the quantity.",
+        variant: "destructive",
+      });
+      return;
     }
-  }, [packagingItemId, packagingInventoryQuery.data]);
+
+    // Check if quantity exceeds available
+    if (currentQuantity > selectedItem.quantity) {
+      toast({
+        title: "Insufficient Quantity",
+        description: `Only ${selectedItem.quantity} units available`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newMaterial: SelectedMaterial = {
+      packagingPurchaseItemId: currentMaterialId,
+      quantityUsed: currentQuantity,
+      materialType: selectedItem.type,
+      itemName: selectedItem.varietyName || selectedItem.size || "Unknown",
+      availableQuantity: selectedItem.quantity,
+    };
+
+    setSelectedMaterials([...selectedMaterials, newMaterial]);
+    setValue("materials", [...selectedMaterials, newMaterial]);
+    setCurrentMaterialId("");
+    setCurrentQuantity(1);
+  };
+
+  // Remove material from the list
+  const handleRemoveMaterial = (id: string) => {
+    const updated = selectedMaterials.filter(m => m.packagingPurchaseItemId !== id);
+    setSelectedMaterials(updated);
+    setValue("materials", updated);
+  };
+
+  // Update form materials when selectedMaterials changes
+  useEffect(() => {
+    setValue("materials", selectedMaterials);
+  }, [selectedMaterials, setValue]);
 
   // Calculate loss and loss percentage
-  const unitSizeL = packageSizeMl / 1000;
+  const unitSizeL = (packageSizeMl || 0) / 1000;
   const expectedVolumeL = (unitsProduced || 0) * unitSizeL;
   const lossL = (volumeTakenL || 0) - expectedVolumeL;
   const lossPercentage = volumeTakenL > 0 ? (lossL / volumeTakenL) * 100 : 0;
 
   // Determine loss status and styling
   const getLossStatus = () => {
-    if (lossL < 0)
+    // Use a small epsilon for floating point comparison to handle -0.00 cases
+    if (lossL < -0.001)
       return {
         color: "text-red-600",
         bg: "bg-red-50",
@@ -152,12 +225,16 @@ export function BottleModal({
       reset({
         packagedAt: new Date().toISOString().slice(0, 16),
         notes: "",
+        materials: [],
       });
+      setSelectedMaterials([]);
+      setCurrentMaterialId("");
+      setCurrentQuantity(1);
     }
   }, [open, reset]);
 
   const handleFormSubmit = async (data: BottleFormData) => {
-    if (lossL < 0) {
+    if (lossL < -0.001) {
       return; // Prevent submission with negative loss
     }
 
@@ -171,6 +248,7 @@ export function BottleModal({
         unitsProduced: data.unitsProduced,
         volumeTakenL: data.volumeTakenL,
         notes: data.notes,
+        materials: data.materials,
       });
 
       // Invalidate relevant queries to refresh data
@@ -179,7 +257,7 @@ export function BottleModal({
 
       // Show success toast with option to view packaging run
       toast({
-        title: "Packaging Run Created",
+        title: "Bottle Run Created",
         description: `Successfully packaged ${data.unitsProduced} units from ${vesselName}. Loss: ${result.lossL.toFixed(2)}L (${result.lossPercentage.toFixed(1)}%)`,
       });
 
@@ -192,7 +270,7 @@ export function BottleModal({
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
       toast({
-        title: "Failed to Create Packaging Run",
+        title: "Failed to Create Bottle Run",
         description: errorMessage,
         variant: "destructive",
       });
@@ -260,60 +338,144 @@ export function BottleModal({
             </p>
           </div>
 
-          {/* Select packaging type from inventory */}
-          <div>
-            <Label
-              htmlFor="packagingItemId"
-              className="text-sm md:text-base font-medium"
-            >
-              Packaging Type *
+          {/* Packaging Materials Multi-Select */}
+          <div className="space-y-3">
+            <Label className="text-sm md:text-base font-medium">
+              Packaging Materials *
             </Label>
-            <Select
-              onValueChange={(value) => {
-                setValue("packagingItemId", value);
-                // Reset package size when packaging type changes
-                setValue("packageSizeMl", 0);
-              }}
-            >
-              <SelectTrigger className="h-10 md:h-11">
-                <SelectValue placeholder="Select packaging from inventory" />
-              </SelectTrigger>
-              <SelectContent>
-                {packagingInventoryQuery.isLoading ? (
-                  <SelectItem value="loading" disabled>
-                    Loading packaging...
-                  </SelectItem>
-                ) : packagingInventoryQuery.data?.items?.length ? (
-                  packagingInventoryQuery.data.items.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {item.varietyName || item.size}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          Available: {item.quantity} units | {item.vendorName || "Unknown vendor"}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="none" disabled>
-                    No primary packaging available in inventory
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-            {errors.packagingItemId && (
-              <p className="text-sm text-red-600 mt-1">
-                {errors.packagingItemId.message}
-              </p>
-            )}
-            {selectedPackaging && (
-              <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-xs">
-                <p><strong>Selected:</strong> {selectedPackaging.varietyName || selectedPackaging.size}</p>
-                <p><strong>Available:</strong> {selectedPackaging.quantity} units</p>
-                {selectedPackaging.notes && <p><strong>Notes:</strong> {selectedPackaging.notes}</p>}
+
+            {/* Add Material Section */}
+            <Card className="p-3 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <Select
+                    value={currentMaterialId}
+                    onValueChange={setCurrentMaterialId}
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select packaging material" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {primaryPackagingQuery.isLoading || capsQuery.isLoading || labelsQuery.isLoading ? (
+                        <SelectItem value="loading" disabled>
+                          Loading materials...
+                        </SelectItem>
+                      ) : allPackagingItems.length > 0 ? (
+                        <>
+                          {/* Primary Packaging Group */}
+                          {allPackagingItems.filter(i => i.type === "Primary Packaging").length > 0 && (
+                            <>
+                              <SelectItem value="primary-header" disabled className="font-semibold">
+                                Primary Packaging
+                              </SelectItem>
+                              {allPackagingItems
+                                .filter(i => i.type === "Primary Packaging")
+                                .map((item) => (
+                                  <SelectItem key={item.id} value={item.id}>
+                                    {item.varietyName || item.size} - Available: {item.quantity}
+                                  </SelectItem>
+                                ))}
+                            </>
+                          )}
+
+                          {/* Caps Group */}
+                          {allPackagingItems.filter(i => i.type === "Caps").length > 0 && (
+                            <>
+                              <SelectItem value="caps-header" disabled className="font-semibold">
+                                Caps
+                              </SelectItem>
+                              {allPackagingItems
+                                .filter(i => i.type === "Caps")
+                                .map((item) => (
+                                  <SelectItem key={item.id} value={item.id}>
+                                    {item.varietyName || item.size} - Available: {item.quantity}
+                                  </SelectItem>
+                                ))}
+                            </>
+                          )}
+
+                          {/* Labels Group */}
+                          {allPackagingItems.filter(i => i.type === "Labels").length > 0 && (
+                            <>
+                              <SelectItem value="labels-header" disabled className="font-semibold">
+                                Labels
+                              </SelectItem>
+                              {allPackagingItems
+                                .filter(i => i.type === "Labels")
+                                .map((item) => (
+                                  <SelectItem key={item.id} value={item.id}>
+                                    {item.varietyName || item.size} - Available: {item.quantity}
+                                  </SelectItem>
+                                ))}
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <SelectItem value="none" disabled>
+                          No packaging materials available
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    value={currentQuantity}
+                    onChange={(e) => setCurrentQuantity(parseInt(e.target.value) || 1)}
+                    placeholder="Qty"
+                    className="h-10"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAddMaterial}
+                    disabled={!currentMaterialId || currentQuantity <= 0}
+                    size="sm"
+                    className="flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </Button>
+                </div>
               </div>
+            </Card>
+
+            {/* Selected Materials List */}
+            {selectedMaterials.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Selected Materials ({selectedMaterials.length})
+                </Label>
+                {selectedMaterials.map((material) => (
+                  <Card key={material.packagingPurchaseItemId} className="p-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{material.itemName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {material.materialType} - Using {material.quantityUsed} of {material.availableQuantity} available
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveMaterial(material.packagingPurchaseItemId)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {errors.materials && (
+              <p className="text-sm text-red-600">
+                {errors.materials.message}
+              </p>
             )}
           </div>
 
@@ -333,7 +495,6 @@ export function BottleModal({
               placeholder="e.g., 355, 500, 750"
               className="h-10 md:h-11 text-base"
               {...register("packageSizeMl", { valueAsNumber: true })}
-              disabled={!packagingItemId}
             />
             {errors.packageSizeMl && (
               <p className="text-sm text-red-600 mt-1">
@@ -453,9 +614,9 @@ export function BottleModal({
               disabled={
                 isSubmitting ||
                 createPackagingRunMutation.isPending ||
-                lossL < 0 ||
+                lossL < -0.001 ||
                 !volumeTakenL ||
-                !packagingItemId ||
+                selectedMaterials.length === 0 ||
                 !packageSizeMl ||
                 unitsProduced === undefined
               }

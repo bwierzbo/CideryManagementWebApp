@@ -24,7 +24,8 @@ export type Entity =
   | "package"
   | "cost"
   | "report"
-  | "audit_log";
+  | "audit_log"
+  | "carbonation";
 
 // Permission definition
 type Permission = {
@@ -83,6 +84,10 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
       actions: ["create", "read", "update", "delete", "list"],
     },
     { entity: "audit_log", actions: ["read", "list"] }, // Even admins can't modify audit logs
+    {
+      entity: "carbonation",
+      actions: ["create", "read", "update", "delete", "list"],
+    },
   ],
 
   operator: [
@@ -125,6 +130,10 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: "cost", actions: ["read", "list"] }, // Can view costs but not modify
     { entity: "report", actions: ["create", "read", "list"] }, // Can generate and view reports
     { entity: "audit_log", actions: ["read", "list"] }, // Can view audit logs
+    {
+      entity: "carbonation",
+      actions: ["create", "read", "update", "delete", "list"],
+    },
   ],
 
   viewer: [
@@ -143,6 +152,7 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: "cost", actions: ["read", "list"] }, // Can view costs but not modify
     { entity: "report", actions: ["read", "list"] }, // Can view reports but not generate
     { entity: "audit_log", actions: ["read", "list"] }, // Can view audit logs
+    { entity: "carbonation", actions: ["read", "list"] }, // Can view carbonation operations
   ],
 };
 

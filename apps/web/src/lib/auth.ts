@@ -68,6 +68,7 @@ export const authOptions = {
             email: user[0].email,
             name: user[0].name,
             role: user[0].role,
+            isActive: user[0].isActive,
           };
         } catch (error) {
           console.error("Auth error:", error);
@@ -80,6 +81,7 @@ export const authOptions = {
     async jwt({ token, user }: any) {
       if (user) {
         token.role = user.role;
+        token.isActive = user.isActive;
       }
       return token;
     },
@@ -87,6 +89,7 @@ export const authOptions = {
       if (token) {
         session.user.id = token.sub;
         session.user.role = token.role as string;
+        session.user.isActive = token.isActive as boolean;
       }
       return session;
     },

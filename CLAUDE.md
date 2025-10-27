@@ -48,8 +48,14 @@ The system tracks the cidery production flow through these key entities:
 
 - **Vendor** → **Purchase/PurchaseLines** → **PressRun** → **JuiceLot**
 - **JuiceLot** → **Vessel** → **Batch** → **Measurement/Transfer**
+- **Batch** → **CarbonationOperation** → **PackagingRun** → **InventoryItem**
 - **Batch** → **BlendComponent** → **PackagingRun** → **InventoryItem**
 - Supporting: **RefValue** (reference data), **User** (RBAC), **AuditLog** (change tracking)
+
+### Recent Additions (October 2025)
+- **CarbonationOperation** - Tracks forced carbonation (CO2 addition under pressure)
+- **NextAuth Integration** - Complete authentication system with middleware
+- **Session Management** - Idle timeout and session indicators
 
 ## Architecture Patterns
 
@@ -60,6 +66,22 @@ The system tracks the cidery production flow through these key entities:
 - **Role-based access control** (Admin, Operator, Viewer)
 - **Heavy autofill** and smart defaults throughout UI
 - **Audit logging** for all entity changes
+
+### Authentication & Authorization (NextAuth)
+- **NextAuth** with credentials provider for authentication
+- **JWT sessions** for stateless session management
+- **Middleware protection** at edge level (all routes protected by default)
+- **tRPC procedures** - protectedProcedure, adminProcedure, auditedProcedure
+- **RBAC system** - Permission checks at API and UI levels
+- **Idle timeout** - 30-minute automatic sign-out with 5-minute warning
+- **Session indicators** - Visual auth status in navigation
+
+**Auth Files:**
+- `/apps/web/src/lib/auth.ts` - NextAuth configuration
+- `/apps/web/middleware.ts` - Route protection middleware
+- `/apps/web/src/lib/auth/server.ts` - Server-side auth utilities (requireAuth, requireAdmin)
+- `/apps/web/src/lib/auth/hooks.ts` - Client-side auth hooks (useUser, useIsAdmin)
+- `/packages/api/src/trpc.ts` - Protected tRPC procedures
 
 ## Development Guidelines
 
@@ -87,14 +109,23 @@ The system tracks the cidery production flow through these key entities:
 - shadcn/ui component library with Tailwind CSS
 - React Hook Form with Zod validation
 - TanStack Query for data fetching
-- Auth.js for authentication
+- NextAuth for authentication
+
+### Domain-Specific Features
+- **CO2 Calculations** - Henry's Law implementation for carbonation (`packages/lib/src/calculations/co2.ts`)
+- **ABV Calculations** - Alcohol by volume calculations for batches
+- **Yield Tracking** - Volume tracking through production stages
+- **COGS Reporting** - Cost of goods sold per batch
 
 ## Environment Variables
 
 Required for development:
-- `DATABASE_URL` - PostgreSQL connection string
-- `NEXTAUTH_SECRET` - Auth.js secret
-- `NEXTAUTH_URL` - App URL (http://localhost:3000 for dev)
-- stop worrying about ports its me hosting it on a different tab
-- everytime you want to push the migration just tell me to do it because you have problems doing the interactive prompt on your own
-- dont worry what ports you are hosting i typically will host it in another terminal tab
+- `DATABASE_URL` - PostgreSQL connection string (Neon)
+- `NEXTAUTH_SECRET` - NextAuth secret key
+- `NEXTAUTH_URL` - App URL (http://localhost:3001 for dev)
+
+## Important Notes for Claude
+- App typically runs on port 3001 (not 3000)
+- User manages migrations manually - just tell them when to run migrations
+- Don't worry about port availability - user hosts in separate terminal
+- Database schema is in `public` schema (neon_auth was cleaned up in Oct 2025)

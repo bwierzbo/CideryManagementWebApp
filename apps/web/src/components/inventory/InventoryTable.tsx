@@ -37,7 +37,6 @@ import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import { MaterialTypeIndicator } from "./MaterialTypeIndicator";
-import { InventoryFilters } from "./InventoryFilters";
 import { InventoryEditDialog } from "./InventoryEditDialog";
 import { TransferToTankModal } from "@/components/juice/TransferToTankModal";
 import { formatDate } from "@/utils/date-format";
@@ -58,11 +57,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type {
-  MaterialType,
-  InventoryFiltersState,
-  FilterCallback,
-} from "@/types/inventory";
+import type { MaterialType } from "@/types/inventory";
 
 // Type for inventory item from API
 interface InventoryItem {
@@ -89,7 +84,6 @@ type SortField =
 
 interface InventoryTableProps {
   showSearch?: boolean;
-  showFilters?: boolean;
   className?: string;
   itemsPerPage?: number;
   onItemClick?: (item: InventoryItem) => void;
@@ -97,7 +91,6 @@ interface InventoryTableProps {
 
 export function InventoryTable({
   showSearch = true,
-  showFilters = true,
   className,
   itemsPerPage = 50,
   onItemClick,
@@ -107,12 +100,6 @@ export function InventoryTable({
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null);
   const [transferItem, setTransferItem] = useState<InventoryItem | null>(null);
-  const [filters, setFilters] = useState<InventoryFiltersState>({
-    materialTypes: [],
-    location: "all",
-    status: "all",
-    isActive: true,
-  });
 
   // Sorting state using the reusable hook
   const {
@@ -136,27 +123,10 @@ export function InventoryTable({
   // Calculate API parameters
   const apiParams = useMemo(
     () => ({
-      materialType:
-        filters.materialTypes.length === 1
-          ? filters.materialTypes[0]
-          : undefined,
-      location: filters.location !== "all" ? filters.location : undefined,
-      isActive: filters.isActive,
       limit: itemsPerPage,
       offset: currentPage * itemsPerPage,
     }),
-    [filters, itemsPerPage, currentPage],
-  );
-
-  // Search API parameters
-  const searchParams = useMemo(
-    () => ({
-      query: searchQuery,
-      materialTypes:
-        filters.materialTypes.length > 0 ? filters.materialTypes : undefined,
-      limit: itemsPerPage,
-    }),
-    [searchQuery, filters.materialTypes, itemsPerPage],
+    [itemsPerPage, currentPage],
   );
 
   // API query (no separate search endpoint - filter client-side)
@@ -184,26 +154,38 @@ export function InventoryTable({
   const error = listError;
   const allItems = useMemo(() => listData?.items || [], [listData?.items]);
 
-  // Client-side search filtering
+  // Client-side search filtering with Item and Vendor (OR logic)
   const filteredItems = useMemo(() => {
-    if (!searchQuery.trim()) return allItems;
+    const hasSearch = searchQuery.trim().length > 0;
+
+    // If no search term, return all items
+    if (!hasSearch) return allItems;
 
     const query = searchQuery.toLowerCase();
-    return allItems.filter((item: any) => {
-      const varietyName = item.metadata?.varietyName?.toLowerCase() || '';
-      const vendorName = item.metadata?.vendorName?.toLowerCase() || '';
-      const productName = item.metadata?.productName?.toLowerCase() || '';
-      const brandManufacturer = item.metadata?.brandManufacturer?.toLowerCase() || '';
-      const juiceType = item.metadata?.juiceType?.toLowerCase() || '';
-      const notes = item.notes?.toLowerCase() || '';
 
+    return allItems.filter((item: any) => {
+      // Item-related fields
+      const varietyName = item.metadata?.varietyName?.toLowerCase() || '';
+      const productName = item.metadata?.productName?.toLowerCase() || '';
+      const additiveName = item.metadata?.additiveName?.toLowerCase() || '';
+      const additiveType = item.metadata?.additiveType?.toLowerCase() || '';
+      const juiceType = item.metadata?.juiceType?.toLowerCase() || '';
+      const packagingName = item.metadata?.packagingName?.toLowerCase() || '';
+      const size = item.metadata?.size?.toLowerCase() || '';
+
+      // Vendor-related fields
+      const vendorName = item.metadata?.vendorName?.toLowerCase() || '';
+
+      // OR logic: match either item OR vendor
       return (
         varietyName.includes(query) ||
-        vendorName.includes(query) ||
         productName.includes(query) ||
-        brandManufacturer.includes(query) ||
+        additiveName.includes(query) ||
+        additiveType.includes(query) ||
         juiceType.includes(query) ||
-        notes.includes(query)
+        packagingName.includes(query) ||
+        size.includes(query) ||
+        vendorName.includes(query)
       );
     });
   }, [allItems, searchQuery]);
@@ -235,14 +217,7 @@ export function InventoryTable({
     });
   }, [items, sortData]);
 
-  // Event handlers
-  const handleFiltersChange: FilterCallback = useCallback(
-    (newFilters: Partial<InventoryFiltersState>) => {
-      setFilters((prev) => ({ ...prev, ...newFilters }));
-      setCurrentPage(0); // Reset pagination when filtering
-    },
-    [],
-  );
+  // Event handlers (no filter callback needed anymore)
 
   // Sort handler is provided by the hook
   const handleColumnSort = useCallback(
@@ -388,30 +363,22 @@ export function InventoryTable({
   return (
     <div className={cn("space-y-6", className)}>
       {/* Search and Filters */}
-      {(showSearch || showFilters) && (
+      {showSearch && (
         <Card>
           <CardContent className="p-6">
-            <div className="space-y-4">
-              {showSearch && (
-                <div className="relative max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                  <Input
-                    placeholder="Search by variety or vendor..."
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setCurrentPage(0); // Reset to first page when searching
-                    }}
-                    className="pl-10"
-                  />
-                </div>
-              )}
-              {showFilters && (
-                <InventoryFilters
-                  onFiltersChange={handleFiltersChange}
-                  initialFilters={filters}
+            <div className="max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  placeholder="Search by item name or vendor..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(0); // Reset to first page when searching
+                  }}
+                  className="pl-10"
                 />
-              )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -547,7 +514,7 @@ export function InventoryTable({
                       colSpan={6}
                       className="text-center py-8 text-muted-foreground"
                     >
-                      {searchQuery
+                      {itemSearch || vendorSearch
                         ? "No items match your search"
                         : "No inventory items found"}
                     </TableCell>
@@ -645,7 +612,7 @@ export function InventoryTable({
           </div>
 
           {/* Pagination for list view */}
-          {!searchQuery && listData?.pagination && (
+          {listData?.pagination && (
             <div className="flex items-center justify-between pt-4">
               <div className="text-sm text-muted-foreground">
                 Showing {currentPage * itemsPerPage + 1} to{" "}

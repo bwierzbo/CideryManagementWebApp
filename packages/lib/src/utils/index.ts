@@ -23,3 +23,6 @@ export {
   estimateWeightFromVolume,
   calculateTotalVolume
 } from "./volumeConversion";
+
+// Carbonation calculation utilities
+export * from "./carbonation-calculations";

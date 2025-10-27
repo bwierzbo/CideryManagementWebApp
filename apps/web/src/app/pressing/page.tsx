@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PressRunCompletion } from "@/components/pressing";
 import {
   Play,
@@ -233,9 +240,20 @@ function CompletedRunsSection({
   onDeletePressRun: (pressRunId: string) => void;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+
+  // Get pagination params from URL, with defaults
+  const currentPage = parseInt(searchParams.get("page") || "1", 10);
+  const pageSize = parseInt(searchParams.get("pageSize") || "10", 10);
+
+  // Update URL when pagination changes
+  const updateUrl = (newPage: number, newPageSize: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("page", newPage.toString());
+    params.set("pageSize", newPageSize.toString());
+    router.push(`?${params.toString()}`, { scroll: false });
+  };
 
   const {
     data: pressRunsData,
@@ -243,15 +261,21 @@ function CompletedRunsSection({
     refetch,
   } = trpc.pressRun.list.useQuery({
     status: "completed",
-    limit: 100, // Get more items for client-side pagination and search
-    sortBy: "updated",
+    page: currentPage,
+    pageSize,
+    sortBy: "completed",
     sortOrder: "desc",
   });
 
-  const filteredPressRuns = useMemo(() => {
-    if (!pressRunsData?.pressRuns) return [];
+  const totalCount = pressRunsData?.totalCount || 0;
+  const totalPages = Math.ceil(totalCount / pageSize);
+  const pressRuns = pressRunsData?.pressRuns || [];
 
-    const filtered = pressRunsData.pressRuns.filter((pressRun) => {
+  // Filter press runs for search (client-side filtering on current page only)
+  const filteredPressRuns = useMemo(() => {
+    if (!searchTerm) return pressRuns;
+
+    return pressRuns.filter((pressRun) => {
       const searchLower = searchTerm.toLowerCase();
       const varietiesText = pressRun.varieties.join(" ").toLowerCase();
       const vesselText = pressRun.vesselName?.toLowerCase() || "";
@@ -265,16 +289,7 @@ function CompletedRunsSection({
         dateText.includes(searchLower)
       );
     });
-
-    return filtered;
-  }, [pressRunsData?.pressRuns, searchTerm]);
-
-  const paginatedPressRuns = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredPressRuns.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredPressRuns, currentPage, itemsPerPage]);
-
-  const totalPages = Math.ceil(filteredPressRuns.length / itemsPerPage);
+  }, [pressRuns, searchTerm]);
 
   if (isLoading) {
     return (
@@ -313,9 +328,8 @@ function CompletedRunsSection({
             Recent Completed
           </h3>
           <p className="text-sm text-gray-600 mt-1">
-            {filteredPressRuns.length} completed press run
-            {filteredPressRuns.length !== 1 ? "s" : ""}
-            {searchTerm && ` matching "${searchTerm}"`}
+            {totalCount} completed press run{totalCount !== 1 ? "s" : ""}
+            {searchTerm && ` (showing filtered results on page ${currentPage})`}
           </p>
         </div>
         <Button
@@ -329,7 +343,7 @@ function CompletedRunsSection({
         </Button>
       </div>
 
-      {/* Search Bar */}
+      {/* Search Bar and Page Size Selector */}
       <div className="flex items-center space-x-2 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -338,11 +352,26 @@ function CompletedRunsSection({
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
-              setCurrentPage(1); // Reset to first page when searching
             }}
             className="pl-10"
           />
         </div>
+        <Select
+          value={pageSize.toString()}
+          onValueChange={(value) => {
+            const newPageSize = parseInt(value, 10);
+            updateUrl(1, newPageSize); // Reset to page 1 when changing page size
+          }}
+        >
+          <SelectTrigger className="w-[120px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="10">10 per page</SelectItem>
+            <SelectItem value="25">25 per page</SelectItem>
+            <SelectItem value="50">50 per page</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {filteredPressRuns.length === 0 ? (
@@ -373,7 +402,7 @@ function CompletedRunsSection({
       ) : (
         <>
           <div className="space-y-3">
-            {paginatedPressRuns.map((run) => (
+            {filteredPressRuns.map((run) => (
               <Card
                 key={run.id}
                 className="border border-green-200 cursor-pointer hover:bg-green-50 transition-colors"
@@ -501,17 +530,15 @@ function CompletedRunsSection({
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-6 pt-4 border-t">
               <div className="text-sm text-gray-600">
-                Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                {Math.min(currentPage * itemsPerPage, filteredPressRuns.length)}{" "}
-                of {filteredPressRuns.length} results
+                Showing {(currentPage - 1) * pageSize + 1} to{" "}
+                {Math.min(currentPage * pageSize, totalCount)} of {totalCount}{" "}
+                results
               </div>
               <div className="flex items-center space-x-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setCurrentPage((prev) => Math.max(1, prev - 1))
-                  }
+                  onClick={() => updateUrl(Math.max(1, currentPage - 1), pageSize)}
                   disabled={currentPage === 1}
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -536,7 +563,7 @@ function CompletedRunsSection({
                         <Button
                           variant={currentPage === page ? "default" : "outline"}
                           size="sm"
-                          onClick={() => setCurrentPage(page)}
+                          onClick={() => updateUrl(page, pageSize)}
                           className="w-8 h-8 p-0"
                         >
                           {page}
@@ -549,7 +576,7 @@ function CompletedRunsSection({
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                    updateUrl(Math.min(totalPages, currentPage + 1), pageSize)
                   }
                   disabled={currentPage === totalPages}
                 >

@@ -47,11 +47,25 @@ import {
   X,
   Activity,
   Loader2,
+  Sparkles,
+  MoreVertical,
+  CheckCircle2,
+  XCircle,
+  Gauge,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
+import { CarbonateModal } from "@/components/batch/CarbonateModal";
+import { CompleteCarbonationModal } from "@/components/batch/CompleteCarbonationModal";
 import { toast } from "@/hooks/use-toast";
 
 export default function BatchDetailsPage() {
@@ -63,6 +77,11 @@ export default function BatchDetailsPage() {
 
   const [showMeasurementForm, setShowMeasurementForm] = useState(false);
   const [showAdditiveForm, setShowAdditiveForm] = useState(false);
+  const [showCarbonateModal, setShowCarbonateModal] = useState(false);
+  const [showCompleteCarbonationModal, setShowCompleteCarbonationModal] =
+    useState(false);
+  const [selectedCarbonationOperation, setSelectedCarbonationOperation] =
+    useState<any>(null);
   const [isEditingStartDate, setIsEditingStartDate] = useState(false);
   const [editStartDate, setEditStartDate] = useState("");
 
@@ -134,6 +153,12 @@ export default function BatchDetailsPage() {
       limit: 50,
       offset: 0,
     });
+
+  // Fetch carbonation operations (mock for now - will be implemented with tRPC router)
+  // const { data: carbonationOperations, isLoading: carbonationsLoading } =
+  //   trpc.carbonation.list.useQuery({ batchId });
+  const carbonationOperations: any[] = []; // Mock empty array until router is implemented
+  const carbonationsLoading = false;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -264,20 +289,46 @@ export default function BatchDetailsPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setShowMeasurementForm(true)} size="sm">
-            <Beaker className="w-4 h-4 mr-2" />
-            Add Measurement
-          </Button>
-          <Button
-            onClick={() => setShowAdditiveForm(true)}
-            variant="outline"
-            size="sm"
-          >
-            <Droplets className="w-4 h-4 mr-2" />
-            Add Additive
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm">
+              <Plus className="w-4 h-4 mr-2" />
+              Actions
+              <MoreVertical className="w-4 h-4 ml-2" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem onClick={() => setShowMeasurementForm(true)}>
+              <Beaker className="w-4 h-4 mr-2" />
+              Add Measurement
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowAdditiveForm(true)}>
+              <Droplets className="w-4 h-4 mr-2" />
+              Add Additive
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => setShowCarbonateModal(true)}
+              disabled={
+                !(
+                  (batch.status === "conditioning" ||
+                    batch.status === "aging" ||
+                    batch.status === "completed") &&
+                  batch.vesselId &&
+                  batch.vesselData?.isPressureVessel === "yes"
+                )
+              }
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Carbonate
+              {batch.vesselData?.isPressureVessel !== "yes" && (
+                <span className="ml-auto text-xs text-muted-foreground">
+                  (Requires pressure vessel)
+                </span>
+              )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Batch Overview */}
@@ -356,6 +407,15 @@ export default function BatchDetailsPage() {
           <TabsTrigger value="activity">
             <Activity className="w-4 h-4 mr-2" />
             Activity History
+          </TabsTrigger>
+          <TabsTrigger value="carbonations">
+            <Sparkles className="w-4 h-4 mr-2" />
+            Carbonations
+            {carbonationOperations.length > 0 && (
+              <Badge className="ml-2" variant="secondary">
+                {carbonationOperations.length}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="composition">Composition</TabsTrigger>
           <TabsTrigger value="measurements">Measurements</TabsTrigger>
@@ -527,6 +587,157 @@ export default function BatchDetailsPage() {
         {/* Activity History Tab */}
         <TabsContent value="activity">
           <BatchActivityHistory batchId={batchId} />
+        </TabsContent>
+
+        {/* Carbonations Tab */}
+        <TabsContent value="carbonations">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-blue-600" />
+                Carbonation Operations
+              </CardTitle>
+              <CardDescription>
+                Track forced carbonation operations for this batch
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {carbonationsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  <span className="ml-2 text-sm text-gray-600">
+                    Loading carbonations...
+                  </span>
+                </div>
+              ) : carbonationOperations.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Started</TableHead>
+                      <TableHead>Target CO2</TableHead>
+                      <TableHead>Pressure Applied</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Quality</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {carbonationOperations.map((op: any) => {
+                      const isInProgress = !op.completedAt;
+                      const duration = op.durationHours
+                        ? `${op.durationHours.toFixed(1)}h`
+                        : isInProgress
+                          ? `${((Date.now() - new Date(op.startedAt).getTime()) / (1000 * 60 * 60)).toFixed(1)}h (ongoing)`
+                          : "-";
+
+                      return (
+                        <TableRow key={op.id}>
+                          <TableCell>
+                            {format(new Date(op.startedAt), "MMM d, yyyy HH:mm")}
+                          </TableCell>
+                          <TableCell>{op.targetCO2Volumes} vol</TableCell>
+                          <TableCell>{op.pressureApplied} PSI</TableCell>
+                          <TableCell>
+                            {isInProgress ? (
+                              <Badge variant="secondary">
+                                <Clock className="w-3 h-3 mr-1" />
+                                In Progress
+                              </Badge>
+                            ) : (
+                              <Badge variant="default">
+                                <CheckCircle2 className="w-3 h-3 mr-1" />
+                                Completed
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{duration}</TableCell>
+                          <TableCell>
+                            {op.qualityCheck ? (
+                              op.qualityCheck === "pass" ? (
+                                <Badge
+                                  variant="default"
+                                  className="bg-green-100 text-green-700"
+                                >
+                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                  Pass
+                                </Badge>
+                              ) : op.qualityCheck === "needs_adjustment" ? (
+                                <Badge
+                                  variant="default"
+                                  className="bg-yellow-100 text-yellow-700"
+                                >
+                                  <AlertCircle className="w-3 h-3 mr-1" />
+                                  Needs Adj.
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="default"
+                                  className="bg-red-100 text-red-700"
+                                >
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                  Fail
+                                </Badge>
+                              )
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isInProgress && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedCarbonationOperation(op);
+                                  setShowCompleteCarbonationModal(true);
+                                }}
+                              >
+                                <CheckCircle2 className="w-4 h-4 mr-1" />
+                                Complete
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="text-center py-12">
+                  <Sparkles className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    No Carbonation Operations
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    This batch has not been carbonated yet.
+                  </p>
+                  {batch.status === "conditioning" ||
+                  batch.status === "aging" ||
+                  batch.status === "completed" ? (
+                    batch.vesselData?.isPressureVessel === "yes" ? (
+                      <Button
+                        onClick={() => setShowCarbonateModal(true)}
+                        size="sm"
+                      >
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Start Carbonation
+                      </Button>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Batch must be in a pressure-rated vessel to carbonate
+                      </p>
+                    )
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Batch must be in conditioning, aging, or completed status
+                      to carbonate
+                    </p>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Composition Tab */}
@@ -866,6 +1077,65 @@ export default function BatchDetailsPage() {
             />
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Carbonate Modal */}
+      {showCarbonateModal && batch.vesselData && (
+        <CarbonateModal
+          open={showCarbonateModal}
+          onOpenChange={setShowCarbonateModal}
+          batch={{
+            id: batch.id,
+            name: batch.name,
+            vesselId: batch.vesselId,
+            currentVolume: latestMeasurement?.volume || 0,
+            currentVolumeUnit: latestMeasurement?.volumeUnit || "L",
+            status: batch.status,
+          }}
+          vessel={{
+            id: batch.vesselData.id,
+            name: batch.vesselData.name,
+            isPressureVessel: batch.vesselData.isPressureVessel as "yes" | "no",
+            maxPressure: parseFloat(batch.vesselData.maxPressure || "30"),
+          }}
+          onSuccess={() => {
+            // TODO: Invalidate carbonation operations query when router is implemented
+            // utils.carbonation.list.invalidate({ batchId });
+            toast({
+              title: "Success",
+              description: "Carbonation operation started successfully",
+            });
+          }}
+        />
+      )}
+
+      {/* Complete Carbonation Modal */}
+      {showCompleteCarbonationModal && selectedCarbonationOperation && (
+        <CompleteCarbonationModal
+          open={showCompleteCarbonationModal}
+          onOpenChange={setShowCompleteCarbonationModal}
+          carbonationOperation={{
+            id: selectedCarbonationOperation.id,
+            batchId: selectedCarbonationOperation.batchId,
+            batchName: batch.name,
+            vesselName: batch.vesselName || "Unknown Vessel",
+            startedAt: new Date(selectedCarbonationOperation.startedAt),
+            targetCO2Volumes: selectedCarbonationOperation.targetCO2Volumes,
+            pressureApplied: selectedCarbonationOperation.pressureApplied,
+            startingVolume: selectedCarbonationOperation.startingVolume,
+            startingVolumeUnit: selectedCarbonationOperation.startingVolumeUnit,
+            startingTemperature: selectedCarbonationOperation.startingTemperature,
+          }}
+          onSuccess={() => {
+            setSelectedCarbonationOperation(null);
+            // TODO: Invalidate carbonation operations query when router is implemented
+            // utils.carbonation.list.invalidate({ batchId });
+            toast({
+              title: "Success",
+              description: "Carbonation operation completed successfully",
+            });
+          }}
+        />
       )}
     </div>
   );
