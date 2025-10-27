@@ -314,7 +314,8 @@ export default function BatchDetailsPage() {
                   (batch.status === "conditioning" ||
                     batch.status === "aging" ||
                     batch.status === "completed") &&
-                  batch.vesselId
+                  batch.vesselId &&
+                  batch.vesselIsPressureVessel === "yes"
                 )
               }
             >
@@ -709,7 +710,7 @@ export default function BatchDetailsPage() {
                   {batch.status === "conditioning" ||
                   batch.status === "aging" ||
                   batch.status === "completed" ? (
-                    batch.vesselId ? (
+                    batch.vesselId && batch.vesselIsPressureVessel === "yes" ? (
                       <Button
                         onClick={() => setShowCarbonateModal(true)}
                         size="sm"
@@ -717,6 +718,10 @@ export default function BatchDetailsPage() {
                         <Sparkles className="w-4 h-4 mr-2" />
                         Start Carbonation
                       </Button>
+                    ) : batch.vesselId ? (
+                      <p className="text-sm text-muted-foreground">
+                        Batch must be in a pressure-rated vessel to carbonate
+                      </p>
                     ) : (
                       <p className="text-sm text-muted-foreground">
                         Batch must be in a vessel to carbonate
@@ -1073,8 +1078,8 @@ export default function BatchDetailsPage() {
         </Dialog>
       )}
 
-      {/* Carbonate Modal - TODO: Re-enable when batch.get includes vessel data */}
-      {/* {showCarbonateModal && batch.vesselId && (
+      {/* Carbonate Modal */}
+      {showCarbonateModal && batch.vesselId && batch.vesselIsPressureVessel === "yes" && (
         <CarbonateModal
           open={showCarbonateModal}
           onOpenChange={setShowCarbonateModal}
@@ -1082,24 +1087,27 @@ export default function BatchDetailsPage() {
             id: batch.id,
             name: batch.name,
             vesselId: batch.vesselId,
-            currentVolume: latestMeasurement?.volume || 0,
-            currentVolumeUnit: latestMeasurement?.volumeUnit || "L",
+            currentVolume: 0, // TODO: Get from latest measurement
+            currentVolumeUnit: "L",
             status: batch.status,
           }}
           vessel={{
-            id: batch.vesselId || "",
+            id: batch.vesselId,
             name: batch.vesselName || "",
-            isPressureVessel: "no",
-            maxPressure: 30,
+            isPressureVessel: batch.vesselIsPressureVessel,
+            maxPressure: parseFloat(batch.vesselMaxPressure || "30"),
           }}
           onSuccess={() => {
             toast({
               title: "Success",
               description: "Carbonation operation started successfully",
             });
+            setShowCarbonateModal(false);
+            // Refresh carbonation operations list
+            utils.batch.get.invalidate({ batchId });
           }}
         />
-      )} */}
+      )}
 
       {/* Complete Carbonation Modal */}
       {showCompleteCarbonationModal && selectedCarbonationOperation && (

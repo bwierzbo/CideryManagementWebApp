@@ -224,9 +224,9 @@ async function testQueries() {
     const vesselUtilization = await db
       .select({
         vesselName: sql<string>`COALESCE(${vessels.name}, 'Unassigned')`,
-        vesselType: vessels.type,
         vesselCapacity: vessels.capacity,
         vesselStatus: vessels.status,
+        isPressureVessel: vessels.isPressureVessel,
         currentBatch: batches.batchNumber,
         batchStatus: batches.status,
         volumeUsed: batches.currentVolume,
@@ -246,13 +246,14 @@ async function testQueries() {
 
     console.log(`   Vessel utilization:`);
     vesselUtilization.forEach((v) => {
+      const pressureLabel = v.isPressureVessel === "yes" ? "Pressure" : "Standard";
       if (v.currentBatch) {
         console.log(
-          `   - ${v.vesselName} (${v.vesselType}): ${v.utilizationPercent}% used by ${v.currentBatch}`,
+          `   - ${v.vesselName} (${pressureLabel}): ${v.utilizationPercent}% used by ${v.currentBatch}`,
         );
       } else {
         console.log(
-          `   - ${v.vesselName} (${v.vesselType}): Available (${v.vesselStatus})`,
+          `   - ${v.vesselName} (${pressureLabel}): Available (${v.vesselStatus})`,
         );
       }
     });
