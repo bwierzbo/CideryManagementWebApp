@@ -1982,7 +1982,6 @@ export const appRouter = router({
             .insert(vessels)
             .values({
               name: finalName,
-              type: "storage", // Temporary default value until migration is applied
               capacity: capacityInLiters.toString(),
               capacityUnit: input.capacityUnit || "L",
               material: input.material,
