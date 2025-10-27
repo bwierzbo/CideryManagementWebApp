@@ -445,7 +445,10 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                             <DropdownMenuItem
                               onClick={() => handleDeleteClick(batch)}
                               className="text-red-600"
-                              disabled={batch.status === "completed"}
+                              disabled={
+                                batch.status !== "completed" &&
+                                batch.status !== "discarded"
+                              }
                             >
                               <Trash2 className="w-4 h-4 mr-2" />
                               Delete

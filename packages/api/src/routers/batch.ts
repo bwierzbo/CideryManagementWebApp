@@ -2090,6 +2090,65 @@ export const batchRouter = router({
         });
       }
     }),
+
+  /**
+   * Delete (soft delete) a finished batch
+   * Only allows deletion of completed or discarded batches
+   */
+  delete: createRbacProcedure("delete", "batch")
+    .input(batchIdSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify batch exists and get its status
+        const [batch] = await db
+          .select({
+            id: batches.id,
+            name: batches.name,
+            status: batches.status,
+            deletedAt: batches.deletedAt,
+          })
+          .from(batches)
+          .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
+          .limit(1);
+
+        if (!batch) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Batch not found or already deleted",
+          });
+        }
+
+        // Only allow deletion of completed or discarded batches
+        if (batch.status !== "completed" && batch.status !== "discarded") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot delete batch with status "${batch.status}". Only completed or discarded batches can be deleted.`,
+          });
+        }
+
+        // Soft delete the batch
+        await db
+          .update(batches)
+          .set({
+            deletedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(batches.id, input.batchId));
+
+        return {
+          success: true,
+          message: `Batch "${batch.name}" has been deleted`,
+          batchId: batch.id,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error deleting batch:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete batch",
+        });
+      }
+    }),
 });
 
 export type BatchRouter = typeof batchRouter;
