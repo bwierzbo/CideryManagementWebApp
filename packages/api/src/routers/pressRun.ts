@@ -1810,6 +1810,25 @@ export const pressRunRouter = router({
           );
         }
 
+        // Get vessel assignments (batches created from this press run)
+        const vesselAssignments = await db
+          .select({
+            batchId: batches.id,
+            batchName: batches.name,
+            vesselId: vessels.id,
+            vesselName: vessels.name,
+            volumeL: batches.initialVolume,
+          })
+          .from(batches)
+          .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+          .where(
+            and(
+              eq(batches.originPressRunId, input.id),
+              isNull(batches.deletedAt),
+            ),
+          )
+          .orderBy(asc(vessels.name));
+
         return {
           pressRun: {
             ...pressRun,
@@ -1855,6 +1874,15 @@ export const pressRunRouter = router({
               >,
             ),
           },
+          vesselAssignments: vesselAssignments.map((assignment) => ({
+            batchId: assignment.batchId,
+            batchName: assignment.batchName,
+            vesselId: assignment.vesselId,
+            vesselName: assignment.vesselName,
+            volumeL: assignment.volumeL
+              ? parseFloat(assignment.volumeL.toString())
+              : 0,
+          })),
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;

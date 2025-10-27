@@ -1300,21 +1300,12 @@ function VesselMap() {
 
                 {/* Batch Info - Always render both sections for consistent spacing */}
                 <div className="mb-3 space-y-2">
-                  {/* Custom Name and Batch Number - Always rendered with fixed height */}
+                  {/* Batch Name - Always rendered with fixed height */}
                   <div className="pb-2 border-b h-[44px] flex flex-col justify-start">
                     {liquidMapVessel?.batchId ? (
-                      <>
-                        {liquidMapVessel.batchCustomName && (
-                          <p className="text-sm font-medium text-gray-900">
-                            {liquidMapVessel.batchCustomName}
-                          </p>
-                        )}
-                        {liquidMapVessel.batchNumber && (
-                          <p className="text-xs text-gray-600 font-mono">
-                            Batch ID: {liquidMapVessel.batchNumber}
-                          </p>
-                        )}
-                      </>
+                      <p className="text-sm font-medium text-gray-900">
+                        {liquidMapVessel.batchCustomName || liquidMapVessel.batchNumber}
+                      </p>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
                         No active batch
