@@ -35,8 +35,8 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
-  Droplets,
 } from "lucide-react";
+import { Droplets } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast-provider";
@@ -477,6 +477,11 @@ function CompletedRunsSection({
                           ? `${parseFloat(run.totalAppleWeightKg).toFixed(0)} kg`
                           : "—"}
                       </p>
+                      {run.totalAppleWeightKg && (
+                        <p className="text-xs text-gray-500">
+                          {(parseFloat(run.totalAppleWeightKg) * 2.20462).toFixed(0)} lbs
+                        </p>
+                      )}
                     </div>
                     <div>
                       <p className="text-xs text-gray-600">Juice</p>
