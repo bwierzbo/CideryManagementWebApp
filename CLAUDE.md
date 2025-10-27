@@ -246,3 +246,4 @@ Required for development:
 - User manages migrations manually - just tell them when to run migrations
 - Don't worry about port availability - user hosts in separate terminal
 - Database schema is in `public` schema (neon_auth was cleaned up in Oct 2025)
+- no more commenting out code if somethings not working, ask me if you should implement whatever unfinished feature or remove it but do not commend out code to fix build errors

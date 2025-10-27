@@ -13,6 +13,7 @@ import {
   users,
   batches,
   batchCompositions,
+  batchMergeHistory,
 } from "db";
 import { eq, and, desc, asc, sql, isNull, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -1186,6 +1187,23 @@ export const pressRunRouter = router({
                   updatedAt: new Date(),
                 })
                 .where(eq(batches.id, batchId));
+
+              // Create merge history entry
+              await tx.insert(batchMergeHistory).values({
+                targetBatchId: batchId,
+                sourcePressRunId: input.pressRunId,
+                sourceType: "press_run",
+                volumeAdded: assignment.volumeL.toString(),
+                volumeAddedUnit: "L",
+                targetVolumeBefore: currentVolume.toString(),
+                targetVolumeBeforeUnit: "L",
+                targetVolumeAfter: newVolume.toString(),
+                targetVolumeAfterUnit: "L",
+                notes: `Press run juice added to existing batch`,
+                mergedAt: input.completionDate,
+                mergedBy: ctx.session?.user?.id,
+                createdAt: new Date(),
+              });
 
               console.log(
                 `Added ${assignment.volumeL}L to existing batch ${existingBatch[0].name}, new volume: ${newVolume}L`,

@@ -592,7 +592,7 @@ function CompletedRunsSection({
   );
 }
 
-// Mobile-optimized Action Buttons - Bottom aligned for thumb access
+// Action Button - Start New Press Run
 function ActionButtons({
   onStartNewRun,
   isCreating,
@@ -601,31 +601,24 @@ function ActionButtons({
   isCreating: boolean;
 }) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 lg:relative lg:bottom-auto lg:border-t-0 lg:p-0 lg:bg-transparent">
-      <div className="max-w-7xl mx-auto lg:px-0">
-        {/* Primary Action - Start New Run */}
-        <Button
-          size="lg"
-          className="w-full h-12 bg-amber-600 hover:bg-amber-700"
-          onClick={onStartNewRun}
-          disabled={isCreating}
-        >
-          {isCreating ? (
-            <>
-              <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-              Creating Press Run...
-            </>
-          ) : (
-            <>
-              <Plus className="w-5 h-5 mr-2" />
-              Start New Press Run
-            </>
-          )}
-        </Button>
-      </div>
-      {/* Bottom padding for mobile to prevent content cutoff */}
-      <div className="h-4 lg:hidden" />
-    </div>
+    <Button
+      size="lg"
+      className="w-full h-12 bg-amber-600 hover:bg-amber-700"
+      onClick={onStartNewRun}
+      disabled={isCreating}
+    >
+      {isCreating ? (
+        <>
+          <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+          Creating Press Run...
+        </>
+      ) : (
+        <>
+          <Plus className="w-5 h-5 mr-2" />
+          Start New Press Run
+        </>
+      )}
+    </Button>
   );
 }
 
@@ -804,7 +797,7 @@ export default function PressingPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 pb-32 lg:pb-8">
+      <main className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
         {/* Page Header - Mobile optimized */}
         <div className="mb-6">
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
@@ -813,6 +806,14 @@ export default function PressingPage() {
           <p className="text-gray-600 mt-1 text-sm sm:text-base">
             Process apples into juice and manage pressing operations
           </p>
+        </div>
+
+        {/* Start New Press Run Button */}
+        <div className="mb-6">
+          <ActionButtons
+            onStartNewRun={handleStartNewRun}
+            isCreating={createPressRunMutation.isPending}
+          />
         </div>
 
         {/* Active Runs */}
@@ -824,12 +825,6 @@ export default function PressingPage() {
         {/* Recent Completed Runs */}
         <CompletedRunsSection
           onDeletePressRun={handleDeleteCompletedPressRun}
-        />
-
-        {/* Bottom-aligned Action Buttons (Mobile) */}
-        <ActionButtons
-          onStartNewRun={handleStartNewRun}
-          isCreating={createPressRunMutation.isPending}
         />
       </main>
 
