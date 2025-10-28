@@ -18,6 +18,8 @@ import {
   vessels,
   users,
   bottleRunPhotos,
+  bottleRunMaterials,
+  packagingPurchaseItems,
 } from "..";
 import {
   eq,
@@ -47,6 +49,7 @@ export interface BottleRunListItem {
   packagedAt: Date;
   packageType: string;
   packageSizeML: number;
+  packagingMaterialName: string | null;
   unitsProduced: number;
   volumeTakenL: number;
   lossL: number;
@@ -196,6 +199,7 @@ export async function getBottleRunsOptimized(
       packagedAt: bottleRuns.packagedAt,
       packageType: bottleRuns.packageType,
       packageSizeML: bottleRuns.packageSizeML,
+      packagingMaterialName: sql<string>`ppi.size`.as("packagingMaterialName"),
       unitsProduced: bottleRuns.unitsProduced,
       volumeTaken: bottleRuns.volumeTaken,
       volumeTakenUnit: bottleRuns.volumeTakenUnit,
@@ -219,6 +223,14 @@ export async function getBottleRunsOptimized(
     .leftJoin(
       sql`users AS qa_tech`,
       sql`qa_tech.id = ${bottleRuns.qaTechnicianId}`,
+    )
+    .leftJoin(
+      sql`bottle_run_materials AS brm`,
+      sql`brm.bottle_run_id = ${bottleRuns.id} AND brm.material_type = 'Primary Packaging'`,
+    )
+    .leftJoin(
+      sql`packaging_purchase_items AS ppi`,
+      sql`ppi.id = brm.packaging_purchase_item_id AND ((ppi.size ILIKE '%bottle%' AND ppi.size NOT ILIKE '%cap%' AND ppi.size NOT ILIKE '%label%') OR ppi.size ILIKE '%can%' OR ppi.size ILIKE '%keg%')`,
     );
 
   // Add batch search if needed (uses packaging_runs_batch_status_idx)
@@ -311,6 +323,7 @@ export async function getBatchBottleRuns(
       packagedAt: bottleRuns.packagedAt,
       packageType: bottleRuns.packageType,
       packageSizeML: bottleRuns.packageSizeML,
+      packagingMaterialName: sql<string>`ppi.size`.as("packagingMaterialName"),
       unitsProduced: bottleRuns.unitsProduced,
       volumeTaken: bottleRuns.volumeTaken,
       volumeTakenUnit: bottleRuns.volumeTakenUnit,
@@ -332,6 +345,14 @@ export async function getBatchBottleRuns(
     .leftJoin(
       sql`users AS qa_tech`,
       sql`qa_tech.id = ${bottleRuns.qaTechnicianId}`,
+    )
+    .leftJoin(
+      sql`bottle_run_materials AS brm`,
+      sql`brm.bottle_run_id = ${bottleRuns.id} AND brm.material_type = 'Primary Packaging'`,
+    )
+    .leftJoin(
+      sql`packaging_purchase_items AS ppi`,
+      sql`ppi.id = brm.packaging_purchase_item_id AND ((ppi.size ILIKE '%bottle%' AND ppi.size NOT ILIKE '%cap%' AND ppi.size NOT ILIKE '%label%') OR ppi.size ILIKE '%can%' OR ppi.size ILIKE '%keg%')`,
     )
     .where(sql`${bottleRuns.batchId} = ANY(${batchIds})`)
     .orderBy(desc(bottleRuns.packagedAt));

@@ -43,6 +43,7 @@ interface PackagingRun {
   packagedAt: string;
   packageType: string;
   packageSizeML: number;
+  packagingMaterialName: string | null;
   unitsProduced: number;
   volumeTakenL: number;
   lossL: number;
@@ -264,7 +265,12 @@ export function PackagingTable({
 
   // Format package size display
   const formatPackageSize = useCallback(
-    (sizeML: number, packageType: string) => {
+    (sizeML: number, packageType: string, materialName?: string | null) => {
+      // Use the packaging material name if available (e.g., "750ml Glass Bottles")
+      if (materialName) {
+        return materialName;
+      }
+      // Fall back to constructed name
       if (sizeML >= 1000) {
         return `${sizeML / 1000}L ${packageType}`;
       }
@@ -362,7 +368,7 @@ export function PackagingTable({
         item.batch.name || `Batch ${item.batchId.slice(0, 8)}`,
         item.vessel.name || `Vessel ${item.vesselId.slice(0, 8)}`,
         item.packageType,
-        formatPackageSize(item.packageSizeML, item.packageType),
+        formatPackageSize(item.packageSizeML, item.packageType, item.packagingMaterialName),
         item.unitsProduced.toString(),
         item.volumeTakenL.toString(),
         item.lossL.toFixed(1),
@@ -581,6 +587,7 @@ export function PackagingTable({
                           {formatPackageSize(
                             item.packageSizeML,
                             item.packageType,
+                            item.packagingMaterialName,
                           )}
                         </div>
                       </div>
@@ -780,6 +787,7 @@ export function PackagingTable({
                             {formatPackageSize(
                               item.packageSizeML,
                               item.packageType,
+                              item.packagingMaterialName,
                             )}
                           </span>
                         </div>
