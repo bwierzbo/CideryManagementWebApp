@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { TransactionTypeSelector } from "@/components/inventory/TransactionTypeSelector";
 import { AdditivesTransactionForm } from "@/components/inventory/AdditivesTransactionForm";
@@ -55,7 +54,7 @@ export default function InventoryPage() {
 
   // Get inventory data using unified inventory API (minimal data for now)
   const { data: inventoryData, isLoading } = trpc.inventory.list.useQuery({
-    limit: 50,
+    limit: 100,
     offset: 0,
   });
 
@@ -502,27 +501,19 @@ export default function InventoryPage() {
 
           {/* Main Content Area */}
           <div className="flex-1 min-w-0">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="hidden">
-                <TabsTrigger value="inventory">Inventory</TabsTrigger>
-                <TabsTrigger value="ciders">Ciders</TabsTrigger>
-                <TabsTrigger value="apple">Base Fruit</TabsTrigger>
-                <TabsTrigger value="additives">Additives</TabsTrigger>
-                <TabsTrigger value="juice">Juice</TabsTrigger>
-                <TabsTrigger value="packaging">Packaging</TabsTrigger>
-                <TabsTrigger value="purchase-orders">Transaction History</TabsTrigger>
-              </TabsList>
-
-          <TabsContent value="inventory" className="space-y-6">
+          {activeTab === "inventory" && (
+            <div className="space-y-6">
             {/* Enhanced Inventory Table with Search */}
             <InventoryTable
               showSearch={true}
-              itemsPerPage={50}
+              itemsPerPage={100}
               className=""
             />
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="ciders" className="space-y-6">
+          {activeTab === "ciders" && (
+            <div className="space-y-6">
             <BottleTable
               filters={{
                 status: "completed",
@@ -530,9 +521,11 @@ export default function InventoryPage() {
               itemsPerPage={50}
               className=""
             />
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="apple" className="space-y-6">
+          {activeTab === "apple" && (
+            <div className="space-y-6">
             {showAppleForm ? (
               <AppleTransactionForm
                 onSubmit={handleAppleSubmit}
@@ -546,9 +539,11 @@ export default function InventoryPage() {
                 className=""
               />
             )}
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="additives" className="space-y-6">
+          {activeTab === "additives" && (
+            <div className="space-y-6">
             {showAdditivesForm ? (
               <AdditivesTransactionForm
                 onSubmit={handleAdditivesSubmit}
@@ -563,9 +558,11 @@ export default function InventoryPage() {
                 className=""
               />
             )}
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="juice" className="space-y-6">
+          {activeTab === "juice" && (
+            <div className="space-y-6">
             {showJuiceForm ? (
               <JuiceTransactionForm
                 onSubmit={handleJuiceSubmit}
@@ -580,9 +577,11 @@ export default function InventoryPage() {
                 className=""
               />
             )}
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="packaging" className="space-y-6">
+          {activeTab === "packaging" && (
+            <div className="space-y-6">
             {showPackagingForm ? (
               <PackagingTransactionForm
                 onSubmit={handlePackagingSubmit}
@@ -597,16 +596,18 @@ export default function InventoryPage() {
                 className=""
               />
             )}
-          </TabsContent>
+            </div>
+          )}
 
-          <TabsContent value="purchase-orders" className="space-y-6">
+          {activeTab === "purchase-orders" && (
+            <div className="space-y-6">
             <PurchaseOrdersTable
               showFilters={true}
               itemsPerPage={50}
               className=""
             />
-          </TabsContent>
-            </Tabs>
+            </div>
+          )}
           </div>
         </div>
 
