@@ -1304,7 +1304,7 @@ function VesselMap() {
                   <div className="pb-2 border-b h-[44px] flex flex-col justify-start">
                     {liquidMapVessel?.batchId ? (
                       <p className="text-sm font-medium text-gray-900">
-                        {liquidMapVessel.batchCustomName || liquidMapVessel.batchNumber}
+                        {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
                       </p>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
@@ -1315,8 +1315,22 @@ function VesselMap() {
 
                   {/* Latest Measurements - Always rendered with fixed height */}
                   <div className="space-y-1 text-xs h-[60px]">
-                    {liquidMapVessel?.batchId && liquidMapVessel.latestMeasurement ? (
+                    {liquidMapVessel?.batchId ? (
                       <>
+                        {/* Show ABV if available */}
+                        {(liquidMapVessel.actualAbv || liquidMapVessel.estimatedAbv) && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">
+                              {liquidMapVessel.actualAbv ? 'ABV:' : 'Est. ABV:'}
+                            </span>
+                            <span className="font-medium">
+                              {liquidMapVessel.actualAbv
+                                ? `${parseFloat(String(liquidMapVessel.actualAbv)).toFixed(2)}%`
+                                : `${parseFloat(String(liquidMapVessel.estimatedAbv)).toFixed(2)}%`
+                              }
+                            </span>
+                          </div>
+                        )}
                         {liquidMapVessel.latestMeasurement?.specificGravity && (
                           <div className="flex justify-between">
                             <span className="text-gray-600">SG:</span>
@@ -1330,14 +1344,6 @@ function VesselMap() {
                             <span className="text-gray-600">pH:</span>
                             <span className="font-medium">
                               {liquidMapVessel.latestMeasurement.ph}
-                            </span>
-                          </div>
-                        )}
-                        {liquidMapVessel.latestMeasurement?.temperature && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Temp:</span>
-                            <span className="font-medium">
-                              {liquidMapVessel.latestMeasurement.temperature}°C
                             </span>
                           </div>
                         )}

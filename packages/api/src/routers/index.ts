@@ -2227,6 +2227,11 @@ export const appRouter = router({
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
             batchCustomName: batches.customName,
+            // ABV tracking
+            originalGravity: batches.originalGravity,
+            finalGravity: batches.finalGravity,
+            estimatedAbv: batches.estimatedAbv,
+            actualAbv: batches.actualAbv,
             // Include apple press run volume when no batch exists
             applePressRunId: pressRuns.id,
             applePressRunVolume: pressRuns.totalJuiceVolume,
