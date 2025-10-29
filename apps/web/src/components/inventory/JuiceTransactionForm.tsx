@@ -582,13 +582,26 @@ export function JuiceTransactionForm({
                 <h3 className="text-lg font-medium">Juices</h3>
               </div>
 
+              {/* Desktop Header Row - Only show once */}
+              <div className="hidden lg:grid lg:grid-cols-8 gap-4 px-4 pb-2 text-sm font-medium text-gray-700">
+                <div className="lg:col-span-2">
+                  Juice <span className="text-gray-500 text-xs font-normal">(Vendor first)</span>
+                </div>
+                <div>Volume <span className="text-red-500">*</span></div>
+                <div>Unit</div>
+                <div>SG <span className="text-gray-500 text-xs font-normal">(Optional)</span></div>
+                <div>pH <span className="text-gray-500 text-xs font-normal">(Optional)</span></div>
+                <div>Price/Unit <span className="text-gray-500 text-xs font-normal">(Optional)</span></div>
+                <div>Total Cost <span className="text-gray-500 text-xs font-normal">(Optional)</span></div>
+                <div className="text-right">Line Total</div>
+              </div>
+
               <div className="space-y-4">
                 {lines.map((line, index) => (
                   <div key={index} className="border rounded-lg p-4">
                     {/* Desktop Layout */}
-                    <div className="hidden lg:grid lg:grid-cols-8 gap-4">
+                    <div className="hidden lg:grid lg:grid-cols-8 gap-4 items-start">
                       <div className="lg:col-span-2">
-                        <Label>Juice</Label>
                         <Select
                           value={line.juiceId}
                           onValueChange={(value) => {
@@ -642,12 +655,6 @@ export function JuiceTransactionForm({
                         )}
                       </div>
                       <div>
-                        <Label>
-                          Volume{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Required)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.1"
@@ -684,7 +691,6 @@ export function JuiceTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>Unit</Label>
                         <Select
                           value={line.unit}
                           onValueChange={(value: "gallons" | "liters") => {
@@ -710,12 +716,6 @@ export function JuiceTransactionForm({
                         </Select>
                       </div>
                       <div>
-                        <Label>
-                          SG{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.001"
@@ -736,12 +736,6 @@ export function JuiceTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>
-                          pH{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.1"
@@ -759,12 +753,6 @@ export function JuiceTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>
-                          Price/Unit{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -782,12 +770,6 @@ export function JuiceTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>
-                          Total Cost{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -804,9 +786,8 @@ export function JuiceTransactionForm({
                           }
                         />
                       </div>
-                      <div className="flex items-end">
+                      <div className="flex items-center">
                         <div className="w-full">
-                          <Label>Line Total</Label>
                           <div className="text-lg font-semibold text-blue-600">
                             $
                             {calculateLineTotal(
@@ -819,10 +800,10 @@ export function JuiceTransactionForm({
                         {lines.length > 1 && (
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             onClick={() => removeLine(index)}
-                            className="ml-2"
+                            className="ml-2 text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>
