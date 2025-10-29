@@ -44,6 +44,7 @@ export interface BottleRunListItem {
   id: string;
   batchId: string;
   batchName: string | null;
+  batchCustomName: string | null;
   vesselId: string;
   vesselName: string | null;
   packagedAt: Date;
@@ -214,6 +215,7 @@ export async function getBottleRunsOptimized(
       qaTechnicianId: bottleRuns.qaTechnicianId,
       // Related data
       batchName: batches.name,
+      batchCustomName: batches.customName,
       vesselName: vessels.name,
       qaTechnicianName: sql<string>`qa_tech.name`.as("qaTechnicianName"),
     })
@@ -296,8 +298,25 @@ export async function getBottleRunsOptimized(
       : null,
   }));
 
+  // Deduplicate by bottle run ID (can have multiple rows due to multiple materials)
+  // Prefer rows with non-null packaging material names
+  const deduplicatedResults: BottleRunListItem[] = [];
+  const seen = new Map<string, BottleRunListItem>();
+
+  for (const item of formattedResults) {
+    const existing = seen.get(item.id);
+    if (!existing) {
+      seen.set(item.id, item);
+    } else if (item.packagingMaterialName && !existing.packagingMaterialName) {
+      // Replace with item that has packaging material name
+      seen.set(item.id, item);
+    }
+  }
+
+  deduplicatedResults.push(...seen.values());
+
   return {
-    items: formattedResults,
+    items: deduplicatedResults,
     totalCount,
     hasNext,
     hasPrevious,
@@ -336,6 +355,7 @@ export async function getBatchBottleRuns(
       abvAtPackaging: bottleRuns.abvAtPackaging,
       qaTechnicianId: bottleRuns.qaTechnicianId,
       batchName: batches.name,
+      batchCustomName: batches.customName,
       vesselName: vessels.name,
       qaTechnicianName: sql<string>`qa_tech.name`.as("qaTechnicianName"),
     })
@@ -357,10 +377,23 @@ export async function getBatchBottleRuns(
     .where(sql`${bottleRuns.batchId} = ANY(${batchIds})`)
     .orderBy(desc(bottleRuns.packagedAt));
 
+  // Deduplicate by bottle run ID (can have multiple rows due to multiple materials)
+  // Prefer rows with non-null packaging material names
+  const seen = new Map<string, typeof results[0]>();
+  for (const item of results) {
+    const existing = seen.get(item.id);
+    if (!existing) {
+      seen.set(item.id, item);
+    } else if (item.packagingMaterialName && !existing.packagingMaterialName) {
+      // Replace with item that has packaging material name
+      seen.set(item.id, item);
+    }
+  }
+
   // Group by batch ID
   const grouped = new Map<string, BottleRunListItem[]>();
 
-  for (const item of results) {
+  for (const item of seen.values()) {
     if (!grouped.has(item.batchId)) {
       grouped.set(item.batchId, []);
     }

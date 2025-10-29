@@ -64,6 +64,7 @@ interface PackagingRun {
   batch: {
     id: string;
     name: string | null;
+    customName: string | null;
   };
   vessel: {
     id: string;
@@ -365,7 +366,7 @@ export function PackagingTable({
 
       const rows = items.map((item) => [
         formatDateDisplay(item.packagedAt),
-        item.batch.name || `Batch ${item.batchId.slice(0, 8)}`,
+        item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`,
         item.vessel.name || `Vessel ${item.vesselId.slice(0, 8)}`,
         item.packageType,
         formatPackageSize(item.packageSizeML, item.packageType, item.packagingMaterialName),
@@ -552,7 +553,7 @@ export function PackagingTable({
                           </span>
                         </div>
                         <div className="font-semibold text-base truncate">
-                          {item.batch.name ||
+                          {item.batch.customName || item.batch.name ||
                             `Batch ${item.batchId.slice(0, 8)}`}
                         </div>
                         <div className="text-sm text-muted-foreground truncate">
@@ -573,7 +574,7 @@ export function PackagingTable({
                               handleSelectItem(item.id, !!checked)
                             }
                             onClick={(e) => e.stopPropagation()}
-                            aria-label={`Select ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                            aria-label={`Select ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                           />
                         )}
                       </div>
@@ -617,7 +618,7 @@ export function PackagingTable({
                             handleItemClick(item);
                           }}
                           className="h-7 px-2 text-xs touch-manipulation min-h-[44px] sm:min-h-[28px]"
-                          aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                          aria-label={`View details for ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                         >
                           <Eye className="h-3 w-3 mr-1" />
                           View
@@ -824,7 +825,7 @@ export function PackagingTable({
                             handleItemClick(item);
                           }}
                           className="h-8 px-3 touch-manipulation min-h-[44px] sm:min-h-[32px]"
-                          aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                          aria-label={`View details for ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                         >
                           <Eye className="h-4 w-4 mr-1" />
                           View
