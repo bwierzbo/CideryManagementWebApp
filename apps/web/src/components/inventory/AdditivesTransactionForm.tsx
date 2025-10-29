@@ -562,7 +562,7 @@ export function AdditivesTransactionForm({
                 {lines.map((line, index) => (
                   <div key={index} className="border rounded-lg p-4">
                     {/* Desktop Layout */}
-                    <div className="hidden lg:grid lg:grid-cols-6 gap-4">
+                    <div className="hidden lg:grid lg:grid-cols-7 gap-4">
                       <div className="lg:col-span-2">
                         <Label>Additive</Label>
                         <Select
