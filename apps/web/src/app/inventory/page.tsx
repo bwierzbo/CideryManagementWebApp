@@ -12,6 +12,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { TransactionTypeSelector } from "@/components/inventory/TransactionTypeSelector";
 import { AdditivesTransactionForm } from "@/components/inventory/AdditivesTransactionForm";
 import { JuiceTransactionForm } from "@/components/inventory/JuiceTransactionForm";
@@ -513,76 +520,45 @@ export default function InventoryPage() {
 
           {activeTab === "apple" && (
             <div className="space-y-6">
-            {showAppleForm ? (
-              <AppleTransactionForm
-                onSubmit={handleAppleSubmit}
-                onCancel={handleAppleCancel}
-              />
-            ) : (
               <BaseFruitTable
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowAppleForm(true)}
                 className=""
               />
-            )}
             </div>
           )}
 
           {activeTab === "additives" && (
             <div className="space-y-6">
-            {showAdditivesForm ? (
-              <AdditivesTransactionForm
-                onSubmit={handleAdditivesSubmit}
-                onCancel={handleAdditivesCancel}
-                isSubmitting={createAdditivePurchaseMutation.isPending}
-              />
-            ) : (
               <AdditivesInventoryTable
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowAdditivesForm(true)}
                 className=""
               />
-            )}
             </div>
           )}
 
           {activeTab === "juice" && (
             <div className="space-y-6">
-            {showJuiceForm ? (
-              <JuiceTransactionForm
-                onSubmit={handleJuiceSubmit}
-                onCancel={handleJuiceCancel}
-                isSubmitting={createJuicePurchaseMutation.isPending}
-              />
-            ) : (
               <JuiceInventoryTable
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowJuiceForm(true)}
                 className=""
               />
-            )}
             </div>
           )}
 
           {activeTab === "packaging" && (
             <div className="space-y-6">
-            {showPackagingForm ? (
-              <PackagingTransactionForm
-                onSubmit={handlePackagingSubmit}
-                onCancel={handlePackagingCancel}
-                isSubmitting={createPackagingPurchaseMutation.isPending}
-              />
-            ) : (
               <PackagingInventoryTable
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowPackagingForm(true)}
                 className=""
               />
-            )}
             </div>
           )}
 
@@ -603,6 +579,78 @@ export default function InventoryPage() {
           open={isTransactionModalOpen}
           onOpenChange={setIsTransactionModalOpen}
         />
+
+        {/* Sheet Drawers for Transaction Forms */}
+        <Sheet open={showAppleForm} onOpenChange={setShowAppleForm}>
+          <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Add Base Fruit Purchase</SheetTitle>
+              <SheetDescription>
+                Record a new purchase of apples or other base fruit for pressing
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6">
+              <AppleTransactionForm
+                onSubmit={handleAppleSubmit}
+                onCancel={handleAppleCancel}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={showAdditivesForm} onOpenChange={setShowAdditivesForm}>
+          <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Add Additives Purchase</SheetTitle>
+              <SheetDescription>
+                Record a new purchase of enzymes, nutrients, clarifiers, or other additives
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6">
+              <AdditivesTransactionForm
+                onSubmit={handleAdditivesSubmit}
+                onCancel={handleAdditivesCancel}
+                isSubmitting={createAdditivePurchaseMutation.isPending}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={showJuiceForm} onOpenChange={setShowJuiceForm}>
+          <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Add Juice Purchase</SheetTitle>
+              <SheetDescription>
+                Record a new purchase of pressed juice ready for fermentation
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6">
+              <JuiceTransactionForm
+                onSubmit={handleJuiceSubmit}
+                onCancel={handleJuiceCancel}
+                isSubmitting={createJuicePurchaseMutation.isPending}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={showPackagingForm} onOpenChange={setShowPackagingForm}>
+          <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>Add Packaging Purchase</SheetTitle>
+              <SheetDescription>
+                Record a new purchase of bottles, cans, kegs, labels, caps, or other packaging materials
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6">
+              <PackagingTransactionForm
+                onSubmit={handlePackagingSubmit}
+                onCancel={handlePackagingCancel}
+                isSubmitting={createPackagingPurchaseMutation.isPending}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </div>
   );
