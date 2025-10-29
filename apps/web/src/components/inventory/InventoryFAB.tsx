@@ -216,7 +216,9 @@ export function InventoryFAB({
               setIsExpanded(true);
             } else {
               // Primary action: add for current tab
-              singleAction.action();
+              if (singleAction.action) {
+                singleAction.action();
+              }
             }
           }}
           onContextMenu={(e) => {
