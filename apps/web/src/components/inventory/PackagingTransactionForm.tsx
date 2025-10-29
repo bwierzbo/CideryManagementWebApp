@@ -570,13 +570,30 @@ export function PackagingTransactionForm({
                 <h3 className="text-lg font-medium">Packaging</h3>
               </div>
 
+              {/* Header Row for Desktop */}
+              <div className="hidden lg:grid lg:grid-cols-6 gap-4 px-4 pb-2 text-sm font-medium text-gray-700">
+                <div className="lg:col-span-2">
+                  Packaging <span className="text-red-500">*</span>
+                </div>
+                <div>
+                  Quantity <span className="text-red-500">*</span>
+                </div>
+                <div>Unit Type</div>
+                <div>
+                  Price/Unit <span className="text-gray-500 text-xs font-normal">(Optional)</span>
+                </div>
+                <div>
+                  Total Cost <span className="text-gray-500 text-xs font-normal">(Optional)</span>
+                </div>
+                <div className="text-right">Line Total</div>
+              </div>
+
               <div className="space-y-4">
                 {lines.map((line, index) => (
                   <div key={index} className="border rounded-lg p-4">
                     {/* Desktop Layout */}
                     <div className="hidden lg:grid lg:grid-cols-6 gap-4">
                       <div className="lg:col-span-2">
-                        <Label>Packaging</Label>
                         <Select
                           value={line.packagingId}
                           onValueChange={(value) => {
@@ -633,12 +650,6 @@ export function PackagingTransactionForm({
                         )}
                       </div>
                       <div>
-                        <Label>
-                          Quantity{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Required)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="1"
@@ -675,7 +686,6 @@ export function PackagingTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>Unit Type</Label>
                         <Select
                           value={line.unitType}
                           onValueChange={(
@@ -703,12 +713,6 @@ export function PackagingTransactionForm({
                         </Select>
                       </div>
                       <div>
-                        <Label>
-                          Price/Unit{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -726,12 +730,6 @@ export function PackagingTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>
-                          Total Cost{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -748,25 +746,22 @@ export function PackagingTransactionForm({
                           }
                         />
                       </div>
-                      <div className="flex items-end">
-                        <div className="w-full">
-                          <Label>Line Total</Label>
-                          <div className="text-lg font-semibold text-amber-600">
-                            $
-                            {calculateLineTotal(
-                              line.quantity,
-                              line.unitCost,
-                              line.totalCost,
-                            )}
-                          </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="text-lg font-semibold text-amber-600 text-right">
+                          $
+                          {calculateLineTotal(
+                            line.quantity,
+                            line.unitCost,
+                            line.totalCost,
+                          )}
                         </div>
                         {lines.length > 1 && (
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             onClick={() => removeLine(index)}
-                            className="ml-2"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>

@@ -593,13 +593,30 @@ export function AppleTransactionForm({
                 <h3 className="text-lg font-medium">Apple Varieties</h3>
               </div>
 
+              {/* Header Row for Desktop */}
+              <div className="hidden lg:grid lg:grid-cols-7 gap-4 px-4 pb-2 text-sm font-medium text-gray-700">
+                <div className="lg:col-span-2">
+                  Apple Variety <span className="text-red-500">*</span>
+                </div>
+                <div>
+                  Harvest Date <span className="text-gray-500 text-xs font-normal">(Optional)</span>
+                </div>
+                <div>
+                  Quantity <span className="text-gray-500 text-xs font-normal">(Optional)</span>
+                </div>
+                <div>Unit</div>
+                <div>
+                  Price/Unit <span className="text-gray-500 text-xs font-normal">(Optional)</span>
+                </div>
+                <div className="text-right">Line Total</div>
+              </div>
+
               <div className="space-y-4">
                 {lines.map((line, index) => (
                   <div key={index} className="border rounded-lg p-4">
                     {/* Desktop Layout */}
                     <div className="hidden lg:grid lg:grid-cols-7 gap-4">
                       <div className="lg:col-span-2">
-                        <Label>Apple Variety</Label>
                         <Select
                           onValueChange={(value) => {
                             const newLines = [...lines];
@@ -647,7 +664,6 @@ export function AppleTransactionForm({
                       <div>
                         <HarvestDatePicker
                           id={`harvestDate-${index}`}
-                          label="Harvest Date"
                           placeholder="Select date"
                           value={line.harvestDate}
                           onChange={(date) => {
@@ -664,12 +680,6 @@ export function AppleTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>
-                          Quantity{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -690,7 +700,6 @@ export function AppleTransactionForm({
                         />
                       </div>
                       <div>
-                        <Label>Unit</Label>
                         <Select
                           value={line.unit}
                           onValueChange={(value: "kg" | "lb" | "bushel") => {
@@ -711,12 +720,6 @@ export function AppleTransactionForm({
                         </Select>
                       </div>
                       <div>
-                        <Label>
-                          Price/Unit{" "}
-                          <span className="text-gray-500 text-sm">
-                            (Optional)
-                          </span>
-                        </Label>
                         <Input
                           type="number"
                           step="0.01"
@@ -736,24 +739,21 @@ export function AppleTransactionForm({
                           }}
                         />
                       </div>
-                      <div className="flex items-end">
-                        <div className="w-full">
-                          <Label>Total</Label>
-                          <div className="text-lg font-semibold text-green-600">
-                            $
-                            {calculateLineTotal(
-                              line.quantity,
-                              line.pricePerUnit,
-                            )}
-                          </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="text-lg font-semibold text-green-600 text-right">
+                          $
+                          {calculateLineTotal(
+                            line.quantity,
+                            line.pricePerUnit,
+                          )}
                         </div>
                         {lines.length > 1 && (
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
                             onClick={() => removeLine(index)}
-                            className="ml-2"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             <Trash2 className="w-3 h-3" />
                           </Button>
