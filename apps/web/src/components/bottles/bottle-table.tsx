@@ -462,34 +462,30 @@ export function PackagingTable({
   ]);
 
   return (
-    <div className={cn("space-y-4 md:space-y-6", className)}>
-      {/* Main Table */}
-      <Card>
-        <CardHeader className="pb-3 md:pb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
-                <Package className="w-5 h-5" />
-                <span className="truncate">Bottle Runs</span>
-              </CardTitle>
-              <CardDescription className="text-sm">
-                {totalCount > 0
-                  ? `${totalCount} bottling runs found`
-                  : "No bottling runs found"}
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="flex-shrink-0 h-8 md:h-9"
-            >
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0 md:p-6">
+    <div className={cn("space-y-4", className)}>
+      {/* Table Header - Compact */}
+      <div className="flex items-center justify-between py-3 px-1">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold text-gray-900">
+            {totalCount > 0
+              ? `${totalCount} Bottling Run${totalCount !== 1 ? "s" : ""}`
+              : "No Bottling Runs"}
+          </h2>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isLoading}
+          className="h-8 text-gray-600 hover:text-gray-900"
+        >
+          Refresh
+        </Button>
+      </div>
+
+      {/* Main Table Container */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+        <div className="p-0">
           {error && (
             <div className="flex items-center gap-2 p-3 md:p-4 text-red-600 bg-red-50 rounded-lg mb-4 mx-3 md:mx-0">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -632,12 +628,12 @@ export function PackagingTable({
           </div>
 
           {/* Desktop Table View */}
-          <div className="hidden md:block rounded-md border overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <Table>
-              <TableHeader>
-                <TableRow>
+              <TableHeader className="bg-gray-50/80 sticky top-0 z-10 backdrop-blur-sm">
+                <TableRow className="border-b-2 border-gray-300">
                   {enableSelection && (
-                    <SortableHeader canSort={false} className="w-[50px]">
+                    <SortableHeader canSort={false} className="w-[50px] font-semibold text-gray-700">
                       <Checkbox
                         checked={isAllSelected}
                         onCheckedChange={handleSelectAll}
@@ -653,34 +649,38 @@ export function PackagingTable({
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay("packagedAt")}
                     onSort={() => handleColumnSort("packagedAt")}
+                    className="font-semibold text-gray-700 text-xs uppercase tracking-wide"
                   >
                     Date
                   </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay("batchName")}
                     onSort={() => handleColumnSort("batchName")}
+                    className="font-semibold text-gray-700 text-xs uppercase tracking-wide"
                   >
                     Batch
                   </SortableHeader>
-                  <SortableHeader canSort={false}>
-                    Package Type & Size
+                  <SortableHeader canSort={false} className="font-semibold text-gray-700 text-xs uppercase tracking-wide">
+                    Container
                   </SortableHeader>
                   <SortableHeader
                     align="right"
                     sortDirection={getSortDirectionForDisplay("unitsProduced")}
                     onSort={() => handleColumnSort("unitsProduced")}
+                    className="font-semibold text-gray-700 text-xs uppercase tracking-wide"
                   >
-                    Units Produced
+                    Units
                   </SortableHeader>
                   <SortableHeader
                     align="right"
                     sortDirection={getSortDirectionForDisplay("lossPercentage")}
                     onSort={() => handleColumnSort("lossPercentage")}
+                    className="font-semibold text-gray-700 text-xs uppercase tracking-wide"
                   >
-                    Loss %
+                    Loss
                   </SortableHeader>
-                  <SortableHeader canSort={false}>Status</SortableHeader>
-                  <SortableHeader canSort={false} className="w-[100px]">
+                  <SortableHeader canSort={false} className="font-semibold text-gray-700 text-xs uppercase tracking-wide">Status</SortableHeader>
+                  <SortableHeader canSort={false} className="w-[100px] font-semibold text-gray-700 text-xs uppercase tracking-wide">
                     Actions
                   </SortableHeader>
                 </TableRow>
@@ -734,10 +734,13 @@ export function PackagingTable({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedItems.map((item) => (
+                  sortedItems.map((item, index) => (
                     <TableRow
                       key={item.id}
-                      className="hover:bg-muted/50 cursor-pointer touch-manipulation"
+                      className={cn(
+                        "cursor-pointer transition-colors border-b border-gray-100",
+                        index % 2 === 0 ? "bg-white hover:bg-blue-50/30" : "bg-gray-50/30 hover:bg-blue-50/30"
+                      )}
                       onClick={() => handleItemClick(item)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -761,30 +764,30 @@ export function PackagingTable({
                           />
                         </TableCell>
                       )}
-                      <TableCell>
+                      <TableCell className="py-3">
                         <div className="flex items-center gap-2">
-                          <Calendar className="w-3 h-3 text-muted-foreground" />
-                          <span className="font-medium">
+                          <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                          <span className="text-sm text-gray-700">
                             {formatDateDisplay(item.packagedAt)}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="font-medium">
-                            {item.batch.name ||
+                      <TableCell className="py-3">
+                        <div className="space-y-0.5">
+                          <div className="font-semibold text-blue-900 text-sm hover:text-blue-700 transition-colors">
+                            {item.batch.customName || item.batch.name ||
                               `Batch ${item.batchId.slice(0, 8)}`}
                           </div>
-                          <div className="text-sm text-muted-foreground">
+                          <div className="text-xs text-gray-500">
                             {item.vessel.name ||
                               `Vessel ${item.vesselId.slice(0, 8)}`}
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-3">
                         <div className="flex items-center gap-2">
-                          <Package className="w-3 h-3 text-muted-foreground" />
-                          <span className="capitalize">
+                          <Package className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                          <span className="text-sm text-gray-700">
                             {formatPackageSize(
                               item.packageSizeML,
                               item.packageType,
@@ -793,28 +796,45 @@ export function PackagingTable({
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-right font-mono font-medium">
-                        {item.unitsProduced.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span
-                          className={cn(
-                            "font-medium",
-                            getLossColor(item.lossPercentage),
-                          )}
-                        >
-                          {item.lossPercentage.toFixed(1)}%
+                      <TableCell className="text-right py-3">
+                        <span className="font-mono font-semibold text-sm text-gray-900">
+                          {item.unitsProduced.toLocaleString()}
                         </span>
-                        <div className="text-xs text-muted-foreground">
-                          {item.lossL.toFixed(1)}L
+                      </TableCell>
+                      <TableCell className="text-right py-3">
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span
+                            className={cn(
+                              "font-semibold text-sm",
+                              getLossColor(item.lossPercentage),
+                            )}
+                          >
+                            {item.lossPercentage.toFixed(1)}%
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {item.lossL.toFixed(1)}L
+                          </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge
-                          className={cn("text-xs", getStatusColor(item.status))}
-                        >
-                          {item.status || "pending"}
-                        </Badge>
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={cn(
+                              "w-2 h-2 rounded-full flex-shrink-0",
+                              item.status === "completed" ? "bg-green-500" :
+                              item.status === "voided" ? "bg-red-500" :
+                              "bg-gray-400"
+                            )}
+                          />
+                          <span className={cn(
+                            "text-xs font-medium capitalize",
+                            item.status === "completed" ? "text-green-700" :
+                            item.status === "voided" ? "text-red-700" :
+                            "text-gray-600"
+                          )}>
+                            {item.status || "active"}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Button
@@ -840,11 +860,11 @@ export function PackagingTable({
 
           {/* Pagination */}
           {!isLoading && data && (
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 px-3 md:px-0">
-              <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200">
+              <div className="text-xs sm:text-sm text-gray-600 text-center sm:text-left">
                 Showing {currentPage * itemsPerPage + 1} to{" "}
                 {Math.min((currentPage + 1) * itemsPerPage, totalCount)} of{" "}
-                {totalCount} items
+                {totalCount} runs
               </div>
               <div className="flex items-center justify-center gap-2">
                 <Button
@@ -857,7 +877,7 @@ export function PackagingTable({
                   <span className="hidden sm:inline">Previous</span>
                   <span className="sm:hidden">Prev</span>
                 </Button>
-                <span className="text-xs sm:text-sm text-muted-foreground px-2 font-medium">
+                <span className="text-xs sm:text-sm text-gray-700 px-2 font-semibold">
                   {currentPage + 1}
                 </span>
                 <Button
@@ -873,8 +893,8 @@ export function PackagingTable({
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

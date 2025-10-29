@@ -367,19 +367,6 @@ export default function InventoryPage() {
                 Track and manage your cidery inventory
               </p>
             </div>
-
-            {(session?.user as any)?.role === "admin" && (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  className="flex items-center"
-                  onClick={() => setIsTransactionModalOpen(true)}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Record Transaction
-                </Button>
-              </div>
-            )}
           </div>
         </div>
 

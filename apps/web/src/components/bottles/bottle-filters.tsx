@@ -125,18 +125,19 @@ export function PackagingFilters({
   }, []);
 
   return (
-    <Card className={cn("mb-4 md:mb-6", className)}>
-      <CardContent className="p-3 md:p-4">
-        <div className="space-y-3 md:space-y-4">
-          {/* Status Tabs */}
-          <div className="flex items-center gap-2 border-b">
+    <div className={cn("bg-white border border-gray-200 rounded-lg p-4 shadow-sm mb-4", className)}>
+      <div className="space-y-3">
+        {/* Compact filter bar - Single row on desktop */}
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          {/* Status Pills */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => handleFilterChange("status", "active")}
               className={cn(
-                "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+                "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
                 filters.status === "active"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               )}
             >
               Active
@@ -144,74 +145,68 @@ export function PackagingFilters({
             <button
               onClick={() => handleFilterChange("status", "completed")}
               className={cn(
-                "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+                "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
                 filters.status === "completed"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               )}
             >
               Completed
             </button>
           </div>
 
-          {/* Top row - Search and Quick Filters */}
-          <div className="flex flex-col gap-3 md:gap-4">
-            {/* Batch Search */}
-            <div className="flex-1 min-w-0">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search batch names..."
-                  value={filters.batchSearch}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  className="pl-10 h-9 md:h-10"
-                />
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 flex-shrink-0 h-8 md:h-9"
-              >
-                <Filter className="w-4 h-4" />
-                <span className="hidden sm:inline">More Filters</span>
-                <span className="sm:hidden">Filters</span>
-                {activeFilterCount > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-xs">
-                    {activeFilterCount}
-                  </Badge>
-                )}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onExportClick}
-                disabled={isExporting || itemCount === 0}
-                className="flex items-center gap-2 flex-shrink-0 h-8 md:h-9"
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="hidden sm:inline">Exporting...</span>
-                    <span className="sm:hidden">Export...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span className="hidden sm:inline">
-                      Export {itemCount > 0 ? `(${itemCount})` : ""}
-                    </span>
-                    <span className="sm:hidden">Export</span>
-                  </>
-                )}
-              </Button>
+          {/* Search */}
+          <div className="flex-1 min-w-0 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search batches..."
+                value={filters.batchSearch}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-10 h-9 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+              />
             </div>
           </div>
+
+          {/* Quick Actions */}
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-1.5 flex-shrink-0 h-9 border-gray-300"
+            >
+              <Filter className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Filters</span>
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary" className="ml-1 px-1.5 min-w-[20px] h-5 flex items-center justify-center">
+                  {activeFilterCount}
+                </Badge>
+              )}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onExportClick}
+              disabled={isExporting || itemCount === 0}
+              className="flex items-center gap-1.5 flex-shrink-0 h-9 border-gray-300"
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span className="hidden sm:inline">Exporting...</span>
+                  <span className="sm:hidden">...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Export</span>
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
 
           {/* Advanced Filters */}
           {showAdvanced && (
@@ -374,9 +369,8 @@ export function PackagingFilters({
               )}
             </div>
           )}
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

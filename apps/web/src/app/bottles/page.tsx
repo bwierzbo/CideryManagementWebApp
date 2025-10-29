@@ -146,16 +146,15 @@ export default function PackagingPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="mb-6 md:mb-8">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
-              Bottling Runs
-            </h1>
-            <p className="text-gray-600 mt-1 text-sm sm:text-base">
-              View and manage all bottling operations and production runs.
-            </p>
-          </div>
+      <main className="w-full mx-auto py-6 px-4 sm:px-6 lg:px-8 max-w-[1800px]">
+        {/* Page Header */}
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Bottling Runs
+          </h1>
+          <p className="text-gray-600 mt-1 text-sm">
+            View and manage bottling operations
+          </p>
         </div>
 
         {/* Filters */}
@@ -171,66 +170,64 @@ export default function PackagingPage() {
 
         {/* Bulk Actions Bar */}
         {showBulkActions && (
-          <Card className="mb-4 border-blue-200 bg-blue-50">
-            <CardContent className="p-3 sm:p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                  <Badge
-                    variant="secondary"
-                    className="bg-blue-100 text-blue-800 flex-shrink-0"
-                  >
-                    {selectedItems.length}
-                  </Badge>
-                  <span className="text-sm text-blue-700 truncate">
-                    <span className="hidden sm:inline">
-                      {selectedItems.length === 1
-                        ? "1 bottling run selected"
-                        : `${selectedItems.length} bottling runs selected`}
-                    </span>
-                    <span className="sm:hidden">
-                      {selectedItems.length === 1
-                        ? "1 selected"
-                        : `${selectedItems.length} selected`}
-                    </span>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <Badge
+                  variant="secondary"
+                  className="bg-blue-600 text-white flex-shrink-0 px-2 py-0.5 font-semibold"
+                >
+                  {selectedItems.length}
+                </Badge>
+                <span className="text-sm font-medium text-blue-900 truncate">
+                  <span className="hidden sm:inline">
+                    {selectedItems.length === 1
+                      ? "1 run selected"
+                      : `${selectedItems.length} runs selected`}
                   </span>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleBulkExport}
-                    disabled={isExporting}
-                    className="border-blue-200 text-blue-700 hover:bg-blue-100 flex-1 sm:flex-initial"
-                  >
-                    {isExporting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        <span className="hidden sm:inline">Exporting...</span>
-                        <span className="sm:hidden">Export...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Download className="w-4 h-4 mr-2" />
-                        <span className="hidden sm:inline">
-                          Export Selected
-                        </span>
-                        <span className="sm:hidden">Export</span>
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleClearSelection}
-                    className="text-blue-700 hover:bg-blue-100 min-w-0"
-                  >
-                    <X className="w-4 h-4 sm:mr-1" />
-                    <span className="hidden sm:inline">Clear</span>
-                  </Button>
-                </div>
+                  <span className="sm:hidden">
+                    {selectedItems.length === 1
+                      ? "1 selected"
+                      : `${selectedItems.length} selected`}
+                  </span>
+                </span>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBulkExport}
+                  disabled={isExporting}
+                  className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 flex-1 sm:flex-initial h-9"
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                      <span className="hidden sm:inline">Exporting...</span>
+                      <span className="sm:hidden">...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 mr-2" />
+                      <span className="hidden sm:inline">
+                        Export Selected
+                      </span>
+                      <span className="sm:hidden">Export</span>
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearSelection}
+                  className="text-blue-700 hover:bg-blue-100 min-w-0 h-9"
+                >
+                  <X className="w-4 h-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Clear</span>
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Main Content */}
