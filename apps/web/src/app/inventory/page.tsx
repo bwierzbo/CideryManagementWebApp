@@ -31,6 +31,7 @@ import { JuiceInventoryTable } from "@/components/inventory/JuiceInventoryTable"
 import { PackagingInventoryTable } from "@/components/inventory/PackagingInventoryTable";
 import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable";
 import { PackagingTable as BottleTable } from "@/components/bottles/bottle-table";
+import { InventoryFAB } from "@/components/inventory/InventoryFAB";
 import {
   Package,
   Plus,
@@ -573,6 +574,15 @@ export default function InventoryPage() {
           )}
           </div>
         </div>
+
+        {/* Floating Action Button */}
+        <InventoryFAB
+          activeTab={activeTab}
+          onAddApple={() => setShowAppleForm(true)}
+          onAddAdditive={() => setShowAdditivesForm(true)}
+          onAddJuice={() => setShowJuiceForm(true)}
+          onAddPackaging={() => setShowPackagingForm(true)}
+        />
 
         {/* Transaction Type Selector Modal */}
         <TransactionTypeSelector
