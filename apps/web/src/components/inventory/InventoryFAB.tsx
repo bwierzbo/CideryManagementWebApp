@@ -64,13 +64,16 @@ export function InventoryFAB({
   }, [isExpanded]);
 
   // Don't show FAB on tabs that don't support adding
-  if (!["apple", "additives", "juice", "packaging"].includes(activeTab)) {
+  if (!["all", "apple", "additives", "juice", "packaging"].includes(activeTab)) {
     return null;
   }
 
   // Single action mode - direct button for current tab
+  // On "all" tab, shows speed dial menu instead of single action
   const getSingleAction = () => {
     switch (activeTab) {
+      case "all":
+        return { label: "Add Purchase", icon: Plus, action: null, color: "bg-gray-600 hover:bg-gray-700" };
       case "apple":
         return { label: "Add Base Fruit", icon: Apple, action: onAddApple, color: "bg-red-600 hover:bg-red-700" };
       case "additives":
@@ -89,6 +92,7 @@ export function InventoryFAB({
   if (!singleAction) return null;
 
   const Icon = singleAction.icon;
+  const isAllTab = activeTab === "all";
 
   return (
     <>
@@ -118,7 +122,7 @@ export function InventoryFAB({
             isExpanded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
           )}
         >
-          {activeTab !== "apple" && (
+          {(isAllTab || activeTab !== "apple") && (
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-gray-700 bg-white px-3 py-1.5 rounded-full shadow-md whitespace-nowrap">
                 Base Fruit
@@ -137,7 +141,7 @@ export function InventoryFAB({
             </div>
           )}
 
-          {activeTab !== "additives" && (
+          {(isAllTab || activeTab !== "additives") && (
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-gray-700 bg-white px-3 py-1.5 rounded-full shadow-md whitespace-nowrap">
                 Additives
@@ -156,7 +160,7 @@ export function InventoryFAB({
             </div>
           )}
 
-          {activeTab !== "juice" && (
+          {(isAllTab || activeTab !== "juice") && (
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-gray-700 bg-white px-3 py-1.5 rounded-full shadow-md whitespace-nowrap">
                 Juice
@@ -175,7 +179,7 @@ export function InventoryFAB({
             </div>
           )}
 
-          {activeTab !== "packaging" && (
+          {(isAllTab || activeTab !== "packaging") && (
             <div className="flex items-center gap-3">
               <span className="text-sm font-medium text-gray-700 bg-white px-3 py-1.5 rounded-full shadow-md whitespace-nowrap">
                 Packaging
@@ -207,6 +211,9 @@ export function InventoryFAB({
             e.stopPropagation();
             if (isExpanded) {
               setIsExpanded(false);
+            } else if (isAllTab) {
+              // On "all" tab, always expand speed dial to choose purchase type
+              setIsExpanded(true);
             } else {
               // Primary action: add for current tab
               singleAction.action();
@@ -222,12 +229,12 @@ export function InventoryFAB({
           {isExpanded ? (
             <X className="h-6 w-6" />
           ) : (
-            <Plus className="h-6 w-6" />
+            <Icon className="h-6 w-6" />
           )}
         </Button>
 
         {/* Long-press helper tooltip */}
-        {!isExpanded && (
+        {!isExpanded && !isAllTab && (
           <div className="absolute -top-12 right-0 bg-gray-900 text-white text-xs px-3 py-1.5 rounded-md shadow-lg whitespace-nowrap opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
             Right-click for more options
           </div>
