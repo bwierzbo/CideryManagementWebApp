@@ -12,15 +12,15 @@ import {
 import { SortableHeader } from "@/components/ui/sortable-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import {
   Package,
   Eye,
@@ -29,11 +29,17 @@ import {
   Package2,
   Download,
   Loader2,
+  MoreVertical,
+  Flame,
+  Tag,
+  CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import { formatDate } from "@/utils/date-format";
+import { useToast } from "@/hooks/use-toast";
+import { LabelModal } from "./LabelModal";
 
 // Type for bottling run from API
 interface PackagingRun {
@@ -113,6 +119,9 @@ export function PackagingTable({
   selectedItems = [],
   onSelectionChange,
 }: PackagingTableProps) {
+  // Toast for notifications
+  const { toast } = useToast();
+
   // Sorting state using the reusable hook
   const {
     sortState,
@@ -131,6 +140,29 @@ export function PackagingTable({
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
+
+  // Label modal state
+  const [labelModalOpen, setLabelModalOpen] = useState(false);
+  const [selectedBottleRun, setSelectedBottleRun] = useState<PackagingRun | null>(null);
+
+  // Mutations
+  const utils = trpc.useUtils();
+  const markCompleteMutation = trpc.bottles.markComplete.useMutation({
+    onSuccess: () => {
+      utils.bottles.list.invalidate();
+      toast({
+        title: "Success",
+        description: "Bottle run marked as complete. Items are now in inventory.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark bottle run as complete",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -263,6 +295,45 @@ export function PackagingTable({
   const handleRefresh = useCallback(() => {
     refetch();
   }, [refetch]);
+
+  // Action handlers
+  const handlePasteurize = useCallback((item: PackagingRun, e: React.MouseEvent) => {
+    e.stopPropagation();
+    // TODO: Implement pasteurize action
+    console.log("Pasteurize bottle run:", item.id);
+  }, []);
+
+  const handleLabel = useCallback((item: PackagingRun, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedBottleRun(item);
+    setLabelModalOpen(true);
+  }, []);
+
+  const handleMarkComplete = useCallback((item: PackagingRun, e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    if (item.status === "completed") {
+      toast({
+        title: "Already Complete",
+        description: "This bottle run is already marked as complete.",
+      });
+      return;
+    }
+
+    markCompleteMutation.mutate({ runId: item.id });
+  }, [markCompleteMutation, toast]);
+
+  // Label modal handlers
+  const handleLabelModalClose = useCallback(() => {
+    setLabelModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  const handleLabelSuccess = useCallback(() => {
+    // The modal will handle invalidation, just close
+    setLabelModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
 
   // Format package size display
   const formatPackageSize = useCallback(
@@ -606,19 +677,56 @@ export function PackagingTable({
                         </div>
                       </div>
                       <div className="flex justify-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleItemClick(item);
-                          }}
-                          className="h-7 px-2 text-xs touch-manipulation min-h-[44px] sm:min-h-[28px]"
-                          aria-label={`View details for ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
-                        >
-                          <Eye className="h-3 w-3 mr-1" />
-                          View
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              <span className="sr-only">Open menu</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleItemClick(item);
+                              }}
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => handlePasteurize(item, e)}
+                            >
+                              <Flame className="mr-2 h-4 w-4" />
+                              Pasteurize
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => handleLabel(item, e)}
+                            >
+                              <Tag className="mr-2 h-4 w-4" />
+                              Label
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => handleMarkComplete(item, e)}
+                              disabled={item.status === "completed"}
+                              className={cn(
+                                item.status === "completed"
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : "text-green-600 focus:text-green-600"
+                              )}
+                            >
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   </div>
@@ -836,20 +944,57 @@ export function PackagingTable({
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleItemClick(item);
-                          }}
-                          className="h-8 px-3 touch-manipulation min-h-[44px] sm:min-h-[32px]"
-                          aria-label={`View details for ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              <span className="sr-only">Open menu</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleItemClick(item);
+                              }}
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => handlePasteurize(item, e)}
+                            >
+                              <Flame className="mr-2 h-4 w-4" />
+                              Pasteurize
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => handleLabel(item, e)}
+                            >
+                              <Tag className="mr-2 h-4 w-4" />
+                              Label
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => handleMarkComplete(item, e)}
+                              disabled={item.status === "completed"}
+                              className={cn(
+                                item.status === "completed"
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : "text-green-600 focus:text-green-600"
+                              )}
+                            >
+                              <CheckCircle className="mr-2 h-4 w-4" />
+                              {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -895,6 +1040,22 @@ export function PackagingTable({
           )}
         </div>
       </div>
+
+      {/* Label Modal */}
+      {selectedBottleRun && (
+        <LabelModal
+          open={labelModalOpen}
+          onClose={handleLabelModalClose}
+          bottleRunId={selectedBottleRun.id}
+          bottleRunName={
+            selectedBottleRun.batch.customName ||
+            selectedBottleRun.batch.name ||
+            `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
+          }
+          unitsProduced={selectedBottleRun.unitsProduced}
+          onSuccess={handleLabelSuccess}
+        />
+      )}
     </div>
   );
 }

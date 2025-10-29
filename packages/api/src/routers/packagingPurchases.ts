@@ -200,15 +200,21 @@ export const packagingPurchasesRouter = router({
     .input(
       z.object({
         itemType: z.string().optional(),
+        materialType: z.string().optional(),
         limit: z.number().int().positive().max(100).default(50),
         offset: z.number().int().min(0).default(0),
       }),
     )
     .query(async ({ input }) => {
       try {
-        const { itemType, limit, offset } = input;
+        const { itemType, materialType, limit, offset } = input;
 
         const conditions = [isNull(packagingPurchaseItems.deletedAt)];
+
+        // Filter by material type if provided
+        if (materialType) {
+          conditions.push(eq(packagingPurchaseItems.materialType, materialType));
+        }
 
         // Query packaging purchase items with variety info
         const items = await db

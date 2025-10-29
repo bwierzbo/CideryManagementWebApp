@@ -18,6 +18,7 @@ import {
   batchAdditives,
   additiveVarieties,
   batchTransfers,
+  packagingPurchaseItems,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -396,6 +397,7 @@ export const bottlesRouter = router({
             updatedAt: bottleRuns.updatedAt,
             // Batch details
             batchName: batches.name,
+            batchCustomName: batches.customName,
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
             batchInitialVolume: batches.initialVolume,
@@ -645,6 +647,7 @@ export const bottlesRouter = router({
           batch: {
             id: run.batchId,
             name: run.batchName,
+            customName: run.batchCustomName,
           },
           vessel: {
             id: run.vesselId,
@@ -1050,6 +1053,96 @@ export const bottlesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to label bottle run",
+        });
+      }
+    }),
+
+  /**
+   * Apply labels from packaging inventory to a bottle run
+   * Reduces label quantity from inventory
+   */
+  addLabel: createRbacProcedure("update", "package")
+    .input(
+      z.object({
+        bottleRunId: z.string().uuid(),
+        packagingItemId: z.string().uuid(),
+        quantity: z.number().int().positive(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // Get the packaging item
+          const [packagingItem] = await tx
+            .select()
+            .from(packagingPurchaseItems)
+            .where(eq(packagingPurchaseItems.id, input.packagingItemId))
+            .limit(1);
+
+          if (!packagingItem) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Label not found in inventory",
+            });
+          }
+
+          // Check if enough stock
+          if (packagingItem.quantity < input.quantity) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Insufficient labels in stock. Available: ${packagingItem.quantity}, Requested: ${input.quantity}`,
+            });
+          }
+
+          // Reduce label quantity
+          const newQuantity = packagingItem.quantity - input.quantity;
+          await tx
+            .update(packagingPurchaseItems)
+            .set({
+              quantity: newQuantity,
+              updatedAt: new Date(),
+            })
+            .where(eq(packagingPurchaseItems.id, input.packagingItemId));
+
+          // Update bottle run notes
+          const [bottleRun] = await tx
+            .select()
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, input.bottleRunId))
+            .limit(1);
+
+          if (!bottleRun) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Bottle run not found",
+            });
+          }
+
+          const labelNote = `Applied ${input.quantity} labels (${packagingItem.size}) at ${new Date().toISOString()}`;
+          const updatedNotes = bottleRun.productionNotes
+            ? `${bottleRun.productionNotes}\n\n${labelNote}`
+            : labelNote;
+
+          const [updated] = await tx
+            .update(bottleRuns)
+            .set({
+              productionNotes: updatedNotes,
+              updatedAt: new Date(),
+            })
+            .where(eq(bottleRuns.id, input.bottleRunId))
+            .returning();
+
+          return {
+            bottleRun: updated,
+            labelsRemaining: newQuantity,
+          };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error applying labels:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to apply labels",
         });
       }
     }),

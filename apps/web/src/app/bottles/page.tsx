@@ -4,7 +4,6 @@ import { useState, useCallback, lazy, Suspense, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Download, X, Loader2, Beaker } from "lucide-react";
 import { performanceMonitor } from "@/lib/performance-monitor";

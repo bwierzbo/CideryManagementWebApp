@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
