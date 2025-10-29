@@ -463,9 +463,54 @@ export default function BatchDetailsPage() {
                 </div>
               )}
             </h1>
-            <p className="text-gray-600">
-              Batch details and fermentation tracking
-            </p>
+            <div className="flex items-center gap-4 mt-2">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                {isEditingStartDate ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={editStartDate}
+                      onChange={(e) => setEditStartDate(e.target.value)}
+                      className="text-sm h-8"
+                      autoFocus
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={handleStartDateSave}
+                      disabled={updateBatchMutation.isPending}
+                    >
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={handleStartDateCancel}
+                      disabled={updateBatchMutation.isPending}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-600">
+                      Started: {format(new Date(batch.startDate), "MMM dd, yyyy")}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={handleStartDateEdit}
+                    >
+                      <Edit3 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
         <DropdownMenu>
