@@ -33,6 +33,8 @@ import {
   MoreVertical,
   Trash2,
   Boxes,
+  Edit as EditIcon,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -90,6 +92,7 @@ interface PackagingInventoryTableProps {
   itemsPerPage?: number;
   onItemClick?: (item: PackagingInventoryItem) => void;
   onAddNew?: () => void;
+  onEdit?: (item: PackagingInventoryItem) => void;
 }
 
 export function PackagingInventoryTable({
@@ -98,6 +101,7 @@ export function PackagingInventoryTable({
   itemsPerPage = 50,
   onItemClick,
   onAddNew,
+  onEdit,
 }: PackagingInventoryTableProps) {
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -339,57 +343,46 @@ export function PackagingInventoryTable({
 
       {/* Main Table */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="w-5 h-5 text-amber-600" />
-                Packaging Inventory
-              </CardTitle>
-              <div className="flex items-center gap-4">
-                <CardDescription>
-                  {sortedItems.length > 0
-                    ? `${sortedItems.length} packaging items found`
-                    : "No packaging items found"}
-                </CardDescription>
-                {sortState.columns.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>
-                      Sorted by {sortState.columns[0]?.field} (
-                      {sortState.columns[0]?.direction})
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearAllSort}
-                      className="h-6 px-2 py-0 text-xs"
-                    >
-                      <X className="w-3 h-3 mr-1" />
-                      Clear
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              Refresh
-            </Button>
+        {/* Compact Header */}
+        <div className="flex items-center justify-between py-3 px-6 border-b">
+          <div className="flex items-center gap-3">
+            <Package className="w-4 h-4 text-amber-600" />
+            <h2 className="text-base font-semibold text-gray-900">
+              {sortedItems.length > 0
+                ? `${sortedItems.length} Packaging Item${sortedItems.length !== 1 ? "s" : ""}`
+                : "No Packaging Items"}
+            </h2>
+            {sortState.columns.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllSort}
+                className="h-7 px-2 text-xs text-gray-600"
+              >
+                <X className="w-3 h-3 mr-1" />
+                Clear Sort
+              </Button>
+            )}
           </div>
-        </CardHeader>
-        <CardContent>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="h-8 text-gray-600 hover:text-gray-900"
+          >
+            <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
+          </Button>
+        </div>
+        <CardContent className="p-0">
           {error && (
-            <div className="flex items-center gap-2 p-4 text-red-600 bg-red-50 rounded-lg mb-4">
+            <div className="flex items-center gap-2 p-4 text-red-600 bg-red-50 m-4 rounded-lg">
               <AlertTriangle className="w-4 h-4" />
               <span>Error loading packaging inventory: {error.message}</span>
             </div>
           )}
 
-          <div className="rounded-md border">
+          <div className="border-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -466,13 +459,35 @@ export function PackagingInventoryTable({
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="text-center py-8 text-muted-foreground"
-                    >
-                      {searchQuery
-                        ? "No packaging items match your search criteria"
-                        : "No packaging items found"}
+                    <TableCell colSpan={7} className="text-center py-12">
+                      {searchQuery ? (
+                        <div className="text-muted-foreground">
+                          <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p>No packaging items match your search criteria</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <Package className="w-12 h-12 mx-auto text-amber-400" />
+                          <div>
+                            <h3 className="font-semibold text-gray-900 mb-1">
+                              No packaging purchases yet
+                            </h3>
+                            <p className="text-sm text-gray-600 mb-4">
+                              Track bottles, cans, kegs, labels, caps, and other
+                              packaging materials
+                            </p>
+                            {onAddNew && (
+                              <Button
+                                onClick={onAddNew}
+                                className="bg-amber-600 hover:bg-amber-700"
+                              >
+                                <Plus className="w-4 h-4 mr-2" />
+                                Add First Packaging
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -541,6 +556,17 @@ export function PackagingInventoryTable({
                               <ExternalLink className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
+                            {onEdit && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEdit(item);
+                                }}
+                              >
+                                <EditIcon className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => {
@@ -564,7 +590,7 @@ export function PackagingInventoryTable({
 
           {/* Pagination info */}
           {sortedItems.length > 0 && (
-            <div className="flex items-center justify-between pt-4">
+            <div className="flex items-center justify-between p-4 border-t">
               <div className="text-sm text-muted-foreground">
                 Showing {sortedItems.length} of {packagingItems.length}{" "}
                 packaging items
