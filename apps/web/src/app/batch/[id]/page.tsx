@@ -84,6 +84,12 @@ export default function BatchDetailsPage() {
     useState<any>(null);
   const [isEditingStartDate, setIsEditingStartDate] = useState(false);
   const [editStartDate, setEditStartDate] = useState("");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [isEditingBatchNumber, setIsEditingBatchNumber] = useState(false);
+  const [editBatchNumber, setEditBatchNumber] = useState("");
+  const [isEditingCustomName, setIsEditingCustomName] = useState(false);
+  const [editCustomName, setEditCustomName] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -207,6 +213,85 @@ export default function BatchDetailsPage() {
     setEditStartDate("");
   };
 
+  // Name editing handlers
+  const handleNameEdit = () => {
+    if (batch) {
+      setEditName(batch.name);
+      setIsEditingName(true);
+    }
+  };
+
+  const handleNameSave = async () => {
+    if (!editName.trim()) return;
+
+    try {
+      await updateBatchMutation.mutateAsync({
+        batchId,
+        name: editName.trim(),
+      });
+      setIsEditingName(false);
+    } catch (error) {
+      // Error is handled by mutation onError
+    }
+  };
+
+  const handleNameCancel = () => {
+    setIsEditingName(false);
+    setEditName("");
+  };
+
+  // Batch Number editing handlers
+  const handleBatchNumberEdit = () => {
+    if (batch) {
+      setEditBatchNumber(batch.batchNumber);
+      setIsEditingBatchNumber(true);
+    }
+  };
+
+  const handleBatchNumberSave = async () => {
+    if (!editBatchNumber.trim()) return;
+
+    try {
+      await updateBatchMutation.mutateAsync({
+        batchId,
+        batchNumber: editBatchNumber.trim(),
+      });
+      setIsEditingBatchNumber(false);
+    } catch (error) {
+      // Error is handled by mutation onError
+    }
+  };
+
+  const handleBatchNumberCancel = () => {
+    setIsEditingBatchNumber(false);
+    setEditBatchNumber("");
+  };
+
+  // Custom Name editing handlers
+  const handleCustomNameEdit = () => {
+    if (batch) {
+      setEditCustomName(batch.customName || "");
+      setIsEditingCustomName(true);
+    }
+  };
+
+  const handleCustomNameSave = async () => {
+    try {
+      await updateBatchMutation.mutateAsync({
+        batchId,
+        customName: editCustomName.trim() || undefined,
+      });
+      setIsEditingCustomName(false);
+    } catch (error) {
+      // Error is handled by mutation onError
+    }
+  };
+
+  const handleCustomNameCancel = () => {
+    setIsEditingCustomName(false);
+    setEditCustomName("");
+  };
+
   const isLoading =
     batchLoading || historyLoading || compositionLoading || transfersLoading;
 
@@ -279,9 +364,103 @@ export default function BatchDetailsPage() {
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
               <FlaskConical className="w-8 h-8 text-purple-600" />
-              <span className="font-mono text-2xl">{batch.name}</span>
-              {batch.customName && (
-                <span className="text-xl">- {batch.customName}</span>
+              {isEditingName ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="text-2xl font-mono h-10"
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={handleNameSave}
+                    disabled={updateBatchMutation.isPending}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={handleNameCancel}
+                    disabled={updateBatchMutation.isPending}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-2xl">{batch.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={handleNameEdit}
+                  >
+                    <Edit3 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              {isEditingCustomName ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">-</span>
+                  <Input
+                    type="text"
+                    value={editCustomName}
+                    onChange={(e) => setEditCustomName(e.target.value)}
+                    placeholder="Custom name"
+                    className="text-xl h-9"
+                    autoFocus
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={handleCustomNameSave}
+                    disabled={updateBatchMutation.isPending}
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={handleCustomNameCancel}
+                    disabled={updateBatchMutation.isPending}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {batch.customName ? (
+                    <>
+                      <span className="text-xl">- {batch.customName}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={handleCustomNameEdit}
+                      >
+                        <Edit3 className="h-3 w-3" />
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-sm"
+                      onClick={handleCustomNameEdit}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add custom name
+                    </Button>
+                  )}
+                </div>
               )}
             </h1>
             <p className="text-gray-600">
@@ -488,6 +667,53 @@ export default function BatchDetailsPage() {
                       </div>
                     </div>
                   )}
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                      Batch Number
+                      {!isEditingBatchNumber && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0"
+                          onClick={handleBatchNumberEdit}
+                        >
+                          <Edit3 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </label>
+                    {isEditingBatchNumber ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="text"
+                          value={editBatchNumber}
+                          onChange={(e) => setEditBatchNumber(e.target.value)}
+                          className="text-sm"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={handleBatchNumberSave}
+                          disabled={updateBatchMutation.isPending}
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={handleBatchNumberCancel}
+                          disabled={updateBatchMutation.isPending}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="text-lg font-medium">
+                        {batch.batchNumber}
+                      </div>
+                    )}
+                  </div>
                   <div>
                     <label className="text-sm font-medium text-gray-600">
                       Created

@@ -106,6 +106,8 @@ const filterBatchSchema = z.object({
 
 const updateBatchSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
+  name: z.string().optional(),
+  batchNumber: z.string().optional(),
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
   customName: z.string().optional(),
   startDate: z
@@ -235,6 +237,7 @@ export const batchRouter = router({
           .select({
             id: batches.id,
             name: batches.name,
+            batchNumber: batches.batchNumber,
             customName: batches.customName,
             status: batches.status,
             vesselId: batches.vesselId,
@@ -264,6 +267,7 @@ export const batchRouter = router({
         return {
           id: batch.id,
           name: batch.name,
+          batchNumber: batch.batchNumber,
           customName: batch.customName,
           status: batch.status,
           vesselId: batch.vesselId,
@@ -890,6 +894,8 @@ export const batchRouter = router({
           updatedAt: new Date(),
         };
 
+        if (input.name) updateData.name = input.name;
+        if (input.batchNumber) updateData.batchNumber = input.batchNumber;
         if (input.status) updateData.status = input.status;
         if (input.customName !== undefined)
           updateData.customName = input.customName;
