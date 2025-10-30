@@ -6,12 +6,6 @@ import {
   baseFruitVarieties,
   vendors,
   auditLogs,
-  vendorAdditiveVarieties,
-  additiveVarieties,
-  vendorJuiceVarieties,
-  juiceVarieties,
-  vendorPackagingVarieties,
-  packagingVarieties,
 } from "db";
 import { eq, and, isNull, ilike, or, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -26,7 +20,7 @@ export const vendorVarietyRouter = router({
     )
     .query(async ({ input }) => {
       try {
-        // Fetch base fruit varieties
+        // Fetch only base fruit varieties
         const baseFruitVarietiesData = await db
           .select({
             id: baseFruitVarieties.id,
@@ -34,7 +28,6 @@ export const vendorVarietyRouter = router({
             isActive: baseFruitVarieties.isActive,
             vendorVarietyId: vendorVarieties.id,
             linkedAt: vendorVarieties.createdAt,
-            varietyType: sql<string>`'baseFruit'`,
           })
           .from(vendorVarieties)
           .innerJoin(
@@ -48,96 +41,12 @@ export const vendorVarietyRouter = router({
               isNull(baseFruitVarieties.deletedAt),
               eq(baseFruitVarieties.isActive, true),
             ),
-          );
-
-        // Fetch additive varieties
-        const additiveVarietiesData = await db
-          .select({
-            id: additiveVarieties.id,
-            name: additiveVarieties.name,
-            isActive: additiveVarieties.isActive,
-            vendorVarietyId: vendorAdditiveVarieties.id,
-            linkedAt: vendorAdditiveVarieties.createdAt,
-            varietyType: sql<string>`'additive'`,
-            category: additiveVarieties.itemType,
-          })
-          .from(vendorAdditiveVarieties)
-          .innerJoin(
-            additiveVarieties,
-            eq(vendorAdditiveVarieties.varietyId, additiveVarieties.id),
           )
-          .where(
-            and(
-              eq(vendorAdditiveVarieties.vendorId, input.vendorId),
-              isNull(vendorAdditiveVarieties.deletedAt),
-              isNull(additiveVarieties.deletedAt),
-              eq(additiveVarieties.isActive, true),
-            ),
-          );
-
-        // Fetch juice varieties
-        const juiceVarietiesData = await db
-          .select({
-            id: juiceVarieties.id,
-            name: juiceVarieties.name,
-            isActive: juiceVarieties.isActive,
-            vendorVarietyId: vendorJuiceVarieties.id,
-            linkedAt: vendorJuiceVarieties.createdAt,
-            varietyType: sql<string>`'juice'`,
-          })
-          .from(vendorJuiceVarieties)
-          .innerJoin(
-            juiceVarieties,
-            eq(vendorJuiceVarieties.varietyId, juiceVarieties.id),
-          )
-          .where(
-            and(
-              eq(vendorJuiceVarieties.vendorId, input.vendorId),
-              isNull(vendorJuiceVarieties.deletedAt),
-              isNull(juiceVarieties.deletedAt),
-              eq(juiceVarieties.isActive, true),
-            ),
-          );
-
-        // Fetch packaging varieties
-        const packagingVarietiesData = await db
-          .select({
-            id: packagingVarieties.id,
-            name: packagingVarieties.name,
-            isActive: packagingVarieties.isActive,
-            vendorVarietyId: vendorPackagingVarieties.id,
-            linkedAt: vendorPackagingVarieties.createdAt,
-            varietyType: sql<string>`'packaging'`,
-            category: packagingVarieties.itemType,
-          })
-          .from(vendorPackagingVarieties)
-          .innerJoin(
-            packagingVarieties,
-            eq(vendorPackagingVarieties.varietyId, packagingVarieties.id),
-          )
-          .where(
-            and(
-              eq(vendorPackagingVarieties.vendorId, input.vendorId),
-              isNull(vendorPackagingVarieties.deletedAt),
-              isNull(packagingVarieties.deletedAt),
-              eq(packagingVarieties.isActive, true),
-            ),
-          );
-
-        // Combine all varieties
-        const allVarieties = [
-          ...baseFruitVarietiesData,
-          ...additiveVarietiesData,
-          ...juiceVarietiesData,
-          ...packagingVarietiesData,
-        ];
-
-        // Sort by name
-        allVarieties.sort((a, b) => a.name.localeCompare(b.name));
+          .orderBy(baseFruitVarieties.name);
 
         return {
-          varieties: allVarieties,
-          count: allVarieties.length,
+          varieties: baseFruitVarietiesData,
+          count: baseFruitVarietiesData.length,
         };
       } catch (error) {
         console.error("Error listing vendor varieties:", error);

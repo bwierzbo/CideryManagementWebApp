@@ -181,15 +181,17 @@ export function JuiceTransactionForm({
   }, [vendorData?.vendors, debouncedVendorSearch]);
 
   // Get vendor juices when vendor is selected
-  const { data: vendorJuicesData } = trpc.vendorVariety.listForVendor.useQuery(
+  const { data: vendorJuicesData } = trpc.juiceVarieties.getVendorLinks.useQuery(
     { vendorId: selectedVendorId },
     { enabled: !!selectedVendorId },
   );
   const vendorJuices = React.useMemo(
     () =>
-      vendorJuicesData?.varieties.filter(
-        (v: any) => v.varietyType === "juice",
-      ) || [],
+      vendorJuicesData?.map((link: any) => ({
+        id: link.variety.id,
+        name: link.variety.name,
+        isActive: link.variety.isActive,
+      })) || [],
     [vendorJuicesData],
   );
 

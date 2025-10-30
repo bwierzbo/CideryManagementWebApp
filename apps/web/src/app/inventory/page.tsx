@@ -19,6 +19,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { TransactionTypeSelector } from "@/components/inventory/TransactionTypeSelector";
 import { AdditivesTransactionForm } from "@/components/inventory/AdditivesTransactionForm";
 import { JuiceTransactionForm } from "@/components/inventory/JuiceTransactionForm";
@@ -375,6 +383,36 @@ export default function InventoryPage() {
                 Track and manage your cidery inventory
               </p>
             </div>
+
+            {/* Add Purchase Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="bg-amber-600 hover:bg-amber-700 text-white">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Inventory Purchase
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Select Purchase Type</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowAppleForm(true)}>
+                  <Apple className="w-4 h-4 mr-2 text-red-600" />
+                  <span>Base Fruit</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowJuiceForm(true)}>
+                  <Droplets className="w-4 h-4 mr-2 text-blue-600" />
+                  <span>Juice</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowAdditivesForm(true)}>
+                  <Beaker className="w-4 h-4 mr-2 text-purple-600" />
+                  <span>Additives</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowPackagingForm(true)}>
+                  <Package className="w-4 h-4 mr-2 text-orange-600" />
+                  <span>Packaging</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 

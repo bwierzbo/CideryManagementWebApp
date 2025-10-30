@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -102,12 +103,14 @@ export function VendorVarietyLinkModal({
   const [activeTab, setActiveTab] = useState<VarietyType>("baseFruit");
   const [isAddVarietyModalOpen, setIsAddVarietyModalOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [linkedVarietiesForModal, setLinkedVarietiesForModal] = useState<any[]>([]);
 
   // TODO: Replace with actual role check from session/auth
   const isAdmin = true; // For now, assume all users are admin for testing
 
-  const handleAddVariety = (varietyType: VarietyType) => {
+  const handleAddVariety = (varietyType: VarietyType, linkedVarieties: any[]) => {
     setActiveTab(varietyType);
+    setLinkedVarietiesForModal(linkedVarieties);
     setIsAddVarietyModalOpen(true);
   };
 
@@ -153,7 +156,7 @@ export function VendorVarietyLinkModal({
                   vendor={vendor}
                   config={config}
                   isAdmin={isAdmin}
-                  onAddVariety={() => handleAddVariety(config.type)}
+                  onAddVariety={(linkedVarieties) => handleAddVariety(config.type, linkedVarieties)}
                   refreshTrigger={refreshTrigger}
                 />
               </TabsContent>
@@ -184,6 +187,7 @@ export function VendorVarietyLinkModal({
                 // Trigger refresh of the current tab's data
                 triggerRefresh();
               }}
+              linkedVarieties={linkedVarietiesForModal}
             />
           </DialogContent>
         </Dialog>
@@ -202,7 +206,7 @@ function VarietyTabContent({
   vendor: any;
   config: VarietyConfig;
   isAdmin: boolean;
-  onAddVariety: () => void;
+  onAddVariety: (linkedVarieties: any[]) => void;
   refreshTrigger: number;
 }) {
   // Get varieties based on the config type
@@ -377,7 +381,7 @@ function VarietyTabContent({
             </CardDescription>
           </div>
           {isAdmin && (
-            <Button size="sm" onClick={onAddVariety}>
+            <Button size="sm" onClick={() => onAddVariety(varieties)}>
               <Plus className="w-4 h-4 mr-2" />
               Add {config.name}
             </Button>
@@ -396,7 +400,7 @@ function VarietyTabContent({
               supply.
             </p>
             {isAdmin && (
-              <Button onClick={onAddVariety}>
+              <Button onClick={() => onAddVariety(varieties)}>
                 <Plus className="w-4 h-4 mr-2" />
                 Add {config.name}
               </Button>
@@ -508,15 +512,17 @@ function AddVarietyModal({
   isOpen,
   onClose,
   onSuccess,
+  linkedVarieties,
 }: {
   vendor: any;
   varietyConfig: VarietyConfig;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  linkedVarieties: any[];
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedVariety, setSelectedVariety] = useState<any>(null);
+  const [selectedVarieties, setSelectedVarieties] = useState<any[]>([]);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [notes, setNotes] = useState("");
 
@@ -551,12 +557,6 @@ function AddVarietyModal({
     if (varietyConfig.type === "baseFruit") {
       return trpc.vendorVariety.attach.useMutation({
         onSuccess: (data) => {
-          onSuccess();
-          setSearchQuery("");
-          setSelectedVariety(null);
-          setIsCreatingNew(false);
-          setNotes("");
-
           // Show success message
           console.log(
             "Successfully linked variety:",
@@ -572,12 +572,6 @@ function AddVarietyModal({
       const apiRouter = (trpc as any)[varietyConfig.apiName];
       return apiRouter?.linkVendor?.useMutation({
         onSuccess: (data: any) => {
-          onSuccess();
-          setSearchQuery("");
-          setSelectedVariety(null);
-          setIsCreatingNew(false);
-          setNotes("");
-
           // Show success message
           console.log(
             "Successfully linked variety:",
@@ -594,15 +588,35 @@ function AddVarietyModal({
 
   const attachVariety = getAttachMutation();
 
-  // Get varieties array based on response structure
-  const varieties =
+  // Get varieties array based on response structure and filter out already-linked varieties
+  const linkedVarietyIds = linkedVarieties.map((v: any) =>
+    varietyConfig.type === "baseFruit" ? v.id : v.varietyId || v.variety?.id
+  );
+
+  const allVarieties =
     varietyConfig.type === "baseFruit"
       ? searchResults?.varieties || []
       : searchResults?.varieties || [];
 
+  const varieties = allVarieties.filter(
+    (v: any) => !linkedVarietyIds.includes(v.id)
+  );
+
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    setSelectedVariety(null);
+    setSelectedVarieties([]);
+    setIsCreatingNew(false);
+  };
+
+  const toggleVarietySelection = (variety: any) => {
+    setSelectedVarieties((prev) => {
+      const isSelected = prev.some((v) => v.id === variety.id);
+      if (isSelected) {
+        return prev.filter((v) => v.id !== variety.id);
+      } else {
+        return [...prev, variety];
+      }
+    });
     setIsCreatingNew(false);
   };
 
@@ -613,27 +627,62 @@ function AddVarietyModal({
       (v: any) => v.name.toLowerCase() === searchQuery.toLowerCase(),
     );
 
-  const handleAttach = () => {
-    if (selectedVariety) {
-      if (varietyConfig.type === "baseFruit") {
-        attachVariety.mutate({
-          vendorId: vendor.id,
-          varietyNameOrId: selectedVariety.id,
-        });
-      } else {
-        attachVariety.mutate({
-          vendorId: vendor.id,
-          varietyId: selectedVariety.id,
-          notes: notes.trim() || undefined,
-        });
+  const handleAttach = async () => {
+    let successCount = 0;
+    let errorCount = 0;
+
+    if (selectedVarieties.length > 0) {
+      // Link multiple varieties
+      for (const variety of selectedVarieties) {
+        try {
+          if (varietyConfig.type === "baseFruit") {
+            await attachVariety.mutateAsync({
+              vendorId: vendor.id,
+              varietyNameOrId: variety.id,
+            });
+          } else {
+            await attachVariety.mutateAsync({
+              vendorId: vendor.id,
+              varietyId: variety.id,
+              notes: notes.trim() || undefined,
+            });
+          }
+          successCount++;
+        } catch (error) {
+          errorCount++;
+          console.error(`Failed to link variety ${variety.name}:`, error);
+        }
+      }
+
+      // Show summary and reset state
+      if (successCount > 0) {
+        console.log(`Successfully linked ${successCount} varieties`);
+        onSuccess();
+        setSearchQuery("");
+        setSelectedVarieties([]);
+        setIsCreatingNew(false);
+        setNotes("");
+      }
+      if (errorCount > 0) {
+        alert(`Failed to link ${errorCount} varieties. Check console for details.`);
       }
     } else if (isCreatingNew) {
+      // Create and link new variety
       if (varietyConfig.type === "baseFruit") {
-        attachVariety.mutate({
-          vendorId: vendor.id,
-          varietyNameOrId: searchQuery.trim(),
-          notes: notes.trim() || undefined,
-        });
+        try {
+          await attachVariety.mutateAsync({
+            vendorId: vendor.id,
+            varietyNameOrId: searchQuery.trim(),
+            notes: notes.trim() || undefined,
+          });
+          onSuccess();
+          setSearchQuery("");
+          setSelectedVarieties([]);
+          setIsCreatingNew(false);
+          setNotes("");
+        } catch (error) {
+          // Error already handled by mutation
+        }
       } else {
         // For non-base fruit varieties, we need to create the variety first
         // This would require additional API endpoints for creating varieties
@@ -686,34 +735,41 @@ function AddVarietyModal({
             {varieties.length > 0 && (
               <div className="space-y-1">
                 <Label className="text-sm text-gray-600">
-                  Existing varieties:
+                  Select varieties to link (already-linked varieties hidden):
                 </Label>
-                <ScrollableContainer maxHeight="8rem">
+                <ScrollableContainer maxHeight="16rem">
                   <div className="space-y-1 p-1">
-                    {varieties.map((variety: any) => (
-                      <div
-                        key={variety.id}
-                        className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
-                          selectedVariety?.id === variety.id
-                            ? `border-${colors}-500 bg-${colors}-50`
-                            : "border-gray-200 hover:border-gray-300"
-                        }`}
-                        onClick={() => {
-                          setSelectedVariety(variety);
-                          setIsCreatingNew(false);
-                        }}
-                      >
-                        <Tag className={`w-4 h-4 text-${colors}-600`} />
-                        <div className="flex-1">
-                          <span className="font-medium">{variety.name}</span>
-                          {variety.itemType && (
-                            <span className="text-sm text-gray-500 ml-2">
-                              ({variety.itemType})
-                            </span>
-                          )}
+                    {varieties.map((variety: any) => {
+                      const isSelected = selectedVarieties.some(
+                        (v) => v.id === variety.id
+                      );
+                      return (
+                        <div
+                          key={variety.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            isSelected
+                              ? `border-${colors}-500 bg-${colors}-50`
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                          onClick={() => toggleVarietySelection(variety)}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleVarietySelection(variety)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <Tag className={`w-4 h-4 text-${colors}-600`} />
+                          <div className="flex-1">
+                            <span className="font-medium">{variety.name}</span>
+                            {variety.itemType && (
+                              <span className="text-sm text-gray-500 ml-2">
+                                ({variety.itemType})
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </ScrollableContainer>
               </div>
@@ -731,7 +787,7 @@ function AddVarietyModal({
                   }`}
                   onClick={() => {
                     setIsCreatingNew(true);
-                    setSelectedVariety(null);
+                    setSelectedVarieties([]);
                   }}
                 >
                   <Plus className="w-4 h-4 text-blue-600" />
@@ -751,15 +807,24 @@ function AddVarietyModal({
         )}
       </div>
 
+      {/* Selected Count */}
+      {selectedVarieties.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-900 font-medium">
+            {selectedVarieties.length} {selectedVarieties.length === 1 ? "variety" : "varieties"} selected
+          </p>
+        </div>
+      )}
+
       {/* Notes Field */}
-      {(isCreatingNew || selectedVariety) && (
+      {(isCreatingNew || selectedVarieties.length > 0) && varietyConfig.type !== "baseFruit" && (
         <div>
           <Label htmlFor="notes">Notes (Optional)</Label>
           <Textarea
             id="notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder={`Add notes about this ${varietyConfig.name.toLowerCase()} variety for this vendor`}
+            placeholder={`Add notes about ${selectedVarieties.length > 1 ? "these" : "this"} ${varietyConfig.name.toLowerCase()} ${selectedVarieties.length > 1 ? "varieties" : "variety"} for this vendor`}
             rows={3}
           />
         </div>
@@ -772,12 +837,12 @@ function AddVarietyModal({
         </Button>
 
         {/* Link/Create Button */}
-        {(selectedVariety || isCreatingNew) && (
+        {(selectedVarieties.length > 0 || isCreatingNew) && (
           <Button onClick={handleAttach} disabled={attachVariety.isPending}>
             {attachVariety.isPending
               ? "Processing..."
-              : selectedVariety
-                ? `Link ${selectedVariety.name}`
+              : selectedVarieties.length > 0
+                ? `Link ${selectedVarieties.length} ${selectedVarieties.length === 1 ? "Variety" : "Varieties"}`
                 : `Create & Link "${searchQuery}"`}
           </Button>
         )}

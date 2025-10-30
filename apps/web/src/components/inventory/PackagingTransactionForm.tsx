@@ -172,15 +172,18 @@ export function PackagingTransactionForm({
 
   // Get vendor packaging when vendor is selected
   const { data: vendorPackagingData } =
-    trpc.vendorVariety.listForVendor.useQuery(
+    trpc.packagingVarieties.getVendorLinks.useQuery(
       { vendorId: selectedVendorId },
       { enabled: !!selectedVendorId },
     );
   const vendorPackaging = React.useMemo(
     () =>
-      vendorPackagingData?.varieties.filter(
-        (v: any) => v.varietyType === "packaging",
-      ) || [],
+      vendorPackagingData?.map((link: any) => ({
+        id: link.variety.id,
+        name: link.variety.name,
+        itemType: link.variety.itemType,
+        isActive: link.variety.isActive,
+      })) || [],
     [vendorPackagingData],
   );
 

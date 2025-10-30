@@ -159,15 +159,18 @@ export function AdditivesTransactionForm({
 
   // Get vendor additives when vendor is selected
   const { data: vendorAdditivesData } =
-    trpc.vendorVariety.listForVendor.useQuery(
+    trpc.additiveVarieties.getVendorLinks.useQuery(
       { vendorId: selectedVendorId },
       { enabled: !!selectedVendorId },
     );
   const vendorAdditives = React.useMemo(
     () =>
-      vendorAdditivesData?.varieties.filter(
-        (v: any) => v.varietyType === "additive",
-      ) || [],
+      vendorAdditivesData?.map((link: any) => ({
+        id: link.variety.id,
+        name: link.variety.name,
+        itemType: link.variety.itemType,
+        isActive: link.variety.isActive,
+      })) || [],
     [vendorAdditivesData],
   );
 
