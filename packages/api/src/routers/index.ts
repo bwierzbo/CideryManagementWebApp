@@ -2224,6 +2224,7 @@ export const appRouter = router({
             batchId: batches.id,
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
+            batchStartDate: batches.startDate,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
             batchCustomName: batches.customName,
