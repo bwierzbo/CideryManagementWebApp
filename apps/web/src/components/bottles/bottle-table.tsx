@@ -217,7 +217,7 @@ export function PackagingTable({
         case "packagedAt":
           return new Date(item.packagedAt);
         case "batchName":
-          return item.batch.name || "";
+          return item.batch.customName || item.batch.name || "";
         case "unitsProduced":
           return item.unitsProduced;
         case "lossPercentage":
@@ -609,7 +609,7 @@ export function PackagingTable({
                     }}
                     tabIndex={0}
                     role="button"
-                    aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                    aria-label={`View details for ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
@@ -858,7 +858,7 @@ export function PackagingTable({
                       }}
                       tabIndex={0}
                       role="button"
-                      aria-label={`View details for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                      aria-label={`View details for ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                     >
                       {enableSelection && (
                         <TableCell>
@@ -868,7 +868,7 @@ export function PackagingTable({
                               handleSelectItem(item.id, !!checked)
                             }
                             onClick={(e) => e.stopPropagation()}
-                            aria-label={`Select row for ${item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
+                            aria-label={`Select row for ${item.batch.customName || item.batch.name || `Batch ${item.batchId.slice(0, 8)}`}`}
                           />
                         </TableCell>
                       )}
