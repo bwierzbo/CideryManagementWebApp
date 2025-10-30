@@ -43,8 +43,8 @@ const additiveLineSchema = z.object({
   additiveId: z.string().uuid("Select an additive"),
   quantity: z.number().positive("Quantity must be positive").optional(),
   unit: z.enum(["g", "kg", "lb", "L", "mL"]),
-  pricePerUnit: z.number().positive("Price must be positive").optional(),
-  totalCost: z.number().positive("Total cost must be positive").optional(),
+  pricePerUnit: z.number().nonnegative("Price cannot be negative").optional(),
+  totalCost: z.number().nonnegative("Total cost cannot be negative").optional(),
 });
 
 const additivePurchaseSchema = z.object({

@@ -47,7 +47,7 @@ const purchaseLineSchema = z.object({
   appleVarietyId: z.string().uuid("Select an apple variety"),
   quantity: z.number().positive("Quantity must be positive").optional(),
   unit: z.enum(["kg", "lb", "bushel"]),
-  pricePerUnit: z.number().positive("Price must be positive").optional(),
+  pricePerUnit: z.number().nonnegative("Price cannot be negative").optional(),
   harvestDate: z.date().nullable().optional(),
 });
 

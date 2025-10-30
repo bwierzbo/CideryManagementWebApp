@@ -48,8 +48,8 @@ const packagingLineSchema = z.object({
   unitType: z.enum(["cases", "boxes", "individual", "pallets"], {
     message: "Please select a unit type",
   }),
-  unitCost: z.number().min(0, "Unit cost must be positive").optional(),
-  totalCost: z.number().min(0, "Total cost must be positive").optional(),
+  unitCost: z.number().nonnegative("Unit cost cannot be negative").optional(),
+  totalCost: z.number().nonnegative("Total cost cannot be negative").optional(),
 });
 
 const packagingTransactionSchema = z.object({

@@ -58,8 +58,8 @@ const juiceLineSchema = z.object({
     .min(0, "pH must be at least 0")
     .max(14, "pH cannot exceed 14")
     .optional(),
-  unitCost: z.number().min(0, "Unit cost must be positive").optional(),
-  totalCost: z.number().min(0, "Total cost must be positive").optional(),
+  unitCost: z.number().nonnegative("Unit cost cannot be negative").optional(),
+  totalCost: z.number().nonnegative("Total cost cannot be negative").optional(),
 });
 
 const juiceTransactionSchema = z.object({
