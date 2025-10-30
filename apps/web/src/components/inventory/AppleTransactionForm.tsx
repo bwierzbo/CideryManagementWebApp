@@ -629,7 +629,7 @@ export function AppleTransactionForm({
                           <SelectTrigger className="h-12">
                             <SelectValue placeholder="Select variety" />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="max-h-[300px] overflow-y-auto">
                             {vendorVarieties.map((variety: any) => (
                               <SelectItem key={variety.id} value={variety.id}>
                                 {variety.name}

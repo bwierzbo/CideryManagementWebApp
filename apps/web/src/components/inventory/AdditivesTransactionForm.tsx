@@ -609,7 +609,7 @@ export function AdditivesTransactionForm({
                               }
                             />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="max-h-[300px] overflow-y-auto">
                             {vendorAdditives.map((additive: any) => (
                               <SelectItem key={additive.id} value={additive.id}>
                                 {additive.name}

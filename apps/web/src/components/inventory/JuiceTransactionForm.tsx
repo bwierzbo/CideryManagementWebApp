@@ -632,7 +632,7 @@ export function JuiceTransactionForm({
                               }
                             />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="max-h-[300px] overflow-y-auto">
                             {vendorJuices.map((juice: any) => (
                               <SelectItem key={juice.id} value={juice.id}>
                                 {juice.name}

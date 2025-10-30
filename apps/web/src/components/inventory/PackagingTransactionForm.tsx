@@ -621,7 +621,7 @@ export function PackagingTransactionForm({
                               }
                             />
                           </SelectTrigger>
-                          <SelectContent>
+                          <SelectContent className="max-h-[300px] overflow-y-auto">
                             {vendorPackaging.map((packaging: any) => (
                               <SelectItem
                                 key={packaging.id}
