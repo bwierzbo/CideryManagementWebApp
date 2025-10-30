@@ -145,7 +145,7 @@ export default function PackagingPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="w-full mx-auto py-6 px-4 sm:px-6 lg:px-8 max-w-[1800px]">
+      <main className="w-full py-6 px-6">
         {/* Page Header */}
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-gray-900">
