@@ -16,6 +16,7 @@ import {
   juicePurchaseItems,
   packagingPurchases,
   packagingPurchaseItems,
+  packagingVarieties,
 } from "db";
 import { eq, and, desc, asc, like, or, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -169,6 +170,7 @@ export const inventoryRouter = router({
             metadata: sql<unknown>`json_build_object(
               'purchaseId', ${packagingPurchases.id},
               'vendorName', ${vendors.name},
+              'varietyName', ${packagingVarieties.name},
               'packageType', ${packagingPurchaseItems.packageType},
               'materialType', ${packagingPurchaseItems.materialType},
               'size', ${packagingPurchaseItems.size},
@@ -185,6 +187,10 @@ export const inventoryRouter = router({
             eq(packagingPurchaseItems.purchaseId, packagingPurchases.id),
           )
           .leftJoin(vendors, eq(packagingPurchases.vendorId, vendors.id))
+          .leftJoin(
+            packagingVarieties,
+            eq(packagingPurchaseItems.packagingVarietyId, packagingVarieties.id),
+          )
           .where(isNull(packagingPurchaseItems.deletedAt));
 
         // Combine all items and sort by creation date
@@ -199,9 +205,50 @@ export const inventoryRouter = router({
           return dateB - dateA;
         });
 
-        // Apply pagination to combined results
-        const paginatedItems = allItems.slice(offset, offset + limit);
-        const totalCount = allItems.length;
+        // Consolidate items by variety
+        const consolidatedMap = new Map<string, typeof allItems[0] & { metadata: any }>();
+
+        for (const item of allItems) {
+          const metadata = item.metadata as any;
+          const varietyName = metadata?.varietyName || metadata?.productName || 'Unknown';
+          const key = `${item.materialType}-${varietyName}`;
+
+          if (!consolidatedMap.has(key)) {
+            // First item of this variety
+            consolidatedMap.set(key, {
+              ...item,
+              id: `consolidated-${key}`,
+              metadata: {
+                ...metadata,
+                purchaseCount: 1,
+                purchaseIds: [metadata?.purchaseId].filter(Boolean),
+              },
+            });
+          } else {
+            // Add to existing variety
+            const existing = consolidatedMap.get(key)!;
+            existing.currentBottleCount = Number(existing.currentBottleCount) + Number(item.currentBottleCount);
+            existing.reservedBottleCount = Number(existing.reservedBottleCount) + Number(item.reservedBottleCount);
+            existing.metadata.purchaseCount++;
+            if (metadata?.purchaseId) {
+              existing.metadata.purchaseIds.push(metadata.purchaseId);
+            }
+
+            // Keep most recent date
+            const existingDate = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
+            const itemDate = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+            if (itemDate > existingDate) {
+              existing.createdAt = item.createdAt;
+              existing.updatedAt = item.updatedAt;
+            }
+          }
+        }
+
+        const consolidatedItems = Array.from(consolidatedMap.values());
+
+        // Apply pagination to consolidated results
+        const paginatedItems = consolidatedItems.slice(offset, offset + limit);
+        const totalCount = consolidatedItems.length;
 
         return {
           items: paginatedItems,
