@@ -546,7 +546,7 @@ export const bottlesRouter = router({
               vendorName: c.vendorName,
               volumeL: c.volumeL ? parseFloat(c.volumeL.toString()) : 0,
               percentageOfBatch: c.percentageOfBatch
-                ? parseFloat(c.percentageOfBatch.toString())
+                ? parseFloat(c.percentageOfBatch.toString()) * 100
                 : 0,
             })),
             history: {
