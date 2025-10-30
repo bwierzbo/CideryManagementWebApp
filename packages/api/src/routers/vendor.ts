@@ -101,7 +101,7 @@ export const vendorRouter = router({
 
         // Use ilike for case-insensitive search
         whereConditions.push(
-          sql`LOWER(${vendors.name}) LIKE LOWER(${searchTerm})`,
+          ilike(vendors.name, searchTerm),
         );
       }
 
