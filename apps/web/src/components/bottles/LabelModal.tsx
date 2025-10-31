@@ -69,10 +69,10 @@ export function LabelModal({
   const selectedItemId = watch("packagingItemId");
   const quantity = watch("quantity");
 
-  // Get packaging items (labels)
+  // Get packaging items (labels) - filter by Secondary Packaging item type
   const { data: packagingItems, isLoading: isLoadingItems } =
     trpc.packagingPurchases.listInventory.useQuery(
-      { materialType: "Labels" },
+      { itemType: "Secondary Packaging" },
       { enabled: open }
     );
 
