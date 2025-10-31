@@ -6,6 +6,7 @@ import { getToken } from 'next-auth/jwt';
  * Routes that don't require authentication
  */
 const PUBLIC_ROUTES = [
+  '/',  // Landing page
   '/auth/signin',
   '/auth/signup',
   '/api/auth',  // NextAuth API routes
