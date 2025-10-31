@@ -35,10 +35,20 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Calendar,
 } from "lucide-react";
 import { Droplets } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast-provider";
 import { formatDate } from "@/utils/date-format";
 
@@ -243,6 +253,15 @@ function CompletedRunsSection({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
+  const [editDateModalOpen, setEditDateModalOpen] = useState(false);
+  const [editingPressRun, setEditingPressRun] = useState<{
+    id: string;
+    name: string;
+    currentDate: string;
+  } | null>(null);
+  const [newDate, setNewDate] = useState("");
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
 
   // Get pagination params from URL, with defaults
   const currentPage = parseInt(searchParams.get("page") || "1", 10);
@@ -291,6 +310,52 @@ function CompletedRunsSection({
       );
     });
   }, [pressRuns, searchTerm]);
+
+  // Mutation for updating press run date
+  const updateDateMutation = trpc.pressRun.update.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Date Updated",
+        description: "Press run completion date updated successfully",
+        variant: "default",
+      });
+      setEditDateModalOpen(false);
+      setEditingPressRun(null);
+      setNewDate("");
+      refetch();
+      utils.pressRun.list.invalidate();
+    },
+    onError: (error) => {
+      toast({
+        title: "Update Failed",
+        description: error.message || "Failed to update press run date",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEditDate = (pressRun: {
+    id: string;
+    pressRunName: string | null;
+    dateCompleted: string | null;
+  }) => {
+    setEditingPressRun({
+      id: pressRun.id,
+      name: pressRun.pressRunName || "Press Run",
+      currentDate: pressRun.dateCompleted || "",
+    });
+    setNewDate(pressRun.dateCompleted || "");
+    setEditDateModalOpen(true);
+  };
+
+  const handleSaveDate = () => {
+    if (!editingPressRun || !newDate) return;
+
+    updateDateMutation.mutate({
+      id: editingPressRun.id,
+      dateCompleted: new Date(newDate),
+    });
+  };
 
   if (isLoading) {
     return (
@@ -455,6 +520,18 @@ function CompletedRunsSection({
                         <Eye className="w-4 h-4" />
                       </Button>
                       <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-amber-600 hover:bg-amber-50 border-amber-200"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditDate(run);
+                        }}
+                        title="Edit completion date"
+                      >
+                        <Calendar className="w-4 h-4" />
+                      </Button>
+                      <Button
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
@@ -597,6 +674,54 @@ function CompletedRunsSection({
           )}
         </>
       )}
+
+      {/* Edit Date Modal */}
+      <Dialog open={editDateModalOpen} onOpenChange={setEditDateModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Completion Date</DialogTitle>
+            <DialogDescription>
+              Update the completion date for {editingPressRun?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="completion-date">Completion Date</Label>
+              <Input
+                id="completion-date"
+                type="date"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                className="w-full"
+              />
+              {editingPressRun?.currentDate && (
+                <p className="text-sm text-gray-600">
+                  Current date: {formatDate(new Date(editingPressRun.currentDate))}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditDateModalOpen(false);
+                setEditingPressRun(null);
+                setNewDate("");
+              }}
+              disabled={updateDateMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveDate}
+              disabled={!newDate || updateDateMutation.isPending}
+            >
+              {updateDateMutation.isPending ? "Saving..." : "Save Date"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

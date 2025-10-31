@@ -1228,13 +1228,38 @@ export const pressRunRouter = router({
                 : input.completionDate;
 
               // Generate batch name using completion date
-              batchName = generateBatchNameFromComposition({
+              const baseBatchName = generateBatchNameFromComposition({
                 date: pressRunCompletionDate,
                 vesselCode:
                   vesselInfo.name ||
                   vesselInfo.id.substring(0, 6).toUpperCase(),
                 batchCompositions: batchCompositionData,
               });
+
+              // Ensure batch name is unique by checking for existing batches and adding sequence suffix
+              batchName = baseBatchName;
+              let sequenceSuffix = 2;
+              while (true) {
+                const existingBatchWithName = await tx
+                  .select({ id: batches.id })
+                  .from(batches)
+                  .where(
+                    and(
+                      eq(batches.name, batchName),
+                      isNull(batches.deletedAt),
+                    ),
+                  )
+                  .limit(1);
+
+                if (existingBatchWithName.length === 0) {
+                  // Name is unique, we can use it
+                  break;
+                }
+
+                // Name exists, add/increment sequence suffix
+                batchName = `${baseBatchName}_${sequenceSuffix}`;
+                sequenceSuffix++;
+              }
 
               // Create batch record
               const newBatch = await tx
@@ -1514,9 +1539,12 @@ export const pressRunRouter = router({
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error completing press run:", error);
+
+        // Include error details in the message for better debugging
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to complete press run",
+          message: `Failed to complete press run: ${errorMessage}`,
         });
       }
     }),
@@ -1902,6 +1930,7 @@ export const pressRunRouter = router({
         notes: z.string().optional(),
         pressingMethod: z.string().optional(),
         weatherConditions: z.string().optional(),
+        dateCompleted: z.date().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1923,17 +1952,19 @@ export const pressRunRouter = router({
           });
         }
 
-        if (existingPressRun[0].status === "completed") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Cannot update completed press run",
-          });
+        // Allow updating metadata fields (notes, pressingMethod, weatherConditions, dateCompleted)
+        // even on completed press runs
+
+        // Convert dateCompleted to ISO date string if provided
+        const updatePayload: Record<string, unknown> = { ...updateData };
+        if (updateData.dateCompleted) {
+          updatePayload.dateCompleted = updateData.dateCompleted.toISOString().split("T")[0];
         }
 
         const updatedPressRun = await db
           .update(pressRuns)
           .set({
-            ...updateData,
+            ...updatePayload,
             updatedBy: ctx.session?.user?.id,
             updatedAt: new Date(),
           })
@@ -2113,6 +2144,32 @@ export const pressRunRouter = router({
               updatedAt: new Date(),
             })
             .where(eq(pressRunLoads.pressRunId, input.id));
+
+          // Cascade soft delete to batches created from this press run
+          await tx
+            .update(batches)
+            .set({
+              deletedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(batches.originPressRunId, input.id),
+                isNull(batches.deletedAt),
+              ),
+            );
+
+          // Set source_press_run_id to NULL in batch_merge_history (soft delete doesn't remove references)
+          await tx
+            .update(batchMergeHistory)
+            .set({
+              sourcePressRunId: null,
+            })
+            .where(
+              and(
+                eq(batchMergeHistory.sourcePressRunId, input.id),
+                isNull(batchMergeHistory.deletedAt),
+              ),
+            );
 
           // Publish audit event
           await publishDeleteEvent(

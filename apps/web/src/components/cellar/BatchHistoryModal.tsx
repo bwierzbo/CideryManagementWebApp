@@ -34,12 +34,15 @@ import {
   Pencil,
   Check,
   X,
+  BarChart3,
+  List,
 } from "lucide-react";
 import { format } from "date-fns";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { useToast } from "@/hooks/use-toast";
 import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
 import { EditAdditiveDialog } from "@/components/cellar/EditAdditiveDialog";
+import { MeasurementChart } from "@/components/batch/MeasurementChart";
 
 interface BatchHistoryModalProps {
   batchId: string;
@@ -57,6 +60,7 @@ export function BatchHistoryModal({
   const [editedName, setEditedName] = useState("");
   const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
   const [editingAdditive, setEditingAdditive] = useState<any>(null);
+  const [measurementView, setMeasurementView] = useState<"chart" | "list">("chart");
 
   const { data, isLoading, error, refetch } = trpc.batch.getHistory.useQuery(
     { batchId },
@@ -118,17 +122,6 @@ export function BatchHistoryModal({
     }
 
     const { batch, origin, composition, measurements, additives } = data;
-
-    // Prepare measurement data for chart
-    const chartData = measurements
-      .map((m, index) => ({
-        day: measurements.length - index,
-        sg: m.specificGravity || 0,
-        abv: m.abv || 0,
-        ph: m.ph || 0,
-        date: format(new Date(m.measurementDate), "MMM dd"),
-      }))
-      .reverse();
 
     return (
       <Tabs defaultValue="overview" className="w-full">
@@ -313,59 +306,38 @@ export function BatchHistoryModal({
           </TabsContent>
 
           <TabsContent value="measurements" className="space-y-4">
-            {chartData.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5" />
-                    Fermentation Progress
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <div className="text-center text-sm text-gray-600 mb-2">
-                      ABV & pH Progress
-                    </div>
-                    <div className="h-32 flex items-end justify-between space-x-2">
-                      {chartData.map((data, index) => (
-                        <div
-                          key={index}
-                          className="flex flex-col items-center flex-1"
-                        >
-                          <div className="flex flex-col items-center space-y-1">
-                            <div
-                              className="w-6 bg-green-500 rounded-t"
-                              style={{ height: `${data.abv * 10}px` }}
-                              title={`ABV: ${data.abv}%`}
-                            />
-                            <div
-                              className="w-6 bg-blue-500 rounded-t"
-                              style={{ height: `${data.ph * 15}px` }}
-                              title={`pH: ${data.ph}`}
-                            />
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {data.date}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-center space-x-4 mt-2 text-xs">
-                      <div className="flex items-center">
-                        <div className="w-3 h-3 bg-green-500 rounded mr-1" />
-                        <span>ABV %</span>
-                      </div>
-                      <div className="flex items-center">
-                        <div className="w-3 h-3 bg-blue-500 rounded mr-1" />
-                        <span>pH</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+            {/* View Toggle */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+                <Button
+                  size="sm"
+                  variant={measurementView === "chart" ? "default" : "ghost"}
+                  onClick={() => setMeasurementView("chart")}
+                  className="h-8"
+                >
+                  <BarChart3 className="w-4 h-4 mr-2" />
+                  Chart
+                </Button>
+                <Button
+                  size="sm"
+                  variant={measurementView === "list" ? "default" : "ghost"}
+                  onClick={() => setMeasurementView("list")}
+                  className="h-8"
+                >
+                  <List className="w-4 h-4 mr-2" />
+                  List
+                </Button>
+              </div>
+            </div>
+
+            {/* Chart View */}
+            {measurementView === "chart" && (
+              <MeasurementChart measurements={measurements} />
             )}
 
-            <Card>
+            {/* List View */}
+            {measurementView === "list" && (
+              <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Beaker className="w-5 h-5" />
@@ -440,6 +412,7 @@ export function BatchHistoryModal({
                 </Table>
               </CardContent>
             </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="additives" className="space-y-4">

@@ -2348,6 +2348,7 @@ export const appRouter = router({
           toVesselId: z.string().uuid("Invalid destination vessel ID"),
           volumeL: z.number().positive("Transfer volume must be positive"),
           loss: z.number().min(0, "Loss cannot be negative").optional(),
+          transferDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
           notes: z.string().optional(),
         }),
       )
@@ -2624,7 +2625,7 @@ export const appRouter = router({
                   ? `BLEND: ${blendNote}${input.notes ? ` | ${input.notes}` : ""}`
                   : input.notes,
                 transferredBy: ctx.session?.user?.id,
-                transferredAt: new Date(),
+                transferredAt: input.transferDate || new Date(),
                 createdAt: new Date(),
                 updatedAt: new Date(),
               })

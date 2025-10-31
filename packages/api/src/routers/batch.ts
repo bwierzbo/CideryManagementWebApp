@@ -1953,6 +1953,21 @@ export const batchRouter = router({
 
             console.log("✅ Batch composition created for juice purchase");
 
+            // Create initial measurements from juice purchase if pH or SG exist
+            if (juice.ph || juice.specificGravity) {
+              await tx.insert(batchMeasurements).values({
+                batchId: batchId,
+                measurementDate: input.transferDate,
+                ph: juice.ph?.toString(),
+                specificGravity: juice.specificGravity?.toString(),
+                notes: "Initial measurements from juice purchase",
+                volumeUnit: "L",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+              console.log("✅ Initial batch measurements created from juice purchase");
+            }
+
             // Vessel status remains as-is when batch is assigned
             // The presence of a batch is tracked via the batch.vesselId relationship
           } else {
@@ -2006,6 +2021,21 @@ export const batchRouter = router({
             });
 
             console.log("✅ Batch composition created for merged juice purchase");
+
+            // Create measurements from merged juice purchase if pH or SG exist
+            if (juice.ph || juice.specificGravity) {
+              await tx.insert(batchMeasurements).values({
+                batchId: batchId,
+                measurementDate: input.transferDate,
+                ph: juice.ph?.toString(),
+                specificGravity: juice.specificGravity?.toString(),
+                notes: "Measurements from merged juice purchase",
+                volumeUnit: "L",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+              console.log("✅ Batch measurements created from merged juice purchase");
+            }
           }
 
           // 4. Update juice purchase item's allocated volume

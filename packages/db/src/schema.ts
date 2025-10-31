@@ -524,6 +524,7 @@ export const batches = pgTable(
     endDate: timestamp("end_date", { withTimezone: true }),
     originPressRunId: uuid("origin_press_run_id").references(
       () => applePressRuns.id,
+      { onDelete: "cascade" },
     ),
     originJuicePurchaseItemId: uuid("origin_juice_purchase_item_id").references(
       () => juicePurchaseItems.id,
@@ -1004,6 +1005,7 @@ export const batchMergeHistory = pgTable(
     // Source information (new juice being added)
     sourcePressRunId: uuid("source_press_run_id").references(
       () => applePressRuns.id,
+      { onDelete: "set null" },
     ),
     sourceJuicePurchaseItemId: uuid("source_juice_purchase_item_id").references(
       () => juicePurchaseItems.id,

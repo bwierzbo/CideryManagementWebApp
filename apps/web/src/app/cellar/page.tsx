@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ const transferSchema = z.object({
   toVesselId: z.string().uuid("Select destination vessel"),
   volumeL: z.number().positive("Volume must be positive"),
   loss: z.number().min(0, "Loss cannot be negative").optional(),
+  transferDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   notes: z.string().optional(),
 });
 
@@ -442,6 +444,7 @@ function TankTransferForm({
     defaultValues: {
       fromVesselId: fromVesselId,
       loss: undefined,
+      transferDate: new Date(),
     },
   });
 
@@ -574,6 +577,7 @@ function TankTransferForm({
       ...data,
       volumeL: volumeInLiters,
       loss: lossInLiters,
+      transferDate: data.transferDate,
     });
   };
 
@@ -592,6 +596,21 @@ function TankTransferForm({
           Current volume:{" "}
           {formatDisplayVolume(currentVolume, displayUnit)}
         </p>
+      </div>
+
+      {/* Transfer Date */}
+      <div>
+        <Label htmlFor="transferDate">Transfer Date & Time</Label>
+        <Input
+          id="transferDate"
+          type="datetime-local"
+          {...register("transferDate")}
+          defaultValue={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+          className="w-full"
+        />
+        {errors.transferDate && (
+          <p className="text-sm text-red-600 mt-1">{errors.transferDate.message}</p>
+        )}
       </div>
 
       {/* Unit Selector */}
