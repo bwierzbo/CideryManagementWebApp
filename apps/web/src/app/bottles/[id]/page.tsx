@@ -235,7 +235,7 @@ export default function PackagingDetailPage() {
                 <span className="truncate">Bottle Run Details</span>
               </h1>
               <p className="text-gray-600 mt-1 text-sm md:text-base break-words">
-                {runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`} •{" "}
+                {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`} •{" "}
                 {formatPackageSize(runData.packageSizeML, runData.packageType)}
               </p>
             </div>
@@ -419,7 +419,7 @@ export default function PackagingDetailPage() {
                   </CardTitle>
                   <CardDescription>
                     Source materials for{" "}
-                    {runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
+                    {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -462,7 +462,7 @@ export default function PackagingDetailPage() {
                   </CardTitle>
                   <CardDescription>
                     Key events for{" "}
-                    {runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
+                    {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

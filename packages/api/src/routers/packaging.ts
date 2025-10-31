@@ -531,6 +531,7 @@ export const bottlesRouter = router({
           batch: {
             id: run.batchId,
             name: run.batchName,
+            customName: run.batchCustomName,
             batchNumber: run.batchNumber,
             status: run.batchStatus,
             initialVolume: run.batchInitialVolume
