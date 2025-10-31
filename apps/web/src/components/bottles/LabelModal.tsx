@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -13,18 +13,24 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { Tag, AlertTriangle, Info, Loader2 } from "lucide-react";
+import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const labelSchema = z.object({
   packagingItemId: z.string().min(1, "Please select a label"),
@@ -51,6 +57,7 @@ export function LabelModal({
   onSuccess,
 }: LabelModalProps) {
   const utils = trpc.useUtils();
+  const [comboboxOpen, setComboboxOpen] = useState(false);
 
   const {
     register,
@@ -161,29 +168,55 @@ export function LabelModal({
                 No labels found in packaging inventory
               </div>
             ) : (
-              <Select
-                value={selectedItemId}
-                onValueChange={(value) => setValue("packagingItemId", value)}
-              >
-                <SelectTrigger id="packagingItemId">
-                  <SelectValue placeholder="Select a label type..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {packagingItems?.items.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      <div className="flex items-center justify-between w-full">
-                        <span>{item.size}</span>
-                        <Badge
-                          variant={item.quantity > 0 ? "default" : "destructive"}
-                          className="ml-2"
+              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={comboboxOpen}
+                    className="w-full justify-between"
+                  >
+                    {selectedItemId
+                      ? packagingItems?.items.find((item) => item.id === selectedItemId)?.size
+                      : "Select a label type..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search labels..." />
+                    <CommandEmpty>No label found.</CommandEmpty>
+                    <CommandGroup className="max-h-[200px] overflow-y-auto">
+                      {packagingItems?.items.map((item) => (
+                        <CommandItem
+                          key={item.id}
+                          value={item.size}
+                          onSelect={() => {
+                            setValue("packagingItemId", item.id);
+                            setComboboxOpen(false);
+                          }}
                         >
-                          {item.quantity} in stock
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedItemId === item.id ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          <div className="flex items-center justify-between flex-1">
+                            <span className="truncate">{item.size}</span>
+                            <Badge
+                              variant={item.quantity > 0 ? "default" : "destructive"}
+                              className="ml-2 flex-shrink-0"
+                            >
+                              {item.quantity} in stock
+                            </Badge>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             )}
             {errors.packagingItemId && (
               <p className="text-sm text-red-500">
