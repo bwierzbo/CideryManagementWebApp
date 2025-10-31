@@ -577,6 +577,7 @@ export default function InventoryPage() {
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowAppleForm(true)}
+                onItemClick={(item) => setSelectedItem(item)}
                 className=""
               />
             </div>
@@ -588,6 +589,7 @@ export default function InventoryPage() {
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowAdditivesForm(true)}
+                onItemClick={(item) => setSelectedItem(item)}
                 className=""
               />
             </div>
@@ -599,6 +601,7 @@ export default function InventoryPage() {
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowJuiceForm(true)}
+                onItemClick={(item) => setSelectedItem(item)}
                 className=""
               />
             </div>
@@ -610,6 +613,7 @@ export default function InventoryPage() {
                 showFilters={true}
                 itemsPerPage={50}
                 onAddNew={() => setShowPackagingForm(true)}
+                onItemClick={(item) => setSelectedItem(item)}
                 className=""
               />
             </div>
