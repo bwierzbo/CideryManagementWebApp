@@ -40,6 +40,7 @@ import { PackagingInventoryTable } from "@/components/inventory/PackagingInvento
 import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable";
 import { PackagingTable as BottleTable } from "@/components/bottles/bottle-table";
 import { InventoryFAB } from "@/components/inventory/InventoryFAB";
+import { InventoryItemDetailsModal } from "@/components/inventory/InventoryItemDetailsModal";
 import {
   Package,
   Plus,
@@ -67,6 +68,7 @@ export default function InventoryPage() {
   const [showJuiceForm, setShowJuiceForm] = useState(false);
   const [showPackagingForm, setShowPackagingForm] = useState(false);
   const [showAppleForm, setShowAppleForm] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
   // Get inventory data using unified inventory API (minimal data for now)
   const { data: inventoryData, isLoading } = trpc.inventory.list.useQuery({
@@ -552,6 +554,7 @@ export default function InventoryPage() {
               showSearch={true}
               itemsPerPage={100}
               className=""
+              onItemClick={(item) => setSelectedItem(item)}
             />
             </div>
           )}
@@ -710,6 +713,13 @@ export default function InventoryPage() {
             </div>
           </SheetContent>
         </Sheet>
+
+        {/* Inventory Item Details Modal */}
+        <InventoryItemDetailsModal
+          open={!!selectedItem}
+          onClose={() => setSelectedItem(null)}
+          item={selectedItem}
+        />
       </div>
     </div>
   );

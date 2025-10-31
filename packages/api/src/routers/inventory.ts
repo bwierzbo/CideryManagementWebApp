@@ -61,7 +61,10 @@ export const inventoryRouter = router({
               'varietyName', ${baseFruitVarieties.name},
               'harvestDate', ${basefruitPurchaseItems.harvestDate},
               'purchaseDate', ${basefruitPurchases.purchaseDate},
-              'unit', ${basefruitPurchaseItems.unit}
+              'unit', ${basefruitPurchaseItems.unit},
+              'quantity', ${basefruitPurchaseItems.quantity},
+              'pricePerUnit', ${basefruitPurchaseItems.pricePerUnit},
+              'totalCost', ${basefruitPurchaseItems.totalCost}
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: basefruitPurchaseItems.notes,
@@ -105,6 +108,8 @@ export const inventoryRouter = router({
                 ELSE ${additivePurchaseItems.productName}
               END,
               'unit', ${additivePurchaseItems.unit},
+              'quantity', ${additivePurchaseItems.quantity},
+              'pricePerUnit', ${additivePurchaseItems.pricePerUnit},
               'unitCost', ${additivePurchaseItems.pricePerUnit},
               'totalCost', ${additivePurchaseItems.totalCost},
               'purchaseDate', ${additivePurchases.purchaseDate}
@@ -144,7 +149,11 @@ export const inventoryRouter = router({
               'specificGravity', ${juicePurchaseItems.specificGravity},
               'ph', ${juicePurchaseItems.ph},
               'containerType', ${juicePurchaseItems.containerType},
-              'unit', 'L'
+              'unit', 'L',
+              'quantity', ${juicePurchaseItems.volume},
+              'pricePerUnit', ${juicePurchaseItems.pricePerLiter},
+              'totalCost', ${juicePurchaseItems.totalCost},
+              'purchaseDate', ${juicePurchases.purchaseDate}
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: juicePurchaseItems.notes,
@@ -174,7 +183,11 @@ export const inventoryRouter = router({
               'packageType', ${packagingPurchaseItems.packageType},
               'materialType', ${packagingPurchaseItems.materialType},
               'size', ${packagingPurchaseItems.size},
-              'unit', 'units'
+              'unit', 'units',
+              'quantity', ${packagingPurchaseItems.quantity},
+              'pricePerUnit', ${packagingPurchaseItems.pricePerUnit},
+              'totalCost', ${packagingPurchaseItems.totalCost},
+              'purchaseDate', ${packagingPurchases.purchaseDate}
             )`,
             location: sql<string | null>`'warehouse'`,
             notes: packagingPurchaseItems.notes,
@@ -213,6 +226,21 @@ export const inventoryRouter = router({
           const varietyName = metadata?.varietyName || metadata?.productName || 'Unknown';
           const key = `${item.materialType}-${varietyName}`;
 
+          // Extract cost data if available
+          const quantity = Number(metadata?.quantity || item.currentBottleCount || 0);
+          const pricePerUnit = Number(metadata?.pricePerUnit || metadata?.unitCost || 0);
+          const totalCost = Number(metadata?.totalCost || 0);
+
+          // Create purchase detail record
+          const purchaseDetail = {
+            purchaseId: metadata?.purchaseId,
+            purchaseDate: metadata?.purchaseDate,
+            vendorName: metadata?.vendorName,
+            quantity,
+            pricePerUnit,
+            totalCost,
+          };
+
           if (!consolidatedMap.has(key)) {
             // First item of this variety
             consolidatedMap.set(key, {
@@ -222,6 +250,10 @@ export const inventoryRouter = router({
                 ...metadata,
                 purchaseCount: 1,
                 purchaseIds: [metadata?.purchaseId].filter(Boolean),
+                purchaseDetails: [purchaseDetail],
+                totalQuantity: quantity,
+                totalCost: totalCost,
+                averageCost: pricePerUnit > 0 ? pricePerUnit : 0,
               },
             });
           } else {
@@ -232,6 +264,18 @@ export const inventoryRouter = router({
             existing.metadata.purchaseCount++;
             if (metadata?.purchaseId) {
               existing.metadata.purchaseIds.push(metadata.purchaseId);
+            }
+
+            // Add purchase detail
+            existing.metadata.purchaseDetails.push(purchaseDetail);
+
+            // Update cost aggregates
+            existing.metadata.totalQuantity = Number(existing.metadata.totalQuantity) + quantity;
+            existing.metadata.totalCost = Number(existing.metadata.totalCost) + totalCost;
+
+            // Calculate weighted average cost
+            if (existing.metadata.totalQuantity > 0) {
+              existing.metadata.averageCost = existing.metadata.totalCost / existing.metadata.totalQuantity;
             }
 
             // Keep most recent date
