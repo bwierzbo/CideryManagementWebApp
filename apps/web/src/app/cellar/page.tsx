@@ -1322,16 +1322,9 @@ function VesselMap() {
                   {/* Batch Name - Always rendered with fixed height */}
                   <div className="pb-2 border-b h-[56px] flex flex-col justify-start">
                     {liquidMapVessel?.batchId ? (
-                      <>
-                        <p className="text-sm font-medium text-gray-900">
-                          {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
-                        </p>
-                        {liquidMapVessel.batchStartDate && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Started: {new Date(liquidMapVessel.batchStartDate).toLocaleDateString()}
-                          </p>
-                        )}
-                      </>
+                      <p className="text-sm font-medium text-gray-900">
+                        {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
+                      </p>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
                         No active batch

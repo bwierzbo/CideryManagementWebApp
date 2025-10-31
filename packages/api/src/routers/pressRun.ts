@@ -1930,7 +1930,7 @@ export const pressRunRouter = router({
         notes: z.string().optional(),
         pressingMethod: z.string().optional(),
         weatherConditions: z.string().optional(),
-        dateCompleted: z.date().optional(),
+        dateCompleted: z.date().or(z.string().transform((val) => new Date(val))).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {

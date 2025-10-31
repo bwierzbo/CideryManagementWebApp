@@ -49,7 +49,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/toast-provider";
+import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/utils/date-format";
 
 interface PressRun {
@@ -774,7 +774,7 @@ export default function PressingPage() {
       toast({
         title: "Press run cancelled",
         description: "The press run has been successfully cancelled.",
-        variant: "success",
+        variant: "default",
       });
       // Refresh the page data
       window.location.reload();
@@ -795,7 +795,7 @@ export default function PressingPage() {
       toast({
         title: "Press run deleted",
         description: "The press run has been permanently deleted.",
-        variant: "success",
+        variant: "default",
       });
       // Refresh the page data
       window.location.reload();
@@ -814,7 +814,6 @@ export default function PressingPage() {
           description:
             "This press run has juice assigned to a vessel. Completed press runs with juice assignments cannot be deleted to maintain production records.",
           variant: "destructive",
-          duration: 8000, // Longer duration for important message
         });
       } else {
         toast({
@@ -853,7 +852,7 @@ export default function PressingPage() {
         toast({
           title: "Press run created",
           description: "New press run started successfully.",
-          variant: "success",
+          variant: "default",
         });
         // Navigate directly to the press run with addFirstLoad=true
         window.location.href = `/pressing/${result.pressRun.id}?addFirstLoad=true`;
