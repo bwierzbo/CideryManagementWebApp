@@ -237,7 +237,12 @@ export async function getBottleRunsOptimized(
 
   // Add batch search if needed (uses packaging_runs_batch_status_idx)
   if (filters.batchSearch) {
-    conditions.push(like(batches.name, `%${filters.batchSearch}%`));
+    conditions.push(
+      or(
+        like(batches.name, `%${filters.batchSearch}%`),
+        like(batches.customName, `%${filters.batchSearch}%`)
+      )!
+    );
   }
 
   // Apply filters
