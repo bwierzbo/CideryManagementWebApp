@@ -179,12 +179,12 @@ export function TransferToTankModal({
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <Label htmlFor="transferDate">
-              Transfer Date <span className="text-red-500">*</span>
+              Transfer Date & Time <span className="text-red-500">*</span>
             </Label>
             <Input
-              type="date"
-              value={transferDate ? new Date(transferDate.getTime() - transferDate.getTimezoneOffset() * 60000).toISOString().split('T')[0] : ''}
-              onChange={(e) => setValue("transferDate", new Date(e.target.value + 'T00:00:00'))}
+              type="datetime-local"
+              value={transferDate ? new Date(transferDate.getTime() - transferDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+              onChange={(e) => setValue("transferDate", new Date(e.target.value))}
               className="w-full mt-1"
             />
             {errors.transferDate && (

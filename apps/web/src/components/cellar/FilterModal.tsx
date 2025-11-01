@@ -185,11 +185,11 @@ export function FilterModal({
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <Label htmlFor="filteredAt">
-              Filter Date <span className="text-red-500">*</span>
+              Filter Date & Time <span className="text-red-500">*</span>
             </Label>
             <Input
-              type="date"
-              value={filteredAt ? filteredAt.toISOString().split('T')[0] : ''}
+              type="datetime-local"
+              value={filteredAt ? new Date(filteredAt.getTime() - filteredAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
               onChange={(e) => setValue("filteredAt", new Date(e.target.value))}
               className="w-full mt-1"
             />

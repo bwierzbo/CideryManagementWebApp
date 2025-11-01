@@ -199,19 +199,12 @@ export function RackingModal({
           {/* Date */}
           <div className="space-y-2">
             <Label htmlFor="rackedAt">
-              Racking Date <span className="text-red-500">*</span>
+              Racking Date & Time <span className="text-red-500">*</span>
             </Label>
             <Input
-              type="date"
-              value={rackedAt ? rackedAt.toISOString().split('T')[0] : ''}
-              onChange={(e) => {
-                const dateValue = e.target.value;
-                if (dateValue && !isNaN(new Date(dateValue).getTime())) {
-                  setValue("rackedAt", new Date(dateValue));
-                } else if (!dateValue) {
-                  setValue("rackedAt", new Date());
-                }
-              }}
+              type="datetime-local"
+              value={rackedAt ? new Date(rackedAt.getTime() - rackedAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+              onChange={(e) => setValue("rackedAt", new Date(e.target.value))}
               className="w-full"
             />
             {errors.rackedAt && (
