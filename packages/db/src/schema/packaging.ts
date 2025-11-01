@@ -130,6 +130,34 @@ export const bottleRuns = pgTable(
     sourceCarbonationOperationId: uuid("source_carbonation_operation_id")
       .references(() => batchCarbonationOperations.id),
 
+    // Pasteurization tracking
+    /**
+     * Temperature used for pasteurization in Celsius
+     */
+    pasteurizationTemperatureCelsius: decimal("pasteurization_temperature_celsius", {
+      precision: 5,
+      scale: 2,
+    }),
+    /**
+     * Duration of pasteurization in minutes
+     */
+    pasteurizationTimeMinutes: decimal("pasteurization_time_minutes", {
+      precision: 6,
+      scale: 2,
+    }),
+    /**
+     * Calculated Pasteurization Units (PU)
+     * Formula: PU = time * 1.393^(T - 60)
+     */
+    pasteurizationUnits: decimal("pasteurization_units", {
+      precision: 10,
+      scale: 2,
+    }),
+    /**
+     * When pasteurization was completed
+     */
+    pasteurizedAt: timestamp("pasteurized_at"),
+
     // Metadata
     productionNotes: text("production_notes"),
     status: bottleRunStatusEnum("status").default("completed"),

@@ -79,10 +79,10 @@ export function RecentBatchesSection() {
                   </div>
                   <div>
                     <h4 className="font-semibold text-gray-900">
-                      {batch.batchNumber}
+                      {batch.customName || batch.batchNumber}
                     </h4>
                     <p className="text-sm text-gray-600">
-                      {batch.customName || batch.vesselName || "No vessel"}
+                      {batch.batchNumber}
                     </p>
                   </div>
                 </div>

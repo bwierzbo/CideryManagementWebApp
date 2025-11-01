@@ -29,9 +29,6 @@ import {
   Target,
   FileText,
   Eye,
-  Flame,
-  Tag,
-  CheckCircle2,
   BarChart3,
   List,
 } from "lucide-react";
@@ -103,25 +100,6 @@ export default function PackagingDetailPage() {
   // Permission check: Admins and operators can update QA data
   const userRole = (session?.user as any)?.role;
   const canUpdateQA = userRole === "admin" || userRole === "operator";
-
-  // Mutations for bottle run actions
-  const markCompleteMutation = trpc.bottles.markComplete.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-  });
-
-  const pasteurizeMutation = trpc.bottles.pasteurize.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-  });
-
-  const labelMutation = trpc.bottles.label.useMutation({
-    onSuccess: () => {
-      refetch();
-    },
-  });
 
   // Format date display - using imported formatDateTime
   const formatDateDisplay = (date: string | Date) => {
@@ -254,38 +232,7 @@ export default function PackagingDetailPage() {
                 {runData.status || "pending"}
               </Badge>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                {/* Action buttons for active runs */}
-                {canUpdateQA && runData.status !== "completed" && (
-                  <>
-                    <Button
-                      onClick={() => pasteurizeMutation.mutate({ runId })}
-                      size="sm"
-                      variant="outline"
-                      disabled={pasteurizeMutation.isPending}
-                    >
-                      <Flame className="w-4 h-4 mr-2" />
-                      Pasteurize
-                    </Button>
-                    <Button
-                      onClick={() => labelMutation.mutate({ runId })}
-                      size="sm"
-                      variant="outline"
-                      disabled={labelMutation.isPending}
-                    >
-                      <Tag className="w-4 h-4 mr-2" />
-                      Label
-                    </Button>
-                    <Button
-                      onClick={() => markCompleteMutation.mutate({ runId })}
-                      size="sm"
-                      variant="default"
-                      disabled={markCompleteMutation.isPending}
-                    >
-                      <CheckCircle2 className="w-4 h-4 mr-2" />
-                      Mark Complete
-                    </Button>
-                  </>
-                )}
+                {/* Actions configured in main /bottles table */}
                 <div className="hidden sm:block">
                   <Suspense fallback={<PDFExportSkeleton />}>
                     <QuickPDFExport
@@ -516,7 +463,7 @@ export default function PackagingDetailPage() {
                                   .map((m: any, idx: number) => (
                                     <p key={idx} className="text-xs text-gray-600">
                                       {m.abv && `ABV: ${m.abv}%`}
-                                      {m.specificGravity && ` SG: ${m.specificGravity}`}
+                                      {m.specificGravity && ` SG: ${parseFloat(m.specificGravity).toFixed(3)}`}
                                       {m.ph && ` pH: ${m.ph}`}
                                       {m.temperature && ` ${m.temperature}°C`}
                                       {" • "}

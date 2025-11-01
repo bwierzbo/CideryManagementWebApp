@@ -181,7 +181,7 @@ export const batchRouter = router({
             sourceType: batchCompositions.sourceType,
           })
           .from(batchCompositions)
-          .innerJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+          .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
           .leftJoin(
             baseFruitVarieties,
             eq(batchCompositions.varietyId, baseFruitVarieties.id),
@@ -204,7 +204,7 @@ export const batchRouter = router({
 
         // Convert string fields to numbers for the response
         return allComposition.map((item) => ({
-          vendorName: item.vendorName,
+          vendorName: item.vendorName || "Unknown Vendor",
           varietyName: item.varietyName || "Unknown",
           lotCode: item.lotCode || "",
           inputWeightKg: item.inputWeightKg ? parseFloat(item.inputWeightKg) : 0,
@@ -493,22 +493,33 @@ export const batchRouter = router({
 
         const batch = batchData[0];
 
-        // Get composition with full origin details
+        // Get composition with full origin details (base fruit AND juice purchases)
         const composition = await db
           .select({
             vendorName: vendors.name,
-            varietyName: baseFruitVarieties.name,
+            varietyName: sql<string>`
+              CASE
+                WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                ELSE 'Unknown'
+              END
+            `,
             inputWeightKg: batchCompositions.inputWeightKg,
             juiceVolume: batchCompositions.juiceVolume,
             fractionOfBatch: batchCompositions.fractionOfBatch,
             materialCost: batchCompositions.materialCost,
             avgBrix: batchCompositions.avgBrix,
+            sourceType: batchCompositions.sourceType,
           })
           .from(batchCompositions)
-          .innerJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
-          .innerJoin(
+          .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+          .leftJoin(
             baseFruitVarieties,
             eq(batchCompositions.varietyId, baseFruitVarieties.id),
+          )
+          .leftJoin(
+            juicePurchaseItems,
+            eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id),
           )
           .where(
             and(
@@ -589,13 +600,14 @@ export const batchRouter = router({
           batch,
           origin: originDetails,
           composition: composition.map((item) => ({
-            vendorName: item.vendorName,
-            varietyName: item.varietyName,
+            vendorName: item.vendorName || "Unknown Vendor",
+            varietyName: item.varietyName || "Unknown",
             inputWeightKg: parseFloat(item.inputWeightKg || "0"),
             juiceVolume: parseFloat(item.juiceVolume || "0"),
             fractionOfBatch: parseFloat(item.fractionOfBatch || "0"),
             materialCost: parseFloat(item.materialCost || "0"),
             avgBrix: item.avgBrix ? parseFloat(item.avgBrix) : undefined,
+            sourceType: item.sourceType,
           })),
           measurements: measurements.map((m) => ({
             ...m,
@@ -1943,8 +1955,10 @@ export const batchRouter = router({
               sourceType: "juice_purchase",
               juicePurchaseItemId: input.juicePurchaseItemId,
               vendorId: juice.vendorId!,
+              inputWeightKg: "0", // Juice has no weight input, only volume
               juiceVolume: transferVolumeL.toString(),
               juiceVolumeUnit: "L",
+              fractionOfBatch: "1.0", // New batch, so this juice is 100% of the batch
               materialCost: juice.totalCost?.toString() || "0",
               avgBrix: juice.brix?.toString(),
               createdAt: new Date(),
@@ -2007,13 +2021,18 @@ export const batchRouter = router({
             });
 
             // Create batch composition entry for the merged juice
+            // Calculate fraction based on this juice's volume relative to final batch volume
+            const fractionOfBatch = transferVolumeL / newVolumeL;
+
             await tx.insert(batchCompositions).values({
               batchId: batchId,
               sourceType: "juice_purchase",
               juicePurchaseItemId: input.juicePurchaseItemId,
               vendorId: juice.vendorId!,
+              inputWeightKg: "0", // Juice has no weight input, only volume
               juiceVolume: transferVolumeL.toString(),
               juiceVolumeUnit: "L",
+              fractionOfBatch: fractionOfBatch.toString(),
               materialCost: juice.totalCost?.toString() || "0",
               avgBrix: juice.brix?.toString(),
               createdAt: new Date(),

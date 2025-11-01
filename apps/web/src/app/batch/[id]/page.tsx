@@ -1048,6 +1048,7 @@ export default function BatchDetailsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead>Source</TableHead>
                         <TableHead>Vendor</TableHead>
                         <TableHead>Variety</TableHead>
                         <TableHead className="text-right">
@@ -1062,12 +1063,25 @@ export default function BatchDetailsPage() {
                     <TableBody>
                       {composition.map((comp, index) => (
                         <TableRow key={index}>
+                          <TableCell>
+                            {comp.sourceType === "juice_purchase" ? (
+                              <Badge variant="outline" className="bg-blue-50">
+                                🧃 Juice
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-green-50">
+                                🍎 Fruit
+                              </Badge>
+                            )}
+                          </TableCell>
                           <TableCell className="font-medium">
                             {comp.vendorName}
                           </TableCell>
                           <TableCell>{comp.varietyName}</TableCell>
                           <TableCell className="text-right">
-                            {(comp.inputWeightKg * 2.20462).toFixed(1)}
+                            {comp.sourceType === "juice_purchase"
+                              ? "—"
+                              : (comp.inputWeightKg * 2.20462).toFixed(1)}
                           </TableCell>
                           <TableCell className="text-right">
                             {comp.juiceVolume.toFixed(1)}

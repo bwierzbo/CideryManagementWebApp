@@ -276,6 +276,7 @@ export function BatchHistoryModal({
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Source</TableHead>
                       <TableHead>Vendor</TableHead>
                       <TableHead>Variety</TableHead>
                       <TableHead className="text-right">Weight (kg)</TableHead>
@@ -286,10 +287,23 @@ export function BatchHistoryModal({
                   <TableBody>
                     {composition.map((item, index) => (
                       <TableRow key={index}>
+                        <TableCell>
+                          {item.sourceType === "juice_purchase" ? (
+                            <Badge variant="outline" className="bg-blue-50">
+                              🧃 Juice
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-green-50">
+                              🍎 Fruit
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell>{item.vendorName}</TableCell>
                         <TableCell>{item.varietyName}</TableCell>
                         <TableCell className="text-right">
-                          {item.inputWeightKg.toFixed(1)}
+                          {item.sourceType === "juice_purchase"
+                            ? "—"
+                            : item.inputWeightKg.toFixed(1)}
                         </TableCell>
                         <TableCell className="text-right">
                           {item.juiceVolume.toFixed(1)}

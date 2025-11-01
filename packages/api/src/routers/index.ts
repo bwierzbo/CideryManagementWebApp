@@ -2487,6 +2487,49 @@ export const appRouter = router({
 
               remainingBatch = newRemainingBatch[0];
 
+              // Copy composition from source batch to remaining batch
+              const sourceComposition = await tx
+                .select()
+                .from(batchCompositions)
+                .where(
+                  and(
+                    eq(batchCompositions.batchId, sourceBatch[0].id),
+                    isNull(batchCompositions.deletedAt),
+                  ),
+                );
+
+              if (sourceComposition.length > 0) {
+                // Calculate new fractions based on volume ratio
+                const volumeRatio = remainingVolumeL / currentVolumeL;
+
+                for (const comp of sourceComposition) {
+                  await tx.insert(batchCompositions).values({
+                    batchId: remainingBatch.id,
+                    sourceType: comp.sourceType,
+                    purchaseItemId: comp.purchaseItemId,
+                    varietyId: comp.varietyId,
+                    juicePurchaseItemId: comp.juicePurchaseItemId,
+                    vendorId: comp.vendorId,
+                    lotCode: comp.lotCode,
+                    inputWeightKg: comp.inputWeightKg
+                      ? (parseFloat(comp.inputWeightKg) * volumeRatio).toString()
+                      : "0",
+                    juiceVolume: (parseFloat(comp.juiceVolume || "0") * volumeRatio).toString(),
+                    juiceVolumeUnit: comp.juiceVolumeUnit,
+                    fractionOfBatch: comp.fractionOfBatch, // Keep same fraction
+                    materialCost: comp.materialCost
+                      ? (parseFloat(comp.materialCost) * volumeRatio).toString()
+                      : "0",
+                    avgBrix: comp.avgBrix,
+                    estSugarKg: comp.estSugarKg
+                      ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
+                      : undefined,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+                }
+              }
+
               // Audit logging for new remaining batch
               await publishCreateEvent(
                 "batches",
@@ -2538,6 +2581,53 @@ export const appRouter = router({
                   updatedAt: new Date(),
                 })
                 .where(eq(batches.id, sourceBatch[0].id));
+
+              // Copy composition from source batch to destination batch (for blend traceability)
+              const sourceComposition = await tx
+                .select()
+                .from(batchCompositions)
+                .where(
+                  and(
+                    eq(batchCompositions.batchId, sourceBatch[0].id),
+                    isNull(batchCompositions.deletedAt),
+                  ),
+                );
+
+              if (sourceComposition.length > 0) {
+                // Calculate fraction based on how much of the transferred volume contributes to final
+                const volumeRatio = input.volumeL / currentVolumeL; // Fraction of source batch transferred
+
+                for (const comp of sourceComposition) {
+                  // Each composition component gets added proportionally
+                  const transferredVolume = parseFloat(comp.juiceVolume || "0") * volumeRatio;
+                  const newFraction = transferredVolume / newVolumeL;
+
+                  await tx.insert(batchCompositions).values({
+                    batchId: destBatch[0].id,
+                    sourceType: comp.sourceType,
+                    purchaseItemId: comp.purchaseItemId,
+                    varietyId: comp.varietyId,
+                    juicePurchaseItemId: comp.juicePurchaseItemId,
+                    vendorId: comp.vendorId,
+                    lotCode: comp.lotCode,
+                    inputWeightKg: comp.inputWeightKg
+                      ? (parseFloat(comp.inputWeightKg) * volumeRatio).toString()
+                      : "0",
+                    juiceVolume: transferredVolume.toString(),
+                    juiceVolumeUnit: comp.juiceVolumeUnit,
+                    fractionOfBatch: newFraction.toString(),
+                    materialCost: comp.materialCost
+                      ? (parseFloat(comp.materialCost) * volumeRatio).toString()
+                      : "0",
+                    avgBrix: comp.avgBrix,
+                    estSugarKg: comp.estSugarKg
+                      ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
+                      : undefined,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+                }
+              }
 
               blendNote = `Blended ${input.volumeL}L from batch ${sourceBatch[0].name || sourceBatch[0].batchNumber} into existing batch ${destBatch[0].name || destBatch[0].batchNumber}. Total volume: ${newVolumeL}L`;
 

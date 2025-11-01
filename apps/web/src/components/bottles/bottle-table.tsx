@@ -40,6 +40,7 @@ import { useTableSorting } from "@/hooks/useTableSorting";
 import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { LabelModal } from "./LabelModal";
+import { PasteurizeModal } from "./PasteurizeModal";
 
 // Type for bottling run from API
 interface PackagingRun {
@@ -144,6 +145,9 @@ export function PackagingTable({
   // Label modal state
   const [labelModalOpen, setLabelModalOpen] = useState(false);
   const [selectedBottleRun, setSelectedBottleRun] = useState<PackagingRun | null>(null);
+
+  // Pasteurize modal state
+  const [pasteurizeModalOpen, setPasteurizeModalOpen] = useState(false);
 
   // Mutations
   const utils = trpc.useUtils();
@@ -299,8 +303,8 @@ export function PackagingTable({
   // Action handlers
   const handlePasteurize = useCallback((item: PackagingRun, e: React.MouseEvent) => {
     e.stopPropagation();
-    // TODO: Implement pasteurize action
-    console.log("Pasteurize bottle run:", item.id);
+    setSelectedBottleRun(item);
+    setPasteurizeModalOpen(true);
   }, []);
 
   const handleLabel = useCallback((item: PackagingRun, e: React.MouseEvent) => {
@@ -332,6 +336,18 @@ export function PackagingTable({
   const handleLabelSuccess = useCallback(() => {
     // The modal will handle invalidation, just close
     setLabelModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  // Pasteurize modal handlers
+  const handlePasteurizeModalClose = useCallback(() => {
+    setPasteurizeModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  const handlePasteurizeSuccess = useCallback(() => {
+    // The modal will handle invalidation, just close
+    setPasteurizeModalOpen(false);
     setSelectedBottleRun(null);
   }, []);
 
@@ -1054,6 +1070,22 @@ export function PackagingTable({
           }
           unitsProduced={selectedBottleRun.unitsProduced}
           onSuccess={handleLabelSuccess}
+        />
+      )}
+
+      {/* Pasteurize Modal */}
+      {selectedBottleRun && (
+        <PasteurizeModal
+          open={pasteurizeModalOpen}
+          onClose={handlePasteurizeModalClose}
+          bottleRunId={selectedBottleRun.id}
+          bottleRunName={
+            selectedBottleRun.batch.customName ||
+            selectedBottleRun.batch.name ||
+            `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
+          }
+          unitsProduced={selectedBottleRun.unitsProduced}
+          onSuccess={handlePasteurizeSuccess}
         />
       )}
     </div>

@@ -84,11 +84,13 @@ function generateLotCode(
 
 /**
  * Determines package type from package size
+ * Most cideries bottle everything in glass bottles, with kegs for draft
  */
 function determinePackageType(packageSizeMl: number): string {
-  if (packageSizeMl <= 500) return "bottle";
-  if (packageSizeMl <= 1000) return "can";
-  return "keg";
+  // Kegs are typically 19L (5 gallon) or larger
+  if (packageSizeMl >= 19000) return "keg";
+  // Everything else is bottled
+  return "bottle";
 }
 
 /**
@@ -283,10 +285,8 @@ export const bottlesRouter = router({
             runSequence,
           );
 
-          // Calculate expiration date (1 year from packaging)
-          const expirationDate = new Date(input.packagedAt);
-          expirationDate.setFullYear(expirationDate.getFullYear() + 1);
-
+          // Don't auto-add expiration dates for bottles - cider ages well in glass
+          // Expiration dates should only be added if explicitly required (e.g., for cans)
           const newInventoryItem = await tx
             .insert(inventoryItems)
             .values({
@@ -295,7 +295,7 @@ export const bottlesRouter = router({
               bottleRunId: packagingRun.id,
               packageType: packageType,
               packageSizeML: input.packageSizeMl,
-              expirationDate: expirationDate.toISOString().slice(0, 10) as any,
+              // expirationDate is optional and omitted for bottles
             })
             .returning();
 
@@ -983,18 +983,26 @@ export const bottlesRouter = router({
     .input(
       z.object({
         runId: z.string().uuid(),
-        pasteurizedAt: z.date().optional(),
+        temperatureCelsius: z.number().min(60).max(100),
+        timeMinutes: z.number().positive().max(120),
+        pasteurizationUnits: z.number().positive(),
         notes: z.string().optional(),
       }),
     )
     .mutation(async ({ input }) => {
       try {
+        const pasteurizedAt = new Date();
+
         const [updated] = await db
           .update(bottleRuns)
           .set({
+            pasteurizationTemperatureCelsius: input.temperatureCelsius.toString(),
+            pasteurizationTimeMinutes: input.timeMinutes.toString(),
+            pasteurizationUnits: input.pasteurizationUnits.toString(),
+            pasteurizedAt: pasteurizedAt,
             productionNotes: input.notes
-              ? `${input.notes}\n\nPasteurized at ${new Date().toISOString()}`
-              : `Pasteurized at ${new Date().toISOString()}`,
+              ? `${input.notes}\n\nPasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)`
+              : `Pasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)`,
             updatedAt: new Date(),
           })
           .where(eq(bottleRuns.id, input.runId))

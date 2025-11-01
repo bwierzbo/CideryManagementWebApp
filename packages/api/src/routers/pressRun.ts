@@ -1959,6 +1959,46 @@ export const pressRunRouter = router({
         const updatePayload: Record<string, unknown> = { ...updateData };
         if (updateData.dateCompleted) {
           updatePayload.dateCompleted = updateData.dateCompleted.toISOString().split("T")[0];
+
+          // If date is changing and press run is completed, regenerate pressRunName
+          const newDateStr = updateData.dateCompleted.toISOString().split("T")[0];
+          const oldDateStr = existingPressRun[0].dateCompleted;
+
+          if (existingPressRun[0].status === "completed" && newDateStr !== oldDateStr) {
+            // Find existing press runs on the new date (excluding this press run)
+            const existingRuns = await db
+              .select({ pressRunName: pressRuns.pressRunName })
+              .from(pressRuns)
+              .where(
+                and(
+                  sql`${pressRuns.pressRunName} LIKE ${newDateStr + "-%"}`,
+                  isNull(pressRuns.deletedAt),
+                  sql`${pressRuns.id} != ${id}`, // Exclude current press run
+                ),
+              )
+              .orderBy(desc(pressRuns.pressRunName));
+
+            // Extract the highest sequence number for this date
+            let sequenceNumber = 1;
+            if (existingRuns.length > 0) {
+              const pattern = new RegExp(`^${newDateStr}-(\\d+)$`);
+              for (const run of existingRuns) {
+                if (run.pressRunName) {
+                  const match = run.pressRunName.match(pattern);
+                  if (match) {
+                    const num = parseInt(match[1], 10);
+                    if (num >= sequenceNumber) {
+                      sequenceNumber = num + 1;
+                    }
+                  }
+                }
+              }
+            }
+
+            // Generate new press run name
+            const newPressRunName = `${newDateStr}-${String(sequenceNumber).padStart(2, "0")}`;
+            updatePayload.pressRunName = newPressRunName;
+          }
         }
 
         const updatedPressRun = await db
