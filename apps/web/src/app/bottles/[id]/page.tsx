@@ -49,11 +49,6 @@ const AdvancedPDFExport = lazy(() =>
     default: m.AdvancedPDFExport,
   })),
 );
-const QuickPDFExport = lazy(() =>
-  import("@/components/bottles/bottle-pdf-template").then((m) => ({
-    default: m.QuickPDFExport,
-  })),
-);
 
 // Types
 import type { PackagingRunPDFData } from "@/lib/pdf-generator";
@@ -232,58 +227,7 @@ export default function PackagingDetailPage() {
                 {runData.status || "pending"}
               </Badge>
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                {/* Actions configured in main /bottles table */}
-                <div className="hidden sm:block">
-                  <Suspense fallback={<PDFExportSkeleton />}>
-                    <QuickPDFExport
-                      data={{
-                        ...runData,
-                        qaTechnicianName: runData.qaTechnicianName || undefined,
-                        voidedByName: runData.voidedByName || undefined,
-                        createdByName: runData.createdByName || undefined,
-                        testDate: runData.testDate || undefined,
-                        voidedAt: runData.voidedAt || undefined,
-                        carbonationLevel: runData.carbonationLevel || undefined,
-                        fillCheck: runData.fillCheck || undefined,
-                        testMethod: runData.testMethod || undefined,
-                        qaNotes: runData.qaNotes || undefined,
-                        productionNotes: runData.productionNotes || undefined,
-                        voidReason: runData.voidReason || undefined,
-                        qaTechnicianId: runData.qaTechnicianId || undefined,
-                        voidedBy: runData.voidedBy || undefined,
-                        inventory:
-                          runData.inventory
-                            ?.filter(
-                              (item: any) =>
-                                item.lotCode &&
-                                item.packageType &&
-                                item.packageSizeML &&
-                                item.expirationDate,
-                            )
-                            .map((item: any) => ({
-                              id: item.id,
-                              lotCode: item.lotCode!,
-                              packageType: item.packageType!,
-                              packageSizeML: item.packageSizeML!,
-                              expirationDate: item.expirationDate!,
-                              createdAt: item.createdAt,
-                            })) || [],
-                        photos:
-                          runData.photos
-                            ?.filter((photo: any) => photo.photoType)
-                            .map((photo: any) => ({
-                              id: photo.id,
-                              photoUrl: photo.photoUrl,
-                              photoType: photo.photoType!,
-                              caption: photo.caption || undefined,
-                              uploadedBy: photo.uploadedBy,
-                              uploadedAt: photo.uploadedAt,
-                              uploaderName: photo.uploaderName || undefined,
-                            })) || [],
-                      }}
-                    />
-                  </Suspense>
-                </div>
+                {/* Export PDF and Update QA - other actions in main /bottles table */}
                 <Suspense fallback={<PDFExportSkeleton />}>
                   <AdvancedPDFExport
                     data={{
