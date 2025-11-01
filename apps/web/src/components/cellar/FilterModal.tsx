@@ -117,6 +117,7 @@ export function FilterModal({
     if (open) {
       reset({
         volumeBefore: currentVolumeL,
+        volumeAfter: currentVolumeL, // Default to 0 loss
         volumeBeforeUnit: "L",
         volumeAfterUnit: "L",
         filteredAt: new Date(),
@@ -146,10 +147,10 @@ export function FilterModal({
   });
 
   const onSubmit = (data: FilterForm) => {
-    if (data.volumeAfter >= data.volumeBefore) {
+    if (data.volumeAfter > data.volumeBefore) {
       toast({
         title: "Invalid Volumes",
-        description: "Volume after filtering must be less than volume before",
+        description: "Volume after filtering cannot exceed volume before",
         variant: "destructive",
       });
       return;
@@ -261,7 +262,7 @@ export function FilterModal({
           </div>
 
           {/* Loss Display */}
-          {volumeBefore && volumeAfter && volumeAfter < volumeBefore && (
+          {volumeBefore && volumeAfter !== undefined && volumeAfter <= volumeBefore && (
             <div className={`p-3 rounded-lg ${
               showLossWarning
                 ? "bg-orange-50 border border-orange-200"
@@ -292,7 +293,7 @@ export function FilterModal({
             </Button>
             <Button
               type="submit"
-              disabled={filterMutation.isPending || !volumeAfter || volumeAfter >= volumeBefore}
+              disabled={filterMutation.isPending || !volumeAfter || volumeAfter > volumeBefore}
             >
               {filterMutation.isPending ? "Filtering..." : "Record Filter Operation"}
             </Button>
