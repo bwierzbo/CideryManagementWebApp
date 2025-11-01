@@ -790,7 +790,13 @@ function TankTransferForm({
                 </p>
                 <p className="text-sm text-orange-700 mt-1">
                   The batches will be combined and cannot be separated. The resulting blend will have a total volume of approximately{" "}
-                  {formatDisplayVolume(fromLiters(currentVolumeL, displayUnit), displayUnit)}.
+                  {formatDisplayVolume(
+                    fromLiters(
+                      convertVolume(destCurrentVolume, destCapacityUnit, "L") + transferInLiters,
+                      displayUnit
+                    ),
+                    displayUnit
+                  )}.
                 </p>
               </div>
               <p className="text-sm font-medium">Do you want to continue?</p>
