@@ -45,6 +45,7 @@ import {
   batchMeasurements,
   batchTransfers,
   vessels,
+  vesselCleaningOperations,
   baseFruitVarieties,
   additiveVarieties,
   juiceVarieties,
@@ -1942,7 +1943,7 @@ export const appRouter = router({
           name: z.string().optional(),
           capacityL: z.number().positive("Capacity must be positive"),
           capacityUnit: z.enum(["L", "gal"]).default("L"),
-          material: z.enum(["stainless_steel", "plastic"]).optional(),
+          material: z.enum(["stainless_steel", "plastic", "oak"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
           isPressureVessel: z.enum(["yes", "no"]).optional(),
           location: z.string().optional(),
@@ -2026,7 +2027,7 @@ export const appRouter = router({
             .positive("Capacity must be positive")
             .optional(),
           capacityUnit: z.enum(["L", "gal"]).optional(),
-          material: z.enum(["stainless_steel", "plastic"]).optional(),
+          material: z.enum(["stainless_steel", "plastic", "oak"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
           isPressureVessel: z.enum(["yes", "no"]).optional(),
           status: z
@@ -2984,6 +2985,78 @@ export const appRouter = router({
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Failed to purge vessel",
+          });
+        }
+      }),
+
+    // Clean tank - mark as available after cleaning and record cleaning details
+    cleanTank: createRbacProcedure("update", "vessel")
+      .input(
+        z.object({
+          vesselId: z.string().uuid("Invalid vessel ID"),
+          cleanedAt: z.date(),
+          notes: z.string().min(1, "Cleaning notes are required"),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const { vesselId, cleanedAt, notes } = input;
+
+          // Verify vessel exists and is in cleaning status
+          const vessel = await db
+            .select()
+            .from(vessels)
+            .where(
+              and(
+                eq(vessels.id, vesselId),
+                isNull(vessels.deletedAt),
+              ),
+            )
+            .limit(1);
+
+          if (!vessel.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Vessel not found",
+            });
+          }
+
+          if (vessel[0].status !== "cleaning") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Vessel is not in cleaning status",
+            });
+          }
+
+          // Record cleaning operation
+          await db.insert(vesselCleaningOperations).values({
+            vesselId,
+            cleanedAt,
+            cleanedBy: ctx.session?.user?.id || null,
+            notes,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+
+          // Update vessel status to available
+          await db
+            .update(vessels)
+            .set({
+              status: "available",
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, vesselId));
+
+          return {
+            success: true,
+            message: `Tank ${vessel[0].name || "Unknown"} cleaned and marked as available`,
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          console.error("Error cleaning tank:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to clean tank",
           });
         }
       }),

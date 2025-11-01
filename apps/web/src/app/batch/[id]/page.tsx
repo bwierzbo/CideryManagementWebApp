@@ -97,6 +97,8 @@ export default function BatchDetailsPage() {
   const updateBatchMutation = trpc.batch.update.useMutation({
     onSuccess: () => {
       utils.batch.get.invalidate({ batchId });
+      utils.bottles.list.invalidate(); // Invalidate bottles list since it shows batch names
+      utils.dashboard.getRecentBatches.invalidate(); // Invalidate dashboard batch list
       toast({
         title: "Success",
         description: "Batch updated successfully",

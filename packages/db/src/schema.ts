@@ -39,6 +39,7 @@ export const filterTypeEnum = pgEnum("filter_type", [
 export const vesselMaterialEnum = pgEnum("vessel_material", [
   "stainless_steel",
   "plastic",
+  "oak",
 ]);
 export const vesselJacketedEnum = pgEnum("vessel_jacketed", ["yes", "no"]);
 export const vesselPressureEnum = pgEnum("vessel_pressure", ["yes", "no"]);
@@ -993,6 +994,31 @@ export const batchRackingOperations = pgTable(
   }),
 );
 
+// Vessel cleaning operations for tracking tank cleaning
+export const vesselCleaningOperations = pgTable(
+  "vessel_cleaning_operations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vesselId: uuid("vessel_id")
+      .notNull()
+      .references(() => vessels.id, { onDelete: "cascade" }),
+    cleanedAt: timestamp("cleaned_at").notNull(),
+    cleanedBy: uuid("cleaned_by").references(() => users.id),
+    notes: text("notes").notNull(), // Required field for cleaning method/details
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    vesselIdx: index("vessel_cleaning_operations_vessel_id_idx").on(
+      table.vesselId,
+    ),
+    cleanedAtIdx: index("vessel_cleaning_operations_cleaned_at_idx").on(
+      table.cleanedAt,
+    ),
+  }),
+);
+
 // Batch merge history for tracking when batches are combined
 export const batchMergeHistory = pgTable(
   "batch_merge_history",
@@ -1250,7 +1276,22 @@ export const packagingPurchaseItemsRelations = relations(
 
 export const vesselsRelations = relations(vessels, ({ many }) => ({
   batches: many(batches),
+  cleaningOperations: many(vesselCleaningOperations),
 }));
+
+export const vesselCleaningOperationsRelations = relations(
+  vesselCleaningOperations,
+  ({ one }) => ({
+    vessel: one(vessels, {
+      fields: [vesselCleaningOperations.vesselId],
+      references: [vessels.id],
+    }),
+    cleanedByUser: one(users, {
+      fields: [vesselCleaningOperations.cleanedBy],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const batchesRelations = relations(batches, ({ one, many }) => ({
   vessel: one(vessels, {

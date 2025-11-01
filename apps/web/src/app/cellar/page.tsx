@@ -86,6 +86,7 @@ import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BottleModal } from "@/components/bottles/bottle-modal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
+import { CleanTankModal } from "@/components/cellar/CleanTankModal";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 
 // Form schemas
@@ -140,7 +141,7 @@ const tankSchema = z.object({
   name: z.string().optional(),
   capacity: z.number().positive("Capacity must be positive"),
   capacityUnit: z.enum(["L", "gal"]),
-  material: z.enum(["stainless_steel", "plastic"]).optional(),
+  material: z.enum(["stainless_steel", "plastic", "oak"]).optional(),
   jacketed: z.enum(["yes", "no"]).optional(),
   location: z.string().optional(),
   notes: z.string().optional(),
@@ -289,6 +290,7 @@ function TankForm({
             <SelectContent>
               <SelectItem value="stainless_steel">Stainless Steel</SelectItem>
               <SelectItem value="plastic">Plastic</SelectItem>
+              <SelectItem value="oak">Oak</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -870,6 +872,13 @@ function VesselMap() {
     currentVolumeL: number;
   } | null>(null);
 
+  // Clean tank modal state
+  const [showCleanTankModal, setShowCleanTankModal] = useState(false);
+  const [selectedVesselForCleaning, setSelectedVesselForCleaning] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
@@ -911,13 +920,6 @@ function VesselMap() {
         description: error.message,
         variant: "destructive",
       });
-    },
-  });
-
-  const updateStatusMutation = trpc.vessel.update.useMutation({
-    onSuccess: () => {
-      utils.vessel.list.invalidate();
-      utils.vessel.liquidMap.invalidate();
     },
   });
 
@@ -1035,11 +1037,12 @@ function VesselMap() {
     setVesselToPurge(null);
   };
 
-  const handleCleanTank = (vesselId: string) => {
-    updateStatusMutation.mutate({
+  const handleCleanTank = (vesselId: string, vesselName: string | null) => {
+    setSelectedVesselForCleaning({
       id: vesselId,
-      status: "available",
+      name: vesselName || "Unknown Tank",
     });
+    setShowCleanTankModal(true);
   };
 
   const handleRack = (vesselId: string) => {
@@ -1429,7 +1432,7 @@ function VesselMap() {
                       {/* When vessel is cleaning, only show Clean Tank action */}
                       {vessel.status === "cleaning" ? (
                         <DropdownMenuItem
-                          onClick={() => handleCleanTank(vessel.id)}
+                          onClick={() => handleCleanTank(vessel.id, vessel.name)}
                           className="text-green-600"
                         >
                           <CheckCircle className="w-3 h-3 mr-2" />
@@ -1694,6 +1697,19 @@ function VesselMap() {
             sourceVesselId={selectedVesselForRacking.id}
             sourceVesselName={selectedVesselForRacking.name}
             currentVolumeL={selectedVesselForRacking.currentVolumeL}
+          />
+        )}
+
+        {/* Clean Tank Modal */}
+        {selectedVesselForCleaning && (
+          <CleanTankModal
+            open={showCleanTankModal}
+            onClose={() => {
+              setShowCleanTankModal(false);
+              setSelectedVesselForCleaning(null);
+            }}
+            vesselId={selectedVesselForCleaning.id}
+            vesselName={selectedVesselForCleaning.name}
           />
         )}
 

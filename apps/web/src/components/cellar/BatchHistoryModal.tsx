@@ -62,6 +62,8 @@ export function BatchHistoryModal({
   const [editingAdditive, setEditingAdditive] = useState<any>(null);
   const [measurementView, setMeasurementView] = useState<"chart" | "list">("chart");
 
+  const utils = trpc.useUtils();
+
   const { data, isLoading, error, refetch } = trpc.batch.getHistory.useQuery(
     { batchId },
     { enabled: open },
@@ -74,6 +76,8 @@ export function BatchHistoryModal({
         description: "Batch name updated successfully",
       });
       refetch();
+      utils.bottles.list.invalidate(); // Invalidate bottles list since it shows batch names
+      utils.dashboard.getRecentBatches.invalidate(); // Invalidate dashboard batch list
       setIsEditingName(false);
     },
     onError: (error) => {
