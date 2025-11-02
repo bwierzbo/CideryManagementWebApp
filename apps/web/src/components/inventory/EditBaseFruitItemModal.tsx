@@ -90,6 +90,8 @@ export function EditBaseFruitItemModal({
       reset();
     },
     onError: (error) => {
+      console.error("Update error:", error);
+      console.error("Error data:", error.data);
       toast({
         title: "Update Failed",
         description: error.message,
@@ -99,6 +101,8 @@ export function EditBaseFruitItemModal({
   });
 
   const onSubmit = (data: EditBaseFruitItemForm) => {
+    console.log("Form data:", data);
+
     // Extract actual UUID from composite ID (format: "basefruit-{uuid}")
     const actualItemId = item.id.startsWith("basefruit-")
       ? item.id.replace("basefruit-", "")
@@ -130,14 +134,18 @@ export function EditBaseFruitItemModal({
       }
     }
 
-    updateMutation.mutate({
+    const payload = {
       itemId: actualItemId,
       quantity,
       unit: data.unit,
       pricePerUnit,
       harvestDate,
       notes: data.notes,
-    });
+    };
+
+    console.log("Sending to API:", payload);
+
+    updateMutation.mutate(payload);
   };
 
   if (!item) return null;
