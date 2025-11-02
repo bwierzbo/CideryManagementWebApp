@@ -132,6 +132,11 @@ export const baseFruitPurchasesRouter = router({
               }
               // kg, L, gal stay as-is for quantityKg field
 
+              // Calculate total cost for this item
+              const itemTotalCost = item.pricePerUnit
+                ? (item.quantity * item.pricePerUnit).toString()
+                : null;
+
               const newItem = await tx
                 .insert(basefruitPurchaseItems)
                 .values({
@@ -141,6 +146,7 @@ export const baseFruitPurchasesRouter = router({
                   unit: item.unit,
                   quantityKg: quantityKg.toString(),
                   pricePerUnit: item.pricePerUnit?.toString(),
+                  totalCost: itemTotalCost,
                   notes: item.notes,
                 })
                 .returning();
