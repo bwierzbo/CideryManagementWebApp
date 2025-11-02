@@ -104,12 +104,38 @@ export function EditBaseFruitItemModal({
       ? item.id.replace("basefruit-", "")
       : item.id;
 
+    // Validate and prepare quantity - must be a valid positive number
+    const quantity =
+      typeof data.quantity === "number" &&
+      !isNaN(data.quantity) &&
+      data.quantity > 0
+        ? data.quantity
+        : undefined;
+
+    // Validate and prepare pricePerUnit - must be a valid non-negative number (can be 0)
+    const pricePerUnit =
+      typeof data.pricePerUnit === "number" &&
+      !isNaN(data.pricePerUnit) &&
+      data.pricePerUnit >= 0
+        ? data.pricePerUnit
+        : undefined;
+
+    // Validate and prepare harvestDate - ensure it's a valid date
+    let harvestDate: Date | undefined = undefined;
+    if (data.harvestDate && data.harvestDate.trim() !== "") {
+      const dateObj = new Date(data.harvestDate);
+      // Check if the date is valid
+      if (!isNaN(dateObj.getTime())) {
+        harvestDate = dateObj;
+      }
+    }
+
     updateMutation.mutate({
       itemId: actualItemId,
-      quantity: data.quantity && data.quantity > 0 ? data.quantity : undefined,
+      quantity,
       unit: data.unit,
-      pricePerUnit: data.pricePerUnit && data.pricePerUnit >= 0 ? data.pricePerUnit : undefined,
-      harvestDate: data.harvestDate ? new Date(data.harvestDate) : undefined,
+      pricePerUnit,
+      harvestDate,
       notes: data.notes,
     });
   };
