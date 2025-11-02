@@ -29,9 +29,18 @@ import { Edit } from "lucide-react";
 const editJuiceItemSchema = z.object({
   volume: z.number().positive("Volume must be positive").optional(),
   volumeUnit: z.enum(["L", "gal"]).optional(),
-  ph: z.number().min(0).max(14).optional(),
-  specificGravity: z.number().min(0.95).max(1.2).optional(),
-  pricePerLiter: z.number().positive("Price per liter must be positive").optional(),
+  ph: z.preprocess(
+    (val) => (val === "" || isNaN(Number(val)) ? undefined : Number(val)),
+    z.number().min(0).max(14).optional()
+  ),
+  specificGravity: z.preprocess(
+    (val) => (val === "" || isNaN(Number(val)) ? undefined : Number(val)),
+    z.number().min(0.95).max(1.2).optional()
+  ),
+  pricePerLiter: z.preprocess(
+    (val) => (val === "" || isNaN(Number(val)) ? undefined : Number(val)),
+    z.number().positive("Price per liter must be positive").optional()
+  ),
   purchaseDate: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -214,7 +223,7 @@ export function EditJuiceItemModal({
                 id="ph"
                 type="number"
                 step="0.01"
-                {...register("ph", { valueAsNumber: true })}
+                {...register("ph")}
                 className="mt-1"
                 placeholder="0-14"
               />
@@ -231,7 +240,7 @@ export function EditJuiceItemModal({
                 id="specificGravity"
                 type="number"
                 step="0.001"
-                {...register("specificGravity", { valueAsNumber: true })}
+                {...register("specificGravity")}
                 className="mt-1"
                 placeholder="0.95-1.2"
               />
@@ -249,7 +258,7 @@ export function EditJuiceItemModal({
               id="pricePerLiter"
               type="number"
               step="0.01"
-              {...register("pricePerLiter", { valueAsNumber: true })}
+              {...register("pricePerLiter")}
               className="mt-1"
             />
             {errors.pricePerLiter && (
