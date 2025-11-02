@@ -297,4 +297,94 @@ export const juicePurchasesRouter = router({
         });
       }
     }),
+
+  // Update juice purchase item
+  updatePurchaseItem: createRbacProcedure("update", "purchase")
+    .input(
+      z.object({
+        itemId: z.string().uuid("Invalid item ID"),
+        juiceVarietyId: z.string().uuid("Invalid juice variety ID").optional(),
+        juiceType: z.string().min(1, "Juice type is required").optional(),
+        varietyName: z.string().optional(),
+        volume: z.number().positive("Volume must be positive").optional(),
+        volumeUnit: z.enum(["L", "gal"]).optional(),
+        brix: z.number().min(0).max(50).optional(),
+        ph: z.number().min(0).max(14).optional(),
+        specificGravity: z.number().min(0.95).max(1.2).optional(),
+        containerType: z.enum(["drum", "tote", "tank", "other"]).optional(),
+        pricePerLiter: z.number().positive("Price per liter must be positive").optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const { itemId, ...updates } = input;
+
+        // Check if item exists
+        const existingItem = await db
+          .select({ id: juicePurchaseItems.id })
+          .from(juicePurchaseItems)
+          .where(eq(juicePurchaseItems.id, itemId))
+          .limit(1);
+
+        if (!existingItem[0]) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Juice purchase item not found",
+          });
+        }
+
+        // Prepare update data
+        const updateData: any = { updatedAt: new Date() };
+
+        if (updates.juiceVarietyId !== undefined) updateData.juiceVarietyId = updates.juiceVarietyId;
+        if (updates.juiceType !== undefined) updateData.juiceType = updates.juiceType;
+        if (updates.varietyName !== undefined) updateData.varietyName = updates.varietyName;
+        if (updates.volume !== undefined) updateData.volume = updates.volume.toString();
+        if (updates.volumeUnit !== undefined) updateData.volumeUnit = updates.volumeUnit;
+        if (updates.brix !== undefined) updateData.brix = updates.brix.toString();
+        if (updates.ph !== undefined) updateData.ph = updates.ph.toString();
+        if (updates.specificGravity !== undefined) updateData.specificGravity = updates.specificGravity.toString();
+        if (updates.containerType !== undefined) updateData.containerType = updates.containerType;
+        if (updates.pricePerLiter !== undefined) updateData.pricePerLiter = updates.pricePerLiter.toString();
+        if (updates.notes !== undefined) updateData.notes = updates.notes;
+
+        // Calculate total cost if volume or price changed
+        if (updates.volume !== undefined || updates.pricePerLiter !== undefined) {
+          // Get current values if not provided
+          const currentItem = await db
+            .select({
+              volume: juicePurchaseItems.volume,
+              pricePerLiter: juicePurchaseItems.pricePerLiter
+            })
+            .from(juicePurchaseItems)
+            .where(eq(juicePurchaseItems.id, itemId))
+            .limit(1);
+
+          const vol = updates.volume ?? parseFloat(currentItem[0].volume);
+          const price = updates.pricePerLiter ?? parseFloat(currentItem[0].pricePerLiter || "0");
+          updateData.totalCost = (vol * price).toFixed(2);
+        }
+
+        // Update the item
+        const [updatedItem] = await db
+          .update(juicePurchaseItems)
+          .set(updateData)
+          .where(eq(juicePurchaseItems.id, itemId))
+          .returning();
+
+        return {
+          success: true,
+          message: "Juice purchase item updated successfully",
+          item: updatedItem,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating juice purchase item:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update juice purchase item",
+        });
+      }
+    }),
 });

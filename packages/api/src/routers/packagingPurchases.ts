@@ -274,4 +274,85 @@ export const packagingPurchasesRouter = router({
         });
       }
     }),
+
+  // Update packaging purchase item
+  updatePurchaseItem: createRbacProcedure("update", "purchase")
+    .input(
+      z.object({
+        itemId: z.string().uuid("Invalid item ID"),
+        packagingVarietyId: z.string().uuid("Invalid packaging variety ID").optional(),
+        packageType: z.string().optional(),
+        materialType: z.string().optional(),
+        size: z.string().optional(),
+        quantity: z.number().positive("Quantity must be positive").optional(),
+        pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const { itemId, ...updates } = input;
+
+        // Check if item exists
+        const existingItem = await db
+          .select({ id: packagingPurchaseItems.id })
+          .from(packagingPurchaseItems)
+          .where(eq(packagingPurchaseItems.id, itemId))
+          .limit(1);
+
+        if (!existingItem[0]) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Packaging purchase item not found",
+          });
+        }
+
+        // Prepare update data
+        const updateData: any = { updatedAt: new Date() };
+
+        if (updates.packagingVarietyId !== undefined) updateData.packagingVarietyId = updates.packagingVarietyId;
+        if (updates.packageType !== undefined) updateData.packageType = updates.packageType;
+        if (updates.materialType !== undefined) updateData.materialType = updates.materialType;
+        if (updates.size !== undefined) updateData.size = updates.size;
+        if (updates.quantity !== undefined) updateData.quantity = updates.quantity;
+        if (updates.pricePerUnit !== undefined) updateData.pricePerUnit = updates.pricePerUnit.toString();
+        if (updates.notes !== undefined) updateData.notes = updates.notes;
+
+        // Calculate total cost if quantity or price changed
+        if (updates.quantity !== undefined || updates.pricePerUnit !== undefined) {
+          const currentItem = await db
+            .select({
+              quantity: packagingPurchaseItems.quantity,
+              pricePerUnit: packagingPurchaseItems.pricePerUnit
+            })
+            .from(packagingPurchaseItems)
+            .where(eq(packagingPurchaseItems.id, itemId))
+            .limit(1);
+
+          const qty = updates.quantity ?? currentItem[0].quantity;
+          const price = updates.pricePerUnit ?? parseFloat(currentItem[0].pricePerUnit || "0");
+          updateData.totalCost = (qty * price).toFixed(2);
+        }
+
+        // Update the item
+        const [updatedItem] = await db
+          .update(packagingPurchaseItems)
+          .set(updateData)
+          .where(eq(packagingPurchaseItems.id, itemId))
+          .returning();
+
+        return {
+          success: true,
+          message: "Packaging purchase item updated successfully",
+          item: updatedItem,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating packaging purchase item:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update packaging purchase item",
+        });
+      }
+    }),
 });

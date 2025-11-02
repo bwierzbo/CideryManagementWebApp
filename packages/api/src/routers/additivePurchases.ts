@@ -203,4 +203,93 @@ export const additivePurchasesRouter = router({
         });
       }
     }),
+
+  // Update additive purchase item
+  updatePurchaseItem: createRbacProcedure("update", "purchase")
+    .input(
+      z.object({
+        itemId: z.string().uuid("Invalid item ID"),
+        additiveVarietyId: z.string().uuid("Invalid additive variety ID").optional(),
+        additiveType: z.string().optional(),
+        brandManufacturer: z.string().optional(),
+        productName: z.string().optional(),
+        quantity: z.number().positive("Quantity must be positive").optional(),
+        unit: z.enum(["g", "kg", "oz", "lb"]).optional(),
+        lotBatchNumber: z.string().optional(),
+        expirationDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        storageRequirements: z.string().optional(),
+        pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const { itemId, ...updates } = input;
+
+        // Check if item exists
+        const existingItem = await db
+          .select({ id: additivePurchaseItems.id })
+          .from(additivePurchaseItems)
+          .where(eq(additivePurchaseItems.id, itemId))
+          .limit(1);
+
+        if (!existingItem[0]) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Additive purchase item not found",
+          });
+        }
+
+        // Prepare update data
+        const updateData: any = { updatedAt: new Date() };
+
+        if (updates.additiveVarietyId !== undefined) updateData.additiveVarietyId = updates.additiveVarietyId;
+        if (updates.additiveType !== undefined) updateData.additiveType = updates.additiveType;
+        if (updates.brandManufacturer !== undefined) updateData.brandManufacturer = updates.brandManufacturer;
+        if (updates.productName !== undefined) updateData.productName = updates.productName;
+        if (updates.quantity !== undefined) updateData.quantity = updates.quantity.toString();
+        if (updates.unit !== undefined) updateData.unit = updates.unit;
+        if (updates.lotBatchNumber !== undefined) updateData.lotBatchNumber = updates.lotBatchNumber;
+        if (updates.expirationDate !== undefined) updateData.expirationDate = updates.expirationDate instanceof Date ? updates.expirationDate.toISOString().split('T')[0] : updates.expirationDate;
+        if (updates.storageRequirements !== undefined) updateData.storageRequirements = updates.storageRequirements;
+        if (updates.pricePerUnit !== undefined) updateData.pricePerUnit = updates.pricePerUnit.toString();
+        if (updates.notes !== undefined) updateData.notes = updates.notes;
+
+        // Calculate total cost if quantity or price changed
+        if (updates.quantity !== undefined || updates.pricePerUnit !== undefined) {
+          const currentItem = await db
+            .select({
+              quantity: additivePurchaseItems.quantity,
+              pricePerUnit: additivePurchaseItems.pricePerUnit
+            })
+            .from(additivePurchaseItems)
+            .where(eq(additivePurchaseItems.id, itemId))
+            .limit(1);
+
+          const qty = updates.quantity ?? parseFloat(currentItem[0].quantity);
+          const price = updates.pricePerUnit ?? parseFloat(currentItem[0].pricePerUnit || "0");
+          updateData.totalCost = (qty * price).toFixed(2);
+        }
+
+        // Update the item
+        const [updatedItem] = await db
+          .update(additivePurchaseItems)
+          .set(updateData)
+          .where(eq(additivePurchaseItems.id, itemId))
+          .returning();
+
+        return {
+          success: true,
+          message: "Additive purchase item updated successfully",
+          item: updatedItem,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating additive purchase item:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update additive purchase item",
+        });
+      }
+    }),
 });

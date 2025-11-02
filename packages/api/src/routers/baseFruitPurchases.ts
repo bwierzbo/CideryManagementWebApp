@@ -286,4 +286,84 @@ export const baseFruitPurchasesRouter = router({
         });
       }
     }),
+
+  // Update base fruit purchase item
+  updatePurchaseItem: createRbacProcedure("update", "purchase")
+    .input(
+      z.object({
+        itemId: z.string().uuid("Invalid item ID"),
+        fruitVarietyId: z.string().uuid("Invalid fruit variety ID").optional(),
+        quantity: z.number().positive("Quantity must be positive").optional(),
+        unit: z.enum(["kg", "lb", "L", "gal", "bushel"]).optional(),
+        pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+        harvestDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const { itemId, ...updates } = input;
+
+        // Check if item exists
+        const existingItem = await db
+          .select({ id: basefruitPurchaseItems.id })
+          .from(basefruitPurchaseItems)
+          .where(eq(basefruitPurchaseItems.id, itemId))
+          .limit(1);
+
+        if (!existingItem[0]) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Base fruit purchase item not found",
+          });
+        }
+
+        // Prepare update data
+        const updateData: any = { updatedAt: new Date() };
+
+        if (updates.fruitVarietyId !== undefined) updateData.fruitVarietyId = updates.fruitVarietyId;
+        if (updates.quantity !== undefined) updateData.quantity = updates.quantity.toString();
+        if (updates.unit !== undefined) updateData.unit = updates.unit;
+        if (updates.pricePerUnit !== undefined) updateData.pricePerUnit = updates.pricePerUnit.toString();
+        if (updates.harvestDate !== undefined) updateData.harvestDate = updates.harvestDate instanceof Date ? updates.harvestDate.toISOString().split('T')[0] : updates.harvestDate;
+        if (updates.notes !== undefined) updateData.notes = updates.notes;
+
+        // Calculate total cost if quantity or price changed
+        if (updates.quantity !== undefined || updates.pricePerUnit !== undefined) {
+          // Get current values if not provided
+          const currentItem = await db
+            .select({
+              quantity: basefruitPurchaseItems.quantity,
+              pricePerUnit: basefruitPurchaseItems.pricePerUnit
+            })
+            .from(basefruitPurchaseItems)
+            .where(eq(basefruitPurchaseItems.id, itemId))
+            .limit(1);
+
+          const qty = updates.quantity ?? parseFloat(currentItem[0].quantity);
+          const price = updates.pricePerUnit ?? parseFloat(currentItem[0].pricePerUnit || "0");
+          updateData.totalCost = (qty * price).toFixed(2);
+        }
+
+        // Update the item
+        const [updatedItem] = await db
+          .update(basefruitPurchaseItems)
+          .set(updateData)
+          .where(eq(basefruitPurchaseItems.id, itemId))
+          .returning();
+
+        return {
+          success: true,
+          message: "Base fruit purchase item updated successfully",
+          item: updatedItem,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating base fruit purchase item:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update base fruit purchase item",
+        });
+      }
+    }),
 });
