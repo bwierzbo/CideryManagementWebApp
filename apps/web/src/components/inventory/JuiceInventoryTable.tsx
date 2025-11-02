@@ -91,6 +91,7 @@ interface JuiceInventoryTableProps {
   itemsPerPage?: number;
   onItemClick?: (item: JuiceInventoryItem) => void;
   onAddNew?: () => void;
+  onEdit?: (item: any) => void;
 }
 
 export function JuiceInventoryTable({
@@ -98,6 +99,7 @@ export function JuiceInventoryTable({
   className,
   itemsPerPage = 50,
   onItemClick,
+  onEdit,
   onAddNew,
 }: JuiceInventoryTableProps) {
   // Filter state

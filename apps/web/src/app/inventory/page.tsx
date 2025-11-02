@@ -41,6 +41,10 @@ import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable"
 import { PackagingTable as BottleTable } from "@/components/bottles/bottle-table";
 import { InventoryFAB } from "@/components/inventory/InventoryFAB";
 import { InventoryItemDetailsModal } from "@/components/inventory/InventoryItemDetailsModal";
+import { EditBaseFruitItemModal } from "@/components/inventory/EditBaseFruitItemModal";
+import { EditJuiceItemModal } from "@/components/inventory/EditJuiceItemModal";
+import { EditAdditiveItemModal } from "@/components/inventory/EditAdditiveItemModal";
+import { EditPackagingItemModal } from "@/components/inventory/EditPackagingItemModal";
 import {
   Package,
   Plus,
@@ -69,6 +73,12 @@ export default function InventoryPage() {
   const [showPackagingForm, setShowPackagingForm] = useState(false);
   const [showAppleForm, setShowAppleForm] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
+
+  // Edit modal state
+  const [editBaseFruitItem, setEditBaseFruitItem] = useState<any | null>(null);
+  const [editJuiceItem, setEditJuiceItem] = useState<any | null>(null);
+  const [editAdditiveItem, setEditAdditiveItem] = useState<any | null>(null);
+  const [editPackagingItem, setEditPackagingItem] = useState<any | null>(null);
 
   // Get inventory data using unified inventory API (minimal data for now)
   const { data: inventoryData, isLoading } = trpc.inventory.list.useQuery({
@@ -587,6 +597,7 @@ export default function InventoryPage() {
                 itemsPerPage={50}
                 onAddNew={() => setShowAppleForm(true)}
                 onItemClick={(item) => setSelectedItem(item)}
+                onEdit={(item) => setEditBaseFruitItem(item)}
                 className=""
               />
             </div>
@@ -732,6 +743,31 @@ export default function InventoryPage() {
           open={!!selectedItem}
           onClose={() => setSelectedItem(null)}
           item={selectedItem}
+        />
+
+        {/* Edit Modals */}
+        <EditBaseFruitItemModal
+          open={!!editBaseFruitItem}
+          onClose={() => setEditBaseFruitItem(null)}
+          item={editBaseFruitItem}
+        />
+
+        <EditJuiceItemModal
+          open={!!editJuiceItem}
+          onClose={() => setEditJuiceItem(null)}
+          item={editJuiceItem}
+        />
+
+        <EditAdditiveItemModal
+          open={!!editAdditiveItem}
+          onClose={() => setEditAdditiveItem(null)}
+          item={editAdditiveItem}
+        />
+
+        <EditPackagingItemModal
+          open={!!editPackagingItem}
+          onClose={() => setEditPackagingItem(null)}
+          item={editPackagingItem}
         />
       </div>
     </div>

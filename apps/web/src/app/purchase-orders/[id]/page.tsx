@@ -4,6 +4,10 @@ import { useRouter, useParams } from "next/navigation";
 import { useState } from "react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
+import { EditBaseFruitItemModal } from "@/components/inventory/EditBaseFruitItemModal";
+import { EditJuiceItemModal } from "@/components/inventory/EditJuiceItemModal";
+import { EditAdditiveItemModal } from "@/components/inventory/EditAdditiveItemModal";
+import { EditPackagingItemModal } from "@/components/inventory/EditPackagingItemModal";
 import {
   Card,
   CardContent,
@@ -34,6 +38,7 @@ import {
   DollarSign,
   Boxes,
   Eye,
+  Edit,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
@@ -43,6 +48,12 @@ export default function PurchaseOrderDetailPage() {
   const router = useRouter();
   const params = useParams();
   const [isExporting, setIsExporting] = useState(false);
+
+  // Edit modal state
+  const [editBaseFruitItem, setEditBaseFruitItem] = useState<any | null>(null);
+  const [editJuiceItem, setEditJuiceItem] = useState<any | null>(null);
+  const [editAdditiveItem, setEditAdditiveItem] = useState<any | null>(null);
+  const [editPackagingItem, setEditPackagingItem] = useState<any | null>(null);
 
   // Get the ID from params
   const id = params.id as string;
@@ -87,6 +98,19 @@ export default function PurchaseOrderDetailPage() {
       style: "currency",
       currency: "USD",
     }).format(amount);
+  };
+
+  const handleEditItem = (item: any) => {
+    // Determine the material type and open the appropriate edit modal
+    if (item.fruitVarietyName) {
+      setEditBaseFruitItem(item);
+    } else if (item.juiceName || item.varietyName) {
+      setEditJuiceItem(item);
+    } else if (item.additiveName || item.productName) {
+      setEditAdditiveItem(item);
+    } else if (item.packagingName) {
+      setEditPackagingItem(item);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -393,6 +417,7 @@ export default function PurchaseOrderDetailPage() {
                           <TableHead className="text-right">
                             Total Cost
                           </TableHead>
+                          <TableHead className="w-[80px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -427,6 +452,16 @@ export default function PurchaseOrderDetailPage() {
                               <TableCell className="text-right font-mono font-semibold">
                                 {formatCurrency(totalCost)}
                               </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditItem(item)}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
                             </TableRow>
                           );
                         })}
@@ -446,6 +481,35 @@ export default function PurchaseOrderDetailPage() {
             Purchase order not found
           </div>
         )}
+
+        {/* Edit Modals */}
+        <EditBaseFruitItemModal
+          open={!!editBaseFruitItem}
+          onClose={() => setEditBaseFruitItem(null)}
+          item={editBaseFruitItem}
+          onSuccess={() => refetch()}
+        />
+
+        <EditJuiceItemModal
+          open={!!editJuiceItem}
+          onClose={() => setEditJuiceItem(null)}
+          item={editJuiceItem}
+          onSuccess={() => refetch()}
+        />
+
+        <EditAdditiveItemModal
+          open={!!editAdditiveItem}
+          onClose={() => setEditAdditiveItem(null)}
+          item={editAdditiveItem}
+          onSuccess={() => refetch()}
+        />
+
+        <EditPackagingItemModal
+          open={!!editPackagingItem}
+          onClose={() => setEditPackagingItem(null)}
+          item={editPackagingItem}
+          onSuccess={() => refetch()}
+        />
       </div>
     </div>
   );
