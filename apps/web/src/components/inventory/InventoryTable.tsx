@@ -196,66 +196,6 @@ export function InventoryTable({
   const totalCount = listData?.pagination?.total || 0;
   const hasMore = listData?.pagination?.hasMore || false;
 
-  // Sort items using the hook
-  const sortedItems = useMemo(() => {
-    return sortData(items, (item: any, field) => {
-      // Custom sort value extraction for different field types
-      switch (field) {
-        case "materialType":
-          return item.materialType;
-        case "item":
-          return getItemDisplayName(item);
-        case "vendor":
-          return getVendorName(item);
-        case "currentBottleCount":
-          return item.currentBottleCount;
-        case "createdAt":
-          return new Date(item.createdAt);
-        case "updatedAt":
-          return new Date(item.updatedAt);
-        default:
-          return (item as any)[field];
-      }
-    });
-  }, [items, sortData]);
-
-  // Event handlers (no filter callback needed anymore)
-
-  // Sort handler is provided by the hook
-  const handleColumnSort = useCallback(
-    (field: SortField) => {
-      handleSort(field);
-    },
-    [handleSort],
-  );
-
-  const handleItemClick = useCallback(
-    (item: InventoryItem) => {
-      if (onItemClick) {
-        onItemClick(item);
-      }
-      // No default navigation - clicking on row does nothing unless onItemClick is provided
-    },
-    [onItemClick],
-  );
-
-  const handleRefresh = useCallback(() => {
-    refetchList();
-  }, [refetchList]);
-
-  // Get unit from metadata
-  const getUnit = (item: InventoryItem) => {
-    const metadata = (item.metadata as Record<string, any>) || {};
-    return metadata.unit || "units";
-  };
-
-  // Get formatted quantity with unit
-  const getQuantityWithUnit = (item: InventoryItem) => {
-    const unit = getUnit(item);
-    const quantity = item.currentBottleCount;
-    return `${quantity.toLocaleString()} ${unit}`;
-  };
-
   // Get display name for item
   const getItemDisplayName = (item: InventoryItem) => {
     if (item.packageId) {
@@ -318,6 +258,66 @@ export function InventoryTable({
   const getVendorName = (item: InventoryItem) => {
     const metadata = (item.metadata as Record<string, any>) || {};
     return metadata.vendorName || "-";
+  };
+
+  // Sort items using the hook
+  const sortedItems = useMemo(() => {
+    return sortData(items, (item: any, field) => {
+      // Custom sort value extraction for different field types
+      switch (field) {
+        case "materialType":
+          return item.materialType;
+        case "item":
+          return getItemDisplayName(item);
+        case "vendor":
+          return getVendorName(item);
+        case "currentBottleCount":
+          return item.currentBottleCount;
+        case "createdAt":
+          return new Date(item.createdAt);
+        case "updatedAt":
+          return new Date(item.updatedAt);
+        default:
+          return (item as any)[field];
+      }
+    });
+  }, [items, sortData]);
+
+  // Event handlers (no filter callback needed anymore)
+
+  // Sort handler is provided by the hook
+  const handleColumnSort = useCallback(
+    (field: SortField) => {
+      handleSort(field);
+    },
+    [handleSort],
+  );
+
+  const handleItemClick = useCallback(
+    (item: InventoryItem) => {
+      if (onItemClick) {
+        onItemClick(item);
+      }
+      // No default navigation - clicking on row does nothing unless onItemClick is provided
+    },
+    [onItemClick],
+  );
+
+  const handleRefresh = useCallback(() => {
+    refetchList();
+  }, [refetchList]);
+
+  // Get unit from metadata
+  const getUnit = (item: InventoryItem) => {
+    const metadata = (item.metadata as Record<string, any>) || {};
+    return metadata.unit || "units";
+  };
+
+  // Get formatted quantity with unit
+  const getQuantityWithUnit = (item: InventoryItem) => {
+    const unit = getUnit(item);
+    const quantity = item.currentBottleCount;
+    return `${quantity.toLocaleString()} ${unit}`;
   };
 
   // Get sort direction for display

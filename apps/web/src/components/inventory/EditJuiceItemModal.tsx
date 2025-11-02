@@ -29,10 +29,8 @@ import { Edit } from "lucide-react";
 const editJuiceItemSchema = z.object({
   volume: z.number().positive("Volume must be positive").optional(),
   volumeUnit: z.enum(["L", "gal"]).optional(),
-  brix: z.number().min(0).max(50).optional(),
   ph: z.number().min(0).max(14).optional(),
   specificGravity: z.number().min(0.95).max(1.2).optional(),
-  containerType: z.enum(["drum", "tote", "tank", "other"]).optional(),
   pricePerLiter: z.number().positive("Price per liter must be positive").optional(),
   notes: z.string().optional(),
 });
@@ -86,7 +84,6 @@ export function EditJuiceItemModal({
   });
 
   const volumeUnit = watch("volumeUnit");
-  const containerType = watch("containerType");
 
   // Reset when modal opens
   useEffect(() => {
@@ -94,10 +91,8 @@ export function EditJuiceItemModal({
       reset({
         volume: fullItem.volume ? parseFloat(fullItem.volume) : 0,
         volumeUnit: fullItem.volumeUnit || "L",
-        brix: fullItem.brix ? parseFloat(fullItem.brix) : undefined,
         ph: fullItem.ph ? parseFloat(fullItem.ph) : undefined,
         specificGravity: fullItem.specificGravity ? parseFloat(fullItem.specificGravity) : undefined,
-        containerType: fullItem.containerType || undefined,
         pricePerLiter: fullItem.pricePerLiter ? parseFloat(fullItem.pricePerLiter) : undefined,
         notes: fullItem.notes || "",
       });
@@ -191,24 +186,7 @@ export function EditJuiceItemModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <Label htmlFor="brix">Brix</Label>
-              <Input
-                id="brix"
-                type="number"
-                step="0.1"
-                {...register("brix", { valueAsNumber: true })}
-                className="mt-1"
-                placeholder="0-50"
-              />
-              {errors.brix && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.brix.message}
-                </p>
-              )}
-            </div>
-
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="ph">pH</Label>
               <Input
@@ -227,7 +205,7 @@ export function EditJuiceItemModal({
             </div>
 
             <div>
-              <Label htmlFor="specificGravity">Specific Gravity</Label>
+              <Label htmlFor="specificGravity">Specific Gravity (SG)</Label>
               <Input
                 id="specificGravity"
                 type="number"
@@ -244,45 +222,20 @@ export function EditJuiceItemModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="containerType">Container Type</Label>
-              <Select
-                value={containerType}
-                onValueChange={(value) => setValue("containerType", value as any)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Select container type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="drum">Drum</SelectItem>
-                  <SelectItem value="tote">Tote</SelectItem>
-                  <SelectItem value="tank">Tank</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.containerType && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.containerType.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="pricePerLiter">Price per Liter</Label>
-              <Input
-                id="pricePerLiter"
-                type="number"
-                step="0.01"
-                {...register("pricePerLiter", { valueAsNumber: true })}
-                className="mt-1"
-              />
-              {errors.pricePerLiter && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.pricePerLiter.message}
-                </p>
-              )}
-            </div>
+          <div>
+            <Label htmlFor="pricePerLiter">Price per Liter</Label>
+            <Input
+              id="pricePerLiter"
+              type="number"
+              step="0.01"
+              {...register("pricePerLiter", { valueAsNumber: true })}
+              className="mt-1"
+            />
+            {errors.pricePerLiter && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.pricePerLiter.message}
+              </p>
+            )}
           </div>
 
           <div>
