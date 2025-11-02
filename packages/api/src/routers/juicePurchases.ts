@@ -226,6 +226,7 @@ export const juicePurchasesRouter = router({
             ph: juicePurchaseItems.ph,
             specificGravity: juicePurchaseItems.specificGravity,
             containerType: juicePurchaseItems.containerType,
+            pricePerLiter: juicePurchaseItems.pricePerLiter,
             notes: juicePurchaseItems.notes,
             createdAt: juicePurchaseItems.createdAt,
           })
@@ -313,6 +314,7 @@ export const juicePurchasesRouter = router({
         specificGravity: z.number().min(0.95).max(1.2).optional(),
         containerType: z.enum(["drum", "tote", "tank", "other"]).optional(),
         pricePerLiter: z.number().positive("Price per liter must be positive").optional(),
+        purchaseDate: z.string().optional(),
         notes: z.string().optional(),
       }),
     )
@@ -320,9 +322,12 @@ export const juicePurchasesRouter = router({
       try {
         const { itemId, ...updates } = input;
 
-        // Check if item exists
+        // Check if item exists and get purchaseId
         const existingItem = await db
-          .select({ id: juicePurchaseItems.id })
+          .select({
+            id: juicePurchaseItems.id,
+            purchaseId: juicePurchaseItems.purchaseId
+          })
           .from(juicePurchaseItems)
           .where(eq(juicePurchaseItems.id, itemId))
           .limit(1);
@@ -332,6 +337,17 @@ export const juicePurchasesRouter = router({
             code: "NOT_FOUND",
             message: "Juice purchase item not found",
           });
+        }
+
+        // Update parent purchase date if provided
+        if (updates.purchaseDate !== undefined) {
+          await db
+            .update(juicePurchases)
+            .set({
+              purchaseDate: new Date(updates.purchaseDate),
+              updatedAt: new Date()
+            })
+            .where(eq(juicePurchases.id, existingItem[0].purchaseId));
         }
 
         // Prepare update data

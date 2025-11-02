@@ -32,6 +32,7 @@ const editJuiceItemSchema = z.object({
   ph: z.number().min(0).max(14).optional(),
   specificGravity: z.number().min(0.95).max(1.2).optional(),
   pricePerLiter: z.number().positive("Price per liter must be positive").optional(),
+  purchaseDate: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -91,6 +92,9 @@ export function EditJuiceItemModal({
       reset({
         volume: fullItem.volume ? parseFloat(fullItem.volume) : 0,
         volumeUnit: fullItem.volumeUnit || "L",
+        purchaseDate: fullItem.purchaseDate
+          ? new Date(fullItem.purchaseDate).toISOString().split('T')[0]
+          : undefined,
         ph: fullItem.ph ? parseFloat(fullItem.ph) : undefined,
         specificGravity: fullItem.specificGravity ? parseFloat(fullItem.specificGravity) : undefined,
         pricePerLiter: fullItem.pricePerLiter ? parseFloat(fullItem.pricePerLiter) : undefined,
@@ -184,6 +188,21 @@ export function EditJuiceItemModal({
                 </p>
               )}
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="purchaseDate">Purchase Date</Label>
+            <Input
+              id="purchaseDate"
+              type="date"
+              {...register("purchaseDate")}
+              className="mt-1"
+            />
+            {errors.purchaseDate && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.purchaseDate.message}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
