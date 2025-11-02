@@ -82,9 +82,34 @@ export function InventoryItemDetailsModal({
   if (!item) return null;
 
   const metadata = item.metadata || {};
-  const itemName = metadata.varietyName || metadata.productName || "Unknown Item";
-  const unit = metadata.unit || "units";
-  const purchaseDetails = metadata.purchaseDetails || [];
+
+  // Handle different item types - base fruit items have fields directly on item, not in metadata
+  const isBaseFruitItem = !!(item as any).varietyName && !!(item as any).originalQuantity;
+
+  const itemName = isBaseFruitItem
+    ? (item as any).varietyName
+    : (metadata.varietyName || metadata.productName || "Unknown Item");
+
+  const unit = isBaseFruitItem
+    ? (item as any).originalUnit
+    : (metadata.unit || "units");
+
+  const quantity = isBaseFruitItem
+    ? (item as any).originalQuantity
+    : (metadata.totalQuantity || item.currentBottleCount);
+
+  // Transform base fruit item to purchase details format
+  const purchaseDetails = isBaseFruitItem
+    ? [{
+        purchaseId: (item as any).purchaseId,
+        purchaseDate: item.createdAt,
+        vendorName: (item as any).vendorName,
+        quantity: (item as any).originalQuantity,
+        pricePerUnit: (item as any).pricePerUnit || 0,
+        totalCost: (item as any).totalCost || 0,
+      }]
+    : (metadata.purchaseDetails || []);
+
   const purchaseCount = metadata.purchaseCount || 1;
 
   // Only show the modal for consolidated items (multiple purchases)
@@ -133,7 +158,7 @@ export function InventoryItemDetailsModal({
                       Total Quantity
                     </p>
                     <p className="text-2xl font-bold mt-1">
-                      {formatQuantity(metadata.totalQuantity || item.currentBottleCount)}
+                      {formatQuantity(quantity)}
                     </p>
                   </div>
                   <Package className="w-8 h-8 text-blue-500 opacity-20" />
@@ -142,7 +167,8 @@ export function InventoryItemDetailsModal({
             </Card>
 
             {/* Total Cost */}
-            {metadata.totalCost !== undefined && metadata.totalCost > 0 && (
+            {((metadata.totalCost !== undefined && metadata.totalCost > 0) ||
+              (isBaseFruitItem && (item as any).totalCost !== null && (item as any).totalCost > 0)) && (
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between">
@@ -151,7 +177,7 @@ export function InventoryItemDetailsModal({
                         Total Cost
                       </p>
                       <p className="text-2xl font-bold mt-1">
-                        {formatCurrency(metadata.totalCost)}
+                        {formatCurrency(isBaseFruitItem ? (item as any).totalCost : metadata.totalCost)}
                       </p>
                     </div>
                     <DollarSign className="w-8 h-8 text-green-500 opacity-20" />
@@ -160,24 +186,25 @@ export function InventoryItemDetailsModal({
               </Card>
             )}
 
-            {/* Weighted Average Cost */}
-            {metadata.averageCost !== undefined && metadata.averageCost > 0 && (
+            {/* Weighted Average Cost or Price Per Unit */}
+            {(metadata.averageCost !== undefined && metadata.averageCost > 0) ||
+             (isBaseFruitItem && (item as any).pricePerUnit !== null && (item as any).pricePerUnit > 0) ? (
               <Card>
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">
-                        Avg Cost per {unit}
+                        {isBaseFruitItem ? `Price per ${unit}` : `Avg Cost per ${unit}`}
                       </p>
                       <p className="text-2xl font-bold mt-1">
-                        {formatCurrency(metadata.averageCost)}
+                        {formatCurrency(isBaseFruitItem ? (item as any).pricePerUnit : metadata.averageCost)}
                       </p>
                     </div>
                     <TrendingUp className="w-8 h-8 text-amber-500 opacity-20" />
                   </div>
                 </CardContent>
               </Card>
-            )}
+            ) : null}
           </div>
 
           {/* Purchase Details Table */}
