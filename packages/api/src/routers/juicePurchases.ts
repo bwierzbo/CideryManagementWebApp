@@ -79,7 +79,7 @@ export const juicePurchasesRouter = router({
               volumeL: z.number().positive("Volume must be positive"),
               brix: z.number().min(0).max(50).optional(),
               ph: z.number().min(0).max(14).optional(),
-              specificGravity: z.number().min(0.9).max(1.2).optional(),
+              specificGravity: z.number().min(0.95).max(1.2).optional(),
               containerType: z
                 .enum(["drum", "tote", "tank", "other"])
                 .optional(),

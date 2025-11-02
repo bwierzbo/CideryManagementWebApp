@@ -605,7 +605,7 @@ export const inventoryRouter = router({
       z.object({
         id: z.string().uuid(),
         volumeL: z.number().min(0).optional(),
-        specificGravity: z.number().min(0.9).max(1.2).optional().nullable(),
+        specificGravity: z.number().min(0.95).max(1.2).optional().nullable(),
         ph: z.number().min(0).max(14).optional().nullable(),
         notes: z.string().optional().nullable(),
       }),

@@ -189,6 +189,15 @@ export default function InventoryPage() {
             item.unit?.toLowerCase() === "liters";
           const volumeL = isLiters ? item.volume : item.volume * 3.78541;
 
+          // Debug logging to trace volume calculation
+          console.log('[JUICE PURCHASE DEBUG]', {
+            juiceName: item.juiceName,
+            inputVolume: item.volume,
+            unit: item.unit,
+            isLiters,
+            convertedVolumeL: volumeL,
+          });
+
           return {
             juiceType: "blend" as const, // Default type
             varietyName: item.juiceName || "Unknown Juice",

@@ -50,7 +50,7 @@ const juiceLineSchema = z.object({
   unit: z.enum(["gallons", "liters"], { message: "Please select a unit" }),
   specificGravity: z
     .number()
-    .min(0.9, "Specific gravity must be at least 0.9")
+    .min(0.95, "Specific gravity must be at least 0.95")
     .max(1.2, "Specific gravity cannot exceed 1.2")
     .optional(),
   ph: z
