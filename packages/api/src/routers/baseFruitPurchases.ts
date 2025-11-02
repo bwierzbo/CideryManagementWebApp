@@ -295,7 +295,8 @@ export const baseFruitPurchasesRouter = router({
         fruitVarietyId: z.string().uuid("Invalid fruit variety ID").optional(),
         quantity: z.number().positive("Quantity must be positive").optional(),
         unit: z.enum(["kg", "lb", "L", "gal", "bushel"]).optional(),
-        pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+        pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         harvestDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         notes: z.string().optional(),
       }),
@@ -325,6 +326,7 @@ export const baseFruitPurchasesRouter = router({
         if (updates.quantity !== undefined) updateData.quantity = updates.quantity.toString();
         if (updates.unit !== undefined) updateData.unit = updates.unit;
         if (updates.pricePerUnit !== undefined) updateData.pricePerUnit = updates.pricePerUnit.toString();
+        if (updates.purchaseDate !== undefined) updateData.purchaseDate = updates.purchaseDate instanceof Date ? updates.purchaseDate.toISOString().split('T')[0] : updates.purchaseDate;
         if (updates.harvestDate !== undefined) updateData.harvestDate = updates.harvestDate instanceof Date ? updates.harvestDate.toISOString().split('T')[0] : updates.harvestDate;
         if (updates.notes !== undefined) updateData.notes = updates.notes;
 
