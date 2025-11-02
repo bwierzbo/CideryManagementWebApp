@@ -101,7 +101,8 @@ export function InventoryItemDetailsModal({
   };
 
   // Format quantity with unit
-  const formatQuantity = (qty: number) => {
+  const formatQuantity = (qty: number | undefined) => {
+    if (qty === undefined || qty === null) return `0 ${unit}`;
     return `${qty.toLocaleString()} ${unit}`;
   };
 
