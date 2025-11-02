@@ -30,7 +30,6 @@ const editBaseFruitItemSchema = z.object({
   quantity: z.number().positive("Quantity must be positive").optional(),
   unit: z.enum(["kg", "lb", "L", "gal", "bushel"]).optional(),
   pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
-  purchaseDate: z.string().optional(),
   harvestDate: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -68,21 +67,10 @@ export function EditBaseFruitItemModal({
   // Reset when modal opens
   useEffect(() => {
     if (open && item) {
-      // Format purchaseDate for date input (convert from ISO to YYYY-MM-DD)
-      let purchaseDate = "";
-      if (item.purchaseDate) {
-        const date = new Date(item.purchaseDate);
-        purchaseDate = date.toISOString().split("T")[0];
-      } else if (item.createdAt) {
-        const date = new Date(item.createdAt);
-        purchaseDate = date.toISOString().split("T")[0];
-      }
-
       reset({
         quantity: parseFloat(item.quantity || item.originalQuantity) || 0,
         unit: item.unit || item.originalUnit || "lb",
         pricePerUnit: parseFloat(item.pricePerUnit) || 0,
-        purchaseDate: purchaseDate,
         harvestDate: item.harvestDate || "",
         notes: item.notes || "",
       });
@@ -111,11 +99,18 @@ export function EditBaseFruitItemModal({
   });
 
   const onSubmit = (data: EditBaseFruitItemForm) => {
+    // Extract actual UUID from composite ID (format: "basefruit-{uuid}")
+    const actualItemId = item.id.startsWith("basefruit-")
+      ? item.id.replace("basefruit-", "")
+      : item.id;
+
     updateMutation.mutate({
-      itemId: item.id,
-      ...data,
-      purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : undefined,
+      itemId: actualItemId,
+      quantity: data.quantity && data.quantity > 0 ? data.quantity : undefined,
+      unit: data.unit,
+      pricePerUnit: data.pricePerUnit && data.pricePerUnit >= 0 ? data.pricePerUnit : undefined,
       harvestDate: data.harvestDate ? new Date(data.harvestDate) : undefined,
+      notes: data.notes,
     });
   };
 
@@ -179,21 +174,6 @@ export function EditBaseFruitItemModal({
                 </p>
               )}
             </div>
-          </div>
-
-          <div>
-            <Label htmlFor="purchaseDate">Purchase Date</Label>
-            <Input
-              id="purchaseDate"
-              type="date"
-              {...register("purchaseDate")}
-              className="mt-1"
-            />
-            {errors.purchaseDate && (
-              <p className="text-sm text-red-600 mt-1">
-                {errors.purchaseDate.message}
-              </p>
-            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
