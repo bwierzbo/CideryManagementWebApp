@@ -55,7 +55,7 @@ export function EditJuiceItemModal({
 
   // Query for full juice inventory items
   const { data: juiceInventoryData } = trpc.juicePurchases.listInventory.useQuery(
-    { limit: 1000, offset: 0 },
+    { limit: 100, offset: 0 },
     { enabled: open && !!item }
   );
 
