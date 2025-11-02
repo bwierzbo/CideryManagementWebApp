@@ -143,6 +143,7 @@ const tankSchema = z.object({
   capacityUnit: z.enum(["L", "gal"]),
   material: z.enum(["stainless_steel", "plastic", "oak"]).optional(),
   jacketed: z.enum(["yes", "no"]).optional(),
+  isPressureVessel: z.enum(["yes", "no"]).optional(),
   location: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -214,6 +215,7 @@ function TankForm({
         capacityUnit: vessel.capacityUnit as any,
         material: vessel.material as any,
         jacketed: vessel.jacketed as any,
+        isPressureVessel: vessel.isPressureVessel as any,
         location: vessel.location || undefined,
         notes: vessel.notes || undefined,
       });
@@ -302,6 +304,24 @@ function TankForm({
           >
             <SelectTrigger>
               <SelectValue placeholder="Select jacketed option" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="yes">Yes</SelectItem>
+              <SelectItem value="no">No</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="isPressureVessel">Pressure Vessel</Label>
+          <Select
+            value={watch("isPressureVessel")}
+            onValueChange={(value) => setValue("isPressureVessel", value as any)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select pressure vessel option" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="yes">Yes</SelectItem>
