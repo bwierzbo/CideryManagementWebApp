@@ -226,7 +226,7 @@ export function BaseFruitTable({
           return (item as any)[field];
       }
     });
-  }, [filteredItems, sortData]);
+  }, [filteredItems, sortData, sortState.columns]);
 
   // Event handlers
   const handleColumnSort = useCallback(

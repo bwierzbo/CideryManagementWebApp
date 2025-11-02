@@ -54,6 +54,26 @@ export function EditJuiceItemModal({
 }: EditJuiceItemModalProps) {
   const utils = trpc.useUtils();
 
+  // Query for full juice inventory items
+  const { data: juiceInventoryData } = trpc.juicePurchases.listInventory.useQuery(
+    { limit: 1000, offset: 0 },
+    { enabled: open && !!item }
+  );
+
+  // Find the full item data from inventory
+  const fullItem = React.useMemo(() => {
+    if (!item || !juiceInventoryData?.items) return item;
+
+    // If item already has volume field, it's complete
+    if ('volume' in item && item.volume) return item;
+
+    // Otherwise, find it in the inventory list using the item ID
+    const foundItem = juiceInventoryData.items.find(
+      (invItem: any) => invItem.id === item.id || invItem.id === item.metadata?.itemId
+    );
+    return foundItem || item;
+  }, [item, juiceInventoryData]);
+
   const {
     register,
     handleSubmit,
@@ -70,19 +90,19 @@ export function EditJuiceItemModal({
 
   // Reset when modal opens
   useEffect(() => {
-    if (open && item) {
+    if (open && fullItem) {
       reset({
-        volume: parseFloat(item.volume) || 0,
-        volumeUnit: item.volumeUnit || "L",
-        brix: item.brix ? parseFloat(item.brix) : undefined,
-        ph: item.ph ? parseFloat(item.ph) : undefined,
-        specificGravity: item.specificGravity ? parseFloat(item.specificGravity) : undefined,
-        containerType: item.containerType || undefined,
-        pricePerLiter: item.pricePerLiter ? parseFloat(item.pricePerLiter) : undefined,
-        notes: item.notes || "",
+        volume: fullItem.volume ? parseFloat(fullItem.volume) : 0,
+        volumeUnit: fullItem.volumeUnit || "L",
+        brix: fullItem.brix ? parseFloat(fullItem.brix) : undefined,
+        ph: fullItem.ph ? parseFloat(fullItem.ph) : undefined,
+        specificGravity: fullItem.specificGravity ? parseFloat(fullItem.specificGravity) : undefined,
+        containerType: fullItem.containerType || undefined,
+        pricePerLiter: fullItem.pricePerLiter ? parseFloat(fullItem.pricePerLiter) : undefined,
+        notes: fullItem.notes || "",
       });
     }
-  }, [open, item, reset]);
+  }, [open, fullItem, reset]);
 
   const updateMutation = trpc.juicePurchases.updatePurchaseItem.useMutation({
     onSuccess: () => {
@@ -107,7 +127,7 @@ export function EditJuiceItemModal({
 
   const onSubmit = (data: EditJuiceItemForm) => {
     updateMutation.mutate({
-      itemId: item.id,
+      itemId: fullItem?.id || item?.id,
       ...data,
     });
   };
@@ -120,7 +140,7 @@ export function EditJuiceItemModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit className="h-5 w-5" />
-            Edit {item.juiceType || "Juice Item"} {item.varietyName ? `- ${item.varietyName}` : ""}
+            Edit {fullItem?.juiceType || fullItem?.metadata?.varietyName || "Juice Item"} {fullItem?.varietyName ? `- ${fullItem.varietyName}` : ""}
           </DialogTitle>
           <DialogDescription>
             Update juice purchase item details
