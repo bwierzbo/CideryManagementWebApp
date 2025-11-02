@@ -63,13 +63,15 @@ export function EditJuiceItemModal({
   const fullItem = React.useMemo(() => {
     if (!item || !juiceInventoryData?.items) return item;
 
-    // If item already has volume field, it's complete
-    if ('volume' in item && item.volume) return item;
+    // If item already has all required fields, it's complete
+    if ('volume' in item && 'pricePerLiter' in item && 'purchaseDate' in item) return item;
 
-    // Otherwise, find it in the inventory list using the item ID
+    // Otherwise, find it in the inventory list using the metadata.itemId
+    const itemIdToFind = item.metadata?.itemId || item.id;
     const foundItem = juiceInventoryData.items.find(
-      (invItem: any) => invItem.id === item.id || invItem.id === item.metadata?.itemId
+      (invItem: any) => invItem.id === itemIdToFind
     );
+
     return foundItem || item;
   }, [item, juiceInventoryData]);
 
@@ -126,7 +128,7 @@ export function EditJuiceItemModal({
 
   const onSubmit = (data: EditJuiceItemForm) => {
     updateMutation.mutate({
-      itemId: fullItem?.id || item?.id,
+      itemId: fullItem?.id || item?.metadata?.itemId || item?.id,
       ...data,
     });
   };
