@@ -15,16 +15,16 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
   Select,
-  SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ScrollableSelectContent } from "@/components/ui/scrollable-select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { ArrowRight, AlertTriangle, Info, Plus, Droplets } from "lucide-react";
+import { ArrowRight, AlertTriangle, Info, Plus, Droplets, Search } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 
 const transferSchema = z.object({
@@ -59,6 +59,7 @@ export function TransferToTankModal({
   const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<
     string | null
   >(null);
+  const [vesselSearchQuery, setVesselSearchQuery] = useState("");
 
   const {
     register,
@@ -111,6 +112,7 @@ export function TransferToTankModal({
       });
       setSelectedVesselHasBatch(false);
       setSelectedVesselBatchName(null);
+      setVesselSearchQuery("");
     }
   }, [open, reset]);
 
@@ -163,6 +165,13 @@ export function TransferToTankModal({
   const volumeInL =
     volumeUnit === "gal" ? volumeToTransfer * 3.78541 : volumeToTransfer;
 
+  // Filter vessels based on search query
+  const filteredVessels = vesselsQuery.data?.vessels?.filter((vessel) => {
+    const query = vesselSearchQuery.toLowerCase();
+    const vesselName = (vessel.name || "").toLowerCase();
+    return vesselName.includes(query);
+  }) || [];
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-lg">
@@ -205,13 +214,30 @@ export function TransferToTankModal({
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Select a vessel" />
               </SelectTrigger>
-              <SelectContent>
+              <ScrollableSelectContent maxHeight="300px">
+                {/* Search input */}
+                <div className="px-2 pb-2 pt-1 sticky top-0 bg-background z-10 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search vessels..."
+                      value={vesselSearchQuery}
+                      onChange={(e) => setVesselSearchQuery(e.target.value)}
+                      className="pl-8 h-9"
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Vessel list */}
                 {vesselsQuery.isLoading ? (
                   <SelectItem value="loading" disabled>
                     Loading vessels...
                   </SelectItem>
-                ) : vesselsQuery.data?.vessels?.length ? (
-                  vesselsQuery.data.vessels.map((vessel) => {
+                ) : filteredVessels.length ? (
+                  filteredVessels.map((vessel) => {
                     const vesselMap = liquidMapQuery.data?.vessels.find(
                       (v) => v.vesselId === vessel.id
                     );
@@ -222,26 +248,25 @@ export function TransferToTankModal({
                       <SelectItem key={vessel.id} value={vessel.id}>
                         <div className="flex items-center gap-2">
                           <span>{vessel.name || "Unnamed Vessel"}</span>
-                          {hasBatch && (
+                          {hasBatch ? (
                             <Badge variant="secondary" className="text-xs">
                               In Use
                             </Badge>
-                          )}
-                          {isAvailable && (
+                          ) : isAvailable ? (
                             <Badge variant="outline" className="text-xs">
                               Empty
                             </Badge>
-                          )}
+                          ) : null}
                         </div>
                       </SelectItem>
                     );
                   })
                 ) : (
                   <SelectItem value="none" disabled>
-                    No vessels available
+                    {vesselSearchQuery ? "No vessels match your search" : "No vessels available"}
                   </SelectItem>
                 )}
-              </SelectContent>
+              </ScrollableSelectContent>
             </Select>
             {errors.vesselId && (
               <p className="text-sm text-red-600 mt-1">
