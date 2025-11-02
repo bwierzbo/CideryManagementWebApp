@@ -610,6 +610,7 @@ export default function InventoryPage() {
                 itemsPerPage={50}
                 onAddNew={() => setShowAdditivesForm(true)}
                 onItemClick={(item) => setSelectedItem(item)}
+                onEdit={(item) => setEditAdditiveItem(item)}
                 className=""
               />
             </div>
@@ -622,6 +623,7 @@ export default function InventoryPage() {
                 itemsPerPage={50}
                 onAddNew={() => setShowJuiceForm(true)}
                 onItemClick={(item) => setSelectedItem(item)}
+                onEdit={(item) => setEditJuiceItem(item)}
                 className=""
               />
             </div>
@@ -634,6 +636,7 @@ export default function InventoryPage() {
                 itemsPerPage={50}
                 onAddNew={() => setShowPackagingForm(true)}
                 onItemClick={(item) => setSelectedItem(item)}
+                onEdit={(item) => setEditPackagingItem(item)}
                 className=""
               />
             </div>

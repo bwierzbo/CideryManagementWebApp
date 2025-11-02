@@ -58,7 +58,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { InventoryEditDialog } from "@/components/inventory/InventoryEditDialog";
 import { TransferToTankModal } from "@/components/juice/TransferToTankModal";
 import { toast } from "@/hooks/use-toast";
 
@@ -105,7 +104,6 @@ export function JuiceInventoryTable({
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [deleteItem, setDeleteItem] = useState<JuiceInventoryItem | null>(null);
-  const [editItem, setEditItem] = useState<JuiceInventoryItem | null>(null);
   const [transferItem, setTransferItem] = useState<JuiceInventoryItem | null>(null);
 
   // Sorting state using the reusable hook
@@ -560,15 +558,17 @@ export function JuiceInventoryTable({
                               <ExternalLink className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditItem(item);
-                              }}
-                            >
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
+                            {onEdit && (
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEdit(item);
+                                }}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => {
@@ -632,29 +632,6 @@ export function JuiceInventoryTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Edit Dialog */}
-      {editItem && (
-        <InventoryEditDialog
-          open={!!editItem}
-          onClose={() => setEditItem(null)}
-          item={{
-            id: editItem.id,
-            materialType: editItem.materialType,
-            metadata: editItem.metadata,
-            currentBottleCount: editItem.currentBottleCount,
-            reservedBottleCount: editItem.reservedBottleCount,
-            location: editItem.location,
-            notes: editItem.notes,
-            createdAt: editItem.createdAt,
-            updatedAt: editItem.updatedAt,
-          }}
-          onSuccess={() => {
-            refetch();
-            setEditItem(null);
-          }}
-        />
-      )}
 
       {/* Transfer to Tank Modal */}
       {transferItem && (

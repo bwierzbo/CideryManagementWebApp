@@ -49,6 +49,23 @@ interface InventoryItem {
   materialType?: string;
   metadata?: InventoryItemMetadata;
   createdAt: string;
+  notes?: string | null;
+  // Juice-specific fields
+  brix?: string | null;
+  ph?: string | null;
+  specificGravity?: string | null;
+  containerType?: string | null;
+  // Additive-specific fields
+  lotBatchNumber?: string | null;
+  expirationDate?: string | null;
+  storageRequirements?: string | null;
+  brandManufacturer?: string | null;
+  // Packaging-specific fields
+  packageType?: string | null;
+  materialType2?: string | null;
+  size?: string | null;
+  // Base fruit-specific fields
+  harvestDate?: string | null;
 }
 
 interface InventoryItemDetailsModalProps {
@@ -269,6 +286,155 @@ export function InventoryItemDetailsModal({
                       </span>
                       <span className="text-lg font-bold">
                         {formatCurrency(purchaseDetails[0].totalCost)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Material-specific fields */}
+                  {item.materialType === "juice" && (
+                    <>
+                      {item.ph && (
+                        <div className="flex justify-between pt-3 border-t">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            pH
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {item.ph}
+                          </span>
+                        </div>
+                      )}
+                      {item.specificGravity && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Specific Gravity
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {parseFloat(item.specificGravity).toFixed(3)}
+                          </span>
+                        </div>
+                      )}
+                      {item.brix && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Brix
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {item.brix}°
+                          </span>
+                        </div>
+                      )}
+                      {item.containerType && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Container Type
+                          </span>
+                          <span className="text-sm font-semibold capitalize">
+                            {item.containerType}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {item.materialType === "additives" && (
+                    <>
+                      {item.brandManufacturer && (
+                        <div className="flex justify-between pt-3 border-t">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Brand/Manufacturer
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {item.brandManufacturer}
+                          </span>
+                        </div>
+                      )}
+                      {item.lotBatchNumber && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Lot/Batch Number
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {item.lotBatchNumber}
+                          </span>
+                        </div>
+                      )}
+                      {item.expirationDate && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Expiration Date
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {formatDate(item.expirationDate)}
+                          </span>
+                        </div>
+                      )}
+                      {item.storageRequirements && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Storage Requirements
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {item.storageRequirements}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {item.materialType === "packaging" && (
+                    <>
+                      {item.packageType && (
+                        <div className="flex justify-between pt-3 border-t">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Package Type
+                          </span>
+                          <span className="text-sm font-semibold capitalize">
+                            {item.packageType}
+                          </span>
+                        </div>
+                      )}
+                      {item.materialType2 && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Material
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {item.materialType2}
+                          </span>
+                        </div>
+                      )}
+                      {item.size && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Size
+                          </span>
+                          <span className="text-sm font-semibold">
+                            {item.size}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {item.materialType === "basefruit" && item.harvestDate && (
+                    <div className="flex justify-between pt-3 border-t">
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Harvest Date
+                      </span>
+                      <span className="text-sm font-semibold">
+                        {formatDate(item.harvestDate)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Notes - for all types */}
+                  {item.notes && (
+                    <div className="flex flex-col pt-3 border-t">
+                      <span className="text-sm font-medium text-muted-foreground mb-1">
+                        Notes
+                      </span>
+                      <span className="text-sm text-gray-700">
+                        {item.notes}
                       </span>
                     </div>
                   )}
