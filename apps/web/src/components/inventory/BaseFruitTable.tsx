@@ -181,8 +181,8 @@ export function BaseFruitTable({
           harvestDate: metadata.harvestDate || null,
           originalQuantity: item.currentBottleCount,
           originalUnit: metadata.unit || "lb",
-          pricePerUnit: null, // TODO: Add to metadata
-          totalCost: null, // TODO: Add to metadata
+          pricePerUnit: metadata.pricePerUnit ? parseFloat(metadata.pricePerUnit) : null,
+          totalCost: metadata.totalCost ? parseFloat(metadata.totalCost) : null,
           notes: item.notes,
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
