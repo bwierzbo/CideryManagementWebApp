@@ -277,17 +277,17 @@ export const activityRegisterRouter = router({
               br.id::text as id,
               'bottle_run' as type,
               'packaging' as category,
-              br.run_date as activity_date,
+              br.packaged_at as activity_date,
               'Bottle Run' as activity_type,
               b.name as vendor_name,
               jsonb_build_object(
                 'batchCode', b.name,
-                'totalBottles', br.total_bottles,
+                'totalBottles', br.units_produced,
                 'status', br.status
               ) as metadata
             FROM bottle_runs br
             LEFT JOIN batches b ON br.batch_id = b.id
-            WHERE br.deleted_at IS NULL
+            WHERE br.status = 'completed'
 
             UNION ALL
 
@@ -352,8 +352,8 @@ export const activityRegisterRouter = router({
             SELECT bco.id, bco.started_at as activity_date, 'cellar' as category
             FROM batch_carbonation_operations bco WHERE bco.deleted_at IS NULL
             UNION ALL
-            SELECT br.id, br.run_date as activity_date, 'packaging' as category
-            FROM bottle_runs br WHERE br.deleted_at IS NULL
+            SELECT br.id, br.packaged_at as activity_date, 'packaging' as category
+            FROM bottle_runs br WHERE br.status = 'completed'
             UNION ALL
             SELECT vco.id, vco.cleaned_at as activity_date, 'vessels' as category
             FROM vessel_cleaning_operations vco WHERE vco.deleted_at IS NULL
