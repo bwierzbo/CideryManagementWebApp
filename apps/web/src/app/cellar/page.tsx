@@ -87,6 +87,7 @@ import { BottleModal } from "@/components/bottles/bottle-modal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
 import { CleanTankModal } from "@/components/cellar/CleanTankModal";
+import { KegsManagement } from "@/components/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 
 // Form schemas
@@ -1986,11 +1987,7 @@ export default function CellarPage() {
         <div className="space-y-8">
           {activeTab === "vessels" && <VesselMap />}
           {activeTab === "batches" && <BatchDetails />}
-          {activeTab === "kegs" && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">Keg Tracking - Coming soon</p>
-            </div>
-          )}
+          {activeTab === "kegs" && <KegsManagement />}
         </div>
       </main>
     </div>

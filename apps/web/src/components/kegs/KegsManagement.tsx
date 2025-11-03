@@ -1,0 +1,460 @@
+"use client";
+
+import React, { useState } from "react";
+import { trpc } from "@/utils/trpc";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import {
+  Plus,
+  Search,
+  Package,
+  MapPin,
+  Calendar,
+  Loader2,
+  Eye,
+  Edit,
+  Trash2,
+  Send,
+  RotateCcw,
+} from "lucide-react";
+import { format } from "date-fns";
+import { toast } from "@/hooks/use-toast";
+import { AddKegModal } from "./AddKegModal";
+import { KegDetailsModal } from "./KegDetailsModal";
+import { DistributeKegModal } from "./DistributeKegModal";
+
+type KegStatus =
+  | "all"
+  | "available"
+  | "filled"
+  | "distributed"
+  | "cleaning"
+  | "maintenance"
+  | "retired";
+
+type KegType =
+  | "all"
+  | "cornelius_5L"
+  | "cornelius_9L"
+  | "sanke_20L"
+  | "sanke_30L"
+  | "sanke_50L"
+  | "other";
+
+interface Keg {
+  id: string;
+  kegNumber: string;
+  kegType: string;
+  capacityML: number;
+  capacityUnit: string;
+  status: string;
+  condition: string;
+  currentLocation: string;
+  notes: string | null;
+  createdAt: Date;
+  latestFillId: string | null;
+  latestFillBatchName: string | null;
+  latestFillDate: Date | null;
+}
+
+const KEG_STATUS_CONFIG = {
+  available: {
+    label: "Available",
+    color: "bg-green-100 text-green-800 border-green-300",
+  },
+  filled: {
+    label: "Filled",
+    color: "bg-blue-100 text-blue-800 border-blue-300",
+  },
+  distributed: {
+    label: "Distributed",
+    color: "bg-orange-100 text-orange-800 border-orange-300",
+  },
+  cleaning: {
+    label: "Cleaning",
+    color: "bg-gray-100 text-gray-800 border-gray-300",
+  },
+  maintenance: {
+    label: "Maintenance",
+    color: "bg-yellow-100 text-yellow-800 border-yellow-300",
+  },
+  retired: {
+    label: "Retired",
+    color: "bg-red-100 text-red-800 border-red-300",
+  },
+};
+
+const KEG_TYPE_LABELS: Record<string, string> = {
+  cornelius_5L: "Cornelius 5L",
+  cornelius_9L: "Cornelius 9L",
+  sanke_20L: "Sanke 20L",
+  sanke_30L: "Sanke 30L",
+  sanke_50L: "Sanke 50L",
+  other: "Other",
+};
+
+export function KegsManagement() {
+  const [statusFilter, setStatusFilter] = useState<KegStatus>("all");
+  const [kegTypeFilter, setKegTypeFilter] = useState<KegType>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedKegForDetails, setSelectedKegForDetails] = useState<
+    string | null
+  >(null);
+  const [selectedKegForDistribution, setSelectedKegForDistribution] = useState<{
+    kegFillId: string;
+    kegNumber: string;
+  } | null>(null);
+
+  const utils = trpc.useUtils();
+
+  // Query kegs with filters
+  const {
+    data: kegsData,
+    isLoading,
+    error,
+  } = trpc.kegs.listKegs.useQuery({
+    status: statusFilter,
+    kegType: kegTypeFilter,
+    search: searchQuery || undefined,
+    limit: 100,
+    offset: 0,
+  });
+
+  const deleteKegMutation = trpc.kegs.deleteKeg.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Keg Retired",
+        description: "Keg has been marked as retired",
+      });
+      utils.kegs.listKegs.invalidate();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const returnKegMutation = trpc.kegs.returnKegFill.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Keg Returned",
+        description: "Keg marked as returned and available",
+      });
+      utils.kegs.listKegs.invalidate();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteKeg = async (kegId: string, kegNumber: string) => {
+    if (
+      !confirm(
+        `Are you sure you want to retire keg ${kegNumber}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    deleteKegMutation.mutate({ kegId });
+  };
+
+  const handleReturnKeg = async (kegFillId: string, kegNumber: string) => {
+    if (!confirm(`Mark keg ${kegNumber} as returned?`)) {
+      return;
+    }
+
+    returnKegMutation.mutate({
+      kegFillId,
+      returnedAt: new Date(),
+    });
+  };
+
+  const kegs = kegsData?.kegs || [];
+
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="text-center text-red-600">
+            Error loading kegs: {error.message}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Keg Registry</CardTitle>
+              <CardDescription>
+                Manage and track individual keg assets through their lifecycle
+              </CardDescription>
+            </div>
+            <Button onClick={() => setShowAddModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Keg
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Filters */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div>
+              <Label htmlFor="status-filter">Status</Label>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => setStatusFilter(value as KegStatus)}
+              >
+                <SelectTrigger id="status-filter" className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="available">Available</SelectItem>
+                  <SelectItem value="filled">Filled</SelectItem>
+                  <SelectItem value="distributed">Distributed</SelectItem>
+                  <SelectItem value="cleaning">Cleaning</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                  <SelectItem value="retired">Retired</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="type-filter">Keg Type</Label>
+              <Select
+                value={kegTypeFilter}
+                onValueChange={(value) => setKegTypeFilter(value as KegType)}
+              >
+                <SelectTrigger id="type-filter" className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="cornelius_5L">Cornelius 5L</SelectItem>
+                  <SelectItem value="cornelius_9L">Cornelius 9L</SelectItem>
+                  <SelectItem value="sanke_20L">Sanke 20L</SelectItem>
+                  <SelectItem value="sanke_30L">Sanke 30L</SelectItem>
+                  <SelectItem value="sanke_50L">Sanke 50L</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="md:col-span-2">
+              <Label htmlFor="search">Search</Label>
+              <div className="relative mt-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  id="search"
+                  placeholder="Search by keg number or notes..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Kegs Grid */}
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            </div>
+          ) : kegs.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              No kegs found. Add your first keg to get started.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {kegs.map((keg: Keg) => {
+                const statusConfig =
+                  KEG_STATUS_CONFIG[keg.status as keyof typeof KEG_STATUS_CONFIG] ||
+                  KEG_STATUS_CONFIG.available;
+
+                return (
+                  <Card
+                    key={keg.id}
+                    className={`border-2 ${statusConfig.color} hover:shadow-md transition-shadow`}
+                  >
+                    <CardContent className="pt-6">
+                      {/* Keg Number & Status */}
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h3 className="font-bold text-lg">{keg.kegNumber}</h3>
+                          <p className="text-sm text-gray-600">
+                            {KEG_TYPE_LABELS[keg.kegType] || keg.kegType}
+                          </p>
+                        </div>
+                        <Badge className={statusConfig.color} variant="secondary">
+                          {statusConfig.label}
+                        </Badge>
+                      </div>
+
+                      {/* Keg Details */}
+                      <div className="space-y-2 text-sm mb-4">
+                        <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4 text-gray-400" />
+                          <span>
+                            {keg.capacityML / 1000}L ({keg.condition})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-gray-400" />
+                          <span className="truncate">{keg.currentLocation}</span>
+                        </div>
+
+                        {keg.latestFillBatchName && (
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-gray-400" />
+                            <span className="truncate">
+                              {keg.latestFillBatchName}
+                            </span>
+                          </div>
+                        )}
+
+                        {keg.latestFillDate && (
+                          <div className="text-xs text-gray-500">
+                            Filled: {format(new Date(keg.latestFillDate), "MMM d, yyyy")}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSelectedKegForDetails(keg.id)}
+                          className="flex-1"
+                        >
+                          <Eye className="w-3 h-3 mr-1" />
+                          Details
+                        </Button>
+
+                        {keg.status === "filled" && keg.latestFillId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setSelectedKegForDistribution({
+                                kegFillId: keg.latestFillId as string,
+                                kegNumber: keg.kegNumber,
+                              })
+                            }
+                            className="flex-1"
+                          >
+                            <Send className="w-3 h-3 mr-1" />
+                            Distribute
+                          </Button>
+                        )}
+
+                        {keg.status === "distributed" && keg.latestFillId && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              handleReturnKeg(
+                                keg.latestFillId as string,
+                                keg.kegNumber,
+                              )
+                            }
+                            className="flex-1"
+                          >
+                            <RotateCcw className="w-3 h-3 mr-1" />
+                            Return
+                          </Button>
+                        )}
+
+                        {keg.status === "available" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteKeg(keg.id, keg.kegNumber)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Summary */}
+          {kegs.length > 0 && (
+            <div className="mt-6 pt-6 border-t">
+              <p className="text-sm text-gray-600">
+                Showing {kegs.length} of {kegsData?.pagination.total || 0} kegs
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Modals */}
+      <AddKegModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSuccess={() => {
+          setShowAddModal(false);
+          utils.kegs.listKegs.invalidate();
+        }}
+      />
+
+      {selectedKegForDetails && (
+        <KegDetailsModal
+          open={!!selectedKegForDetails}
+          onClose={() => setSelectedKegForDetails(null)}
+          kegId={selectedKegForDetails}
+        />
+      )}
+
+      {selectedKegForDistribution && (
+        <DistributeKegModal
+          open={!!selectedKegForDistribution}
+          onClose={() => setSelectedKegForDistribution(null)}
+          kegFillId={selectedKegForDistribution.kegFillId}
+          kegNumber={selectedKegForDistribution.kegNumber}
+          onSuccess={() => {
+            setSelectedKegForDistribution(null);
+            utils.kegs.listKegs.invalidate();
+          }}
+        />
+      )}
+    </>
+  );
+}
