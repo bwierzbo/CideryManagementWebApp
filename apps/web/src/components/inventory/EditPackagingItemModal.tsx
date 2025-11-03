@@ -15,13 +15,22 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Edit } from "lucide-react";
 
 const editPackagingItemSchema = z.object({
   quantity: z.number().positive("Quantity must be positive").optional(),
+  unitType: z.enum(["cases", "boxes", "individual", "pallets"]).optional(),
   pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
+  purchaseDate: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -46,10 +55,14 @@ export function EditPackagingItemModal({
     register,
     handleSubmit,
     formState: { errors },
+    watch,
+    setValue,
     reset,
   } = useForm<EditPackagingItemForm>({
     resolver: zodResolver(editPackagingItemSchema),
   });
+
+  const unitType = watch("unitType");
 
   // Reset when modal opens
   useEffect(() => {
@@ -76,9 +89,21 @@ export function EditPackagingItemModal({
           : item.unitCost;
       }
 
+      // Format purchaseDate for date input (convert from ISO to YYYY-MM-DD)
+      let purchaseDate = "";
+      if (item.purchaseDate) {
+        const date = new Date(item.purchaseDate);
+        purchaseDate = date.toISOString().split("T")[0];
+      } else if (item.createdAt) {
+        const date = new Date(item.createdAt);
+        purchaseDate = date.toISOString().split("T")[0];
+      }
+
       reset({
         quantity: quantity || 0,
+        unitType: item.unitType || "individual",
         pricePerUnit: pricePerUnit,
+        purchaseDate: purchaseDate,
         notes: item.notes || "",
       });
     }
@@ -131,10 +156,22 @@ export function EditPackagingItemModal({
         ? data.pricePerUnit
         : undefined;
 
+    // Validate and prepare purchaseDate - ensure it's a valid date
+    let purchaseDate: Date | undefined = undefined;
+    if (data.purchaseDate && data.purchaseDate.trim() !== "") {
+      const dateObj = new Date(data.purchaseDate);
+      // Check if the date is valid
+      if (!isNaN(dateObj.getTime())) {
+        purchaseDate = dateObj;
+      }
+    }
+
     const payload = {
       itemId: actualItemId,
       quantity,
+      unitType: data.unitType,
       pricePerUnit,
+      purchaseDate,
       notes: data.notes,
     };
 
@@ -179,20 +216,65 @@ export function EditPackagingItemModal({
             </div>
 
             <div>
-              <Label htmlFor="pricePerUnit">Price per Unit</Label>
-              <Input
-                id="pricePerUnit"
-                type="number"
-                step="0.01"
-                {...register("pricePerUnit", { valueAsNumber: true })}
-                className="mt-1"
-              />
-              {errors.pricePerUnit && (
+              <Label htmlFor="unitType">
+                Unit <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={unitType}
+                onValueChange={(value) => setValue("unitType", value as any)}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cases">Cases</SelectItem>
+                  <SelectItem value="boxes">Boxes</SelectItem>
+                  <SelectItem value="individual">Individual</SelectItem>
+                  <SelectItem value="pallets">Pallets</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.unitType && (
                 <p className="text-sm text-red-600 mt-1">
-                  {errors.pricePerUnit.message}
+                  {errors.unitType.message}
                 </p>
               )}
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="pricePerUnit">Price per Unit</Label>
+            <Input
+              id="pricePerUnit"
+              type="number"
+              step="0.01"
+              {...register("pricePerUnit", { valueAsNumber: true })}
+              className="mt-1"
+            />
+            {errors.pricePerUnit && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.pricePerUnit.message}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor="purchaseDate">
+              Purchase Date
+              <span className="text-xs text-muted-foreground ml-2">
+                (affects all items in order)
+              </span>
+            </Label>
+            <Input
+              id="purchaseDate"
+              type="date"
+              {...register("purchaseDate")}
+              className="mt-1"
+            />
+            {errors.purchaseDate && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.purchaseDate.message}
+              </p>
+            )}
           </div>
 
           <div>

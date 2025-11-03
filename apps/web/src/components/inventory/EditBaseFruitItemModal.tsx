@@ -30,6 +30,7 @@ const editBaseFruitItemSchema = z.object({
   quantity: z.number().positive("Quantity must be positive").optional(),
   unit: z.enum(["kg", "lb", "L", "gal", "bushel"]).optional(),
   pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
+  purchaseDate: z.string().optional(),
   harvestDate: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -67,10 +68,21 @@ export function EditBaseFruitItemModal({
   // Reset when modal opens
   useEffect(() => {
     if (open && item) {
+      // Format purchaseDate for date input (convert from ISO to YYYY-MM-DD)
+      let purchaseDate = "";
+      if (item.purchaseDate) {
+        const date = new Date(item.purchaseDate);
+        purchaseDate = date.toISOString().split("T")[0];
+      } else if (item.createdAt) {
+        const date = new Date(item.createdAt);
+        purchaseDate = date.toISOString().split("T")[0];
+      }
+
       reset({
         quantity: parseFloat(item.originalQuantity || item.quantity) || 0,
         unit: item.originalUnit || item.unit || "lb",
         pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : 0,
+        purchaseDate: purchaseDate,
         harvestDate: item.harvestDate || "",
         notes: item.notes || "",
       });
@@ -126,11 +138,22 @@ export function EditBaseFruitItemModal({
       }
     }
 
+    // Validate and prepare purchaseDate - ensure it's a valid date
+    let purchaseDate: Date | undefined = undefined;
+    if (data.purchaseDate && data.purchaseDate.trim() !== "") {
+      const dateObj = new Date(data.purchaseDate);
+      // Check if the date is valid
+      if (!isNaN(dateObj.getTime())) {
+        purchaseDate = dateObj;
+      }
+    }
+
     const payload = {
       itemId: item.id,
       quantity,
       unit: data.unit,
       pricePerUnit,
+      purchaseDate,
       harvestDate,
       notes: data.notes,
     };
@@ -218,19 +241,39 @@ export function EditBaseFruitItemModal({
             </div>
 
             <div>
-              <Label htmlFor="harvestDate">Harvest Date</Label>
+              <Label htmlFor="purchaseDate">
+                Purchase Date
+                <span className="text-xs text-muted-foreground ml-2">
+                  (affects all items in order)
+                </span>
+              </Label>
               <Input
-                id="harvestDate"
+                id="purchaseDate"
                 type="date"
-                {...register("harvestDate")}
+                {...register("purchaseDate")}
                 className="mt-1"
               />
-              {errors.harvestDate && (
+              {errors.purchaseDate && (
                 <p className="text-sm text-red-600 mt-1">
-                  {errors.harvestDate.message}
+                  {errors.purchaseDate.message}
                 </p>
               )}
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="harvestDate">Harvest Date</Label>
+            <Input
+              id="harvestDate"
+              type="date"
+              {...register("harvestDate")}
+              className="mt-1"
+            />
+            {errors.harvestDate && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.harvestDate.message}
+              </p>
+            )}
           </div>
 
           <div>

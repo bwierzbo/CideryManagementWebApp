@@ -112,6 +112,7 @@ export const packagingPurchasesRouter = router({
               packageType: item.packagingType || null,
               size: item.packagingName || "Unknown",
               quantity: item.quantity,
+              unitType: item.unitType || null,
               totalCost: itemTotal.toString(),
               pricePerUnit: item.pricePerUnit?.toString() || null,
               notes: item.notes || null,
@@ -285,7 +286,9 @@ export const packagingPurchasesRouter = router({
         materialType: z.string().optional(),
         size: z.string().optional(),
         quantity: z.number().positive("Quantity must be positive").optional(),
-        pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+        unitType: z.string().optional(),
+        pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         notes: z.string().optional(),
       }),
     )
@@ -293,9 +296,12 @@ export const packagingPurchasesRouter = router({
       try {
         const { itemId, ...updates } = input;
 
-        // Check if item exists
+        // Check if item exists and get purchase ID
         const existingItem = await db
-          .select({ id: packagingPurchaseItems.id })
+          .select({
+            id: packagingPurchaseItems.id,
+            purchaseId: packagingPurchaseItems.purchaseId
+          })
           .from(packagingPurchaseItems)
           .where(eq(packagingPurchaseItems.id, itemId))
           .limit(1);
@@ -315,6 +321,7 @@ export const packagingPurchasesRouter = router({
         if (updates.materialType !== undefined) updateData.materialType = updates.materialType;
         if (updates.size !== undefined) updateData.size = updates.size;
         if (updates.quantity !== undefined) updateData.quantity = updates.quantity;
+        if (updates.unitType !== undefined) updateData.unitType = updates.unitType;
         if (updates.pricePerUnit !== undefined) updateData.pricePerUnit = updates.pricePerUnit.toString();
         if (updates.notes !== undefined) updateData.notes = updates.notes;
 
@@ -340,6 +347,17 @@ export const packagingPurchasesRouter = router({
           .set(updateData)
           .where(eq(packagingPurchaseItems.id, itemId))
           .returning();
+
+        // Update parent purchase's purchase date if provided
+        if (updates.purchaseDate !== undefined) {
+          await db
+            .update(packagingPurchases)
+            .set({
+              purchaseDate: updates.purchaseDate,
+              updatedAt: new Date()
+            })
+            .where(eq(packagingPurchases.id, existingItem[0].purchaseId));
+        }
 
         return {
           success: true,

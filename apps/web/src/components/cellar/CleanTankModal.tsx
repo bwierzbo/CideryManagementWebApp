@@ -21,7 +21,7 @@ import { CheckCircle } from "lucide-react";
 
 const cleanTankSchema = z.object({
   cleanedAt: z.date(),
-  notes: z.string().min(1, "Please describe how the tank was cleaned"),
+  notes: z.string().optional(),
 });
 
 type CleanTankForm = z.infer<typeof cleanTankSchema>;
@@ -128,7 +128,7 @@ export function CleanTankModal({
 
           <div>
             <Label htmlFor="notes">
-              Cleaning Method & Notes <span className="text-red-500">*</span>
+              Cleaning Method & Notes
             </Label>
             <Textarea
               id="notes"
@@ -142,7 +142,7 @@ export function CleanTankModal({
               </p>
             )}
             <p className="text-xs text-gray-500 mt-1">
-              Record the cleaning method, sanitizers used, and any observations
+              Record the cleaning method, sanitizers used, and any observations (optional)
             </p>
           </div>
 

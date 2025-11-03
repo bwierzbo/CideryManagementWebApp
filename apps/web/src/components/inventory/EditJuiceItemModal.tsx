@@ -202,7 +202,12 @@ export function EditJuiceItemModal({
           </div>
 
           <div>
-            <Label htmlFor="purchaseDate">Purchase Date</Label>
+            <Label htmlFor="purchaseDate">
+              Purchase Date
+              <span className="text-xs text-muted-foreground ml-2">
+                (affects all items in order)
+              </span>
+            </Label>
             <Input
               id="purchaseDate"
               type="date"

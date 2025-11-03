@@ -434,6 +434,7 @@ export const baseFruitPurchasesRouter = router({
         quantity: z.number().positive("Quantity must be positive").optional(),
         unit: z.enum(["kg", "lb", "L", "gal", "bushel"]).optional(),
         pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         harvestDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         notes: z.string().optional(),
       }),
@@ -442,9 +443,12 @@ export const baseFruitPurchasesRouter = router({
       try {
         const { itemId, ...updates } = input;
 
-        // Check if item exists
+        // Check if item exists and get purchase ID
         const existingItem = await db
-          .select({ id: basefruitPurchaseItems.id })
+          .select({
+            id: basefruitPurchaseItems.id,
+            purchaseId: basefruitPurchaseItems.purchaseId
+          })
           .from(basefruitPurchaseItems)
           .where(eq(basefruitPurchaseItems.id, itemId))
           .limit(1);
@@ -489,6 +493,17 @@ export const baseFruitPurchasesRouter = router({
           .set(updateData)
           .where(eq(basefruitPurchaseItems.id, itemId))
           .returning();
+
+        // Update parent purchase's purchase date if provided
+        if (updates.purchaseDate !== undefined) {
+          await db
+            .update(basefruitPurchases)
+            .set({
+              purchaseDate: updates.purchaseDate,
+              updatedAt: new Date()
+            })
+            .where(eq(basefruitPurchases.id, existingItem[0].purchaseId));
+        }
 
         return {
           success: true,

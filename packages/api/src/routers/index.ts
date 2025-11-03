@@ -2996,7 +2996,7 @@ export const appRouter = router({
         z.object({
           vesselId: z.string().uuid("Invalid vessel ID"),
           cleanedAt: z.date(),
-          notes: z.string().min(1, "Cleaning notes are required"),
+          notes: z.string().optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {

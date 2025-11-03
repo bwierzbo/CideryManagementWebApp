@@ -30,6 +30,7 @@ const editAdditiveItemSchema = z.object({
   quantity: z.number().positive("Quantity must be positive").optional(),
   unit: z.enum(["g", "kg", "oz", "lb"]).optional(),
   pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
+  purchaseDate: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -88,10 +89,21 @@ export function EditAdditiveItemModal({
           : item.pricePerUnit;
       }
 
+      // Format purchaseDate for date input (convert from ISO to YYYY-MM-DD)
+      let purchaseDate = "";
+      if (item.purchaseDate) {
+        const date = new Date(item.purchaseDate);
+        purchaseDate = date.toISOString().split("T")[0];
+      } else if (item.createdAt) {
+        const date = new Date(item.createdAt);
+        purchaseDate = date.toISOString().split("T")[0];
+      }
+
       reset({
         quantity: quantity || 0,
         unit: item.unit || item.originalUnit || "kg",
         pricePerUnit: pricePerUnit,
+        purchaseDate: purchaseDate,
         notes: item.notes || "",
       });
     }
@@ -144,11 +156,22 @@ export function EditAdditiveItemModal({
         ? data.pricePerUnit
         : undefined;
 
+    // Validate and prepare purchaseDate - ensure it's a valid date
+    let purchaseDate: Date | undefined = undefined;
+    if (data.purchaseDate && data.purchaseDate.trim() !== "") {
+      const dateObj = new Date(data.purchaseDate);
+      // Check if the date is valid
+      if (!isNaN(dateObj.getTime())) {
+        purchaseDate = dateObj;
+      }
+    }
+
     const payload = {
       itemId: actualItemId,
       quantity,
       unit: data.unit,
       pricePerUnit,
+      purchaseDate,
       notes: data.notes,
     };
 
@@ -230,6 +253,26 @@ export function EditAdditiveItemModal({
             {errors.pricePerUnit && (
               <p className="text-sm text-red-600 mt-1">
                 {errors.pricePerUnit.message}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor="purchaseDate">
+              Purchase Date
+              <span className="text-xs text-muted-foreground ml-2">
+                (affects all items in order)
+              </span>
+            </Label>
+            <Input
+              id="purchaseDate"
+              type="date"
+              {...register("purchaseDate")}
+              className="mt-1"
+            />
+            {errors.purchaseDate && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.purchaseDate.message}
               </p>
             )}
           </div>

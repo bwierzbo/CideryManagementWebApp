@@ -1727,17 +1727,15 @@ function VesselMap() {
         )}
 
         {/* Clean Tank Modal */}
-        {selectedVesselForCleaning && (
-          <CleanTankModal
-            open={showCleanTankModal}
-            onClose={() => {
-              setShowCleanTankModal(false);
-              setSelectedVesselForCleaning(null);
-            }}
-            vesselId={selectedVesselForCleaning.id}
-            vesselName={selectedVesselForCleaning.name}
-          />
-        )}
+        <CleanTankModal
+          open={showCleanTankModal && !!selectedVesselForCleaning}
+          onClose={() => {
+            setShowCleanTankModal(false);
+            setSelectedVesselForCleaning(null);
+          }}
+          vesselId={selectedVesselForCleaning?.id || ""}
+          vesselName={selectedVesselForCleaning?.name || ""}
+        />
 
         {/* Edit Tank Modal */}
         <Dialog

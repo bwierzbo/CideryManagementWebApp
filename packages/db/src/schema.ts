@@ -459,6 +459,7 @@ export const packagingPurchaseItems = pgTable("packaging_purchase_items", {
   materialType: text("material_type"),
   size: text("size").notNull(),
   quantity: integer("quantity").notNull(),
+  unitType: text("unit_type"),
   pricePerUnit: decimal("price_per_unit", { precision: 8, scale: 4 }),
   totalCost: decimal("total_cost", { precision: 10, scale: 2 }),
   notes: text("notes"),
@@ -1004,7 +1005,7 @@ export const vesselCleaningOperations = pgTable(
       .references(() => vessels.id, { onDelete: "cascade" }),
     cleanedAt: timestamp("cleaned_at").notNull(),
     cleanedBy: uuid("cleaned_by").references(() => users.id),
-    notes: text("notes").notNull(), // Required field for cleaning method/details
+    notes: text("notes"), // Optional field for cleaning method/details
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),

@@ -218,7 +218,8 @@ export const additivePurchasesRouter = router({
         lotBatchNumber: z.string().optional(),
         expirationDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         storageRequirements: z.string().optional(),
-        pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+        pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
+        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         notes: z.string().optional(),
       }),
     )
@@ -226,9 +227,12 @@ export const additivePurchasesRouter = router({
       try {
         const { itemId, ...updates } = input;
 
-        // Check if item exists
+        // Check if item exists and get purchase ID
         const existingItem = await db
-          .select({ id: additivePurchaseItems.id })
+          .select({
+            id: additivePurchaseItems.id,
+            purchaseId: additivePurchaseItems.purchaseId
+          })
           .from(additivePurchaseItems)
           .where(eq(additivePurchaseItems.id, itemId))
           .limit(1);
@@ -277,6 +281,17 @@ export const additivePurchasesRouter = router({
           .set(updateData)
           .where(eq(additivePurchaseItems.id, itemId))
           .returning();
+
+        // Update parent purchase's purchase date if provided
+        if (updates.purchaseDate !== undefined) {
+          await db
+            .update(additivePurchases)
+            .set({
+              purchaseDate: updates.purchaseDate,
+              updatedAt: new Date()
+            })
+            .where(eq(additivePurchases.id, existingItem[0].purchaseId));
+        }
 
         return {
           success: true,
