@@ -258,13 +258,13 @@ export const activityRegisterRouter = router({
               bco.id::text as id,
               'carbonation' as type,
               'cellar' as category,
-              bco.carbonation_start_date as activity_date,
+              bco.started_at as activity_date,
               'Carbonation Operation' as activity_type,
               b.name as vendor_name,
               jsonb_build_object(
                 'batchCode', b.name,
                 'targetVolumes', bco.target_co2_volumes,
-                'processType', bco.carbonation_process_type
+                'processType', bco.carbonation_process
               ) as metadata
             FROM batch_carbonation_operations bco
             LEFT JOIN batches b ON bco.batch_id = b.id
@@ -349,7 +349,7 @@ export const activityRegisterRouter = router({
             SELECT ba.id, ba.added_at as activity_date, 'cellar' as category
             FROM batch_additives ba WHERE ba.deleted_at IS NULL
             UNION ALL
-            SELECT bco.id, bco.carbonation_start_date as activity_date, 'cellar' as category
+            SELECT bco.id, bco.started_at as activity_date, 'cellar' as category
             FROM batch_carbonation_operations bco WHERE bco.deleted_at IS NULL
             UNION ALL
             SELECT br.id, br.run_date as activity_date, 'packaging' as category
