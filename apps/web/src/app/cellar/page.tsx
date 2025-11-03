@@ -1942,7 +1942,7 @@ function AddMeasurement() {
 }
 
 export default function CellarPage() {
-  const [activeTab, setActiveTab] = useState<"vessels" | "batches">("vessels");
+  const [activeTab, setActiveTab] = useState<"vessels" | "batches" | "kegs">("vessels");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1962,6 +1962,7 @@ export default function CellarPage() {
           {[
             { key: "vessels", label: "Vessel Map", icon: Beaker },
             { key: "batches", label: "Batch Details", icon: Activity },
+            { key: "kegs", label: "Keg Tracking", icon: Wine },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -1985,6 +1986,11 @@ export default function CellarPage() {
         <div className="space-y-8">
           {activeTab === "vessels" && <VesselMap />}
           {activeTab === "batches" && <BatchDetails />}
+          {activeTab === "kegs" && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">Keg Tracking - Coming soon</p>
+            </div>
+          )}
         </div>
       </main>
     </div>

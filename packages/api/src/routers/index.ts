@@ -26,6 +26,7 @@ import { additiveVarietiesRouter } from "./additiveVarieties";
 import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
 import { bottlesRouter } from "./packaging";
+import { kegsRouter } from "./kegs";
 import { userRouter } from "./user";
 import { dashboardRouter } from "./dashboard";
 import {
@@ -1837,6 +1838,9 @@ export const appRouter = router({
 
   // Bottle runs management
   bottles: bottlesRouter,
+
+  // Keg tracking and management
+  kegs: kegsRouter,
 
   // Apple Varieties management - comprehensive CRUD with new enriched fields
   fruitVariety: varietiesRouter,

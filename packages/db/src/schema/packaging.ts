@@ -372,3 +372,196 @@ export const inventoryItemsRelations = relations(inventoryItems, ({ one }) => ({
     references: [bottleRuns.id],
   }),
 }));
+
+// Keg tracking enums
+export const kegTypeEnum = pgEnum("keg_type", [
+  "cornelius_5L",
+  "cornelius_9L",
+  "sanke_20L",
+  "sanke_30L",
+  "sanke_50L",
+  "other",
+]);
+
+export const kegStatusEnum = pgEnum("keg_status", [
+  "available",
+  "filled",
+  "distributed",
+  "cleaning",
+  "maintenance",
+  "retired",
+]);
+
+export const kegConditionEnum = pgEnum("keg_condition", [
+  "excellent",
+  "good",
+  "fair",
+  "needs_repair",
+  "retired",
+]);
+
+export const kegFillStatusEnum = pgEnum("keg_fill_status", [
+  "filled",
+  "distributed",
+  "returned",
+  "voided",
+]);
+
+// Kegs table - Individual keg asset registry
+export const kegs = pgTable(
+  "kegs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kegNumber: text("keg_number").notNull().unique(),
+    kegType: kegTypeEnum("keg_type").notNull(),
+    capacityML: integer("capacity_ml").notNull(),
+    capacityUnit: unitEnum("capacity_unit").notNull().default("L"),
+    purchaseDate: date("purchase_date"),
+    purchaseCost: decimal("purchase_cost", { precision: 10, scale: 2 }),
+    status: kegStatusEnum("status").notNull().default("available"),
+    condition: kegConditionEnum("condition").notNull().default("excellent"),
+    currentLocation: text("current_location").default("cellar"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    kegNumberIdx: index("kegs_keg_number_idx").on(table.kegNumber),
+    statusIdx: index("kegs_status_idx").on(table.status),
+    kegTypeIdx: index("kegs_keg_type_idx").on(table.kegType),
+    locationIdx: index("kegs_current_location_idx").on(table.currentLocation),
+  }),
+);
+
+// Keg fills table - Track keg fill operations
+export const kegFills = pgTable(
+  "keg_fills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kegId: uuid("keg_id")
+      .notNull()
+      .references(() => kegs.id, { onDelete: "cascade" }),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id),
+    vesselId: uuid("vessel_id")
+      .notNull()
+      .references(() => vessels.id),
+    filledAt: timestamp("filled_at").notNull(),
+    volumeTaken: decimal("volume_taken", { precision: 10, scale: 2 }).notNull(),
+    volumeTakenUnit: unitEnum("volume_taken_unit").notNull().default("L"),
+    loss: decimal("loss", { precision: 10, scale: 2 }),
+    lossUnit: unitEnum("loss_unit").notNull().default("L"),
+
+    // QA Fields
+    abvAtPackaging: decimal("abv_at_packaging", { precision: 5, scale: 2 }),
+    carbonationLevel: carbonationLevelEnum("carbonation_level"),
+    carbonationMethod: carbonationMethodEnum("carbonation_method").default(
+      "none",
+    ),
+    sourceCarbonationOperationId: uuid("source_carbonation_operation_id"),
+
+    // Distribution tracking
+    status: kegFillStatusEnum("status").notNull().default("filled"),
+    distributedAt: timestamp("distributed_at"),
+    distributionLocation: text("distribution_location"),
+    returnedAt: timestamp("returned_at"),
+
+    // Metadata
+    productionNotes: text("production_notes"),
+    voidReason: text("void_reason"),
+    voidedAt: timestamp("voided_at"),
+    voidedBy: uuid("voided_by"),
+
+    // Audit fields
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    kegIdx: index("keg_fills_keg_idx").on(table.kegId),
+    batchIdx: index("keg_fills_batch_idx").on(table.batchId),
+    vesselIdx: index("keg_fills_vessel_idx").on(table.vesselId),
+    filledAtIdx: index("keg_fills_filled_at_idx").on(table.filledAt),
+    statusIdx: index("keg_fills_status_idx").on(table.status),
+    kegStatusIdx: index("keg_fills_keg_status_idx").on(
+      table.kegId,
+      table.status,
+    ),
+  }),
+);
+
+// Keg fill materials - Track packaging materials used in keg fills
+export const kegFillMaterials = pgTable(
+  "keg_fill_materials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kegFillId: uuid("keg_fill_id")
+      .notNull()
+      .references(() => kegFills.id, { onDelete: "cascade" }),
+    packagingPurchaseItemId: uuid("packaging_purchase_item_id").notNull(),
+    quantityUsed: integer("quantity_used").notNull(),
+    materialType: text("material_type").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+  },
+  (table) => ({
+    kegFillIdx: index("keg_fill_materials_keg_fill_idx").on(table.kegFillId),
+    packagingItemIdx: index("keg_fill_materials_packaging_item_idx").on(
+      table.packagingPurchaseItemId,
+    ),
+  }),
+);
+
+// Keg relations
+export const kegsRelations = relations(kegs, ({ many }) => ({
+  fills: many(kegFills),
+}));
+
+export const kegFillsRelations = relations(kegFills, ({ one, many }) => ({
+  keg: one(kegs, {
+    fields: [kegFills.kegId],
+    references: [kegs.id],
+  }),
+  batch: one(batches, {
+    fields: [kegFills.batchId],
+    references: [batches.id],
+  }),
+  vessel: one(vessels, {
+    fields: [kegFills.vesselId],
+    references: [vessels.id],
+  }),
+  createdByUser: one(users, {
+    fields: [kegFills.createdBy],
+    references: [users.id],
+  }),
+  updatedByUser: one(users, {
+    fields: [kegFills.updatedBy],
+    references: [users.id],
+  }),
+  voidedByUser: one(users, {
+    fields: [kegFills.voidedBy],
+    references: [users.id],
+  }),
+  materials: many(kegFillMaterials),
+}));
+
+export const kegFillMaterialsRelations = relations(
+  kegFillMaterials,
+  ({ one }) => ({
+    kegFill: one(kegFills, {
+      fields: [kegFillMaterials.kegFillId],
+      references: [kegFills.id],
+    }),
+    createdByUser: one(users, {
+      fields: [kegFillMaterials.createdBy],
+      references: [users.id],
+    }),
+  }),
+);
