@@ -159,18 +159,18 @@ export const activityRegisterRouter = router({
               pr.id::text as id,
               'press_run' as type,
               'pressing' as category,
-              pr.completion_date as activity_date,
+              pr.date_completed as activity_date,
               'Press Run' as activity_type,
-              pr.run_name as vendor_name,
+              pr.press_run_name as vendor_name,
               jsonb_build_object(
-                'runName', pr.run_name,
-                'totalWeight', pr.total_weight_kg,
+                'runName', pr.press_run_name,
+                'totalWeight', pr.total_apple_weight_kg,
                 'totalVolume', pr.total_juice_volume,
                 'status', pr.status
               ) as metadata
             FROM press_runs pr
             WHERE pr.deleted_at IS NULL
-              AND pr.completion_date IS NOT NULL
+              AND pr.date_completed IS NOT NULL
 
             UNION ALL
 
@@ -333,8 +333,8 @@ export const activityRegisterRouter = router({
             SELECT pp.id, pp.purchase_date as activity_date, 'purchases' as category
             FROM packaging_purchases pp WHERE pp.deleted_at IS NULL
             UNION ALL
-            SELECT pr.id, pr.completion_date as activity_date, 'pressing' as category
-            FROM press_runs pr WHERE pr.deleted_at IS NULL AND pr.completion_date IS NOT NULL
+            SELECT pr.id, pr.date_completed as activity_date, 'pressing' as category
+            FROM press_runs pr WHERE pr.deleted_at IS NULL AND pr.date_completed IS NOT NULL
             UNION ALL
             SELECT b.id, b.created_at as activity_date, 'cellar' as category
             FROM batches b WHERE b.deleted_at IS NULL
