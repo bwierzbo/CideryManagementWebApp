@@ -181,11 +181,11 @@ export const activityRegisterRouter = router({
               'cellar' as category,
               b.created_at as activity_date,
               'Batch Created' as activity_type,
-              b.batch_code as vendor_name,
+              b.name as vendor_name,
               jsonb_build_object(
-                'batchCode', b.batch_code,
-                'batchName', b.batch_name,
-                'targetVolume', b.target_volume,
+                'batchCode', b.name,
+                'batchName', COALESCE(b.custom_name, b.name),
+                'targetVolume', b.initial_volume,
                 'status', b.status
               ) as metadata
             FROM batches b
@@ -200,9 +200,9 @@ export const activityRegisterRouter = router({
               'cellar' as category,
               bm.measurement_date as activity_date,
               'Batch Measurement' as activity_type,
-              b.batch_code as vendor_name,
+              b.name as vendor_name,
               jsonb_build_object(
-                'batchCode', b.batch_code,
+                'batchCode', b.name,
                 'specificGravity', bm.specific_gravity,
                 'abv', bm.abv,
                 'ph', bm.ph,
@@ -221,9 +221,9 @@ export const activityRegisterRouter = router({
               'cellar' as category,
               bt.transferred_at as activity_date,
               'Batch Transfer' as activity_type,
-              b.batch_code as vendor_name,
+              b.name as vendor_name,
               jsonb_build_object(
-                'sourceBatchCode', b.batch_code,
+                'sourceBatchCode', b.name,
                 'volumeTransferred', bt.volume_transferred,
                 'transferType', bt.transfer_type
               ) as metadata
@@ -240,9 +240,9 @@ export const activityRegisterRouter = router({
               'cellar' as category,
               ba.added_at as activity_date,
               'Additive Added' as activity_type,
-              b.batch_code as vendor_name,
+              b.name as vendor_name,
               jsonb_build_object(
-                'batchCode', b.batch_code,
+                'batchCode', b.name,
                 'quantity', ba.quantity,
                 'unit', ba.unit
               ) as metadata
@@ -259,9 +259,9 @@ export const activityRegisterRouter = router({
               'cellar' as category,
               bco.carbonation_start_date as activity_date,
               'Carbonation Operation' as activity_type,
-              b.batch_code as vendor_name,
+              b.name as vendor_name,
               jsonb_build_object(
-                'batchCode', b.batch_code,
+                'batchCode', b.name,
                 'targetVolumes', bco.target_co2_volumes,
                 'processType', bco.carbonation_process_type
               ) as metadata
@@ -278,9 +278,9 @@ export const activityRegisterRouter = router({
               'packaging' as category,
               br.run_date as activity_date,
               'Bottle Run' as activity_type,
-              b.batch_code as vendor_name,
+              b.name as vendor_name,
               jsonb_build_object(
-                'batchCode', b.batch_code,
+                'batchCode', b.name,
                 'totalBottles', br.total_bottles,
                 'status', br.status
               ) as metadata
