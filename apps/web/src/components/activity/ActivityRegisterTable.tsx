@@ -61,6 +61,7 @@ const ACTIVITY_TYPE_CONFIG: Record<
   additive: { icon: Droplets, color: "bg-green-100 text-green-800", label: "Additive" },
   carbonation: { icon: Droplets, color: "bg-indigo-100 text-indigo-800", label: "Carbonation" },
   bottle_run: { icon: Package, color: "bg-rose-100 text-rose-800", label: "Bottle Run" },
+  keg_fill: { icon: Package, color: "bg-orange-100 text-orange-800", label: "Keg Fill" },
   cleaning: { icon: Droplets, color: "bg-gray-100 text-gray-800", label: "Cleaning" },
 };
 
@@ -358,6 +359,8 @@ function formatActivityDetails(activity: any): string {
       return `Target: ${metadata.targetVolumes ? Number(metadata.targetVolumes).toFixed(1) + " vol" : "-"}`;
     case "bottle_run":
       return `${metadata.totalBottles || 0} bottles`;
+    case "keg_fill":
+      return `Keg ${metadata.kegNumber}: ${metadata.volumeTaken ? Number(metadata.volumeTaken).toFixed(1) : "-"} ${metadata.volumeUnit || "L"}`;
     case "cleaning":
       return metadata.notes || "-";
     default:

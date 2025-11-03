@@ -22,7 +22,7 @@ import {
 import { eq, and, desc, asc, sql, isNull, gte, lte, or } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { bottleRuns } from "db/src/schema/packaging";
+import { bottleRuns, kegFills, kegs } from "db/src/schema/packaging";
 
 /**
  * Activity Register Router
@@ -291,6 +291,28 @@ export const activityRegisterRouter = router({
 
             UNION ALL
 
+            -- Keg Fills
+            SELECT
+              kf.id::text as id,
+              'keg_fill' as type,
+              'packaging' as category,
+              kf.filled_at as activity_date,
+              'Keg Fill' as activity_type,
+              b.name as vendor_name,
+              jsonb_build_object(
+                'batchCode', b.name,
+                'kegNumber', k.keg_number,
+                'volumeTaken', kf.volume_taken,
+                'volumeUnit', kf.volume_taken_unit,
+                'status', kf.status
+              ) as metadata
+            FROM keg_fills kf
+            LEFT JOIN batches b ON kf.batch_id = b.id
+            LEFT JOIN kegs k ON kf.keg_id = k.id
+            WHERE kf.status != 'voided'
+
+            UNION ALL
+
             -- Vessel Cleaning
             SELECT
               vco.id::text as id,
@@ -353,6 +375,9 @@ export const activityRegisterRouter = router({
             UNION ALL
             SELECT br.id, br.packaged_at as activity_date, 'packaging' as category
             FROM bottle_runs br WHERE br.status = 'completed'
+            UNION ALL
+            SELECT kf.id, kf.filled_at as activity_date, 'packaging' as category
+            FROM keg_fills kf WHERE kf.status != 'voided'
             UNION ALL
             SELECT vco.id, vco.cleaned_at as activity_date, 'vessels' as category
             FROM vessel_cleaning_operations vco WHERE vco.deleted_at IS NULL

@@ -20,6 +20,7 @@ import {
   juicePurchaseItems,
   juicePurchases,
 } from "db";
+import { bottleRuns, kegFills, kegs } from "db/src/schema/packaging";
 import { eq, and, isNull, desc, asc, sql, or, like } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
@@ -1358,7 +1359,73 @@ export const batchRouter = router({
           });
         });
 
-        // TODO: Add packaging/bottling events when implemented
+        // Get bottle runs
+        const bottles = await db
+          .select({
+            id: bottleRuns.id,
+            packagedAt: bottleRuns.packagedAt,
+            unitsProduced: bottleRuns.unitsProduced,
+            packageSizeML: bottleRuns.packageSizeML,
+            volumeTaken: bottleRuns.volumeTaken,
+            volumeTakenUnit: bottleRuns.volumeTakenUnit,
+            status: bottleRuns.status,
+          })
+          .from(bottleRuns)
+          .where(
+            and(
+              eq(bottleRuns.batchId, input.batchId),
+              eq(bottleRuns.status, "completed"),
+            ),
+          );
+
+        bottles.forEach((b) => {
+          activities.push({
+            id: `bottling-${b.id}`,
+            type: "bottling",
+            timestamp: b.packagedAt,
+            description: `Bottled ${b.unitsProduced} units (${b.packageSizeML}mL)`,
+            details: {
+              unitsProduced: b.unitsProduced,
+              packageSize: `${b.packageSizeML}mL`,
+              volumeTaken: `${b.volumeTaken}${b.volumeTakenUnit || 'L'}`,
+            },
+          });
+        });
+
+        // Get keg fills
+        const kegFillsList = await db
+          .select({
+            id: kegFills.id,
+            filledAt: kegFills.filledAt,
+            volumeTaken: kegFills.volumeTaken,
+            volumeTakenUnit: kegFills.volumeTakenUnit,
+            status: kegFills.status,
+            kegNumber: kegs.kegNumber,
+            kegType: kegs.kegType,
+          })
+          .from(kegFills)
+          .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+          .where(
+            and(
+              eq(kegFills.batchId, input.batchId),
+              sql`${kegFills.status} != 'voided'`,
+            ),
+          );
+
+        kegFillsList.forEach((k) => {
+          activities.push({
+            id: `keg-fill-${k.id}`,
+            type: "bottling", // Use "bottling" type for UI consistency
+            timestamp: k.filledAt,
+            description: `Filled keg ${k.kegNumber} (${k.kegType})`,
+            details: {
+              kegNumber: k.kegNumber,
+              kegType: k.kegType,
+              volumeTaken: `${k.volumeTaken}${k.volumeTakenUnit || 'L'}`,
+              status: k.status,
+            },
+          });
+        });
 
         // Sort all activities by timestamp - true chronological order (oldest to newest)
         activities.sort((a, b) => {
