@@ -20,11 +20,8 @@ import { toast } from "@/hooks/use-toast";
 import { Edit } from "lucide-react";
 
 const editPackagingItemSchema = z.object({
-  packageType: z.string().optional(),
-  materialType: z.string().optional(),
-  size: z.string().optional(),
   quantity: z.number().positive("Quantity must be positive").optional(),
-  pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+  pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
   notes: z.string().optional(),
 });
 
@@ -57,12 +54,31 @@ export function EditPackagingItemModal({
   // Reset when modal opens
   useEffect(() => {
     if (open && item) {
+      console.log("Prefilling edit form with item data:", item);
+
+      // Parse quantity - handle both string and number types
+      let quantity = 0;
+      if (item.quantity) {
+        quantity = typeof item.quantity === 'string'
+          ? parseInt(item.quantity, 10)
+          : item.quantity;
+      }
+
+      // Parse price per unit
+      let pricePerUnit = undefined;
+      if (item.pricePerUnit !== null && item.pricePerUnit !== undefined) {
+        pricePerUnit = typeof item.pricePerUnit === 'string'
+          ? parseFloat(item.pricePerUnit)
+          : item.pricePerUnit;
+      } else if (item.unitCost !== null && item.unitCost !== undefined) {
+        pricePerUnit = typeof item.unitCost === 'string'
+          ? parseFloat(item.unitCost)
+          : item.unitCost;
+      }
+
       reset({
-        packageType: item.packageType || "",
-        materialType: item.materialType || "",
-        size: item.size || "",
-        quantity: item.quantity || 0,
-        pricePerUnit: item.unitCost ? parseFloat(item.unitCost) : undefined,
+        quantity: quantity || 0,
+        pricePerUnit: pricePerUnit,
         notes: item.notes || "",
       });
     }
@@ -81,6 +97,8 @@ export function EditPackagingItemModal({
       reset();
     },
     onError: (error) => {
+      console.error("Update error:", error);
+      console.error("Error data:", error.data);
       toast({
         title: "Update Failed",
         description: error.message,
@@ -90,10 +108,39 @@ export function EditPackagingItemModal({
   });
 
   const onSubmit = (data: EditPackagingItemForm) => {
-    updateMutation.mutate({
-      itemId: item.id,
-      ...data,
-    });
+    console.log("Form data:", data);
+
+    // Extract actual UUID from composite ID (format: "packaging-{uuid}")
+    const actualItemId = item.id.startsWith("packaging-")
+      ? item.id.replace("packaging-", "")
+      : item.id;
+
+    // Validate and prepare quantity - must be a valid positive number
+    const quantity =
+      typeof data.quantity === "number" &&
+      !isNaN(data.quantity) &&
+      data.quantity > 0
+        ? Math.floor(data.quantity) // Packaging quantities are integers
+        : undefined;
+
+    // Validate and prepare pricePerUnit - must be a valid non-negative number (can be 0)
+    const pricePerUnit =
+      typeof data.pricePerUnit === "number" &&
+      !isNaN(data.pricePerUnit) &&
+      data.pricePerUnit >= 0
+        ? data.pricePerUnit
+        : undefined;
+
+    const payload = {
+      itemId: actualItemId,
+      quantity,
+      pricePerUnit,
+      notes: data.notes,
+    };
+
+    console.log("Sending to API:", payload);
+
+    updateMutation.mutate(payload);
   };
 
   if (!item) return null;
@@ -112,53 +159,6 @@ export function EditPackagingItemModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="packageType">Package Type</Label>
-              <Input
-                id="packageType"
-                {...register("packageType")}
-                placeholder="e.g., Bottle, Keg, Can"
-                className="mt-1"
-              />
-              {errors.packageType && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.packageType.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="materialType">Material Type</Label>
-              <Input
-                id="materialType"
-                {...register("materialType")}
-                placeholder="e.g., Glass, Aluminum, Stainless Steel"
-                className="mt-1"
-              />
-              {errors.materialType && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.materialType.message}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="size">Size/Description</Label>
-            <Input
-              id="size"
-              {...register("size")}
-              placeholder="e.g., 750ml, 5L, 1/2 barrel"
-              className="mt-1"
-            />
-            {errors.size && (
-              <p className="text-sm text-red-600 mt-1">
-                {errors.size.message}
-              </p>
-            )}
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="quantity">

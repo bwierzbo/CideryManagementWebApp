@@ -243,7 +243,8 @@ export const activityRegisterRouter = router({
               b.name as vendor_name,
               jsonb_build_object(
                 'batchCode', b.name,
-                'quantity', ba.quantity,
+                'additiveName', ba.additive_name,
+                'amount', ba.amount,
                 'unit', ba.unit
               ) as metadata
             FROM batch_additives ba

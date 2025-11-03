@@ -353,7 +353,7 @@ function formatActivityDetails(activity: any): string {
     case "transfer":
       return `${metadata.volumeTransferred ? Number(metadata.volumeTransferred).toFixed(1) + " L transferred" : "Transfer"}`;
     case "additive":
-      return `${metadata.quantity} ${metadata.unit}`;
+      return `${metadata.additiveName || "Additive"}: ${metadata.amount} ${metadata.unit}`;
     case "carbonation":
       return `Target: ${metadata.targetVolumes ? Number(metadata.targetVolumes).toFixed(1) + " vol" : "-"}`;
     case "bottle_run":
