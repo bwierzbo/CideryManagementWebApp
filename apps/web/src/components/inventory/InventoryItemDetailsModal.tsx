@@ -321,43 +321,43 @@ export function InventoryItemDetailsModal({
                   {/* Material-specific fields */}
                   {item.materialType === "juice" && (
                     <>
-                      {(item.ph || metadata.ph) && (
+                      {((item as any).ph || (metadata as any).ph) && (
                         <div className="flex justify-between pt-3 border-t">
                           <span className="text-sm font-medium text-muted-foreground">
                             pH
                           </span>
                           <span className="text-sm font-semibold">
-                            {item.ph || metadata.ph}
+                            {(item as any).ph || (metadata as any).ph}
                           </span>
                         </div>
                       )}
-                      {(item.specificGravity || metadata.specificGravity) && (
+                      {((item as any).specificGravity || (metadata as any).specificGravity) && (
                         <div className="flex justify-between">
                           <span className="text-sm font-medium text-muted-foreground">
                             Specific Gravity (SG)
                           </span>
                           <span className="text-sm font-semibold">
-                            {parseFloat(item.specificGravity || metadata.specificGravity).toFixed(3)}
+                            {parseFloat((item as any).specificGravity || (metadata as any).specificGravity).toFixed(3)}
                           </span>
                         </div>
                       )}
-                      {(item.brix || metadata.brix) && (
+                      {((item as any).brix || (metadata as any).brix) && (
                         <div className="flex justify-between">
                           <span className="text-sm font-medium text-muted-foreground">
                             Brix
                           </span>
                           <span className="text-sm font-semibold">
-                            {item.brix || metadata.brix}°
+                            {(item as any).brix || (metadata as any).brix}°
                           </span>
                         </div>
                       )}
-                      {(item.containerType || metadata.containerType) && (
+                      {((item as any).containerType || (metadata as any).containerType) && (
                         <div className="flex justify-between">
                           <span className="text-sm font-medium text-muted-foreground">
                             Container Type
                           </span>
                           <span className="text-sm font-semibold capitalize">
-                            {item.containerType || metadata.containerType}
+                            {(item as any).containerType || (metadata as any).containerType}
                           </span>
                         </div>
                       )}

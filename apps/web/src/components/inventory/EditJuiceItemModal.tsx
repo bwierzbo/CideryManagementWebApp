@@ -92,7 +92,7 @@ export function EditJuiceItemModal({
     setValue,
     reset,
   } = useForm<EditJuiceItemForm>({
-    resolver: zodResolver(editJuiceItemSchema),
+    resolver: zodResolver(editJuiceItemSchema) as any,
   });
 
   const volumeUnit = watch("volumeUnit");

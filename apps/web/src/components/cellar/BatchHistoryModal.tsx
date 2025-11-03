@@ -322,18 +322,18 @@ export function BatchHistoryModal({
                           {(item.fractionOfBatch * 100).toFixed(1)}%
                         </TableCell>
                         <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase" && item.ph
-                            ? Number(item.ph).toFixed(2)
+                          {item.sourceType === "juice_purchase" && (item as any).ph
+                            ? Number((item as any).ph).toFixed(2)
                             : "—"}
                         </TableCell>
                         <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase" && item.specificGravity
-                            ? Number(item.specificGravity).toFixed(3)
+                          {item.sourceType === "juice_purchase" && (item as any).specificGravity
+                            ? Number((item as any).specificGravity).toFixed(3)
                             : "—"}
                         </TableCell>
                         <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase" && item.brix
-                            ? Number(item.brix).toFixed(1)
+                          {item.sourceType === "juice_purchase" && (item as any).brix
+                            ? Number((item as any).brix).toFixed(1)
                             : item.avgBrix
                               ? Number(item.avgBrix).toFixed(1)
                               : "—"}
@@ -344,10 +344,10 @@ export function BatchHistoryModal({
                             : "—"}
                         </TableCell>
                         <TableCell>
-                          {item.lotCode || "—"}
+                          {(item as any).lotCode || "—"}
                         </TableCell>
-                        <TableCell className="max-w-xs truncate" title={item.notes || ""}>
-                          {item.notes || "—"}
+                        <TableCell className="max-w-xs truncate" title={(item as any).notes || ""}>
+                          {(item as any).notes || "—"}
                         </TableCell>
                       </TableRow>
                     ))}
