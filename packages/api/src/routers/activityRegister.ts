@@ -225,7 +225,7 @@ export const activityRegisterRouter = router({
               jsonb_build_object(
                 'sourceBatchCode', b.name,
                 'volumeTransferred', bt.volume_transferred,
-                'transferType', bt.transfer_type
+                'notes', bt.notes
               ) as metadata
             FROM batch_transfers bt
             LEFT JOIN batches b ON bt.source_batch_id = b.id

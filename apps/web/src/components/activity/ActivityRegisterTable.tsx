@@ -351,7 +351,7 @@ function formatActivityDetails(activity: any): string {
     case "measurement":
       return `SG: ${metadata.specificGravity ? Number(metadata.specificGravity).toFixed(3) : "-"} | ABV: ${metadata.abv ? Number(metadata.abv).toFixed(1) + "%" : "-"}`;
     case "transfer":
-      return `${metadata.volumeTransferred ? Number(metadata.volumeTransferred).toFixed(1) + " L" : ""} (${metadata.transferType || "unknown"})`;
+      return `${metadata.volumeTransferred ? Number(metadata.volumeTransferred).toFixed(1) + " L transferred" : "Transfer"}`;
     case "additive":
       return `${metadata.quantity} ${metadata.unit}`;
     case "carbonation":
