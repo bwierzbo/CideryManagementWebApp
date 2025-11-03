@@ -68,6 +68,7 @@ import {
   FlaskConical,
   Wine,
   Filter as FilterIcon,
+  Package,
 } from "lucide-react";
 import {
   litersToGallons,
@@ -84,6 +85,7 @@ import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BottleModal } from "@/components/bottles/bottle-modal";
+import { FillKegModal } from "@/components/kegs/FillKegModal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
 import { CleanTankModal } from "@/components/cellar/CleanTankModal";
@@ -880,6 +882,15 @@ function VesselMap() {
     currentVolumeL: number;
   } | null>(null);
 
+  // Keg fill modal state
+  const [showFillKegModal, setShowFillKegModal] = useState(false);
+  const [selectedVesselForKegging, setSelectedVesselForKegging] = useState<{
+    id: string;
+    name: string;
+    batchId: string;
+    currentVolumeL: number;
+  } | null>(null);
+
   // Filter modal state
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [selectedVesselForFiltering, setSelectedVesselForFiltering] = useState<{
@@ -1193,6 +1204,48 @@ function VesselMap() {
     setShowBottleModal(true);
   };
 
+  const handleFillKeg = (vesselId: string) => {
+    const vessel = vesselListQuery.data?.vessels?.find(
+      (v) => v.id === vesselId,
+    );
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
+
+    if (!vessel || !batchId) {
+      toast({
+        title: "Cannot Fill Kegs",
+        description: "This vessel doesn't have an active batch.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const currentVolumeL = liquidMapVessel?.currentVolume
+      ? parseFloat(liquidMapVessel.currentVolume.toString())
+      : liquidMapVessel?.applePressRunVolume
+        ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
+        : 0;
+
+    if (currentVolumeL <= 0) {
+      toast({
+        title: "Cannot Fill Kegs",
+        description: "This vessel is empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedVesselForKegging({
+      id: vesselId,
+      name: vessel.name || "Unnamed Vessel",
+      batchId,
+      currentVolumeL,
+    });
+    setShowFillKegModal(true);
+  };
+
   const handleFilter = (vesselId: string) => {
     const vessel = vesselListQuery.data?.vessels?.find(
       (v) => v.id === vesselId,
@@ -1502,6 +1555,15 @@ function VesselMap() {
                                 <Wine className="w-3 h-3 mr-2" />
                                 Bottle
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleFillKeg(vessel.id)}
+                                disabled={
+                                  !liquidMapVessel?.batchId || currentVolume <= 0
+                                }
+                              >
+                                <Package className="w-3 h-3 mr-2" />
+                                Fill Kegs
+                              </DropdownMenuItem>
                             </>
                           )}
                           {liquidMapVessel?.batchId && (
@@ -1693,6 +1755,21 @@ function VesselMap() {
             vesselName={selectedVesselForBottling.name}
             batchId={selectedVesselForBottling.batchId}
             currentVolumeL={selectedVesselForBottling.currentVolumeL}
+          />
+        )}
+
+        {/* Fill Keg Modal */}
+        {selectedVesselForKegging && (
+          <FillKegModal
+            open={showFillKegModal}
+            onClose={() => {
+              setShowFillKegModal(false);
+              setSelectedVesselForKegging(null);
+            }}
+            vesselId={selectedVesselForKegging.id}
+            vesselName={selectedVesselForKegging.name}
+            batchId={selectedVesselForKegging.batchId}
+            currentVolumeL={selectedVesselForKegging.currentVolumeL}
           />
         )}
 

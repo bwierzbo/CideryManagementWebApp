@@ -37,16 +37,11 @@ const addKegSchema = z.object({
     "other",
   ]),
   capacityML: z.number().positive("Capacity must be positive"),
-  capacityUnit: z.enum(["L", "gal", "mL"]).default("L"),
+  capacityUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]),
   purchaseDate: z.string().optional(),
-  purchaseCost: z.preprocess(
-    (val) => (val === "" || val === undefined ? undefined : Number(val)),
-    z.number().positive().optional(),
-  ),
-  currentLocation: z.string().default("cellar"),
-  condition: z
-    .enum(["excellent", "good", "fair", "needs_repair", "retired"])
-    .default("excellent"),
+  purchaseCost: z.number().positive().optional(),
+  currentLocation: z.string(),
+  condition: z.enum(["excellent", "good", "fair", "needs_repair", "retired"]),
   notes: z.string().optional(),
 });
 
@@ -250,7 +245,7 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
                 type="number"
                 step="0.01"
                 placeholder="0.00"
-                {...register("purchaseCost")}
+                {...register("purchaseCost", { valueAsNumber: true })}
                 className="mt-1"
               />
               {errors.purchaseCost && (

@@ -31,7 +31,7 @@ const createKegSchema = z.object({
     "other",
   ]),
   capacityML: z.number().positive("Capacity must be positive"),
-  capacityUnit: z.enum(["L", "gal", "mL"]).default("L"),
+  capacityUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]).default("L"),
   purchaseDate: z
     .date()
     .or(z.string().transform((val) => new Date(val)))
@@ -73,9 +73,9 @@ const fillKegsSchema = z.object({
     .or(z.string().transform((val) => new Date(val)))
     .default(() => new Date()),
   volumeTakenPerKeg: z.number().positive("Volume must be positive"),
-  volumeTakenUnit: z.enum(["L", "gal", "mL"]).default("L"),
+  volumeTakenUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]).default("L"),
   loss: z.number().min(0).optional(),
-  lossUnit: z.enum(["L", "gal", "mL"]).default("L"),
+  lossUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]).default("L"),
   abvAtPackaging: z.number().min(0).max(20).optional(),
   carbonationLevel: z.enum(["still", "petillant", "sparkling"]).optional(),
   carbonationMethod: z.enum(["natural", "forced", "none"]).optional(),
@@ -161,12 +161,13 @@ export const kegsRouter = router({
         }
 
         if (search) {
-          conditions.push(
-            or(
-              like(kegs.kegNumber, `%${search}%`),
-              like(kegs.notes, `%${search}%`),
-            ),
+          const searchCondition = or(
+            like(kegs.kegNumber, `%${search}%`),
+            like(kegs.notes, `%${search}%`),
           );
+          if (searchCondition) {
+            conditions.push(searchCondition);
+          }
         }
 
         // Get kegs with latest fill information
@@ -368,7 +369,19 @@ export const kegsRouter = router({
         const [newKeg] = await db
           .insert(kegs)
           .values({
-            ...input,
+            kegNumber: input.kegNumber,
+            kegType: input.kegType,
+            capacityML: input.capacityML,
+            capacityUnit: input.capacityUnit,
+            purchaseDate: input.purchaseDate
+              ? input.purchaseDate instanceof Date
+                ? input.purchaseDate.toISOString().split("T")[0]
+                : input.purchaseDate
+              : null,
+            purchaseCost: input.purchaseCost?.toString(),
+            currentLocation: input.currentLocation,
+            condition: input.condition,
+            notes: input.notes,
             status: "available",
           })
           .returning();

@@ -65,12 +65,12 @@ interface Keg {
   capacityUnit: string;
   status: string;
   condition: string;
-  currentLocation: string;
+  currentLocation: string | null;
   notes: string | null;
-  createdAt: Date;
+  createdAt: string;
   latestFillId: string | null;
   latestFillBatchName: string | null;
-  latestFillDate: Date | null;
+  latestFillDate: string | null;
 }
 
 const KEG_STATUS_CONFIG = {
@@ -331,7 +331,7 @@ export function KegsManagement() {
 
                         <div className="flex items-center gap-2">
                           <MapPin className="w-4 h-4 text-gray-400" />
-                          <span className="truncate">{keg.currentLocation}</span>
+                          <span className="truncate">{keg.currentLocation || "Unknown"}</span>
                         </div>
 
                         {keg.latestFillBatchName && (
