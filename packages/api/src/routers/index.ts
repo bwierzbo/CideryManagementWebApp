@@ -6,6 +6,7 @@ import {
   adminProcedure,
   createRbacProcedure,
 } from "../trpc";
+import { activityRegisterRouter } from "./activityRegister";
 import { auditRouter } from "./audit";
 import { batchRouter } from "./batch";
 import { carbonationRouter } from "./carbonation";
@@ -3257,6 +3258,9 @@ export const appRouter = router({
 
   // Audit logging and reporting
   audit: auditRouter,
+
+  // Activity register - unified view of all system activities
+  activityRegister: activityRegisterRouter,
 
   // Purchase management for different material types
   additivePurchases: additivePurchasesRouter,

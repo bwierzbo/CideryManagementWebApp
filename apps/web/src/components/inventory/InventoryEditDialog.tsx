@@ -87,7 +87,9 @@ export function InventoryEditDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Extract material type and item ID from the composite ID
-  const [materialType, itemId] = item?.id?.split("-") || [];
+  // Format: "materialType-uuid" (e.g., "basefruit-abc123...")
+  const [materialType, ...idParts] = item?.id?.split("-") || [];
+  const itemId = idParts.join("-"); // Rejoin in case UUID contains dashes
   const metadata = (item?.metadata || {}) as Record<string, any>;
 
   // Create form based on material type - use any type to handle dynamic forms

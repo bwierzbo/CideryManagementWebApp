@@ -50,6 +50,7 @@ const packagingLineSchema = z.object({
   }),
   unitCost: z.number().nonnegative("Unit cost cannot be negative").optional(),
   totalCost: z.number().nonnegative("Total cost cannot be negative").optional(),
+  notes: z.string().optional(),
 });
 
 const packagingTransactionSchema = z.object({
@@ -114,6 +115,7 @@ export function PackagingTransactionForm({
       unitType: "cases" | "boxes" | "individual" | "pallets";
       unitCost: number | undefined;
       totalCost: number | undefined;
+      notes: string | undefined;
       isValid?: boolean;
       validationError?: string;
     }>
@@ -124,6 +126,7 @@ export function PackagingTransactionForm({
       unitType: "cases",
       unitCost: undefined,
       totalCost: undefined,
+      notes: undefined,
       isValid: true,
     },
   ]);
@@ -217,6 +220,7 @@ export function PackagingTransactionForm({
           unitType: "cases" as const,
           unitCost: undefined,
           totalCost: undefined,
+          notes: undefined,
           isValid: true,
         },
       ];
@@ -336,6 +340,7 @@ export function PackagingTransactionForm({
             totalCost:
               line.totalCost ||
               (line.unitCost ? line.quantity! * line.unitCost : undefined),
+            notes: line.notes,
           };
         });
 
@@ -366,6 +371,7 @@ export function PackagingTransactionForm({
           unitType: "cases",
           unitCost: undefined,
           totalCost: undefined,
+          notes: undefined,
           isValid: true,
         },
       ]);
@@ -764,6 +770,28 @@ export function PackagingTransactionForm({
                             }
                           />
                         </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <Label>
+                          Notes{" "}
+                          <span className="text-gray-500 text-sm">
+                            (Optional)
+                          </span>
+                        </Label>
+                        <Input
+                          type="text"
+                          value={line.notes || ""}
+                          placeholder="Additional notes for this packaging..."
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines];
+                            newLines[index].notes = e.target.value || undefined;
+                            setLines(newLines);
+                            setValue(`lines.${index}.notes`, newLines[index].notes);
+                          }}
+                        />
                       </div>
 
                       {/* Line Total */}

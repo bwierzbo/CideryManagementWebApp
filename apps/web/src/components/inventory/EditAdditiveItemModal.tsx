@@ -27,14 +27,9 @@ import { toast } from "@/hooks/use-toast";
 import { Edit } from "lucide-react";
 
 const editAdditiveItemSchema = z.object({
-  brandManufacturer: z.string().optional(),
-  productName: z.string().optional(),
   quantity: z.number().positive("Quantity must be positive").optional(),
   unit: z.enum(["g", "kg", "oz", "lb"]).optional(),
-  lotBatchNumber: z.string().optional(),
-  expirationDate: z.string().optional(),
-  storageRequirements: z.string().optional(),
-  pricePerUnit: z.number().positive("Price per unit must be positive").optional(),
+  pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
   notes: z.string().optional(),
 });
 
@@ -71,15 +66,32 @@ export function EditAdditiveItemModal({
   // Reset when modal opens
   useEffect(() => {
     if (open && item) {
+      console.log("Prefilling edit form with item data:", item);
+
+      // Parse quantity - handle both string and number types
+      let quantity = 0;
+      if (item.quantity) {
+        quantity = typeof item.quantity === 'string'
+          ? parseFloat(item.quantity)
+          : item.quantity;
+      } else if (item.originalQuantity) {
+        quantity = typeof item.originalQuantity === 'string'
+          ? parseFloat(item.originalQuantity)
+          : item.originalQuantity;
+      }
+
+      // Parse price per unit
+      let pricePerUnit = undefined;
+      if (item.pricePerUnit !== null && item.pricePerUnit !== undefined) {
+        pricePerUnit = typeof item.pricePerUnit === 'string'
+          ? parseFloat(item.pricePerUnit)
+          : item.pricePerUnit;
+      }
+
       reset({
-        brandManufacturer: item.brandManufacturer || "",
-        productName: item.productName || "",
-        quantity: item.quantity ? parseFloat(item.quantity) : 0,
-        unit: item.unit || "kg",
-        lotBatchNumber: item.lotBatchNumber || "",
-        expirationDate: item.expirationDate || "",
-        storageRequirements: item.storageRequirements || "",
-        pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : undefined,
+        quantity: quantity || 0,
+        unit: item.unit || item.originalUnit || "kg",
+        pricePerUnit: pricePerUnit,
         notes: item.notes || "",
       });
     }
@@ -91,12 +103,15 @@ export function EditAdditiveItemModal({
         title: "Item Updated",
         description: "Additive purchase item updated successfully",
       });
+      utils.additivePurchases.list.invalidate();
       utils.purchase.allPurchases.invalidate();
       onSuccess?.();
       onClose();
       reset();
     },
     onError: (error) => {
+      console.error("Update error:", error);
+      console.error("Error data:", error.data);
       toast({
         title: "Update Failed",
         description: error.message,
@@ -106,11 +121,40 @@ export function EditAdditiveItemModal({
   });
 
   const onSubmit = (data: EditAdditiveItemForm) => {
-    updateMutation.mutate({
-      itemId: item.id,
-      ...data,
-      expirationDate: data.expirationDate ? new Date(data.expirationDate) : undefined,
-    });
+    console.log("Form data:", data);
+
+    // Extract actual UUID from composite ID (format: "additive-{uuid}")
+    const actualItemId = item.id.startsWith("additive-")
+      ? item.id.replace("additive-", "")
+      : item.id;
+
+    // Validate and prepare quantity - must be a valid positive number
+    const quantity =
+      typeof data.quantity === "number" &&
+      !isNaN(data.quantity) &&
+      data.quantity > 0
+        ? data.quantity
+        : undefined;
+
+    // Validate and prepare pricePerUnit - must be a valid non-negative number (can be 0)
+    const pricePerUnit =
+      typeof data.pricePerUnit === "number" &&
+      !isNaN(data.pricePerUnit) &&
+      data.pricePerUnit >= 0
+        ? data.pricePerUnit
+        : undefined;
+
+    const payload = {
+      itemId: actualItemId,
+      quantity,
+      unit: data.unit,
+      pricePerUnit,
+      notes: data.notes,
+    };
+
+    console.log("Sending to API:", payload);
+
+    updateMutation.mutate(payload);
   };
 
   if (!item) return null;
@@ -129,40 +173,6 @@ export function EditAdditiveItemModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="brandManufacturer">
-                Brand/Manufacturer
-              </Label>
-              <Input
-                id="brandManufacturer"
-                {...register("brandManufacturer")}
-                className="mt-1"
-              />
-              {errors.brandManufacturer && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.brandManufacturer.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="productName">
-                Product Name
-              </Label>
-              <Input
-                id="productName"
-                {...register("productName")}
-                className="mt-1"
-              />
-              {errors.productName && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.productName.message}
-                </p>
-              )}
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="quantity">
@@ -206,52 +216,6 @@ export function EditAdditiveItemModal({
                 </p>
               )}
             </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="lotBatchNumber">Lot/Batch Number</Label>
-              <Input
-                id="lotBatchNumber"
-                {...register("lotBatchNumber")}
-                className="mt-1"
-              />
-              {errors.lotBatchNumber && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.lotBatchNumber.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Label htmlFor="expirationDate">Expiration Date</Label>
-              <Input
-                id="expirationDate"
-                type="date"
-                {...register("expirationDate")}
-                className="mt-1"
-              />
-              {errors.expirationDate && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.expirationDate.message}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="storageRequirements">Storage Requirements</Label>
-            <Textarea
-              id="storageRequirements"
-              {...register("storageRequirements")}
-              placeholder="e.g., Refrigerate after opening, store in cool dry place..."
-              className="mt-1 min-h-[60px]"
-            />
-            {errors.storageRequirements && (
-              <p className="text-sm text-red-600 mt-1">
-                {errors.storageRequirements.message}
-              </p>
-            )}
           </div>
 
           <div>

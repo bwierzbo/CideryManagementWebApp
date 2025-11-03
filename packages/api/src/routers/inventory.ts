@@ -218,81 +218,9 @@ export const inventoryRouter = router({
           return dateB - dateA;
         });
 
-        // Consolidate items by variety
-        const consolidatedMap = new Map<string, typeof allItems[0] & { metadata: any }>();
-
-        for (const item of allItems) {
-          const metadata = item.metadata as any;
-          const varietyName = metadata?.varietyName || metadata?.productName || 'Unknown';
-          const key = `${item.materialType}-${varietyName}`;
-
-          // Extract cost data if available
-          const quantity = Number(metadata?.quantity || item.currentBottleCount || 0);
-          const pricePerUnit = Number(metadata?.pricePerUnit || metadata?.unitCost || 0);
-          const totalCost = Number(metadata?.totalCost || 0);
-
-          // Create purchase detail record
-          const purchaseDetail = {
-            purchaseId: metadata?.purchaseId,
-            purchaseDate: metadata?.purchaseDate,
-            vendorName: metadata?.vendorName,
-            quantity,
-            pricePerUnit,
-            totalCost,
-          };
-
-          if (!consolidatedMap.has(key)) {
-            // First item of this variety
-            consolidatedMap.set(key, {
-              ...item,
-              id: `consolidated-${key}`,
-              metadata: {
-                ...metadata,
-                purchaseCount: 1,
-                purchaseIds: [metadata?.purchaseId].filter(Boolean),
-                purchaseDetails: [purchaseDetail],
-                totalQuantity: quantity,
-                totalCost: totalCost,
-                averageCost: pricePerUnit > 0 ? pricePerUnit : 0,
-              },
-            });
-          } else {
-            // Add to existing variety
-            const existing = consolidatedMap.get(key)!;
-            existing.currentBottleCount = Number(existing.currentBottleCount) + Number(item.currentBottleCount);
-            existing.reservedBottleCount = Number(existing.reservedBottleCount) + Number(item.reservedBottleCount);
-            existing.metadata.purchaseCount++;
-            if (metadata?.purchaseId) {
-              existing.metadata.purchaseIds.push(metadata.purchaseId);
-            }
-
-            // Add purchase detail
-            existing.metadata.purchaseDetails.push(purchaseDetail);
-
-            // Update cost aggregates
-            existing.metadata.totalQuantity = Number(existing.metadata.totalQuantity) + quantity;
-            existing.metadata.totalCost = Number(existing.metadata.totalCost) + totalCost;
-
-            // Calculate weighted average cost
-            if (existing.metadata.totalQuantity > 0) {
-              existing.metadata.averageCost = existing.metadata.totalCost / existing.metadata.totalQuantity;
-            }
-
-            // Keep most recent date
-            const existingDate = existing.createdAt ? new Date(existing.createdAt).getTime() : 0;
-            const itemDate = item.createdAt ? new Date(item.createdAt).getTime() : 0;
-            if (itemDate > existingDate) {
-              existing.createdAt = item.createdAt;
-              existing.updatedAt = item.updatedAt;
-            }
-          }
-        }
-
-        const consolidatedItems = Array.from(consolidatedMap.values());
-
-        // Apply pagination to consolidated results
-        const paginatedItems = consolidatedItems.slice(offset, offset + limit);
-        const totalCount = consolidatedItems.length;
+        // Apply pagination to results
+        const paginatedItems = allItems.slice(offset, offset + limit);
+        const totalCount = allItems.length;
 
         return {
           items: paginatedItems,

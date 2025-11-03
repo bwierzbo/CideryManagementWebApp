@@ -286,6 +286,12 @@ export function BatchHistoryModal({
                       <TableHead className="text-right">Weight (kg)</TableHead>
                       <TableHead className="text-right">Volume (L)</TableHead>
                       <TableHead className="text-right">Percentage</TableHead>
+                      <TableHead className="text-right">pH</TableHead>
+                      <TableHead className="text-right">SG</TableHead>
+                      <TableHead className="text-right">Brix</TableHead>
+                      <TableHead className="text-right">Cost</TableHead>
+                      <TableHead>Lot Code</TableHead>
+                      <TableHead>Notes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -314,6 +320,34 @@ export function BatchHistoryModal({
                         </TableCell>
                         <TableCell className="text-right">
                           {(item.fractionOfBatch * 100).toFixed(1)}%
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {item.sourceType === "juice_purchase" && item.ph
+                            ? Number(item.ph).toFixed(2)
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {item.sourceType === "juice_purchase" && item.specificGravity
+                            ? Number(item.specificGravity).toFixed(3)
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {item.sourceType === "juice_purchase" && item.brix
+                            ? Number(item.brix).toFixed(1)
+                            : item.avgBrix
+                              ? Number(item.avgBrix).toFixed(1)
+                              : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {item.materialCost
+                            ? `$${Number(item.materialCost).toFixed(2)}`
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {item.lotCode || "—"}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate" title={item.notes || ""}>
+                          {item.notes || "—"}
                         </TableCell>
                       </TableRow>
                     ))}

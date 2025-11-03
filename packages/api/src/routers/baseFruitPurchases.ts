@@ -11,6 +11,88 @@ import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 export const baseFruitPurchasesRouter = router({
+  // List individual base fruit purchase items (for inventory table)
+  listItems: createRbacProcedure("list", "purchase")
+    .input(
+      z.object({
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        const { limit, offset } = input;
+
+        // Get individual purchase items with their purchase and vendor info
+        const items = await db
+          .select({
+            id: basefruitPurchaseItems.id,
+            purchaseId: basefruitPurchases.id,
+            vendorName: vendors.name,
+            varietyName: baseFruitVarieties.name,
+            harvestDate: basefruitPurchaseItems.harvestDate,
+            quantity: basefruitPurchaseItems.quantity,
+            unit: basefruitPurchaseItems.unit,
+            pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+            totalCost: basefruitPurchaseItems.totalCost,
+            notes: basefruitPurchaseItems.notes,
+            createdAt: basefruitPurchases.purchaseDate,
+            updatedAt: basefruitPurchases.updatedAt,
+          })
+          .from(basefruitPurchaseItems)
+          .leftJoin(
+            basefruitPurchases,
+            eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id),
+          )
+          .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+          .leftJoin(
+            baseFruitVarieties,
+            eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+          )
+          .where(
+            and(
+              isNull(basefruitPurchaseItems.deletedAt),
+              isNull(basefruitPurchases.deletedAt),
+            ),
+          )
+          .orderBy(desc(basefruitPurchases.purchaseDate))
+          .limit(limit)
+          .offset(offset);
+
+        // Get total count
+        const totalCountResult = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(basefruitPurchaseItems)
+          .leftJoin(
+            basefruitPurchases,
+            eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id),
+          )
+          .where(
+            and(
+              isNull(basefruitPurchaseItems.deletedAt),
+              isNull(basefruitPurchases.deletedAt),
+            ),
+          );
+
+        const totalCount = totalCountResult[0]?.count || 0;
+
+        return {
+          items,
+          pagination: {
+            totalCount,
+            hasNextPage: offset + limit < totalCount,
+            hasPreviousPage: offset > 0,
+          },
+        };
+      } catch (error) {
+        console.error("Error fetching base fruit purchase items:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch base fruit purchase items",
+        });
+      }
+    }),
+
   // List base fruit purchases
   list: createRbacProcedure("list", "purchase")
     .input(
@@ -293,6 +375,56 @@ export const baseFruitPurchasesRouter = router({
       }
     }),
 
+  // Delete individual purchase item (soft delete)
+  deleteItem: createRbacProcedure("delete", "purchase")
+    .input(
+      z.object({
+        itemId: z.string().uuid("Invalid item ID"),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // Check if item exists and is not already deleted
+          const existingItem = await tx
+            .select({ id: basefruitPurchaseItems.id })
+            .from(basefruitPurchaseItems)
+            .where(
+              and(
+                eq(basefruitPurchaseItems.id, input.itemId),
+                isNull(basefruitPurchaseItems.deletedAt),
+              ),
+            )
+            .limit(1);
+
+          if (!existingItem[0]) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Base fruit purchase item not found or already deleted",
+            });
+          }
+
+          // Soft delete the item
+          await tx
+            .update(basefruitPurchaseItems)
+            .set({ deletedAt: new Date() })
+            .where(eq(basefruitPurchaseItems.id, input.itemId));
+
+          return {
+            success: true,
+            message: "Base fruit purchase item deleted successfully",
+          };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error deleting base fruit purchase item:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete base fruit purchase item",
+        });
+      }
+    }),
+
   // Update base fruit purchase item
   updatePurchaseItem: createRbacProcedure("update", "purchase")
     .input(
@@ -302,7 +434,6 @@ export const baseFruitPurchasesRouter = router({
         quantity: z.number().positive("Quantity must be positive").optional(),
         unit: z.enum(["kg", "lb", "L", "gal", "bushel"]).optional(),
         pricePerUnit: z.number().min(0, "Price per unit cannot be negative").optional(),
-        purchaseDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         harvestDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         notes: z.string().optional(),
       }),
@@ -332,7 +463,6 @@ export const baseFruitPurchasesRouter = router({
         if (updates.quantity !== undefined) updateData.quantity = updates.quantity.toString();
         if (updates.unit !== undefined) updateData.unit = updates.unit;
         if (updates.pricePerUnit !== undefined) updateData.pricePerUnit = updates.pricePerUnit.toString();
-        if (updates.purchaseDate !== undefined) updateData.purchaseDate = updates.purchaseDate instanceof Date ? updates.purchaseDate.toISOString().split('T')[0] : updates.purchaseDate;
         if (updates.harvestDate !== undefined) updateData.harvestDate = updates.harvestDate instanceof Date ? updates.harvestDate.toISOString().split('T')[0] : updates.harvestDate;
         if (updates.notes !== undefined) updateData.notes = updates.notes;
 

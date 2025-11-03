@@ -39,6 +39,7 @@ import {
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { formatDate } from "@/utils/date-format";
+import { toast } from "@/hooks/use-toast";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import {
@@ -59,7 +60,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TransferToTankModal } from "@/components/juice/TransferToTankModal";
-import { toast } from "@/hooks/use-toast";
 
 // Type for juice inventory item from API
 interface JuiceInventoryItem {
@@ -562,6 +562,15 @@ export function JuiceInventoryTable({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  // Check if this is a consolidated item
+                                  if (item.id.startsWith("consolidated-")) {
+                                    toast({
+                                      title: "Cannot Edit Consolidated Item",
+                                      description: "This view shows consolidated inventory. To edit individual purchases, please use the Transaction History tab in the sidebar.",
+                                      variant: "default",
+                                    });
+                                    return;
+                                  }
                                   onEdit(item);
                                 }}
                               >

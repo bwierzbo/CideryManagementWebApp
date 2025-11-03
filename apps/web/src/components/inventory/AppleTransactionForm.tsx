@@ -49,6 +49,7 @@ const purchaseLineSchema = z.object({
   unit: z.enum(["kg", "lb", "bushel"]),
   pricePerUnit: z.number().nonnegative("Price cannot be negative").optional(),
   harvestDate: z.date().nullable().optional(),
+  notes: z.string().optional(),
 });
 
 const purchaseSchema = z.object({
@@ -94,6 +95,7 @@ export function AppleTransactionForm({
       unit: "kg" | "lb" | "bushel";
       pricePerUnit: number | undefined;
       harvestDate: Date | null | undefined;
+      notes: string | undefined;
       isValid?: boolean;
       validationError?: string;
     }>
@@ -104,6 +106,7 @@ export function AppleTransactionForm({
       unit: "lb",
       pricePerUnit: undefined,
       harvestDate: undefined,
+      notes: undefined,
       isValid: true,
     },
   ]);
@@ -193,6 +196,7 @@ export function AppleTransactionForm({
           unit: "lb" as "kg" | "lb" | "bushel",
           pricePerUnit: undefined,
           harvestDate: harvestDateForNewLine,
+          notes: undefined,
           isValid: true,
         },
       ];
@@ -287,6 +291,7 @@ export function AppleTransactionForm({
           unit: "lb" as "kg" | "lb" | "bushel",
           pricePerUnit: undefined,
           harvestDate: null,
+          notes: undefined,
         },
       ]);
       setPurchaseDate("");
@@ -365,7 +370,7 @@ export function AppleTransactionForm({
           unit: line.unit as "kg" | "lb" | "L" | "gal" | "bushel",
           pricePerUnit: line.pricePerUnit,
           harvestDate: line.harvestDate || undefined,
-          notes: undefined, // Frontend doesn't have notes per line
+          notes: line.notes,
         }));
 
       if (items.length === 0) {
@@ -777,6 +782,28 @@ export function AppleTransactionForm({
                             </div>
                           </div>
                         </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <Label>
+                          Notes{" "}
+                          <span className="text-gray-500 text-sm">
+                            (Optional)
+                          </span>
+                        </Label>
+                        <Input
+                          type="text"
+                          value={line.notes || ""}
+                          placeholder="Additional notes for this variety..."
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines];
+                            newLines[index].notes = e.target.value || undefined;
+                            setLines(newLines);
+                            setValue(`lines.${index}.notes`, newLines[index].notes);
+                          }}
+                        />
                       </div>
                     </div>
                   </div>

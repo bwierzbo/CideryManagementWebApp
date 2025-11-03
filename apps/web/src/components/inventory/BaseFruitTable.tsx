@@ -142,19 +142,19 @@ export function BaseFruitTable({
     [searchQuery, itemsPerPage, currentPage],
   );
 
-  // API queries - using inventory.list for now, will create specialized endpoint later
+  // API queries - using baseFruitPurchases.listItems for individual editable items
   const {
     data: listData,
     isLoading,
     error,
     refetch,
-  } = trpc.inventory.list.useQuery({
+  } = trpc.baseFruitPurchases.listItems.useQuery({
     limit: itemsPerPage,
     offset: currentPage * itemsPerPage,
   });
 
   // Delete mutation
-  const deleteMutation = trpc.inventory.deleteItem.useMutation({
+  const deleteMutation = trpc.baseFruitPurchases.deleteItem.useMutation({
     onSuccess: () => {
       setDeleteItem(null);
       refetch();
@@ -165,29 +165,26 @@ export function BaseFruitTable({
     },
   });
 
-  // Filter items to only show apple/basefruit items
+  // Map items to table format
   const baseFruitItems = useMemo(() => {
     if (!listData?.items) return [];
 
-    return listData.items
-      .filter((item: any) => item.materialType === "apple")
-      .map((item: any) => {
-        const metadata = (item.metadata as any) || {};
-        return {
-          id: item.id,
-          purchaseId: metadata.purchaseId || "",
-          vendorName: metadata.vendorName || "Unknown Vendor",
-          varietyName: metadata.varietyName || "Unknown Variety",
-          harvestDate: metadata.harvestDate || null,
-          originalQuantity: item.currentBottleCount,
-          originalUnit: metadata.unit || "lb",
-          pricePerUnit: metadata.pricePerUnit ? parseFloat(metadata.pricePerUnit) : null,
-          totalCost: metadata.totalCost ? parseFloat(metadata.totalCost) : null,
-          notes: item.notes,
-          createdAt: item.createdAt,
-          updatedAt: item.updatedAt,
-        } as BaseFruitPurchaseItem;
-      });
+    return listData.items.map((item: any) => {
+      return {
+        id: item.id,
+        purchaseId: item.purchaseId || "",
+        vendorName: item.vendorName || "Unknown Vendor",
+        varietyName: item.varietyName || "Unknown Variety",
+        harvestDate: item.harvestDate || null,
+        originalQuantity: parseFloat(item.quantity) || 0,
+        originalUnit: item.unit || "lb",
+        pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : null,
+        totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+        notes: item.notes,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      } as BaseFruitPurchaseItem;
+    });
   }, [listData]);
 
   // Apply client-side filtering
@@ -256,8 +253,7 @@ export function BaseFruitTable({
   const handleDeleteConfirm = useCallback(() => {
     if (deleteItem) {
       deleteMutation.mutate({
-        id: deleteItem.id,
-        itemType: "basefruit",
+        itemId: deleteItem.id,
       });
     }
   }, [deleteItem, deleteMutation]);

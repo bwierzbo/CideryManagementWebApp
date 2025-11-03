@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { formatDate } from "@/utils/date-format";
 import { useTableSorting } from "@/hooks/useTableSorting";
+import { toast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -560,6 +561,15 @@ export function PackagingInventoryTable({
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  // Check if this is a consolidated item
+                                  if (item.id.startsWith("consolidated-")) {
+                                    toast({
+                                      title: "Cannot Edit Consolidated Item",
+                                      description: "This view shows consolidated inventory. To edit individual purchases, please use the Transaction History tab in the sidebar.",
+                                      variant: "default",
+                                    });
+                                    return;
+                                  }
                                   onEdit(item);
                                 }}
                               >

@@ -22,6 +22,7 @@ import {
   ChevronDown,
   Shield,
   Users,
+  Activity,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -77,6 +78,12 @@ const navItems = [
     href: "/reports",
     icon: FileText,
     description: "COGS & Analytics",
+  },
+  {
+    name: "Activity",
+    href: "/activity-register",
+    icon: Activity,
+    description: "Activity Register",
   },
   {
     name: "Recipes",

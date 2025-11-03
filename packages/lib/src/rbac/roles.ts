@@ -25,7 +25,9 @@ export type Entity =
   | "cost"
   | "report"
   | "audit_log"
-  | "carbonation";
+  | "audit"
+  | "carbonation"
+  | "activity";
 
 // Permission definition
 type Permission = {
@@ -84,10 +86,12 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
       actions: ["create", "read", "update", "delete", "list"],
     },
     { entity: "audit_log", actions: ["read", "list"] }, // Even admins can't modify audit logs
+    { entity: "audit", actions: ["read", "list", "delete"] }, // Audit management
     {
       entity: "carbonation",
       actions: ["create", "read", "update", "delete", "list"],
     },
+    { entity: "activity", actions: ["read", "list"] }, // Activity register is read-only
   ],
 
   operator: [
@@ -130,10 +134,12 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: "cost", actions: ["read", "list"] }, // Can view costs but not modify
     { entity: "report", actions: ["create", "read", "list"] }, // Can generate and view reports
     { entity: "audit_log", actions: ["read", "list"] }, // Can view audit logs
+    { entity: "audit", actions: ["read", "list"] }, // Can view audit information
     {
       entity: "carbonation",
       actions: ["create", "read", "update", "delete", "list"],
     },
+    { entity: "activity", actions: ["read", "list"] }, // Can view activity register
   ],
 
   viewer: [
@@ -152,7 +158,9 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: "cost", actions: ["read", "list"] }, // Can view costs but not modify
     { entity: "report", actions: ["read", "list"] }, // Can view reports but not generate
     { entity: "audit_log", actions: ["read", "list"] }, // Can view audit logs
+    { entity: "audit", actions: ["read", "list"] }, // Can view audit information
     { entity: "carbonation", actions: ["read", "list"] }, // Can view carbonation operations
+    { entity: "activity", actions: ["read", "list"] }, // Can view activity register
   ],
 };
 

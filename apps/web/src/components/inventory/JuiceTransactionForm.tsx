@@ -60,6 +60,7 @@ const juiceLineSchema = z.object({
     .optional(),
   unitCost: z.number().nonnegative("Unit cost cannot be negative").optional(),
   totalCost: z.number().nonnegative("Total cost cannot be negative").optional(),
+  notes: z.string().optional(),
 });
 
 const juiceTransactionSchema = z.object({
@@ -122,6 +123,7 @@ export function JuiceTransactionForm({
       ph: number | undefined;
       unitCost: number | undefined;
       totalCost: number | undefined;
+      notes: string | undefined;
       isValid?: boolean;
       validationError?: string;
     }>
@@ -134,6 +136,7 @@ export function JuiceTransactionForm({
       ph: undefined,
       unitCost: undefined,
       totalCost: undefined,
+      notes: undefined,
       isValid: true,
     },
   ]);
@@ -227,6 +230,7 @@ export function JuiceTransactionForm({
           ph: undefined,
           unitCost: undefined,
           totalCost: undefined,
+          notes: undefined,
           isValid: true,
         },
       ];
@@ -345,6 +349,7 @@ export function JuiceTransactionForm({
             totalCost:
               line.totalCost ||
               (line.unitCost ? line.volume! * line.unitCost : undefined),
+            notes: line.notes,
           };
         });
 
@@ -377,6 +382,7 @@ export function JuiceTransactionForm({
           ph: undefined,
           unitCost: undefined,
           totalCost: undefined,
+          notes: undefined,
           isValid: true,
         },
       ]);
@@ -819,6 +825,28 @@ export function JuiceTransactionForm({
                             }
                           />
                         </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <Label>
+                          Notes{" "}
+                          <span className="text-gray-500 text-sm">
+                            (Optional)
+                          </span>
+                        </Label>
+                        <Input
+                          type="text"
+                          value={line.notes || ""}
+                          placeholder="Additional notes for this juice..."
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines];
+                            newLines[index].notes = e.target.value || undefined;
+                            setLines(newLines);
+                            setValue(`lines.${index}.notes`, newLines[index].notes);
+                          }}
+                        />
                       </div>
 
                       {/* Line Total */}

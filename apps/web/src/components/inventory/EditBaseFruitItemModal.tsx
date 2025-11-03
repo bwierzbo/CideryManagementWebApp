@@ -68,9 +68,9 @@ export function EditBaseFruitItemModal({
   useEffect(() => {
     if (open && item) {
       reset({
-        quantity: parseFloat(item.quantity || item.originalQuantity) || 0,
-        unit: item.unit || item.originalUnit || "lb",
-        pricePerUnit: parseFloat(item.pricePerUnit) || 0,
+        quantity: parseFloat(item.originalQuantity || item.quantity) || 0,
+        unit: item.originalUnit || item.unit || "lb",
+        pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : 0,
         harvestDate: item.harvestDate || "",
         notes: item.notes || "",
       });
@@ -83,6 +83,7 @@ export function EditBaseFruitItemModal({
         title: "Item Updated",
         description: "Base fruit purchase item updated successfully",
       });
+      utils.baseFruitPurchases.listItems.invalidate();
       utils.baseFruitPurchases.list.invalidate();
       utils.purchase.allPurchases.invalidate();
       onSuccess?.();
@@ -90,8 +91,6 @@ export function EditBaseFruitItemModal({
       reset();
     },
     onError: (error) => {
-      console.error("Update error:", error);
-      console.error("Error data:", error.data);
       toast({
         title: "Update Failed",
         description: error.message,
@@ -101,13 +100,6 @@ export function EditBaseFruitItemModal({
   });
 
   const onSubmit = (data: EditBaseFruitItemForm) => {
-    console.log("Form data:", data);
-
-    // Extract actual UUID from composite ID (format: "basefruit-{uuid}")
-    const actualItemId = item.id.startsWith("basefruit-")
-      ? item.id.replace("basefruit-", "")
-      : item.id;
-
     // Validate and prepare quantity - must be a valid positive number
     const quantity =
       typeof data.quantity === "number" &&
@@ -135,15 +127,13 @@ export function EditBaseFruitItemModal({
     }
 
     const payload = {
-      itemId: actualItemId,
+      itemId: item.id,
       quantity,
       unit: data.unit,
       pricePerUnit,
       harvestDate,
       notes: data.notes,
     };
-
-    console.log("Sending to API:", payload);
 
     updateMutation.mutate(payload);
   };
@@ -156,7 +146,7 @@ export function EditBaseFruitItemModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Edit className="h-5 w-5" />
-            Edit {item.fruitVarietyName || "Base Fruit Item"}
+            Edit {item.varietyName || item.fruitVarietyName || "Base Fruit Item"}
           </DialogTitle>
           <DialogDescription>
             Update purchase item details

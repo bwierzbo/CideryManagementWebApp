@@ -45,6 +45,7 @@ const additiveLineSchema = z.object({
   unit: z.enum(["g", "kg", "lb", "L", "mL"]),
   pricePerUnit: z.number().nonnegative("Price cannot be negative").optional(),
   totalCost: z.number().nonnegative("Total cost cannot be negative").optional(),
+  notes: z.string().optional(),
 });
 
 const additivePurchaseSchema = z.object({
@@ -100,6 +101,7 @@ export function AdditivesTransactionForm({
       unit: "g" | "kg" | "lb" | "L" | "mL";
       pricePerUnit: number | undefined;
       totalCost: number | undefined;
+      notes: string | undefined;
       isValid?: boolean;
       validationError?: string;
     }>
@@ -110,6 +112,7 @@ export function AdditivesTransactionForm({
       unit: "g",
       pricePerUnit: undefined,
       totalCost: undefined,
+      notes: undefined,
       isValid: true,
     },
   ]);
@@ -204,6 +207,7 @@ export function AdditivesTransactionForm({
           unit: "g" as const,
           pricePerUnit: undefined,
           totalCost: undefined,
+          notes: undefined,
           isValid: true,
         },
       ];
@@ -325,6 +329,7 @@ export function AdditivesTransactionForm({
               (line.pricePerUnit
                 ? line.quantity! * line.pricePerUnit
                 : undefined),
+            notes: line.notes,
           };
         });
 
@@ -355,6 +360,7 @@ export function AdditivesTransactionForm({
           unit: "g",
           pricePerUnit: undefined,
           totalCost: undefined,
+          notes: undefined,
           isValid: true,
         },
       ]);
@@ -745,6 +751,28 @@ export function AdditivesTransactionForm({
                             }
                           />
                         </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div>
+                        <Label>
+                          Notes{" "}
+                          <span className="text-gray-500 text-sm">
+                            (Optional)
+                          </span>
+                        </Label>
+                        <Input
+                          type="text"
+                          value={line.notes || ""}
+                          placeholder="Additional notes for this additive..."
+                          className="h-12"
+                          onChange={(e) => {
+                            const newLines = [...lines];
+                            newLines[index].notes = e.target.value || undefined;
+                            setLines(newLines);
+                            setValue(`lines.${index}.notes`, newLines[index].notes);
+                          }}
+                        />
                       </div>
 
                       {/* Line Total */}

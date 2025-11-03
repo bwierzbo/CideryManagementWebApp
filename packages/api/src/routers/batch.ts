@@ -510,6 +510,11 @@ export const batchRouter = router({
             materialCost: batchCompositions.materialCost,
             avgBrix: batchCompositions.avgBrix,
             sourceType: batchCompositions.sourceType,
+            lotCode: batchCompositions.lotCode,
+            ph: juicePurchaseItems.ph,
+            specificGravity: juicePurchaseItems.specificGravity,
+            brix: juicePurchaseItems.brix,
+            notes: juicePurchaseItems.notes,
           })
           .from(batchCompositions)
           .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))

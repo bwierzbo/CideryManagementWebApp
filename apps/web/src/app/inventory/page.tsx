@@ -145,7 +145,7 @@ export default function InventoryPage() {
               ? "oz"
               : item.unit) as "g" | "kg" | "oz" | "lb",
           pricePerUnit: item.unitCost,
-          notes: undefined,
+          notes: item.notes,
         })),
       };
 
@@ -222,7 +222,7 @@ export default function InventoryPage() {
                 ? item.unitCost
                 : item.unitCost / 3.78541
               : undefined,
-            notes: undefined, // pH and SG now have their own fields
+            notes: item.notes,
           };
         }),
       };
@@ -276,7 +276,7 @@ export default function InventoryPage() {
           quantity: item.quantity,
           pricePerUnit: item.unitCost,
           totalCost: item.totalCost,
-          notes: undefined,
+          notes: item.notes,
         })),
       };
 
@@ -610,7 +610,23 @@ export default function InventoryPage() {
                 itemsPerPage={50}
                 onAddNew={() => setShowAdditivesForm(true)}
                 onItemClick={(item) => setSelectedItem(item)}
-                onEdit={(item) => setEditAdditiveItem(item)}
+                onEdit={(item) => {
+                  console.log("Edit button clicked for additive item:", item);
+
+                  // Transform inventory item to additive purchase item format
+                  const transformedItem = {
+                    id: item.id,
+                    quantity: item.currentBottleCount,
+                    unit: item.metadata?.unit || "kg",
+                    pricePerUnit: item.metadata?.unitCost || "0",
+                    notes: item.notes || "",
+                    brandManufacturer: item.metadata?.brandManufacturer,
+                    productName: item.metadata?.productName,
+                  };
+
+                  console.log("Transformed item for edit modal:", transformedItem);
+                  setEditAdditiveItem(transformedItem);
+                }}
                 className=""
               />
             </div>
