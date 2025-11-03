@@ -301,7 +301,6 @@ export const activityRegisterRouter = router({
               v.name as vendor_name,
               jsonb_build_object(
                 'vesselName', v.name,
-                'cleaningType', vco.cleaning_type,
                 'notes', vco.notes
               ) as metadata
             FROM vessel_cleaning_operations vco

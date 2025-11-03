@@ -359,7 +359,7 @@ function formatActivityDetails(activity: any): string {
     case "bottle_run":
       return `${metadata.totalBottles || 0} bottles`;
     case "cleaning":
-      return metadata.cleaningType || "-";
+      return metadata.notes || "-";
     default:
       return "-";
   }
