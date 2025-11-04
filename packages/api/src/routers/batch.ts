@@ -1759,12 +1759,13 @@ export const batchRouter = router({
           let resultMessage: string;
 
           if (isRackToSelf) {
-            // 5a. RACK TO SELF: Just update volume, don't change vessel or status
+            // 5a. RACK TO SELF: Update volume and transition to aging, don't change vessel
             updatedBatch = await tx
               .update(batches)
               .set({
                 currentVolume: volumeAfterL.toString(),
                 currentVolumeUnit: 'L',
+                status: "aging", // Racking transitions to aging stage
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, input.batchId))
