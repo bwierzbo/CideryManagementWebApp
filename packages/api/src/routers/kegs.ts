@@ -189,7 +189,7 @@ export const kegsRouter = router({
             // Get latest fill info via subquery
             latestFillId: sql<string>`(
               SELECT keg_fills.id FROM keg_fills
-              WHERE keg_fills.keg_id = ${kegs.id}
+              WHERE keg_fills.keg_id = kegs.id
                 AND keg_fills.status != 'voided'
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
@@ -197,14 +197,14 @@ export const kegsRouter = router({
             latestFillBatchName: sql<string>`(
               SELECT b.name FROM keg_fills kf
               LEFT JOIN batches b ON kf.batch_id = b.id
-              WHERE kf.keg_id = ${kegs.id}
+              WHERE kf.keg_id = kegs.id
                 AND kf.status != 'voided'
               ORDER BY kf.filled_at DESC
               LIMIT 1
             )`,
             latestFillDate: sql<Date>`(
               SELECT keg_fills.filled_at FROM keg_fills
-              WHERE keg_fills.keg_id = ${kegs.id}
+              WHERE keg_fills.keg_id = kegs.id
                 AND keg_fills.status != 'voided'
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
