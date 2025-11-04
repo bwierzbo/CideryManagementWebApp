@@ -1707,6 +1707,7 @@ export const batchRouter = router({
           const hasBatchInDestination = destinationBatch.length > 0;
 
           const sourceVesselId = batch[0].vesselId;
+          const isRackToSelf = sourceVesselId === input.destinationVesselId;
 
           // Convert volumes to liters for calculations
           const volumeAfterL = convertToLiters(
@@ -1757,8 +1758,21 @@ export const batchRouter = router({
           let updatedBatch;
           let resultMessage: string;
 
-          if (hasBatchInDestination) {
-            // 5a. MERGE: Add volume to existing destination batch, then mark source batch as completed
+          if (isRackToSelf) {
+            // 5a. RACK TO SELF: Just update volume, don't change vessel or status
+            updatedBatch = await tx
+              .update(batches)
+              .set({
+                currentVolume: volumeAfterL.toString(),
+                currentVolumeUnit: 'L',
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId))
+              .returning();
+
+            resultMessage = `Batch racked to itself in ${destinationVessel[0].name}. Sediment removed, volume loss recorded.`;
+          } else if (hasBatchInDestination) {
+            // 5b. MERGE: Add volume to existing destination batch, then mark source batch as completed
             const destBatch = destinationBatch[0];
             const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
             const mergedVolumeL = destCurrentVolumeL + volumeAfterL;
@@ -1806,7 +1820,7 @@ export const batchRouter = router({
 
             resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
           } else {
-            // 5b. MOVE: Transfer batch to new empty vessel
+            // 5c. MOVE: Transfer batch to new empty vessel
             // Racking transitions batch from "fermentation" to "aging"
             updatedBatch = await tx
               .update(batches)
@@ -1823,17 +1837,19 @@ export const batchRouter = router({
             resultMessage = `Batch racked to ${destinationVessel[0].name}`;
           }
 
-          // 6. Update source vessel status to cleaning (liquid removed, needs cleaning)
-          await tx
-            .update(vessels)
-            .set({
-              status: "cleaning",
-              updatedAt: new Date(),
-            })
-            .where(eq(vessels.id, sourceVesselId));
+          // 6. Update source vessel status to cleaning (only if not rack-to-self)
+          if (!isRackToSelf) {
+            await tx
+              .update(vessels)
+              .set({
+                status: "cleaning",
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, sourceVesselId));
+          }
 
-          // 7. Update destination vessel status (only if it doesn't have a batch already - merge scenario)
-          if (!hasBatchInDestination) {
+          // 7. Update destination vessel status (only if not rack-to-self and doesn't have batch already)
+          if (!isRackToSelf && !hasBatchInDestination) {
             await tx
               .update(vessels)
               .set({

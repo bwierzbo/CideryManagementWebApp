@@ -63,12 +63,12 @@ export function RackingModal({
   const [selectedVesselHasBatch, setSelectedVesselHasBatch] = useState(false);
   const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<string | null>(null);
 
-  // Fetch all vessels (not just available ones, to allow merging)
+  // Fetch all vessels (including source vessel for rack-to-self operations)
   const { data: vesselsData } = trpc.vessel.liquidMap.useQuery();
   const availableVessels = Array.from(
     new Map(
       vesselsData?.vessels
-        ?.filter((v) => v.vesselId !== sourceVesselId && (v.vesselStatus === "available" || v.batchId))
+        ?.filter((v) => v.vesselStatus === "available" || v.batchId)
         .map((v) => [v.vesselId, v])
     ).values()
   ) || [];
@@ -170,6 +170,7 @@ export function RackingModal({
   };
 
   const selectedVessel = availableVessels.find((v) => v.vesselId === destinationVesselId);
+  const isRackToSelf = destinationVesselId === sourceVesselId;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -177,10 +178,13 @@ export function RackingModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FlaskConical className="w-5 h-5 text-blue-600" />
-            Rack Batch
+            {isRackToSelf ? "Rack to Self" : "Rack Batch"}
           </DialogTitle>
           <DialogDescription>
-            Transfer {batchName} from {sourceVesselName} to another vessel
+            {isRackToSelf
+              ? `Rack ${batchName} to itself in ${sourceVesselName} (removes sediment, records volume loss)`
+              : `Transfer ${batchName} from ${sourceVesselName} to another vessel`
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -233,12 +237,18 @@ export function RackingModal({
                   availableVessels.map((vessel) => {
                     const hasBatch = !!vessel.batchId;
                     const isEmpty = vessel.vesselStatus === "available" && !vessel.batchId;
+                    const isCurrentVessel = vessel.vesselId === sourceVesselId;
 
                     return (
                       <SelectItem key={vessel.vesselId} value={vessel.vesselId}>
                         <div className="flex items-center gap-2">
                           <span>{vessel.vesselName} ({vessel.vesselCapacity} {vessel.vesselCapacityUnit})</span>
-                          {hasBatch && (
+                          {isCurrentVessel && (
+                            <Badge variant="default" className="text-xs">
+                              Current
+                            </Badge>
+                          )}
+                          {hasBatch && !isCurrentVessel && (
                             <Badge variant="secondary" className="text-xs">
                               In Use
                             </Badge>
@@ -259,8 +269,23 @@ export function RackingModal({
               <p className="text-sm text-red-500">{errors.destinationVesselId.message}</p>
             )}
 
-            {/* Show batch merge warning if destination has a batch */}
-            {selectedVesselHasBatch && (
+            {/* Show rack-to-self info or batch merge warning */}
+            {isRackToSelf && (
+              <div className="mt-2 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <Info className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-purple-800">
+                    <p className="font-medium">
+                      Rack to Self Operation
+                    </p>
+                    <p className="text-xs mt-1">
+                      This removes sediment and records volume loss without changing vessels
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {!isRackToSelf && selectedVesselHasBatch && (
               <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex items-start gap-2">
                   <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -326,8 +351,8 @@ export function RackingModal({
             </div>
           )}
 
-          {/* Capacity Check */}
-          {selectedVessel && volumeAfter && (
+          {/* Capacity Check (only for different vessels) */}
+          {!isRackToSelf && selectedVessel && volumeAfter && (
             <div className={`p-3 rounded-lg ${
               volumeAfter > parseFloat(selectedVessel.vesselCapacity || "0")
                 ? "bg-red-50 border border-red-200"
