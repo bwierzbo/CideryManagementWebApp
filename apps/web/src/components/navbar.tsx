@@ -24,7 +24,7 @@ import {
   Users,
   Activity,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,73 +36,74 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { SessionIndicator } from "@/components/auth/session-indicator";
 
-const navItems = [
-  {
-    name: "Dashboard",
-    href: "/dashboard",
-    icon: BarChart3,
-    description: "Overview & Analytics",
-  },
-  {
-    name: "Vendors",
-    href: "/vendors",
-    icon: Building2,
-    description: "Vendor Database",
-  },
-  {
-    name: "Inventory",
-    href: "/inventory",
-    icon: ShoppingCart,
-    description: "Vendor & Orders",
-  },
-  {
-    name: "Pressing",
-    href: "/pressing",
-    icon: Grape,
-    description: "Base Fruit Processing",
-  },
-  {
-    name: "Cellar",
-    href: "/cellar",
-    icon: Beaker,
-    description: "Fermentation & Aging",
-  },
-  {
-    name: "Bottles",
-    href: "/bottles",
-    icon: Package,
-    description: "Bottles & Kegs",
-  },
-  {
-    name: "Reports",
-    href: "/reports",
-    icon: FileText,
-    description: "COGS & Analytics",
-  },
-  {
-    name: "Activity",
-    href: "/activity-register",
-    icon: Activity,
-    description: "Activity Register",
-  },
-  {
-    name: "Recipes",
-    href: "/recipes",
-    icon: BookOpen,
-    description: "Recipe Management",
-  },
-  {
-    name: "Admin",
-    href: "/admin",
-    icon: Settings,
-    description: "System Settings",
-  },
-];
-
 export function Navbar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Define navItems inside component to avoid SSR/client mismatch
+  const navItems = useMemo(() => [
+    {
+      name: "Dashboard",
+      href: "/dashboard",
+      icon: BarChart3,
+      description: "Overview & Analytics",
+    },
+    {
+      name: "Vendors",
+      href: "/vendors",
+      icon: Building2,
+      description: "Vendor Database",
+    },
+    {
+      name: "Inventory",
+      href: "/inventory",
+      icon: ShoppingCart,
+      description: "Vendor & Orders",
+    },
+    {
+      name: "Pressing",
+      href: "/pressing",
+      icon: Grape,
+      description: "Base Fruit Processing",
+    },
+    {
+      name: "Cellar",
+      href: "/cellar",
+      icon: Beaker,
+      description: "Fermentation & Aging",
+    },
+    {
+      name: "Bottles",
+      href: "/bottles",
+      icon: Package,
+      description: "Bottles & Kegs",
+    },
+    {
+      name: "Reports",
+      href: "/reports",
+      icon: FileText,
+      description: "COGS & Analytics",
+    },
+    {
+      name: "Activity",
+      href: "/activity-register",
+      icon: Activity,
+      description: "Activity Register",
+    },
+    {
+      name: "Recipes",
+      href: "/recipes",
+      icon: BookOpen,
+      description: "Recipe Management",
+    },
+    {
+      name: "Admin",
+      href: "/admin",
+      icon: Settings,
+      description: "System Settings",
+    },
+  ], []);
 
   const getRoleBadgeVariant = (role: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive"> = {
