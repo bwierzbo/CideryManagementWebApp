@@ -190,7 +190,6 @@ export function FillKegModal({
                   >
                     <Checkbox
                       checked={selectedKegIds.includes(keg.id)}
-                      onCheckedChange={() => handleKegToggle(keg.id)}
                     />
                     <div className="flex-1">
                       <p className="font-semibold">{keg.kegNumber}</p>
