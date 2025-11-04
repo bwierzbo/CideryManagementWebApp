@@ -87,7 +87,7 @@ export function DistributeKegModal({
             Distribute Keg
           </DialogTitle>
           <DialogDescription>
-            Mark {kegNumber} as distributed and record where it's going
+            Mark {kegNumber} as distributed and record where it is going
           </DialogDescription>
         </DialogHeader>
 
