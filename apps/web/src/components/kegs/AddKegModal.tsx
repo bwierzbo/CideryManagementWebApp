@@ -41,7 +41,6 @@ const addKegSchema = z.object({
   purchaseDate: z.string().optional(),
   purchaseCost: z.number().positive().optional(),
   currentLocation: z.string(),
-  condition: z.enum(["excellent", "good", "fair", "needs_repair", "retired"]),
   notes: z.string().optional(),
 });
 
@@ -76,7 +75,6 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
     defaultValues: {
       capacityUnit: "L",
       currentLocation: "cellar",
-      condition: "excellent",
     },
   });
 
@@ -180,49 +178,27 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            {/* Capacity */}
-            <div>
-              <Label htmlFor="capacityML">
-                Capacity (mL) <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="capacityML"
-                type="number"
-                {...register("capacityML", { valueAsNumber: true })}
-                className="mt-1"
-              />
-              {capacityML > 0 && (
-                <p className="text-xs text-gray-500 mt-1">
-                  ≈ {(capacityML / 1000).toFixed(1)}L
-                </p>
-              )}
-              {errors.capacityML && (
-                <p className="text-sm text-red-600 mt-1">
-                  {errors.capacityML.message}
-                </p>
-              )}
-            </div>
-
-            {/* Condition */}
-            <div>
-              <Label htmlFor="condition">Condition</Label>
-              <Select
-                defaultValue="excellent"
-                onValueChange={(value) => setValue("condition", value as any)}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="excellent">Excellent</SelectItem>
-                  <SelectItem value="good">Good</SelectItem>
-                  <SelectItem value="fair">Fair</SelectItem>
-                  <SelectItem value="needs_repair">Needs Repair</SelectItem>
-                  <SelectItem value="retired">Retired</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {/* Capacity */}
+          <div>
+            <Label htmlFor="capacityML">
+              Capacity (mL) <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="capacityML"
+              type="number"
+              {...register("capacityML", { valueAsNumber: true })}
+              className="mt-1"
+            />
+            {capacityML > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                ≈ {(capacityML / 1000).toFixed(1)}L
+              </p>
+            )}
+            {errors.capacityML && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.capacityML.message}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

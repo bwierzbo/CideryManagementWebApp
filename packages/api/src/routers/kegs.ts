@@ -40,7 +40,7 @@ const createKegSchema = z.object({
   currentLocation: z.string().default("cellar"),
   condition: z
     .enum(["excellent", "good", "fair", "needs_repair", "retired"])
-    .default("excellent"),
+    .optional(),
   notes: z.string().optional(),
 });
 
