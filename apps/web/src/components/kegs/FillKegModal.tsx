@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -112,13 +112,20 @@ export function FillKegModal({
     setValue("kegIds", selectedKegIds);
   }, [selectedKegIds, setValue]);
 
-  const handleKegToggle = (kegId: string) => {
+  // Reset selected kegs when modal closes
+  useEffect(() => {
+    if (!open) {
+      setSelectedKegIds([]);
+    }
+  }, [open]);
+
+  const handleKegToggle = useCallback((kegId: string) => {
     setSelectedKegIds((prev) =>
       prev.includes(kegId)
         ? prev.filter((id) => id !== kegId)
         : [...prev, kegId],
     );
-  };
+  }, []);
 
   const onSubmit = (data: FillKegsForm) => {
     fillKegsMutation.mutate({
@@ -190,6 +197,7 @@ export function FillKegModal({
                   >
                     <Checkbox
                       checked={selectedKegIds.includes(keg.id)}
+                      className="pointer-events-none"
                     />
                     <div className="flex-1">
                       <p className="font-semibold">{keg.kegNumber}</p>
