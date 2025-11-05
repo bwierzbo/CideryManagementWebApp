@@ -242,6 +242,12 @@ export const reportsRouter = router({
 
         // Process each purchase
         purchases.forEach((purchase) => {
+          // Skip purchases without vendor (data integrity issue)
+          if (!purchase.vendor) {
+            console.warn(`Skipping purchase ${purchase.id} with missing vendor`);
+            return;
+          }
+
           const vendorId = purchase.vendorId;
           const vendorName = purchase.vendor.name;
 
@@ -259,6 +265,12 @@ export const reportsRouter = router({
 
           // Process each item in the purchase
           purchase.items.forEach((item) => {
+            // Skip items without fruit variety (data integrity issue)
+            if (!item.fruitVariety) {
+              console.warn(`Skipping item with missing fruitVariety for purchase ${purchase.id}`);
+              return;
+            }
+
             const quantity = parseFloat(item.quantity ?? "0");
             const quantityKg = item.quantityKg
               ? parseFloat(item.quantityKg)
