@@ -820,14 +820,12 @@ export default function ReportsPage() {
                                               "N/A"}
                                           </td>
                                           <td className="py-2 px-4 text-right">
-                                            {item.pricePerUnit
-                                              ? `$${item.pricePerUnit.toFixed(2)}`
-                                              : "N/A"}
+                                            $
+                                            {(item.pricePerUnit ?? 0).toFixed(2)}
                                           </td>
                                           <td className="py-2 px-4 text-right">
-                                            {item.totalCost
-                                              ? `$${item.totalCost.toFixed(2)}`
-                                              : "N/A"}
+                                            $
+                                            {(item.totalCost ?? 0).toFixed(2)}
                                           </td>
                                         </tr>
                                       ))}
