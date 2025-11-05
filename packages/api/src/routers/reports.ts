@@ -206,7 +206,6 @@ export const reportsRouter = router({
           with: {
             vendor: true,
             items: {
-              where: isNull(basefruitPurchaseItems.deletedAt),
               with: {
                 fruitVariety: true,
               },
@@ -265,6 +264,11 @@ export const reportsRouter = router({
 
           // Process each item in the purchase
           purchase.items.forEach((item) => {
+            // Skip deleted items
+            if (item.deletedAt) {
+              return;
+            }
+
             // Skip items without fruit variety (data integrity issue)
             if (!item.fruitVariety) {
               console.warn(`Skipping item with missing fruitVariety for purchase ${purchase.id}`);
