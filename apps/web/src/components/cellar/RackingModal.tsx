@@ -317,7 +317,7 @@ export function RackingModal({
               Volume After Racking ({sourceVesselCapacityUnit}) <span className="text-red-500">*</span>
             </Label>
             <p className="text-xs text-gray-500">
-              Volume is shown in {sourceVesselCapacityUnit === "L" ? "liters" : "gallons"} (source vessel's unit)
+              Volume is shown in {sourceVesselCapacityUnit === "L" ? "liters" : "gallons"} (source vessel unit)
             </p>
             <Input
               type="number"
