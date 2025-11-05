@@ -80,10 +80,21 @@ function formatDate(date: Date | null): string {
 }
 
 /**
+ * Convert weight from kg to target unit
+ */
+function convertWeight(kg: number, targetUnit: "kg" | "lbs"): number {
+  if (targetUnit === "lbs") {
+    return kg * 2.20462; // 1 kg = 2.20462 lbs
+  }
+  return kg;
+}
+
+/**
  * Generate PDF document for Vendor Apple Purchase Report
  */
 export function generateVendorApplePDF(
   reportData: VendorAppleReportData,
+  weightUnit: "kg" | "lbs" = "kg",
 ): TDocumentDefinitions {
   const { vendors, grandTotalCost, grandTotalWeightKg, dateRange } = reportData;
 
@@ -122,12 +133,15 @@ export function generateVendorApplePDF(
       body: [
         [
           { text: "Total Vendors", style: "tableHeader" },
-          { text: "Total Weight (kg)", style: "tableHeader" },
+          { text: `Total Weight (${weightUnit})`, style: "tableHeader" },
           { text: "Total Cost", style: "tableHeader" },
         ],
         [
           { text: vendors.length.toString(), style: "tableCell" },
-          { text: formatNumber(grandTotalWeightKg), style: "tableCell" },
+          {
+            text: formatNumber(convertWeight(grandTotalWeightKg, weightUnit)),
+            style: "tableCell",
+          },
           { text: formatCurrency(grandTotalCost), style: "tableCell" },
         ],
       ],
@@ -156,7 +170,7 @@ export function generateVendorApplePDF(
         { text: "Purchase Date", style: "tableHeader" },
         { text: "Harvest Date", style: "tableHeader" },
         { text: "Quantity", style: "tableHeader" },
-        { text: "Weight (kg)", style: "tableHeader" },
+        { text: `Weight (${weightUnit})`, style: "tableHeader" },
         { text: "Price/Unit", style: "tableHeader" },
         { text: "Total Cost", style: "tableHeader" },
       ],
@@ -171,9 +185,14 @@ export function generateVendorApplePDF(
           text: `${formatNumber(item.quantity, 2)} ${item.unit}`,
           style: "tableCell",
         },
-        { text: formatNumber(item.quantityKg), style: "tableCell" },
-        { text: formatCurrency(item.pricePerUnit), style: "tableCell" },
-        { text: formatCurrency(item.totalCost), style: "tableCell" },
+        {
+          text: item.quantityKg
+            ? formatNumber(convertWeight(item.quantityKg, weightUnit))
+            : "N/A",
+          style: "tableCell",
+        },
+        { text: formatCurrency(item.pricePerUnit ?? 0), style: "tableCell" },
+        { text: formatCurrency(item.totalCost ?? 0), style: "tableCell" },
       ]);
     });
 
@@ -183,7 +202,10 @@ export function generateVendorApplePDF(
       {},
       {},
       {},
-      { text: formatNumber(vendor.totalWeightKg), style: "subtotalValue" },
+      {
+        text: formatNumber(convertWeight(vendor.totalWeightKg, weightUnit)),
+        style: "subtotalValue",
+      },
       {},
       { text: formatCurrency(vendor.totalCost), style: "subtotalValue" },
     ]);
@@ -234,7 +256,10 @@ export function generateVendorApplePDF(
       body: [
         [
           { text: "Grand Total", style: "grandTotalLabel" },
-          { text: formatNumber(grandTotalWeightKg), style: "grandTotalValue" },
+          {
+            text: formatNumber(convertWeight(grandTotalWeightKg, weightUnit)),
+            style: "grandTotalValue",
+          },
           { text: formatCurrency(grandTotalCost), style: "grandTotalValue" },
         ],
       ],
@@ -334,9 +359,10 @@ export function generateVendorApplePDF(
 export async function downloadVendorApplePDF(
   reportData: VendorAppleReportData,
   filename: string,
+  weightUnit: "kg" | "lbs" = "kg",
 ): Promise<void> {
   const pdfMake = await getPdfMake();
-  const docDefinition = generateVendorApplePDF(reportData);
+  const docDefinition = generateVendorApplePDF(reportData, weightUnit);
   pdfMake.createPdf(docDefinition).download(filename);
 }
 
@@ -345,8 +371,9 @@ export async function downloadVendorApplePDF(
  */
 export async function openVendorApplePDF(
   reportData: VendorAppleReportData,
+  weightUnit: "kg" | "lbs" = "kg",
 ): Promise<void> {
   const pdfMake = await getPdfMake();
-  const docDefinition = generateVendorApplePDF(reportData);
+  const docDefinition = generateVendorApplePDF(reportData, weightUnit);
   pdfMake.createPdf(docDefinition).open();
 }

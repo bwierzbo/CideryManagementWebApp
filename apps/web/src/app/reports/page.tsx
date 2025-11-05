@@ -80,6 +80,16 @@ export default function ReportsPage() {
   );
   const [applePurchasesDateLabel, setApplePurchasesDateLabel] =
     useState<string>("");
+  const [applePurchasesWeightUnit, setApplePurchasesWeightUnit] =
+    useState<"kg" | "lbs">("kg");
+
+  // Weight conversion helper
+  const convertWeight = (kg: number, targetUnit: "kg" | "lbs"): number => {
+    if (targetUnit === "lbs") {
+      return kg * 2.20462; // 1 kg = 2.20462 lbs
+    }
+    return kg;
+  };
 
   // Get data using existing tRPC endpoints
   const { data: batches, isLoading: batchesLoading } =
@@ -629,6 +639,37 @@ export default function ReportsPage() {
                       defaultPreset="this-month"
                     />
 
+                    {/* Unit Toggle */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        Weight Unit:
+                      </span>
+                      <div className="inline-flex rounded-md shadow-sm" role="group">
+                        <button
+                          type="button"
+                          onClick={() => setApplePurchasesWeightUnit("kg")}
+                          className={`px-4 py-2 text-sm font-medium border ${
+                            applePurchasesWeightUnit === "kg"
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                          } rounded-l-lg`}
+                        >
+                          kg
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setApplePurchasesWeightUnit("lbs")}
+                          className={`px-4 py-2 text-sm font-medium border-t border-b border-r ${
+                            applePurchasesWeightUnit === "lbs"
+                              ? "bg-blue-600 text-white border-blue-600"
+                              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                          } rounded-r-lg`}
+                        >
+                          lbs
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Action Buttons */}
                     <div className="flex gap-2">
                       <Button
@@ -659,7 +700,7 @@ export default function ReportsPage() {
                                 label: applePurchasesDateLabel,
                               },
                             };
-                            await downloadVendorApplePDF(reportData, filename);
+                            await downloadVendorApplePDF(reportData, filename, applePurchasesWeightUnit);
                           }
                         }}
                         disabled={!applePurchasesData || applePurchasesLoading}
@@ -703,18 +744,18 @@ export default function ReportsPage() {
                         <Card>
                           <CardHeader className="pb-3">
                             <CardTitle className="text-sm font-medium text-gray-500">
-                              Total Weight (kg)
+                              Total Weight ({applePurchasesWeightUnit})
                             </CardTitle>
                           </CardHeader>
                           <CardContent>
                             <div className="text-2xl font-bold">
-                              {applePurchasesData.grandTotalWeightKg.toLocaleString(
-                                "en-US",
-                                {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                },
-                              )}
+                              {convertWeight(
+                                applePurchasesData.grandTotalWeightKg,
+                                applePurchasesWeightUnit,
+                              ).toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </div>
                           </CardContent>
                         </Card>
@@ -757,8 +798,12 @@ export default function ReportsPage() {
                                   </Badge>
                                 </CardTitle>
                                 <CardDescription>
-                                  Total Weight: {vendor.totalWeightKg.toFixed(2)}{" "}
-                                  kg | Total Cost: $
+                                  Total Weight:{" "}
+                                  {convertWeight(
+                                    vendor.totalWeightKg,
+                                    applePurchasesWeightUnit,
+                                  ).toFixed(2)}{" "}
+                                  {applePurchasesWeightUnit} | Total Cost: $
                                   {vendor.totalCost.toFixed(2)}
                                 </CardDescription>
                               </CardHeader>
@@ -780,7 +825,7 @@ export default function ReportsPage() {
                                           Quantity
                                         </th>
                                         <th className="py-2 px-4 text-right font-medium">
-                                          Weight (kg)
+                                          Weight ({applePurchasesWeightUnit})
                                         </th>
                                         <th className="py-2 px-4 text-right font-medium">
                                           Price/Unit
@@ -816,8 +861,12 @@ export default function ReportsPage() {
                                             {item.unit}
                                           </td>
                                           <td className="py-2 px-4 text-right">
-                                            {item.quantityKg?.toFixed(2) ??
-                                              "N/A"}
+                                            {item.quantityKg
+                                              ? convertWeight(
+                                                  item.quantityKg,
+                                                  applePurchasesWeightUnit,
+                                                ).toFixed(2)
+                                              : "N/A"}
                                           </td>
                                           <td className="py-2 px-4 text-right">
                                             $
