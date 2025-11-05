@@ -34,14 +34,17 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { Loader2, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { calculateCO2Volumes } from 'lib/src/utils/carbonation-calculations';
 
 const formSchema = z.object({
+  startedAt: z.date(),
   carbonationProcess: z.enum(['headspace', 'inline', 'stone']),
-  targetCo2Volumes: z.number().min(0.1).max(5),
+  targetCo2Volumes: z.number().min(0.1).max(5).optional(),
   startingTemperature: z.number().min(-5).max(25),
-  pressureApplied: z.number().min(0).max(50),
+  pressureApplied: z.number().min(0).max(50).optional(),
   startingVolume: z.number().positive(),
   startingVolumeUnit: z.enum(['L', 'gal']),
   gasType: z.string(),
@@ -74,10 +77,12 @@ export function CarbonateModal({
   onSuccess,
 }: CarbonateModalProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [calculationMode, setCalculationMode] = useState<'co2' | 'psi'>('co2');
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      startedAt: new Date(),
       carbonationProcess: 'headspace',
       targetCo2Volumes: 2.5, // Default sparkling cider
       startingTemperature: 4, // Optimal carbonation temp
@@ -90,29 +95,43 @@ export function CarbonateModal({
   });
 
   const targetCO2 = form.watch('targetCo2Volumes');
+  const pressure = form.watch('pressureApplied');
   const temperature = form.watch('startingTemperature');
+  const startedAt = form.watch('startedAt');
   const vesselMaxPressure = vessel.maxPressure ? parseFloat(vessel.maxPressure) : undefined;
 
-  // Get suggestions from server
+  // Get suggestions from server when in CO2 mode
   const { data: suggestions, isLoading: loadingSuggestions } =
     trpc.carbonation.calculateSuggestions.useQuery(
       {
-        targetCO2Volumes: targetCO2,
+        targetCO2Volumes: targetCO2 ?? 2.5,
         temperatureCelsius: temperature,
         currentCO2Volumes: 0, // Starting fresh carbonation
         vesselMaxPressure,
       },
       {
-        enabled: open && targetCO2 > 0 && temperature >= -5 && temperature <= 25,
+        enabled: open && calculationMode === 'co2' && targetCO2 != null && targetCO2 > 0 && temperature >= -5 && temperature <= 25,
       }
     );
 
-  // Auto-update pressure based on suggestions
+  // Calculate CO2 from PSI when in PSI mode
+  const calculatedCO2FromPSI = calculationMode === 'psi' && pressure != null && temperature >= -5 && temperature <= 25
+    ? calculateCO2Volumes(pressure, temperature)
+    : null;
+
+  // Auto-update pressure based on suggestions (CO2 mode)
   useEffect(() => {
-    if (suggestions && !form.formState.isDirty) {
+    if (calculationMode === 'co2' && suggestions && !form.formState.isDirty) {
       form.setValue('pressureApplied', suggestions.requiredPressurePSI);
     }
-  }, [suggestions, form]);
+  }, [calculationMode, suggestions, form]);
+
+  // Auto-update CO2 based on PSI calculation (PSI mode)
+  useEffect(() => {
+    if (calculationMode === 'psi' && calculatedCO2FromPSI != null) {
+      form.setValue('targetCo2Volumes', calculatedCO2FromPSI);
+    }
+  }, [calculationMode, calculatedCO2FromPSI, form]);
 
   const startCarbonation = trpc.carbonation.start.useMutation({
     onSuccess: () => {
@@ -123,10 +142,22 @@ export function CarbonateModal({
   });
 
   const onSubmit = (values: FormValues) => {
+    // Ensure both CO2 and PSI are set before submission
+    const targetCo2Volumes = values.targetCo2Volumes ?? calculatedCO2FromPSI ?? 2.5;
+    const pressureApplied = values.pressureApplied ?? suggestions?.requiredPressurePSI ?? 18;
+
     startCarbonation.mutate({
       batchId: batch.id,
       vesselId: vessel.id,
-      ...values,
+      startedAt: values.startedAt,
+      carbonationProcess: values.carbonationProcess,
+      targetCo2Volumes,
+      pressureApplied,
+      startingTemperature: values.startingTemperature,
+      startingVolume: values.startingVolume,
+      startingVolumeUnit: values.startingVolumeUnit,
+      gasType: values.gasType,
+      notes: values.notes,
     });
   };
 
@@ -141,6 +172,20 @@ export function CarbonateModal({
     return 'default';
   };
 
+  // Format date for datetime-local input
+  const formatDatetimeLocal = (date: Date | undefined): string => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return '';
+    }
+    try {
+      const offset = date.getTimezoneOffset() * 60000;
+      const localDate = new Date(date.getTime() - offset);
+      return localDate.toISOString().slice(0, 16);
+    } catch {
+      return '';
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -153,47 +198,152 @@ export function CarbonateModal({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Target CO2 Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Target Carbonation</CardTitle>
-                <CardDescription>
-                  Desired CO2 volumes for the finished cider
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="targetCo2Volumes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Target CO2 Volumes</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          placeholder="2.5"
-                          {...field}
-                          onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormDescription className="flex items-center gap-2">
-                        <Badge variant={getCarbonationColor(targetCO2)}>
-                          {getCarbonationLabel(targetCO2)}
-                        </Badge>
-                        <span className="text-xs">
-                          Still: 0-1.0 | Pétillant: 1.0-2.5 | Sparkling: 2.5+
-                        </span>
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
+            {/* Start Date/Time */}
+            <FormField
+              control={form.control}
+              name="startedAt"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    Start Date & Time <span className="text-red-500">*</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="datetime-local"
+                      value={formatDatetimeLocal(startedAt)}
+                      onChange={(e) => field.onChange(new Date(e.target.value))}
+                      className="w-full"
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    When carbonation begins (can be backdated)
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-            {/* Suggestions Section */}
-            {suggestions && (
+            {/* Calculation Mode Selector */}
+            <div className="space-y-3">
+              <Label>Calculation Method</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={calculationMode === 'co2' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCalculationMode('co2')}
+                  className="flex-1"
+                >
+                  Target CO2 Volumes
+                </Button>
+                <Button
+                  type="button"
+                  variant={calculationMode === 'psi' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCalculationMode('psi')}
+                  className="flex-1"
+                >
+                  Target Pressure
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {calculationMode === 'co2'
+                  ? 'Enter desired CO2 volumes → calculates required PSI'
+                  : 'Enter desired pressure → calculates resulting CO2'}
+              </p>
+            </div>
+
+            {/* Target CO2 Section (CO2 mode) */}
+            {calculationMode === 'co2' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Target Carbonation</CardTitle>
+                  <CardDescription>
+                    Desired CO2 volumes for the finished cider
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="targetCo2Volumes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Target CO2 Volumes</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="2.5"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormDescription className="flex items-center gap-2">
+                          <Badge variant={getCarbonationColor(targetCO2 ?? 0)}>
+                            {getCarbonationLabel(targetCO2 ?? 0)}
+                          </Badge>
+                          <span className="text-xs">
+                            Still: 0-1.0 | Pétillant: 1.0-2.5 | Sparkling: 2.5+
+                          </span>
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Target PSI Section (PSI mode) */}
+            {calculationMode === 'psi' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Target Pressure</CardTitle>
+                  <CardDescription>
+                    Desired pressure to apply to the vessel
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="pressureApplied"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Applied Pressure (PSI)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.5"
+                            placeholder="18"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Pressure to apply to vessel
+                          {vesselMaxPressure && ` (vessel max: ${vesselMaxPressure} PSI)`}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {pressure != null && pressure > (vesselMaxPressure ?? 50) && (
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Pressure Warning</AlertTitle>
+                      <AlertDescription>
+                        Pressure exceeds safe limit for this vessel (max: {vesselMaxPressure ?? 50} PSI)
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Calculated Parameters Section - CO2 Mode */}
+            {calculationMode === 'co2' && suggestions && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
@@ -243,6 +393,40 @@ export function CarbonateModal({
                     <p>🌡️ {suggestions.recommendations.temperature}</p>
                     <p>⏱️ {suggestions.recommendations.duration}</p>
                     <p>🔧 {suggestions.recommendations.method}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Calculated Parameters Section - PSI Mode */}
+            {calculationMode === 'psi' && calculatedCO2FromPSI != null && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    Calculated CO2 Levels
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <div className="text-sm font-medium">Resulting CO2 Volumes</div>
+                    <div className="text-2xl font-bold">
+                      {calculatedCO2FromPSI.toFixed(2)} volumes
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge variant={getCarbonationColor(calculatedCO2FromPSI)}>
+                        {getCarbonationLabel(calculatedCO2FromPSI)}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        at {pressure} PSI and {temperature}°C
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-sm space-y-1 text-muted-foreground">
+                    <p>💡 Apply {pressure} PSI to achieve {calculatedCO2FromPSI.toFixed(2)} volumes</p>
+                    <p>🌡️ Maintain {temperature}°C</p>
+                    <p>📊 Carbonation level: {getCarbonationLabel(calculatedCO2FromPSI)}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -371,28 +555,32 @@ export function CarbonateModal({
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="pressureApplied"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Applied Pressure (PSI)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.5"
-                            placeholder="18"
-                            {...field}
-                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Pressure to apply to vessel (auto-calculated from target CO2)
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {/* Only show pressure override in CO2 mode */}
+                  {calculationMode === 'co2' && (
+                    <FormField
+                      control={form.control}
+                      name="pressureApplied"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Applied Pressure (PSI)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.5"
+                              placeholder="18"
+                              {...field}
+                              value={field.value ?? ''}
+                              onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            Pressure to apply to vessel (auto-calculated from target CO2)
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   <FormField
                     control={form.control}
