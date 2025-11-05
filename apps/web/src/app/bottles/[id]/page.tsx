@@ -220,14 +220,30 @@ export default function PackagingDetailPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-start sm:items-center gap-2 flex-shrink-0">
-              <Badge
-                className={cn(
-                  "text-xs md:text-sm self-start",
-                  getStatusColor(runData.status),
-                )}
-              >
-                {runData.status || "pending"}
-              </Badge>
+              {/* Pasteurized Badge */}
+              {runData.pasteurizedAt && (
+                <Badge
+                  className={cn(
+                    "text-xs md:text-sm self-start",
+                    "bg-orange-100 text-orange-800 hover:bg-orange-200",
+                  )}
+                >
+                  Pasteurized
+                </Badge>
+              )}
+
+              {/* Labeled Badge - shown if inventory items exist */}
+              {runData.inventory && runData.inventory.length > 0 && (
+                <Badge
+                  className={cn(
+                    "text-xs md:text-sm self-start",
+                    "bg-blue-100 text-blue-800 hover:bg-blue-200",
+                  )}
+                >
+                  Labeled
+                </Badge>
+              )}
+
               <div className="flex flex-wrap gap-2 w-full sm:w-auto">
                 {/* Export PDF and Update QA - other actions in main /bottles table */}
                 <Suspense fallback={<PDFExportSkeleton />}>

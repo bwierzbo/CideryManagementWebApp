@@ -392,6 +392,7 @@ export const bottlesRouter = router({
             voidReason: bottleRuns.voidReason,
             voidedAt: bottleRuns.voidedAt,
             voidedBy: bottleRuns.voidedBy,
+            pasteurizedAt: bottleRuns.pasteurizedAt,
             createdBy: bottleRuns.createdBy,
             createdAt: bottleRuns.createdAt,
             updatedAt: bottleRuns.updatedAt,
