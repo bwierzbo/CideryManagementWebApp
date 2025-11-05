@@ -209,11 +209,12 @@ export default function PackagingDetailPage() {
             <div className="min-w-0 flex-1">
               <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2 md:gap-3">
                 <Package className="w-6 h-6 md:w-8 md:h-8 flex-shrink-0" />
-                <span className="truncate">Bottle Run Details</span>
+                <span className="truncate">
+                  {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
+                </span>
               </h1>
               <p className="text-gray-600 mt-1 text-sm md:text-base break-words">
-                {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`} •{" "}
-                {formatPackageSize(runData.packageSizeML, runData.packageType)}
+                {runData.unitsProduced.toLocaleString()} × {formatPackageSize(runData.packageSizeML, runData.packageType)}
               </p>
             </div>
 
