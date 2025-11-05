@@ -8,7 +8,7 @@ import {
   vendors,
   baseFruitVarieties,
 } from "db";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, isNull } from "drizzle-orm";
 // TODO: Re-enable PDF service when server-compatible solution is available
 // import { PdfService } from "../services/pdf/PdfService";
 // import {
@@ -29,6 +29,11 @@ const dateRangeReportInput = z.object({
   reportType: z.enum(["summary", "detailed", "accounting"]).default("summary"),
   vendorId: z.string().uuid().optional(),
   varietyId: z.string().uuid().optional(),
+});
+
+const vendorAppleReportInput = z.object({
+  startDate: z.date().or(z.string().transform((str) => new Date(str))),
+  endDate: z.date().or(z.string().transform((str) => new Date(str))),
 });
 
 export const reportsRouter = router({
@@ -185,4 +190,134 @@ export const reportsRouter = router({
       })),
     };
   }),
+
+  // Get vendor apple purchase report data
+  getVendorApplePurchaseReport: createRbacProcedure("read", "purchase")
+    .input(vendorAppleReportInput)
+    .query(async ({ input }) => {
+      try {
+        // Fetch all purchases in date range with related data
+        const purchases = await db.query.basefruitPurchases.findMany({
+          where: and(
+            gte(basefruitPurchases.purchaseDate, input.startDate),
+            lte(basefruitPurchases.purchaseDate, input.endDate),
+            isNull(basefruitPurchases.deletedAt),
+          ),
+          with: {
+            vendor: true,
+            items: {
+              where: isNull(basefruitPurchaseItems.deletedAt),
+              with: {
+                fruitVariety: true,
+              },
+            },
+          },
+          orderBy: [desc(basefruitPurchases.purchaseDate)],
+        });
+
+        // Group data by vendor
+        const vendorMap = new Map<
+          string,
+          {
+            vendorId: string;
+            vendorName: string;
+            items: Array<{
+              varietyName: string;
+              purchaseDate: Date;
+              harvestDate: Date | null;
+              quantity: number;
+              unit: string;
+              quantityKg: number | null;
+              pricePerUnit: number | null;
+              totalCost: number | null;
+              notes: string | null;
+            }>;
+            totalCost: number;
+            totalWeightKg: number;
+          }
+        >();
+
+        let grandTotalCost = 0;
+        let grandTotalWeightKg = 0;
+
+        // Process each purchase
+        purchases.forEach((purchase) => {
+          const vendorId = purchase.vendorId;
+          const vendorName = purchase.vendor.name;
+
+          if (!vendorMap.has(vendorId)) {
+            vendorMap.set(vendorId, {
+              vendorId,
+              vendorName,
+              items: [],
+              totalCost: 0,
+              totalWeightKg: 0,
+            });
+          }
+
+          const vendorData = vendorMap.get(vendorId)!;
+
+          // Process each item in the purchase
+          purchase.items.forEach((item) => {
+            const quantity = parseFloat(item.quantity ?? "0");
+            const quantityKg = item.quantityKg
+              ? parseFloat(item.quantityKg)
+              : null;
+            const pricePerUnit = item.pricePerUnit
+              ? parseFloat(item.pricePerUnit)
+              : null;
+            const totalCost = item.totalCost ? parseFloat(item.totalCost) : null;
+
+            vendorData.items.push({
+              varietyName: item.fruitVariety.name,
+              purchaseDate: purchase.purchaseDate,
+              harvestDate: item.harvestDate ? new Date(item.harvestDate) : null,
+              quantity,
+              unit: item.unit,
+              quantityKg,
+              pricePerUnit,
+              totalCost,
+              notes: item.notes,
+            });
+
+            // Accumulate vendor totals
+            if (totalCost !== null) {
+              vendorData.totalCost += totalCost;
+            }
+            if (quantityKg !== null) {
+              vendorData.totalWeightKg += quantityKg;
+            }
+          });
+        });
+
+        // Convert map to array and calculate grand totals
+        const vendors = Array.from(vendorMap.values()).map((vendor) => {
+          grandTotalCost += vendor.totalCost;
+          grandTotalWeightKg += vendor.totalWeightKg;
+
+          return {
+            vendorId: vendor.vendorId,
+            vendorName: vendor.vendorName,
+            items: vendor.items,
+            totalCost: vendor.totalCost,
+            totalWeightKg: vendor.totalWeightKg,
+          };
+        });
+
+        // Sort vendors by name
+        vendors.sort((a, b) => a.vendorName.localeCompare(b.vendorName));
+
+        return {
+          vendors,
+          grandTotalCost,
+          grandTotalWeightKg,
+        };
+      } catch (error) {
+        console.error("Error generating vendor apple purchase report:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to generate vendor apple purchase report",
+        });
+      }
+    }),
 });
