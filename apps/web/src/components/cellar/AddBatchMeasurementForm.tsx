@@ -28,6 +28,7 @@ export function AddBatchMeasurementForm({
 
   const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime);
   const [specificGravity, setSpecificGravity] = useState("");
+  const [abv, setAbv] = useState("");
   const [ph, setPh] = useState("");
   const [totalAcidity, setTotalAcidity] = useState("");
   const [temperature, setTemperature] = useState("");
@@ -69,6 +70,7 @@ export function AddBatchMeasurementForm({
 
     if (specificGravity)
       measurementData.specificGravity = parseFloat(specificGravity);
+    if (abv) measurementData.abv = parseFloat(abv);
     if (ph) measurementData.ph = parseFloat(ph);
     if (totalAcidity) measurementData.totalAcidity = parseFloat(totalAcidity);
     if (temperature) measurementData.temperature = parseFloat(temperature);
@@ -102,6 +104,21 @@ export function AddBatchMeasurementForm({
             placeholder="1.050"
             value={specificGravity}
             onChange={(e) => setSpecificGravity(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="abv">
+            ABV (%)
+            <span className="text-xs text-gray-500 ml-2">(Actual measured)</span>
+          </Label>
+          <Input
+            id="abv"
+            type="number"
+            step="0.1"
+            placeholder="6.5"
+            value={abv}
+            onChange={(e) => setAbv(e.target.value)}
           />
         </div>
 
