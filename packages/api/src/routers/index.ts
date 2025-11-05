@@ -2414,7 +2414,7 @@ export const appRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, input.toVesselId),
-                  eq(batches.status, "fermentation"),
+                  inArray(batches.status, ["fermentation", "aging"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -2442,7 +2442,7 @@ export const appRouter = router({
               .where(
                 and(
                   eq(batches.vesselId, input.fromVesselId),
-                  eq(batches.status, "fermentation"),
+                  inArray(batches.status, ["fermentation", "aging"]),
                   isNull(batches.deletedAt),
                 ),
               )
@@ -2451,7 +2451,7 @@ export const appRouter = router({
             if (!sourceBatch.length) {
               throw new TRPCError({
                 code: "NOT_FOUND",
-                message: "No active batch found in source vessel",
+                message: "No active batch found in source vessel (must be in fermentation or aging status)",
               });
             }
 
@@ -3007,7 +3007,7 @@ export const appRouter = router({
         try {
           const { vesselId, cleanedAt, notes } = input;
 
-          // Verify vessel exists and is in cleaning status
+          // Verify vessel exists
           const vessel = await db
             .select()
             .from(vessels)
@@ -3023,13 +3023,6 @@ export const appRouter = router({
             throw new TRPCError({
               code: "NOT_FOUND",
               message: "Vessel not found",
-            });
-          }
-
-          if (vessel[0].status !== "cleaning") {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Vessel is not in cleaning status",
             });
           }
 
