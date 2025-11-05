@@ -2460,14 +2460,19 @@ export const appRouter = router({
             );
             const transferVolumeL = input.volumeL + (input.loss || 0);
 
-            if (transferVolumeL > currentVolumeL) {
+            // Allow small tolerance (0.1L) for rounding errors from unit conversions
+            const tolerance = 0.1;
+            if (transferVolumeL > currentVolumeL + tolerance) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Transfer volume plus loss (${transferVolumeL}L) exceeds current batch volume (${currentVolumeL}${sourceBatch[0].currentVolumeUnit || 'L'})`,
+                message: `Transfer volume plus loss (${transferVolumeL.toFixed(2)}L) exceeds current batch volume (${currentVolumeL.toFixed(2)}L)`,
               });
             }
 
-            const remainingVolumeL = currentVolumeL - transferVolumeL;
+            // If within tolerance, clamp to exact volume and absorb difference into loss
+            const actualTransferVolumeL = Math.min(transferVolumeL, currentVolumeL);
+            const adjustedLoss = actualTransferVolumeL - input.volumeL;
+            const remainingVolumeL = currentVolumeL - actualTransferVolumeL;
             let remainingBatch = null;
 
             // Check if this is a full transfer or partial transfer
@@ -2710,9 +2715,9 @@ export const appRouter = router({
                 remainingBatchId: remainingBatch?.id || null,
                 volumeTransferred: input.volumeL.toString(),
                 volumeTransferredUnit: "L",
-                loss: (input.loss || 0).toString(),
+                loss: adjustedLoss.toString(),
                 lossUnit: "L",
-                totalVolumeProcessed: transferVolumeL.toString(),
+                totalVolumeProcessed: actualTransferVolumeL.toString(),
                 totalVolumeProcessedUnit: "L",
                 remainingVolume:
                   remainingVolumeL > 0 ? remainingVolumeL.toString() : null,
@@ -2728,8 +2733,8 @@ export const appRouter = router({
               .returning();
 
             const message = isBlending
-              ? `Successfully blended ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} into ${destVessel[0].name || "Unknown"}. ${blendNote}${remainingVolumeL > 0 ? ` Remaining batch created with ${remainingVolumeL}L` : ""}.`
-              : `Successfully transferred ${input.volumeL}L${input.loss ? ` (${input.loss}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL}L` : ""}.`;
+              ? `Successfully blended ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} into ${destVessel[0].name || "Unknown"}. ${blendNote}${remainingVolumeL > 0 ? ` Remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`
+              : `Successfully transferred ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`;
 
             return {
               success: true,
