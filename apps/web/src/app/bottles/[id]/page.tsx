@@ -304,12 +304,14 @@ export default function PackagingDetailPage() {
         </div>
 
         {/* Label Compliance Summary Card */}
-        <LabelComplianceCard
-          measurements={runData.batch.history?.measurements || []}
-          additives={runData.batch.history?.additives || []}
-          abvAtPackaging={runData.abvAtPackaging}
-          packageSizeML={runData.packageSizeML}
-        />
+        <div className="mb-4 md:mb-6">
+          <LabelComplianceCard
+            measurements={runData.batch.history?.measurements || []}
+            additives={runData.batch.history?.additives || []}
+            abvAtPackaging={runData.abvAtPackaging}
+            packageSizeML={runData.packageSizeML}
+          />
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Main Production Details */}
