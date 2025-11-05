@@ -2293,6 +2293,7 @@ export const appRouter = router({
             .select({
               batchId: batchMeasurements.batchId,
               specificGravity: batchMeasurements.specificGravity,
+              abv: batchMeasurements.abv,
               ph: batchMeasurements.ph,
               temperature: batchMeasurements.temperature,
               measurementDate: batchMeasurements.measurementDate,

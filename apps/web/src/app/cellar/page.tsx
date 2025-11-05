@@ -930,6 +930,9 @@ function VesselMap() {
     currentVolumeL: number;
   } | null>(null);
 
+  // CO₂ unit toggle state (volumes vs g/L)
+  const [co2Unit, setCo2Unit] = useState<"vol" | "gL">("vol");
+
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
@@ -1477,18 +1480,71 @@ function VesselMap() {
                   <div className="space-y-1 text-xs h-[60px]">
                     {liquidMapVessel?.batchId ? (
                       <>
-                        {/* Show ABV if available */}
-                        {(liquidMapVessel.actualAbv || liquidMapVessel.estimatedAbv) && (
+                        {/* ABV - from latest measurement or batch calculation */}
+                        {(() => {
+                          const measurement = liquidMapVessel.latestMeasurement;
+                          const og = liquidMapVessel.originalGravity;
+
+                          // Priority 1: Measured ABV from latest measurement
+                          if (measurement?.abv) {
+                            return (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">ABV:</span>
+                                <span className="font-medium">
+                                  {parseFloat(String(measurement.abv)).toFixed(2)}%
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          // Priority 2: Calculate from latest SG measurement
+                          if (measurement?.specificGravity && og) {
+                            const fg = parseFloat(String(measurement.specificGravity));
+                            const ogNum = parseFloat(String(og));
+                            const estimatedAbv = (ogNum - fg) * 131.25;
+                            return (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">Est. ABV:</span>
+                                <span className="font-medium">
+                                  {estimatedAbv.toFixed(2)}%
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          // Priority 3: Fall back to batch-level ABV
+                          if (liquidMapVessel.actualAbv || liquidMapVessel.estimatedAbv) {
+                            return (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600">
+                                  {liquidMapVessel.actualAbv ? 'ABV:' : 'Est. ABV:'}
+                                </span>
+                                <span className="font-medium">
+                                  {liquidMapVessel.actualAbv
+                                    ? `${parseFloat(String(liquidMapVessel.actualAbv)).toFixed(2)}%`
+                                    : `${parseFloat(String(liquidMapVessel.estimatedAbv)).toFixed(2)}%`
+                                  }
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return null;
+                        })()}
+                        {/* Show CO₂ if pressure vessel with active carbonation */}
+                        {liquidMapVessel.isPressureVessel === "yes" && liquidMapVessel.carbonationTargetCo2 && (
                           <div className="flex justify-between">
-                            <span className="text-gray-600">
-                              {liquidMapVessel.actualAbv ? 'ABV:' : 'Est. ABV:'}
-                            </span>
-                            <span className="font-medium">
-                              {liquidMapVessel.actualAbv
-                                ? `${parseFloat(String(liquidMapVessel.actualAbv)).toFixed(2)}%`
-                                : `${parseFloat(String(liquidMapVessel.estimatedAbv)).toFixed(2)}%`
+                            <span className="text-gray-600">CO₂:</span>
+                            <button
+                              onClick={() => setCo2Unit(co2Unit === "vol" ? "gL" : "vol")}
+                              className="font-medium hover:text-purple-600 transition-colors cursor-pointer"
+                              title="Click to toggle between volumes and g/L"
+                            >
+                              {co2Unit === "vol"
+                                ? `${parseFloat(String(liquidMapVessel.carbonationTargetCo2)).toFixed(2)} vol`
+                                : `${(parseFloat(String(liquidMapVessel.carbonationTargetCo2)) * 1.96).toFixed(2)} g/L`
                               }
-                            </span>
+                            </button>
                           </div>
                         )}
                         {liquidMapVessel.latestMeasurement?.specificGravity && (
@@ -1511,48 +1567,6 @@ function VesselMap() {
                     ) : null}
                   </div>
                 </div>
-
-                {/* Carbonation Info - Show for pressure vessels with active carbonation */}
-                {liquidMapVessel?.isPressureVessel === "yes" && liquidMapVessel?.carbonationId && (
-                  <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded-md">
-                    <div className="flex items-center gap-1 mb-1">
-                      <FlaskConical className="w-3 h-3 text-purple-600" />
-                      <span className="text-xs font-medium text-purple-900">Carbonating</span>
-                    </div>
-                    <div className="space-y-1 text-xs">
-                      {liquidMapVessel.carbonationTargetCo2 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Target CO₂:</span>
-                          <span className="font-medium">
-                            {parseFloat(String(liquidMapVessel.carbonationTargetCo2)).toFixed(2)} vol
-                          </span>
-                        </div>
-                      )}
-                      {liquidMapVessel.carbonationPressure && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Pressure:</span>
-                          <span className="font-medium">
-                            {parseFloat(String(liquidMapVessel.carbonationPressure)).toFixed(1)} PSI
-                          </span>
-                        </div>
-                      )}
-                      {liquidMapVessel.carbonationQuality && liquidMapVessel.carbonationQuality !== "in_progress" && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Status:</span>
-                          <span className={`font-medium ${
-                            liquidMapVessel.carbonationQuality === "pass" ? "text-green-600" :
-                            liquidMapVessel.carbonationQuality === "fail" ? "text-red-600" :
-                            "text-amber-600"
-                          }`}>
-                            {liquidMapVessel.carbonationQuality === "pass" ? "Pass" :
-                             liquidMapVessel.carbonationQuality === "fail" ? "Fail" :
-                             "Needs Adjustment"}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
 
                 {/* Volume Indicator */}
                 <div className="mb-3">
