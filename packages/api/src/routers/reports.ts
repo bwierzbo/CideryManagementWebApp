@@ -197,22 +197,41 @@ export const reportsRouter = router({
     .query(async ({ input }) => {
       try {
         // Fetch all purchases in date range with related data
-        const purchases = await db.query.basefruitPurchases.findMany({
-          where: and(
-            gte(basefruitPurchases.purchaseDate, input.startDate),
-            lte(basefruitPurchases.purchaseDate, input.endDate),
-            isNull(basefruitPurchases.deletedAt),
-          ),
-          with: {
-            vendor: true,
-            items: {
-              with: {
-                fruitVariety: true,
-              },
-            },
-          },
-          orderBy: [desc(basefruitPurchases.purchaseDate)],
-        });
+        const purchasesData = await db
+          .select({
+            purchaseId: basefruitPurchases.id,
+            purchaseDate: basefruitPurchases.purchaseDate,
+            vendorId: vendors.id,
+            vendorName: vendors.name,
+            itemId: basefruitPurchaseItems.id,
+            fruitVarietyName: baseFruitVarieties.name,
+            harvestDate: basefruitPurchaseItems.harvestDate,
+            quantity: basefruitPurchaseItems.quantity,
+            unit: basefruitPurchaseItems.unit,
+            quantityKg: basefruitPurchaseItems.quantityKg,
+            pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+            totalCost: basefruitPurchaseItems.totalCost,
+            notes: basefruitPurchaseItems.notes,
+          })
+          .from(basefruitPurchases)
+          .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+          .leftJoin(
+            basefruitPurchaseItems,
+            eq(basefruitPurchases.id, basefruitPurchaseItems.purchaseId),
+          )
+          .leftJoin(
+            baseFruitVarieties,
+            eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+          )
+          .where(
+            and(
+              gte(basefruitPurchases.purchaseDate, input.startDate),
+              lte(basefruitPurchases.purchaseDate, input.endDate),
+              isNull(basefruitPurchases.deletedAt),
+              isNull(basefruitPurchaseItems.deletedAt),
+            ),
+          )
+          .orderBy(desc(basefruitPurchases.purchaseDate));
 
         // Group data by vendor
         const vendorMap = new Map<
@@ -239,16 +258,21 @@ export const reportsRouter = router({
         let grandTotalCost = 0;
         let grandTotalWeightKg = 0;
 
-        // Process each purchase
-        purchases.forEach((purchase) => {
-          // Skip purchases without vendor (data integrity issue)
-          if (!purchase.vendor) {
-            console.warn(`Skipping purchase ${purchase.id} with missing vendor`);
+        // Process each row from the flattened result set
+        purchasesData.forEach((row) => {
+          // Skip rows without vendor (data integrity issue)
+          if (!row.vendorId || !row.vendorName) {
+            console.warn(`Skipping row with missing vendor data`);
             return;
           }
 
-          const vendorId = purchase.vendorId;
-          const vendorName = purchase.vendor.name;
+          // Skip rows without item data (shouldn't happen with inner joins)
+          if (!row.itemId) {
+            return;
+          }
+
+          const vendorId = row.vendorId;
+          const vendorName = row.vendorName;
 
           if (!vendorMap.has(vendorId)) {
             vendorMap.set(vendorId, {
@@ -262,52 +286,46 @@ export const reportsRouter = router({
 
           const vendorData = vendorMap.get(vendorId)!;
 
-          // Process each item in the purchase
-          purchase.items.forEach((item) => {
-            // Skip deleted items
-            if (item.deletedAt) {
-              return;
-            }
+          // Skip items without fruit variety (data integrity issue)
+          if (!row.fruitVarietyName) {
+            console.warn(`Skipping item with missing variety name`);
+            return;
+          }
 
-            // Skip items without fruit variety (data integrity issue)
-            if (!item.fruitVariety) {
-              console.warn(`Skipping item with missing fruitVariety for purchase ${purchase.id}`);
-              return;
-            }
+          const quantity = row.quantity ? parseFloat(row.quantity.toString()) : 0;
+          const quantityKg = row.quantityKg
+            ? parseFloat(row.quantityKg.toString())
+            : null;
+          const pricePerUnit = row.pricePerUnit
+            ? parseFloat(row.pricePerUnit.toString())
+            : null;
+          const totalCost = row.totalCost
+            ? parseFloat(row.totalCost.toString())
+            : null;
 
-            const quantity = parseFloat(item.quantity ?? "0");
-            const quantityKg = item.quantityKg
-              ? parseFloat(item.quantityKg)
-              : null;
-            const pricePerUnit = item.pricePerUnit
-              ? parseFloat(item.pricePerUnit)
-              : null;
-            const totalCost = item.totalCost ? parseFloat(item.totalCost) : null;
-
-            vendorData.items.push({
-              varietyName: item.fruitVariety.name,
-              purchaseDate: purchase.purchaseDate,
-              harvestDate: item.harvestDate ? new Date(item.harvestDate) : null,
-              quantity,
-              unit: item.unit,
-              quantityKg,
-              pricePerUnit,
-              totalCost,
-              notes: item.notes,
-            });
-
-            // Accumulate vendor totals
-            if (totalCost !== null) {
-              vendorData.totalCost += totalCost;
-            }
-            if (quantityKg !== null) {
-              vendorData.totalWeightKg += quantityKg;
-            }
+          vendorData.items.push({
+            varietyName: row.fruitVarietyName,
+            purchaseDate: row.purchaseDate,
+            harvestDate: row.harvestDate ? new Date(row.harvestDate) : null,
+            quantity,
+            unit: row.unit || "kg", // Default to kg if somehow null
+            quantityKg,
+            pricePerUnit,
+            totalCost,
+            notes: row.notes,
           });
+
+          // Accumulate vendor totals
+          if (totalCost !== null) {
+            vendorData.totalCost += totalCost;
+          }
+          if (quantityKg !== null) {
+            vendorData.totalWeightKg += quantityKg;
+          }
         });
 
         // Convert map to array and calculate grand totals
-        const vendors = Array.from(vendorMap.values()).map((vendor) => {
+        const vendorsList = Array.from(vendorMap.values()).map((vendor) => {
           grandTotalCost += vendor.totalCost;
           grandTotalWeightKg += vendor.totalWeightKg;
 
@@ -321,10 +339,10 @@ export const reportsRouter = router({
         });
 
         // Sort vendors by name
-        vendors.sort((a, b) => a.vendorName.localeCompare(b.vendorName));
+        vendorsList.sort((a, b) => a.vendorName.localeCompare(b.vendorName));
 
         return {
-          vendors,
+          vendors: vendorsList,
           grandTotalCost,
           grandTotalWeightKg,
         };
