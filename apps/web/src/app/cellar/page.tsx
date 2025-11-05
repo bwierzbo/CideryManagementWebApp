@@ -89,6 +89,7 @@ import { FillKegModal } from "@/components/kegs/FillKegModal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
 import { CleanTankModal } from "@/components/cellar/CleanTankModal";
+import { CarbonateModal } from "@/components/operations/CarbonateModal";
 import { KegsManagement } from "@/components/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 
@@ -917,6 +918,16 @@ function VesselMap() {
     name: string;
   } | null>(null);
 
+  // Carbonate modal state
+  const [showCarbonateModal, setShowCarbonateModal] = useState(false);
+  const [selectedVesselForCarbonation, setSelectedVesselForCarbonation] = useState<{
+    id: string;
+    name: string;
+    batchId: string;
+    batchName: string;
+    currentVolumeL: number;
+  } | null>(null);
+
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
@@ -1299,6 +1310,49 @@ function VesselMap() {
     setShowFilterModal(true);
   };
 
+  const handleCarbonate = (vesselId: string) => {
+    const vessel = vesselListQuery.data?.vessels?.find(
+      (v) => v.id === vesselId,
+    );
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
+    const batchName = liquidMapVessel?.batchCustomName || liquidMapVessel?.batchNumber || "Unnamed Batch";
+
+    if (!vessel || !batchId) {
+      toast({
+        title: "Cannot Carbonate",
+        description: "This vessel doesn't have an active batch.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Calculate current volume
+    const currentVolumeL = liquidMapVessel?.currentVolume
+      ? parseFloat(liquidMapVessel.currentVolume.toString())
+      : 0;
+
+    if (currentVolumeL <= 0) {
+      toast({
+        title: "Cannot Carbonate",
+        description: "This vessel is empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSelectedVesselForCarbonation({
+      id: vesselId,
+      name: vessel.name || "Unnamed Vessel",
+      batchId,
+      batchName,
+      currentVolumeL,
+    });
+    setShowCarbonateModal(true);
+  };
+
   if (vesselListQuery.isLoading) {
     return (
       <Card>
@@ -1537,6 +1591,17 @@ function VesselMap() {
                           )}
                           {liquidMapVessel?.batchStatus === "aging" && (
                             <>
+                              {liquidMapVessel?.isPressureVessel === "yes" && (
+                                <DropdownMenuItem
+                                  onClick={() => handleCarbonate(vessel.id)}
+                                  disabled={
+                                    !liquidMapVessel?.batchId || currentVolume <= 0
+                                  }
+                                >
+                                  <Waves className="w-3 h-3 mr-2" />
+                                  Carbonate
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={() => handleFilter(vessel.id)}
                                 disabled={
@@ -1814,6 +1879,22 @@ function VesselMap() {
           vesselId={selectedVesselForCleaning?.id || ""}
           vesselName={selectedVesselForCleaning?.name || ""}
         />
+
+        {/* Carbonate Modal */}
+        {selectedVesselForCarbonation && (
+          <CarbonateModal
+            open={showCarbonateModal}
+            onClose={() => {
+              setShowCarbonateModal(false);
+              setSelectedVesselForCarbonation(null);
+            }}
+            batchId={selectedVesselForCarbonation.batchId}
+            batchName={selectedVesselForCarbonation.batchName}
+            vesselId={selectedVesselForCarbonation.id}
+            vesselName={selectedVesselForCarbonation.name}
+            currentVolumeL={selectedVesselForCarbonation.currentVolumeL}
+          />
+        )}
 
         {/* Edit Tank Modal */}
         <Dialog

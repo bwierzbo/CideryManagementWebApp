@@ -2227,6 +2227,7 @@ export const appRouter = router({
             vesselCapacityUnit: vessels.capacityUnit,
             vesselStatus: vessels.status,
             vesselLocation: vessels.location,
+            isPressureVessel: vessels.isPressureVessel,
             batchId: batches.id,
             batchNumber: batches.batchNumber,
             batchStatus: batches.status,
