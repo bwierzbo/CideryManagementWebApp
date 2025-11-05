@@ -20,7 +20,7 @@ import {
   batchTransfers,
   packagingPurchaseItems,
 } from "db";
-import { eq, and, desc, isNull, sql, gte, lte, like, or } from "drizzle-orm";
+import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { publishCreateEvent, publishUpdateEvent } from "lib";
 import {
@@ -510,6 +510,46 @@ export const bottlesRouter = router({
           .orderBy(desc(batchAdditives.addedAt))
           .limit(5);
 
+        // Get additive varieties for label impact and allergen info
+        const additiveNames = additives.map(a => a.additiveName);
+        let additiveVarietyMap = new Map();
+
+        if (additiveNames.length > 0) {
+          const varietyData = await db
+            .select({
+              name: additiveVarieties.name,
+              labelImpact: additiveVarieties.labelImpact,
+              labelImpactNotes: additiveVarieties.labelImpactNotes,
+              allergensVegan: additiveVarieties.allergensVegan,
+              allergensVeganNotes: additiveVarieties.allergensVeganNotes,
+              itemType: additiveVarieties.itemType,
+            })
+            .from(additiveVarieties)
+            .where(
+              and(
+                inArray(additiveVarieties.name, additiveNames),
+                isNull(additiveVarieties.deletedAt)
+              )
+            );
+
+          for (const variety of varietyData) {
+            additiveVarietyMap.set(variety.name, variety);
+          }
+        }
+
+        // Enrich additives with variety info
+        const enrichedAdditives = additives.map(additive => {
+          const varietyInfo = additiveVarietyMap.get(additive.additiveName);
+          return {
+            ...additive,
+            labelImpact: varietyInfo?.labelImpact ?? false,
+            labelImpactNotes: varietyInfo?.labelImpactNotes ?? null,
+            allergensVegan: varietyInfo?.allergensVegan ?? false,
+            allergensVeganNotes: varietyInfo?.allergensVeganNotes ?? null,
+            itemType: varietyInfo?.itemType ?? null,
+          };
+        });
+
         // Get batch transfers (last 5)
         const transfers = await db
           .select({
@@ -559,11 +599,16 @@ export const bottlesRouter = router({
                 totalAcidity: m.totalAcidity ? parseFloat(m.totalAcidity.toString()) : null,
                 temperature: m.temperature ? parseFloat(m.temperature.toString()) : null,
               })),
-              additives: additives.map((a) => ({
+              additives: enrichedAdditives.map((a) => ({
                 additiveName: a.additiveName,
                 amount: a.amount ? parseFloat(a.amount.toString()) : 0,
                 unit: a.unit,
                 addedAt: a.addedAt,
+                labelImpact: a.labelImpact,
+                labelImpactNotes: a.labelImpactNotes,
+                allergensVegan: a.allergensVegan,
+                allergensVeganNotes: a.allergensVeganNotes,
+                itemType: a.itemType,
               })),
               transfers: transfers.map((t) => ({
                 volumeTransferred: t.volumeTransferred

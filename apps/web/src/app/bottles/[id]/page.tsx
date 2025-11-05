@@ -37,6 +37,7 @@ import { trpc } from "@/utils/trpc";
 import { performanceMonitor } from "@/lib/performance-monitor";
 import { formatDateTime } from "@/utils/date-format";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
+import { LabelComplianceCard } from "@/components/bottles/LabelComplianceCard";
 
 // Lazy load heavy components
 const QAUpdateModal = lazy(() =>
@@ -301,6 +302,14 @@ export default function PackagingDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Label Compliance Summary Card */}
+        <LabelComplianceCard
+          measurements={runData.batch.history?.measurements || []}
+          additives={runData.batch.history?.additives || []}
+          abvAtPackaging={runData.abvAtPackaging}
+          packageSizeML={runData.packageSizeML}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Main Production Details */}
