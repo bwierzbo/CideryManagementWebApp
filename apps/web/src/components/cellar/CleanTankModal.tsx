@@ -52,10 +52,25 @@ export function CleanTankModal({
     resolver: zodResolver(cleanTankSchema),
     defaultValues: {
       cleanedAt: new Date(),
+      notes: "",
     },
   });
 
   const cleanedAt = watch("cleanedAt");
+
+  // Format date for datetime-local input
+  const formatDatetimeLocal = (date: Date | undefined): string => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return "";
+    }
+    try {
+      const offset = date.getTimezoneOffset() * 60000;
+      const localDate = new Date(date.getTime() - offset);
+      return localDate.toISOString().slice(0, 16);
+    } catch {
+      return "";
+    }
+  };
 
   // Reset when modal opens
   useEffect(() => {
@@ -96,7 +111,7 @@ export function CleanTankModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -115,7 +130,7 @@ export function CleanTankModal({
             </Label>
             <Input
               type="datetime-local"
-              value={cleanedAt ? new Date(cleanedAt.getTime() - cleanedAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+              value={formatDatetimeLocal(cleanedAt)}
               onChange={(e) => setValue("cleanedAt", new Date(e.target.value))}
               className="w-full mt-1"
             />

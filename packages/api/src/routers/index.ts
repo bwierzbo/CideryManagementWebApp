@@ -3004,7 +3004,7 @@ export const appRouter = router({
       .input(
         z.object({
           vesselId: z.string().uuid("Invalid vessel ID"),
-          cleanedAt: z.date(),
+          cleanedAt: z.date().or(z.string().transform((val) => new Date(val))),
           notes: z.string().optional(),
         }),
       )
