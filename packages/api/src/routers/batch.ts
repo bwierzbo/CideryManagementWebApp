@@ -1012,8 +1012,29 @@ export const batchRouter = router({
 
         const activities: any[] = [];
 
+        // Check for earliest transfer to determine true origin vessel
+        const earliestTransfer = await db
+          .select({
+            sourceVesselName: sql<string>`source_vessel.name`,
+            transferredAt: batchTransfers.transferredAt,
+          })
+          .from(batchTransfers)
+          .leftJoin(
+            sql`vessels AS source_vessel`,
+            sql`source_vessel.id = ${batchTransfers.sourceVesselId}`,
+          )
+          .where(
+            and(
+              eq(batchTransfers.sourceBatchId, input.batchId),
+              isNull(batchTransfers.deletedAt),
+            ),
+          )
+          .orderBy(asc(batchTransfers.transferredAt))
+          .limit(1);
+
         // Add batch creation event - handle press run or juice purchase origins
-        const creationVessel = batch[0].pressRunVesselName || batch[0].vesselName;
+        // Use earliest transfer's source vessel if available, otherwise use current or press run vessel
+        const creationVessel = earliestTransfer[0]?.sourceVesselName || batch[0].pressRunVesselName || batch[0].vesselName;
 
         let originDescription = "manual entry";
         if (batch[0].originPressRunId && batch[0].pressRunName) {
