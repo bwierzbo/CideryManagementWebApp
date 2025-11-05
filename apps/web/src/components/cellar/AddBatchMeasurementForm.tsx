@@ -110,7 +110,6 @@ export function AddBatchMeasurementForm({
         <div className="space-y-2">
           <Label htmlFor="abv">
             ABV (%)
-            <span className="text-xs text-gray-500 ml-2">(Actual measured)</span>
           </Label>
           <Input
             id="abv"
