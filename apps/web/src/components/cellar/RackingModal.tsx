@@ -32,7 +32,6 @@ import { Badge } from "@/components/ui/badge";
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
   volumeAfter: z.number().positive("Volume must be positive"),
-  volumeAfterUnit: z.enum(["L", "gal"]),
   rackedAt: z.date(),
 });
 
@@ -46,6 +45,7 @@ interface RackingModalProps {
   sourceVesselId: string;
   sourceVesselName: string;
   currentVolumeL: number;
+  sourceVesselCapacityUnit: "L" | "gal";
 }
 
 export function RackingModal({
@@ -56,6 +56,7 @@ export function RackingModal({
   sourceVesselId,
   sourceVesselName,
   currentVolumeL,
+  sourceVesselCapacityUnit,
 }: RackingModalProps) {
   const utils = trpc.useUtils();
   const [calculatedLoss, setCalculatedLoss] = useState(0);
@@ -83,13 +84,11 @@ export function RackingModal({
   } = useForm<RackingForm>({
     resolver: zodResolver(rackingSchema),
     defaultValues: {
-      volumeAfterUnit: "L",
       rackedAt: new Date(),
     },
   });
 
   const volumeAfter = watch("volumeAfter");
-  const volumeAfterUnit = watch("volumeAfterUnit");
   const destinationVesselId = watch("destinationVesselId");
   const rackedAt = watch("rackedAt");
 
@@ -114,8 +113,8 @@ export function RackingModal({
   // Calculate loss whenever volumeAfter changes
   useEffect(() => {
     if (volumeAfter !== undefined) {
-      // Convert volumeAfter to liters for calculation
-      const afterL = volumeAfterUnit === "gal"
+      // Convert volumeAfter to liters for calculation (using source vessel's unit)
+      const afterL = sourceVesselCapacityUnit === "gal"
         ? convertVolume(volumeAfter, "gal", "L")
         : volumeAfter;
 
@@ -128,7 +127,7 @@ export function RackingModal({
       setCalculatedLoss(0);
       setLossPercentage(0);
     }
-  }, [volumeAfter, volumeAfterUnit, currentVolumeL]);
+  }, [volumeAfter, sourceVesselCapacityUnit, currentVolumeL]);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -137,11 +136,14 @@ export function RackingModal({
       setCalculatedLoss(0);
       setLossPercentage(0);
     } else {
-      // Set initial volume to current volume (no loss)
-      setValue("volumeAfter", currentVolumeL);
+      // Set initial volume to current volume in source vessel's unit (no loss)
+      const initialVolume = sourceVesselCapacityUnit === "gal"
+        ? convertVolume(currentVolumeL, "L", "gal")
+        : currentVolumeL;
+      setValue("volumeAfter", initialVolume);
       setValue("rackedAt", new Date());
     }
-  }, [open, reset, setValue, currentVolumeL]);
+  }, [open, reset, setValue, currentVolumeL, sourceVesselCapacityUnit]);
 
   const rackBatchMutation = trpc.batch.rackBatch.useMutation({
     onSuccess: (data) => {
@@ -166,6 +168,7 @@ export function RackingModal({
     rackBatchMutation.mutate({
       batchId,
       ...data,
+      volumeAfterUnit: sourceVesselCapacityUnit, // Always use source vessel's unit
     });
   };
 
@@ -193,10 +196,16 @@ export function RackingModal({
           <div className="bg-blue-50 p-4 rounded-lg">
             <p className="text-sm font-medium text-blue-900">Current Volume</p>
             <p className="text-2xl font-bold text-blue-700">
-              {currentVolumeL.toFixed(1)} L
+              {sourceVesselCapacityUnit === "gal"
+                ? `${(currentVolumeL / 3.78541).toFixed(1)} gal`
+                : `${currentVolumeL.toFixed(1)} L`
+              }
             </p>
             <p className="text-sm text-blue-600">
-              {(currentVolumeL / 3.78541).toFixed(1)} gallons
+              {sourceVesselCapacityUnit === "gal"
+                ? `(${currentVolumeL.toFixed(1)} L)`
+                : `(${(currentVolumeL / 3.78541).toFixed(1)} gal)`
+              }
             </p>
           </div>
 
@@ -305,18 +314,18 @@ export function RackingModal({
           {/* Volume After Racking */}
           <div className="space-y-2">
             <Label htmlFor="volumeAfter">
-              Volume After Racking <span className="text-red-500">*</span>
+              Volume After Racking ({sourceVesselCapacityUnit}) <span className="text-red-500">*</span>
             </Label>
-            <VolumeInput
-              value={volumeAfter || 0}
-              unit={volumeAfterUnit}
-              onValueChange={(value) => setValue("volumeAfter", value || 0)}
-              onUnitChange={(unit) => {
-                if (unit === "L" || unit === "gal") {
-                  setValue("volumeAfterUnit", unit);
-                }
-              }}
-              placeholder="Enter volume after racking"
+            <p className="text-xs text-gray-500">
+              Volume is shown in {sourceVesselCapacityUnit === "L" ? "liters" : "gallons"} (source vessel's unit)
+            </p>
+            <Input
+              type="number"
+              step="0.01"
+              value={volumeAfter || ""}
+              onChange={(e) => setValue("volumeAfter", parseFloat(e.target.value) || 0)}
+              placeholder={`Enter volume in ${sourceVesselCapacityUnit}`}
+              className="w-full"
             />
             {errors.volumeAfter && (
               <p className="text-sm text-red-500">{errors.volumeAfter.message}</p>
@@ -336,7 +345,10 @@ export function RackingModal({
                 )}
                 <div className="flex-1">
                   <p className="text-sm font-medium">
-                    Calculated Volume Loss: {calculatedLoss.toFixed(1)} L ({(calculatedLoss / 3.78541).toFixed(1)} gal)
+                    Calculated Volume Loss: {sourceVesselCapacityUnit === "gal"
+                      ? `${(calculatedLoss / 3.78541).toFixed(1)} gal`
+                      : `${calculatedLoss.toFixed(1)} L`
+                    }
                   </p>
                   <p className="text-xs mt-1">
                     Loss percentage: {lossPercentage.toFixed(1)}%

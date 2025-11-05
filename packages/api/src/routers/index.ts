@@ -54,6 +54,7 @@ import {
   packagingVarieties,
   auditLogs,
   users,
+  batchCarbonationOperations,
 } from "db";
 import {
   eq,
@@ -2244,6 +2245,14 @@ export const appRouter = router({
             applePressRunId: pressRuns.id,
             applePressRunVolume: pressRuns.totalJuiceVolume,
             applePressRunVolumeUnit: pressRuns.totalJuiceVolumeUnit,
+            // Carbonation tracking (active operations only)
+            carbonationId: batchCarbonationOperations.id,
+            carbonationTargetCo2: batchCarbonationOperations.targetCo2Volumes,
+            carbonationFinalCo2: batchCarbonationOperations.finalCo2Volumes,
+            carbonationPressure: batchCarbonationOperations.pressureApplied,
+            carbonationQuality: batchCarbonationOperations.qualityCheck,
+            carbonationStartedAt: batchCarbonationOperations.startedAt,
+            carbonationCompletedAt: batchCarbonationOperations.completedAt,
           })
           .from(vessels)
           .leftJoin(
@@ -2260,6 +2269,14 @@ export const appRouter = router({
               eq(pressRuns.vesselId, vessels.id),
               isNull(pressRuns.deletedAt),
               eq(pressRuns.status, "completed"),
+            ),
+          )
+          .leftJoin(
+            batchCarbonationOperations,
+            and(
+              eq(batchCarbonationOperations.batchId, batches.id),
+              isNull(batchCarbonationOperations.deletedAt),
+              isNull(batchCarbonationOperations.completedAt), // Only active carbonations
             ),
           )
           .where(isNull(vessels.deletedAt))

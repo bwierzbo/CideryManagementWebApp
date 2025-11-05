@@ -1512,6 +1512,48 @@ function VesselMap() {
                   </div>
                 </div>
 
+                {/* Carbonation Info - Show for pressure vessels with active carbonation */}
+                {liquidMapVessel?.isPressureVessel === "yes" && liquidMapVessel?.carbonationId && (
+                  <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded-md">
+                    <div className="flex items-center gap-1 mb-1">
+                      <FlaskConical className="w-3 h-3 text-purple-600" />
+                      <span className="text-xs font-medium text-purple-900">Carbonating</span>
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      {liquidMapVessel.carbonationTargetCo2 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Target CO₂:</span>
+                          <span className="font-medium">
+                            {parseFloat(String(liquidMapVessel.carbonationTargetCo2)).toFixed(2)} vol
+                          </span>
+                        </div>
+                      )}
+                      {liquidMapVessel.carbonationPressure && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Pressure:</span>
+                          <span className="font-medium">
+                            {parseFloat(String(liquidMapVessel.carbonationPressure)).toFixed(1)} PSI
+                          </span>
+                        </div>
+                      )}
+                      {liquidMapVessel.carbonationQuality && liquidMapVessel.carbonationQuality !== "in_progress" && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Status:</span>
+                          <span className={`font-medium ${
+                            liquidMapVessel.carbonationQuality === "pass" ? "text-green-600" :
+                            liquidMapVessel.carbonationQuality === "fail" ? "text-red-600" :
+                            "text-amber-600"
+                          }`}>
+                            {liquidMapVessel.carbonationQuality === "pass" ? "Pass" :
+                             liquidMapVessel.carbonationQuality === "fail" ? "Fail" :
+                             "Needs Adjustment"}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Volume Indicator */}
                 <div className="mb-3">
                   <div className="flex justify-between items-center mb-2">
