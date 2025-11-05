@@ -1884,15 +1884,25 @@ function VesselMap() {
         {selectedVesselForCarbonation && (
           <CarbonateModal
             open={showCarbonateModal}
-            onClose={() => {
-              setShowCarbonateModal(false);
-              setSelectedVesselForCarbonation(null);
+            onOpenChange={(isOpen) => {
+              if (!isOpen) {
+                setShowCarbonateModal(false);
+                setSelectedVesselForCarbonation(null);
+              }
             }}
-            batchId={selectedVesselForCarbonation.batchId}
-            batchName={selectedVesselForCarbonation.batchName}
-            vesselId={selectedVesselForCarbonation.id}
-            vesselName={selectedVesselForCarbonation.name}
-            currentVolumeL={selectedVesselForCarbonation.currentVolumeL}
+            batch={{
+              id: selectedVesselForCarbonation.batchId,
+              name: selectedVesselForCarbonation.batchName,
+              currentVolume: selectedVesselForCarbonation.currentVolumeL,
+            }}
+            vessel={{
+              id: selectedVesselForCarbonation.id,
+              name: selectedVesselForCarbonation.name,
+            }}
+            onSuccess={() => {
+              utils.vessel.liquidMap.invalidate();
+              utils.batch.list.invalidate();
+            }}
           />
         )}
 
