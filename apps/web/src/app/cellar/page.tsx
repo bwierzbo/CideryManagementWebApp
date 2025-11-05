@@ -145,7 +145,7 @@ const tankSchema = z.object({
   name: z.string().optional(),
   capacity: z.number().positive("Capacity must be positive"),
   capacityUnit: z.enum(["L", "gal"]),
-  material: z.enum(["stainless_steel", "plastic", "oak"]).optional(),
+  material: z.enum(["stainless_steel", "plastic", "oak", "aluminum"]).optional(),
   jacketed: z.enum(["yes", "no"]).optional(),
   isPressureVessel: z.enum(["yes", "no"]).optional(),
   location: z.string().optional(),
@@ -297,6 +297,7 @@ function TankForm({
               <SelectItem value="stainless_steel">Stainless Steel</SelectItem>
               <SelectItem value="plastic">Plastic</SelectItem>
               <SelectItem value="oak">Oak</SelectItem>
+              <SelectItem value="aluminum">Aluminum</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -909,6 +910,7 @@ function VesselMap() {
     batchId: string;
     batchName: string;
     currentVolumeL: number;
+    capacityUnit: "L" | "gal";
   } | null>(null);
 
   // Clean tank modal state
@@ -1114,6 +1116,7 @@ function VesselMap() {
     }
 
     const currentVolumeL = parseFloat(liquidMapVessel.currentVolume || "0");
+    const capacityUnit = vessel.capacityUnit || "L";
 
     setSelectedVesselForRacking({
       id: vessel.id,
@@ -1121,6 +1124,7 @@ function VesselMap() {
       batchId: batchId,
       batchName: batchName || '',
       currentVolumeL: currentVolumeL,
+      capacityUnit: capacityUnit as "L" | "gal",
     });
     setShowRackingModal(true);
   };
@@ -1866,6 +1870,7 @@ function VesselMap() {
             sourceVesselId={selectedVesselForRacking.id}
             sourceVesselName={selectedVesselForRacking.name}
             currentVolumeL={selectedVesselForRacking.currentVolumeL}
+            sourceVesselCapacityUnit={selectedVesselForRacking.capacityUnit}
           />
         )}
 

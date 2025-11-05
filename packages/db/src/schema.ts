@@ -40,6 +40,7 @@ export const vesselMaterialEnum = pgEnum("vessel_material", [
   "stainless_steel",
   "plastic",
   "oak",
+  "aluminum",
 ]);
 export const vesselJacketedEnum = pgEnum("vessel_jacketed", ["yes", "no"]);
 export const vesselPressureEnum = pgEnum("vessel_pressure", ["yes", "no"]);

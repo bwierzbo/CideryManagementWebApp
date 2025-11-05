@@ -1948,7 +1948,7 @@ export const appRouter = router({
           name: z.string().optional(),
           capacityL: z.number().positive("Capacity must be positive"),
           capacityUnit: z.enum(["L", "gal"]).default("L"),
-          material: z.enum(["stainless_steel", "plastic", "oak"]).optional(),
+          material: z.enum(["stainless_steel", "plastic", "oak", "aluminum"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
           isPressureVessel: z.enum(["yes", "no"]).optional(),
           location: z.string().optional(),
@@ -2032,7 +2032,7 @@ export const appRouter = router({
             .positive("Capacity must be positive")
             .optional(),
           capacityUnit: z.enum(["L", "gal"]).optional(),
-          material: z.enum(["stainless_steel", "plastic", "oak"]).optional(),
+          material: z.enum(["stainless_steel", "plastic", "oak", "aluminum"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
           isPressureVessel: z.enum(["yes", "no"]).optional(),
           status: z
