@@ -31,9 +31,13 @@ import {
   Users,
   Calendar,
   FileText,
+  Apple,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { formatDate } from "@/utils/date-format";
+import { DateRangePicker } from "@/components/reports/DateRangePicker";
+import { downloadVendorApplePDF } from "@/utils/pdf/vendorAppleReport";
+import { formatDateRangeFilename } from "@/utils/reports/dateHelpers";
 
 // Helper function to download blob as file
 const downloadBlob = (blob: Blob, filename: string) => {
@@ -68,6 +72,15 @@ export default function ReportsPage() {
   >("summary");
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
+  // Apple Purchases Report state
+  const [applePurchasesStartDate, setApplePurchasesStartDate] =
+    useState<Date>(new Date());
+  const [applePurchasesEndDate, setApplePurchasesEndDate] = useState<Date>(
+    new Date(),
+  );
+  const [applePurchasesDateLabel, setApplePurchasesDateLabel] =
+    useState<string>("");
+
   // Get data using existing tRPC endpoints
   const { data: batches, isLoading: batchesLoading } =
     trpc.batch.list.useQuery();
@@ -77,6 +90,21 @@ export default function ReportsPage() {
 
   // Get vendors for PDF filtering
   const { data: reportVendors } = trpc.pdfReports.getVendors.useQuery();
+
+  // Apple Purchases Report data
+  const {
+    data: applePurchasesData,
+    isLoading: applePurchasesLoading,
+    refetch: refetchApplePurchases,
+  } = trpc.pdfReports.getVendorApplePurchaseReport.useQuery(
+    {
+      startDate: applePurchasesStartDate,
+      endDate: applePurchasesEndDate,
+    },
+    {
+      enabled: !!applePurchasesStartDate && !!applePurchasesEndDate,
+    },
+  );
 
   // TODO: PDF generation mutations - Temporarily disabled
   /* const generateDateRangeReport =
@@ -287,10 +315,11 @@ export default function ReportsPage() {
 
         {/* Reports Tabs */}
         <Tabs defaultValue="cogs" className="space-y-6">
-          <TabsList className="grid w-full lg:w-96 grid-cols-3">
+          <TabsList className="grid w-full lg:w-[600px] grid-cols-4">
             <TabsTrigger value="cogs">COGS Analysis</TabsTrigger>
             <TabsTrigger value="production">Production</TabsTrigger>
             <TabsTrigger value="vendors">Vendors</TabsTrigger>
+            <TabsTrigger value="apples">Apple Purchases</TabsTrigger>
           </TabsList>
 
           {/* COGS Analysis Tab */}
@@ -569,6 +598,260 @@ export default function ReportsPage() {
                       </table>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Apple Purchases Tab */}
+          <TabsContent value="apples">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Apple className="w-5 h-5 mr-2" />
+                    Vendor Apple Purchase Report
+                  </CardTitle>
+                  <CardDescription>
+                    View apple purchases by vendor with detailed breakdown by
+                    variety, weights, and costs
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {/* Date Range Picker */}
+                    <DateRangePicker
+                      onDateRangeChange={(startDate, endDate, label) => {
+                        setApplePurchasesStartDate(startDate);
+                        setApplePurchasesEndDate(endDate);
+                        setApplePurchasesDateLabel(label);
+                      }}
+                      defaultPreset="this-month"
+                    />
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={async () => {
+                          if (applePurchasesData) {
+                            const filename = `vendor-apple-purchases-${formatDateRangeFilename(
+                              applePurchasesStartDate,
+                              applePurchasesEndDate,
+                            )}.pdf`;
+                            // Convert string dates back to Date objects
+                            const reportData = {
+                              ...applePurchasesData,
+                              vendors: applePurchasesData.vendors.map(
+                                (vendor) => ({
+                                  ...vendor,
+                                  items: vendor.items.map((item) => ({
+                                    ...item,
+                                    purchaseDate: new Date(item.purchaseDate),
+                                    harvestDate: item.harvestDate
+                                      ? new Date(item.harvestDate)
+                                      : null,
+                                  })),
+                                }),
+                              ),
+                              dateRange: {
+                                startDate: applePurchasesStartDate,
+                                endDate: applePurchasesEndDate,
+                                label: applePurchasesDateLabel,
+                              },
+                            };
+                            await downloadVendorApplePDF(reportData, filename);
+                          }
+                        }}
+                        disabled={!applePurchasesData || applePurchasesLoading}
+                        className="flex items-center"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download PDF
+                      </Button>
+                      <Button
+                        onClick={() => refetchApplePurchases()}
+                        variant="outline"
+                        disabled={applePurchasesLoading}
+                      >
+                        Refresh Data
+                      </Button>
+                    </div>
+
+                    {/* Loading State */}
+                    {applePurchasesLoading && (
+                      <div className="text-center py-8 text-gray-500">
+                        Loading report data...
+                      </div>
+                    )}
+
+                    {/* Summary Cards */}
+                    {applePurchasesData && !applePurchasesLoading && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Card>
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-sm font-medium text-gray-500">
+                              Total Vendors
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold">
+                              {applePurchasesData.vendors.length}
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-sm font-medium text-gray-500">
+                              Total Weight (kg)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold">
+                              {applePurchasesData.grandTotalWeightKg.toLocaleString(
+                                "en-US",
+                                {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                },
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-sm font-medium text-gray-500">
+                              Total Cost
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="text-2xl font-bold">
+                              $
+                              {applePurchasesData.grandTotalCost.toLocaleString(
+                                "en-US",
+                                {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                },
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    )}
+
+                    {/* Vendor Details */}
+                    {applePurchasesData &&
+                      !applePurchasesLoading &&
+                      applePurchasesData.vendors.length > 0 && (
+                        <div className="space-y-6">
+                          {applePurchasesData.vendors.map((vendor) => (
+                            <Card key={vendor.vendorId}>
+                              <CardHeader>
+                                <CardTitle className="flex items-center justify-between">
+                                  <span>{vendor.vendorName}</span>
+                                  <Badge variant="secondary">
+                                    {vendor.items.length} purchase
+                                    {vendor.items.length !== 1 ? "s" : ""}
+                                  </Badge>
+                                </CardTitle>
+                                <CardDescription>
+                                  Total Weight: {vendor.totalWeightKg.toFixed(2)}{" "}
+                                  kg | Total Cost: $
+                                  {vendor.totalCost.toFixed(2)}
+                                </CardDescription>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="border-b bg-gray-50">
+                                        <th className="py-2 px-4 text-left font-medium">
+                                          Variety
+                                        </th>
+                                        <th className="py-2 px-4 text-left font-medium">
+                                          Purchase Date
+                                        </th>
+                                        <th className="py-2 px-4 text-left font-medium">
+                                          Harvest Date
+                                        </th>
+                                        <th className="py-2 px-4 text-right font-medium">
+                                          Quantity
+                                        </th>
+                                        <th className="py-2 px-4 text-right font-medium">
+                                          Weight (kg)
+                                        </th>
+                                        <th className="py-2 px-4 text-right font-medium">
+                                          Price/Unit
+                                        </th>
+                                        <th className="py-2 px-4 text-right font-medium">
+                                          Total Cost
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {vendor.items.map((item, idx) => (
+                                        <tr
+                                          key={idx}
+                                          className="border-b hover:bg-gray-50"
+                                        >
+                                          <td className="py-2 px-4">
+                                            {item.varietyName}
+                                          </td>
+                                          <td className="py-2 px-4">
+                                            {formatDate(
+                                              new Date(item.purchaseDate),
+                                            )}
+                                          </td>
+                                          <td className="py-2 px-4">
+                                            {item.harvestDate
+                                              ? formatDate(
+                                                  new Date(item.harvestDate),
+                                                )
+                                              : "N/A"}
+                                          </td>
+                                          <td className="py-2 px-4 text-right">
+                                            {item.quantity.toFixed(2)}{" "}
+                                            {item.unit}
+                                          </td>
+                                          <td className="py-2 px-4 text-right">
+                                            {item.quantityKg?.toFixed(2) ??
+                                              "N/A"}
+                                          </td>
+                                          <td className="py-2 px-4 text-right">
+                                            {item.pricePerUnit
+                                              ? `$${item.pricePerUnit.toFixed(2)}`
+                                              : "N/A"}
+                                          </td>
+                                          <td className="py-2 px-4 text-right">
+                                            {item.totalCost
+                                              ? `$${item.totalCost.toFixed(2)}`
+                                              : "N/A"}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+
+                    {/* Empty State */}
+                    {applePurchasesData &&
+                      !applePurchasesLoading &&
+                      applePurchasesData.vendors.length === 0 && (
+                        <div className="text-center py-12">
+                          <Apple className="w-12 h-12 mx-auto text-gray-400 mb-4" />
+                          <p className="text-gray-500">
+                            No apple purchases found for the selected date range
+                          </p>
+                        </div>
+                      )}
+                  </div>
                 </CardContent>
               </Card>
             </div>
