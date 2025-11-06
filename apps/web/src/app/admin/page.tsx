@@ -58,12 +58,14 @@ import {
   ArchiveRestore,
   X,
   XCircle,
+  CreditCard,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDate } from "@/utils/date-format";
+import { SquareIntegration } from "@/components/admin/SquareIntegration";
 
 // Form schemas
 const userSchema = z.object({
@@ -927,7 +929,7 @@ function SystemSettings() {
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    "users" | "reference" | "settings"
+    "users" | "reference" | "settings" | "square"
   >("users");
 
   return (
@@ -948,6 +950,7 @@ export default function AdminPage() {
             { key: "users", label: "User Management", icon: Users },
             { key: "reference", label: "Reference Data", icon: Database },
             { key: "settings", label: "System Settings", icon: Settings },
+            { key: "square", label: "Square Integration", icon: CreditCard },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -972,6 +975,7 @@ export default function AdminPage() {
           {activeTab === "users" && <UserManagement />}
           {activeTab === "reference" && <ReferenceValues />}
           {activeTab === "settings" && <SystemSettings />}
+          {activeTab === "square" && <SquareIntegration />}
         </div>
       </main>
     </div>

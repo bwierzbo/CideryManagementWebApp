@@ -19,10 +19,12 @@ import {
   additiveVarieties,
   batchTransfers,
   packagingPurchaseItems,
+  squareConfig,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { publishCreateEvent, publishUpdateEvent } from "lib";
+import { syncInventoryToSquare } from "../lib/square-inventory-sync";
 import {
   getBottleRunsOptimized,
   getBatchBottleRuns,
@@ -300,6 +302,37 @@ export const bottlesRouter = router({
             .returning();
 
           const inventoryItem = newInventoryItem[0];
+
+          // 6.5. Sync to Square POS if configured and product is mapped
+          try {
+            // Check if Square sync is enabled
+            const squareConfigData = await tx.query.squareConfig.findFirst();
+
+            if (squareConfigData?.autoSyncEnabled && squareConfigData.locationId) {
+              // Check if this inventory item has Square mapping
+              if (inventoryItem.squareVariationId && inventoryItem.squareSyncEnabled !== false) {
+                // Sync the newly created inventory to Square
+                const syncResult = await syncInventoryToSquare(
+                  inventoryItem.id,
+                  input.unitsProduced,
+                  squareConfigData.locationId
+                );
+
+                if (!syncResult.success) {
+                  // Log the error but don't fail the transaction
+                  // The sync can be retried manually from the admin UI
+                  console.error(
+                    `Square sync failed for inventory item ${inventoryItem.id}:`,
+                    syncResult.errorMessage
+                  );
+                }
+              }
+            }
+          } catch (squareSyncError) {
+            // Don't fail the bottling operation if Square sync fails
+            // Just log the error - admin can manually sync later
+            console.error("Square sync error during bottling:", squareSyncError);
+          }
 
           // 7. Track packaging materials used and deduct from inventory (if provided)
           if (input.materials && input.materials.length > 0) {

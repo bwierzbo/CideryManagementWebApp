@@ -340,6 +340,15 @@ export const inventoryItems = pgTable(
     // This represents the weighted average purchase date of raw materials in the batch
     purchaseDate: date("purchase_date"),
 
+    // Inventory tracking
+    currentQuantity: integer("current_quantity"),
+
+    // Square POS integration
+    squareCatalogItemId: text("square_catalog_item_id"),
+    squareVariationId: text("square_variation_id"),
+    squareSyncedAt: timestamp("square_synced_at"),
+    squareSyncEnabled: boolean("square_sync_enabled").default(true),
+
     // Standard audit fields
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

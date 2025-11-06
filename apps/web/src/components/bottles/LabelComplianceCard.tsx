@@ -62,25 +62,22 @@ export function LabelComplianceCard({
 
   // If no measured ABV, try to calculate from SG measurements
   if (latestAbv === null && measurements && measurements.length > 0) {
-    // Get all measurements with SG values
-    const sgMeasurements = measurements
+    // Get all SG values
+    const sgValues = measurements
       .filter(m => m.specificGravity !== null)
-      .map(m => ({
-        sg: typeof m.specificGravity === 'number'
-          ? m.specificGravity
-          : parseFloat(m.specificGravity as string),
-        date: new Date(m.measurementDate)
-      }))
-      .sort((a, b) => a.date.getTime() - b.date.getTime()); // Sort chronologically
+      .map(m => typeof m.specificGravity === 'number'
+        ? m.specificGravity
+        : parseFloat(m.specificGravity as string)
+      );
 
-    if (sgMeasurements.length >= 2) {
-      // OG is the first (earliest) measurement
-      const og = sgMeasurements[0].sg;
-      // FG is the last (latest) measurement
-      const fg = sgMeasurements[sgMeasurements.length - 1].sg;
+    if (sgValues.length >= 2) {
+      // OG is the highest SG (before fermentation)
+      const og = Math.max(...sgValues);
+      // FG is the lowest SG (after fermentation)
+      const fg = Math.min(...sgValues);
 
       try {
-        // Only calculate if OG > FG (normal fermentation)
+        // Only calculate if OG > FG
         if (og > fg) {
           latestAbv = calculateAbv(og, fg);
           abvIsEstimated = true;

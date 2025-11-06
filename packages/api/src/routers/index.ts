@@ -29,6 +29,7 @@ import { bottlesRouter } from "./packaging";
 import { kegsRouter } from "./kegs";
 import { userRouter } from "./user";
 import { dashboardRouter } from "./dashboard";
+import { squareRouter } from "./square";
 import {
   db,
   vendors,
@@ -3296,6 +3297,9 @@ export const appRouter = router({
 
   // Dashboard
   dashboard: dashboardRouter,
+
+  // Square POS Integration
+  square: squareRouter,
 });
 
 export type AppRouter = typeof appRouter;

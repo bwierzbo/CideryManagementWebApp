@@ -51,7 +51,8 @@ export function PackagingPDFTemplate({
       await generatePackagingRunPDF(data, customOptions || options);
     } catch (error) {
       console.error("Error generating PDF:", error);
-      // TODO: Add toast notification for error
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      alert(`Failed to generate PDF: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
       setIsDialogOpen(false);
