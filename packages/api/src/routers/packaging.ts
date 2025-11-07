@@ -252,7 +252,9 @@ export const bottlesRouter = router({
           const newVolumeL = currentVolumeL - input.volumeTakenL;
 
           // If batch is fully packaged, mark as completed and clear vessel assignment
-          if (newVolumeL <= 0) {
+          // Use epsilon threshold (0.1L = 100ml) to handle display rounding and floating-point precision
+          const EMPTY_THRESHOLD_L = 0.1;
+          if (newVolumeL <= EMPTY_THRESHOLD_L) {
             await tx
               .update(batches)
               .set({
@@ -285,7 +287,7 @@ export const bottlesRouter = router({
               .where(eq(batches.id, input.batchId));
           }
 
-          let vesselStatus = newVolumeL <= 0 ? ("cleaning" as any) : vessel.status;
+          let vesselStatus = newVolumeL <= EMPTY_THRESHOLD_L ? ("cleaning" as any) : vessel.status;
 
           // 6. Generate lot code and create inventory item
           const lotCode = generateLotCode(
@@ -433,6 +435,7 @@ export const bottlesRouter = router({
             voidedAt: bottleRuns.voidedAt,
             voidedBy: bottleRuns.voidedBy,
             pasteurizedAt: bottleRuns.pasteurizedAt,
+            labeledAt: bottleRuns.labeledAt,
             createdBy: bottleRuns.createdBy,
             createdAt: bottleRuns.createdAt,
             updatedAt: bottleRuns.updatedAt,
@@ -1124,12 +1127,15 @@ export const bottlesRouter = router({
     )
     .mutation(async ({ input }) => {
       try {
+        const labeledAt = input.labeledAt || new Date();
+
         const [updated] = await db
           .update(bottleRuns)
           .set({
+            labeledAt: labeledAt,
             productionNotes: input.notes
-              ? `${input.notes}\n\nLabeled at ${new Date().toISOString()}`
-              : `Labeled at ${new Date().toISOString()}`,
+              ? `${input.notes}\n\nLabeled at ${labeledAt.toISOString()}`
+              : `Labeled at ${labeledAt.toISOString()}`,
             updatedAt: new Date(),
           })
           .where(eq(bottleRuns.id, input.runId))

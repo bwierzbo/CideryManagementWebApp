@@ -232,8 +232,8 @@ export default function PackagingDetailPage() {
                 </Badge>
               )}
 
-              {/* Labeled Badge - shown if inventory items exist */}
-              {runData.inventory && runData.inventory.length > 0 && (
+              {/* Labeled Badge - shown if labels have been physically applied */}
+              {runData.labeledAt && (
                 <Badge
                   className={cn(
                     "text-xs md:text-sm self-start",

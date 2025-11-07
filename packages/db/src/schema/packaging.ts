@@ -158,6 +158,11 @@ export const bottleRuns = pgTable(
      */
     pasteurizedAt: timestamp("pasteurized_at"),
 
+    /**
+     * When labels were physically applied to bottles
+     */
+    labeledAt: timestamp("labeled_at"),
+
     // Metadata
     productionNotes: text("production_notes"),
     status: bottleRunStatusEnum("status").default("completed"),
