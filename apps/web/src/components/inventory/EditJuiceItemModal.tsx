@@ -25,6 +25,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Edit } from "lucide-react";
+import { formatDateForInput } from "@/utils/date-format";
 
 const editJuiceItemSchema = z.object({
   volume: z.number().positive("Volume must be positive").optional(),
@@ -104,7 +105,7 @@ export function EditJuiceItemModal({
         volume: fullItem.volume ? parseFloat(fullItem.volume) : 0,
         volumeUnit: fullItem.volumeUnit || "L",
         purchaseDate: fullItem.purchaseDate
-          ? new Date(fullItem.purchaseDate).toISOString().split('T')[0]
+          ? formatDateForInput(fullItem.purchaseDate)
           : undefined,
         ph: fullItem.ph ? parseFloat(fullItem.ph) : undefined,
         specificGravity: fullItem.specificGravity ? parseFloat(fullItem.specificGravity) : undefined,

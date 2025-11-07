@@ -212,6 +212,13 @@ export const bottlesRouter = router({
           const runSequence = (runCountResult[0]?.count || 0) + 1;
 
           // 4. Create packaging run
+          if (!ctx.session?.user?.id) {
+            throw new TRPCError({
+              code: "UNAUTHORIZED",
+              message: "User session required to create packaging run",
+            });
+          }
+
           const packagingRunData: any = {
             batchId: input.batchId,
             vesselId: input.vesselId,
@@ -227,7 +234,7 @@ export const bottlesRouter = router({
             lossUnit: "L",
             lossPercentage: lossPercentage.toString(),
             // Don't set status - let it default to null (active)
-            createdBy: ctx.session?.user?.id || "",
+            createdBy: ctx.session.user.id,
           };
 
           if (input.notes) {
@@ -343,7 +350,7 @@ export const bottlesRouter = router({
                 packagingPurchaseItemId: material.packagingPurchaseItemId,
                 quantityUsed: material.quantityUsed,
                 materialType: material.materialType,
-                createdBy: ctx.session?.user?.id || "",
+                createdBy: ctx.session.user.id,
               });
 
               // Deduct quantity from packaging inventory

@@ -117,3 +117,39 @@ export function formatDateForInput(date: string | Date): string {
 
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * Parse a date input string (YYYY-MM-DD) from an HTML date input
+ * Creates a Date object representing that calendar date without timezone shifts
+ * @param dateString - Date string in YYYY-MM-DD format
+ * @returns Date object representing the calendar date, or null if invalid
+ */
+export function parseDateInput(dateString: string): Date | null {
+  if (!dateString || dateString.trim() === "") {
+    return null;
+  }
+
+  // Parse the date string (YYYY-MM-DD) and create a Date object in local timezone
+  // Using the Date constructor with year, month, day avoids timezone conversion issues
+  const parts = dateString.split("-").map(Number);
+
+  if (parts.length !== 3 || parts.some(isNaN)) {
+    return null;
+  }
+
+  const [year, month, day] = parts;
+
+  // Month is 0-indexed in JavaScript Date
+  const date = new Date(year, month - 1, day);
+
+  // Validate that the date is valid (e.g., not Feb 30)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}

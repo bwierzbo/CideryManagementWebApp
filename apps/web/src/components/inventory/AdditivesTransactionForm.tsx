@@ -34,6 +34,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
+import { formatDateForInput } from "@/utils/date-format";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -87,7 +88,7 @@ export function AdditivesTransactionForm({
 }: AdditivesTransactionFormProps) {
   const { data: session } = useSession();
   const [purchaseDate, setPurchaseDate] = useState<string>(
-    new Date().toISOString().split("T")[0],
+    formatDateForInput(new Date()),
   );
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
@@ -364,7 +365,7 @@ export function AdditivesTransactionForm({
           isValid: true,
         },
       ]);
-      setPurchaseDate(new Date().toISOString().split("T")[0]);
+      setPurchaseDate(formatDateForInput(new Date()));
       setSelectedVendorId("");
       setVendorSearchQuery("");
     } catch (error) {

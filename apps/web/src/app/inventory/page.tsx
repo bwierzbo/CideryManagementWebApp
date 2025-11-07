@@ -652,7 +652,22 @@ export default function InventoryPage() {
                 itemsPerPage={50}
                 onAddNew={() => setShowPackagingForm(true)}
                 onItemClick={(item) => setSelectedItem(item)}
-                onEdit={(item) => setEditPackagingItem(item)}
+                onEdit={(item) => {
+                  console.log("Edit button clicked for packaging item:", item);
+
+                  // Transform inventory item to packaging purchase item format
+                  const transformedItem = {
+                    id: item.id,
+                    quantity: item.currentBottleCount,
+                    unitType: item.metadata?.itemType || "individual",
+                    pricePerUnit: item.metadata?.unitCost || "0",
+                    purchaseDate: item.createdAt,
+                    notes: item.notes || "",
+                  };
+
+                  console.log("Transformed item for edit modal:", transformedItem);
+                  setEditPackagingItem(transformedItem);
+                }}
                 className=""
               />
             </div>

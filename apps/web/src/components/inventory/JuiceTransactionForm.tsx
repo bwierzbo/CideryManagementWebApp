@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { trpc } from "@/utils/trpc";
+import { formatDateForInput } from "@/utils/date-format";
 import {
   Card,
   CardContent,
@@ -107,7 +108,7 @@ export function JuiceTransactionForm({
   isSubmitting = false,
 }: JuiceTransactionFormProps) {
   const [purchaseDate, setPurchaseDate] = useState<string>(
-    new Date().toISOString().split("T")[0],
+    formatDateForInput(new Date()),
   );
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
@@ -386,7 +387,7 @@ export function JuiceTransactionForm({
           isValid: true,
         },
       ]);
-      setPurchaseDate(new Date().toISOString().split("T")[0]);
+      setPurchaseDate(formatDateForInput(new Date()));
       setSelectedVendorId("");
       setVendorSearchQuery("");
     } catch (error) {

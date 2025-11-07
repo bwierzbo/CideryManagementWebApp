@@ -25,6 +25,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Edit } from "lucide-react";
+import { formatDateForInput, parseDateInput } from "@/utils/date-format";
 
 const editAdditiveItemSchema = z.object({
   quantity: z.number().positive("Quantity must be positive").optional(),
@@ -92,11 +93,9 @@ export function EditAdditiveItemModal({
       // Format purchaseDate for date input (convert from ISO to YYYY-MM-DD)
       let purchaseDate = "";
       if (item.purchaseDate) {
-        const date = new Date(item.purchaseDate);
-        purchaseDate = date.toISOString().split("T")[0];
+        purchaseDate = formatDateForInput(item.purchaseDate);
       } else if (item.createdAt) {
-        const date = new Date(item.createdAt);
-        purchaseDate = date.toISOString().split("T")[0];
+        purchaseDate = formatDateForInput(item.createdAt);
       }
 
       reset({
@@ -157,14 +156,7 @@ export function EditAdditiveItemModal({
         : undefined;
 
     // Validate and prepare purchaseDate - ensure it's a valid date
-    let purchaseDate: Date | undefined = undefined;
-    if (data.purchaseDate && data.purchaseDate.trim() !== "") {
-      const dateObj = new Date(data.purchaseDate);
-      // Check if the date is valid
-      if (!isNaN(dateObj.getTime())) {
-        purchaseDate = dateObj;
-      }
-    }
+    const purchaseDate = data.purchaseDate ? parseDateInput(data.purchaseDate) ?? undefined : undefined;
 
     const payload = {
       itemId: actualItemId,

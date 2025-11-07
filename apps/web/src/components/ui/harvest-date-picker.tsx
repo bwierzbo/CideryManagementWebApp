@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Calendar, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDateForInput, parseDateInput } from "@/utils/date-format";
 
 interface HarvestDatePickerProps {
   value?: Date | string | null;
@@ -46,23 +47,15 @@ const HarvestDatePicker = React.forwardRef<
     const dateValue = React.useMemo(() => {
       if (!value) return "";
 
-      if (typeof value === "string") {
-        // If it's already a string, try to parse and format
-        const date = new Date(value);
-        if (isNaN(date.getTime())) return "";
-        return date.toISOString().split("T")[0];
+      try {
+        return formatDateForInput(value);
+      } catch {
+        return "";
       }
-
-      if (value instanceof Date) {
-        if (isNaN(value.getTime())) return "";
-        return value.toISOString().split("T")[0];
-      }
-
-      return "";
     }, [value]);
 
     // Get today's date for validation
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateForInput(new Date());
 
     // Set max date if future dates are not allowed
     const maxDate = allowFutureDates ? undefined : today;
@@ -75,11 +68,11 @@ const HarvestDatePicker = React.forwardRef<
         return;
       }
 
-      // Create date object from input value
-      const selectedDate = new Date(dateString + "T12:00:00"); // Add noon time to avoid timezone issues
+      // Parse date object from input value using timezone-aware parser
+      const selectedDate = parseDateInput(dateString);
 
       // Validate the date
-      if (isNaN(selectedDate.getTime())) {
+      if (!selectedDate) {
         onChange?.(null);
         return;
       }
@@ -110,11 +103,13 @@ const HarvestDatePicker = React.forwardRef<
       }
 
       if (dateValue && !allowFutureDates) {
-        const selectedDate = new Date(dateValue + "T12:00:00");
-        const todayAtMidnight = new Date();
-        todayAtMidnight.setHours(23, 59, 59, 999); // End of today
-        if (selectedDate > todayAtMidnight) {
-          return "Harvest date cannot be in the future";
+        const selectedDate = parseDateInput(dateValue);
+        if (selectedDate) {
+          const todayAtMidnight = new Date();
+          todayAtMidnight.setHours(23, 59, 59, 999); // End of today
+          if (selectedDate > todayAtMidnight) {
+            return "Harvest date cannot be in the future";
+          }
         }
       }
 

@@ -59,7 +59,7 @@ import {
 } from "lucide-react";
 import { gallonsToLiters, litersToGallons, formatUnitConversion } from "lib";
 import { trpc } from "@/utils/trpc";
-import { formatDate } from "@/utils/date-format";
+import { formatDate, formatDateForInput } from "@/utils/date-format";
 
 // Assignment schema for vessel assignments
 const assignmentSchema = z.object({
@@ -138,7 +138,7 @@ export function PressRunCompletionForm({
   const form = useForm<PressRunCompletionForm>({
     resolver: zodResolver(pressRunCompletionSchema),
     defaultValues: {
-      completionDate: new Date().toISOString().split("T")[0], // Today's date in YYYY-MM-DD format
+      completionDate: formatDateForInput(new Date()), // Today's date in YYYY-MM-DD format
       juiceVolumeUnit: "L",
       assignments: [{ toVesselId: "", volumeL: 0 }],
       laborHours: 0,
