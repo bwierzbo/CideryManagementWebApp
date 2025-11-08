@@ -213,6 +213,9 @@ export async function getBottleRunsOptimized(
       fillCheck: bottleRuns.fillCheck,
       abvAtPackaging: bottleRuns.abvAtPackaging,
       qaTechnicianId: bottleRuns.qaTechnicianId,
+      // Action tracking
+      pasteurizedAt: bottleRuns.pasteurizedAt,
+      labeledAt: bottleRuns.labeledAt,
       // Related data
       batchName: batches.name,
       batchCustomName: batches.customName,

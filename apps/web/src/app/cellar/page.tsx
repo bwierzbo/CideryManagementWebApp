@@ -89,7 +89,7 @@ import { FillKegModal } from "@/components/kegs/FillKegModal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
 import { CleanTankModal } from "@/components/cellar/CleanTankModal";
-import { CarbonateModal } from "@/components/operations/CarbonateModal";
+import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { KegsManagement } from "@/components/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 

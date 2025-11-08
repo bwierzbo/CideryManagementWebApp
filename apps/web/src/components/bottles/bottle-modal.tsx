@@ -74,7 +74,6 @@ export function BottleModal({
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
   const [currentQuantity, setCurrentQuantity] = useState<number>(1);
-  const [useCustomSize, setUseCustomSize] = useState(false);
 
   // tRPC queries for different packaging types
   const primaryPackagingQuery = trpc.packagingPurchases.listInventory.useQuery({
@@ -173,22 +172,14 @@ export function BottleModal({
     setSelectedMaterials([...selectedMaterials, newMaterial]);
     setValue("materials", [...selectedMaterials, newMaterial]);
 
-    // Smart suggestion: If this is primary packaging and has size in name, suggest package size
-    if (selectedItem.type === "Primary Packaging" && !packageSizeMl) {
+    // Auto-set package size from primary packaging material
+    if (selectedItem.type === "Primary Packaging") {
       const parsedSize = parsePackageSizeFromName(selectedItem.varietyName || selectedItem.size || "");
-      if (parsedSize && [355, 500, 750].includes(parsedSize)) {
+      if (parsedSize) {
         setValue("packageSizeMl", parsedSize);
-        setUseCustomSize(false);
         toast({
-          title: "Package Size Detected",
-          description: `Set to ${parsedSize}ml based on selected material`,
-        });
-      } else if (parsedSize) {
-        setValue("packageSizeMl", parsedSize);
-        setUseCustomSize(true);
-        toast({
-          title: "Package Size Detected",
-          description: `Set to ${parsedSize}ml based on selected material`,
+          title: "Package Size Auto-Set",
+          description: `Set to ${parsedSize}ml from ${selectedItem.varietyName || selectedItem.size}`,
         });
       }
     }
@@ -263,42 +254,18 @@ export function BottleModal({
 
   const lossStatus = getLossStatus();
 
-  // Handle package size preset selection
-  const handlePresetSize = (size: number) => {
-    setValue("packageSizeMl", size);
-    setUseCustomSize(false);
-    // Save preference to localStorage
-    try {
-      localStorage.setItem("preferredPackageSize", size.toString());
-    } catch (e) {
-      // Ignore localStorage errors
-    }
-  };
-
   // Reset form when modal opens
   useEffect(() => {
     if (open) {
-      // Try to load preferred package size from localStorage
-      let defaultPackageSize: number | undefined;
-      try {
-        const saved = localStorage.getItem("preferredPackageSize");
-        if (saved) {
-          defaultPackageSize = parseInt(saved);
-        }
-      } catch (e) {
-        // Ignore localStorage errors
-      }
-
       reset({
         packagedAt: new Date().toISOString().slice(0, 16),
         notes: "",
         materials: [],
-        packageSizeMl: defaultPackageSize || 750, // Default to 750ml or last used
+        // packageSizeMl will be set automatically when primary packaging is selected
       });
       setSelectedMaterials([]);
       setCurrentMaterialId("");
       setCurrentQuantity(1);
-      setUseCustomSize(defaultPackageSize ? ![355, 500, 750].includes(defaultPackageSize) : false);
     }
   }, [open, reset]);
 
@@ -380,97 +347,44 @@ export function BottleModal({
             </p>
           </div>
 
-          {/* Package size with presets - MOVED TO TOP */}
-          <div>
-            <Label className="text-sm md:text-base font-medium mb-2 block">
-              Package Size *
-            </Label>
-
-            {/* Preset buttons */}
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              <Button
-                type="button"
-                variant={packageSizeMl === 750 && !useCustomSize ? "default" : "outline"}
-                onClick={() => handlePresetSize(750)}
-                className="h-12"
-              >
-                <div className="text-center">
-                  <div className="font-semibold">750ml</div>
-                  <div className="text-xs opacity-75">Wine</div>
-                </div>
-              </Button>
-              <Button
-                type="button"
-                variant={packageSizeMl === 500 && !useCustomSize ? "default" : "outline"}
-                onClick={() => handlePresetSize(500)}
-                className="h-12"
-              >
-                <div className="text-center">
-                  <div className="font-semibold">500ml</div>
-                  <div className="text-xs opacity-75">Euro</div>
-                </div>
-              </Button>
-              <Button
-                type="button"
-                variant={packageSizeMl === 355 && !useCustomSize ? "default" : "outline"}
-                onClick={() => handlePresetSize(355)}
-                className="h-12"
-              >
-                <div className="text-center">
-                  <div className="font-semibold">355ml</div>
-                  <div className="text-xs opacity-75">Can</div>
-                </div>
-              </Button>
-              <Button
-                type="button"
-                variant={useCustomSize ? "default" : "outline"}
-                onClick={() => setUseCustomSize(true)}
-                className="h-12"
-              >
-                <div className="text-center">
-                  <div className="font-semibold">Custom</div>
-                  <div className="text-xs opacity-75">Other</div>
-                </div>
-              </Button>
+          {/* Package size display (auto-set from primary packaging material) */}
+          {packageSizeMl && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+              <Label className="text-sm font-medium text-green-900">
+                Package Size (from material)
+              </Label>
+              <p className="text-2xl font-bold text-green-700 mt-1">
+                {packageSizeMl}ml
+              </p>
+              <p className="text-xs text-green-600 mt-1">
+                Auto-detected from primary packaging selection
+              </p>
             </div>
-
-            {/* Custom size input (shown when Custom is selected) */}
-            {useCustomSize && (
-              <Input
-                id="packageSizeMl"
-                type="number"
-                step="1"
-                min="1"
-                placeholder="Enter custom size in mL"
-                className="h-10 md:h-11 text-base"
-                {...register("packageSizeMl", { valueAsNumber: true })}
-              />
-            )}
-
-            {errors.packageSizeMl && (
-              <p className="text-sm text-red-600 mt-1">
-                {errors.packageSizeMl.message}
-              </p>
-            )}
-            {!useCustomSize && packageSizeMl && (
-              <p className="text-xs text-gray-500 mt-1">
-                Selected: {packageSizeMl}mL per bottle
-              </p>
-            )}
-          </div>
+          )}
 
           {/* Volume taken */}
           <div>
-            <Label
-              htmlFor="volumeTakenL"
-              className="text-sm md:text-base font-medium"
-            >
-              Volume to use for bottling (L) *
-            </Label>
+            <div className="flex items-center justify-between mb-2">
+              <Label
+                htmlFor="volumeTakenL"
+                className="text-sm md:text-base font-medium"
+              >
+                Volume to use for bottling (L) *
+              </Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setValue("volumeTakenL", currentVolumeL)}
+                className="h-7 text-xs"
+              >
+                Use All ({currentVolumeL.toFixed(3)}L)
+              </Button>
+            </div>
             <Input
               id="volumeTakenL"
               type="number"
-              step="0.1"
+              step="0.001"
               max={currentVolumeL}
               placeholder={`Max ${currentVolumeL.toFixed(1)}L available`}
               className="h-10 md:h-11 text-base"
@@ -482,7 +396,7 @@ export function BottleModal({
               </p>
             )}
             <p className="text-xs text-gray-500 mt-1">
-              Liters to be removed from tank for bottling
+              💡 Use the "Use All" button to bottle exact volume (avoids small remainders)
             </p>
           </div>
 
@@ -519,6 +433,11 @@ export function BottleModal({
             <Label className="text-sm md:text-base font-medium">
               Packaging Materials *
             </Label>
+            {!packageSizeMl && (
+              <p className="text-xs text-amber-600">
+                💡 Select Primary Packaging first (e.g., 750ml glass bottle) to set package size
+              </p>
+            )}
             {unitsProduced && unitsProduced > 0 && (
               <p className="text-xs text-blue-600">
                 💡 Quantity will auto-fill to {unitsProduced} when you select a material

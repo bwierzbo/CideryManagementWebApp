@@ -72,6 +72,9 @@ interface PackagingInventoryItem {
     packageType?: string | null;
     materialType?: string | null;
     size?: string;
+    itemType?: string | null;
+    unitCost?: string | null;
+    totalCost?: string | null;
   };
   location: string | null;
   notes: string | null;

@@ -67,6 +67,8 @@ interface PackagingRun {
   qaTechnicianId?: string | null;
   qaNotes?: string | null;
   productionNotes?: string | null;
+  pasteurizedAt?: string | null;
+  labeledAt?: string | null;
   // Relations
   batch: {
     id: string;
@@ -718,15 +720,23 @@ export function PackagingTable({
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => handlePasteurize(item, e)}
+                              disabled={!!item.pasteurizedAt}
+                              className={cn(
+                                item.pasteurizedAt && "opacity-50 cursor-not-allowed"
+                              )}
                             >
                               <Flame className="mr-2 h-4 w-4" />
-                              Pasteurize
+                              {item.pasteurizedAt ? "Already Pasteurized" : "Pasteurize"}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={(e) => handleLabel(item, e)}
+                              disabled={!!item.labeledAt}
+                              className={cn(
+                                item.labeledAt && "opacity-50 cursor-not-allowed"
+                              )}
                             >
                               <Tag className="mr-2 h-4 w-4" />
-                              Label
+                              {item.labeledAt ? "Already Labeled" : "Label"}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -986,15 +996,23 @@ export function PackagingTable({
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={(e) => handlePasteurize(item, e)}
+                              disabled={!!item.pasteurizedAt}
+                              className={cn(
+                                item.pasteurizedAt && "opacity-50 cursor-not-allowed"
+                              )}
                             >
                               <Flame className="mr-2 h-4 w-4" />
-                              Pasteurize
+                              {item.pasteurizedAt ? "Already Pasteurized" : "Pasteurize"}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={(e) => handleLabel(item, e)}
+                              disabled={!!item.labeledAt}
+                              className={cn(
+                                item.labeledAt && "opacity-50 cursor-not-allowed"
+                              )}
                             >
                               <Tag className="mr-2 h-4 w-4" />
-                              Label
+                              {item.labeledAt ? "Already Labeled" : "Label"}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
