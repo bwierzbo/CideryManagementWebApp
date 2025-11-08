@@ -927,7 +927,11 @@ function VesselMap() {
     name: string;
     batchId: string;
     batchName: string;
+    batchStatus: string;
     currentVolumeL: number;
+    currentVolumeUnit: string;
+    isPressureVessel: "yes" | "no";
+    maxPressure: number;
   } | null>(null);
 
   // CO₂ unit toggle state (volumes vs g/L)
@@ -1326,6 +1330,7 @@ function VesselMap() {
     );
     const batchId = liquidMapVessel?.batchId;
     const batchName = liquidMapVessel?.batchCustomName || liquidMapVessel?.batchNumber || "Unnamed Batch";
+    const batchStatus = liquidMapVessel?.batchStatus || "aging";
 
     if (!vessel || !batchId) {
       toast({
@@ -1340,6 +1345,7 @@ function VesselMap() {
     const currentVolumeL = liquidMapVessel?.currentVolume
       ? parseFloat(liquidMapVessel.currentVolume.toString())
       : 0;
+    const currentVolumeUnit = liquidMapVessel?.currentVolumeUnit || "L";
 
     if (currentVolumeL <= 0) {
       toast({
@@ -1350,12 +1356,20 @@ function VesselMap() {
       return;
     }
 
+    // Get vessel pressure info
+    const isPressureVessel = vessel.isPressureVessel || "no";
+    const maxPressure = vessel.maxPressure ? parseFloat(vessel.maxPressure) : 30;
+
     setSelectedVesselForCarbonation({
       id: vesselId,
       name: vessel.name || "Unnamed Vessel",
       batchId,
       batchName,
+      batchStatus,
       currentVolumeL,
+      currentVolumeUnit,
+      isPressureVessel: isPressureVessel as "yes" | "no",
+      maxPressure,
     });
     setShowCarbonateModal(true);
   };
@@ -1954,11 +1968,16 @@ function VesselMap() {
             batch={{
               id: selectedVesselForCarbonation.batchId,
               name: selectedVesselForCarbonation.batchName,
+              vesselId: selectedVesselForCarbonation.id,
               currentVolume: selectedVesselForCarbonation.currentVolumeL,
+              currentVolumeUnit: selectedVesselForCarbonation.currentVolumeUnit,
+              status: selectedVesselForCarbonation.batchStatus,
             }}
             vessel={{
               id: selectedVesselForCarbonation.id,
               name: selectedVesselForCarbonation.name,
+              isPressureVessel: selectedVesselForCarbonation.isPressureVessel,
+              maxPressure: selectedVesselForCarbonation.maxPressure,
             }}
             onSuccess={() => {
               utils.vessel.liquidMap.invalidate();
