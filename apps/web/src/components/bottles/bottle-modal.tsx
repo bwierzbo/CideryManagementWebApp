@@ -396,7 +396,7 @@ export function BottleModal({
               </p>
             )}
             <p className="text-xs text-gray-500 mt-1">
-              💡 Use the "Use All" button to bottle exact volume (avoids small remainders)
+              💡 Use the &quot;Use All&quot; button to bottle exact volume (avoids small remainders)
             </p>
           </div>
 
