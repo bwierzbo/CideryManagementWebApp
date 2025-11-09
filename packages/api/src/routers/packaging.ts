@@ -20,6 +20,7 @@ import {
   batchTransfers,
   packagingPurchaseItems,
   squareConfig,
+  batchCarbonationOperations,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -423,6 +424,7 @@ export const bottlesRouter = router({
             lossPercentage: bottleRuns.lossPercentage,
             abvAtPackaging: bottleRuns.abvAtPackaging,
             carbonationLevel: bottleRuns.carbonationLevel,
+            carbonationCo2Volumes: sql<string>`carb_op.final_co2_volumes`.as("carbonationCo2Volumes"),
             fillCheck: bottleRuns.fillCheck,
             fillVarianceML: bottleRuns.fillVarianceML,
             testMethod: bottleRuns.testMethod,
@@ -458,6 +460,10 @@ export const bottlesRouter = router({
           .from(bottleRuns)
           .leftJoin(batches, eq(bottleRuns.batchId, batches.id))
           .leftJoin(vessels, eq(bottleRuns.vesselId, vessels.id))
+          .leftJoin(
+            sql`batch_carbonation_operations AS carb_op`,
+            sql`carb_op.id = ${bottleRuns.sourceCarbonationOperationId}`,
+          )
           .leftJoin(
             sql`users AS qa_tech`,
             sql`qa_tech.id = ${bottleRuns.qaTechnicianId}`,
@@ -681,6 +687,9 @@ export const bottlesRouter = router({
           lossPercentage: parseFloat(run.lossPercentage?.toString() || "0"),
           abvAtPackaging: run.abvAtPackaging
             ? parseFloat(run.abvAtPackaging.toString())
+            : undefined,
+          carbonationCo2Volumes: run.carbonationCo2Volumes
+            ? parseFloat(run.carbonationCo2Volumes.toString())
             : undefined,
           fillVarianceML: run.fillVarianceML
             ? parseFloat(run.fillVarianceML.toString())

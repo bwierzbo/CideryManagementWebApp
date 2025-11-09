@@ -27,7 +27,6 @@ interface Measurement {
   specificGravity: number | string | null;
   volume: number | string | null;
   volumeUnit: string | null;
-  totalAcidity: number | string | null;
   measurementDate: Date | string;
 }
 
@@ -44,6 +43,7 @@ interface LabelComplianceCardProps {
   measurements: Measurement[];
   additives: Additive[];
   abvAtPackaging: number | null | undefined;
+  carbonationCo2Volumes: number | null | undefined;
   packageSizeML: number;
 }
 
@@ -51,6 +51,7 @@ export function LabelComplianceCard({
   measurements,
   additives,
   abvAtPackaging,
+  carbonationCo2Volumes,
   packageSizeML,
 }: LabelComplianceCardProps) {
   // Get latest measurement values
@@ -102,9 +103,20 @@ export function LabelComplianceCard({
     ? typeof latestMeasurement.volume === 'number' ? latestMeasurement.volume : parseFloat(latestMeasurement.volume)
     : null;
   const latestVolumeUnit = latestMeasurement?.volumeUnit || 'L';
-  const latestTA = latestMeasurement?.totalAcidity
-    ? typeof latestMeasurement.totalAcidity === 'number' ? latestMeasurement.totalAcidity : parseFloat(latestMeasurement.totalAcidity)
+
+  // Carbonation display state - toggle between volumes and g/L
+  const [carbonationUnit, setCarbonationUnit] = React.useState<'vol' | 'g/L'>('vol');
+
+  // Convert between vol and g/L: 1 volume = 1.96 g/L
+  const carbonationValue = carbonationCo2Volumes
+    ? carbonationUnit === 'vol'
+      ? carbonationCo2Volumes
+      : carbonationCo2Volumes * 1.96
     : null;
+
+  const toggleCarbonationUnit = () => {
+    setCarbonationUnit(prev => prev === 'vol' ? 'g/L' : 'vol');
+  };
 
   // Determine regulatory status
   const requiresCOLA = latestAbv !== null && latestAbv >= 7.0;
@@ -174,10 +186,20 @@ export function LabelComplianceCard({
                 {latestVolume !== null ? `${latestVolume.toFixed(1)} ${latestVolumeUnit}` : "Not measured"}
               </p>
             </div>
-            <div>
-              <p className="text-xs text-gray-500">TA (g/L)</p>
+            <div
+              onClick={carbonationValue !== null ? toggleCarbonationUnit : undefined}
+              className={cn(
+                carbonationValue !== null && "cursor-pointer hover:bg-gray-50 rounded-lg transition-colors"
+              )}
+            >
+              <p className="text-xs text-gray-500">
+                CO₂ ({carbonationUnit})
+                {carbonationValue !== null && (
+                  <span className="ml-1 text-blue-500">⇄</span>
+                )}
+              </p>
               <p className="font-semibold text-lg">
-                {latestTA !== null ? latestTA.toFixed(2) : "Not measured"}
+                {carbonationValue !== null ? carbonationValue.toFixed(2) : "Not measured"}
               </p>
             </div>
           </div>
