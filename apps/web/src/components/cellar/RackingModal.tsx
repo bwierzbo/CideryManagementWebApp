@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { FlaskConical, AlertTriangle, Loader2, Info } from "lucide-react";
+import { FlaskConical, AlertTriangle, Loader2, Info, Search } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
 import { Badge } from "@/components/ui/badge";
@@ -32,7 +32,9 @@ import { Badge } from "@/components/ui/badge";
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
   volumeAfter: z.number().positive("Volume must be positive"),
+  volumeToRack: z.number().positive("Volume to rack must be positive").optional(),
   rackedAt: z.date(),
+  isPartialRack: z.boolean().optional(),
 });
 
 type RackingForm = z.infer<typeof rackingSchema>;
@@ -63,16 +65,22 @@ export function RackingModal({
   const [lossPercentage, setLossPercentage] = useState(0);
   const [selectedVesselHasBatch, setSelectedVesselHasBatch] = useState(false);
   const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<string | null>(null);
+  const [vesselSearchQuery, setVesselSearchQuery] = useState("");
 
   // Fetch all vessels (including source vessel for rack-to-self operations)
   const { data: vesselsData } = trpc.vessel.liquidMap.useQuery();
-  const availableVessels = Array.from(
+  const allVessels = Array.from(
     new Map(
       vesselsData?.vessels
         ?.filter((v) => v.vesselStatus === "available" || v.batchId)
         .map((v) => [v.vesselId, v])
     ).values()
   ) || [];
+
+  // Filter vessels based on search query
+  const availableVessels = allVessels.filter((vessel) =>
+    vessel.vesselName.toLowerCase().includes(vesselSearchQuery.toLowerCase())
+  );
 
   const {
     register,
@@ -85,10 +93,13 @@ export function RackingModal({
     resolver: zodResolver(rackingSchema),
     defaultValues: {
       rackedAt: new Date(),
+      isPartialRack: false,
     },
   });
 
   const volumeAfter = watch("volumeAfter");
+  const volumeToRack = watch("volumeToRack");
+  const isPartialRack = watch("isPartialRack");
   const destinationVesselId = watch("destinationVesselId");
   const rackedAt = watch("rackedAt");
 
@@ -110,7 +121,7 @@ export function RackingModal({
     }
   }, [destinationVesselId, vesselsData]);
 
-  // Calculate loss whenever volumeAfter changes
+  // Calculate loss whenever volumeAfter or volumeToRack changes
   useEffect(() => {
     if (volumeAfter !== undefined) {
       // Convert volumeAfter to liters for calculation (using source vessel's unit)
@@ -118,8 +129,22 @@ export function RackingModal({
         ? convertVolume(volumeAfter, "gal", "L")
         : volumeAfter;
 
-      const lossL = currentVolumeL - afterL;
-      const lossPercent = (lossL / currentVolumeL) * 100;
+      let lossL: number;
+      let lossPercent: number;
+
+      if (isPartialRack && volumeToRack !== undefined) {
+        // Partial rack: loss = volumeToRack - volumeAfter
+        const toRackL = sourceVesselCapacityUnit === "gal"
+          ? convertVolume(volumeToRack, "gal", "L")
+          : volumeToRack;
+
+        lossL = toRackL - afterL;
+        lossPercent = (lossL / toRackL) * 100;
+      } else {
+        // Full rack: loss = currentVolume - volumeAfter
+        lossL = currentVolumeL - afterL;
+        lossPercent = (lossL / currentVolumeL) * 100;
+      }
 
       setCalculatedLoss(lossL);
       setLossPercentage(lossPercent);
@@ -127,7 +152,7 @@ export function RackingModal({
       setCalculatedLoss(0);
       setLossPercentage(0);
     }
-  }, [volumeAfter, sourceVesselCapacityUnit, currentVolumeL]);
+  }, [volumeAfter, volumeToRack, isPartialRack, sourceVesselCapacityUnit, currentVolumeL]);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -135,6 +160,7 @@ export function RackingModal({
       reset();
       setCalculatedLoss(0);
       setLossPercentage(0);
+      setVesselSearchQuery("");
     } else {
       // Set initial volume to current volume in source vessel's unit (no loss)
       const initialVolume = sourceVesselCapacityUnit === "gal"
@@ -165,10 +191,20 @@ export function RackingModal({
   });
 
   const onSubmit = (data: RackingForm) => {
+    // Convert volumeToRack to liters for backend
+    const volumeToRackL = data.isPartialRack && data.volumeToRack
+      ? sourceVesselCapacityUnit === "gal"
+        ? convertVolume(data.volumeToRack, "gal", "L")
+        : data.volumeToRack
+      : undefined;
+
     rackBatchMutation.mutate({
       batchId,
-      ...data,
+      destinationVesselId: data.destinationVesselId,
+      volumeAfter: data.volumeAfter,
       volumeAfterUnit: sourceVesselCapacityUnit, // Always use source vessel's unit
+      volumeToRack: volumeToRackL,
+      rackedAt: data.rackedAt,
     });
   };
 
@@ -237,41 +273,59 @@ export function RackingModal({
               <SelectTrigger>
                 <SelectValue placeholder="Select a vessel" />
               </SelectTrigger>
-              <SelectContent>
-                {availableVessels.length === 0 ? (
-                  <SelectItem value="none" disabled>
-                    No available vessels
-                  </SelectItem>
-                ) : (
-                  availableVessels.map((vessel) => {
-                    const hasBatch = !!vessel.batchId;
-                    const isEmpty = vessel.vesselStatus === "available" && !vessel.batchId;
-                    const isCurrentVessel = vessel.vesselId === sourceVesselId;
+              <SelectContent className="max-h-[400px]">
+                {/* Search Input */}
+                <div className="sticky top-0 z-10 bg-white p-2 border-b">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input
+                      type="text"
+                      placeholder="Search vessels..."
+                      value={vesselSearchQuery}
+                      onChange={(e) => setVesselSearchQuery(e.target.value)}
+                      className="pl-8 h-9"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                </div>
 
-                    return (
-                      <SelectItem key={vessel.vesselId} value={vessel.vesselId}>
-                        <div className="flex items-center gap-2">
-                          <span>{vessel.vesselName} ({vessel.vesselCapacity} {vessel.vesselCapacityUnit})</span>
-                          {isCurrentVessel && (
-                            <Badge variant="default" className="text-xs">
-                              Current
-                            </Badge>
-                          )}
-                          {hasBatch && !isCurrentVessel && (
-                            <Badge variant="secondary" className="text-xs">
-                              In Use
-                            </Badge>
-                          )}
-                          {isEmpty && (
-                            <Badge variant="outline" className="text-xs">
-                              Empty
-                            </Badge>
-                          )}
-                        </div>
-                      </SelectItem>
-                    );
-                  })
-                )}
+                {/* Vessel List */}
+                <div className="overflow-y-auto max-h-[300px]">
+                  {availableVessels.length === 0 ? (
+                    <div className="p-2 text-sm text-gray-500 text-center">
+                      {vesselSearchQuery ? "No vessels match your search" : "No available vessels"}
+                    </div>
+                  ) : (
+                    availableVessels.map((vessel) => {
+                      const hasBatch = !!vessel.batchId;
+                      const isEmpty = vessel.vesselStatus === "available" && !vessel.batchId;
+                      const isCurrentVessel = vessel.vesselId === sourceVesselId;
+
+                      return (
+                        <SelectItem key={vessel.vesselId} value={vessel.vesselId}>
+                          <div className="flex items-center gap-2">
+                            <span>{vessel.vesselName} ({vessel.vesselCapacity} {vessel.vesselCapacityUnit})</span>
+                            {isCurrentVessel && (
+                              <Badge variant="default" className="text-xs">
+                                Current
+                              </Badge>
+                            )}
+                            {hasBatch && !isCurrentVessel && (
+                              <Badge variant="secondary" className="text-xs">
+                                In Use
+                              </Badge>
+                            )}
+                            {isEmpty && (
+                              <Badge variant="outline" className="text-xs">
+                                Empty
+                              </Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      );
+                    })
+                  )}
+                </div>
               </SelectContent>
             </Select>
             {errors.destinationVesselId && (
@@ -311,13 +365,79 @@ export function RackingModal({
             )}
           </div>
 
+          {/* Partial Rack Toggle (disabled for rack-to-self) */}
+          {!isRackToSelf && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isPartialRack"
+                  checked={isPartialRack}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setValue("isPartialRack", checked);
+                    if (!checked) {
+                      setValue("volumeToRack", undefined);
+                    }
+                  }}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="isPartialRack" className="cursor-pointer">
+                  Partial Rack (split batch)
+                </Label>
+              </div>
+              {isPartialRack && (
+                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    A portion of the batch will be racked to the destination vessel, creating a new child batch.
+                    The remaining volume will stay in the source vessel.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Volume to Rack (for partial racking) */}
+          {isPartialRack && !isRackToSelf && (
+            <div className="space-y-2">
+              <Label htmlFor="volumeToRack">
+                Volume to Rack ({sourceVesselCapacityUnit}) <span className="text-red-500">*</span>
+              </Label>
+              <p className="text-xs text-gray-500">
+                Amount to transfer to destination vessel (before loss)
+              </p>
+              <Input
+                type="number"
+                step="0.01"
+                value={volumeToRack || ""}
+                onChange={(e) => setValue("volumeToRack", parseFloat(e.target.value) || 0)}
+                placeholder={`Enter volume in ${sourceVesselCapacityUnit}`}
+                className="w-full"
+              />
+              {errors.volumeToRack && (
+                <p className="text-sm text-red-500">{errors.volumeToRack.message}</p>
+              )}
+              {volumeToRack && volumeToRack > 0 && (
+                <p className="text-xs text-blue-600">
+                  Remaining in source: {sourceVesselCapacityUnit === "gal"
+                    ? `${((currentVolumeL - convertVolume(volumeToRack, "gal", "L")) / 3.78541).toFixed(1)} gal`
+                    : `${(currentVolumeL - volumeToRack).toFixed(1)} L`
+                  }
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Volume After Racking */}
           <div className="space-y-2">
             <Label htmlFor="volumeAfter">
               Volume After Racking ({sourceVesselCapacityUnit}) <span className="text-red-500">*</span>
             </Label>
             <p className="text-xs text-gray-500">
-              Volume is shown in {sourceVesselCapacityUnit === "L" ? "liters" : "gallons"} (source vessel unit)
+              {isPartialRack
+                ? "Volume that arrives in destination vessel (after loss during racking)"
+                : "Volume remaining after loss (entire batch moves for full rack)"
+              }
             </p>
             <Input
               type="number"
