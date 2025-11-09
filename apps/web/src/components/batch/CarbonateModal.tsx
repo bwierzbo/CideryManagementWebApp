@@ -60,17 +60,15 @@ const forcedCarbonationSchema = z.object({
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
   startingTemperature: z
-    .number()
-    .min(-5, "Temperature must be at least -5°C")
-    .max(25, "Temperature must be at most 25°C")
-    .optional()
-    .nullable(),
+    .preprocess(
+      (val) => (val === "" || val === null || val === undefined || Number.isNaN(val) ? undefined : Number(val)),
+      z.number().min(-5, "Temperature must be at least -5°C").max(25, "Temperature must be at most 25°C").optional()
+    ),
   startingCo2Volumes: z
-    .number()
-    .min(0, "CO2 volumes cannot be negative")
-    .max(5, "CO2 volumes must be at most 5")
-    .optional()
-    .nullable(),
+    .preprocess(
+      (val) => (val === "" || val === null || val === undefined || Number.isNaN(val) ? undefined : Number(val)),
+      z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional()
+    ),
   targetCo2Volumes: z
     .number()
     .min(0.1, "Target must be at least 0.1 volumes")
@@ -89,11 +87,10 @@ const bottleConditioningSchema = z.object({
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
   residualCo2Volumes: z
-    .number()
-    .min(0, "CO2 volumes cannot be negative")
-    .max(5, "CO2 volumes must be at most 5")
-    .optional()
-    .nullable(),
+    .preprocess(
+      (val) => (val === "" || val === null || val === undefined || Number.isNaN(val) ? undefined : Number(val)),
+      z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional()
+    ),
   targetCo2Volumes: z
     .number()
     .min(0.1, "Target must be at least 0.1 volumes")
