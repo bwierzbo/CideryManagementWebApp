@@ -541,8 +541,6 @@ export const bottlesRouter = router({
             ph: batchMeasurements.ph,
             totalAcidity: batchMeasurements.totalAcidity,
             temperature: batchMeasurements.temperature,
-            volume: batchMeasurements.volume,
-            volumeUnit: batchMeasurements.volumeUnit,
           })
           .from(batchMeasurements)
           .where(eq(batchMeasurements.batchId, run.batchId))
@@ -650,8 +648,6 @@ export const bottlesRouter = router({
                 ph: m.ph ? parseFloat(m.ph.toString()) : null,
                 totalAcidity: m.totalAcidity ? parseFloat(m.totalAcidity.toString()) : null,
                 temperature: m.temperature ? parseFloat(m.temperature.toString()) : null,
-                volume: m.volume ? parseFloat(m.volume.toString()) : null,
-                volumeUnit: m.volumeUnit,
               })),
               additives: enrichedAdditives.map((a) => ({
                 additiveName: a.additiveName,

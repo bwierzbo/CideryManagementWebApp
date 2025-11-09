@@ -25,8 +25,6 @@ interface Measurement {
   abv: number | string | null;
   ph: number | string | null;
   specificGravity: number | string | null;
-  volume: number | string | null;
-  volumeUnit: string | null;
   measurementDate: Date | string;
 }
 
@@ -99,10 +97,6 @@ export function LabelComplianceCard({
   const latestSG = latestMeasurement?.specificGravity
     ? typeof latestMeasurement.specificGravity === 'number' ? latestMeasurement.specificGravity : parseFloat(latestMeasurement.specificGravity)
     : null;
-  const latestVolume = latestMeasurement?.volume
-    ? typeof latestMeasurement.volume === 'number' ? latestMeasurement.volume : parseFloat(latestMeasurement.volume)
-    : null;
-  const latestVolumeUnit = latestMeasurement?.volumeUnit || 'L';
 
   // Carbonation display state - toggle between volumes and g/L
   const [carbonationUnit, setCarbonationUnit] = React.useState<'vol' | 'g/L'>('vol');
@@ -158,7 +152,7 @@ export function LabelComplianceCard({
         {/* Latest Measurements */}
         <div>
           <p className="text-sm font-medium mb-2">Latest Measurements</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 p-3 bg-white rounded-lg border">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3 bg-white rounded-lg border">
             <div>
               <p className="text-xs text-gray-500">ABV</p>
               <p className="font-semibold text-lg">
@@ -178,12 +172,6 @@ export function LabelComplianceCard({
               <p className="text-xs text-gray-500">SG</p>
               <p className="font-semibold text-lg">
                 {latestSG !== null ? latestSG.toFixed(3) : "Not measured"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Volume</p>
-              <p className="font-semibold text-lg">
-                {latestVolume !== null ? `${latestVolume.toFixed(1)} ${latestVolumeUnit}` : "Not measured"}
               </p>
             </div>
             <div
