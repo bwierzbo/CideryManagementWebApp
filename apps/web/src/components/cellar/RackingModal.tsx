@@ -79,7 +79,7 @@ export function RackingModal({
 
   // Filter vessels based on search query
   const availableVessels = allVessels.filter((vessel) =>
-    vessel.vesselName.toLowerCase().includes(vesselSearchQuery.toLowerCase())
+    vessel.vesselName?.toLowerCase().includes(vesselSearchQuery.toLowerCase()) ?? false
   );
 
   const {

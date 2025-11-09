@@ -152,6 +152,10 @@ export default function BatchDetailsPage() {
       isLoading: compositionLoading,
       error: compositionError,
     });
+    if (composition && composition.length > 0) {
+      console.log("🎨 First composition item keys:", Object.keys(composition[0]));
+      console.log("🎨 First composition item:", composition[0]);
+    }
   }, [batchId, composition, compositionLoading, compositionError]);
 
   // Fetch transfer history
@@ -1060,6 +1064,8 @@ export default function BatchDetailsPage() {
                         <TableHead className="text-right">% of Batch</TableHead>
                         <TableHead className="text-right">Cost</TableHead>
                         <TableHead className="text-right">Avg Brix</TableHead>
+                        <TableHead className="text-right">pH</TableHead>
+                        <TableHead className="text-right">SG</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1096,6 +1102,12 @@ export default function BatchDetailsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             {comp.avgBrix ? comp.avgBrix.toFixed(1) : "N/A"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {comp.ph ? comp.ph.toFixed(2) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {comp.specificGravity ? comp.specificGravity.toFixed(3) : "—"}
                           </TableCell>
                         </TableRow>
                       ))}
