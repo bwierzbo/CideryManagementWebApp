@@ -11,6 +11,7 @@ export * from "./calc/abv";
 export * from "./calc/yield";
 export * from "./calc/cogs";
 export * from "./calc/financial";
+export * from "./calculations/sugar";
 
 // Re-export apple-related constants and utilities (client-safe)
 export * from "./apples";

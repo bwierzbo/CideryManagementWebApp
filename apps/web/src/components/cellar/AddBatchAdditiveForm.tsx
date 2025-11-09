@@ -109,10 +109,12 @@ export function AddBatchAdditiveForm({
   const additives = useMemo(() => filteredAdditives, [filteredAdditives]);
 
   const addAdditive = trpc.batch.addAdditive.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast({
         title: "Success",
-        description: "Additive recorded successfully",
+        description: data.estimatedMeasurement
+          ? "Additive recorded with estimated SG and ABV measurement"
+          : "Additive recorded successfully",
       });
       onSuccess();
     },
@@ -198,6 +200,17 @@ export function AddBatchAdditiveForm({
             ))}
           </SelectContent>
         </Select>
+        {selectedAdditiveType === "Sugar & Sweeteners" && (
+          <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900">
+            <p className="font-medium">📊 Auto-calculation enabled</p>
+            <p className="mt-1 text-blue-800">
+              Adding sugar will automatically create an estimated SG and ABV measurement based on the current vessel volume and most recent measurement.
+            </p>
+            <p className="mt-1 text-xs text-blue-700">
+              The calculation assumes full fermentation of the added sugar.
+            </p>
+          </div>
+        )}
       </div>
 
       {selectedAdditiveType && (

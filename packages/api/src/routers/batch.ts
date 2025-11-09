@@ -24,6 +24,11 @@ import { bottleRuns, kegFills, kegs } from "db/src/schema/packaging";
 import { eq, and, isNull, desc, asc, sql, or, like } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
+import {
+  calculateEstimatedSGAfterAddition,
+  calculateEstimatedABV,
+  convertSugarToGrams,
+} from "lib";
 
 // Input validation schemas
 const batchIdSchema = z.object({
@@ -63,6 +68,7 @@ const addAdditiveSchema = z.object({
   unit: z.string().min(1, "Unit is required"),
   notes: z.string().optional(),
   addedBy: z.string().optional(),
+  addedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
 });
 
 const updateMeasurementSchema = z.object({
@@ -707,11 +713,12 @@ export const batchRouter = router({
     .input(addAdditiveSchema)
     .mutation(async ({ input }) => {
       try {
-        // Verify batch exists and get vessel ID
+        // Verify batch exists and get vessel ID, original gravity
         const batchData = await db
           .select({
             id: batches.id,
             vesselId: batches.vesselId,
+            originalGravity: batches.originalGravity,
           })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
@@ -743,13 +750,112 @@ export const batchRouter = router({
             unit: input.unit,
             notes: input.notes,
             addedBy: input.addedBy,
+            addedAt: input.addedAt || new Date(),
           })
           .returning();
+
+        // If sugar is added, auto-create estimated measurement
+        let estimatedMeasurement = null;
+        if (input.additiveType === "Sugar & Sweeteners") {
+          try {
+            // Get most recent measurement for current SG and volume
+            const recentMeasurement = await db
+              .select({
+                specificGravity: batchMeasurements.specificGravity,
+                volume: batchMeasurements.volume,
+                volumeUnit: batchMeasurements.volumeUnit,
+                volumeLiters: batchMeasurements.volumeLiters,
+              })
+              .from(batchMeasurements)
+              .where(
+                and(
+                  eq(batchMeasurements.batchId, input.batchId),
+                  isNull(batchMeasurements.deletedAt),
+                  sql`${batchMeasurements.specificGravity} IS NOT NULL`
+                )
+              )
+              .orderBy(desc(batchMeasurements.measurementDate))
+              .limit(1);
+
+            if (!recentMeasurement.length || !recentMeasurement[0].specificGravity) {
+              console.warn("No recent SG measurement found, skipping estimated measurement");
+            } else {
+              // Get volume - prefer volumeLiters, then convert from volume + unit
+              let volumeL: number;
+              if (recentMeasurement[0].volumeLiters) {
+                volumeL = parseFloat(recentMeasurement[0].volumeLiters);
+              } else if (recentMeasurement[0].volume && recentMeasurement[0].volumeUnit) {
+                const vol = parseFloat(recentMeasurement[0].volume);
+                volumeL = recentMeasurement[0].volumeUnit === "gal" ? vol * 3.78541 : vol;
+              } else {
+                console.warn("No volume data found in recent measurement, skipping estimated measurement");
+                volumeL = 0;
+              }
+
+              if (volumeL > 0) {
+                const currentSG = parseFloat(recentMeasurement[0].specificGravity);
+
+                // Convert sugar amount to grams
+                let sugarGrams: number;
+                if (input.unit === "g/L") {
+                  // If g/L, multiply by volume
+                  sugarGrams = input.amount * volumeL;
+                } else {
+                  sugarGrams = convertSugarToGrams(input.amount, input.unit);
+                }
+
+                // Calculate estimated SG after sugar addition
+                const estimatedSG = calculateEstimatedSGAfterAddition(
+                  currentSG,
+                  sugarGrams,
+                  volumeL
+                );
+
+                // Calculate estimated ABV (assuming full fermentation)
+                const originalGravity = batchData[0].originalGravity
+                  ? parseFloat(batchData[0].originalGravity)
+                  : currentSG; // Fallback to current SG if OG not available
+
+                const estimatedABV = calculateEstimatedABV(
+                  originalGravity,
+                  currentSG,
+                  sugarGrams,
+                  volumeL,
+                  true // Assume full fermentation
+                );
+
+                // Create estimated measurement
+                const measurement = await db
+                  .insert(batchMeasurements)
+                  .values({
+                    batchId: input.batchId,
+                    measurementDate: input.addedAt || new Date(),
+                    specificGravity: estimatedSG.toString(),
+                    abv: estimatedABV.toString(),
+                    volume: volumeL.toString(),
+                    volumeUnit: "L",
+                    volumeLiters: volumeL.toString(),
+                    notes: `Estimated after adding ${input.amount}${input.unit} of ${input.additiveName}. Assumes full fermentation.`,
+                    takenBy: "System (auto-calculated)",
+                  })
+                  .returning();
+
+                estimatedMeasurement = measurement[0];
+              }
+            }
+          } catch (error) {
+            console.error("Error creating estimated measurement:", error);
+            // Don't fail the additive creation if measurement fails
+          }
+        }
 
         return {
           success: true,
           additive: newAdditive[0],
-          message: "Additive added successfully",
+          estimatedMeasurement,
+          message: estimatedMeasurement
+            ? "Additive added successfully with estimated SG/ABV"
+            : "Additive added successfully",
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
