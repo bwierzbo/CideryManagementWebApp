@@ -325,6 +325,9 @@ export function CarbonateModal({
       onOpenChange(false);
     },
     onError: (error) => {
+      console.error("❌ Carbonation mutation error:", error);
+      console.error("❌ Error data:", error.data);
+      console.error("❌ Error message:", error.message);
       toast({
         title: "Carbonation Failed",
         description: error.message,
@@ -345,7 +348,7 @@ export function CarbonateModal({
         return;
       }
 
-      startMutation.mutate({
+      const forcedData = {
         batchId: batch.id,
         vesselId: null, // No vessel needed for forced carbonation
         startedAt: (data as any).startedAt,
@@ -354,11 +357,13 @@ export function CarbonateModal({
         startingTemperature: (data as any).startingTemperature ?? undefined,
         startingCo2Volumes: (data as any).startingCo2Volumes ?? undefined,
         targetCo2Volumes: data.targetCo2Volumes,
-        carbonationProcess: "headspace", // Default to headspace carbonation
+        carbonationProcess: "headspace" as const, // Default to headspace carbonation
         pressureApplied: (data as any).pressureApplied,
         gasType: "CO2",
         notes: data.notes,
-      });
+      };
+      console.log("🚀 Forced carbonation data being sent:", forcedData);
+      startMutation.mutate(forcedData);
     } else {
       // Bottle conditioning
       const residualCo2 = (data as any).residualCo2Volumes;
