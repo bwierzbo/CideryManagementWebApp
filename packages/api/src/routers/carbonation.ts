@@ -30,8 +30,14 @@ export const carbonationRouter = router({
         startedAt: z.date().optional(),
         carbonationProcess: z.enum(["headspace", "inline", "stone", "bottle_conditioning"]),
         targetCo2Volumes: z.number().min(0).max(5),
-        startingTemperature: z.number().min(-5).max(25).optional(),
-        startingCo2Volumes: z.number().min(0).max(5).optional(),
+        startingTemperature: z.preprocess(
+          (val) => val === undefined || val === null ? undefined : Number(val),
+          z.number().min(-5).max(25).optional()
+        ),
+        startingCo2Volumes: z.preprocess(
+          (val) => val === undefined || val === null ? undefined : Number(val),
+          z.number().min(0).max(5).optional()
+        ),
         pressureApplied: z.number().min(0).max(50),
         startingVolume: z.number().positive(),
         startingVolumeUnit: z.enum(["L", "gal"]).default("L"),
@@ -39,7 +45,10 @@ export const carbonationRouter = router({
         notes: z.string().optional(),
         // For bottle conditioning
         additivePurchaseId: z.string().uuid().optional(),
-        primingSugarAmount: z.number().positive().optional(),
+        primingSugarAmount: z.preprocess(
+          (val) => val === undefined || val === null ? undefined : Number(val),
+          z.number().positive().optional()
+        ),
         primingSugarType: z.enum(["sucrose", "dextrose", "honey"]).optional(),
       })
     )
