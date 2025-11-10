@@ -1082,23 +1082,35 @@ export const bottlesRouter = router({
     .input(z.object({ runId: z.string().uuid() }))
     .mutation(async ({ input }) => {
       try {
-        const [updated] = await db
-          .update(bottleRuns)
-          .set({
-            status: "completed",
-            updatedAt: new Date(),
-          })
-          .where(eq(bottleRuns.id, input.runId))
-          .returning();
+        return await db.transaction(async (tx) => {
+          // Update bottle run status to completed
+          const [updated] = await tx
+            .update(bottleRuns)
+            .set({
+              status: "completed",
+              updatedAt: new Date(),
+            })
+            .where(eq(bottleRuns.id, input.runId))
+            .returning();
 
-        if (!updated) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Bottle run not found",
-          });
-        }
+          if (!updated) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Bottle run not found",
+            });
+          }
 
-        return updated;
+          // Update inventory item quantity to make it appear in finished goods inventory
+          await tx
+            .update(inventoryItems)
+            .set({
+              currentQuantity: updated.unitsProduced,
+              updatedAt: new Date(),
+            })
+            .where(eq(inventoryItems.bottleRunId, input.runId));
+
+          return updated;
+        });
       } catch (error) {
         console.error("Error marking bottle run as complete:", error);
         throw new TRPCError({

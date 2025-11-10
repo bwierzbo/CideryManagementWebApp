@@ -110,7 +110,7 @@ export function FillKegModal({
   // Update form when kegs selected
   useEffect(() => {
     setValue("kegIds", selectedKegIds);
-  }, [selectedKegIds, setValue]);
+  }, [selectedKegIds]); // setValue is stable, no need in deps
 
   // Reset selected kegs when modal closes
   useEffect(() => {
@@ -125,6 +125,16 @@ export function FillKegModal({
         ? prev.filter((id) => id !== kegId)
         : [...prev, kegId],
     );
+  }, []);
+
+  const handleOpenChange = useCallback((isOpen: boolean) => {
+    if (!isOpen) {
+      onClose();
+    }
+  }, []); // onClose is from props, don't add to deps to avoid infinite loop
+
+  const handleCarbonationLevelChange = useCallback((value: string) => {
+    setValue("carbonationLevel", value as any);
   }, []);
 
   const onSubmit = (data: FillKegsForm) => {
@@ -152,7 +162,7 @@ export function FillKegModal({
   const exceedsCapacity = totalVolumeTaken > currentVolumeL;
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -197,6 +207,7 @@ export function FillKegModal({
                   >
                     <Checkbox
                       checked={selectedKegIds.includes(keg.id)}
+                      onCheckedChange={() => {}} // No-op since we handle clicks on parent div
                       className="pointer-events-none"
                     />
                     <div className="flex-1">
@@ -307,11 +318,7 @@ export function FillKegModal({
               {/* Carbonation Level */}
               <div>
                 <Label htmlFor="carbonationLevel">Carbonation Level</Label>
-                <Select
-                  onValueChange={(value) =>
-                    setValue("carbonationLevel", value as any)
-                  }
-                >
+                <Select onValueChange={handleCarbonationLevelChange}>
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select level" />
                   </SelectTrigger>
