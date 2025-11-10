@@ -27,10 +27,7 @@ import {
   TestTube,
   Droplets,
   Target,
-  FileText,
   Eye,
-  BarChart3,
-  List,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -38,6 +35,7 @@ import { performanceMonitor } from "@/lib/performance-monitor";
 import { formatDateTime } from "@/utils/date-format";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
 import { LabelComplianceCard } from "@/components/bottles/LabelComplianceCard";
+import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 
 // Lazy load heavy components
 const QAUpdateModal = lazy(() =>
@@ -68,7 +66,6 @@ export default function PackagingDetailPage() {
   const router = useRouter();
   const runId = params.id as string;
   const [qaModalOpen, setQaModalOpen] = useState(false);
-  const [measurementView, setMeasurementView] = useState<"chart" | "list">("chart");
 
   // Auth for permission checks
   const { data: session } = useSession();
@@ -377,137 +374,8 @@ export default function PackagingDetailPage() {
               </Card>
             )}
 
-            {/* Batch History */}
-            {runData.batch.history && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
-                    Batch History
-                  </CardTitle>
-                  <CardDescription>
-                    Key events for{" "}
-                    {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {/* Measurements */}
-                    {runData.batch.history.measurements &&
-                      runData.batch.history.measurements.length > 0 && (
-                        <div>
-                          {/* View Toggle */}
-                          <div className="flex items-center justify-between mb-4">
-                            <p className="text-sm font-medium text-green-600">
-                              Measurements ({runData.batch.history.measurements.length})
-                            </p>
-                            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
-                              <Button
-                                size="sm"
-                                variant={measurementView === "chart" ? "default" : "ghost"}
-                                onClick={() => setMeasurementView("chart")}
-                                className="h-7 text-xs"
-                              >
-                                <BarChart3 className="w-3 h-3 mr-1" />
-                                Chart
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant={measurementView === "list" ? "default" : "ghost"}
-                                onClick={() => setMeasurementView("list")}
-                                className="h-7 text-xs"
-                              >
-                                <List className="w-3 h-3 mr-1" />
-                                List
-                              </Button>
-                            </div>
-                          </div>
-
-                          {/* Chart View */}
-                          {measurementView === "chart" && (
-                            <MeasurementChart measurements={runData.batch.history.measurements} />
-                          )}
-
-                          {/* List View */}
-                          {measurementView === "list" && (
-                            <div className="border-l-2 border-green-500 pl-4">
-                              <div className="space-y-1">
-                                {runData.batch.history.measurements
-                                  .slice(0, 3)
-                                  .map((m: any, idx: number) => (
-                                    <p key={idx} className="text-xs text-gray-600">
-                                      {m.abv && `ABV: ${m.abv}%`}
-                                      {m.specificGravity && ` SG: ${parseFloat(m.specificGravity).toFixed(3)}`}
-                                      {m.ph && ` pH: ${m.ph}`}
-                                      {m.temperature && ` ${m.temperature}°C`}
-                                      {" • "}
-                                      {formatDateDisplay(m.measurementDate)}
-                                    </p>
-                                  ))}
-                                {runData.batch.history.measurements.length > 3 && (
-                                  <p className="text-xs text-gray-400">
-                                    +{runData.batch.history.measurements.length - 3} more
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                    {/* Additives */}
-                    {runData.batch.history.additives &&
-                      runData.batch.history.additives.length > 0 && (
-                        <div className="border-l-2 border-purple-500 pl-4">
-                          <p className="text-sm font-medium text-purple-600">
-                            Additives ({runData.batch.history.additives.length})
-                          </p>
-                          <div className="space-y-1">
-                            {runData.batch.history.additives
-                              .slice(0, 3)
-                              .map((a: any, idx: number) => (
-                                <p key={idx} className="text-xs text-gray-600">
-                                  {a.additiveName}: {a.amount}
-                                  {a.unit} • {formatDateDisplay(a.addedAt)}
-                                </p>
-                              ))}
-                            {runData.batch.history.additives.length > 3 && (
-                              <p className="text-xs text-gray-400">
-                                +{runData.batch.history.additives.length - 3} more
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                    {/* Transfers */}
-                    {runData.batch.history.transfers &&
-                      runData.batch.history.transfers.length > 0 && (
-                        <div className="border-l-2 border-orange-500 pl-4">
-                          <p className="text-sm font-medium text-orange-600">
-                            Transfers ({runData.batch.history.transfers.length})
-                          </p>
-                          <div className="space-y-1">
-                            {runData.batch.history.transfers
-                              .slice(0, 3)
-                              .map((t: any, idx: number) => (
-                                <p key={idx} className="text-xs text-gray-600">
-                                  {t.volumeTransferred}L to {t.destinationVesselName} •{" "}
-                                  {formatDateDisplay(t.transferredAt)}
-                                </p>
-                              ))}
-                            {runData.batch.history.transfers.length > 3 && (
-                              <p className="text-xs text-gray-400">
-                                +{runData.batch.history.transfers.length - 3} more
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* Batch Activity Timeline */}
+            <BatchActivityHistory batchId={runData.batchId} />
 
             {/* Production Information */}
             <Card>
