@@ -152,7 +152,7 @@ export function LabelComplianceCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileCheck className="w-5 h-5" />
-          Label Characteristics & TTB Compliance
+          Summary & Label Characteristics
         </CardTitle>
         <CardDescription>
           Federal labeling requirements for hard cider products
