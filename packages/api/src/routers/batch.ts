@@ -1490,6 +1490,57 @@ export const batchRouter = router({
           });
         });
 
+        // Get carbonation operations
+        const carbonationOps = await db
+          .select({
+            id: batchCarbonationOperations.id,
+            startedAt: batchCarbonationOperations.startedAt,
+            completedAt: batchCarbonationOperations.completedAt,
+            carbonationProcess: batchCarbonationOperations.carbonationProcess,
+            targetCo2Volumes: batchCarbonationOperations.targetCo2Volumes,
+            finalCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
+            pressureApplied: batchCarbonationOperations.pressureApplied,
+            startingVolume: batchCarbonationOperations.startingVolume,
+            startingVolumeUnit: batchCarbonationOperations.startingVolumeUnit,
+          })
+          .from(batchCarbonationOperations)
+          .where(
+            and(
+              eq(batchCarbonationOperations.batchId, input.batchId),
+              isNull(batchCarbonationOperations.deletedAt),
+            ),
+          );
+
+        carbonationOps.forEach((c) => {
+          // Add start event
+          activities.push({
+            id: `carbonation-start-${c.id}`,
+            type: "carbonation",
+            timestamp: c.startedAt,
+            description: `Started ${c.carbonationProcess} carbonation to ${c.targetCo2Volumes} volumes CO₂`,
+            details: {
+              process: c.carbonationProcess,
+              targetCo2: `${c.targetCo2Volumes} volumes`,
+              pressure: `${c.pressureApplied} PSI`,
+              volume: `${c.startingVolume}${c.startingVolumeUnit || 'L'}`,
+            },
+          });
+
+          // Add completion event if completed
+          if (c.completedAt && c.finalCo2Volumes) {
+            activities.push({
+              id: `carbonation-complete-${c.id}`,
+              type: "carbonation",
+              timestamp: c.completedAt,
+              description: `Completed carbonation at ${c.finalCo2Volumes} volumes CO₂`,
+              details: {
+                finalCo2: `${c.finalCo2Volumes} volumes`,
+                targetCo2: `${c.targetCo2Volumes} volumes (target)`,
+              },
+            });
+          }
+        });
+
         // Get bottle runs
         const bottles = await db
           .select({
@@ -1500,6 +1551,11 @@ export const batchRouter = router({
             volumeTaken: bottleRuns.volumeTaken,
             volumeTakenUnit: bottleRuns.volumeTakenUnit,
             status: bottleRuns.status,
+            pasteurizedAt: bottleRuns.pasteurizedAt,
+            pasteurizationTemperatureCelsius: bottleRuns.pasteurizationTemperatureCelsius,
+            pasteurizationTimeMinutes: bottleRuns.pasteurizationTimeMinutes,
+            pasteurizationUnits: bottleRuns.pasteurizationUnits,
+            labeledAt: bottleRuns.labeledAt,
           })
           .from(bottleRuns)
           .where(
@@ -1510,6 +1566,7 @@ export const batchRouter = router({
           );
 
         bottles.forEach((b) => {
+          // Add bottling event
           activities.push({
             id: `bottling-${b.id}`,
             type: "bottling",
@@ -1521,6 +1578,34 @@ export const batchRouter = router({
               volumeTaken: `${b.volumeTaken}${b.volumeTakenUnit || 'L'}`,
             },
           });
+
+          // Add pasteurization event if pasteurized
+          if (b.pasteurizedAt) {
+            activities.push({
+              id: `pasteurize-${b.id}`,
+              type: "pasteurize",
+              timestamp: b.pasteurizedAt,
+              description: `Pasteurized at ${b.pasteurizationTemperatureCelsius}°C for ${b.pasteurizationTimeMinutes} min (${b.pasteurizationUnits} PU)`,
+              details: {
+                temperature: `${b.pasteurizationTemperatureCelsius}°C`,
+                time: `${b.pasteurizationTimeMinutes} min`,
+                pasteurizationUnits: `${b.pasteurizationUnits} PU`,
+              },
+            });
+          }
+
+          // Add labeling event if labeled
+          if (b.labeledAt) {
+            activities.push({
+              id: `label-${b.id}`,
+              type: "label",
+              timestamp: b.labeledAt,
+              description: `Labels applied to bottle run`,
+              details: {
+                unitsLabeled: b.unitsProduced,
+              },
+            });
+          }
         });
 
         // Get keg fills

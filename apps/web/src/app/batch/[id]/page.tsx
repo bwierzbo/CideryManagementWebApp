@@ -617,7 +617,7 @@ export default function BatchDetailsPage() {
 
       {/* Tabs */}
       <Tabs
-        defaultValue="overview"
+        defaultValue="activity"
         className="space-y-6"
         onValueChange={(value) => {
           console.log("🔄 Tab changed to:", value);

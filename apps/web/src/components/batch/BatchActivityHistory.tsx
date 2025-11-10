@@ -32,6 +32,9 @@ import {
   ChevronDown,
   ChevronRight,
   Pencil,
+  Sparkles,
+  Flame,
+  Tag,
 } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
@@ -52,6 +55,9 @@ const activityIcons = {
   rack: FlaskConical,
   bottling: Package,
   filter: Filter,
+  carbonation: Sparkles,
+  pasteurize: Flame,
+  label: Tag,
 };
 
 const activityColors = {
@@ -63,6 +69,9 @@ const activityColors = {
   rack: "bg-amber-500/10 text-amber-700 border-amber-500/20",
   bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
   filter: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
+  carbonation: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  pasteurize: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+  label: "bg-green-500/10 text-green-700 border-green-500/20",
 };
 
 export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
