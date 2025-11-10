@@ -437,8 +437,6 @@ export function PackagingTable({
         "Package Size",
         "Units Produced",
         "Volume Taken (L)",
-        "Loss (L)",
-        "Loss %",
         "Status",
         "ABV at Packaging",
         "Carbonation Level",
@@ -461,8 +459,6 @@ export function PackagingTable({
         formatPackageSize(item.packageSizeML, item.packageType, item.packagingMaterialName),
         item.unitsProduced.toString(),
         item.volumeTakenL.toString(),
-        item.lossL.toFixed(1),
-        item.lossPercentage.toFixed(1),
         item.status || "pending",
         item.abvAtPackaging?.toFixed(2) || "",
         item.carbonationLevel || "",
@@ -683,17 +679,6 @@ export function PackagingTable({
                           {item.unitsProduced.toLocaleString()}
                         </div>
                       </div>
-                      <div>
-                        <div className="text-muted-foreground">Loss</div>
-                        <div
-                          className={cn(
-                            "font-medium",
-                            getLossColor(item.lossPercentage),
-                          )}
-                        >
-                          {item.lossPercentage.toFixed(1)}%
-                        </div>
-                      </div>
                       <div className="flex justify-end">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -804,14 +789,6 @@ export function PackagingTable({
                     className="font-semibold text-gray-700 text-xs uppercase tracking-wide"
                   >
                     Units
-                  </SortableHeader>
-                  <SortableHeader
-                    align="right"
-                    sortDirection={getSortDirectionForDisplay("lossPercentage")}
-                    onSort={() => handleColumnSort("lossPercentage")}
-                    className="font-semibold text-gray-700 text-xs uppercase tracking-wide"
-                  >
-                    Loss
                   </SortableHeader>
                   <SortableHeader canSort={false} className="font-semibold text-gray-700 text-xs uppercase tracking-wide">Status</SortableHeader>
                   <SortableHeader canSort={false} className="w-[100px] font-semibold text-gray-700 text-xs uppercase tracking-wide">
@@ -934,21 +911,6 @@ export function PackagingTable({
                         <span className="font-mono font-semibold text-sm text-gray-900">
                           {item.unitsProduced.toLocaleString()}
                         </span>
-                      </TableCell>
-                      <TableCell className="text-right py-3">
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span
-                            className={cn(
-                              "font-semibold text-sm",
-                              getLossColor(item.lossPercentage),
-                            )}
-                          >
-                            {item.lossPercentage.toFixed(1)}%
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {item.lossL.toFixed(1)}L
-                          </span>
-                        </div>
                       </TableCell>
                       <TableCell className="py-3">
                         <div className="flex items-center gap-2">
