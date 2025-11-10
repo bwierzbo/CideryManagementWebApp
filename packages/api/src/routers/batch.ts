@@ -1513,33 +1513,26 @@ export const batchRouter = router({
           );
 
         carbonationOps.forEach((c) => {
-          // Add start event
+          // Single carbonation event - use completed date if available, otherwise started date
+          const timestamp = c.completedAt || c.startedAt;
+          const isCompleted = !!c.completedAt;
+
           activities.push({
-            id: `carbonation-start-${c.id}`,
+            id: `carbonation-${c.id}`,
             type: "carbonation",
-            timestamp: c.startedAt,
-            description: `Started ${c.carbonationProcess} carbonation to ${c.targetCo2Volumes} volumes CO₂`,
+            timestamp: timestamp,
+            description: isCompleted
+              ? `Carbonated to ${c.finalCo2Volumes || c.targetCo2Volumes} volumes CO₂ using ${c.carbonationProcess}`
+              : `Started ${c.carbonationProcess} carbonation to ${c.targetCo2Volumes} volumes CO₂`,
             details: {
               process: c.carbonationProcess,
-              targetCo2: `${c.targetCo2Volumes} volumes`,
+              targetCo2: `${c.targetCo2Volumes} volumes (target)`,
+              ...(c.finalCo2Volumes && { finalCo2: `${c.finalCo2Volumes} volumes` }),
               pressure: `${c.pressureApplied} PSI`,
               volume: `${c.startingVolume}${c.startingVolumeUnit || 'L'}`,
+              status: isCompleted ? 'completed' : 'in progress',
             },
           });
-
-          // Add completion event if completed
-          if (c.completedAt && c.finalCo2Volumes) {
-            activities.push({
-              id: `carbonation-complete-${c.id}`,
-              type: "carbonation",
-              timestamp: c.completedAt,
-              description: `Completed carbonation at ${c.finalCo2Volumes} volumes CO₂`,
-              details: {
-                finalCo2: `${c.finalCo2Volumes} volumes`,
-                targetCo2: `${c.targetCo2Volumes} volumes (target)`,
-              },
-            });
-          }
         });
 
         // Get bottle runs
