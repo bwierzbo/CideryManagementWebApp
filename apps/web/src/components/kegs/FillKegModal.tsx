@@ -52,6 +52,52 @@ interface FillKegModalProps {
   currentVolumeL: number;
 }
 
+// Memoized keg item component to prevent re-renders
+const KegItem = React.memo(({ keg, isSelected, onToggle }: {
+  keg: any;
+  isSelected: boolean;
+  onToggle: (kegId: string) => void;
+}) => {
+  const handleClick = React.useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('[KegItem] Click - keg.id:', keg.id);
+    onToggle(keg.id);
+  }, [keg.id, onToggle]);
+
+  console.log('[KegItem] Render - keg:', keg.kegNumber, 'isSelected:', isSelected);
+
+  return (
+    <div
+      className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
+        isSelected
+          ? "border-blue-500 bg-blue-50"
+          : "border-gray-200 hover:border-gray-300"
+      }`}
+      onClick={handleClick}
+    >
+      <Checkbox
+        checked={isSelected}
+        onCheckedChange={() => {}} // No-op since we handle clicks on parent div
+        className="pointer-events-none"
+      />
+      <div className="flex-1">
+        <p className="font-semibold">{keg.kegNumber}</p>
+        <p className="text-sm text-gray-600">
+          {keg.kegType.replace("_", " ")} -{" "}
+          {(keg.capacityML / 1000).toFixed(1)}L
+        </p>
+        <p className="text-xs text-gray-500">
+          {keg.currentLocation}
+        </p>
+      </div>
+      <Package className="w-5 h-5 text-gray-400" />
+    </div>
+  );
+});
+
+KegItem.displayName = 'KegItem';
+
 export function FillKegModal({
   open,
   onClose,
@@ -60,6 +106,7 @@ export function FillKegModal({
   batchId,
   currentVolumeL,
 }: FillKegModalProps) {
+  console.log('[FillKegModal] Render - open:', open);
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
 
   const {
@@ -82,9 +129,17 @@ export function FillKegModal({
   const volumeTakenPerKeg = watch("volumeTakenPerKeg");
   const utils = trpc.useUtils();
 
-  // Get available kegs
-  const { data: availableKegs, isLoading: kegsLoading } =
-    trpc.kegs.getAvailableKegs.useQuery(undefined, { enabled: open });
+  // Get available kegs with query stabilization to prevent infinite refetches
+  const { data: kegsData, isLoading: kegsLoading } =
+    trpc.kegs.getAvailableKegs.useQuery(undefined, {
+      enabled: open,
+      refetchOnWindowFocus: false,
+      refetchOnMount: false,
+      refetchOnReconnect: false,
+      staleTime: 30000, // 30 seconds
+    });
+
+  const availableKegs = React.useMemo(() => kegsData ?? [], [kegsData]);
 
   const fillKegsMutation = trpc.kegs.fillKegs.useMutation({
     onSuccess: () => {
@@ -107,11 +162,6 @@ export function FillKegModal({
     },
   });
 
-  // Update form when kegs selected
-  useEffect(() => {
-    setValue("kegIds", selectedKegIds);
-  }, [selectedKegIds]); // setValue is stable, no need in deps
-
   // Reset selected kegs when modal closes
   useEffect(() => {
     if (!open) {
@@ -119,27 +169,42 @@ export function FillKegModal({
     }
   }, [open]);
 
-  const handleKegToggle = useCallback((kegId: string) => {
-    setSelectedKegIds((prev) =>
-      prev.includes(kegId)
+  // Stable toggle handler - MUST NOT have any dependencies that change
+  const handleKegToggle = React.useRef((kegId: string) => {
+    console.log('[FillKegModal] handleKegToggle called with:', kegId);
+    setSelectedKegIds((prev) => {
+      console.log('[FillKegModal] Previous selectedKegIds:', prev);
+      const next = prev.includes(kegId)
         ? prev.filter((id) => id !== kegId)
-        : [...prev, kegId],
-    );
-  }, []);
+        : [...prev, kegId];
+      console.log('[FillKegModal] Next selectedKegIds:', next);
+      return next;
+    });
+  }).current;
 
   const handleOpenChange = useCallback((isOpen: boolean) => {
     if (!isOpen) {
       onClose();
     }
-  }, []); // onClose is from props, don't add to deps to avoid infinite loop
+  }, [onClose]); // Now safe - parent memoizes onClose
 
   const handleCarbonationLevelChange = useCallback((value: string) => {
     setValue("carbonationLevel", value as any);
-  }, []);
+  }, [setValue]); // setValue is stable from react-hook-form
 
   const onSubmit = (data: FillKegsForm) => {
+    // Use selectedKegIds state directly instead of form data
+    if (selectedKegIds.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one keg",
+        variant: "destructive",
+      });
+      return;
+    }
+
     fillKegsMutation.mutate({
-      kegIds: data.kegIds,
+      kegIds: selectedKegIds, // Use state directly
       batchId,
       vesselId,
       filledAt: new Date(data.filledAt),
@@ -196,32 +261,12 @@ export function FillKegModal({
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto border rounded-lg p-3">
                 {availableKegs.map((keg) => (
-                  <div
+                  <KegItem
                     key={keg.id}
-                    className={`flex items-center space-x-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
-                      selectedKegIds.includes(keg.id)
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                    onClick={() => handleKegToggle(keg.id)}
-                  >
-                    <Checkbox
-                      checked={selectedKegIds.includes(keg.id)}
-                      onCheckedChange={() => {}} // No-op since we handle clicks on parent div
-                      className="pointer-events-none"
-                    />
-                    <div className="flex-1">
-                      <p className="font-semibold">{keg.kegNumber}</p>
-                      <p className="text-sm text-gray-600">
-                        {keg.kegType.replace("_", " ")} -{" "}
-                        {(keg.capacityML / 1000).toFixed(1)}L
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {keg.currentLocation}
-                      </p>
-                    </div>
-                    <Package className="w-5 h-5 text-gray-400" />
-                  </div>
+                    keg={keg}
+                    isSelected={selectedKegIds.includes(keg.id)}
+                    onToggle={handleKegToggle}
+                  />
                 ))}
               </div>
             )}

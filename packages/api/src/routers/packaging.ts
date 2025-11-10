@@ -1224,6 +1224,7 @@ export const bottlesRouter = router({
         bottleRunId: z.string().uuid(),
         packagingItemId: z.string().uuid(),
         quantity: z.number().int().positive(),
+        labeledAt: z.date().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1275,7 +1276,8 @@ export const bottlesRouter = router({
             });
           }
 
-          const labelNote = `Applied ${input.quantity} labels (${packagingItem.size}) at ${new Date().toISOString()}`;
+          const labeledAt = input.labeledAt || new Date();
+          const labelNote = `Applied ${input.quantity} labels (${packagingItem.size}) at ${labeledAt.toISOString()}`;
           const updatedNotes = bottleRun.productionNotes
             ? `${bottleRun.productionNotes}\n\n${labelNote}`
             : labelNote;
@@ -1283,6 +1285,7 @@ export const bottlesRouter = router({
           const [updated] = await tx
             .update(bottleRuns)
             .set({
+              labeledAt: labeledAt,
               productionNotes: updatedNotes,
               updatedAt: new Date(),
             })

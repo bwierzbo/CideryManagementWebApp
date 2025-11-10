@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
 import { Navbar } from "@/components/navbar";
@@ -936,6 +936,27 @@ function VesselMap() {
 
   // CO₂ unit toggle state (volumes vs g/L)
   const [co2Unit, setCo2Unit] = useState<"vol" | "gL">("vol");
+
+  // Memoized modal close handlers to prevent infinite loops
+  const handleCloseBottleModal = useCallback(() => {
+    setShowBottleModal(false);
+    setSelectedVesselForBottling(null);
+  }, []);
+
+  const handleCloseFillKegModal = useCallback(() => {
+    setShowFillKegModal(false);
+    setSelectedVesselForKegging(null);
+  }, []);
+
+  const handleCloseFilterModal = useCallback(() => {
+    setShowFilterModal(false);
+    setSelectedVesselForFiltering(null);
+  }, []);
+
+  const handleCloseRackingModal = useCallback(() => {
+    setShowRackingModal(false);
+    setSelectedVesselForRacking(null);
+  }, []);
 
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
@@ -1886,10 +1907,7 @@ function VesselMap() {
         {selectedVesselForBottling && (
           <BottleModal
             open={showBottleModal}
-            onClose={() => {
-              setShowBottleModal(false);
-              setSelectedVesselForBottling(null);
-            }}
+            onClose={handleCloseBottleModal}
             vesselId={selectedVesselForBottling.id}
             vesselName={selectedVesselForBottling.name}
             batchId={selectedVesselForBottling.batchId}
@@ -1901,10 +1919,7 @@ function VesselMap() {
         {selectedVesselForKegging && (
           <FillKegModal
             open={showFillKegModal}
-            onClose={() => {
-              setShowFillKegModal(false);
-              setSelectedVesselForKegging(null);
-            }}
+            onClose={handleCloseFillKegModal}
             vesselId={selectedVesselForKegging.id}
             vesselName={selectedVesselForKegging.name}
             batchId={selectedVesselForKegging.batchId}
@@ -1916,10 +1931,7 @@ function VesselMap() {
         {selectedVesselForFiltering && (
           <FilterModal
             open={showFilterModal}
-            onClose={() => {
-              setShowFilterModal(false);
-              setSelectedVesselForFiltering(null);
-            }}
+            onClose={handleCloseFilterModal}
             vesselId={selectedVesselForFiltering.id}
             vesselName={selectedVesselForFiltering.name}
             batchId={selectedVesselForFiltering.batchId}
@@ -1931,10 +1943,7 @@ function VesselMap() {
         {selectedVesselForRacking && (
           <RackingModal
             open={showRackingModal}
-            onClose={() => {
-              setShowRackingModal(false);
-              setSelectedVesselForRacking(null);
-            }}
+            onClose={handleCloseRackingModal}
             batchId={selectedVesselForRacking.batchId}
             batchName={selectedVesselForRacking.batchName}
             sourceVesselId={selectedVesselForRacking.id}
