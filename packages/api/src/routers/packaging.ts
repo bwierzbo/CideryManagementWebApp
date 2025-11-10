@@ -1127,6 +1127,7 @@ export const bottlesRouter = router({
     .input(
       z.object({
         runId: z.string().uuid(),
+        pasteurizedAt: z.union([z.date(), z.string().transform((val) => new Date(val))]).optional(),
         temperatureCelsius: z.number().min(0).max(100),
         timeMinutes: z.number().positive().max(120),
         pasteurizationUnits: z.number().positive(),
@@ -1135,7 +1136,7 @@ export const bottlesRouter = router({
     )
     .mutation(async ({ input }) => {
       try {
-        const pasteurizedAt = new Date();
+        const pasteurizedAt = input.pasteurizedAt || new Date();
 
         const [updated] = await db
           .update(bottleRuns)

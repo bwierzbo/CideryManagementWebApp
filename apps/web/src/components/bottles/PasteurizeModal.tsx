@@ -20,6 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { Flame, Info, Loader2 } from "lucide-react";
 
 const pasteurizeSchema = z.object({
+  pasteurizedAt: z.date(),
   temperatureCelsius: z.number().min(0, "Temperature must be positive").max(100, "Temperature must be at most 100°C"),
   timeMinutes: z.number().positive("Time must be positive").max(120, "Time must be at most 120 minutes"),
   notes: z.string().optional(),
@@ -96,6 +97,7 @@ export function PasteurizeModal({
   } = useForm<PasteurizeForm>({
     resolver: zodResolver(pasteurizeSchema),
     defaultValues: {
+      pasteurizedAt: new Date(),
       temperatureCelsius: 72,
       timeMinutes: 15,
     },
@@ -113,6 +115,7 @@ export function PasteurizeModal({
   useEffect(() => {
     if (open) {
       reset({
+        pasteurizedAt: new Date(),
         temperatureCelsius: 72,
         timeMinutes: 15,
       });
@@ -143,6 +146,7 @@ export function PasteurizeModal({
 
     pasteurizeMutation.mutate({
       runId: bottleRunId,
+      pasteurizedAt: data.pasteurizedAt,
       temperatureCelsius: data.temperatureCelsius,
       timeMinutes: data.timeMinutes,
       pasteurizationUnits: pu,
@@ -172,6 +176,22 @@ export function PasteurizeModal({
                 {unitsProduced.toLocaleString()} units
               </span>
             </div>
+          </div>
+
+          {/* Pasteurization Date */}
+          <div className="space-y-2">
+            <Label htmlFor="pasteurizedAt">
+              Pasteurization Date <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="pasteurizedAt"
+              type="date"
+              {...register("pasteurizedAt", { valueAsDate: true })}
+              defaultValue={new Date().toISOString().split('T')[0]}
+            />
+            {errors.pasteurizedAt && (
+              <p className="text-sm text-red-500">{errors.pasteurizedAt.message}</p>
+            )}
           </div>
 
           {/* Temperature */}
