@@ -22,9 +22,11 @@ import { cn } from "@/lib/utils";
 import { calculateAbv } from "lib";
 
 interface Measurement {
-  abv: number | string | null;
-  ph: number | string | null;
-  specificGravity: number | string | null;
+  abv: number | null;
+  ph: number | null;
+  specificGravity: number | null;
+  totalAcidity: number | null;
+  temperature: number | null;
   measurementDate: Date | string;
 }
 
@@ -37,12 +39,18 @@ interface Additive {
   itemType?: string | null;
 }
 
+interface Composition {
+  ph?: number | null;
+  specificGravity?: number | null;
+}
+
 interface LabelComplianceCardProps {
   measurements: Measurement[];
   additives: Additive[];
   abvAtPackaging: number | null | undefined;
   carbonationCo2Volumes: number | null | undefined;
   packageSizeML: number;
+  composition?: Composition[];
 }
 
 export function LabelComplianceCard({
@@ -51,14 +59,13 @@ export function LabelComplianceCard({
   abvAtPackaging,
   carbonationCo2Volumes,
   packageSizeML,
+  composition,
 }: LabelComplianceCardProps) {
   // Get latest measurement values
   const latestMeasurement = measurements && measurements.length > 0 ? measurements[0] : null;
 
   // Try to get measured ABV first
-  let latestAbv = latestMeasurement?.abv
-    ? typeof latestMeasurement.abv === 'number' ? latestMeasurement.abv : parseFloat(latestMeasurement.abv)
-    : abvAtPackaging ?? null;
+  let latestAbv = latestMeasurement?.abv ?? abvAtPackaging ?? null;
 
   let abvIsEstimated = false;
 
@@ -67,10 +74,7 @@ export function LabelComplianceCard({
     // Get all SG values
     const sgValues = measurements
       .filter(m => m.specificGravity !== null)
-      .map(m => typeof m.specificGravity === 'number'
-        ? m.specificGravity
-        : parseFloat(m.specificGravity as string)
-      );
+      .map(m => m.specificGravity!);
 
     if (sgValues.length >= 2) {
       // OG is the highest SG (before fermentation)
@@ -91,12 +95,25 @@ export function LabelComplianceCard({
     }
   }
 
-  const latestPH = latestMeasurement?.ph
-    ? typeof latestMeasurement.ph === 'number' ? latestMeasurement.ph : parseFloat(latestMeasurement.ph)
-    : null;
-  const latestSG = latestMeasurement?.specificGravity
-    ? typeof latestMeasurement.specificGravity === 'number' ? latestMeasurement.specificGravity : parseFloat(latestMeasurement.specificGravity)
-    : null;
+  // Try to get pH from measurements first, then from composition (juice purchases)
+  let latestPH = latestMeasurement?.ph ?? null;
+
+  console.log("🔬 Debug pH:", {
+    measurements,
+    latestMeasurement,
+    latestPH,
+    composition
+  });
+
+  // If no pH in measurements, check composition (for juice purchases)
+  if (latestPH === null && composition && composition.length > 0) {
+    const compositionWithPH = composition.find(c => c.ph !== null && c.ph !== undefined);
+    if (compositionWithPH?.ph) {
+      latestPH = compositionWithPH.ph;
+      console.log("🔬 Using pH from composition:", latestPH);
+    }
+  }
+  const latestSG = latestMeasurement?.specificGravity ?? null;
 
   // Carbonation display state - toggle between volumes and g/L
   const [carbonationUnit, setCarbonationUnit] = React.useState<'vol' | 'g/L'>('vol');

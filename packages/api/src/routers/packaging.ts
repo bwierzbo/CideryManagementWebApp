@@ -13,6 +13,7 @@ import {
   batchCompositions,
   baseFruitVarieties,
   juiceVarieties,
+  juicePurchaseItems,
   vendors,
   batchMeasurements,
   batchAdditives,
@@ -220,6 +221,23 @@ export const bottlesRouter = router({
             });
           }
 
+          // Find most recent completed carbonation operation for this batch
+          const [latestCarbonation] = await tx
+            .select({
+              id: batchCarbonationOperations.id,
+              finalCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
+            })
+            .from(batchCarbonationOperations)
+            .where(
+              and(
+                eq(batchCarbonationOperations.batchId, input.batchId),
+                isNull(batchCarbonationOperations.deletedAt),
+                sql`${batchCarbonationOperations.completedAt} IS NOT NULL`
+              )
+            )
+            .orderBy(desc(batchCarbonationOperations.completedAt))
+            .limit(1);
+
           const packagingRunData: any = {
             batchId: input.batchId,
             vesselId: input.vesselId,
@@ -234,6 +252,8 @@ export const bottlesRouter = router({
             loss: lossL.toString(),
             lossUnit: "L",
             lossPercentage: lossPercentage.toString(),
+            // Link to most recent completed carbonation operation
+            sourceCarbonationOperationId: latestCarbonation?.id ?? null,
             // Don't set status - let it default to null (active)
             createdBy: ctx.session.user.id,
           };
@@ -516,23 +536,35 @@ export const bottlesRouter = router({
           .where(eq(bottleRunPhotos.bottleRunId, runId))
           .orderBy(desc(bottleRunPhotos.uploadedAt));
 
-        // Get batch composition
+        // Get batch composition with pH and SG from juice purchases
         const compositionData = await db
           .select({
-            varietyName: baseFruitVarieties.name,
+            varietyName: sql<string>`
+              CASE
+                WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                ELSE 'Unknown'
+              END
+            `,
             vendorName: vendors.name,
             volumeL: batchCompositions.juiceVolume,
             percentageOfBatch: batchCompositions.fractionOfBatch,
+            ph: juicePurchaseItems.ph,
+            specificGravity: juicePurchaseItems.specificGravity,
           })
           .from(batchCompositions)
           .leftJoin(
             baseFruitVarieties,
             eq(batchCompositions.varietyId, baseFruitVarieties.id),
           )
+          .leftJoin(
+            juicePurchaseItems,
+            eq(batchCompositions.purchaseItemId, juicePurchaseItems.id),
+          )
           .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
           .where(eq(batchCompositions.batchId, run.batchId));
 
-        // Get batch measurements (last 5)
+        // Get batch measurements (last 20 for better ABV estimation from SG range)
         const measurements = await db
           .select({
             measurementDate: batchMeasurements.measurementDate,
@@ -545,7 +577,7 @@ export const bottlesRouter = router({
           .from(batchMeasurements)
           .where(eq(batchMeasurements.batchId, run.batchId))
           .orderBy(desc(batchMeasurements.measurementDate))
-          .limit(5);
+          .limit(20);
 
         // Get batch additives (last 5)
         const additives = await db
@@ -639,6 +671,8 @@ export const bottlesRouter = router({
               percentageOfBatch: c.percentageOfBatch
                 ? parseFloat(c.percentageOfBatch.toString()) * 100
                 : 0,
+              ph: c.ph ? parseFloat(c.ph.toString()) : null,
+              specificGravity: c.specificGravity ? parseFloat(c.specificGravity.toString()) : null,
             })),
             history: {
               measurements: measurements.map((m) => ({
