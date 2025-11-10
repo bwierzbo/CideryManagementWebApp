@@ -28,6 +28,7 @@ import {
   Droplets,
   Target,
   Eye,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
