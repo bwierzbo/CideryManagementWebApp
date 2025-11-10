@@ -559,7 +559,7 @@ export const bottlesRouter = router({
           )
           .leftJoin(
             juicePurchaseItems,
-            eq(batchCompositions.purchaseItemId, juicePurchaseItems.id),
+            eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id),
           )
           .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
           .where(eq(batchCompositions.batchId, run.batchId));

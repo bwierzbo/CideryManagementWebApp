@@ -59,16 +59,8 @@ const forcedCarbonationSchema = z.object({
   startedAt: z.date(),
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
-  startingTemperature: z
-    .preprocess(
-      (val) => (val === "" || val === null || val === undefined || Number.isNaN(val) ? undefined : Number(val)),
-      z.number().min(-5, "Temperature must be at least -5°C").max(25, "Temperature must be at most 25°C").optional()
-    ),
-  startingCo2Volumes: z
-    .preprocess(
-      (val) => (val === "" || val === null || val === undefined || Number.isNaN(val) ? undefined : Number(val)),
-      z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional()
-    ),
+  startingTemperature: z.number().min(-5, "Temperature must be at least -5°C").max(25, "Temperature must be at most 25°C").optional(),
+  startingCo2Volumes: z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional(),
   targetCo2Volumes: z
     .number()
     .min(0.1, "Target must be at least 0.1 volumes")
@@ -86,11 +78,7 @@ const bottleConditioningSchema = z.object({
   startedAt: z.date(),
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
-  residualCo2Volumes: z
-    .preprocess(
-      (val) => (val === "" || val === null || val === undefined || Number.isNaN(val) ? undefined : Number(val)),
-      z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional()
-    ),
+  residualCo2Volumes: z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional(),
   targetCo2Volumes: z
     .number()
     .min(0.1, "Target must be at least 0.1 volumes")
@@ -336,6 +324,34 @@ export function CarbonateModal({
     },
   });
 
+  const recordMutation = trpc.carbonation.record.useMutation({
+    onSuccess: (data) => {
+      toast({
+        title: "Carbonation Recorded",
+        description: `Carbonation recorded for ${batch.name} at ${data.carbonation.finalCo2Volumes} volumes CO2`,
+      });
+
+      // Invalidate relevant queries
+      utils.batch.list.invalidate();
+      utils.batch.get.invalidate({ batchId: batch.id });
+      utils.vessel.liquidMap.invalidate();
+      utils.carbonation.list.invalidate();
+
+      onSuccess?.();
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      console.error("❌ Carbonation record error:", error);
+      console.error("❌ Error data:", error.data);
+      console.error("❌ Error message:", error.message);
+      toast({
+        title: "Failed to Record Carbonation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (data: CarbonationForm) => {
     if (data.carbonationMethod === "forced") {
       // Forced carbonation validation
@@ -348,22 +364,24 @@ export function CarbonateModal({
         return;
       }
 
+      // Use record mutation for forced carbonation (one-step complete)
       const forcedData = {
         batchId: batch.id,
-        vesselId: null, // No vessel needed for forced carbonation
-        startedAt: (data as any).startedAt,
-        startingVolume: data.startingVolume,
-        startingVolumeUnit: data.startingVolumeUnit,
-        startingTemperature: (data as any).startingTemperature ?? undefined,
-        startingCo2Volumes: (data as any).startingCo2Volumes ?? undefined,
+        vesselId: vessel?.id ?? null,
+        completedAt: (data as any).startedAt,
+        carbonationProcess: "headspace" as const,
         targetCo2Volumes: data.targetCo2Volumes,
-        carbonationProcess: "headspace" as const, // Default to headspace carbonation
+        finalCo2Volumes: data.targetCo2Volumes, // Assume target was achieved
+        temperature: (data as any).startingTemperature ?? undefined,
         pressureApplied: (data as any).pressureApplied,
+        startingVolume: data.startingVolume,
+        finalVolume: data.startingVolume, // Assume no volume loss for forced carb
+        volumeUnit: data.startingVolumeUnit,
         gasType: "CO2",
         notes: data.notes,
       };
-      console.log("🚀 Forced carbonation data being sent:", forcedData);
-      startMutation.mutate(forcedData);
+      console.log("🚀 Recording completed forced carbonation:", forcedData);
+      recordMutation.mutate(forcedData);
     } else {
       // Bottle conditioning
       const residualCo2 = (data as any).residualCo2Volumes;
@@ -403,9 +421,9 @@ export function CarbonateModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Start Carbonation Operation</DialogTitle>
+          <DialogTitle>Record Carbonation</DialogTitle>
           <DialogDescription>
-            Choose carbonation method for {batch.name}
+            Log carbonation details for {batch.name}
           </DialogDescription>
         </DialogHeader>
 

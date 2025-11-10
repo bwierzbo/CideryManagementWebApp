@@ -327,6 +327,7 @@ export default function PackagingDetailPage() {
             abvAtPackaging={runData.abvAtPackaging}
             carbonationCo2Volumes={runData.carbonationCo2Volumes}
             packageSizeML={runData.packageSizeML}
+            composition={runData.batch.composition || []}
           />
         </div>
 

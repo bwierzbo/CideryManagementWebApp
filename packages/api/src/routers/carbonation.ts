@@ -437,4 +437,135 @@ export const carbonationRouter = router({
         },
       };
     }),
+
+  /**
+   * Record a completed carbonation (one-step for forced carbonation)
+   */
+  record: createRbacProcedure("create", "carbonation")
+    .input(
+      z.object({
+        batchId: z.string().uuid(),
+        vesselId: z.string().uuid().nullable(),
+        completedAt: z.union([z.date(), z.string().transform((val) => new Date(val))]).optional(),
+        carbonationProcess: z.enum(["headspace", "inline", "stone", "bottle_conditioning"]),
+        targetCo2Volumes: z.number().min(0).max(5),
+        finalCo2Volumes: z.number().min(0).max(5),
+        temperature: z.number().min(-5).max(25).optional(),
+        pressureApplied: z.number().min(0).max(50),
+        startingVolume: z.number().positive(),
+        finalVolume: z.number().positive(),
+        volumeUnit: z.enum(["L", "gal"]).default("L"),
+        gasType: z.string().default("CO2"),
+        notes: z.string().optional(),
+        // For bottle conditioning
+        additivePurchaseId: z.string().uuid().optional(),
+        primingSugarAmount: z.number().positive().optional(),
+        primingSugarType: z.enum(["sucrose", "dextrose", "honey"]).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Validate temperature if provided
+      if (input.temperature !== undefined) {
+        const tempValidation = validateTemperature(input.temperature);
+        if (!tempValidation.isValid) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: tempValidation.message || "Invalid temperature",
+          });
+        }
+      }
+
+      // Validate vessel for forced carbonation (skip for bottle conditioning)
+      if (input.vesselId && input.carbonationProcess !== "bottle_conditioning") {
+        const [vessel] = await db
+          .select()
+          .from(vessels)
+          .where(eq(vessels.id, input.vesselId))
+          .limit(1);
+
+        if (!vessel) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Vessel not found",
+          });
+        }
+
+        // Validate pressure is safe for vessel
+        const vesselMaxPressure = vessel.maxPressure ? parseFloat(vessel.maxPressure) : 30;
+        if (!isPressureSafe(input.pressureApplied, vesselMaxPressure)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Pressure ${input.pressureApplied} PSI exceeds safe limit for this vessel (max: ${vesselMaxPressure} PSI)`,
+          });
+        }
+      }
+
+      // Get batch to check current status
+      const [batch] = await db
+        .select()
+        .from(batches)
+        .where(eq(batches.id, input.batchId))
+        .limit(1);
+
+      if (!batch) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Batch not found",
+        });
+      }
+
+      // Calculate duration (assume 48 hours for forced carbonation if not specified)
+      const durationHours = "48.0";
+
+      // Calculate suggested pressure if temperature provided
+      let suggestedPressure = null;
+      if (input.temperature !== undefined) {
+        suggestedPressure = calculateRequiredPressure(
+          input.targetCo2Volumes,
+          input.temperature
+        );
+      }
+
+      const completedAt = input.completedAt || new Date();
+      const startedAt = new Date(new Date(completedAt).getTime() - 48 * 60 * 60 * 1000); // 48 hours before completion
+
+      // Create completed carbonation operation
+      const [carbonation] = await db
+        .insert(batchCarbonationOperations)
+        .values({
+          batchId: input.batchId,
+          vesselId: input.vesselId,
+          startedAt,
+          completedAt,
+          carbonationProcess: input.carbonationProcess,
+          targetCo2Volumes: input.targetCo2Volumes.toString(),
+          startingTemperature: input.temperature?.toString(),
+          startingCo2Volumes: "0",
+          finalCo2Volumes: input.finalCo2Volumes.toString(),
+          finalTemperature: input.temperature?.toString(),
+          pressureApplied: input.pressureApplied.toString(),
+          finalPressure: input.pressureApplied.toString(),
+          suggestedPressure: suggestedPressure?.toString(),
+          startingVolume: input.startingVolume.toString(),
+          finalVolume: input.finalVolume.toString(),
+          startingVolumeUnit: input.volumeUnit,
+          finalVolumeUnit: input.volumeUnit,
+          durationHours,
+          gasType: input.gasType,
+          qualityCheck: "pass",
+          performedBy: null, // TODO: Add user ID to session type
+          completedBy: null, // TODO: Add user ID to session type
+          notes: input.notes,
+          // Additive tracking
+          additivePurchaseId: input.additivePurchaseId,
+          primingSugarAmount: input.primingSugarAmount?.toString(),
+          primingSugarType: input.primingSugarType,
+        })
+        .returning();
+
+      return {
+        carbonation,
+        carbonationLevel: getCarbonationLevel(input.finalCo2Volumes),
+      };
+    }),
 });
