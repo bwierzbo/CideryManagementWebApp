@@ -20,7 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { Flame, Info, Loader2 } from "lucide-react";
 
 const pasteurizeSchema = z.object({
-  temperatureCelsius: z.number().min(60, "Temperature must be at least 60°C").max(100, "Temperature must be at most 100°C"),
+  temperatureCelsius: z.number().min(0, "Temperature must be positive").max(100, "Temperature must be at most 100°C"),
   timeMinutes: z.number().positive("Time must be positive").max(120, "Time must be at most 120 minutes"),
   notes: z.string().optional(),
 });
@@ -44,6 +44,37 @@ interface PasteurizeModalProps {
 function calculatePU(temperatureCelsius: number, timeMinutes: number): number {
   const PU = timeMinutes * Math.pow(1.393, temperatureCelsius - 60);
   return Math.round(PU * 100) / 100; // Round to 2 decimal places
+}
+
+/**
+ * Get color coding for PU value
+ * >30 = green (optimal)
+ * 15-30 = yellow (acceptable)
+ * <15 = red (insufficient)
+ */
+function getPUColor(pu: number): { bg: string; border: string; text: string; textBold: string } {
+  if (pu > 30) {
+    return {
+      bg: "bg-green-50",
+      border: "border-green-200",
+      text: "text-green-700",
+      textBold: "text-green-600",
+    };
+  } else if (pu >= 15) {
+    return {
+      bg: "bg-yellow-50",
+      border: "border-yellow-200",
+      text: "text-yellow-700",
+      textBold: "text-yellow-600",
+    };
+  } else {
+    return {
+      bg: "bg-red-50",
+      border: "border-red-200",
+      text: "text-red-700",
+      textBold: "text-red-600",
+    };
+  }
 }
 
 export function PasteurizeModal({
@@ -184,21 +215,29 @@ export function PasteurizeModal({
           </div>
 
           {/* Calculated PU */}
-          {calculatedPU > 0 && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-orange-900">
-                  Pasteurization Units (PU):
-                </span>
-                <span className="text-lg font-bold text-orange-600">
-                  {calculatedPU.toFixed(2)}
-                </span>
+          {calculatedPU > 0 && (() => {
+            const colors = getPUColor(calculatedPU);
+            return (
+              <div className={`${colors.bg} border ${colors.border} rounded-lg p-3`}>
+                <div className="flex items-center justify-between">
+                  <span className={`text-sm font-medium ${colors.text}`}>
+                    Pasteurization Units (PU):
+                  </span>
+                  <span className={`text-lg font-bold ${colors.textBold}`}>
+                    {calculatedPU.toFixed(2)}
+                  </span>
+                </div>
+                <p className={`text-xs ${colors.text} mt-1`}>
+                  Formula: PU = {timeMinutes} × 1.393^({temperatureCelsius} - 60)
+                </p>
+                <p className={`text-xs font-medium ${colors.text} mt-2`}>
+                  {calculatedPU > 30 && "✓ Optimal pasteurization"}
+                  {calculatedPU >= 15 && calculatedPU <= 30 && "⚠ Acceptable pasteurization"}
+                  {calculatedPU < 15 && "✗ Insufficient pasteurization"}
+                </p>
               </div>
-              <p className="text-xs text-orange-700 mt-1">
-                Formula: PU = {timeMinutes} × 1.393^({temperatureCelsius} - 60)
-              </p>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Notes */}
           <div className="space-y-2">
