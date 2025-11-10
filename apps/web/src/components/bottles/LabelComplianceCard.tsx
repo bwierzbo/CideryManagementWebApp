@@ -95,24 +95,18 @@ export function LabelComplianceCard({
     }
   }
 
-  // Try to get pH from measurements first, then from composition (juice purchases)
-  let latestPH = latestMeasurement?.ph ?? null;
-
-  console.log("🔬 Debug pH:", {
-    measurements,
-    latestMeasurement,
-    latestPH,
-    composition
-  });
+  // Try to get pH from measurements - find first measurement with a pH value
+  const measurementWithPH = measurements?.find(m => m.ph !== null && m.ph !== undefined);
+  let latestPH = measurementWithPH?.ph ?? null;
 
   // If no pH in measurements, check composition (for juice purchases)
   if (latestPH === null && composition && composition.length > 0) {
     const compositionWithPH = composition.find(c => c.ph !== null && c.ph !== undefined);
     if (compositionWithPH?.ph) {
       latestPH = compositionWithPH.ph;
-      console.log("🔬 Using pH from composition:", latestPH);
     }
   }
+
   const latestSG = latestMeasurement?.specificGravity ?? null;
 
   // Carbonation display state - toggle between volumes and g/L
