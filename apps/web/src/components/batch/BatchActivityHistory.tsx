@@ -172,12 +172,12 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
           >
             {isReversed ? (
               <>
-                <ArrowUp className="h-4 w-4" />
+                <ArrowLeft className="h-4 w-4" />
                 Oldest First
               </>
             ) : (
               <>
-                <ArrowDown className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
                 Newest First
               </>
             )}
@@ -185,11 +185,12 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <div className="relative">
-          {/* Timeline line */}
-          <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
+        {/* Horizontal scrollable timeline */}
+        <div className="relative overflow-x-auto pb-4">
+          {/* Horizontal timeline line */}
+          <div className="absolute left-0 right-0 top-5 h-0.5 bg-border" />
 
-          <div className="space-y-6">
+          <div className="flex gap-8 min-w-max px-4">
             {sortedActivities.map((activity, index) => {
               const Icon =
                 activityIcons[activity.type as keyof typeof activityIcons] ||
@@ -201,172 +202,226 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
               const hasDetails = activity.details && typeof activity.details === "object" && Object.keys(activity.details).length > 0;
 
               return (
-                <div key={activity.id} className="relative flex gap-4">
+                <div key={activity.id} className="relative flex flex-col items-center min-w-[200px]">
                   {/* Timeline dot */}
                   <div
                     className={cn(
-                      "relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 bg-background",
+                      "relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 bg-background mb-3",
                       colorClass,
                     )}
                   >
                     <Icon className="h-5 w-5" />
                   </div>
 
-                  {/* Content */}
-                  <div className="flex-1 pt-1">
-                    <div
-                      className={cn(
-                        "flex items-start justify-between gap-2",
-                        hasDetails && "cursor-pointer hover:bg-gray-50 rounded-lg p-2 -ml-2 transition-colors"
-                      )}
-                      onClick={() => hasDetails && toggleActivity(activity.id)}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge
-                            variant="outline"
-                            className={cn("text-xs", colorClass)}
-                          >
-                            {activity.type}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {format(
-                              new Date(activity.timestamp),
-                              "MMM dd, yyyy 'at' h:mm a",
+                  {/* Content Card */}
+                  <div
+                    className={cn(
+                      "w-full border rounded-lg p-3 bg-background shadow-sm",
+                      hasDetails && "cursor-pointer hover:shadow-md transition-shadow"
+                    )}
+                    onClick={() => hasDetails && toggleActivity(activity.id)}
+                  >
+                    <div className="space-y-2">
+                      <Badge
+                        variant="outline"
+                        className={cn("text-xs", colorClass)}
+                      >
+                        {activity.type}
+                      </Badge>
+
+                      <p className="text-xs text-muted-foreground">
+                        {format(
+                          new Date(activity.timestamp),
+                          "MMM dd, yyyy",
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(
+                          new Date(activity.timestamp),
+                          "h:mm a",
+                        )}
+                      </p>
+
+                      <p className="font-medium text-sm">
+                        {activity.description}
+                      </p>
+
+                      {isExpanded && activity.details &&
+                        typeof activity.details === "object" && (
+                          <div className="mt-3 pt-3 border-t space-y-1 text-xs">
+                            {activity.details.values && (
+                              <div className="text-muted-foreground">
+                                {activity.details.values}
+                              </div>
                             )}
-                          </span>
-                        </div>
-
-                        <p className="font-medium text-sm">
-                          {activity.description}
-                        </p>
-
-                        {isExpanded && activity.details &&
-                          typeof activity.details === "object" && (
-                            <div className="mt-2 space-y-1">
-                              {activity.details.values && (
-                                <div className="text-sm text-muted-foreground">
-                                  {activity.details.values}
+                            {activity.details.amount && (
+                              <div className="text-muted-foreground">
+                                Amount: {activity.details.amount}
+                              </div>
+                            )}
+                            {activity.details.volumeAdded && (
+                              <div className="text-muted-foreground">
+                                Added: {activity.details.volumeAdded}
+                              </div>
+                            )}
+                            {activity.details.volumeChange && (
+                              <div className="text-muted-foreground">
+                                Volume: {activity.details.volumeChange}
+                              </div>
+                            )}
+                            {activity.details.direction && (
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                {activity.details.direction === "incoming" ? (
+                                  <>
+                                    <ArrowLeft className="h-3 w-3" />
+                                    <span>Incoming</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <ArrowRight className="h-3 w-3" />
+                                    <span>Outgoing</span>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                            {activity.details.notes && (
+                              <div className="text-muted-foreground italic">
+                                {activity.details.notes}
+                              </div>
+                            )}
+                            {activity.details.initialVolume && (
+                              <div className="text-muted-foreground">
+                                Initial: {activity.details.initialVolume}
+                                {activity.details.vessel && ` in ${activity.details.vessel}`}
+                              </div>
+                            )}
+                            {activity.details.filterType && (
+                              <div className="space-y-1">
+                                <div className="text-muted-foreground capitalize">
+                                  {activity.details.filterType}
                                 </div>
-                              )}
-                              {activity.details.amount && (
-                                <div className="text-sm text-muted-foreground">
-                                  Amount: {activity.details.amount}
-                                </div>
-                              )}
-                              {activity.details.volumeAdded && (
-                                <div className="text-sm text-muted-foreground">
-                                  Added: {activity.details.volumeAdded}
-                                </div>
-                              )}
-                              {activity.details.volumeChange && (
-                                <div className="text-sm text-muted-foreground">
-                                  Volume: {activity.details.volumeChange}
-                                </div>
-                              )}
-                              {activity.details.direction && (
-                                <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                  {activity.details.direction === "incoming" ? (
-                                    <>
-                                      <ArrowLeft className="h-3 w-3" />
-                                      <span>Incoming transfer</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <ArrowRight className="h-3 w-3" />
-                                      <span>Outgoing transfer</span>
-                                    </>
-                                  )}
-                                </div>
-                              )}
-                              {activity.details.notes && (
-                                <div className="text-sm text-muted-foreground italic">
-                                  Note: {activity.details.notes}
-                                </div>
-                              )}
-                              {activity.details.initialVolume && (
-                                <div className="text-sm text-muted-foreground">
-                                  Initial volume:{" "}
-                                  {activity.details.initialVolume}
-                                  {activity.details.vessel
-                                    ? ` in ${activity.details.vessel}`
-                                    : ""}
-                                </div>
-                              )}
-                              {activity.details.filterType && (
-                                <div className="space-y-1">
-                                  <div className="text-sm text-muted-foreground capitalize">
-                                    Filter Type: <span className="font-medium">{activity.details.filterType}</span>
+                                {activity.details.volumeBefore && (
+                                  <div className="text-muted-foreground">
+                                    Before: {activity.details.volumeBefore}
                                   </div>
-                                  {activity.details.volumeBefore && (
-                                    <div className="text-sm text-muted-foreground">
-                                      Before: {activity.details.volumeBefore}
-                                    </div>
-                                  )}
-                                  {activity.details.volumeAfter && (
-                                    <div className="text-sm text-muted-foreground">
-                                      After: {activity.details.volumeAfter}
-                                    </div>
-                                  )}
-                                  {activity.details.volumeLoss && (
-                                    <div className="text-sm text-muted-foreground">
-                                      Loss: <span className="text-red-600 font-medium">{activity.details.volumeLoss}</span>
-                                      {activity.details.lossPercentage && (
-                                        <span className="ml-1">({activity.details.lossPercentage})</span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {activity.details.fromVessel && activity.details.toVessel && (
-                                <div className="space-y-1">
-                                  {activity.details.volumeBefore && (
-                                    <div className="text-sm text-muted-foreground">
-                                      Before: {activity.details.volumeBefore}
-                                    </div>
-                                  )}
-                                  {activity.details.volumeAfter && (
-                                    <div className="text-sm text-muted-foreground">
-                                      After: {activity.details.volumeAfter}
-                                    </div>
-                                  )}
-                                  {activity.details.volumeLoss && (
-                                    <div className="text-sm text-muted-foreground">
-                                      Loss: <span className="text-red-600 font-medium">{activity.details.volumeLoss}</span>
-                                      {activity.details.lossPercentage && (
-                                        <span className="ml-1">({activity.details.lossPercentage})</span>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                )}
+                                {activity.details.volumeAfter && (
+                                  <div className="text-muted-foreground">
+                                    After: {activity.details.volumeAfter}
+                                  </div>
+                                )}
+                                {activity.details.volumeLoss && (
+                                  <div className="text-muted-foreground">
+                                    Loss: <span className="text-red-600 font-medium">{activity.details.volumeLoss}</span>
+                                    {activity.details.lossPercentage && ` (${activity.details.lossPercentage})`}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {activity.details.fromVessel && activity.details.toVessel && (
+                              <div className="space-y-1">
+                                {activity.details.volumeBefore && (
+                                  <div className="text-muted-foreground">
+                                    Before: {activity.details.volumeBefore}
+                                  </div>
+                                )}
+                                {activity.details.volumeAfter && (
+                                  <div className="text-muted-foreground">
+                                    After: {activity.details.volumeAfter}
+                                  </div>
+                                )}
+                                {activity.details.volumeLoss && (
+                                  <div className="text-muted-foreground">
+                                    Loss: <span className="text-red-600 font-medium">{activity.details.volumeLoss}</span>
+                                    {activity.details.lossPercentage && ` (${activity.details.lossPercentage})`}
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
-                              {/* Edit button for measurements and additives */}
-                              {(activity.type === "measurement" || activity.type === "additive") && activity.metadata && (
-                                <div className="mt-2 pt-2 border-t">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (activity.type === "measurement") {
-                                        setEditingMeasurement(activity.metadata);
-                                      } else if (activity.type === "additive") {
-                                        setEditingAdditive(activity.metadata);
-                                      }
-                                    }}
-                                    className="h-8"
-                                  >
-                                    <Pencil className="h-3 w-3 mr-2" />
-                                    Edit {activity.type === "measurement" ? "Measurement" : "Additive"}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                      </div>
+                            {/* Carbonation-specific details */}
+                            {activity.details.process && (
+                              <div className="text-muted-foreground capitalize">
+                                Process: {activity.details.process}
+                              </div>
+                            )}
+                            {activity.details.targetCo2 && (
+                              <div className="text-muted-foreground">
+                                Target: {activity.details.targetCo2}
+                              </div>
+                            )}
+                            {activity.details.finalCo2 && (
+                              <div className="text-muted-foreground">
+                                Final: {activity.details.finalCo2}
+                              </div>
+                            )}
+                            {activity.details.pressure && (
+                              <div className="text-muted-foreground">
+                                Pressure: {activity.details.pressure}
+                              </div>
+                            )}
+                            {activity.details.volume && (
+                              <div className="text-muted-foreground">
+                                Volume: {activity.details.volume}
+                              </div>
+                            )}
+                            {activity.details.status && (
+                              <div className="text-muted-foreground capitalize">
+                                Status: {activity.details.status}
+                              </div>
+                            )}
+
+                            {/* Pasteurization-specific details */}
+                            {activity.details.temperature && (
+                              <div className="text-muted-foreground">
+                                Temp: {activity.details.temperature}
+                              </div>
+                            )}
+                            {activity.details.time && (
+                              <div className="text-muted-foreground">
+                                Time: {activity.details.time}
+                              </div>
+                            )}
+                            {activity.details.pasteurizationUnits && (
+                              <div className="text-muted-foreground">
+                                PU: {activity.details.pasteurizationUnits}
+                              </div>
+                            )}
+
+                            {/* Labeling-specific details */}
+                            {activity.details.unitsLabeled && (
+                              <div className="text-muted-foreground">
+                                Units: {activity.details.unitsLabeled}
+                              </div>
+                            )}
+
+                            {/* Edit button for measurements and additives */}
+                            {(activity.type === "measurement" || activity.type === "additive") && activity.metadata && (
+                              <div className="mt-2 pt-2 border-t">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (activity.type === "measurement") {
+                                      setEditingMeasurement(activity.metadata);
+                                    } else if (activity.type === "additive") {
+                                      setEditingAdditive(activity.metadata);
+                                    }
+                                  }}
+                                  className="h-7 text-xs"
+                                >
+                                  <Pencil className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                      {/* Expand/Collapse indicator */}
                       {hasDetails && (
-                        <div className="flex-shrink-0 ml-2">
+                        <div className="mt-2 flex justify-center">
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           ) : (
