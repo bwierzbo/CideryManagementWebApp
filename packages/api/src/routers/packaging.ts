@@ -1127,7 +1127,7 @@ export const bottlesRouter = router({
     .input(
       z.object({
         runId: z.string().uuid(),
-        temperatureCelsius: z.number().min(60).max(100),
+        temperatureCelsius: z.number().min(0).max(100),
         timeMinutes: z.number().positive().max(120),
         pasteurizationUnits: z.number().positive(),
         notes: z.string().optional(),
