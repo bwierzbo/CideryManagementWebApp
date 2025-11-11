@@ -72,6 +72,13 @@ const listPackagingRunsSchema = z.object({
   direction: z.enum(["forward", "backward"]).default("forward"),
 });
 
+const updateBottleRunDatesSchema = z.object({
+  runId: z.string().uuid("Invalid bottle run ID"),
+  packagedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  pasteurizedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  labeledAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+});
+
 /**
  * Generates a lot code for inventory items
  * Format: {BATCH_NAME}-{YYYYMMDD}-{RUN_SEQUENCE}
@@ -1303,6 +1310,58 @@ export const bottlesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to apply labels",
+        });
+      }
+    }),
+
+  /**
+   * Update bottle run dates (packaged, pasteurized, labeled)
+   */
+  updateBottleRunDates: createRbacProcedure("update", "package")
+    .input(updateBottleRunDatesSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify bottle run exists
+        const existingRun = await db
+          .select()
+          .from(bottleRuns)
+          .where(eq(bottleRuns.id, input.runId))
+          .limit(1);
+
+        if (!existingRun.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Bottle run not found",
+          });
+        }
+
+        // Build update object with only provided dates
+        const updateData: any = {
+          updatedAt: new Date(),
+        };
+
+        if (input.packagedAt) updateData.packagedAt = input.packagedAt;
+        if (input.pasteurizedAt !== undefined) updateData.pasteurizedAt = input.pasteurizedAt;
+        if (input.labeledAt !== undefined) updateData.labeledAt = input.labeledAt;
+
+        // Update bottle run
+        const updatedRun = await db
+          .update(bottleRuns)
+          .set(updateData)
+          .where(eq(bottleRuns.id, input.runId))
+          .returning();
+
+        return {
+          success: true,
+          bottleRun: updatedRun[0],
+          message: "Bottle run dates updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating bottle run dates:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update bottle run dates",
         });
       }
     }),

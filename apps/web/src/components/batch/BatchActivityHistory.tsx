@@ -44,6 +44,7 @@ import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
 import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
 import { EditAdditiveDialog } from "@/components/cellar/EditAdditiveDialog";
+import { EditDateDialog } from "@/components/cellar/EditDateDialog";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
 
 interface BatchActivityHistoryProps {
@@ -83,6 +84,12 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
   const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
   const [editingAdditive, setEditingAdditive] = useState<any>(null);
+  const [editingDate, setEditingDate] = useState<{
+    eventType: any;
+    eventId: string;
+    currentDate: Date | string;
+    label: string;
+  } | null>(null);
 
   const { data, isLoading, error, refetch } = trpc.batch.getActivityHistory.useQuery({
     batchId,
@@ -375,25 +382,210 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                                 </div>
                               )}
 
-                              {/* Edit button for measurements and additives */}
-                              {(activity.type === "measurement" || activity.type === "additive") && activity.metadata && (
+                              {/* Edit buttons for all event types */}
+                              {activity.metadata && (
                                 <div className="mt-2 pt-2 border-t">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (activity.type === "measurement") {
+                                  {activity.type === "measurement" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         setEditingMeasurement(activity.metadata);
-                                      } else if (activity.type === "additive") {
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Measurement
+                                    </Button>
+                                  )}
+                                  {activity.type === "additive" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         setEditingAdditive(activity.metadata);
-                                      }
-                                    }}
-                                    className="h-8"
-                                  >
-                                    <Pencil className="h-3 w-3 mr-2" />
-                                    Edit {activity.type === "measurement" ? "Measurement" : "Additive"}
-                                  </Button>
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Additive
+                                    </Button>
+                                  )}
+                                  {activity.type === "transfer" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingDate({
+                                          eventType: "transfer",
+                                          eventId: activity.metadata.id,
+                                          currentDate: activity.metadata.transferredAt,
+                                          label: "Transfer Date",
+                                        });
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Date
+                                    </Button>
+                                  )}
+                                  {activity.type === "rack" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingDate({
+                                          eventType: "rack",
+                                          eventId: activity.metadata.id,
+                                          currentDate: activity.metadata.rackedAt,
+                                          label: "Racking Date",
+                                        });
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Date
+                                    </Button>
+                                  )}
+                                  {activity.type === "filter" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingDate({
+                                          eventType: "filter",
+                                          eventId: activity.metadata.id,
+                                          currentDate: activity.metadata.filteredAt,
+                                          label: "Filter Date",
+                                        });
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Date
+                                    </Button>
+                                  )}
+                                  {activity.type === "merge" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingDate({
+                                          eventType: "merge",
+                                          eventId: activity.metadata.id,
+                                          currentDate: activity.metadata.mergedAt,
+                                          label: "Merge Date",
+                                        });
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Date
+                                    </Button>
+                                  )}
+                                  {activity.type === "carbonation" && (
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingDate({
+                                            eventType: "carbonation_start",
+                                            eventId: activity.metadata.id,
+                                            currentDate: activity.metadata.startedAt,
+                                            label: "Carbonation Start Date",
+                                          });
+                                        }}
+                                        className="h-8"
+                                      >
+                                        <Pencil className="h-3 w-3 mr-2" />
+                                        Edit Start Date
+                                      </Button>
+                                      {activity.metadata.completedAt && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setEditingDate({
+                                              eventType: "carbonation_complete",
+                                              eventId: activity.metadata.id,
+                                              currentDate: activity.metadata.completedAt,
+                                              label: "Carbonation Complete Date",
+                                            });
+                                          }}
+                                          className="h-8"
+                                        >
+                                          <Pencil className="h-3 w-3 mr-2" />
+                                          Edit Complete Date
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+                                  {activity.type === "bottling" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingDate({
+                                          eventType: "bottling",
+                                          eventId: activity.metadata.id,
+                                          currentDate: activity.metadata.packagedAt,
+                                          label: "Bottling Date",
+                                        });
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Date
+                                    </Button>
+                                  )}
+                                  {activity.type === "pasteurize" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingDate({
+                                          eventType: "pasteurize",
+                                          eventId: activity.metadata.id,
+                                          currentDate: activity.metadata.pasteurizedAt,
+                                          label: "Pasteurization Date",
+                                        });
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Date
+                                    </Button>
+                                  )}
+                                  {activity.type === "label" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingDate({
+                                          eventType: "label",
+                                          eventId: activity.metadata.id,
+                                          currentDate: activity.metadata.labeledAt,
+                                          label: "Labeling Date",
+                                        });
+                                      }}
+                                      className="h-8"
+                                    >
+                                      <Pencil className="h-3 w-3 mr-2" />
+                                      Edit Date
+                                    </Button>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -558,6 +750,21 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
           setEditingAdditive(null);
         }}
       />
+
+      {editingDate && (
+        <EditDateDialog
+          open={true}
+          onClose={() => setEditingDate(null)}
+          onSuccess={() => {
+            refetch();
+            setEditingDate(null);
+          }}
+          eventType={editingDate.eventType}
+          eventId={editingDate.eventId}
+          currentDate={editingDate.currentDate}
+          dateFieldLabel={editingDate.label}
+        />
+      )}
     </Card>
   );
 }

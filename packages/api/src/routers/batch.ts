@@ -97,6 +97,26 @@ const updateAdditiveSchema = z.object({
   addedBy: z.string().optional(),
 });
 
+const updateTransferSchema = z.object({
+  transferId: z.string().uuid("Invalid transfer ID"),
+  transferredAt: z.date().or(z.string().transform((val) => new Date(val))),
+});
+
+const updateRackingSchema = z.object({
+  rackingId: z.string().uuid("Invalid racking ID"),
+  rackedAt: z.date().or(z.string().transform((val) => new Date(val))),
+});
+
+const updateFilterSchema = z.object({
+  filterId: z.string().uuid("Invalid filter ID"),
+  filteredAt: z.date().or(z.string().transform((val) => new Date(val))),
+});
+
+const updateMergeSchema = z.object({
+  mergeId: z.string().uuid("Invalid merge ID"),
+  mergedAt: z.date().or(z.string().transform((val) => new Date(val))),
+});
+
 const filterBatchSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
   vesselId: z.string().uuid("Invalid vessel ID"),
@@ -1000,6 +1020,204 @@ export const batchRouter = router({
     }),
 
   /**
+   * Update transfer date
+   */
+  updateTransfer: createRbacProcedure("update", "batch")
+    .input(updateTransferSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify transfer exists
+        const existingTransfer = await db
+          .select()
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.id, input.transferId),
+              isNull(batchTransfers.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingTransfer.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Transfer not found",
+          });
+        }
+
+        // Update transfer
+        const updatedTransfer = await db
+          .update(batchTransfers)
+          .set({
+            transferredAt: input.transferredAt,
+            updatedAt: new Date(),
+          })
+          .where(eq(batchTransfers.id, input.transferId))
+          .returning();
+
+        return {
+          success: true,
+          transfer: updatedTransfer[0],
+          message: "Transfer date updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating transfer:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update transfer",
+        });
+      }
+    }),
+
+  /**
+   * Update racking date
+   */
+  updateRacking: createRbacProcedure("update", "batch")
+    .input(updateRackingSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify racking exists
+        const existingRacking = await db
+          .select()
+          .from(batchRackingOperations)
+          .where(
+            and(
+              eq(batchRackingOperations.id, input.rackingId),
+              isNull(batchRackingOperations.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingRacking.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Racking operation not found",
+          });
+        }
+
+        // Update racking
+        const updatedRacking = await db
+          .update(batchRackingOperations)
+          .set({
+            rackedAt: input.rackedAt,
+            updatedAt: new Date(),
+          })
+          .where(eq(batchRackingOperations.id, input.rackingId))
+          .returning();
+
+        return {
+          success: true,
+          racking: updatedRacking[0],
+          message: "Racking date updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating racking:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update racking",
+        });
+      }
+    }),
+
+  /**
+   * Update filter date
+   */
+  updateFilter: createRbacProcedure("update", "batch")
+    .input(updateFilterSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify filter exists
+        const existingFilter = await db
+          .select()
+          .from(batchFilterOperations)
+          .where(
+            and(
+              eq(batchFilterOperations.id, input.filterId),
+              isNull(batchFilterOperations.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingFilter.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Filter operation not found",
+          });
+        }
+
+        // Update filter
+        const updatedFilter = await db
+          .update(batchFilterOperations)
+          .set({
+            filteredAt: input.filteredAt,
+            updatedAt: new Date(),
+          })
+          .where(eq(batchFilterOperations.id, input.filterId))
+          .returning();
+
+        return {
+          success: true,
+          filter: updatedFilter[0],
+          message: "Filter date updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating filter:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update filter",
+        });
+      }
+    }),
+
+  /**
+   * Update merge date
+   */
+  updateMerge: createRbacProcedure("update", "batch")
+    .input(updateMergeSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify merge exists
+        const existingMerge = await db
+          .select()
+          .from(batchMergeHistory)
+          .where(eq(batchMergeHistory.id, input.mergeId))
+          .limit(1);
+
+        if (!existingMerge.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Merge operation not found",
+          });
+        }
+
+        // Update merge
+        const updatedMerge = await db
+          .update(batchMergeHistory)
+          .set({
+            mergedAt: input.mergedAt,
+          })
+          .where(eq(batchMergeHistory.id, input.mergeId))
+          .returning();
+
+        return {
+          success: true,
+          merge: updatedMerge[0],
+          message: "Merge date updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating merge:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update merge",
+        });
+      }
+    }),
+
+  /**
    * Update batch status and metadata
    */
   update: createRbacProcedure("update", "batch")
@@ -1317,6 +1535,7 @@ export const batchRouter = router({
               volumeChange: `${m.targetVolumeBefore}${m.targetVolumeBeforeUnit || 'L'} → ${m.targetVolumeAfter}${m.targetVolumeAfterUnit || 'L'}`,
               notes: m.notes || null,
             },
+            metadata: { id: m.id, mergedAt: m.mergedAt },
           });
         });
 
@@ -1386,6 +1605,7 @@ export const batchRouter = router({
                 toVessel: t.destVesselName || null,
                 notes: t.notes || null,
               },
+              metadata: { id: t.id, transferredAt: t.transferredAt },
             });
           } else {
             // Traditional transfer: different batches involved
@@ -1402,6 +1622,7 @@ export const batchRouter = router({
                 direction: isSource ? "outgoing" : "incoming",
                 notes: t.notes || null,
               },
+              metadata: { id: t.id, transferredAt: t.transferredAt },
             });
           }
         });
@@ -1453,6 +1674,7 @@ export const batchRouter = router({
               fromVessel: r.sourceVesselName || null,
               toVessel: r.destVesselName || null,
             },
+            metadata: { id: r.id, rackedAt: r.rackedAt },
           });
         });
 
@@ -1490,6 +1712,7 @@ export const batchRouter = router({
               volumeLoss: `${f.volumeLoss}L`,
               lossPercentage: `${((parseFloat(f.volumeLoss) / parseFloat(f.volumeBefore)) * 100).toFixed(1)}%`,
             },
+            metadata: { id: f.id, filteredAt: f.filteredAt },
           });
         });
 
@@ -1534,6 +1757,7 @@ export const batchRouter = router({
               volume: `${c.startingVolume}${c.startingVolumeUnit || 'L'}`,
               status: isCompleted ? 'completed' : 'in progress',
             },
+            metadata: { id: c.id, startedAt: c.startedAt, completedAt: c.completedAt },
           });
         });
 
@@ -1573,6 +1797,7 @@ export const batchRouter = router({
               packageSize: `${b.packageSizeML}mL`,
               volumeTaken: `${b.volumeTaken}${b.volumeTakenUnit || 'L'}`,
             },
+            metadata: { id: b.id, packagedAt: b.packagedAt },
           });
 
           // Add pasteurization event if pasteurized
@@ -1587,6 +1812,7 @@ export const batchRouter = router({
                 time: `${b.pasteurizationTimeMinutes} min`,
                 pasteurizationUnits: `${b.pasteurizationUnits} PU`,
               },
+              metadata: { id: b.id, pasteurizedAt: b.pasteurizedAt },
             });
           }
 
@@ -1600,6 +1826,7 @@ export const batchRouter = router({
               details: {
                 unitsLabeled: b.unitsProduced,
               },
+              metadata: { id: b.id, labeledAt: b.labeledAt },
             });
           }
         });

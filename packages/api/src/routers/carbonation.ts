@@ -568,4 +568,66 @@ export const carbonationRouter = router({
         carbonationLevel: getCarbonationLevel(input.finalCo2Volumes),
       };
     }),
+
+  /**
+   * Update carbonation dates
+   */
+  updateCarbonation: createRbacProcedure("update", "carbonation")
+    .input(
+      z.object({
+        carbonationId: z.string().uuid("Invalid carbonation ID"),
+        startedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        completedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      try {
+        // Verify carbonation operation exists
+        const existingCarbonation = await db
+          .select()
+          .from(batchCarbonationOperations)
+          .where(
+            and(
+              eq(batchCarbonationOperations.id, input.carbonationId),
+              isNull(batchCarbonationOperations.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingCarbonation.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Carbonation operation not found",
+          });
+        }
+
+        // Build update object with only provided dates
+        const updateData: any = {
+          updatedAt: new Date(),
+        };
+
+        if (input.startedAt) updateData.startedAt = input.startedAt;
+        if (input.completedAt !== undefined) updateData.completedAt = input.completedAt;
+
+        // Update carbonation operation
+        const updatedCarbonation = await db
+          .update(batchCarbonationOperations)
+          .set(updateData)
+          .where(eq(batchCarbonationOperations.id, input.carbonationId))
+          .returning();
+
+        return {
+          success: true,
+          carbonation: updatedCarbonation[0],
+          message: "Carbonation dates updated successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating carbonation:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update carbonation",
+        });
+      }
+    }),
 });
