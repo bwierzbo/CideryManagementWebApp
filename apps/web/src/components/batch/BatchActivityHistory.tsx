@@ -152,7 +152,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   }
 
   return (
-    <Card className="w-full">
+    <Card className="w-full overflow-hidden">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -184,10 +184,10 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 overflow-hidden">
         {/* Horizontal scrollable timeline */}
-        <div className="relative overflow-x-auto pb-4 px-6 max-w-full">
-          <div className="flex gap-8 pb-2 w-max relative">
+        <div className="relative overflow-x-scroll pb-4 px-6">
+          <div className="flex gap-8 pb-2 w-max min-w-0 relative">
             {/* Horizontal timeline line - spans entire scrollable width */}
             <div className="absolute left-0 right-0 top-5 h-0.5 bg-border pointer-events-none" />
             {sortedActivities.map((activity, index) => {
