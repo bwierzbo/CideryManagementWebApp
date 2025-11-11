@@ -152,7 +152,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   }
 
   return (
-    <Card>
+    <Card className="w-full">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -184,13 +184,12 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="overflow-hidden">
+      <CardContent className="p-0">
         {/* Horizontal scrollable timeline */}
-        <div className="relative overflow-x-auto overflow-y-visible pb-4 -mx-6 px-6">
-          {/* Horizontal timeline line */}
-          <div className="absolute left-0 top-5 h-0.5 bg-border" style={{ width: '100%', minWidth: 'max-content' }} />
-
-          <div className="flex gap-8 pb-2" style={{ minWidth: 'max-content' }}>
+        <div className="relative overflow-x-auto pb-4 px-6 max-w-full">
+          <div className="flex gap-8 pb-2 w-max relative">
+            {/* Horizontal timeline line - spans entire scrollable width */}
+            <div className="absolute left-0 right-0 top-5 h-0.5 bg-border pointer-events-none" />
             {sortedActivities.map((activity, index) => {
               const Icon =
                 activityIcons[activity.type as keyof typeof activityIcons] ||
@@ -439,7 +438,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
 
         {/* Summary stats */}
         {batch && (
-          <div className="mt-8 pt-6 border-t">
+          <div className="mt-8 pt-6 border-t px-6">
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Current Status:</span>
