@@ -28,15 +28,17 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 
+const kegVolumeSchema = z.object({
+  kegId: z.string().uuid(),
+  volumeTaken: z.number().positive("Volume must be positive"),
+});
+
 const fillKegsSchema = z.object({
-  kegIds: z.array(z.string().uuid()).min(1, "Select at least one keg"),
+  kegVolumes: z.array(kegVolumeSchema).min(1, "Select at least one keg"),
   filledAt: z.string().min(1, "Date/time is required"),
-  volumeTakenPerKeg: z.number().positive("Volume must be positive"),
   volumeTakenUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]),
   loss: z.number().min(0).optional(),
   lossUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]),
-  abvAtPackaging: z.number().min(0).max(20).optional(),
-  carbonationLevel: z.enum(["still", "petillant", "sparkling"]).optional(),
   carbonationMethod: z.enum(["natural", "forced", "none"]).optional(),
   productionNotes: z.string().optional(),
 });
@@ -76,11 +78,16 @@ const KegItem = React.memo(({ keg, isSelected, onToggle }: {
       }`}
       onClick={handleClick}
     >
-      <Checkbox
-        checked={isSelected}
-        onCheckedChange={() => {}} // No-op since we handle clicks on parent div
-        className="pointer-events-none"
-      />
+      {/* Simple checkbox visual instead of Checkbox component */}
+      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+        isSelected ? "border-blue-500 bg-blue-500" : "border-gray-300"
+      }`}>
+        {isSelected && (
+          <svg className="w-3 h-3 text-white" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
+            <path d="M5 13l4 4L19 7"></path>
+          </svg>
+        )}
+      </div>
       <div className="flex-1">
         <p className="font-semibold">{keg.kegNumber}</p>
         <p className="text-sm text-gray-600">
@@ -108,6 +115,7 @@ export function FillKegModal({
 }: FillKegModalProps) {
   console.log('[FillKegModal] Render - open:', open);
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
+  const [kegVolumes, setKegVolumes] = useState<Record<string, number>>({});
 
   const {
     register,
@@ -126,7 +134,6 @@ export function FillKegModal({
     },
   });
 
-  const volumeTakenPerKeg = watch("volumeTakenPerKeg");
   const utils = trpc.useUtils();
 
   // Get available kegs with query stabilization to prevent infinite refetches
@@ -151,6 +158,7 @@ export function FillKegModal({
       utils.kegs.getAvailableKegs.invalidate();
       reset();
       setSelectedKegIds([]);
+      setKegVolumes({});
       onClose();
     },
     onError: (error) => {
@@ -162,25 +170,44 @@ export function FillKegModal({
     },
   });
 
-  // Reset selected kegs when modal closes
+  // Reset selected kegs and volumes when modal closes
   useEffect(() => {
     if (!open) {
       setSelectedKegIds([]);
+      setKegVolumes({});
     }
   }, [open]);
 
-  // Stable toggle handler - MUST NOT have any dependencies that change
-  const handleKegToggle = React.useRef((kegId: string) => {
+  // Memoized toggle handler with stable reference using useCallback
+  const handleKegToggle = React.useCallback((kegId: string) => {
     console.log('[FillKegModal] handleKegToggle called with:', kegId);
+
+    // Check current state before toggling
     setSelectedKegIds((prev) => {
-      console.log('[FillKegModal] Previous selectedKegIds:', prev);
-      const next = prev.includes(kegId)
+      const isCurrentlySelected = prev.includes(kegId);
+      const next = isCurrentlySelected
         ? prev.filter((id) => id !== kegId)
         : [...prev, kegId];
-      console.log('[FillKegModal] Next selectedKegIds:', next);
+
+      // Handle volume auto-fill/removal based on current state
+      if (!isCurrentlySelected) {
+        // About to select - auto-fill with keg capacity
+        const keg = availableKegs.find(k => k.id === kegId);
+        if (keg) {
+          const capacityL = keg.capacityML / 1000;
+          setKegVolumes(volumes => ({...volumes, [kegId]: capacityL}));
+        }
+      } else {
+        // About to deselect - remove volume
+        setKegVolumes(volumes => {
+          const {[kegId]: _, ...rest} = volumes;
+          return rest;
+        });
+      }
+
       return next;
     });
-  }).current;
+  }, [availableKegs]);
 
   const handleOpenChange = useCallback((isOpen: boolean) => {
     if (!isOpen) {
@@ -188,42 +215,41 @@ export function FillKegModal({
     }
   }, [onClose]); // Now safe - parent memoizes onClose
 
-  const handleCarbonationLevelChange = useCallback((value: string) => {
-    setValue("carbonationLevel", value as any);
-  }, [setValue]); // setValue is stable from react-hook-form
-
   const onSubmit = (data: FillKegsForm) => {
-    // Use selectedKegIds state directly instead of form data
-    if (selectedKegIds.length === 0) {
+    // Build keg volumes array from state
+    const kegVolumesArray = selectedKegIds.map(kegId => ({
+      kegId,
+      volumeTaken: kegVolumes[kegId] || 0,
+    }));
+
+    // Validate that all kegs have volumes
+    if (kegVolumesArray.some(kv => kv.volumeTaken <= 0)) {
       toast({
         title: "Error",
-        description: "Please select at least one keg",
+        description: "Please enter a volume for all selected kegs",
         variant: "destructive",
       });
       return;
     }
 
     fillKegsMutation.mutate({
-      kegIds: selectedKegIds, // Use state directly
+      kegVolumes: kegVolumesArray,
       batchId,
       vesselId,
       filledAt: new Date(data.filledAt),
-      volumeTakenPerKeg: data.volumeTakenPerKeg,
       volumeTakenUnit: data.volumeTakenUnit,
       loss: data.loss,
       lossUnit: data.lossUnit,
-      abvAtPackaging: data.abvAtPackaging,
-      carbonationLevel: data.carbonationLevel,
       carbonationMethod: data.carbonationMethod,
       productionNotes: data.productionNotes,
     });
   };
 
   // Calculate total volume to be taken
-  const totalVolumeTaken =
-    volumeTakenPerKeg && selectedKegIds.length
-      ? volumeTakenPerKeg * selectedKegIds.length
-      : 0;
+  const totalVolumeTaken = selectedKegIds.reduce(
+    (sum, kegId) => sum + (kegVolumes[kegId] || 0),
+    0
+  );
   const exceedsCapacity = totalVolumeTaken > currentVolumeL;
 
   return (
@@ -271,12 +297,6 @@ export function FillKegModal({
               </div>
             )}
 
-            {errors.kegIds && (
-              <p className="text-sm text-red-600 mt-2">
-                {errors.kegIds.message}
-              </p>
-            )}
-
             {selectedKegIds.length > 0 && (
               <p className="text-sm text-gray-600 mt-2">
                 Selected: {selectedKegIds.length} keg(s)
@@ -284,96 +304,86 @@ export function FillKegModal({
             )}
           </div>
 
+          {/* Individual Keg Volumes */}
+          {selectedKegIds.length > 0 && (
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold">Keg Fill Volumes</h3>
+                {totalVolumeTaken > 0 && (
+                  <p
+                    className={`text-sm ${exceedsCapacity ? "text-red-600 font-semibold" : "text-gray-600"}`}
+                  >
+                    Total: {totalVolumeTaken.toFixed(1)}L / {currentVolumeL.toFixed(1)}L
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto border rounded-lg p-3">
+                {selectedKegIds.map((kegId) => {
+                  const keg = availableKegs.find(k => k.id === kegId);
+                  if (!keg) return null;
+
+                  return (
+                    <div key={kegId} className="flex items-center gap-3 p-2 bg-gray-50 rounded">
+                      <div className="flex-1">
+                        <p className="font-semibold text-sm">{keg.kegNumber}</p>
+                        <p className="text-xs text-gray-600">
+                          Capacity: {(keg.capacityML / 1000).toFixed(1)}L
+                        </p>
+                      </div>
+                      <div className="w-28">
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="Volume (L)"
+                          value={kegVolumes[kegId] ?? ''}
+                          onChange={(e) => {
+                            const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                            if (!isNaN(value)) {
+                              setKegVolumes(prev => ({...prev, [kegId]: value}));
+                            }
+                          }}
+                          className="text-right"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Warning if exceeds capacity */}
+              {exceedsCapacity && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                  <p className="text-sm text-red-800">
+                    Total volume ({totalVolumeTaken.toFixed(1)}L) exceeds vessel
+                    capacity ({currentVolumeL.toFixed(1)}L)
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Fill Details */}
           <div className="space-y-4 border-t pt-4">
             <h3 className="font-semibold">Fill Details</h3>
 
-            <div className="grid grid-cols-2 gap-4">
-              {/* Fill Date/Time */}
-              <div>
-                <Label htmlFor="filledAt">
-                  Fill Date/Time <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="filledAt"
-                  type="datetime-local"
-                  {...register("filledAt")}
-                  className="mt-1"
-                />
-                {errors.filledAt && (
-                  <p className="text-sm text-red-600 mt-1">
-                    {errors.filledAt.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Volume Per Keg */}
-              <div>
-                <Label htmlFor="volumeTakenPerKeg">
-                  Volume Per Keg (L) <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="volumeTakenPerKeg"
-                  type="number"
-                  step="0.1"
-                  {...register("volumeTakenPerKeg", { valueAsNumber: true })}
-                  className="mt-1"
-                />
-                {totalVolumeTaken > 0 && (
-                  <p
-                    className={`text-xs mt-1 ${exceedsCapacity ? "text-red-600" : "text-gray-500"}`}
-                  >
-                    Total: {totalVolumeTaken.toFixed(1)}L
-                    {exceedsCapacity && " - Exceeds vessel capacity!"}
-                  </p>
-                )}
-                {errors.volumeTakenPerKeg && (
-                  <p className="text-sm text-red-600 mt-1">
-                    {errors.volumeTakenPerKeg.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Warning if exceeds capacity */}
-            {exceedsCapacity && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
-                <p className="text-sm text-red-800">
-                  Total volume ({totalVolumeTaken.toFixed(1)}L) exceeds vessel
-                  capacity ({currentVolumeL.toFixed(1)}L)
+            {/* Fill Date/Time */}
+            <div>
+              <Label htmlFor="filledAt">
+                Fill Date/Time <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="filledAt"
+                type="datetime-local"
+                {...register("filledAt")}
+                className="mt-1"
+              />
+              {errors.filledAt && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.filledAt.message}
                 </p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              {/* ABV */}
-              <div>
-                <Label htmlFor="abvAtPackaging">ABV (%)</Label>
-                <Input
-                  id="abvAtPackaging"
-                  type="number"
-                  step="0.1"
-                  placeholder="0.0"
-                  {...register("abvAtPackaging", { valueAsNumber: true })}
-                  className="mt-1"
-                />
-              </div>
-
-              {/* Carbonation Level */}
-              <div>
-                <Label htmlFor="carbonationLevel">Carbonation Level</Label>
-                <Select onValueChange={handleCarbonationLevelChange}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="still">Still</SelectItem>
-                    <SelectItem value="petillant">Petillant</SelectItem>
-                    <SelectItem value="sparkling">Sparkling</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              )}
             </div>
 
             {/* Production Notes */}

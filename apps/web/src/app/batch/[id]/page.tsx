@@ -544,8 +544,7 @@ export default function BatchDetailsPage() {
                   (batch.status === "conditioning" ||
                     batch.status === "aging" ||
                     batch.status === "completed") &&
-                  batch.vesselId &&
-                  batch.vesselIsPressureVessel === "yes"
+                  batch.vesselId
                 )
               }
             >
@@ -987,18 +986,14 @@ export default function BatchDetailsPage() {
                   {batch.status === "conditioning" ||
                   batch.status === "aging" ||
                   batch.status === "completed" ? (
-                    batch.vesselId && batch.vesselIsPressureVessel === "yes" ? (
+                    batch.vesselId ? (
                       <Button
                         onClick={() => setShowCarbonateModal(true)}
                         size="sm"
                       >
                         <Sparkles className="w-4 h-4 mr-2" />
-                        Start Carbonation
+                        {batch.vesselIsPressureVessel === "yes" ? "Start Carbonation" : "Add Priming Sugar"}
                       </Button>
-                    ) : batch.vesselId ? (
-                      <p className="text-sm text-muted-foreground">
-                        Batch must be in a pressure-rated vessel to carbonate
-                      </p>
                     ) : (
                       <p className="text-sm text-muted-foreground">
                         Batch must be in a vessel to carbonate
@@ -1378,7 +1373,7 @@ export default function BatchDetailsPage() {
       )}
 
       {/* Carbonate Modal */}
-      {showCarbonateModal && batch.vesselId && batch.vesselIsPressureVessel === "yes" && (
+      {showCarbonateModal && batch.vesselId && (
         <CarbonateModal
           open={showCarbonateModal}
           onOpenChange={setShowCarbonateModal}
@@ -1393,7 +1388,7 @@ export default function BatchDetailsPage() {
           vessel={{
             id: batch.vesselId,
             name: batch.vesselName || "",
-            isPressureVessel: batch.vesselIsPressureVessel,
+            isPressureVessel: batch.vesselIsPressureVessel || "no",
             maxPressure: parseFloat(batch.vesselMaxPressure || "30"),
           }}
           onSuccess={() => {

@@ -2510,7 +2510,7 @@ export const appRouter = router({
                   currentVolumeUnit: sourceBatch[0].currentVolumeUnit || "L",
                   status: "fermentation",
                   originPressRunId: sourceBatch[0].originPressRunId,
-                  startDate: new Date(),
+                  startDate: sourceBatch[0].startDate, // Preserve original batch start date
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 })

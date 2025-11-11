@@ -36,6 +36,7 @@ import {
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
 import { AddKegModal } from "./AddKegModal";
+import { EditKegModal } from "./EditKegModal";
 import { KegDetailsModal } from "./KegDetailsModal";
 import { DistributeKegModal } from "./DistributeKegModal";
 

@@ -199,8 +199,10 @@ export function CarbonateModal({
   // Reset form when modal opens
   useEffect(() => {
     if (open) {
+      // Default to bottle conditioning if not a pressure vessel
+      const defaultMethod = vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning";
       reset({
-        carbonationMethod: "forced",
+        carbonationMethod: defaultMethod,
         startingVolume: batch.currentVolume,
         startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
         startingTemperature: 4,
@@ -211,9 +213,9 @@ export function CarbonateModal({
       } as any);
       setPresetSelection("3.0");
       setIsCustomTarget(false);
-      setCarbonationMethod("forced");
+      setCarbonationMethod(defaultMethod);
     }
-  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit]);
+  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel]);
 
   // Handle preset selection
   const handlePresetChange = (value: string) => {
@@ -431,25 +433,27 @@ export function CarbonateModal({
           {/* Carbonation Method Selector */}
           <div className="space-y-3">
             <Label>Carbonation Method</Label>
-            <div className="grid grid-cols-2 gap-4">
-              <Card
-                className={`cursor-pointer transition-colors ${
-                  carbonationMethod === "forced"
-                    ? "border-primary ring-2 ring-primary"
-                    : "hover:border-primary/50"
-                }`}
-                onClick={() => setValue("carbonationMethod", "forced")}
-              >
-                <CardHeader className="p-4">
-                  <div className="flex items-center gap-2">
-                    <Gauge className="h-5 w-5" />
-                    <CardTitle className="text-base">Forced Carbonation</CardTitle>
-                  </div>
-                  <CardDescription className="text-xs mt-2">
-                    Use CO2 gas and pressure in a vessel. Fast (1-3 days).
-                  </CardDescription>
-                </CardHeader>
-              </Card>
+            <div className={`grid ${vessel?.isPressureVessel === "yes" ? "grid-cols-2" : "grid-cols-1"} gap-4`}>
+              {vessel?.isPressureVessel === "yes" && (
+                <Card
+                  className={`cursor-pointer transition-colors ${
+                    carbonationMethod === "forced"
+                      ? "border-primary ring-2 ring-primary"
+                      : "hover:border-primary/50"
+                  }`}
+                  onClick={() => setValue("carbonationMethod", "forced")}
+                >
+                  <CardHeader className="p-4">
+                    <div className="flex items-center gap-2">
+                      <Gauge className="h-5 w-5" />
+                      <CardTitle className="text-base">Forced Carbonation</CardTitle>
+                    </div>
+                    <CardDescription className="text-xs mt-2">
+                      Use CO2 gas and pressure in a vessel. Fast (1-3 days).
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              )}
 
               <Card
                 className={`cursor-pointer transition-colors ${
@@ -470,6 +474,11 @@ export function CarbonateModal({
                 </CardHeader>
               </Card>
             </div>
+            {vessel?.isPressureVessel !== "yes" && (
+              <p className="text-sm text-muted-foreground">
+                This vessel is not pressure-rated. Only bottle conditioning is available.
+              </p>
+            )}
           </div>
 
           {/* Starting Conditions */}

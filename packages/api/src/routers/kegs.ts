@@ -64,20 +64,22 @@ const updateKegSchema = z.object({
   notes: z.string().optional(),
 });
 
+const kegVolumeSchema = z.object({
+  kegId: z.string().uuid(),
+  volumeTaken: z.number().positive("Volume must be positive"),
+});
+
 const fillKegsSchema = z.object({
-  kegIds: z.array(z.string().uuid()).min(1, "Select at least one keg"),
+  kegVolumes: z.array(kegVolumeSchema).min(1, "Select at least one keg"),
   batchId: z.string().uuid(),
   vesselId: z.string().uuid(),
   filledAt: z
     .date()
     .or(z.string().transform((val) => new Date(val)))
     .default(() => new Date()),
-  volumeTakenPerKeg: z.number().positive("Volume must be positive"),
   volumeTakenUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]).default("L"),
   loss: z.number().min(0).optional(),
   lossUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]).default("L"),
-  abvAtPackaging: z.number().min(0).max(20).optional(),
-  carbonationLevel: z.enum(["still", "petillant", "sparkling"]).optional(),
   carbonationMethod: z.enum(["natural", "forced", "none"]).optional(),
   sourceCarbonationOperationId: z.string().uuid().optional(),
   productionNotes: z.string().optional(),
@@ -518,15 +520,34 @@ export const kegsRouter = router({
       try {
         const userId = ctx.user.id;
 
+        // Extract keg IDs from volumes array
+        const kegIds = input.kegVolumes.map(kv => kv.kegId);
+
+        // Verify batch exists
+        const [batch] = await db
+          .select({ id: batches.id })
+          .from(batches)
+          .where(eq(batches.id, input.batchId))
+          .limit(1);
+
+        if (!batch) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Batch not found",
+          });
+        }
+
+        // TODO: Calculate ABV from batch measurements if needed
+
         // Verify all kegs are available
         const kegsToFill = await db
           .select({ id: kegs.id, status: kegs.status, kegNumber: kegs.kegNumber })
           .from(kegs)
           .where(
-            and(inArray(kegs.id, input.kegIds), isNull(kegs.deletedAt)),
+            and(inArray(kegs.id, kegIds), isNull(kegs.deletedAt)),
           );
 
-        if (kegsToFill.length !== input.kegIds.length) {
+        if (kegsToFill.length !== kegIds.length) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "One or more kegs not found",
@@ -546,21 +567,20 @@ export const kegsRouter = router({
         // Create keg fills and update keg status in a transaction
         const fillRecords = [];
 
-        for (const kegId of input.kegIds) {
+        for (const kegVolume of input.kegVolumes) {
           // Create fill record
           const [fill] = await db
             .insert(kegFills)
             .values({
-              kegId,
+              kegId: kegVolume.kegId,
               batchId: input.batchId,
               vesselId: input.vesselId,
               filledAt: input.filledAt,
-              volumeTaken: input.volumeTakenPerKeg.toString(),
+              volumeTaken: kegVolume.volumeTaken.toString(),
               volumeTakenUnit: input.volumeTakenUnit,
               loss: input.loss?.toString(),
               lossUnit: input.lossUnit,
-              abvAtPackaging: input.abvAtPackaging?.toString(),
-              carbonationLevel: input.carbonationLevel,
+              abvAtPackaging: null, // TODO: Calculate from batch measurements
               carbonationMethod: input.carbonationMethod,
               sourceCarbonationOperationId: input.sourceCarbonationOperationId,
               productionNotes: input.productionNotes,
@@ -578,7 +598,7 @@ export const kegsRouter = router({
               status: "filled",
               updatedAt: new Date(),
             })
-            .where(eq(kegs.id, kegId));
+            .where(eq(kegs.id, kegVolume.kegId));
 
           // Add materials if provided
           if (input.materials && input.materials.length > 0) {

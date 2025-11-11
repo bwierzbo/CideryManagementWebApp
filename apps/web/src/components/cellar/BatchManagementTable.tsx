@@ -276,6 +276,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                   <TableHead className="text-center">
                     Specific Gravity
                   </TableHead>
+                  <TableHead className="text-center">ABV</TableHead>
                   <TableHead className="text-center">pH</TableHead>
                   <TableHead className="text-right">Volume</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -285,7 +286,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                 {batches.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={10}
                       className="text-center text-gray-500 py-8"
                     >
                       No batches found
@@ -372,6 +373,11 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                           ? Number(
                               batch.latestMeasurement.specificGravity,
                             ).toFixed(3)
+                          : "-"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {batch.latestMeasurement?.abv
+                          ? `${Number(batch.latestMeasurement.abv).toFixed(1)}%`
                           : "-"}
                       </TableCell>
                       <TableCell className="text-center">
