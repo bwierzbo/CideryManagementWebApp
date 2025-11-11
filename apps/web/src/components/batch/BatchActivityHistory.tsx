@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Activity,
   Beaker,
@@ -35,12 +36,15 @@ import {
   Sparkles,
   Flame,
   Tag,
+  BarChart3,
+  List,
 } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
 import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
 import { EditAdditiveDialog } from "@/components/cellar/EditAdditiveDialog";
+import { MeasurementChart } from "@/components/batch/MeasurementChart";
 
 interface BatchActivityHistoryProps {
   batchId: string;
@@ -139,6 +143,16 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
   // Apply sorting based on toggle state
   const sortedActivities = isReversed ? [...activities].reverse() : activities;
 
+  // Extract measurements for chart/list views
+  const measurements = activities
+    .filter(a => a.type === 'measurement' && a.metadata)
+    .map(a => a.metadata)
+    .filter(Boolean);
+
+  // Extract additives and transfers for list view
+  const additives = activities.filter(a => a.type === 'additive');
+  const transfers = activities.filter(a => a.type === 'transfer');
+
   if (activities.length === 0) {
     return (
       <Card>
@@ -164,28 +178,48 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
               Complete timeline of all batch events
             </CardDescription>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsReversed(!isReversed)}
-            className="flex items-center gap-2"
-          >
-            {isReversed ? (
-              <>
-                <ArrowUp className="h-4 w-4" />
-                Oldest First
-              </>
-            ) : (
-              <>
-                <ArrowDown className="h-4 w-4" />
-                Newest First
-              </>
-            )}
-          </Button>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="relative">
+        <Tabs defaultValue="timeline" className="w-full">
+          <div className="flex items-center justify-between mb-4">
+            <TabsList>
+              <TabsTrigger value="timeline">
+                <Activity className="w-4 h-4 mr-2" />
+                Timeline
+              </TabsTrigger>
+              <TabsTrigger value="chart">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Chart
+              </TabsTrigger>
+              <TabsTrigger value="list">
+                <List className="w-4 h-4 mr-2" />
+                List
+              </TabsTrigger>
+            </TabsList>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsReversed(!isReversed)}
+              className="flex items-center gap-2"
+            >
+              {isReversed ? (
+                <>
+                  <ArrowUp className="h-4 w-4" />
+                  Oldest First
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="h-4 w-4" />
+                  Newest First
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Timeline Tab */}
+          <TabsContent value="timeline">
+            <div className="relative">
           {/* Timeline line */}
           <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
 
@@ -381,33 +415,127 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
             })}
           </div>
         </div>
+          </TabsContent>
 
-        {/* Summary stats */}
-        {batch && (
-          <div className="mt-8 pt-6 border-t">
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Current Status:</span>
-                <Badge
-                  className="ml-2"
-                  variant={["fermentation", "aging", "conditioning"].includes(batch.status) ? "default" : "secondary"}
-                >
-                  {batch.status}
-                </Badge>
+          {/* Chart Tab */}
+          <TabsContent value="chart">
+            {measurements.length > 0 ? (
+              <MeasurementChart measurements={measurements} />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <TestTube className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No measurements recorded yet</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">Current Volume:</span>
-                <span className="ml-2 font-medium">
-                  {batch.currentVolume}L
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Total Events:</span>
-                <span className="ml-2 font-medium">{activities.length}</span>
+            )}
+          </TabsContent>
+
+          {/* List Tab */}
+          <TabsContent value="list">
+            <div className="space-y-4">
+              {/* Measurements */}
+              {measurements.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-green-600 mb-2">
+                    Measurements ({measurements.length})
+                  </h3>
+                  <div className="border-l-2 border-green-500 pl-4 space-y-2">
+                    {measurements.map((m: any, idx: number) => (
+                      <div key={idx} className="text-sm">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(m.measurementDate), "MMM dd, yyyy 'at' h:mm a")}
+                          </span>
+                        </div>
+                        <div className="text-gray-700">
+                          {m.abv && `ABV: ${m.abv}%`}
+                          {m.specificGravity && ` • SG: ${parseFloat(m.specificGravity).toFixed(3)}`}
+                          {m.ph && ` • pH: ${m.ph}`}
+                          {m.temperature && ` • ${m.temperature}°C`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Additives */}
+              {additives.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-purple-600 mb-2">
+                    Additives ({additives.length})
+                  </h3>
+                  <div className="border-l-2 border-purple-500 pl-4 space-y-2">
+                    {additives.map((a: any, idx: number) => (
+                      <div key={idx} className="text-sm">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(a.timestamp), "MMM dd, yyyy 'at' h:mm a")}
+                          </span>
+                        </div>
+                        <div className="text-gray-700">{a.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Transfers */}
+              {transfers.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-orange-600 mb-2">
+                    Transfers ({transfers.length})
+                  </h3>
+                  <div className="border-l-2 border-orange-500 pl-4 space-y-2">
+                    {transfers.map((t: any, idx: number) => (
+                      <div key={idx} className="text-sm">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(t.timestamp), "MMM dd, yyyy 'at' h:mm a")}
+                          </span>
+                        </div>
+                        <div className="text-gray-700">{t.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {measurements.length === 0 && additives.length === 0 && transfers.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <List className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>No activity recorded yet</p>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Summary stats */}
+          {batch && (
+            <div className="mt-8 pt-6 border-t">
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Current Status:</span>
+                  <Badge
+                    className="ml-2"
+                    variant={["fermentation", "aging", "conditioning"].includes(batch.status) ? "default" : "secondary"}
+                  >
+                    {batch.status}
+                  </Badge>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Current Volume:</span>
+                  <span className="ml-2 font-medium">
+                    {batch.currentVolume}L
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Total Events:</span>
+                  <span className="ml-2 font-medium">{activities.length}</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </Tabs>
       </CardContent>
 
       {/* Edit Dialogs */}
