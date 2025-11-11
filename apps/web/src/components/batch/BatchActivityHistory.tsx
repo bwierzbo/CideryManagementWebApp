@@ -184,13 +184,13 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-hidden">
         {/* Horizontal scrollable timeline */}
-        <div className="relative overflow-x-auto pb-4">
+        <div className="relative overflow-x-auto overflow-y-visible pb-4 -mx-6 px-6">
           {/* Horizontal timeline line */}
-          <div className="absolute left-0 right-0 top-5 h-0.5 bg-border" />
+          <div className="absolute left-0 top-5 h-0.5 bg-border" style={{ width: '100%', minWidth: 'max-content' }} />
 
-          <div className="flex gap-8 min-w-max px-4">
+          <div className="flex gap-8 pb-2" style={{ minWidth: 'max-content' }}>
             {sortedActivities.map((activity, index) => {
               const Icon =
                 activityIcons[activity.type as keyof typeof activityIcons] ||
