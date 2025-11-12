@@ -33,13 +33,59 @@ export const additivePurchasesRouter = router({
             notes: additivePurchases.notes,
             createdAt: additivePurchases.createdAt,
             updatedAt: additivePurchases.updatedAt,
+            // Include item data
+            itemId: additivePurchaseItems.id,
+            itemProductName: additivePurchaseItems.productName,
+            itemBrandManufacturer: additivePurchaseItems.brandManufacturer,
+            itemQuantity: additivePurchaseItems.quantity,
+            itemUnit: additivePurchaseItems.unit,
+            itemAdditiveVarietyId: additivePurchaseItems.additiveVarietyId,
           })
           .from(additivePurchases)
           .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
+          .leftJoin(additivePurchaseItems, eq(additivePurchases.id, additivePurchaseItems.purchaseId))
           .where(and(...conditions))
           .orderBy(desc(additivePurchases.purchaseDate))
-          .limit(limit)
+          .limit(limit * 10) // Increase limit to account for multiple items per purchase
           .offset(offset);
+
+        // Group items by purchase
+        const groupedPurchases = purchases.reduce((acc: any[], row) => {
+          const existingPurchase = acc.find(p => p.id === row.id);
+
+          if (existingPurchase) {
+            if (row.itemId) {
+              existingPurchase.items.push({
+                id: row.itemId,
+                productName: row.itemProductName,
+                brandManufacturer: row.itemBrandManufacturer,
+                quantity: row.itemQuantity,
+                unit: row.itemUnit,
+                additiveVarietyId: row.itemAdditiveVarietyId,
+              });
+            }
+          } else {
+            acc.push({
+              id: row.id,
+              vendorId: row.vendorId,
+              vendorName: row.vendorName,
+              purchaseDate: row.purchaseDate,
+              totalCost: row.totalCost,
+              notes: row.notes,
+              createdAt: row.createdAt,
+              updatedAt: row.updatedAt,
+              items: row.itemId ? [{
+                id: row.itemId,
+                productName: row.itemProductName,
+                brandManufacturer: row.itemBrandManufacturer,
+                quantity: row.itemQuantity,
+                unit: row.itemUnit,
+                additiveVarietyId: row.itemAdditiveVarietyId,
+              }] : [],
+            });
+          }
+          return acc;
+        }, []);
 
         const totalCount = await db
           .select({ count: sql<number>`count(*)` })
@@ -47,7 +93,7 @@ export const additivePurchasesRouter = router({
           .where(and(...conditions));
 
         return {
-          purchases,
+          purchases: groupedPurchases.slice(0, limit),
           pagination: {
             total: totalCount[0]?.count || 0,
             limit,

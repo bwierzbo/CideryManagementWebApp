@@ -2277,7 +2277,14 @@ export const appRouter = router({
             and(
               eq(batchCarbonationOperations.batchId, batches.id),
               isNull(batchCarbonationOperations.deletedAt),
-              isNull(batchCarbonationOperations.completedAt), // Only active carbonations
+              // Get the latest carbonation (active or completed)
+              sql`batch_carbonation_operations.id = (
+                SELECT id FROM batch_carbonation_operations bco
+                WHERE bco.batch_id = batches.id
+                  AND bco.deleted_at IS NULL
+                ORDER BY bco.created_at DESC
+                LIMIT 1
+              )`,
             ),
           )
           .where(isNull(vessels.deletedAt))

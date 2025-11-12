@@ -28,13 +28,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 
-const kegVolumeSchema = z.object({
-  kegId: z.string().uuid(),
-  volumeTaken: z.number().positive("Volume must be positive"),
-});
-
 const fillKegsSchema = z.object({
-  kegVolumes: z.array(kegVolumeSchema).min(1, "Select at least one keg"),
   filledAt: z.string().min(1, "Date/time is required"),
   volumeTakenUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]),
   loss: z.number().min(0).optional(),
@@ -63,11 +57,8 @@ const KegItem = React.memo(({ keg, isSelected, onToggle }: {
   const handleClick = React.useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('[KegItem] Click - keg.id:', keg.id);
     onToggle(keg.id);
   }, [keg.id, onToggle]);
-
-  console.log('[KegItem] Render - keg:', keg.kegNumber, 'isSelected:', isSelected);
 
   return (
     <div
@@ -113,7 +104,6 @@ export function FillKegModal({
   batchId,
   currentVolumeL,
 }: FillKegModalProps) {
-  console.log('[FillKegModal] Render - open:', open);
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
   const [kegVolumes, setKegVolumes] = useState<Record<string, number>>({});
 
@@ -139,7 +129,7 @@ export function FillKegModal({
   // Get available kegs with query stabilization to prevent infinite refetches
   const { data: kegsData, isLoading: kegsLoading } =
     trpc.kegs.getAvailableKegs.useQuery(undefined, {
-      enabled: open,
+      enabled: open && !!vesselId && !!batchId,
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       refetchOnReconnect: false,
@@ -180,8 +170,6 @@ export function FillKegModal({
 
   // Memoized toggle handler with stable reference using useCallback
   const handleKegToggle = React.useCallback((kegId: string) => {
-    console.log('[FillKegModal] handleKegToggle called with:', kegId);
-
     // Check current state before toggling
     setSelectedKegIds((prev) => {
       const isCurrentlySelected = prev.includes(kegId);
@@ -216,6 +204,16 @@ export function FillKegModal({
   }, [onClose]); // Now safe - parent memoizes onClose
 
   const onSubmit = (data: FillKegsForm) => {
+    // Validate that at least one keg is selected
+    if (selectedKegIds.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one keg to fill",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Build keg volumes array from state
     const kegVolumesArray = selectedKegIds.map(kegId => ({
       kegId,
@@ -245,6 +243,24 @@ export function FillKegModal({
     });
   };
 
+  const onError = (errors: any) => {
+    // Show first validation error
+    const firstError = Object.values(errors)[0] as any;
+    if (firstError?.message) {
+      toast({
+        title: "Validation Error",
+        description: firstError.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Validation Error",
+        description: "Please check all required fields",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Calculate total volume to be taken
   const totalVolumeTaken = selectedKegIds.reduce(
     (sum, kegId) => sum + (kegVolumes[kegId] || 0),
@@ -266,7 +282,7 @@ export function FillKegModal({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6">
           {/* Available Kegs Selection */}
           <div>
             <Label className="text-base font-semibold mb-3 block">

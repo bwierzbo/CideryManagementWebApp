@@ -1057,8 +1057,6 @@ export default function BatchDetailsPage() {
                         </TableHead>
                         <TableHead className="text-right">Volume (L)</TableHead>
                         <TableHead className="text-right">% of Batch</TableHead>
-                        <TableHead className="text-right">Cost</TableHead>
-                        <TableHead className="text-right">Avg Brix</TableHead>
                         <TableHead className="text-right">pH</TableHead>
                         <TableHead className="text-right">SG</TableHead>
                       </TableRow>
@@ -1091,12 +1089,6 @@ export default function BatchDetailsPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             {(comp.fractionOfBatch * 100).toFixed(1)}%
-                          </TableCell>
-                          <TableCell className="text-right">
-                            ${comp.materialCost.toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {comp.avgBrix ? comp.avgBrix.toFixed(1) : "N/A"}
                           </TableCell>
                           <TableCell className="text-right">
                             {comp.ph ? comp.ph.toFixed(2) : "—"}

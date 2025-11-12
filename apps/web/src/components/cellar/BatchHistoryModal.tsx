@@ -225,6 +225,54 @@ export function BatchHistoryModal({
               </CardContent>
             </Card>
 
+            {/* Latest Measurements */}
+            {measurements.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Beaker className="w-5 h-5" />
+                    Latest Measurements
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3 bg-white rounded-lg border">
+                    <div>
+                      <p className="text-xs text-gray-500">ABV</p>
+                      <p className="font-semibold text-lg">
+                        {measurements[0]?.abv !== null && measurements[0]?.abv !== undefined
+                          ? `${measurements[0].abv.toFixed(2)}%`
+                          : "Not measured"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">pH</p>
+                      <p className="font-semibold text-lg">
+                        {measurements[0]?.ph !== null && measurements[0]?.ph !== undefined
+                          ? measurements[0].ph.toFixed(2)
+                          : "Not measured"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">SG</p>
+                      <p className="font-semibold text-lg">
+                        {measurements[0]?.specificGravity !== null && measurements[0]?.specificGravity !== undefined
+                          ? measurements[0].specificGravity.toFixed(3)
+                          : "Not measured"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Temp (°C)</p>
+                      <p className="font-semibold text-lg">
+                        {measurements[0]?.temperature !== null && measurements[0]?.temperature !== undefined
+                          ? `${measurements[0].temperature.toFixed(1)}°C`
+                          : "Not measured"}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Origin Info */}
             {origin && (
               <Card>
@@ -288,9 +336,6 @@ export function BatchHistoryModal({
                       <TableHead className="text-right">Percentage</TableHead>
                       <TableHead className="text-right">pH</TableHead>
                       <TableHead className="text-right">SG</TableHead>
-                      <TableHead className="text-right">Brix</TableHead>
-                      <TableHead className="text-right">Cost</TableHead>
-                      <TableHead>Lot Code</TableHead>
                       <TableHead>Notes</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -330,21 +375,6 @@ export function BatchHistoryModal({
                           {item.sourceType === "juice_purchase" && (item as any).specificGravity
                             ? Number((item as any).specificGravity).toFixed(3)
                             : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase" && (item as any).brix
-                            ? Number((item as any).brix).toFixed(1)
-                            : item.avgBrix
-                              ? Number(item.avgBrix).toFixed(1)
-                              : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.materialCost
-                            ? `$${Number(item.materialCost).toFixed(2)}`
-                            : "—"}
-                        </TableCell>
-                        <TableCell>
-                          {(item as any).lotCode || "—"}
                         </TableCell>
                         <TableCell className="max-w-xs truncate" title={(item as any).notes || ""}>
                           {(item as any).notes || "—"}

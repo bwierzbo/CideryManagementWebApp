@@ -375,3 +375,39 @@ export function calculatePrimingSugar(
 
   return Math.round(totalSugar * 10) / 10; // Round to 1 decimal place
 }
+
+/**
+ * Calculate CO2 volumes from priming sugar amount (inverse calculation)
+ *
+ * @param sugarGramsPerLiter - Amount of priming sugar in grams per liter
+ * @param residualCO2Volumes - Existing CO2 in the beverage (default 0)
+ * @param sugarType - Type of sugar used for priming
+ * @returns Target CO2 volumes that will be achieved
+ *
+ * @example
+ * // Calculate CO2 from 10 g/L of sucrose
+ * const co2 = calculateCO2FromSugar(10, 0, "sucrose");
+ * console.log(co2); // 2.5 volumes
+ */
+export function calculateCO2FromSugar(
+  sugarGramsPerLiter: number,
+  residualCO2Volumes: number = 0,
+  sugarType: "sucrose" | "dextrose" | "honey" = "sucrose",
+): number {
+  // Sugar factors: grams per liter per CO2 volume
+  const sugarFactors = {
+    sucrose: 4.0,   // Table sugar
+    dextrose: 3.8,  // Corn sugar
+    honey: 3.5,     // Approximate, varies by type
+  };
+
+  const factor = sugarFactors[sugarType];
+
+  // Calculate CO2 delta from sugar amount
+  // If sugarPerLiter = co2Delta * factor, then co2Delta = sugarPerLiter / factor
+  const co2Delta = sugarGramsPerLiter / factor;
+
+  const targetCO2 = residualCO2Volumes + co2Delta;
+
+  return Math.round(targetCO2 * 100) / 100; // Round to 2 decimal places
+}

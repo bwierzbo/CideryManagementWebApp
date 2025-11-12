@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -18,9 +20,10 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Package, Calendar, MapPin, Loader2, Wine } from "lucide-react";
+import { Package, Calendar, MapPin, Loader2, Wine, Edit } from "lucide-react";
 import { format } from "date-fns";
 import { trpc } from "@/utils/trpc";
+import { EditKegModal } from "./EditKegModal";
 
 interface KegDetailsModalProps {
   open: boolean;
@@ -40,6 +43,10 @@ export function KegDetailsModal({
   onClose,
   kegId,
 }: KegDetailsModalProps) {
+  const router = useRouter();
+  const [showEditModal, setShowEditModal] = useState(false);
+  const utils = trpc.useUtils();
+
   const { data, isLoading } = trpc.kegs.getKegDetails.useQuery(
     { kegId },
     { enabled: open && !!kegId },
@@ -52,13 +59,28 @@ export function KegDetailsModal({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="w-5 h-5" />
-            {keg?.kegNumber || "Keg Details"}
-          </DialogTitle>
-          <DialogDescription>
-            View keg information and fill history
-          </DialogDescription>
+          <div className="flex items-start justify-between">
+            <div>
+              <DialogTitle className="flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                {keg?.kegNumber || "Keg Details"}
+              </DialogTitle>
+              <DialogDescription>
+                View keg information and fill history
+              </DialogDescription>
+            </div>
+            {keg && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEditModal(true)}
+                className="ml-4"
+              >
+                <Edit className="w-4 h-4 mr-1" />
+                Edit Keg
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         {isLoading ? (
@@ -178,7 +200,11 @@ export function KegDetailsModal({
                                 fill.status as keyof typeof KEG_STATUS_CONFIG
                               ];
                             return (
-                              <TableRow key={fill.id}>
+                              <TableRow
+                                key={fill.id}
+                                onClick={() => router.push(`/keg-fills/${fill.id}`)}
+                                className="cursor-pointer hover:bg-gray-50 transition-colors"
+                              >
                                 <TableCell>
                                   <div className="flex items-center gap-1 text-sm">
                                     <Calendar className="w-3 h-3 text-gray-400" />
@@ -249,6 +275,19 @@ export function KegDetailsModal({
               )}
             </div>
           </div>
+        )}
+
+        {/* Edit Modal */}
+        {showEditModal && (
+          <EditKegModal
+            open={showEditModal}
+            onClose={() => setShowEditModal(false)}
+            kegId={kegId}
+            onSuccess={() => {
+              setShowEditModal(false);
+              utils.kegs.getKegDetails.invalidate({ kegId });
+            }}
+          />
         )}
       </DialogContent>
     </Dialog>

@@ -59,12 +59,12 @@ import { formatDate } from "@/utils/date-format";
 
 // Dynamic imports to avoid SSR hydration mismatch
 const DashboardStats = dynamic(
-  () => import("@/components/dashboard/DashboardStats").then((mod) => mod.DashboardStats),
+  () => import("@/components/dashboard/DashboardStats").then((mod) => ({ default: mod.DashboardStats })),
   { ssr: false }
 );
 
 const RecentBatchesSection = dynamic(
-  () => import("@/components/dashboard/RecentBatchesSection").then((mod) => mod.RecentBatchesSection),
+  () => import("@/components/dashboard/RecentBatchesSection").then((mod) => ({ default: mod.RecentBatchesSection })),
   { ssr: false }
 );
 

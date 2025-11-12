@@ -28,6 +28,15 @@ import { Edit, Loader2 } from "lucide-react";
 
 const editKegSchema = z.object({
   kegNumber: z.string().min(1, "Keg number is required"),
+  kegType: z.enum([
+    "cornelius_5L",
+    "cornelius_9L",
+    "sanke_20L",
+    "sanke_30L",
+    "sanke_50L",
+    "other",
+  ]),
+  capacityML: z.number().positive("Capacity must be positive"),
   status: z.enum([
     "available",
     "filled",
@@ -38,6 +47,8 @@ const editKegSchema = z.object({
   ]),
   condition: z.enum(["excellent", "good", "fair", "needs_repair", "retired"]),
   currentLocation: z.string().min(1, "Location is required"),
+  purchaseDate: z.string().optional(),
+  purchaseCost: z.number().positive().optional(),
   notes: z.string().optional(),
 });
 
@@ -65,6 +76,16 @@ export function EditKegModal({
     reset,
   } = useForm<EditKegForm>({
     resolver: zodResolver(editKegSchema),
+    defaultValues: {
+      kegNumber: "",
+      kegType: "cornelius_5L",
+      capacityML: 0,
+      status: "available",
+      condition: "good",
+      currentLocation: "cellar",
+      purchaseDate: "",
+      notes: "",
+    },
   });
 
   const utils = trpc.useUtils();
@@ -79,16 +100,21 @@ export function EditKegModal({
 
   // Populate form when keg data loads
   useEffect(() => {
-    if (keg) {
-      reset({
+    if (keg && open) {
+      const formData = {
         kegNumber: keg.kegNumber,
+        kegType: keg.kegType as any,
+        capacityML: keg.capacityML,
         status: keg.status as any,
         condition: keg.condition as any,
         currentLocation: keg.currentLocation || "cellar",
+        purchaseDate: keg.purchaseDate || "",
+        purchaseCost: keg.purchaseCost ? parseFloat(keg.purchaseCost) : undefined,
         notes: keg.notes || "",
-      });
+      };
+      reset(formData);
     }
-  }, [keg, reset]);
+  }, [keg, open, reset]);
 
   const updateKegMutation = trpc.kegs.updateKeg.useMutation({
     onSuccess: () => {
@@ -117,8 +143,11 @@ export function EditKegModal({
     });
   };
 
-  const statusValue = watch("status");
-  const conditionValue = watch("condition");
+  const formValues = watch();
+  const kegTypeValue = formValues.kegType;
+  const capacityML = formValues.capacityML;
+  const statusValue = formValues.status;
+  const conditionValue = formValues.condition;
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
@@ -141,24 +170,6 @@ export function EditKegModal({
           <div className="text-center py-12 text-gray-500">Keg not found</div>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            {/* Keg Info - Read Only */}
-            <div className="p-4 bg-gray-50 rounded-lg border">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-600">Type</p>
-                  <p className="font-semibold">
-                    {keg.kegType.replace("_", " ")}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-600">Capacity</p>
-                  <p className="font-semibold">
-                    {(keg.capacityML / 1000).toFixed(1)}L
-                  </p>
-                </div>
-              </div>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               {/* Keg Number */}
               <div>
@@ -177,17 +188,78 @@ export function EditKegModal({
                 )}
               </div>
 
+              {/* Keg Type */}
+              <div>
+                <Label htmlFor="kegType">
+                  Keg Type <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  key={`kegType-${kegTypeValue}`}
+                  value={kegTypeValue}
+                  onValueChange={(value) => setValue("kegType", value as any)}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select keg type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cornelius_5L">Cornelius 5L</SelectItem>
+                    <SelectItem value="cornelius_9L">Cornelius 9L</SelectItem>
+                    <SelectItem value="sanke_20L">
+                      Sanke 20L (1/6 barrel)
+                    </SelectItem>
+                    <SelectItem value="sanke_30L">
+                      Sanke 30L (1/4 barrel)
+                    </SelectItem>
+                    <SelectItem value="sanke_50L">
+                      Sanke 50L (1/2 barrel)
+                    </SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.kegType && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.kegType.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Capacity */}
+            <div>
+              <Label htmlFor="capacityML">
+                Capacity (mL) <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="capacityML"
+                type="number"
+                {...register("capacityML", { valueAsNumber: true })}
+                className="mt-1"
+              />
+              {capacityML > 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  ≈ {(capacityML / 1000).toFixed(1)}L
+                </p>
+              )}
+              {errors.capacityML && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.capacityML.message}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               {/* Status */}
               <div>
                 <Label htmlFor="status">
                   Status <span className="text-red-500">*</span>
                 </Label>
                 <Select
+                  key={`status-${statusValue}`}
                   value={statusValue}
                   onValueChange={(value) => setValue("status", value as any)}
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue />
+                    <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="available">Available</SelectItem>
@@ -204,22 +276,21 @@ export function EditKegModal({
                   </p>
                 )}
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
               {/* Condition */}
               <div>
                 <Label htmlFor="condition">
                   Condition <span className="text-red-500">*</span>
                 </Label>
                 <Select
+                  key={`condition-${conditionValue}`}
                   value={conditionValue}
                   onValueChange={(value) =>
                     setValue("condition", value as any)
                   }
                 >
                   <SelectTrigger className="mt-1">
-                    <SelectValue />
+                    <SelectValue placeholder="Select condition" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="excellent">Excellent</SelectItem>
@@ -235,20 +306,56 @@ export function EditKegModal({
                   </p>
                 )}
               </div>
+            </div>
 
-              {/* Current Location */}
+            {/* Current Location */}
+            <div>
+              <Label htmlFor="currentLocation">
+                Current Location <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="currentLocation"
+                {...register("currentLocation")}
+                className="mt-1"
+              />
+              {errors.currentLocation && (
+                <p className="text-sm text-red-600 mt-1">
+                  {errors.currentLocation.message}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Purchase Date */}
               <div>
-                <Label htmlFor="currentLocation">
-                  Current Location <span className="text-red-500">*</span>
-                </Label>
+                <Label htmlFor="purchaseDate">Purchase Date</Label>
                 <Input
-                  id="currentLocation"
-                  {...register("currentLocation")}
+                  id="purchaseDate"
+                  type="date"
+                  {...register("purchaseDate")}
                   className="mt-1"
                 />
-                {errors.currentLocation && (
+                {errors.purchaseDate && (
                   <p className="text-sm text-red-600 mt-1">
-                    {errors.currentLocation.message}
+                    {errors.purchaseDate.message}
+                  </p>
+                )}
+              </div>
+
+              {/* Purchase Cost */}
+              <div>
+                <Label htmlFor="purchaseCost">Purchase Cost ($)</Label>
+                <Input
+                  id="purchaseCost"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  {...register("purchaseCost", { valueAsNumber: true })}
+                  className="mt-1"
+                />
+                {errors.purchaseCost && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.purchaseCost.message}
                   </p>
                 )}
               </div>

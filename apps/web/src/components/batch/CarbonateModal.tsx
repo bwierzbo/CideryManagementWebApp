@@ -43,15 +43,8 @@ import {
   isPressureSafe,
   isTemperatureSafe,
   calculatePrimingSugar,
+  calculateCO2FromSugar,
 } from "lib";
-
-// Carbonation preset options
-const CARBONATION_PRESETS = [
-  { value: "0.5", label: "Still (0.5 vol)" },
-  { value: "1.8", label: "Petillant (1.8 vol)" },
-  { value: "3.0", label: "Sparkling (3.0 vol)" },
-  { value: "custom", label: "Custom" },
-] as const;
 
 // Schema for forced carbonation
 const forcedCarbonationSchema = z.object({
@@ -83,6 +76,7 @@ const bottleConditioningSchema = z.object({
     .number()
     .min(0.1, "Target must be at least 0.1 volumes")
     .max(5, "Target must be at most 5 volumes"),
+  sugarPerLiter: z.number().min(0, "Sugar amount cannot be negative").optional(),
   additivePurchaseItemId: z.string().uuid("Please select a sugar source").optional(),
   notes: z.string().optional(),
 });
@@ -124,8 +118,7 @@ export function CarbonateModal({
 }: CarbonateModalProps) {
   const utils = trpc.useUtils();
   const [carbonationMethod, setCarbonationMethod] = React.useState<"forced" | "bottle_conditioning">("forced");
-  const [presetSelection, setPresetSelection] = React.useState<string>("3.0");
-  const [isCustomTarget, setIsCustomTarget] = React.useState(false);
+  const [lastEditedField, setLastEditedField] = React.useState<"co2" | "sugar">("co2");
 
   // Query for available sweetener additives (for bottle conditioning)
   const { data: sweetenerInventory, isLoading: isLoadingInventory } =
@@ -152,10 +145,11 @@ export function CarbonateModal({
       startingVolume: batch.currentVolume,
       startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
       startingTemperature: 4, // Default to optimal carbonation temp
-      targetCo2Volumes: 3.0, // Default to sparkling
+      targetCo2Volumes: 2.5, // Default to medium carbonation
       carbonationProcess: "headspace",
       pressureApplied: 0,
       residualCo2Volumes: 0,
+      sugarPerLiter: undefined,
     } as any,
   });
 
@@ -167,6 +161,7 @@ export function CarbonateModal({
   const residualCo2Volumes = watch("residualCo2Volumes" as any) || 0;
   const startingVolume = watch("startingVolume");
   const startingVolumeUnit = watch("startingVolumeUnit");
+  const sugarPerLiter = watch("sugarPerLiter" as any);
 
   // Sync carbonation method state with form
   useEffect(() => {
@@ -183,18 +178,39 @@ export function CarbonateModal({
     return startingVolume;
   }, [startingVolume, startingVolumeUnit]);
 
-  // Calculate required priming sugar for bottle conditioning
-  const requiredSugarGrams = useMemo(() => {
-    if (carbonationMethod === "bottle_conditioning") {
-      return calculatePrimingSugar(
+  // Bidirectional calculation: CO2 <-> Sugar
+  // Calculate sugar from CO2 or CO2 from sugar depending on last edited field
+  const calculatedSugarPerLiter = useMemo(() => {
+    if (carbonationMethod === "bottle_conditioning" && lastEditedField === "co2" && targetCo2Volumes) {
+      const totalGrams = calculatePrimingSugar(
         targetCo2Volumes,
         residualCo2Volumes,
         volumeInLiters,
-        "sucrose" // Always use sucrose as the default sugar type
+        "sucrose"
+      );
+      return totalGrams / volumeInLiters;
+    }
+    return sugarPerLiter || 0;
+  }, [carbonationMethod, lastEditedField, targetCo2Volumes, residualCo2Volumes, volumeInLiters, sugarPerLiter]);
+
+  const calculatedCo2Volumes = useMemo(() => {
+    if (carbonationMethod === "bottle_conditioning" && lastEditedField === "sugar" && sugarPerLiter) {
+      return calculateCO2FromSugar(
+        sugarPerLiter,
+        residualCo2Volumes,
+        "sucrose"
       );
     }
+    return targetCo2Volumes || 0;
+  }, [carbonationMethod, lastEditedField, sugarPerLiter, residualCo2Volumes, targetCo2Volumes]);
+
+  // Calculate required priming sugar for display
+  const requiredSugarGrams = useMemo(() => {
+    if (carbonationMethod === "bottle_conditioning") {
+      return calculatedSugarPerLiter * volumeInLiters;
+    }
     return 0;
-  }, [carbonationMethod, targetCo2Volumes, residualCo2Volumes, volumeInLiters]);
+  }, [carbonationMethod, calculatedSugarPerLiter, volumeInLiters]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -206,27 +222,16 @@ export function CarbonateModal({
         startingVolume: batch.currentVolume,
         startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
         startingTemperature: 4,
-        targetCo2Volumes: 3.0,
+        targetCo2Volumes: 2.5,
         carbonationProcess: "headspace",
         pressureApplied: 0,
         residualCo2Volumes: 0,
+        sugarPerLiter: undefined,
       } as any);
-      setPresetSelection("3.0");
-      setIsCustomTarget(false);
       setCarbonationMethod(defaultMethod);
+      setLastEditedField("co2");
     }
   }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel]);
-
-  // Handle preset selection
-  const handlePresetChange = (value: string) => {
-    setPresetSelection(value);
-    if (value === "custom") {
-      setIsCustomTarget(true);
-    } else {
-      setIsCustomTarget(false);
-      setValue("targetCo2Volumes", parseFloat(value));
-    }
-  };
 
   // Calculate suggested pressure
   const suggestedPressure = useMemo(() => {
@@ -563,38 +568,31 @@ export function CarbonateModal({
           <div className="space-y-4">
             <h3 className="font-semibold text-sm">Target Carbonation</h3>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="preset">Carbonation Level</Label>
-                <Select value={presetSelection} onValueChange={handlePresetChange}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CARBONATION_PRESETS.map((preset) => (
-                      <SelectItem key={preset.value} value={preset.value}>
-                        {preset.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {isCustomTarget && (
-                <div>
-                  <Label htmlFor="targetCo2Volumes">Custom Target (vol)</Label>
-                  <Input
-                    id="targetCo2Volumes"
-                    type="number"
-                    step="0.1"
-                    {...register("targetCo2Volumes", { valueAsNumber: true })}
-                  />
-                  {errors.targetCo2Volumes && (
-                    <p className="text-sm text-destructive mt-1">
-                      {errors.targetCo2Volumes.message}
-                    </p>
-                  )}
-                </div>
+            <div>
+              <Label htmlFor="targetCo2Volumes">CO₂ Target (volumes)</Label>
+              <Input
+                id="targetCo2Volumes"
+                type="number"
+                step="0.01"
+                placeholder="2.5"
+                {...register("targetCo2Volumes", { valueAsNumber: true })}
+                onChange={(e) => {
+                  register("targetCo2Volumes", { valueAsNumber: true }).onChange(e);
+                  setLastEditedField("co2");
+                  // Update sugar field with calculated value
+                  if (carbonationMethod === "bottle_conditioning") {
+                    const co2 = parseFloat(e.target.value);
+                    if (co2 && volumeInLiters) {
+                      const totalGrams = calculatePrimingSugar(co2, residualCo2Volumes, volumeInLiters, "sucrose");
+                      setValue("sugarPerLiter" as any, totalGrams / volumeInLiters);
+                    }
+                  }
+                }}
+              />
+              {errors.targetCo2Volumes && (
+                <p className="text-sm text-destructive mt-1">
+                  {errors.targetCo2Volumes.message}
+                </p>
               )}
             </div>
           </div>
@@ -639,8 +637,37 @@ export function CarbonateModal({
               </div>
 
               <div>
+                <Label htmlFor="sugarPerLiter">Sugar Concentration (g/L)</Label>
+                <Input
+                  id="sugarPerLiter"
+                  type="number"
+                  step="0.1"
+                  placeholder="10.0"
+                  {...register("sugarPerLiter" as any, { valueAsNumber: true })}
+                  onChange={(e) => {
+                    register("sugarPerLiter" as any, { valueAsNumber: true }).onChange(e);
+                    setLastEditedField("sugar");
+                    // Update CO2 field with calculated value
+                    const sugar = parseFloat(e.target.value);
+                    if (sugar) {
+                      const co2 = calculateCO2FromSugar(sugar, residualCo2Volumes, "sucrose");
+                      setValue("targetCo2Volumes", co2);
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Enter either CO₂ target or sugar amount - they calculate each other
+                </p>
+                {(errors as any).sugarPerLiter && (
+                  <p className="text-sm text-destructive mt-1">
+                    {(errors as any).sugarPerLiter.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <Label htmlFor="residualCo2Volumes">
-                  Residual CO2 Volumes{" "}
+                  Residual CO₂ Volumes{" "}
                   <span className="text-muted-foreground text-xs">optional</span>
                 </Label>
                 <Input
@@ -654,7 +681,7 @@ export function CarbonateModal({
                   {...register("residualCo2Volumes" as any, { valueAsNumber: true })}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  CO2 already dissolved in the cider (usually 0 for flat cider)
+                  CO₂ already dissolved in the cider (usually 0 for flat cider)
                 </p>
                 {(errors as any).residualCo2Volumes && (
                   <p className="text-sm text-destructive mt-1">
@@ -674,44 +701,46 @@ export function CarbonateModal({
                   </div>
                 ) : sweetenerInventory?.purchases && sweetenerInventory.purchases.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                    {sweetenerInventory.purchases.map((purchase: any) => {
-                      const isSelected = watch("additivePurchaseItemId" as any) === purchase.id;
-                      return (
-                        <Card
-                          key={purchase.id}
-                          className={`cursor-pointer transition-all ${
-                            isSelected
-                              ? "border-primary bg-primary/5 ring-2 ring-primary"
-                              : "hover:border-primary/50 hover:bg-accent"
-                          }`}
-                          onClick={() => setValue("additivePurchaseItemId" as any, purchase.id)}
-                        >
-                          <CardContent className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="font-semibold text-sm">
-                                  {purchase.vendorName}
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {purchase.productName || "Table Sugar"}
-                                </div>
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  Purchased: {new Date(purchase.purchaseDate).toLocaleDateString()}
-                                </div>
-                                {purchase.quantity && (
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    Qty: {purchase.quantity} {purchase.unit}
+                    {sweetenerInventory.purchases.flatMap((purchase: any) =>
+                      purchase.items?.map((item: any) => {
+                        const isSelected = watch("additivePurchaseItemId" as any) === item.id;
+                        return (
+                          <Card
+                            key={item.id}
+                            className={`cursor-pointer transition-all ${
+                              isSelected
+                                ? "border-primary bg-primary/5 ring-2 ring-primary"
+                                : "hover:border-primary/50 hover:bg-accent"
+                            }`}
+                            onClick={() => setValue("additivePurchaseItemId" as any, item.id)}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="font-semibold text-sm">
+                                    {item.productName || purchase.vendorName}
                                   </div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    {item.brandManufacturer || "Table Sugar"}
+                                  </div>
+                                  {item.quantity && (
+                                    <div className="text-xs font-semibold text-green-700 mt-1">
+                                      {parseFloat(item.quantity).toFixed(0)} {item.unit} remaining
+                                    </div>
+                                  )}
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    Purchased: {new Date(purchase.purchaseDate).toLocaleDateString()}
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0" />
                                 )}
                               </div>
-                              {isSelected && (
-                                <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0" />
-                              )}
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                            </CardContent>
+                          </Card>
+                        );
+                      }) || []
+                    )}
                   </div>
                 ) : (
                   <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 mt-2">
