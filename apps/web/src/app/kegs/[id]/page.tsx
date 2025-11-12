@@ -189,82 +189,6 @@ export default function KegDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-4 md:space-y-6">
-            {/* Batch Composition - Only show if keg is filled/distributed */}
-            {latestFillBatch && latestFillBatch.composition && latestFillBatch.composition.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Beaker className="w-5 h-5" />
-                    Batch Composition
-                  </CardTitle>
-                  <CardDescription>
-                    Source materials for {latestFillBatch.batchCustomName || latestFillBatch.batchName}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {latestFillBatch.composition.map((comp: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="flex items-start justify-between p-3 border rounded-lg"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">
-                            {comp.varietyName || "Unknown variety"}
-                          </p>
-                          <p className="text-sm text-gray-500 truncate">
-                            {comp.vendorName || "Unknown vendor"}
-                          </p>
-                        </div>
-                        <div className="text-right ml-4 flex-shrink-0">
-                          <p className="font-medium">
-                            {comp.percentageOfBatch?.toFixed(1)}%
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {comp.volumeL?.toFixed(1)}L
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Latest Measurements Summary */}
-            {latestFillBatch && (
-              <LabelComplianceCard
-                measurements={latestFillBatch.history?.measurements || []}
-                additives={latestFillBatch.history?.additives || []}
-                abvAtPackaging={null}
-                carbonationCo2Volumes={latestFillBatch.carbonationCo2Volumes}
-                packageSizeML={keg.capacityML}
-                composition={latestFillBatch.composition || []}
-                showLabelCharacteristics={false}
-                showMandatoryElements={false}
-              />
-            )}
-
-            {/* Batch Activity Timeline */}
-            {latestFillBatch && (
-              <BatchActivityHistory batchId={latestFillBatch.batchId} />
-            )}
-
-            {/* Measurements Chart */}
-            {latestFillBatch && latestFillBatch.history?.measurements && latestFillBatch.history.measurements.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Batch Measurements</CardTitle>
-                  <CardDescription>
-                    Fermentation progress and quality metrics
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <MeasurementChart measurements={latestFillBatch.history.measurements} />
-                </CardContent>
-              </Card>
-            )}
-
             {/* Keg Information */}
             <Card>
               <CardHeader>
@@ -349,6 +273,82 @@ export default function KegDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Latest Measurements Summary */}
+            {latestFillBatch && (
+              <LabelComplianceCard
+                measurements={latestFillBatch.history?.measurements || []}
+                additives={latestFillBatch.history?.additives || []}
+                abvAtPackaging={null}
+                carbonationCo2Volumes={latestFillBatch.carbonationCo2Volumes}
+                packageSizeML={keg.capacityML}
+                composition={latestFillBatch.composition || []}
+                showLabelCharacteristics={false}
+                showMandatoryElements={false}
+              />
+            )}
+
+            {/* Batch Composition - Only show if keg is filled/distributed */}
+            {latestFillBatch && latestFillBatch.composition && latestFillBatch.composition.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Beaker className="w-5 h-5" />
+                    Batch Composition
+                  </CardTitle>
+                  <CardDescription>
+                    Source materials for {latestFillBatch.batchCustomName || latestFillBatch.batchName}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {latestFillBatch.composition.map((comp: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between p-3 border rounded-lg"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">
+                            {comp.varietyName || "Unknown variety"}
+                          </p>
+                          <p className="text-sm text-gray-500 truncate">
+                            {comp.vendorName || "Unknown vendor"}
+                          </p>
+                        </div>
+                        <div className="text-right ml-4 flex-shrink-0">
+                          <p className="font-medium">
+                            {comp.percentageOfBatch?.toFixed(1)}%
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {comp.volumeL?.toFixed(1)}L
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Batch Activity Timeline */}
+            {latestFillBatch && (
+              <BatchActivityHistory batchId={latestFillBatch.batchId} />
+            )}
+
+            {/* Measurements Chart */}
+            {latestFillBatch && latestFillBatch.history?.measurements && latestFillBatch.history.measurements.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Batch Measurements</CardTitle>
+                  <CardDescription>
+                    Fermentation progress and quality metrics
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <MeasurementChart measurements={latestFillBatch.history.measurements} />
+                </CardContent>
+              </Card>
+            )}
 
             {/* Fill History */}
             <Card>
