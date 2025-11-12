@@ -69,6 +69,7 @@ import {
   Wine,
   Filter as FilterIcon,
   Package,
+  Search,
 } from "lucide-react";
 import {
   litersToGallons,
@@ -136,7 +137,10 @@ const transferSchema = z.object({
   fromVesselId: z.string().uuid("Select source vessel"),
   toVesselId: z.string().uuid("Select destination vessel"),
   volumeL: z.number().positive("Volume must be positive"),
-  loss: z.number().min(0, "Loss cannot be negative").optional(),
+  loss: z.preprocess(
+    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
+    z.number().min(0, "Loss cannot be negative").optional()
+  ),
   transferDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   notes: z.string().optional(),
 });
@@ -459,6 +463,7 @@ function TankTransferForm({
 }) {
   const [showBlendConfirm, setShowBlendConfirm] = useState(false);
   const [selectedDestVesselId, setSelectedDestVesselId] = useState<string | null>(null);
+  const [vesselSearchQuery, setVesselSearchQuery] = useState("");
 
   const {
     register,
@@ -536,6 +541,11 @@ function TankTransferForm({
       (vessel) => vessel.id !== fromVesselId && vessel.status === "available",
     ) || [];
 
+  // Filter vessels based on search query
+  const filteredVessels = availableVessels.filter((vessel) =>
+    vessel.name?.toLowerCase().includes(vesselSearchQuery.toLowerCase())
+  );
+
   // Check if destination vessel has liquid (is fermenting)
   const watchedToVesselId = watch("toVesselId");
   const destVessel = availableVessels.find(v => v.id === watchedToVesselId);
@@ -555,8 +565,8 @@ function TankTransferForm({
   // Check if destination has liquid based on actual volume, not status
   const destHasLiquid = destCurrentVolume > 0;
 
-  const watchedVolumeL = watch("volumeL");
-  const watchedLoss = watch("loss") || 0;
+  const watchedVolumeL = watch("volumeL") || 0;
+  const watchedLoss = (watch("loss") as number | undefined) || 0;
 
   // Calculate remaining volume with epsilon tolerance
   const transferInLiters = watchedVolumeL ? toLiters(watchedVolumeL, displayUnit) : 0;
@@ -663,46 +673,70 @@ function TankTransferForm({
           <SelectTrigger>
             <SelectValue placeholder="Select destination tank" />
           </SelectTrigger>
-          <SelectContent>
-            {availableVessels.map((vessel) => {
-              const vesselLiquidMap = liquidMapQuery.data?.vessels?.find(
-                (v) => v.vesselId === vessel.id,
-              );
+          <SelectContent className="max-h-[400px]">
+            {/* Search Input - Sticky at top */}
+            <div className="sticky top-0 z-10 bg-white p-2 border-b">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                <Input
+                  type="text"
+                  placeholder="Search vessels..."
+                  value={vesselSearchQuery}
+                  onChange={(e) => setVesselSearchQuery(e.target.value)}
+                  className="pl-8 h-9"
+                  onKeyDown={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
 
-              // Capacity is stored in liters, convert to display unit
-              const capacityInLiters = parseFloat(vessel.capacity);
-              const capacityUnit = vessel.capacityUnit as VolumeUnit;
-              const capacity = convertVolume(capacityInLiters, "L", capacityUnit);
+            {/* Scrollable Vessel List */}
+            <div className="overflow-y-auto max-h-[300px]">
+              {filteredVessels.length === 0 ? (
+                <div className="p-4 text-center text-sm text-gray-500">
+                  {vesselSearchQuery ? "No vessels match your search" : "No available vessels"}
+                </div>
+              ) : (
+                filteredVessels.map((vessel) => {
+                  const vesselLiquidMap = liquidMapQuery.data?.vessels?.find(
+                    (v) => v.vesselId === vessel.id,
+                  );
 
-              // Current volume - convert to vessel's capacity unit
-              let vesselCurrentVolume = 0;
-              if (vesselLiquidMap?.currentVolume) {
-                const currentVol = parseFloat(vesselLiquidMap.currentVolume.toString());
-                const currentUnit = (vesselLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
-                vesselCurrentVolume = convertVolume(currentVol, currentUnit, capacityUnit);
-              }
-              const hasLiquid = vessel.status === "available" && vesselCurrentVolume > 0;
+                  // Capacity is stored in liters, convert to display unit
+                  const capacityInLiters = parseFloat(vessel.capacity);
+                  const capacityUnit = vessel.capacityUnit as VolumeUnit;
+                  const capacity = convertVolume(capacityInLiters, "L", capacityUnit);
 
-              return (
-                <SelectItem key={vessel.id} value={vessel.id}>
-                  <span className="flex items-center gap-2">
-                    {vessel.name || "Unnamed"} (
-                    <VolumeDisplay
-                      value={capacity}
-                      unit={capacityUnit}
-                      showUnit={true}
-                      className="inline"
-                    />
-                    capacity)
-                    {hasLiquid && (
-                      <span className="text-xs text-orange-600 font-medium">
-                        • Contains {formatVolume(vesselCurrentVolume, capacityUnit)}
+                  // Current volume - convert to vessel's capacity unit
+                  let vesselCurrentVolume = 0;
+                  if (vesselLiquidMap?.currentVolume) {
+                    const currentVol = parseFloat(vesselLiquidMap.currentVolume.toString());
+                    const currentUnit = (vesselLiquidMap.currentVolumeUnit || "L") as VolumeUnit;
+                    vesselCurrentVolume = convertVolume(currentVol, currentUnit, capacityUnit);
+                  }
+                  const hasLiquid = vessel.status === "available" && vesselCurrentVolume > 0;
+
+                  return (
+                    <SelectItem key={vessel.id} value={vessel.id}>
+                      <span className="flex items-center gap-2">
+                        {vessel.name || "Unnamed"} (
+                        <VolumeDisplay
+                          value={capacity}
+                          unit={capacityUnit}
+                          showUnit={true}
+                          className="inline"
+                        />
+                        capacity)
+                        {hasLiquid && (
+                          <span className="text-xs text-orange-600 font-medium">
+                            • Contains {formatVolume(vesselCurrentVolume, capacityUnit)}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                </SelectItem>
-              );
-            })}
+                    </SelectItem>
+                  );
+                })
+              )}
+            </div>
           </SelectContent>
         </Select>
         {errors.toVesselId && (
@@ -718,7 +752,18 @@ function TankTransferForm({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="volumeL">Transfer Volume ({displayUnit})</Label>
+          <div className="flex justify-between items-center mb-1">
+            <Label htmlFor="volumeL">Transfer Volume ({displayUnit})</Label>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setValue("volumeL", currentVolume)}
+              className="h-7 text-xs"
+            >
+              Transfer All ({formatDisplayVolume(currentVolume, displayUnit)})
+            </Button>
+          </div>
           <Input
             id="volumeL"
             type="number"
@@ -1566,8 +1611,8 @@ function VesselMap() {
 
                           return null;
                         })()}
-                        {/* Show CO₂ if pressure vessel with active carbonation */}
-                        {liquidMapVessel.isPressureVessel === "yes" && liquidMapVessel.carbonationTargetCo2 && (
+                        {/* Show CO₂ if pressure vessel with carbonation data */}
+                        {liquidMapVessel.isPressureVessel === "yes" && (liquidMapVessel.carbonationFinalCo2 || liquidMapVessel.carbonationTargetCo2) && (
                           <div className="flex justify-between">
                             <span className="text-gray-600">CO₂:</span>
                             <button
@@ -1575,10 +1620,16 @@ function VesselMap() {
                               className="font-medium hover:text-purple-600 transition-colors cursor-pointer"
                               title="Click to toggle between volumes and g/L"
                             >
-                              {co2Unit === "vol"
-                                ? `${parseFloat(String(liquidMapVessel.carbonationTargetCo2)).toFixed(2)} vol`
-                                : `${(parseFloat(String(liquidMapVessel.carbonationTargetCo2)) * 1.96).toFixed(2)} g/L`
-                              }
+                              {(() => {
+                                // Prefer final CO₂ if carbonation is completed, otherwise show target
+                                const co2Value = liquidMapVessel.carbonationFinalCo2
+                                  ? parseFloat(String(liquidMapVessel.carbonationFinalCo2))
+                                  : parseFloat(String(liquidMapVessel.carbonationTargetCo2));
+
+                                return co2Unit === "vol"
+                                  ? `${co2Value.toFixed(2)} vol`
+                                  : `${(co2Value * 1.96).toFixed(2)} g/L`;
+                              })()}
                             </button>
                           </div>
                         )}
@@ -1686,17 +1737,15 @@ function VesselMap() {
                           )}
                           {liquidMapVessel?.batchStatus === "aging" && (
                             <>
-                              {liquidMapVessel?.isPressureVessel === "yes" && (
-                                <DropdownMenuItem
-                                  onClick={() => handleCarbonate(vessel.id)}
-                                  disabled={
-                                    !liquidMapVessel?.batchId || currentVolume <= 0
-                                  }
-                                >
-                                  <Waves className="w-3 h-3 mr-2" />
-                                  Carbonate
-                                </DropdownMenuItem>
-                              )}
+                              <DropdownMenuItem
+                                onClick={() => handleCarbonate(vessel.id)}
+                                disabled={
+                                  !liquidMapVessel?.batchId || currentVolume <= 0
+                                }
+                              >
+                                <Waves className="w-3 h-3 mr-2" />
+                                Carbonate
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleFilter(vessel.id)}
                                 disabled={
@@ -1916,16 +1965,14 @@ function VesselMap() {
         )}
 
         {/* Fill Keg Modal */}
-        {selectedVesselForKegging && (
-          <FillKegModal
-            open={showFillKegModal}
-            onClose={handleCloseFillKegModal}
-            vesselId={selectedVesselForKegging.id}
-            vesselName={selectedVesselForKegging.name}
-            batchId={selectedVesselForKegging.batchId}
-            currentVolumeL={selectedVesselForKegging.currentVolumeL}
-          />
-        )}
+        <FillKegModal
+          open={showFillKegModal && !!selectedVesselForKegging}
+          onClose={handleCloseFillKegModal}
+          vesselId={selectedVesselForKegging?.id || ""}
+          vesselName={selectedVesselForKegging?.name || ""}
+          batchId={selectedVesselForKegging?.batchId || ""}
+          currentVolumeL={selectedVesselForKegging?.currentVolumeL || 0}
+        />
 
         {/* Filter Modal */}
         {selectedVesselForFiltering && (
