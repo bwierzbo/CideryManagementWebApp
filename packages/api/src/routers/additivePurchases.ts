@@ -23,9 +23,6 @@ export const additivePurchasesRouter = router({
         if (vendorId) {
           conditions.push(eq(additivePurchases.vendorId, vendorId));
         }
-        if (itemType) {
-          conditions.push(eq(additiveVarieties.itemType, itemType));
-        }
 
         const purchases = await db
           .select({
@@ -44,6 +41,8 @@ export const additivePurchasesRouter = router({
             itemQuantity: additivePurchaseItems.quantity,
             itemUnit: additivePurchaseItems.unit,
             itemAdditiveVarietyId: additivePurchaseItems.additiveVarietyId,
+            // Include variety itemType for filtering
+            varietyItemType: additiveVarieties.itemType,
           })
           .from(additivePurchases)
           .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
@@ -67,6 +66,7 @@ export const additivePurchasesRouter = router({
                 quantity: row.itemQuantity,
                 unit: row.itemUnit,
                 additiveVarietyId: row.itemAdditiveVarietyId,
+                varietyItemType: row.varietyItemType,
               });
             }
           } else {
@@ -86,11 +86,23 @@ export const additivePurchasesRouter = router({
                 quantity: row.itemQuantity,
                 unit: row.itemUnit,
                 additiveVarietyId: row.itemAdditiveVarietyId,
+                varietyItemType: row.varietyItemType,
               }] : [],
             });
           }
           return acc;
         }, []);
+
+        // Filter purchases by itemType if specified
+        let filteredPurchases = groupedPurchases;
+        if (itemType) {
+          filteredPurchases = groupedPurchases
+            .map(purchase => ({
+              ...purchase,
+              items: purchase.items.filter((item: any) => item.varietyItemType === itemType)
+            }))
+            .filter(purchase => purchase.items.length > 0); // Remove purchases with no matching items
+        }
 
         const totalCount = await db
           .select({ count: sql<number>`count(*)` })
@@ -98,7 +110,7 @@ export const additivePurchasesRouter = router({
           .where(and(...conditions));
 
         return {
-          purchases: groupedPurchases.slice(0, limit),
+          purchases: filteredPurchases.slice(0, limit),
           pagination: {
             total: totalCount[0]?.count || 0,
             limit,
