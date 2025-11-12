@@ -9,6 +9,16 @@ import {
   batches,
   users,
   packagingPurchaseItems,
+  batchCompositions,
+  baseFruitVarieties,
+  juicePurchaseItems,
+  juiceVarieties,
+  vendors,
+  batchMeasurements,
+  batchAdditives,
+  additiveVarieties,
+  batchTransfers,
+  batchCarbonationOperations,
 } from "db";
 import { eq, and, desc, isNull, sql, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -47,6 +57,17 @@ const createKegSchema = z.object({
 const updateKegSchema = z.object({
   kegId: z.string().uuid(),
   kegNumber: z.string().min(1).optional(),
+  kegType: z
+    .enum([
+      "cornelius_5L",
+      "cornelius_9L",
+      "sanke_20L",
+      "sanke_30L",
+      "sanke_50L",
+      "other",
+    ])
+    .optional(),
+  capacityML: z.number().positive().optional(),
   status: z
     .enum([
       "available",
@@ -61,6 +82,11 @@ const updateKegSchema = z.object({
     .enum(["excellent", "good", "fair", "needs_repair", "retired"])
     .optional(),
   currentLocation: z.string().optional(),
+  purchaseDate: z
+    .date()
+    .or(z.string().transform((val) => new Date(val)))
+    .optional(),
+  purchaseCost: z.number().positive().optional(),
   notes: z.string().optional(),
 });
 
@@ -197,7 +223,7 @@ export const kegsRouter = router({
               LIMIT 1
             )`,
             latestFillBatchName: sql<string>`(
-              SELECT b.name FROM keg_fills kf
+              SELECT COALESCE(b.custom_name, b.name) FROM keg_fills kf
               LEFT JOIN batches b ON kf.batch_id = b.id
               WHERE kf.keg_id = kegs.id
                 AND kf.status != 'voided'
@@ -295,9 +321,200 @@ export const kegsRouter = router({
           .where(eq(kegFills.kegId, input.kegId))
           .orderBy(desc(kegFills.filledAt));
 
+        // Get comprehensive batch data for the latest fill (if exists)
+        let latestFillBatch = null;
+        if (fills.length > 0) {
+          const latestFill = fills[0];
+          const batchId = latestFill.batchId;
+
+          // Get batch composition
+          const compositionData = await db
+            .select({
+              varietyName: sql<string>`
+                CASE
+                  WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                  WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                  ELSE 'Unknown'
+                END
+              `,
+              vendorName: vendors.name,
+              volumeL: batchCompositions.juiceVolume,
+              percentageOfBatch: batchCompositions.fractionOfBatch,
+              ph: juicePurchaseItems.ph,
+              specificGravity: juicePurchaseItems.specificGravity,
+            })
+            .from(batchCompositions)
+            .leftJoin(
+              baseFruitVarieties,
+              eq(batchCompositions.varietyId, baseFruitVarieties.id),
+            )
+            .leftJoin(
+              juicePurchaseItems,
+              eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id),
+            )
+            .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+            .where(eq(batchCompositions.batchId, batchId));
+
+          // Get batch measurements
+          const measurements = await db
+            .select({
+              measurementDate: batchMeasurements.measurementDate,
+              specificGravity: batchMeasurements.specificGravity,
+              abv: batchMeasurements.abv,
+              ph: batchMeasurements.ph,
+              totalAcidity: batchMeasurements.totalAcidity,
+              temperature: batchMeasurements.temperature,
+            })
+            .from(batchMeasurements)
+            .where(eq(batchMeasurements.batchId, batchId))
+            .orderBy(desc(batchMeasurements.measurementDate))
+            .limit(20);
+
+          // Get batch additives
+          const additives = await db
+            .select({
+              additiveName: batchAdditives.additiveName,
+              amount: batchAdditives.amount,
+              unit: batchAdditives.unit,
+              addedAt: batchAdditives.addedAt,
+            })
+            .from(batchAdditives)
+            .where(eq(batchAdditives.batchId, batchId))
+            .orderBy(desc(batchAdditives.addedAt))
+            .limit(5);
+
+          // Get additive varieties for label impact and allergen info
+          const additiveNames = additives.map((a) => a.additiveName);
+          let additiveVarietyMap = new Map();
+
+          if (additiveNames.length > 0) {
+            const varietyData = await db
+              .select({
+                name: additiveVarieties.name,
+                labelImpact: additiveVarieties.labelImpact,
+                labelImpactNotes: additiveVarieties.labelImpactNotes,
+                allergensVegan: additiveVarieties.allergensVegan,
+                allergensVeganNotes: additiveVarieties.allergensVeganNotes,
+                itemType: additiveVarieties.itemType,
+              })
+              .from(additiveVarieties)
+              .where(
+                and(
+                  inArray(additiveVarieties.name, additiveNames),
+                  isNull(additiveVarieties.deletedAt),
+                ),
+              );
+
+            for (const variety of varietyData) {
+              additiveVarietyMap.set(variety.name, variety);
+            }
+          }
+
+          // Enrich additives with variety info
+          const enrichedAdditives = additives.map((additive) => {
+            const varietyInfo = additiveVarietyMap.get(additive.additiveName);
+            return {
+              ...additive,
+              labelImpact: varietyInfo?.labelImpact ?? false,
+              labelImpactNotes: varietyInfo?.labelImpactNotes ?? null,
+              allergensVegan: varietyInfo?.allergensVegan ?? false,
+              allergensVeganNotes: varietyInfo?.allergensVeganNotes ?? null,
+              itemType: varietyInfo?.itemType ?? null,
+            };
+          });
+
+          // Get batch transfers
+          const transfers = await db
+            .select({
+              volumeTransferred: batchTransfers.volumeTransferred,
+              destinationVesselName: sql<string>`dest_vessel.name`,
+              transferredAt: batchTransfers.transferredAt,
+            })
+            .from(batchTransfers)
+            .leftJoin(
+              sql`vessels AS dest_vessel`,
+              sql`dest_vessel.id = ${batchTransfers.destinationVesselId}`,
+            )
+            .where(eq(batchTransfers.sourceBatchId, batchId))
+            .orderBy(desc(batchTransfers.transferredAt))
+            .limit(5);
+
+          // Get carbonation data if exists
+          const carbonation = await db
+            .select({
+              finalCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
+              targetCo2Volumes: batchCarbonationOperations.targetCo2Volumes,
+            })
+            .from(batchCarbonationOperations)
+            .where(eq(batchCarbonationOperations.batchId, batchId))
+            .orderBy(desc(batchCarbonationOperations.createdAt))
+            .limit(1);
+
+          latestFillBatch = {
+            batchId,
+            batchName: latestFill.batchName,
+            batchCustomName: latestFill.batchCustomName,
+            composition: compositionData.map((c) => ({
+              varietyName: c.varietyName,
+              vendorName: c.vendorName,
+              volumeL: c.volumeL ? parseFloat(c.volumeL.toString()) : 0,
+              percentageOfBatch: c.percentageOfBatch
+                ? parseFloat(c.percentageOfBatch.toString()) * 100
+                : 0,
+              ph: c.ph ? parseFloat(c.ph.toString()) : null,
+              specificGravity: c.specificGravity
+                ? parseFloat(c.specificGravity.toString())
+                : null,
+            })),
+            history: {
+              measurements: measurements.map((m) => ({
+                measurementDate: m.measurementDate,
+                specificGravity: m.specificGravity
+                  ? parseFloat(m.specificGravity.toString())
+                  : null,
+                abv: m.abv ? parseFloat(m.abv.toString()) : null,
+                ph: m.ph ? parseFloat(m.ph.toString()) : null,
+                totalAcidity: m.totalAcidity
+                  ? parseFloat(m.totalAcidity.toString())
+                  : null,
+                temperature: m.temperature
+                  ? parseFloat(m.temperature.toString())
+                  : null,
+              })),
+              additives: enrichedAdditives.map((a) => ({
+                additiveName: a.additiveName,
+                amount: a.amount ? parseFloat(a.amount.toString()) : 0,
+                unit: a.unit,
+                addedAt: a.addedAt,
+                labelImpact: a.labelImpact,
+                labelImpactNotes: a.labelImpactNotes,
+                allergensVegan: a.allergensVegan,
+                allergensVeganNotes: a.allergensVeganNotes,
+                itemType: a.itemType,
+              })),
+              transfers: transfers.map((t) => ({
+                volumeTransferred: t.volumeTransferred
+                  ? parseFloat(t.volumeTransferred.toString())
+                  : 0,
+                destinationVesselName: t.destinationVesselName,
+                transferredAt: t.transferredAt,
+              })),
+            },
+            carbonationCo2Volumes:
+              carbonation.length > 0
+                ? carbonation[0].finalCo2Volumes
+                  ? parseFloat(carbonation[0].finalCo2Volumes.toString())
+                  : carbonation[0].targetCo2Volumes
+                    ? parseFloat(carbonation[0].targetCo2Volumes.toString())
+                    : null
+                : null,
+          };
+        }
+
         return {
           keg: keg[0],
           fills,
+          latestFillBatch,
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -444,10 +661,25 @@ export const kegsRouter = router({
           }
         }
 
+        // Process updates for database
+        const processedUpdates: any = { ...updates };
+
+        // Convert purchaseDate to ISO string if provided
+        if (processedUpdates.purchaseDate) {
+          processedUpdates.purchaseDate = processedUpdates.purchaseDate instanceof Date
+            ? processedUpdates.purchaseDate.toISOString().split("T")[0]
+            : processedUpdates.purchaseDate;
+        }
+
+        // Convert purchaseCost to string if provided
+        if (processedUpdates.purchaseCost !== undefined) {
+          processedUpdates.purchaseCost = processedUpdates.purchaseCost.toString();
+        }
+
         const [updatedKeg] = await db
           .update(kegs)
           .set({
-            ...updates,
+            ...processedUpdates,
             updatedAt: new Date(),
           })
           .where(eq(kegs.id, kegId))
@@ -562,6 +794,36 @@ export const kegsRouter = router({
             code: "BAD_REQUEST",
             message: `Kegs not available: ${unavailableKegs.map((k) => k.kegNumber).join(", ")}`,
           });
+        }
+
+        // Calculate total volume being packaged
+        const totalVolumeTaken = input.kegVolumes.reduce(
+          (sum, kv) => sum + kv.volumeTaken,
+          0
+        );
+        const totalLoss = input.loss || 0;
+        const totalDeduction = totalVolumeTaken + totalLoss;
+
+        // Update batch volume
+        const [currentBatch] = await db
+          .select({
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
+          })
+          .from(batches)
+          .where(eq(batches.id, input.batchId))
+          .limit(1);
+
+        if (currentBatch?.currentVolume) {
+          const newVolume = parseFloat(currentBatch.currentVolume.toString()) - totalDeduction;
+
+          await db
+            .update(batches)
+            .set({
+              currentVolume: newVolume.toString(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
         }
 
         // Create keg fills and update keg status in a transaction
@@ -798,6 +1060,201 @@ export const kegsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to void keg fill",
+        });
+      }
+    }),
+
+  /**
+   * Delete a keg fill (hard delete)
+   */
+  deleteKegFill: createRbacProcedure("delete", "batch")
+    .input(z.object({ kegFillId: z.string().uuid() }))
+    .mutation(async ({ input }) => {
+      try {
+        // Get fill info including batch details
+        const [fill] = await db
+          .select({
+            kegId: kegFills.kegId,
+            batchId: kegFills.batchId,
+            volumeTaken: kegFills.volumeTaken,
+            loss: kegFills.loss,
+          })
+          .from(kegFills)
+          .where(eq(kegFills.id, input.kegFillId))
+          .limit(1);
+
+        if (!fill) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Keg fill not found",
+          });
+        }
+
+        // Delete associated materials first
+        await db
+          .delete(kegFillMaterials)
+          .where(eq(kegFillMaterials.kegFillId, input.kegFillId));
+
+        // Delete the keg fill
+        await db
+          .delete(kegFills)
+          .where(eq(kegFills.id, input.kegFillId));
+
+        // Restore volume to batch
+        const volumeToRestore = parseFloat(fill.volumeTaken?.toString() || "0") +
+                               parseFloat(fill.loss?.toString() || "0");
+
+        if (volumeToRestore > 0) {
+          const [currentBatch] = await db
+            .select({
+              currentVolume: batches.currentVolume,
+            })
+            .from(batches)
+            .where(eq(batches.id, fill.batchId))
+            .limit(1);
+
+          if (currentBatch?.currentVolume) {
+            const newVolume = parseFloat(currentBatch.currentVolume.toString()) + volumeToRestore;
+
+            await db
+              .update(batches)
+              .set({
+                currentVolume: newVolume.toString(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, fill.batchId));
+          }
+        }
+
+        // Update keg to available
+        await db
+          .update(kegs)
+          .set({
+            status: "available",
+            updatedAt: new Date(),
+          })
+          .where(eq(kegs.id, fill.kegId));
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error deleting keg fill:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete keg fill",
+        });
+      }
+    }),
+
+  /**
+   * Get detailed information about a specific keg fill
+   * Returns full fill details with batch composition, keg info, and history
+   */
+  getKegFillDetails: createRbacProcedure("read", "keg")
+    .input(z.string().uuid())
+    .query(async ({ input: fillId }) => {
+      try {
+        // Fetch keg fill with all relations
+        const fillData = await db
+          .select({
+            id: kegFills.id,
+            kegId: kegFills.kegId,
+            batchId: kegFills.batchId,
+            vesselId: kegFills.vesselId,
+            filledAt: kegFills.filledAt,
+            volumeTaken: kegFills.volumeTaken,
+            volumeTakenUnit: kegFills.volumeTakenUnit,
+            loss: kegFills.loss,
+            lossUnit: kegFills.lossUnit,
+            carbonationMethod: kegFills.carbonationMethod,
+            productionNotes: kegFills.productionNotes,
+            status: kegFills.status,
+            distributedAt: kegFills.distributedAt,
+            distributionLocation: kegFills.distributionLocation,
+            returnedAt: kegFills.returnedAt,
+            voidedAt: kegFills.voidedAt,
+            voidReason: kegFills.voidReason,
+            createdBy: kegFills.createdBy,
+            createdAt: kegFills.createdAt,
+            updatedAt: kegFills.updatedAt,
+            // Keg details
+            kegNumber: kegs.kegNumber,
+            kegType: kegs.kegType,
+            capacityML: kegs.capacityML,
+            kegCondition: kegs.condition,
+            kegCurrentLocation: kegs.currentLocation,
+            kegStatus: kegs.status,
+            // Batch details
+            batchName: batches.name,
+            batchCustomName: batches.customName,
+            batchNumber: batches.batchNumber,
+            batchStatus: batches.status,
+            batchInitialVolume: batches.initialVolume,
+            batchCurrentVolume: batches.currentVolume,
+            batchStartDate: batches.startDate,
+            batchEndDate: batches.endDate,
+            // Vessel details
+            vesselName: vessels.name,
+            // User who filled
+            createdByName: sql<string>`created_user.name`.as("createdByName"),
+          })
+          .from(kegFills)
+          .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+          .leftJoin(batches, eq(kegFills.batchId, batches.id))
+          .leftJoin(vessels, eq(kegFills.vesselId, vessels.id))
+          .leftJoin(
+            sql`users AS created_user`,
+            sql`created_user.id = ${kegFills.createdBy}`,
+          )
+          .where(eq(kegFills.id, fillId))
+          .limit(1);
+
+        if (!fillData.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Keg fill not found",
+          });
+        }
+
+        const fill = fillData[0];
+
+        // Calculate loss percentage
+        const lossPercentage =
+          fill.volumeTaken && fill.loss
+            ? (parseFloat(fill.loss.toString()) / parseFloat(fill.volumeTaken.toString())) * 100
+            : 0;
+
+        return {
+          ...fill,
+          lossPercentage,
+          batch: {
+            name: fill.batchName || "",
+            customName: fill.batchCustomName || null,
+            batchNumber: fill.batchNumber || null,
+            status: fill.batchStatus || null,
+            initialVolume: fill.batchInitialVolume || null,
+            currentVolume: fill.batchCurrentVolume || null,
+            startDate: fill.batchStartDate || null,
+            endDate: fill.batchEndDate || null,
+          },
+          keg: {
+            kegNumber: fill.kegNumber || "",
+            kegType: fill.kegType || "",
+            capacityML: fill.capacityML || 0,
+            condition: fill.kegCondition || null,
+            currentLocation: fill.kegCurrentLocation || null,
+            status: fill.kegStatus || null,
+          },
+          vessel: {
+            name: fill.vesselName || "",
+          },
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error fetching keg fill details:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch keg fill details",
         });
       }
     }),

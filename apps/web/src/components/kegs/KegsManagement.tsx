@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import { trpc } from "@/utils/trpc";
 import {
   Card,
@@ -111,10 +112,14 @@ const KEG_TYPE_LABELS: Record<string, string> = {
 };
 
 export function KegsManagement() {
+  const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<KegStatus>("all");
   const [kegTypeFilter, setKegTypeFilter] = useState<KegType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedKegForEdit, setSelectedKegForEdit] = useState<string | null>(
+    null
+  );
   const [selectedKegForDetails, setSelectedKegForDetails] = useState<
     string | null
   >(null);
@@ -155,6 +160,23 @@ export function KegsManagement() {
     },
   });
 
+  const deleteKegFillMutation = trpc.kegs.deleteKegFill.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Keg Fill Deleted",
+        description: "Keg fill deleted and volume restored to batch",
+      });
+      utils.kegs.listKegs.invalidate();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const returnKegMutation = trpc.kegs.returnKegFill.useMutation({
     onSuccess: () => {
       toast({
@@ -182,6 +204,18 @@ export function KegsManagement() {
     }
 
     deleteKegMutation.mutate({ kegId });
+  };
+
+  const handleDeleteKegFill = async (kegFillId: string, kegNumber: string) => {
+    if (
+      !confirm(
+        `Are you sure you want to delete the fill for keg ${kegNumber}? This will restore the volume to the batch and cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    deleteKegFillMutation.mutate({ kegFillId });
   };
 
   const handleReturnKeg = async (kegFillId: string, kegNumber: string) => {
@@ -335,19 +369,25 @@ export function KegsManagement() {
                           <span className="truncate">{keg.currentLocation || "Unknown"}</span>
                         </div>
 
-                        {keg.latestFillBatchName && (
-                          <div className="flex items-center gap-2">
+                        {keg.latestFillBatchName && keg.latestFillId && (
+                          <button
+                            onClick={() => router.push(`/keg-fills/${keg.latestFillId}`)}
+                            className="flex items-center gap-2 hover:text-blue-600 transition-colors cursor-pointer"
+                          >
                             <Calendar className="w-4 h-4 text-gray-400" />
                             <span className="truncate">
                               {keg.latestFillBatchName}
                             </span>
-                          </div>
+                          </button>
                         )}
 
-                        {keg.latestFillDate && (
-                          <div className="text-xs text-gray-500">
+                        {keg.latestFillDate && keg.latestFillId && (
+                          <button
+                            onClick={() => router.push(`/keg-fills/${keg.latestFillId}`)}
+                            className="text-xs text-gray-500 hover:text-blue-600 transition-colors cursor-pointer"
+                          >
                             Filled: {format(new Date(keg.latestFillDate), "MMM d, yyyy")}
-                          </div>
+                          </button>
                         )}
                       </div>
 
@@ -356,28 +396,53 @@ export function KegsManagement() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => setSelectedKegForDetails(keg.id)}
+                          onClick={() => router.push(`/kegs/${keg.id}`)}
                           className="flex-1"
                         >
                           <Eye className="w-3 h-3 mr-1" />
                           Details
                         </Button>
 
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSelectedKegForEdit(keg.id)}
+                          className="flex-1"
+                        >
+                          <Edit className="w-3 h-3 mr-1" />
+                          Edit
+                        </Button>
+
                         {keg.status === "filled" && keg.latestFillId && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              setSelectedKegForDistribution({
-                                kegFillId: keg.latestFillId as string,
-                                kegNumber: keg.kegNumber,
-                              })
-                            }
-                            className="flex-1"
-                          >
-                            <Send className="w-3 h-3 mr-1" />
-                            Distribute
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setSelectedKegForDistribution({
+                                  kegFillId: keg.latestFillId as string,
+                                  kegNumber: keg.kegNumber,
+                                })
+                              }
+                              className="flex-1"
+                            >
+                              <Send className="w-3 h-3 mr-1" />
+                              Distribute
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                handleDeleteKegFill(
+                                  keg.latestFillId as string,
+                                  keg.kegNumber,
+                                )
+                              }
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </>
                         )}
 
                         {keg.status === "distributed" && keg.latestFillId && (
@@ -435,6 +500,18 @@ export function KegsManagement() {
           utils.kegs.listKegs.invalidate();
         }}
       />
+
+      {selectedKegForEdit && (
+        <EditKegModal
+          open={!!selectedKegForEdit}
+          onClose={() => setSelectedKegForEdit(null)}
+          kegId={selectedKegForEdit}
+          onSuccess={() => {
+            setSelectedKegForEdit(null);
+            utils.kegs.listKegs.invalidate();
+          }}
+        />
+      )}
 
       {selectedKegForDetails && (
         <KegDetailsModal

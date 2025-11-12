@@ -51,6 +51,8 @@ interface LabelComplianceCardProps {
   carbonationCo2Volumes: number | null | undefined;
   packageSizeML: number;
   composition?: Composition[];
+  showLabelCharacteristics?: boolean;
+  showMandatoryElements?: boolean;
 }
 
 export function LabelComplianceCard({
@@ -60,6 +62,8 @@ export function LabelComplianceCard({
   carbonationCo2Volumes,
   packageSizeML,
   composition,
+  showLabelCharacteristics = true,
+  showMandatoryElements = true,
 }: LabelComplianceCardProps) {
   // Get latest measurement values
   const latestMeasurement = measurements && measurements.length > 0 ? measurements[0] : null;
@@ -152,11 +156,13 @@ export function LabelComplianceCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <FileCheck className="w-5 h-5" />
-          Summary & Label Characteristics
+          {showLabelCharacteristics ? "Summary & Label Characteristics" : "Summary"}
         </CardTitle>
-        <CardDescription>
-          Federal labeling requirements for hard cider products
-        </CardDescription>
+        {showLabelCharacteristics && (
+          <CardDescription>
+            Federal labeling requirements for hard cider products
+          </CardDescription>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -204,82 +210,88 @@ export function LabelComplianceCard({
           </div>
         </div>
 
-        <Separator />
+        {showLabelCharacteristics && (
+          <>
+            <Separator />
 
-        {/* Regulatory Status */}
-        {requiresCOLA ? (
-          <Alert variant="destructive" className="border-amber-500 bg-amber-50">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>TTB COLA Required - Wine Labeling Rules Apply</AlertTitle>
-            <AlertDescription>
-              ABV ≥7% requires Certificate of Label Approval (COLA) from TTB under
-              27 CFR Part 4. Product is classified as &apos;Wine&apos; or &apos;Apple Wine&apos;.
-            </AlertDescription>
-          </Alert>
-        ) : isFDA ? (
-          <Alert className="border-blue-500 bg-blue-50">
-            <Info className="h-4 w-4" />
-            <AlertTitle>FDA Labeling - No COLA Required</AlertTitle>
-            <AlertDescription>
-              ABV &lt;7% follows simplified FDA labeling under 21 CFR 101. Must include
-              ingredient list and allergen statements.
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertTitle>No ABV Data Available</AlertTitle>
-            <AlertDescription>
-              Measure ABV to determine TTB vs FDA labeling requirements.
-            </AlertDescription>
-          </Alert>
+            {/* Regulatory Status */}
+            {requiresCOLA ? (
+              <Alert variant="destructive" className="border-amber-500 bg-amber-50">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>TTB COLA Required - Wine Labeling Rules Apply</AlertTitle>
+                <AlertDescription>
+                  ABV ≥7% requires Certificate of Label Approval (COLA) from TTB under
+                  27 CFR Part 4. Product is classified as &apos;Wine&apos; or &apos;Apple Wine&apos;.
+                </AlertDescription>
+              </Alert>
+            ) : isFDA ? (
+              <Alert className="border-blue-500 bg-blue-50">
+                <Info className="h-4 w-4" />
+                <AlertTitle>FDA Labeling - No COLA Required</AlertTitle>
+                <AlertDescription>
+                  ABV &lt;7% follows simplified FDA labeling under 21 CFR 101. Must include
+                  ingredient list and allergen statements.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertTitle>No ABV Data Available</AlertTitle>
+                <AlertDescription>
+                  Measure ABV to determine TTB vs FDA labeling requirements.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <Separator />
+          </>
         )}
 
-        <Separator />
-
         {/* Mandatory Label Elements */}
-        <div>
-          <p className="text-sm font-medium mb-2">Mandatory Label Elements</p>
-          <div className="space-y-1.5">
-            <LabelRequirement
-              met={true}
-              text="Brand Name"
-              notes="Prominent on front label"
-            />
-            <LabelRequirement
-              met={true}
-              text={`Class/Type: ${requiresCOLA ? "Apple Wine" : "Hard Cider"}`}
-              notes="Product classification based on ABV"
-            />
-            <LabelRequirement
-              met={true}
-              text={`Net Contents: ${packageSizeML} mL (${fluidOunces} FL OZ)`}
-              notes="Standard size declaration"
-            />
-            <LabelRequirement
-              met={latestAbv !== null}
-              text={`Alcohol Content${requiresCOLA ? " (Required)" : " (Optional)"}`}
-              notes={
-                latestAbv
-                  ? `ALC ${latestAbv.toFixed(1)}% BY VOL`
-                  : "Measure ABV for label"
-              }
-            />
-            <LabelRequirement
-              met={true}
-              text="Producer/Bottler Statement"
-              notes="Company name and location"
-            />
-            <LabelRequirement
-              met={true}
-              text="Government Warning"
-              notes="Required for all ≥0.5% ABV (27 CFR Part 16)"
-            />
+        {showMandatoryElements && (
+          <div>
+            <p className="text-sm font-medium mb-2">Mandatory Label Elements</p>
+            <div className="space-y-1.5">
+              <LabelRequirement
+                met={true}
+                text="Brand Name"
+                notes="Prominent on front label"
+              />
+              <LabelRequirement
+                met={true}
+                text={`Class/Type: ${requiresCOLA ? "Apple Wine" : "Hard Cider"}`}
+                notes="Product classification based on ABV"
+              />
+              <LabelRequirement
+                met={true}
+                text={`Net Contents: ${packageSizeML} mL (${fluidOunces} FL OZ)`}
+                notes="Standard size declaration"
+              />
+              <LabelRequirement
+                met={latestAbv !== null}
+                text={`Alcohol Content${requiresCOLA ? " (Required)" : " (Optional)"}`}
+                notes={
+                  latestAbv
+                    ? `ALC ${latestAbv.toFixed(1)}% BY VOL`
+                    : "Measure ABV for label"
+                }
+              />
+              <LabelRequirement
+                met={true}
+                text="Producer/Bottler Statement"
+                notes="Company name and location"
+              />
+              <LabelRequirement
+                met={true}
+                text="Government Warning"
+                notes="Required for all ≥0.5% ABV (27 CFR Part 16)"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Additive-Based Requirements */}
-        {(hasSulfites || labelImpactAdditives.length > 0 || allergenAdditives.length > 0) && (
+        {showLabelCharacteristics && (hasSulfites || labelImpactAdditives.length > 0 || allergenAdditives.length > 0) && (
           <>
             <Separator />
             <div>
@@ -339,18 +351,22 @@ export function LabelComplianceCard({
         )}
 
         {/* Quick Reference */}
-        <Separator />
-        <div className="text-xs text-gray-500 space-y-1">
-          <p className="font-medium">Quick Reference:</p>
-          <p>• Font Size: ≥2mm for &gt;187mL; ≥1mm for smaller</p>
-          <p>• High contrast text required on all labels</p>
-          <p>• Batch/lot code recommended for traceability</p>
-          {requiresCOLA && (
-            <p className="text-amber-700 font-medium">
-              • COLA application required before interstate distribution
-            </p>
-          )}
-        </div>
+        {showLabelCharacteristics && (
+          <>
+            <Separator />
+            <div className="text-xs text-gray-500 space-y-1">
+              <p className="font-medium">Quick Reference:</p>
+              <p>• Font Size: ≥2mm for &gt;187mL; ≥1mm for smaller</p>
+              <p>• High contrast text required on all labels</p>
+              <p>• Batch/lot code recommended for traceability</p>
+              {requiresCOLA && (
+                <p className="text-amber-700 font-medium">
+                  • COLA application required before interstate distribution
+                </p>
+              )}
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );
