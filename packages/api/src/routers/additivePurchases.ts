@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
-import { db, additivePurchases, additivePurchaseItems, vendors } from "db";
+import { db, additivePurchases, additivePurchaseItems, vendors, additiveVarieties } from "db";
 import { eq, and, desc, asc, sql, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
@@ -12,15 +12,19 @@ export const additivePurchasesRouter = router({
         limit: z.number().int().positive().max(100).default(50),
         offset: z.number().int().min(0).default(0),
         vendorId: z.string().uuid().optional(),
+        itemType: z.string().optional(), // Filter by additive variety item type (e.g., "Sugar & Sweeteners")
       }),
     )
     .query(async ({ input }) => {
       try {
-        const { limit, offset, vendorId } = input;
+        const { limit, offset, vendorId, itemType } = input;
 
         const conditions = [isNull(additivePurchases.deletedAt)];
         if (vendorId) {
           conditions.push(eq(additivePurchases.vendorId, vendorId));
+        }
+        if (itemType) {
+          conditions.push(eq(additiveVarieties.itemType, itemType));
         }
 
         const purchases = await db
@@ -44,6 +48,7 @@ export const additivePurchasesRouter = router({
           .from(additivePurchases)
           .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
           .leftJoin(additivePurchaseItems, eq(additivePurchases.id, additivePurchaseItems.purchaseId))
+          .leftJoin(additiveVarieties, eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id))
           .where(and(...conditions))
           .orderBy(desc(additivePurchases.purchaseDate))
           .limit(limit * 10) // Increase limit to account for multiple items per purchase

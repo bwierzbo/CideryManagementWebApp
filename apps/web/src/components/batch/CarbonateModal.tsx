@@ -126,6 +126,7 @@ export function CarbonateModal({
       {
         limit: 100,
         offset: 0,
+        itemType: "Sugar & Sweeteners", // Only show sweeteners for bottle conditioning
       },
       { enabled: open && carbonationMethod === "bottle_conditioning" }
     );
