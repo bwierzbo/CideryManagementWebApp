@@ -468,6 +468,9 @@ export const kegFills = pgTable(
     loss: decimal("loss", { precision: 10, scale: 2 }),
     lossUnit: unitEnum("loss_unit").notNull().default("L"),
 
+    // Volume tracking for partial bottling/distribution
+    remainingVolume: decimal("remaining_volume", { precision: 10, scale: 2 }),
+
     // QA Fields
     abvAtPackaging: decimal("abv_at_packaging", { precision: 5, scale: 2 }),
     carbonationLevel: carbonationLevelEnum("carbonation_level"),

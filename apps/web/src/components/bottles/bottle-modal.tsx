@@ -60,6 +60,7 @@ interface BottleModalProps {
   vesselName: string;
   batchId: string;
   currentVolumeL: number;
+  kegFillId?: string; // Optional - when bottling from a keg
 }
 
 export function BottleModal({
@@ -69,6 +70,7 @@ export function BottleModal({
   vesselName,
   batchId,
   currentVolumeL,
+  kegFillId,
 }: BottleModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
@@ -285,11 +287,15 @@ export function BottleModal({
         volumeTakenL: data.volumeTakenL,
         notes: data.notes,
         materials: data.materials,
+        ...(kegFillId && { kegFillId }), // Include kegFillId if bottling from keg
       });
 
       // Invalidate relevant queries to refresh data
       utils.vessel.liquidMap.invalidate();
       utils.batch.list.invalidate();
+      if (kegFillId) {
+        utils.kegs.listKegs.invalidate();
+      }
 
       // Show success toast with option to view packaging run
       toast({

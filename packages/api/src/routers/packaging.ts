@@ -22,6 +22,8 @@ import {
   packagingPurchaseItems,
   squareConfig,
   batchCarbonationOperations,
+  kegFills,
+  kegs,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -55,6 +57,8 @@ const createFromCellarSchema = z.object({
   // Array of packaging materials used (bottles, caps, labels, etc.)
   // TODO: Make required once materials tracking UI is fully implemented
   materials: z.array(packagingMaterialSchema).optional(),
+  // Optional keg fill ID when bottling from a filled keg
+  kegFillId: z.string().uuid().optional(),
 });
 
 const listPackagingRunsSchema = z.object({
@@ -126,8 +130,105 @@ export const bottlesRouter = router({
     .mutation(async ({ input, ctx }) => {
       try {
         return await db.transaction(async (tx) => {
-          // 1. Validate vessel has sufficient volume and get details
-          const vesselData = await tx
+          // Determine if bottling from keg or vessel
+          const isBottlingFromKeg = !!input.kegFillId;
+          let currentVolumeL = 0;
+          let batch: any;
+          let vessel: any;
+          let kegFill: any;
+
+          if (isBottlingFromKeg) {
+            // Get keg fill details
+            const kegFillData = await tx
+              .select({
+                id: kegFills.id,
+                kegId: kegFills.kegId,
+                batchId: kegFills.batchId,
+                vesselId: kegFills.vesselId,
+                volumeTaken: kegFills.volumeTaken,
+                remainingVolume: kegFills.remainingVolume,
+                status: kegFills.status,
+              })
+              .from(kegFills)
+              .where(eq(kegFills.id, input.kegFillId!))
+              .limit(1);
+
+            if (!kegFillData.length) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Keg fill not found",
+              });
+            }
+
+            kegFill = kegFillData[0];
+
+            if (kegFill.status !== "filled") {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Cannot bottle from keg with status: ${kegFill.status}`,
+              });
+            }
+
+            // Use remaining volume or fall back to volume taken
+            currentVolumeL = parseFloat(
+              kegFill.remainingVolume?.toString() || kegFill.volumeTaken?.toString() || "0"
+            );
+
+            // Get batch and vessel details for the keg fill
+            const batchData = await tx
+              .select({
+                id: batches.id,
+                name: batches.name,
+                status: batches.status,
+                currentVolume: batches.currentVolume,
+                currentVolumeUnit: batches.currentVolumeUnit,
+                vesselId: batches.vesselId,
+              })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.id, kegFill.batchId),
+                  isNull(batches.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            if (!batchData.length) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Batch not found for keg fill",
+              });
+            }
+
+            batch = batchData[0];
+
+            // Get vessel details
+            const vesselData = await tx
+              .select({
+                id: vessels.id,
+                capacity: vessels.capacity,
+                capacityUnit: vessels.capacityUnit,
+                status: vessels.status,
+                name: vessels.name,
+              })
+              .from(vessels)
+              .where(
+                and(eq(vessels.id, kegFill.vesselId), isNull(vessels.deletedAt)),
+              )
+              .limit(1);
+
+            if (!vesselData.length) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Vessel not found for keg fill",
+              });
+            }
+
+            vessel = vesselData[0];
+          } else {
+            // Original vessel bottling flow
+            // 1. Validate vessel has sufficient volume and get details
+            const vesselData = await tx
             .select({
               id: vessels.id,
               capacity: vessels.capacity,
@@ -177,24 +278,26 @@ export const bottlesRouter = router({
             });
           }
 
-          const batch = batchData[0];
+            batch = batchData[0];
 
-          // Check batch status - only "aging" batches can be bottled
-          if (batch.status !== "aging") {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Batch must be in aging stage to package. Current status: ${batch.status}`,
-            });
+            // Check batch status - only "aging" batches can be bottled from vessel
+            if (batch.status !== "aging") {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Batch must be in aging stage to package. Current status: ${batch.status}`,
+              });
+            }
+            currentVolumeL = parseFloat(
+              batch.currentVolume?.toString() || "0",
+            );
           }
-          const currentVolumeL = parseFloat(
-            batch.currentVolume?.toString() || "0",
-          );
 
-          // Validate sufficient volume
+          // Validate sufficient volume (for both keg and vessel)
           if (currentVolumeL < input.volumeTakenL) {
+            const source = isBottlingFromKeg ? "keg" : "vessel";
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Insufficient volume in vessel. Available: ${currentVolumeL}${batch.currentVolumeUnit || 'L'}, Requested: ${input.volumeTakenL}L`,
+              message: `Insufficient volume in ${source}. Available: ${currentVolumeL}L, Requested: ${input.volumeTakenL}L`,
             });
           }
 
@@ -276,46 +379,58 @@ export const bottlesRouter = router({
 
           const packagingRun = newPackagingRun[0];
 
-          // 5. Update vessel/batch volume
+          // 5. Update volume - keg fill OR vessel/batch
           const newVolumeL = currentVolumeL - input.volumeTakenL;
-
-          // If batch is fully packaged, mark as completed and clear vessel assignment
-          // Use epsilon threshold (0.1L = 100ml) to handle display rounding and floating-point precision
           const EMPTY_THRESHOLD_L = 0.1;
-          if (newVolumeL <= EMPTY_THRESHOLD_L) {
-            await tx
-              .update(batches)
-              .set({
-                currentVolume: "0",
-                currentVolumeUnit: batch.currentVolumeUnit || "L",
-                status: "completed",
-                vesselId: null,
-                endDate: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, input.batchId));
 
-            // Set vessel to cleaning status
+          if (isBottlingFromKeg) {
+            // Update keg fill remaining volume
             await tx
-              .update(vessels)
+              .update(kegFills)
               .set({
-                status: "cleaning" as any,
+                remainingVolume: newVolumeL.toString(),
                 updatedAt: new Date(),
               })
-              .where(eq(vessels.id, input.vesselId));
+              .where(eq(kegFills.id, kegFill.id));
+
+            // Note: Do NOT update batch volume - it was already deducted when the keg was filled
           } else {
-            // Partial packaging - just update volume
-            await tx
-              .update(batches)
-              .set({
-                currentVolume: newVolumeL.toString(),
-                currentVolumeUnit: batch.currentVolumeUnit || "L",
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, input.batchId));
+            // Original vessel bottling - update batch volume
+            if (newVolumeL <= EMPTY_THRESHOLD_L) {
+              await tx
+                .update(batches)
+                .set({
+                  currentVolume: "0",
+                  currentVolumeUnit: batch.currentVolumeUnit || "L",
+                  status: "completed",
+                  vesselId: null,
+                  endDate: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, input.batchId));
+
+              // Set vessel to cleaning status
+              await tx
+                .update(vessels)
+                .set({
+                  status: "cleaning" as any,
+                  updatedAt: new Date(),
+                })
+                .where(eq(vessels.id, input.vesselId));
+            } else {
+              // Partial packaging - just update volume
+              await tx
+                .update(batches)
+                .set({
+                  currentVolume: newVolumeL.toString(),
+                  currentVolumeUnit: batch.currentVolumeUnit || "L",
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, input.batchId));
+            }
           }
 
-          let vesselStatus = newVolumeL <= EMPTY_THRESHOLD_L ? ("cleaning" as any) : vessel.status;
+          let vesselStatus = (!isBottlingFromKeg && newVolumeL <= EMPTY_THRESHOLD_L) ? ("cleaning" as any) : vessel.status;
 
           // 6. Generate lot code and create inventory item
           const lotCode = generateLotCode(

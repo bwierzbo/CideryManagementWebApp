@@ -33,13 +33,23 @@ import {
   Trash2,
   Send,
   RotateCcw,
+  Wine,
+  MoreVertical,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { AddKegModal } from "./AddKegModal";
 import { EditKegModal } from "./EditKegModal";
 import { KegDetailsModal } from "./KegDetailsModal";
 import { DistributeKegModal } from "./DistributeKegModal";
+import { BottleModal } from "@/components/bottles/bottle-modal";
 
 type KegStatus =
   | "all"
@@ -126,6 +136,15 @@ export function KegsManagement() {
   const [selectedKegForDistribution, setSelectedKegForDistribution] = useState<{
     kegFillId: string;
     kegNumber: string;
+  } | null>(null);
+  const [selectedKegForBottling, setSelectedKegForBottling] = useState<{
+    kegFillId: string;
+    kegNumber: string;
+    vesselId: string;
+    vesselName: string;
+    batchId: string;
+    batchName: string;
+    currentVolumeL: number;
   } | null>(null);
 
   const utils = trpc.useUtils();
@@ -227,6 +246,41 @@ export function KegsManagement() {
       kegFillId,
       returnedAt: new Date(),
     });
+  };
+
+  // Query for keg fill details when needed for bottling
+  const [kegFillIdForQuery, setKegFillIdForQuery] = useState<string | null>(null);
+  const { data: kegFillDetails } = trpc.kegs.getKegFillDetails.useQuery(
+    kegFillIdForQuery!,
+    { enabled: !!kegFillIdForQuery }
+  );
+
+  // When keg fill details are loaded, open the bottle modal
+  React.useEffect(() => {
+    if (kegFillDetails && kegFillIdForQuery) {
+      // Get remaining volume or fall back to volume taken
+      const remainingVol = kegFillDetails.volumeTaken
+        ? parseFloat(kegFillDetails.volumeTaken.toString())
+        : 0;
+
+      setSelectedKegForBottling({
+        kegFillId: kegFillIdForQuery,
+        kegNumber: kegFillDetails.keg.kegNumber || "",
+        vesselId: kegFillDetails.vesselId || "",
+        vesselName: kegFillDetails.vessel.name || "",
+        batchId: kegFillDetails.batchId || "",
+        batchName: kegFillDetails.batch.customName || kegFillDetails.batch.name || "",
+        currentVolumeL: remainingVol,
+      });
+
+      // Clear the query state
+      setKegFillIdForQuery(null);
+    }
+  }, [kegFillDetails, kegFillIdForQuery]);
+
+  const handleBottleFromKeg = (kegFillId: string, keg: Keg) => {
+    // Trigger query to fetch keg fill details
+    setKegFillIdForQuery(kegFillId);
   };
 
   const kegs = kegsData?.kegs || [];
@@ -414,35 +468,52 @@ export function KegsManagement() {
                         </Button>
 
                         {keg.status === "filled" && keg.latestFillId && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                setSelectedKegForDistribution({
-                                  kegFillId: keg.latestFillId as string,
-                                  kegNumber: keg.kegNumber,
-                                })
-                              }
-                              className="flex-1"
-                            >
-                              <Send className="w-3 h-3 mr-1" />
-                              Distribute
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                handleDeleteKegFill(
-                                  keg.latestFillId as string,
-                                  keg.kegNumber,
-                                )
-                              }
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          </>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1"
+                              >
+                                <MoreVertical className="w-3 h-3 mr-1" />
+                                Actions
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleBottleFromKeg(keg.latestFillId as string, keg)
+                                }
+                              >
+                                <Wine className="w-3 h-3 mr-2" />
+                                Bottle
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  setSelectedKegForDistribution({
+                                    kegFillId: keg.latestFillId as string,
+                                    kegNumber: keg.kegNumber,
+                                  })
+                                }
+                              >
+                                <Send className="w-3 h-3 mr-2" />
+                                Distribute
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  handleDeleteKegFill(
+                                    keg.latestFillId as string,
+                                    keg.kegNumber,
+                                  )
+                                }
+                                className="text-red-600 focus:text-red-700"
+                              >
+                                <Trash2 className="w-3 h-3 mr-2" />
+                                Delete Fill
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
 
                         {keg.status === "distributed" && keg.latestFillId && (
@@ -531,6 +602,18 @@ export function KegsManagement() {
             setSelectedKegForDistribution(null);
             utils.kegs.listKegs.invalidate();
           }}
+        />
+      )}
+
+      {selectedKegForBottling && (
+        <BottleModal
+          open={!!selectedKegForBottling}
+          onClose={() => setSelectedKegForBottling(null)}
+          vesselId={selectedKegForBottling.vesselId}
+          vesselName={`Keg ${selectedKegForBottling.kegNumber}`}
+          batchId={selectedKegForBottling.batchId}
+          currentVolumeL={selectedKegForBottling.currentVolumeL}
+          kegFillId={selectedKegForBottling.kegFillId}
         />
       )}
     </>
