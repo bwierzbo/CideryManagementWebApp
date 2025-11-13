@@ -1100,33 +1100,7 @@ export const kegsRouter = router({
           .delete(kegFills)
           .where(eq(kegFills.id, input.kegFillId));
 
-        // Restore volume to batch
-        const volumeToRestore = parseFloat(fill.volumeTaken?.toString() || "0") +
-                               parseFloat(fill.loss?.toString() || "0");
-
-        if (volumeToRestore > 0) {
-          const [currentBatch] = await db
-            .select({
-              currentVolume: batches.currentVolume,
-            })
-            .from(batches)
-            .where(eq(batches.id, fill.batchId))
-            .limit(1);
-
-          if (currentBatch?.currentVolume) {
-            const newVolume = parseFloat(currentBatch.currentVolume.toString()) + volumeToRestore;
-
-            await db
-              .update(batches)
-              .set({
-                currentVolume: newVolume.toString(),
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, fill.batchId));
-          }
-        }
-
-        // Update keg to available
+        // Update keg to available (volume is NOT restored to batch)
         await db
           .update(kegs)
           .set({

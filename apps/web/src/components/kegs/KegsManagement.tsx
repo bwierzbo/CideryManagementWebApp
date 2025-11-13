@@ -228,7 +228,7 @@ export function KegsManagement() {
   const handleDeleteKegFill = async (kegFillId: string, kegNumber: string) => {
     if (
       !confirm(
-        `Are you sure you want to delete the fill for keg ${kegNumber}? This will restore the volume to the batch and cannot be undone.`,
+        `Are you sure you want to delete the fill for keg ${kegNumber}? This will purge the keg fill record and cannot be undone.`,
       )
     ) {
       return;
