@@ -163,6 +163,20 @@ export const bottleRuns = pgTable(
      */
     labeledAt: timestamp("labeled_at"),
 
+    // Labor and overhead tracking for COGS
+    /**
+     * Actual labor hours spent on this packaging run
+     */
+    laborHours: decimal("labor_hours", { precision: 6, scale: 2 }),
+    /**
+     * Labor cost per hour at time of packaging
+     */
+    laborCostPerHour: decimal("labor_cost_per_hour", { precision: 10, scale: 2 }),
+    /**
+     * Overhead cost allocated to this packaging run
+     */
+    overheadCostAllocated: decimal("overhead_cost_allocated", { precision: 10, scale: 2 }),
+
     // Metadata
     productionNotes: text("production_notes"),
     status: bottleRunStatusEnum("status").default("completed"),
@@ -347,6 +361,16 @@ export const inventoryItems = pgTable(
 
     // Inventory tracking
     currentQuantity: integer("current_quantity"),
+
+    // Pricing for margin analysis and COGS reporting
+    /**
+     * Retail selling price per unit
+     */
+    retailPrice: decimal("retail_price", { precision: 10, scale: 2 }),
+    /**
+     * Wholesale selling price per unit (optional)
+     */
+    wholesalePrice: decimal("wholesale_price", { precision: 10, scale: 2 }),
 
     // Square POS integration
     squareCatalogItemId: text("square_catalog_item_id"),
