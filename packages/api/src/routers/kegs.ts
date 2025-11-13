@@ -1150,7 +1150,7 @@ export const kegsRouter = router({
    * Get detailed information about a specific keg fill
    * Returns full fill details with batch composition, keg info, and history
    */
-  getKegFillDetails: createRbacProcedure("read", "keg")
+  getKegFillDetails: createRbacProcedure("list", "batch")
     .input(z.string().uuid())
     .query(async ({ input: fillId }) => {
       try {
