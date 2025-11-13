@@ -418,7 +418,11 @@ export function BottleModal({
               id="unitsProduced"
               type="number"
               min="0"
-              placeholder={volumeTakenL && packageSizeMl ? `~${Math.floor(volumeTakenL / (packageSizeMl / 1000))} calculated` : "Number of packages filled"}
+              placeholder={
+                volumeTakenL && packageSizeMl && !isNaN(volumeTakenL) && !isNaN(packageSizeMl)
+                  ? `~${Math.floor(volumeTakenL / (packageSizeMl / 1000))} calculated`
+                  : "Number of packages filled"
+              }
               className="h-10 md:h-11 text-base"
               {...register("unitsProduced", { valueAsNumber: true })}
             />
@@ -602,14 +606,14 @@ export function BottleModal({
                 <p
                   className={`text-base md:text-lg font-semibold ${lossStatus.color}`}
                 >
-                  {lossL.toFixed(2)}L ({lossPercentage.toFixed(1)}%)
+                  {isNaN(lossL) ? "0.00" : lossL.toFixed(2)}L ({isNaN(lossPercentage) ? "0.0" : lossPercentage.toFixed(1)}%)
                 </p>
                 <p className={`text-sm ${lossStatus.color}`}>
                   {lossStatus.message}
                 </p>
                 <p className="text-xs text-gray-600 break-words">
-                  Formula: {volumeTakenL.toFixed(1)}L taken - ({unitsProduced} ×{" "}
-                  {unitSizeL.toFixed(3)}L)
+                  Formula: {isNaN(volumeTakenL) || !volumeTakenL ? "0.0" : volumeTakenL.toFixed(1)}L taken - ({unitsProduced || 0} ×{" "}
+                  {isNaN(unitSizeL) ? "0.000" : unitSizeL.toFixed(3)}L)
                 </p>
               </div>
             </div>
