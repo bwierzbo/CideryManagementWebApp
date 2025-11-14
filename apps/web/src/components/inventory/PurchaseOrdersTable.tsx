@@ -132,6 +132,9 @@ export function PurchaseOrdersTable({
     materialType: "basefruit" | "additives" | "juice" | "packaging";
   } | null>(null);
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
     purchaseDate: true,
@@ -656,6 +659,31 @@ export function PurchaseOrdersTable({
   const handleRefresh = useCallback(() => {
     refetch();
   }, [refetch]);
+
+  // Bulk selection handlers
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === paginatedOrders.length && paginatedOrders.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(paginatedOrders.map((order) => order.id)));
+    }
+  }, [selectedIds.size, paginatedOrders]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
 
   // PDF export temporarily disabled - generatePurchaseOrderPdf method not yet implemented
   const handleExportPdf = useCallback(async (orderId: string) => {
@@ -1290,10 +1318,59 @@ export function PurchaseOrdersTable({
             </div>
           )}
 
+          {/* Bulk action toolbar */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center justify-between p-3 mb-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={true}
+                  onCheckedChange={clearSelection}
+                  className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                />
+                <span className="text-sm font-medium text-blue-900">
+                  {selectedIds.size} {selectedIds.size === 1 ? "item" : "items"}{" "}
+                  selected
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="h-8"
+                >
+                  Clear Selection
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    // TODO: Implement bulk delete
+                    console.log("Bulk delete:", Array.from(selectedIds));
+                  }}
+                  className="h-8"
+                >
+                  Delete Selected
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
+                  {/* Bulk selection checkbox */}
+                  <TableCell className="w-[50px]">
+                    <Checkbox
+                      checked={
+                        selectedIds.size === paginatedOrders.length &&
+                        paginatedOrders.length > 0
+                      }
+                      onCheckedChange={toggleSelectAll}
+                      aria-label="Select all"
+                    />
+                  </TableCell>
                   {visibleColumns.purchaseDate && (
                     <SortableHeader
                       sortDirection={getSortDirectionForDisplay("purchaseDate")}
@@ -1363,6 +1440,9 @@ export function PurchaseOrdersTable({
                   Array.from({ length: 5 }).map((_, index) => (
                     <TableRow key={index}>
                       <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell>
+                      <TableCell>
                         <Skeleton className="h-4 w-24" />
                       </TableCell>
                       <TableCell>
@@ -1388,7 +1468,7 @@ export function PurchaseOrdersTable({
                 ) : paginatedOrders.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="text-center py-8 text-muted-foreground"
                     >
                       {searchQuery ||
@@ -1406,6 +1486,14 @@ export function PurchaseOrdersTable({
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => handleItemClick(order)}
                     >
+                      {/* Bulk selection checkbox */}
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedIds.has(order.id)}
+                          onCheckedChange={() => toggleSelection(order.id)}
+                          aria-label={`Select transaction ${order.id}`}
+                        />
+                      </TableCell>
                       {visibleColumns.purchaseDate && (
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm">
