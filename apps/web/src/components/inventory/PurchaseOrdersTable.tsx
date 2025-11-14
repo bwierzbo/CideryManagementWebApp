@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
 import {
   Calendar,
   FileText,
@@ -39,11 +40,17 @@ import {
   Search,
   Filter,
   Eye,
+  FileDown,
+  TrendingUp,
+  DollarSign,
+  Package,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import { formatDate } from "@/utils/date-format";
+import { startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, subMonths, subYears } from "date-fns";
 
 // Type for purchase order from unified API
 interface PurchaseOrder {
@@ -91,6 +98,10 @@ export function PurchaseOrdersTable({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  // Date range state
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+
   // Sorting state using the reusable hook
   const {
     sortState,
@@ -110,6 +121,39 @@ export function PurchaseOrdersTable({
   // Router for navigation
   const router = useRouter();
 
+  // Date range preset functions
+  const setDatePreset = useCallback((preset: string) => {
+    const now = new Date();
+    switch (preset) {
+      case "last30":
+        setStartDate(subDays(now, 30));
+        setEndDate(now);
+        break;
+      case "thisQuarter":
+        setStartDate(startOfQuarter(now));
+        setEndDate(now);
+        break;
+      case "lastQuarter":
+        const lastQuarter = subMonths(now, 3);
+        setStartDate(startOfQuarter(lastQuarter));
+        setEndDate(endOfQuarter(lastQuarter));
+        break;
+      case "thisYear":
+        setStartDate(startOfYear(now));
+        setEndDate(now);
+        break;
+      case "lastYear":
+        const lastYear = subYears(now, 1);
+        setStartDate(startOfYear(lastYear));
+        setEndDate(endOfYear(lastYear));
+        break;
+      case "clear":
+        setStartDate(null);
+        setEndDate(null);
+        break;
+    }
+  }, []);
+
   // API query using unified purchases endpoint
   const {
     data: purchasesData,
@@ -123,6 +167,8 @@ export function PurchaseOrdersTable({
     materialType:
       materialTypeFilter === "all" ? "all" : (materialTypeFilter as any),
     vendorId: vendorFilter !== "all" ? vendorFilter : undefined,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
   });
 
   // Apply client-side filtering for additional filters not handled by API
@@ -197,6 +243,144 @@ export function PurchaseOrdersTable({
     ];
     return vendors.sort();
   }, [purchasesData?.purchases]);
+
+  // Calculate summary statistics from filtered data
+  const summaryStats = useMemo(() => {
+    const totalSpent = filteredOrders.reduce((sum, order) => sum + (order.totalCost || 0), 0);
+    const totalTransactions = filteredOrders.length;
+    const totalItems = filteredOrders.reduce((sum, order) => sum + order.totalItems, 0);
+
+    // Breakdown by material type
+    const byMaterialType = filteredOrders.reduce((acc, order) => {
+      const type = order.materialType;
+      if (!acc[type]) {
+        acc[type] = { count: 0, total: 0 };
+      }
+      acc[type].count += 1;
+      acc[type].total += order.totalCost || 0;
+      return acc;
+    }, {} as Record<string, { count: number; total: number }>);
+
+    // Top vendors by spending
+    const byVendor = filteredOrders.reduce((acc, order) => {
+      const vendor = order.vendorName || "Unknown";
+      if (!acc[vendor]) {
+        acc[vendor] = { count: 0, total: 0 };
+      }
+      acc[vendor].count += 1;
+      acc[vendor].total += order.totalCost || 0;
+      return acc;
+    }, {} as Record<string, { count: number; total: number }>);
+
+    const topVendors = Object.entries(byVendor)
+      .sort((a, b) => b[1].total - a[1].total)
+      .slice(0, 3);
+
+    return {
+      totalSpent,
+      totalTransactions,
+      totalItems,
+      byMaterialType,
+      topVendors,
+    };
+  }, [filteredOrders]);
+
+  // CSV Export function
+  const exportToCSV = useCallback(() => {
+    if (sortedOrders.length === 0) {
+      alert("No data to export");
+      return;
+    }
+
+    // Prepare CSV headers
+    const headers = [
+      "Purchase Date",
+      "Vendor",
+      "Items Count",
+      "Total Cost",
+      "Material Type",
+      "Status",
+      "Item Names",
+      "Notes",
+    ];
+
+    // Prepare CSV rows
+    const rows = sortedOrders.map((order) => [
+      formatDateDisplay(order.purchaseDate),
+      order.vendorName || "Unknown",
+      order.totalItems.toString(),
+      order.totalCost ? order.totalCost.toFixed(2) : "0.00",
+      order.materialType,
+      order.status,
+      order.itemNames || "",
+      order.notes || "",
+    ]);
+
+    // Add summary row
+    rows.push([]);
+    rows.push(["SUMMARY", "", "", "", "", "", "", ""]);
+    rows.push([
+      "Total Transactions:",
+      summaryStats.totalTransactions.toString(),
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+    rows.push([
+      "Total Spent:",
+      `$${summaryStats.totalSpent.toFixed(2)}`,
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+    rows.push([
+      "Total Items:",
+      summaryStats.totalItems.toString(),
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+    ]);
+
+    // Convert to CSV format
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) =>
+        row.map((cell) => `"${cell.toString().replace(/"/g, '""')}"`).join(",")
+      ),
+    ].join("\n");
+
+    // Create download link
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+
+    // Generate filename with date range if applicable
+    let filename = "purchase-transactions";
+    if (startDate && endDate) {
+      filename += `_${formatDateDisplay(startDate.toISOString())}_to_${formatDateDisplay(endDate.toISOString())}`;
+    } else if (startDate) {
+      filename += `_from_${formatDateDisplay(startDate.toISOString())}`;
+    } else if (endDate) {
+      filename += `_until_${formatDateDisplay(endDate.toISOString())}`;
+    }
+    filename += ".csv";
+
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [sortedOrders, summaryStats, startDate, endDate]);
 
   // Event handlers
   const handleColumnSort = useCallback(
@@ -324,81 +508,240 @@ export function PurchaseOrdersTable({
 
   return (
     <div className={cn("space-y-6", className)}>
+      {/* Summary Cards */}
+      {showFilters && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Total Spent */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-100 rounded-lg">
+                  <DollarSign className="w-6 h-6 text-green-700" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Spent</p>
+                  <p className="text-2xl font-bold">{formatCurrency(summaryStats.totalSpent)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Total Transactions */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-100 rounded-lg">
+                  <ShoppingCart className="w-6 h-6 text-blue-700" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Transactions</p>
+                  <p className="text-2xl font-bold">{summaryStats.totalTransactions}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Total Items */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-purple-100 rounded-lg">
+                  <Package className="w-6 h-6 text-purple-700" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Items</p>
+                  <p className="text-2xl font-bold">{summaryStats.totalItems}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Top Vendor */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-orange-100 rounded-lg">
+                  <TrendingUp className="w-6 h-6 text-orange-700" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-muted-foreground">Top Vendor</p>
+                  <p className="text-lg font-bold truncate">
+                    {summaryStats.topVendors[0]?.[0] || "No data"}
+                  </p>
+                  {summaryStats.topVendors[0] && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatCurrency(summaryStats.topVendors[0][1].total)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Filters */}
       {showFilters && (
         <Card>
           <CardContent className="p-6">
-            <div className="flex flex-col lg:flex-row gap-4 lg:items-end">
-              <div className="flex flex-col lg:flex-row gap-4 flex-1">
-                {/* Search */}
-                <div className="flex-1 min-w-0">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <Input
-                      id="search"
-                      placeholder="Search by item or vendor..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
+            <div className="space-y-4">
+              {/* Date Range Section */}
+              <div className="space-y-3">
+                <Label>Date Range</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDatePreset("last30")}
+                    className={cn(
+                      "text-xs",
+                      startDate && endDate && "bg-blue-50 border-blue-300"
+                    )}
+                  >
+                    Last 30 Days
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDatePreset("thisQuarter")}
+                    className="text-xs"
+                  >
+                    This Quarter
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDatePreset("lastQuarter")}
+                    className="text-xs"
+                  >
+                    Last Quarter
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDatePreset("thisYear")}
+                    className="text-xs"
+                  >
+                    This Year
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDatePreset("lastYear")}
+                    className="text-xs"
+                  >
+                    Last Year
+                  </Button>
+                  {(startDate || endDate) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDatePreset("clear")}
+                      className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <X className="w-3 h-3 mr-1" />
+                      Clear Dates
+                    </Button>
+                  )}
+                </div>
+
+                {/* Custom Date Pickers */}
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <HarvestDatePicker
+                      label="Start Date"
+                      value={startDate}
+                      onChange={setStartDate}
+                      allowFutureDates={true}
+                      showClearButton={true}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <HarvestDatePicker
+                      label="End Date"
+                      value={endDate}
+                      onChange={setEndDate}
+                      allowFutureDates={true}
+                      showClearButton={true}
                     />
                   </div>
                 </div>
+              </div>
 
-                {/* Vendor Filter */}
-                <div className="min-w-[200px]">
-                  <Label htmlFor="vendor-filter">Vendor</Label>
-                  <Select value={vendorFilter} onValueChange={setVendorFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Vendors" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Vendors</SelectItem>
-                      {uniqueVendors.map((vendor) => (
-                        <SelectItem key={vendor} value={vendor}>
-                          {vendor}
+              {/* Search and Filter Row */}
+              <div className="flex flex-col lg:flex-row gap-4 lg:items-end">
+                <div className="flex flex-col lg:flex-row gap-4 flex-1">
+                  {/* Search */}
+                  <div className="flex-1 min-w-0">
+                    <Label htmlFor="search">Search</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <Input
+                        id="search"
+                        placeholder="Search items, vendors, lot numbers..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Vendor Filter */}
+                  <div className="min-w-[200px]">
+                    <Label htmlFor="vendor-filter">Vendor</Label>
+                    <Select value={vendorFilter} onValueChange={setVendorFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Vendors" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Vendors</SelectItem>
+                        {uniqueVendors.map((vendor) => (
+                          <SelectItem key={vendor} value={vendor}>
+                            {vendor}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Material Type Filter */}
+                  <div className="min-w-[150px]">
+                    <Label htmlFor="material-type-filter">Material Type</Label>
+                    <Select
+                      value={materialTypeFilter}
+                      onValueChange={setMaterialTypeFilter}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        <SelectItem value="basefruit">Base Fruit</SelectItem>
+                        <SelectItem value="additives">Additives</SelectItem>
+                        <SelectItem value="juice">Juice</SelectItem>
+                        <SelectItem value="packaging">Packaging</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Status Filter */}
+                  <div className="min-w-[150px]">
+                    <Label htmlFor="status-filter">Status</Label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="partially_depleted">
+                          Partially Used
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Material Type Filter */}
-                <div className="min-w-[150px]">
-                  <Label htmlFor="material-type-filter">Material Type</Label>
-                  <Select
-                    value={materialTypeFilter}
-                    onValueChange={setMaterialTypeFilter}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Types" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Types</SelectItem>
-                      <SelectItem value="basefruit">Base Fruit</SelectItem>
-                      <SelectItem value="additives">Additives</SelectItem>
-                      <SelectItem value="juice">Juice</SelectItem>
-                      <SelectItem value="packaging">Packaging</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Status Filter */}
-                <div className="min-w-[150px]">
-                  <Label htmlFor="status-filter">Status</Label>
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="partially_depleted">
-                        Partially Used
-                      </SelectItem>
-                      <SelectItem value="depleted">Depleted</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
-                    </SelectContent>
-                  </Select>
+                        <SelectItem value="depleted">Depleted</SelectItem>
+                        <SelectItem value="archived">Archived</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </div>
@@ -440,14 +783,26 @@ export function PurchaseOrdersTable({
                 )}
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-            >
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToCSV}
+                disabled={isLoading || sortedOrders.length === 0}
+                className="flex items-center gap-1"
+              >
+                <FileDown className="w-4 h-4" />
+                Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading}
+              >
+                Refresh
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
