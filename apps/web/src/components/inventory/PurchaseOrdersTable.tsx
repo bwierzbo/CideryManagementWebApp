@@ -101,6 +101,23 @@ interface PurchaseOrder {
   itemNames: string;
 }
 
+// Filter preset types
+interface FilterPreset {
+  id: string;
+  name: string;
+  filters: {
+    vendorFilter: string;
+    materialTypeFilter: string;
+    statusFilter: string;
+    searchQuery: string;
+    startDate: string | null;
+    endDate: string | null;
+  };
+  createdAt: string;
+}
+
+const PRESETS_STORAGE_KEY = "purchase-filter-presets";
+
 // Table column configuration
 type SortField =
   | "purchaseDate"
@@ -161,6 +178,77 @@ export function PurchaseOrdersTable({
   const toggleColumn = useCallback((column: keyof typeof visibleColumns) => {
     setVisibleColumns((prev) => ({ ...prev, [column]: !prev[column] }));
   }, []);
+
+  // Filter preset state
+  const [savedPresets, setSavedPresets] = useState<FilterPreset[]>([]);
+  const [presetName, setPresetName] = useState("");
+  const [showSavePreset, setShowSavePreset] = useState(false);
+
+  // Load presets from localStorage on mount
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(PRESETS_STORAGE_KEY);
+      if (stored) {
+        setSavedPresets(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error("Error loading presets:", error);
+    }
+  }, []);
+
+  // Save current filters as preset
+  const savePreset = useCallback(() => {
+    if (!presetName.trim()) return;
+
+    const newPreset: FilterPreset = {
+      id: Date.now().toString(),
+      name: presetName.trim(),
+      filters: {
+        vendorFilter,
+        materialTypeFilter,
+        statusFilter,
+        searchQuery,
+        startDate: startDate?.toISOString() || null,
+        endDate: endDate?.toISOString() || null,
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    const updated = [...savedPresets, newPreset];
+    setSavedPresets(updated);
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updated));
+    setPresetName("");
+    setShowSavePreset(false);
+  }, [
+    presetName,
+    vendorFilter,
+    materialTypeFilter,
+    statusFilter,
+    searchQuery,
+    startDate,
+    endDate,
+    savedPresets,
+  ]);
+
+  // Load preset
+  const loadPreset = useCallback((preset: FilterPreset) => {
+    setVendorFilter(preset.filters.vendorFilter);
+    setMaterialTypeFilter(preset.filters.materialTypeFilter);
+    setStatusFilter(preset.filters.statusFilter);
+    setSearchQuery(preset.filters.searchQuery);
+    setStartDate(preset.filters.startDate ? new Date(preset.filters.startDate) : null);
+    setEndDate(preset.filters.endDate ? new Date(preset.filters.endDate) : null);
+  }, []);
+
+  // Delete preset
+  const deletePreset = useCallback(
+    (id: string) => {
+      const updated = savedPresets.filter((p) => p.id !== id);
+      setSavedPresets(updated);
+      localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(updated));
+    },
+    [savedPresets]
+  );
 
   // Sorting state using the reusable hook
   const {
@@ -1176,6 +1264,80 @@ export function PurchaseOrdersTable({
                     </Select>
                   </div>
                 </div>
+              </div>
+
+              {/* Filter Presets Section */}
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Saved Filters</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowSavePreset(!showSavePreset)}
+                    className="h-8 text-xs"
+                  >
+                    {showSavePreset ? "Cancel" : "Save Current Filters"}
+                  </Button>
+                </div>
+
+                {/* Save Preset Form */}
+                {showSavePreset && (
+                  <div className="flex gap-2 bg-blue-50 p-3 rounded-lg border border-blue-200">
+                    <Input
+                      placeholder="Enter preset name..."
+                      value={presetName}
+                      onChange={(e) => setPresetName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          savePreset();
+                        }
+                      }}
+                      className="flex-1 h-8"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={savePreset}
+                      disabled={!presetName.trim()}
+                      className="h-8"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                )}
+
+                {/* Saved Presets List */}
+                {savedPresets.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {savedPresets.map((preset) => (
+                      <div
+                        key={preset.id}
+                        className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 rounded-md px-3 py-1.5 group transition-colors"
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => loadPreset(preset)}
+                          className="h-auto p-0 hover:bg-transparent text-sm font-medium text-gray-700"
+                        >
+                          {preset.name}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deletePreset(preset.id)}
+                          className="h-auto p-0 hover:bg-transparent opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete preset"
+                        >
+                          <X className="w-3 h-3 text-red-600" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No saved filter presets. Click &ldquo;Save Current Filters&rdquo; to create one.
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>
