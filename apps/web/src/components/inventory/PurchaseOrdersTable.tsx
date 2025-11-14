@@ -37,6 +37,16 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Calendar,
   FileText,
   AlertTriangle,
@@ -134,6 +144,7 @@ export function PurchaseOrdersTable({
 
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -218,6 +229,19 @@ export function PurchaseOrdersTable({
     vendorId: vendorFilter !== "all" ? vendorFilter : undefined,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
+  });
+
+  // Bulk delete mutation
+  const bulkDeleteMutation = trpc.purchase.bulkDelete.useMutation({
+    onSuccess: () => {
+      setSelectedIds(new Set());
+      setShowBulkDeleteConfirm(false);
+      refetch();
+    },
+    onError: (error) => {
+      console.error("Error bulk deleting purchases:", error);
+      // TODO: Show toast notification
+    },
   });
 
   // Apply client-side filtering for additional filters not handled by API
@@ -684,6 +708,30 @@ export function PurchaseOrdersTable({
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
   }, []);
+
+  // Handle bulk delete
+  const handleBulkDelete = useCallback(() => {
+    // Group selected purchases by material type
+    const purchasesByType = new Map<string, string[]>();
+
+    paginatedOrders.forEach((order) => {
+      if (selectedIds.has(order.id)) {
+        const type = order.materialType;
+        if (!purchasesByType.has(type)) {
+          purchasesByType.set(type, []);
+        }
+        purchasesByType.get(type)!.push(order.id);
+      }
+    });
+
+    // Delete each group
+    purchasesByType.forEach((purchaseIds, materialType) => {
+      bulkDeleteMutation.mutate({
+        purchaseIds,
+        materialType: materialType as "basefruit" | "additives" | "juice" | "packaging",
+      });
+    });
+  }, [selectedIds, paginatedOrders, bulkDeleteMutation]);
 
   // PDF export temporarily disabled - generatePurchaseOrderPdf method not yet implemented
   const handleExportPdf = useCallback(async (orderId: string) => {
@@ -1344,13 +1392,11 @@ export function PurchaseOrdersTable({
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={() => {
-                    // TODO: Implement bulk delete
-                    console.log("Bulk delete:", Array.from(selectedIds));
-                  }}
+                  onClick={() => setShowBulkDeleteConfirm(true)}
                   className="h-8"
+                  disabled={bulkDeleteMutation.isPending}
                 >
-                  Delete Selected
+                  {bulkDeleteMutation.isPending ? "Deleting..." : "Delete Selected"}
                 </Button>
               </div>
             </div>
@@ -1681,6 +1727,33 @@ export function PurchaseOrdersTable({
           materialType={detailsPurchase.materialType}
         />
       )}
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog
+        open={showBulkDeleteConfirm}
+        onOpenChange={setShowBulkDeleteConfirm}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selectedIds.size} purchase{selectedIds.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The selected purchase transactions
+              will be permanently deleted from the system.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
