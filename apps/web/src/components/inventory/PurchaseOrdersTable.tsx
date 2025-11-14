@@ -45,6 +45,14 @@ import {
   DollarSign,
   Package,
   ShoppingCart,
+  ChevronDown,
+  ChevronRight,
+  BarChart3,
+  PieChart,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronRight as ChevronRightIcon,
+  ChevronsRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -101,6 +109,10 @@ export function PurchaseOrdersTable({
   // Date range state
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
+
+  // UI state
+  const [showReports, setShowReports] = useState(false);
+  const [pageSize, setPageSize] = useState(itemsPerPage);
 
   // Sorting state using the reusable hook
   const {
@@ -161,8 +173,8 @@ export function PurchaseOrdersTable({
     error,
     refetch,
   } = trpc.purchase.allPurchases.useQuery({
-    limit: itemsPerPage,
-    offset: currentPage * itemsPerPage,
+    limit: pageSize,
+    offset: currentPage * pageSize,
     includeArchived: true,
     materialType:
       materialTypeFilter === "all" ? "all" : (materialTypeFilter as any),
@@ -382,6 +394,28 @@ export function PurchaseOrdersTable({
     document.body.removeChild(link);
   }, [sortedOrders, summaryStats, startDate, endDate]);
 
+  // Pagination calculations
+  const totalPages = Math.ceil(sortedOrders.length / pageSize);
+  const paginatedOrders = useMemo(() => {
+    const start = currentPage * pageSize;
+    return sortedOrders.slice(start, start + pageSize);
+  }, [sortedOrders, currentPage, pageSize]);
+
+  // Reset to first page when filters change or page size changes
+  React.useEffect(() => {
+    setCurrentPage(0);
+  }, [vendorFilter, materialTypeFilter, statusFilter, searchQuery, startDate, endDate, pageSize]);
+
+  // Pagination handlers
+  const goToPage = useCallback((page: number) => {
+    setCurrentPage(Math.max(0, Math.min(page, totalPages - 1)));
+  }, [totalPages]);
+
+  const handlePageSizeChange = useCallback((newSize: string) => {
+    setPageSize(parseInt(newSize));
+    setCurrentPage(0);
+  }, []);
+
   // Event handlers
   const handleColumnSort = useCallback(
     (field: SortField) => {
@@ -580,6 +614,112 @@ export function PurchaseOrdersTable({
         </div>
       )}
 
+      {/* Spending Reports */}
+      {showFilters && (
+        <Card>
+          <CardHeader className="cursor-pointer" onClick={() => setShowReports(!showReports)}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {showReports ? (
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                )}
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" />
+                  Spending Reports
+                </CardTitle>
+              </div>
+              <CardDescription>
+                {showReports ? "Hide detailed breakdown" : "Show detailed breakdown"}
+              </CardDescription>
+            </div>
+          </CardHeader>
+          {showReports && (
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Spending by Vendor */}
+                <div>
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Top Vendors by Spending
+                  </h3>
+                  <div className="space-y-2">
+                    {summaryStats.topVendors.length > 0 ? (
+                      summaryStats.topVendors.map(([vendor, stats], idx) => (
+                        <div
+                          key={vendor}
+                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-semibold text-sm">
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <p className="font-medium">{vendor}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {stats.count} transaction{stats.count !== 1 ? "s" : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold">{formatCurrency(stats.total)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {((stats.total / summaryStats.totalSpent) * 100).toFixed(1)}%
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        No vendor data available
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Spending by Material Type */}
+                <div>
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <PieChart className="w-4 h-4" />
+                    Spending by Material Type
+                  </h3>
+                  <div className="space-y-2">
+                    {Object.entries(summaryStats.byMaterialType).length > 0 ? (
+                      Object.entries(summaryStats.byMaterialType)
+                        .sort((a, b) => b[1].total - a[1].total)
+                        .map(([type, stats]) => (
+                          <div
+                            key={type}
+                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              {getMaterialTypeBadge(type)}
+                              <p className="text-xs text-muted-foreground">
+                                {stats.count} transaction{stats.count !== 1 ? "s" : ""}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold">{formatCurrency(stats.total)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {((stats.total / summaryStats.totalSpent) * 100).toFixed(1)}%
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        No material type data available
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       {/* Filters */}
       {showFilters && (
         <Card>
@@ -761,7 +901,7 @@ export function PurchaseOrdersTable({
               <div className="flex items-center gap-4">
                 <CardDescription>
                   {sortedOrders.length > 0
-                    ? `${sortedOrders.length} orders found`
+                    ? `Showing ${currentPage * pageSize + 1}-${Math.min((currentPage + 1) * pageSize, sortedOrders.length)} of ${sortedOrders.length} orders`
                     : "No orders found"}
                 </CardDescription>
                 {sortState.columns.length > 0 && (
@@ -894,7 +1034,7 @@ export function PurchaseOrdersTable({
                       </TableCell>
                     </TableRow>
                   ))
-                ) : sortedOrders.length === 0 ? (
+                ) : paginatedOrders.length === 0 ? (
                   <TableRow>
                     <TableCell
                       colSpan={7}
@@ -909,7 +1049,7 @@ export function PurchaseOrdersTable({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedOrders.map((order) => (
+                  paginatedOrders.map((order) => (
                     <TableRow
                       key={order.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -971,16 +1111,101 @@ export function PurchaseOrdersTable({
             </Table>
           </div>
 
-          {/* Results info */}
+          {/* Pagination Controls */}
           {sortedOrders.length > 0 && (
-            <div className="flex items-center justify-between pt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {sortedOrders.length} of{" "}
-                {purchasesData?.purchases?.length || 0} transactions
-                {(vendorFilter !== "all" ||
-                  statusFilter !== "all" ||
-                  searchQuery.trim()) &&
-                  ` (filtered from ${purchasesData?.purchases?.length || 0} total)`}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t">
+              {/* Page size selector */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="page-size" className="text-sm whitespace-nowrap">
+                  Rows per page:
+                </Label>
+                <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger className="w-20 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Page info and navigation */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground mr-4">
+                  Page {currentPage + 1} of {totalPages || 1}
+                </span>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(0)}
+                    disabled={currentPage === 0}
+                    className="h-8 w-8 p-0"
+                    title="First page"
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    className="h-8 w-8 p-0"
+                    title="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  {/* Page number buttons - show current and nearby pages */}
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i;
+                    } else if (currentPage < 2) {
+                      pageNum = i;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 5 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={pageNum === currentPage ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => goToPage(pageNum)}
+                        className="h-8 w-8 p-0"
+                      >
+                        {pageNum + 1}
+                      </Button>
+                    );
+                  })}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= totalPages - 1}
+                    className="h-8 w-8 p-0"
+                    title="Next page"
+                  >
+                    <ChevronRightIcon className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => goToPage(totalPages - 1)}
+                    disabled={currentPage >= totalPages - 1}
+                    className="h-8 w-8 p-0"
+                    title="Last page"
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
           )}
