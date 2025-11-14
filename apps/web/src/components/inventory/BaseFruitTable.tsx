@@ -112,6 +112,7 @@ export function BaseFruitTable({
 }: BaseFruitTableProps) {
   // Filter state
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [stockFilter, setStockFilter] = useState<"all" | "needsReorder" | "low" | "out">("all");
   const [deleteItem, setDeleteItem] = useState<BaseFruitPurchaseItem | null>(
     null,
   );
@@ -229,8 +230,27 @@ export function BaseFruitTable({
       );
     }
 
+    // Apply stock status filter
+    if (stockFilter !== "all") {
+      filtered = filtered.filter((item) => {
+        const stockInfo = item.fruitVarietyId
+          ? stockStatusMap.get(item.fruitVarietyId)
+          : null;
+
+        if (!stockInfo) return false;
+
+        if (stockFilter === "needsReorder") {
+          // Show items that are low or out
+          return stockInfo.status === "low" || stockInfo.status === "out";
+        } else {
+          // Show items matching the specific status
+          return stockInfo.status === stockFilter;
+        }
+      });
+    }
+
     return filtered;
-  }, [baseFruitItems, searchQuery]);
+  }, [baseFruitItems, searchQuery, stockFilter, stockStatusMap]);
 
   // Sort items using the hook
   const sortedItems = useMemo(() => {
@@ -338,6 +358,31 @@ export function BaseFruitTable({
                           className="pl-10"
                         />
                       </div>
+                    </div>
+
+                    {/* Stock Status Filter */}
+                    <div className="w-full lg:w-[200px]">
+                      <Label htmlFor="stockFilter">Stock Status</Label>
+                      <Select
+                        value={stockFilter}
+                        onValueChange={(value) =>
+                          setStockFilter(
+                            value as "all" | "needsReorder" | "low" | "out",
+                          )
+                        }
+                      >
+                        <SelectTrigger id="stockFilter">
+                          <SelectValue placeholder="All Items" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Items</SelectItem>
+                          <SelectItem value="needsReorder">
+                            🔔 Needs Reorder
+                          </SelectItem>
+                          <SelectItem value="low">⚡ Low Stock</SelectItem>
+                          <SelectItem value="out">⚠️ Out of Stock</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </>
                 )}
