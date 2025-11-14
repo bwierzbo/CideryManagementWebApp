@@ -43,6 +43,7 @@ import {
   Edit,
   Trash2,
   RefreshCw,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -65,6 +66,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { PriceHistoryModal } from "./PriceHistoryModal";
 
 // Type for basefruit purchase item from API
 interface BaseFruitPurchaseItem {
@@ -72,6 +74,7 @@ interface BaseFruitPurchaseItem {
   purchaseId: string;
   vendorName: string;
   varietyName: string;
+  fruitVarietyId?: string;
   harvestDate: string | null;
   originalQuantity: number;
   originalUnit: string;
@@ -112,6 +115,10 @@ export function BaseFruitTable({
   const [deleteItem, setDeleteItem] = useState<BaseFruitPurchaseItem | null>(
     null,
   );
+  const [priceHistoryItem, setPriceHistoryItem] = useState<{
+    varietyId: string;
+    varietyName: string;
+  } | null>(null);
 
   // Sorting state using the reusable hook
   const {
@@ -175,6 +182,7 @@ export function BaseFruitTable({
         purchaseId: item.purchaseId || "",
         vendorName: item.vendorName || "Unknown Vendor",
         varietyName: item.varietyName || "Unknown Variety",
+        fruitVarietyId: item.fruitVarietyId || item.varietyId,
         harvestDate: item.harvestDate || null,
         originalQuantity: parseFloat(item.quantity) || 0,
         originalUnit: item.unit || "lb",
@@ -543,6 +551,18 @@ export function BaseFruitTable({
                               <ExternalLink className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPriceHistoryItem({
+                                  varietyId: item.fruitVarietyId || "",
+                                  varietyName: item.varietyName,
+                                });
+                              }}
+                            >
+                              <BarChart3 className="mr-2 h-4 w-4" />
+                              Price History
+                            </DropdownMenuItem>
                             {onEdit && (
                               <DropdownMenuItem
                                 onClick={(e) => {
@@ -620,6 +640,15 @@ export function BaseFruitTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Price History Modal */}
+      <PriceHistoryModal
+        open={!!priceHistoryItem}
+        onOpenChange={(open) => !open && setPriceHistoryItem(null)}
+        materialType="basefruit"
+        varietyId={priceHistoryItem?.varietyId || ""}
+        varietyName={priceHistoryItem?.varietyName || ""}
+      />
     </div>
   );
 }

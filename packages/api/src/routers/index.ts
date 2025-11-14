@@ -1267,6 +1267,199 @@ export const appRouter = router({
           });
         }
       }),
+
+    // Get price history for a specific material/variety
+    priceHistory: createRbacProcedure("list", "purchase")
+      .input(
+        z.object({
+          materialType: z.enum(["basefruit", "additives", "juice", "packaging"]),
+          varietyId: z.string().uuid(),
+          vendorId: z.string().uuid().optional(),
+        }),
+      )
+      .query(async ({ input }) => {
+        try {
+          const { materialType, varietyId, vendorId } = input;
+
+          let priceHistory: any[] = [];
+
+          if (materialType === "basefruit") {
+            const items = await db
+              .select({
+                purchaseDate: basefruitPurchases.purchaseDate,
+                vendorId: basefruitPurchases.vendorId,
+                vendorName: vendors.name,
+                quantity: basefruitPurchaseItems.quantity,
+                unit: basefruitPurchaseItems.unit,
+                pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+                totalCost: basefruitPurchaseItems.totalCost,
+              })
+              .from(basefruitPurchaseItems)
+              .leftJoin(
+                basefruitPurchases,
+                eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id),
+              )
+              .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+              .where(
+                and(
+                  eq(basefruitPurchaseItems.fruitVarietyId, varietyId),
+                  isNull(basefruitPurchaseItems.deletedAt),
+                  isNull(basefruitPurchases.deletedAt),
+                  vendorId ? eq(basefruitPurchases.vendorId, vendorId) : undefined,
+                ),
+              )
+              .orderBy(desc(basefruitPurchases.purchaseDate));
+
+            priceHistory = items.map((item) => ({
+              purchaseDate: item.purchaseDate,
+              vendorId: item.vendorId,
+              vendorName: item.vendorName,
+              quantity: item.quantity,
+              unit: item.unit,
+              pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : null,
+              totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+            }));
+          } else if (materialType === "additives") {
+            const items = await db
+              .select({
+                purchaseDate: additivePurchases.purchaseDate,
+                vendorId: additivePurchases.vendorId,
+                vendorName: vendors.name,
+                quantity: additivePurchaseItems.quantity,
+                unit: additivePurchaseItems.unit,
+                pricePerUnit: additivePurchaseItems.pricePerUnit,
+                totalCost: additivePurchaseItems.totalCost,
+              })
+              .from(additivePurchaseItems)
+              .leftJoin(
+                additivePurchases,
+                eq(additivePurchaseItems.purchaseId, additivePurchases.id),
+              )
+              .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
+              .where(
+                and(
+                  eq(additivePurchaseItems.additiveVarietyId, varietyId),
+                  isNull(additivePurchaseItems.deletedAt),
+                  isNull(additivePurchases.deletedAt),
+                  vendorId ? eq(additivePurchases.vendorId, vendorId) : undefined,
+                ),
+              )
+              .orderBy(desc(additivePurchases.purchaseDate));
+
+            priceHistory = items.map((item) => ({
+              purchaseDate: item.purchaseDate,
+              vendorId: item.vendorId,
+              vendorName: item.vendorName,
+              quantity: item.quantity,
+              unit: item.unit,
+              pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : null,
+              totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+            }));
+          } else if (materialType === "juice") {
+            const items = await db
+              .select({
+                purchaseDate: juicePurchases.purchaseDate,
+                vendorId: juicePurchases.vendorId,
+                vendorName: vendors.name,
+                quantity: juicePurchaseItems.volume,
+                unit: sql<string>`'L'`,
+                pricePerUnit: juicePurchaseItems.pricePerLiter,
+                totalCost: juicePurchaseItems.totalCost,
+              })
+              .from(juicePurchaseItems)
+              .leftJoin(
+                juicePurchases,
+                eq(juicePurchaseItems.purchaseId, juicePurchases.id),
+              )
+              .leftJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
+              .where(
+                and(
+                  eq(juicePurchaseItems.juiceType, varietyId),
+                  isNull(juicePurchaseItems.deletedAt),
+                  isNull(juicePurchases.deletedAt),
+                  vendorId ? eq(juicePurchases.vendorId, vendorId) : undefined,
+                ),
+              )
+              .orderBy(desc(juicePurchases.purchaseDate));
+
+            priceHistory = items.map((item) => ({
+              purchaseDate: item.purchaseDate,
+              vendorId: item.vendorId,
+              vendorName: item.vendorName,
+              quantity: item.quantity,
+              unit: item.unit,
+              pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : null,
+              totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+            }));
+          } else if (materialType === "packaging") {
+            const items = await db
+              .select({
+                purchaseDate: packagingPurchases.purchaseDate,
+                vendorId: packagingPurchases.vendorId,
+                vendorName: vendors.name,
+                quantity: packagingPurchaseItems.quantity,
+                unit: packagingPurchaseItems.unitType,
+                pricePerUnit: packagingPurchaseItems.pricePerUnit,
+                totalCost: packagingPurchaseItems.totalCost,
+              })
+              .from(packagingPurchaseItems)
+              .leftJoin(
+                packagingPurchases,
+                eq(packagingPurchaseItems.purchaseId, packagingPurchases.id),
+              )
+              .leftJoin(vendors, eq(packagingPurchases.vendorId, vendors.id))
+              .where(
+                and(
+                  eq(packagingPurchaseItems.packagingVarietyId, varietyId),
+                  isNull(packagingPurchaseItems.deletedAt),
+                  isNull(packagingPurchases.deletedAt),
+                  vendorId ? eq(packagingPurchases.vendorId, vendorId) : undefined,
+                ),
+              )
+              .orderBy(desc(packagingPurchases.purchaseDate));
+
+            priceHistory = items.map((item) => ({
+              purchaseDate: item.purchaseDate,
+              vendorId: item.vendorId,
+              vendorName: item.vendorName,
+              quantity: item.quantity,
+              unit: item.unit,
+              pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : null,
+              totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+            }));
+          }
+
+          // Calculate price statistics
+          const prices = priceHistory
+            .map((h) => h.pricePerUnit)
+            .filter((p): p is number => p !== null);
+
+          const statistics = {
+            minPrice: prices.length > 0 ? Math.min(...prices) : null,
+            maxPrice: prices.length > 0 ? Math.max(...prices) : null,
+            avgPrice:
+              prices.length > 0
+                ? prices.reduce((sum, p) => sum + p, 0) / prices.length
+                : null,
+            currentPrice: prices[0] || null,
+            priceChange:
+              prices.length >= 2 && prices[0] && prices[1]
+                ? ((prices[0] - prices[1]) / prices[1]) * 100
+                : null,
+          };
+
+          return {
+            history: priceHistory,
+            statistics,
+          };
+        } catch (error) {
+          console.error("Error fetching price history:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to fetch price history",
+          });
+        }
+      }),
   }),
 
   // Purchase Line Integration for Apple Press workflow
