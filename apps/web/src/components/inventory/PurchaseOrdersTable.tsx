@@ -29,6 +29,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { HarvestDatePicker } from "@/components/ui/harvest-date-picker";
 import {
   Calendar,
@@ -53,12 +59,19 @@ import {
   ChevronsLeft,
   ChevronRight as ChevronRightIcon,
   ChevronsRight,
+  Settings,
+  Columns,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { useTableSorting } from "@/hooks/useTableSorting";
 import { formatDate } from "@/utils/date-format";
 import { startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, subMonths, subYears } from "date-fns";
+import pdfMake from "pdfmake/build/pdfmake";
+import * as pdfFonts from "pdfmake/build/vfs_fonts";
+
+// Initialize pdfMake fonts
+(pdfMake as any).vfs = pdfFonts;
 
 // Type for purchase order from unified API
 interface PurchaseOrder {
@@ -113,6 +126,22 @@ export function PurchaseOrdersTable({
   // UI state
   const [showReports, setShowReports] = useState(false);
   const [pageSize, setPageSize] = useState(itemsPerPage);
+
+  // Column visibility state
+  const [visibleColumns, setVisibleColumns] = useState({
+    purchaseDate: true,
+    vendorName: true,
+    totalItems: true,
+    totalCost: true,
+    materialType: true,
+    status: true,
+    actions: true,
+  });
+
+  // Toggle column visibility
+  const toggleColumn = useCallback((column: keyof typeof visibleColumns) => {
+    setVisibleColumns((prev) => ({ ...prev, [column]: !prev[column] }));
+  }, []);
 
   // Sorting state using the reusable hook
   const {
@@ -393,6 +422,189 @@ export function PurchaseOrdersTable({
     link.click();
     document.body.removeChild(link);
   }, [sortedOrders, summaryStats, startDate, endDate]);
+
+  // PDF Export function
+  const exportToPDF = useCallback(() => {
+    if (sortedOrders.length === 0) {
+      alert("No data to export");
+      return;
+    }
+
+    // Determine filter description
+    const filterParts = [];
+    if (startDate && endDate) {
+      filterParts.push(`Date Range: ${formatDateDisplay(startDate.toISOString())} to ${formatDateDisplay(endDate.toISOString())}`);
+    } else if (startDate) {
+      filterParts.push(`From: ${formatDateDisplay(startDate.toISOString())}`);
+    } else if (endDate) {
+      filterParts.push(`Until: ${formatDateDisplay(endDate.toISOString())}`);
+    }
+    if (vendorFilter !== "all") {
+      filterParts.push(`Vendor: ${vendorFilter}`);
+    }
+    if (materialTypeFilter !== "all") {
+      filterParts.push(`Type: ${materialTypeFilter}`);
+    }
+    if (statusFilter !== "all") {
+      filterParts.push(`Status: ${statusFilter}`);
+    }
+
+    const filterText = filterParts.length > 0 ? filterParts.join(" | ") : "All Transactions";
+
+    // Create PDF document definition
+    const docDefinition: any = {
+      pageSize: "A4",
+      pageOrientation: "landscape",
+      pageMargins: [40, 60, 40, 60],
+      header: (currentPage: number, pageCount: number) => ({
+        columns: [
+          {
+            text: "Purchase Transaction Report",
+            style: "header",
+            alignment: "left",
+            margin: [40, 20, 0, 0],
+          },
+          {
+            text: `Page ${currentPage} of ${pageCount}`,
+            style: "pageNumber",
+            alignment: "right",
+            margin: [0, 20, 40, 0],
+          },
+        ],
+      }),
+      content: [
+        // Report title and filter info
+        {
+          text: filterText,
+          style: "subheader",
+          margin: [0, 0, 0, 10],
+        },
+
+        // Summary statistics
+        {
+          style: "summaryTable",
+          table: {
+            widths: ["*", "*", "*", "*"],
+            body: [
+              [
+                { text: "Total Spent", style: "summaryLabel" },
+                { text: "Transactions", style: "summaryLabel" },
+                { text: "Total Items", style: "summaryLabel" },
+                { text: "Date Generated", style: "summaryLabel" },
+              ],
+              [
+                { text: formatCurrency(summaryStats.totalSpent), style: "summaryValue" },
+                { text: summaryStats.totalTransactions.toString(), style: "summaryValue" },
+                { text: summaryStats.totalItems.toString(), style: "summaryValue" },
+                { text: formatDateDisplay(new Date().toISOString()), style: "summaryValue" },
+              ],
+            ],
+          },
+          layout: {
+            fillColor: (rowIndex: number) => (rowIndex === 0 ? "#f3f4f6" : null),
+            hLineWidth: () => 1,
+            vLineWidth: () => 1,
+            hLineColor: () => "#e5e7eb",
+            vLineColor: () => "#e5e7eb",
+          },
+          margin: [0, 0, 0, 20],
+        },
+
+        // Transactions table
+        {
+          style: "transactionTable",
+          table: {
+            headerRows: 1,
+            widths: [60, "*", 40, 60, 80, 60],
+            body: [
+              // Header row
+              [
+                { text: "Date", style: "tableHeader" },
+                { text: "Vendor", style: "tableHeader" },
+                { text: "Items", style: "tableHeader", alignment: "right" },
+                { text: "Cost", style: "tableHeader", alignment: "right" },
+                { text: "Type", style: "tableHeader" },
+                { text: "Status", style: "tableHeader" },
+              ],
+              // Data rows
+              ...sortedOrders.map((order) => [
+                { text: formatDateDisplay(order.purchaseDate), fontSize: 9 },
+                { text: order.vendorName || "Unknown", fontSize: 9 },
+                { text: order.totalItems.toString(), fontSize: 9, alignment: "right" },
+                { text: formatCurrency(order.totalCost), fontSize: 9, alignment: "right" },
+                { text: order.materialType, fontSize: 9 },
+                { text: order.status, fontSize: 9 },
+              ]),
+            ],
+          },
+          layout: {
+            fillColor: (rowIndex: number) => (rowIndex === 0 ? "#f3f4f6" : rowIndex % 2 === 0 ? "#fafafa" : null),
+            hLineWidth: () => 1,
+            vLineWidth: () => 1,
+            hLineColor: () => "#e5e7eb",
+            vLineColor: () => "#e5e7eb",
+          },
+        },
+      ],
+      footer: (currentPage: number, pageCount: number) => ({
+        text: `Generated on ${new Date().toLocaleString()} | Cidery Management System`,
+        alignment: "center",
+        fontSize: 8,
+        color: "#6b7280",
+        margin: [0, 10, 0, 0],
+      }),
+      styles: {
+        header: {
+          fontSize: 18,
+          bold: true,
+          color: "#1f2937",
+        },
+        pageNumber: {
+          fontSize: 10,
+          color: "#6b7280",
+        },
+        subheader: {
+          fontSize: 12,
+          color: "#6b7280",
+          italics: true,
+        },
+        summaryTable: {
+          margin: [0, 5, 0, 15],
+        },
+        summaryLabel: {
+          fontSize: 10,
+          bold: true,
+          color: "#374151",
+        },
+        summaryValue: {
+          fontSize: 12,
+          bold: true,
+          color: "#059669",
+        },
+        transactionTable: {
+          fontSize: 9,
+        },
+        tableHeader: {
+          bold: true,
+          fontSize: 10,
+          color: "#374151",
+        },
+      },
+    };
+
+    // Generate PDF filename
+    let filename = "purchase-transactions-report";
+    if (startDate && endDate) {
+      filename += `_${formatDateDisplay(startDate.toISOString())}_to_${formatDateDisplay(endDate.toISOString())}`;
+    } else if (startDate) {
+      filename += `_from_${formatDateDisplay(startDate.toISOString())}`;
+    } else if (endDate) {
+      filename += `_until_${formatDateDisplay(endDate.toISOString())}`;
+    }
+
+    // Create and download PDF
+    pdfMake.createPdf(docDefinition).download(`${filename}.pdf`);
+  }, [sortedOrders, summaryStats, startDate, endDate, vendorFilter, materialTypeFilter, statusFilter]);
 
   // Pagination calculations
   const totalPages = Math.ceil(sortedOrders.length / pageSize);
@@ -924,6 +1136,116 @@ export function PurchaseOrdersTable({
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                  >
+                    <Columns className="w-4 h-4" />
+                    Columns
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56" align="end">
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm">Toggle Columns</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="col-date"
+                          checked={visibleColumns.purchaseDate}
+                          onCheckedChange={() => toggleColumn("purchaseDate")}
+                        />
+                        <label
+                          htmlFor="col-date"
+                          className="text-sm cursor-pointer"
+                        >
+                          Purchase Date
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="col-vendor"
+                          checked={visibleColumns.vendorName}
+                          onCheckedChange={() => toggleColumn("vendorName")}
+                        />
+                        <label
+                          htmlFor="col-vendor"
+                          className="text-sm cursor-pointer"
+                        >
+                          Vendor
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="col-items"
+                          checked={visibleColumns.totalItems}
+                          onCheckedChange={() => toggleColumn("totalItems")}
+                        />
+                        <label
+                          htmlFor="col-items"
+                          className="text-sm cursor-pointer"
+                        >
+                          Items
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="col-cost"
+                          checked={visibleColumns.totalCost}
+                          onCheckedChange={() => toggleColumn("totalCost")}
+                        />
+                        <label
+                          htmlFor="col-cost"
+                          className="text-sm cursor-pointer"
+                        >
+                          Total Cost
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="col-type"
+                          checked={visibleColumns.materialType}
+                          onCheckedChange={() => toggleColumn("materialType")}
+                        />
+                        <label
+                          htmlFor="col-type"
+                          className="text-sm cursor-pointer"
+                        >
+                          Type
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="col-status"
+                          checked={visibleColumns.status}
+                          onCheckedChange={() => toggleColumn("status")}
+                        />
+                        <label
+                          htmlFor="col-status"
+                          className="text-sm cursor-pointer"
+                        >
+                          Status
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id="col-actions"
+                          checked={visibleColumns.actions}
+                          onCheckedChange={() => toggleColumn("actions")}
+                        />
+                        <label
+                          htmlFor="col-actions"
+                          className="text-sm cursor-pointer"
+                        >
+                          Actions
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Button
                 variant="outline"
                 size="sm"
@@ -932,7 +1254,17 @@ export function PurchaseOrdersTable({
                 className="flex items-center gap-1"
               >
                 <FileDown className="w-4 h-4" />
-                Export CSV
+                CSV
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportToPDF}
+                disabled={isLoading || sortedOrders.length === 0}
+                className="flex items-center gap-1"
+              >
+                <FileText className="w-4 h-4" />
+                PDF
               </Button>
               <Button
                 variant="outline"
@@ -957,53 +1289,67 @@ export function PurchaseOrdersTable({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <SortableHeader
-                    sortDirection={getSortDirectionForDisplay("purchaseDate")}
-                    sortIndex={getSortIndex("purchaseDate")}
-                    onSort={() => handleColumnSort("purchaseDate")}
-                  >
-                    Purchase Date
-                  </SortableHeader>
-                  <SortableHeader
-                    sortDirection={getSortDirectionForDisplay("vendorName")}
-                    sortIndex={getSortIndex("vendorName")}
-                    onSort={() => handleColumnSort("vendorName")}
-                  >
-                    Vendor
-                  </SortableHeader>
-                  <SortableHeader
-                    align="right"
-                    sortDirection={getSortDirectionForDisplay("totalItems")}
-                    sortIndex={getSortIndex("totalItems")}
-                    onSort={() => handleColumnSort("totalItems")}
-                  >
-                    Items
-                  </SortableHeader>
-                  <SortableHeader
-                    align="right"
-                    sortDirection={getSortDirectionForDisplay("totalCost")}
-                    sortIndex={getSortIndex("totalCost")}
-                    onSort={() => handleColumnSort("totalCost")}
-                  >
-                    Total Cost
-                  </SortableHeader>
-                  <SortableHeader
-                    sortDirection={getSortDirectionForDisplay("materialType")}
-                    sortIndex={getSortIndex("materialType")}
-                    onSort={() => handleColumnSort("materialType")}
-                  >
-                    Type
-                  </SortableHeader>
-                  <SortableHeader
-                    sortDirection={getSortDirectionForDisplay("status")}
-                    sortIndex={getSortIndex("status")}
-                    onSort={() => handleColumnSort("status")}
-                  >
-                    Status
-                  </SortableHeader>
-                  <SortableHeader canSort={false} className="w-[120px]">
-                    Actions
-                  </SortableHeader>
+                  {visibleColumns.purchaseDate && (
+                    <SortableHeader
+                      sortDirection={getSortDirectionForDisplay("purchaseDate")}
+                      sortIndex={getSortIndex("purchaseDate")}
+                      onSort={() => handleColumnSort("purchaseDate")}
+                    >
+                      Purchase Date
+                    </SortableHeader>
+                  )}
+                  {visibleColumns.vendorName && (
+                    <SortableHeader
+                      sortDirection={getSortDirectionForDisplay("vendorName")}
+                      sortIndex={getSortIndex("vendorName")}
+                      onSort={() => handleColumnSort("vendorName")}
+                    >
+                      Vendor
+                    </SortableHeader>
+                  )}
+                  {visibleColumns.totalItems && (
+                    <SortableHeader
+                      align="right"
+                      sortDirection={getSortDirectionForDisplay("totalItems")}
+                      sortIndex={getSortIndex("totalItems")}
+                      onSort={() => handleColumnSort("totalItems")}
+                    >
+                      Items
+                    </SortableHeader>
+                  )}
+                  {visibleColumns.totalCost && (
+                    <SortableHeader
+                      align="right"
+                      sortDirection={getSortDirectionForDisplay("totalCost")}
+                      sortIndex={getSortIndex("totalCost")}
+                      onSort={() => handleColumnSort("totalCost")}
+                    >
+                      Total Cost
+                    </SortableHeader>
+                  )}
+                  {visibleColumns.materialType && (
+                    <SortableHeader
+                      sortDirection={getSortDirectionForDisplay("materialType")}
+                      sortIndex={getSortIndex("materialType")}
+                      onSort={() => handleColumnSort("materialType")}
+                    >
+                      Type
+                    </SortableHeader>
+                  )}
+                  {visibleColumns.status && (
+                    <SortableHeader
+                      sortDirection={getSortDirectionForDisplay("status")}
+                      sortIndex={getSortIndex("status")}
+                      onSort={() => handleColumnSort("status")}
+                    >
+                      Status
+                    </SortableHeader>
+                  )}
+                  {visibleColumns.actions && (
+                    <SortableHeader canSort={false} className="w-[120px]">
+                      Actions
+                    </SortableHeader>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1055,55 +1401,69 @@ export function PurchaseOrdersTable({
                       className="cursor-pointer hover:bg-muted/50"
                       onClick={() => handleItemClick(order)}
                     >
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm">
-                          <Calendar className="w-3 h-3 text-muted-foreground" />
-                          <span>{formatDateDisplay(order.purchaseDate)}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {order.vendorName || "Unknown Vendor"}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {order.totalItems}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {formatCurrency(order.totalCost)}
-                      </TableCell>
-                      <TableCell>
-                        {getMaterialTypeBadge(order.materialType)}
-                      </TableCell>
-                      <TableCell>{getStatusBadge(order.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleItemClick(order);
-                            }}
-                            title="View Details"
-                          >
-                            <Eye className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleExportPdf(order.id);
-                            }}
-                            title="Export PDF"
-                          >
-                            <Download className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      {visibleColumns.purchaseDate && (
+                        <TableCell>
+                          <div className="flex items-center gap-1 text-sm">
+                            <Calendar className="w-3 h-3 text-muted-foreground" />
+                            <span>{formatDateDisplay(order.purchaseDate)}</span>
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.vendorName && (
+                        <TableCell>
+                          <div className="font-medium">
+                            {order.vendorName || "Unknown Vendor"}
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.totalItems && (
+                        <TableCell className="text-right font-mono">
+                          {order.totalItems}
+                        </TableCell>
+                      )}
+                      {visibleColumns.totalCost && (
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(order.totalCost)}
+                        </TableCell>
+                      )}
+                      {visibleColumns.materialType && (
+                        <TableCell>
+                          {getMaterialTypeBadge(order.materialType)}
+                        </TableCell>
+                      )}
+                      {visibleColumns.status && (
+                        <TableCell>{getStatusBadge(order.status)}</TableCell>
+                      )}
+                      {visibleColumns.actions && (
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleItemClick(order);
+                              }}
+                              title="View Details"
+                            >
+                              <Eye className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExportPdf(order.id);
+                              }}
+                              title="Export PDF"
+                            >
+                              <Download className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
