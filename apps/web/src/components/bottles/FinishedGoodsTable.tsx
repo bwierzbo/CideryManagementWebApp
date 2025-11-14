@@ -33,6 +33,8 @@ import {
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
 import { DistributeInventoryModal } from "./DistributeInventoryModal";
+import { AdjustInventoryModal } from "./AdjustInventoryModal";
+import { UpdatePricingModal } from "./UpdatePricingModal";
 
 interface FinishedGoodsTableProps {
   className?: string;
@@ -51,6 +53,8 @@ export function FinishedGoodsTable({
 
   // Modal state
   const [distributeModalOpen, setDistributeModalOpen] = useState(false);
+  const [adjustModalOpen, setAdjustModalOpen] = useState(false);
+  const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
   // Fetch finished goods
@@ -87,8 +91,20 @@ export function FinishedGoodsTable({
     setDistributeModalOpen(true);
   };
 
-  // Handle successful distribution
-  const handleDistributeSuccess = () => {
+  // Handle adjust inventory action
+  const handleAdjustInventory = (item: any) => {
+    setSelectedItem(item);
+    setAdjustModalOpen(true);
+  };
+
+  // Handle update pricing action
+  const handleUpdatePricing = (item: any) => {
+    setSelectedItem(item);
+    setPricingModalOpen(true);
+  };
+
+  // Handle successful actions
+  const handleActionSuccess = () => {
     refetch();
     utils.inventory.listFinishedGoods.invalidate();
     setSelectedItem(null);
@@ -234,11 +250,11 @@ export function FinishedGoodsTable({
                           <Send className="mr-2 h-4 w-4" />
                           Distribute
                         </DropdownMenuItem>
-                        <DropdownMenuItem disabled>
+                        <DropdownMenuItem onClick={() => handleAdjustInventory(item)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Adjust Inventory
                         </DropdownMenuItem>
-                        <DropdownMenuItem disabled>
+                        <DropdownMenuItem onClick={() => handleUpdatePricing(item)}>
                           <TrendingUp className="mr-2 h-4 w-4" />
                           Update Pricing
                         </DropdownMenuItem>
@@ -291,7 +307,38 @@ export function FinishedGoodsTable({
           suggestedPrice={
             selectedItem.retailPrice ? parseFloat(selectedItem.retailPrice) : undefined
           }
-          onSuccess={handleDistributeSuccess}
+          onSuccess={handleActionSuccess}
+        />
+      )}
+
+      {/* Adjust Inventory Modal */}
+      {selectedItem && (
+        <AdjustInventoryModal
+          open={adjustModalOpen}
+          onClose={() => {
+            setAdjustModalOpen(false);
+            setSelectedItem(null);
+          }}
+          inventoryItemId={selectedItem.id}
+          productName={selectedItem.lotCode || "Product"}
+          currentQuantity={selectedItem.currentQuantity || 0}
+          onSuccess={handleActionSuccess}
+        />
+      )}
+
+      {/* Update Pricing Modal */}
+      {selectedItem && (
+        <UpdatePricingModal
+          open={pricingModalOpen}
+          onClose={() => {
+            setPricingModalOpen(false);
+            setSelectedItem(null);
+          }}
+          inventoryItemId={selectedItem.id}
+          productName={selectedItem.lotCode || "Product"}
+          currentRetailPrice={selectedItem.retailPrice}
+          currentWholesalePrice={selectedItem.wholesalePrice}
+          onSuccess={handleActionSuccess}
         />
       )}
     </div>

@@ -69,6 +69,7 @@ import { formatDate } from "@/utils/date-format";
 import { startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, subMonths, subYears } from "date-fns";
 import pdfMake from "pdfmake/build/pdfmake";
 import * as pdfFonts from "pdfmake/build/vfs_fonts";
+import { PurchaseDetailsModal } from "./PurchaseDetailsModal";
 
 // Initialize pdfMake fonts
 (pdfMake as any).vfs = pdfFonts;
@@ -126,6 +127,10 @@ export function PurchaseOrdersTable({
   // UI state
   const [showReports, setShowReports] = useState(false);
   const [pageSize, setPageSize] = useState(itemsPerPage);
+  const [detailsPurchase, setDetailsPurchase] = useState<{
+    id: string;
+    materialType: "basefruit" | "additives" | "juice" | "packaging";
+  } | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -1443,7 +1448,14 @@ export function PurchaseOrdersTable({
                               className="h-6 w-6 p-0"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleItemClick(order);
+                                setDetailsPurchase({
+                                  id: order.id,
+                                  materialType: order.materialType as
+                                    | "basefruit"
+                                    | "additives"
+                                    | "juice"
+                                    | "packaging",
+                                });
                               }}
                               title="View Details"
                             >
@@ -1571,6 +1583,16 @@ export function PurchaseOrdersTable({
           )}
         </CardContent>
       </Card>
+
+      {/* Purchase Details Modal */}
+      {detailsPurchase && (
+        <PurchaseDetailsModal
+          open={!!detailsPurchase}
+          onClose={() => setDetailsPurchase(null)}
+          purchaseId={detailsPurchase.id}
+          materialType={detailsPurchase.materialType}
+        />
+      )}
     </div>
   );
 }

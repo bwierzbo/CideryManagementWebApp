@@ -1559,6 +1559,156 @@ export const appRouter = router({
         // TODO: Implement inventory tracking for additives, juice, packaging
         return [];
       }),
+
+    // Get full purchase details with all items
+    getDetails: createRbacProcedure("view", "purchase")
+      .input(
+        z.object({
+          purchaseId: z.string().uuid(),
+          materialType: z.enum(["basefruit", "additives", "juice", "packaging"]),
+        }),
+      )
+      .query(async ({ input }) => {
+        const { purchaseId, materialType } = input;
+
+        if (materialType === "basefruit") {
+          const purchase = await db
+            .select({
+              id: basefruitPurchases.id,
+              vendorId: basefruitPurchases.vendorId,
+              vendorName: vendors.name,
+              purchaseDate: basefruitPurchases.purchaseDate,
+              totalCost: basefruitPurchases.totalCost,
+              notes: basefruitPurchases.notes,
+              createdAt: basefruitPurchases.createdAt,
+              updatedAt: basefruitPurchases.updatedAt,
+            })
+            .from(basefruitPurchases)
+            .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+            .where(
+              and(
+                eq(basefruitPurchases.id, purchaseId),
+                isNull(basefruitPurchases.deletedAt),
+              ),
+            )
+            .limit(1);
+
+          if (purchase.length === 0) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Purchase not found",
+            });
+          }
+
+          const items = await db
+            .select({
+              id: basefruitPurchaseItems.id,
+              varietyName: baseFruitVarieties.name,
+              quantity: basefruitPurchaseItems.quantity,
+              unit: basefruitPurchaseItems.unit,
+              pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+              totalCost: basefruitPurchaseItems.totalCost,
+              harvestDate: basefruitPurchaseItems.harvestDate,
+              notes: basefruitPurchaseItems.notes,
+            })
+            .from(basefruitPurchaseItems)
+            .leftJoin(
+              baseFruitVarieties,
+              eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+            )
+            .where(
+              and(
+                eq(basefruitPurchaseItems.purchaseId, purchaseId),
+                isNull(basefruitPurchaseItems.deletedAt),
+              ),
+            )
+            .orderBy(basefruitPurchaseItems.createdAt);
+
+          return {
+            ...purchase[0],
+            items: items.map((item) => ({
+              ...item,
+              quantity: item.quantity ? parseFloat(item.quantity) : null,
+              pricePerUnit: item.pricePerUnit
+                ? parseFloat(item.pricePerUnit)
+                : null,
+              totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+            })),
+          };
+        }
+
+        // Similar logic for other material types
+        if (materialType === "additives") {
+          const purchase = await db
+            .select({
+              id: additivePurchases.id,
+              vendorId: additivePurchases.vendorId,
+              vendorName: vendors.name,
+              purchaseDate: additivePurchases.purchaseDate,
+              totalCost: additivePurchases.totalCost,
+              notes: additivePurchases.notes,
+              createdAt: additivePurchases.createdAt,
+              updatedAt: additivePurchases.updatedAt,
+            })
+            .from(additivePurchases)
+            .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
+            .where(
+              and(
+                eq(additivePurchases.id, purchaseId),
+                isNull(additivePurchases.deletedAt),
+              ),
+            )
+            .limit(1);
+
+          if (purchase.length === 0) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Purchase not found",
+            });
+          }
+
+          const items = await db
+            .select({
+              id: additivePurchaseItems.id,
+              varietyName: additiveVarieties.name,
+              brandManufacturer: additivePurchaseItems.brandManufacturer,
+              quantity: additivePurchaseItems.quantity,
+              unit: additivePurchaseItems.unit,
+              pricePerUnit: additivePurchaseItems.pricePerUnit,
+              totalCost: additivePurchaseItems.totalCost,
+              notes: additivePurchaseItems.notes,
+            })
+            .from(additivePurchaseItems)
+            .leftJoin(
+              additiveVarieties,
+              eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id),
+            )
+            .where(
+              and(
+                eq(additivePurchaseItems.purchaseId, purchaseId),
+                isNull(additivePurchaseItems.deletedAt),
+              ),
+            )
+            .orderBy(additivePurchaseItems.createdAt);
+
+          return {
+            ...purchase[0],
+            items: items.map((item) => ({
+              ...item,
+              quantity: item.quantity ? parseFloat(item.quantity) : null,
+              pricePerUnit: item.pricePerUnit
+                ? parseFloat(item.pricePerUnit)
+                : null,
+              totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+            })),
+          };
+        }
+
+        throw new TRPCError({
+          code: "NOT_IMPLEMENTED",
+          message: `Details not implemented for ${materialType}`,
+        });
+      }),
   }),
 
   // Purchase Line Integration for Apple Press workflow
