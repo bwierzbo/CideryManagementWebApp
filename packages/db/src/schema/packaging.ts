@@ -411,6 +411,109 @@ export const inventoryItemsRelations = relations(inventoryItems, ({ one }) => ({
   }),
 }));
 
+// Inventory management enums
+export const inventoryAdjustmentTypeEnum = pgEnum("inventory_adjustment_type", [
+  "breakage",
+  "sample",
+  "transfer",
+  "correction",
+  "void",
+]);
+
+// Inventory distributions - Track sales/distributions of finished goods
+export const inventoryDistributions = pgTable(
+  "inventory_distributions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inventoryItemId: uuid("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+    distributionDate: timestamp("distribution_date").notNull(),
+    distributionLocation: text("distribution_location").notNull(),
+    quantityDistributed: integer("quantity_distributed").notNull(),
+    pricePerUnit: decimal("price_per_unit", { precision: 10, scale: 2 }).notNull(),
+    totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).notNull(),
+    notes: text("notes"),
+    distributedBy: uuid("distributed_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    inventoryItemIdx: index("inventory_distributions_inventory_item_idx").on(
+      table.inventoryItemId,
+    ),
+    distributionDateIdx: index("inventory_distributions_distribution_date_idx").on(
+      table.distributionDate,
+    ),
+    distributedByIdx: index("inventory_distributions_distributed_by_idx").on(
+      table.distributedBy,
+    ),
+  }),
+);
+
+// Inventory adjustments - Track manual inventory changes
+export const inventoryAdjustments = pgTable(
+  "inventory_adjustments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inventoryItemId: uuid("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
+    adjustmentType: inventoryAdjustmentTypeEnum("adjustment_type").notNull(),
+    quantityChange: integer("quantity_change").notNull(),
+    reason: text("reason").notNull(),
+    adjustedBy: uuid("adjusted_by")
+      .notNull()
+      .references(() => users.id),
+    adjustedAt: timestamp("adjusted_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    inventoryItemIdx: index("inventory_adjustments_inventory_item_idx").on(
+      table.inventoryItemId,
+    ),
+    adjustedAtIdx: index("inventory_adjustments_adjusted_at_idx").on(
+      table.adjustedAt,
+    ),
+    adjustedByIdx: index("inventory_adjustments_adjusted_by_idx").on(
+      table.adjustedBy,
+    ),
+  }),
+);
+
+// Inventory distributions relations
+export const inventoryDistributionsRelations = relations(
+  inventoryDistributions,
+  ({ one }) => ({
+    inventoryItem: one(inventoryItems, {
+      fields: [inventoryDistributions.inventoryItemId],
+      references: [inventoryItems.id],
+    }),
+    distributedByUser: one(users, {
+      fields: [inventoryDistributions.distributedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
+// Inventory adjustments relations
+export const inventoryAdjustmentsRelations = relations(
+  inventoryAdjustments,
+  ({ one }) => ({
+    inventoryItem: one(inventoryItems, {
+      fields: [inventoryAdjustments.inventoryItemId],
+      references: [inventoryItems.id],
+    }),
+    adjustedByUser: one(users, {
+      fields: [inventoryAdjustments.adjustedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
 // Keg tracking enums
 export const kegTypeEnum = pgEnum("keg_type", [
   "cornelius_5L",

@@ -160,6 +160,26 @@ export function BaseFruitTable({
     offset: currentPage * itemsPerPage,
   });
 
+  // Fetch inventory levels for stock status indicators
+  const { data: inventoryLevels } = trpc.purchase.inventoryLevels.useQuery({
+    materialType: "basefruit",
+  });
+
+  // Create a lookup map for stock status by variety ID
+  const stockStatusMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { status: "healthy" | "low" | "out"; remaining: number }
+    >();
+    inventoryLevels?.forEach((level) => {
+      map.set(level.varietyId, {
+        status: level.stockStatus,
+        remaining: level.remaining,
+      });
+    });
+    return map;
+  }, [inventoryLevels]);
+
   // Delete mutation
   const deleteMutation = trpc.baseFruitPurchases.deleteItem.useMutation({
     onSuccess: () => {
@@ -390,6 +410,9 @@ export function BaseFruitTable({
                   >
                     Fruit Variety
                   </SortableHeader>
+                  <SortableHeader canSort={false} className="w-[100px]">
+                    Stock
+                  </SortableHeader>
                   <SortableHeader
                     sortDirection={getSortDirectionForDisplay("vendorName")}
                     sortIndex={getSortIndex("vendorName")}
@@ -436,6 +459,9 @@ export function BaseFruitTable({
                         <Skeleton className="h-4 w-32" />
                       </TableCell>
                       <TableCell>
+                        <Skeleton className="h-6 w-16" />
+                      </TableCell>
+                      <TableCell>
                         <Skeleton className="h-4 w-28" />
                       </TableCell>
                       <TableCell>
@@ -457,7 +483,7 @@ export function BaseFruitTable({
                   ))
                 ) : sortedItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-12">
+                    <TableCell colSpan={8} className="text-center py-12">
                       {searchQuery ? (
                         <div className="text-muted-foreground">
                           <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -489,18 +515,50 @@ export function BaseFruitTable({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  sortedItems.map((item) => (
-                    <TableRow
-                      key={item.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleItemClick(item)}
-                    >
-                      <TableCell>
-                        <div className="font-medium">{item.varietyName}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{item.vendorName}</div>
-                      </TableCell>
+                  sortedItems.map((item) => {
+                    const stockInfo = item.fruitVarietyId
+                      ? stockStatusMap.get(item.fruitVarietyId)
+                      : null;
+                    const stockStatus = stockInfo?.status || "healthy";
+
+                    return (
+                      <TableRow
+                        key={item.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => handleItemClick(item)}
+                      >
+                        <TableCell>
+                          <div className="font-medium">{item.varietyName}</div>
+                        </TableCell>
+                        <TableCell>
+                          {stockInfo ? (
+                            <Badge
+                              variant={
+                                stockStatus === "out"
+                                  ? "destructive"
+                                  : stockStatus === "low"
+                                    ? "secondary"
+                                    : "default"
+                              }
+                              className={cn(
+                                "text-xs font-medium",
+                                stockStatus === "healthy" &&
+                                  "bg-green-100 text-green-800 hover:bg-green-100",
+                                stockStatus === "low" &&
+                                  "bg-orange-100 text-orange-800 hover:bg-orange-100",
+                              )}
+                            >
+                              {stockStatus === "out" && "⚠️ Out"}
+                              {stockStatus === "low" && "⚡ Low"}
+                              {stockStatus === "healthy" && "✓ Good"}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{item.vendorName}</div>
+                        </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm">
                           <Calendar className="w-3 h-3 text-muted-foreground" />
@@ -589,7 +647,8 @@ export function BaseFruitTable({
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
-                  ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

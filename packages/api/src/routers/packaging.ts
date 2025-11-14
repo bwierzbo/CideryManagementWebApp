@@ -24,6 +24,11 @@ import {
   batchCarbonationOperations,
   kegFills,
   kegs,
+  pressRuns,
+  pressRunLoads,
+  basefruitPurchaseItems,
+  basefruitPurchases,
+  additivePurchaseItems,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -1477,6 +1482,307 @@ export const bottlesRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update bottle run dates",
+        });
+      }
+    }),
+
+  /**
+   * Get enhanced details for comprehensive bottle details page with COGS
+   * Returns complete traceability from apples to bottles with full cost breakdown
+   */
+  getEnhancedDetails: createRbacProcedure("read", "package")
+    .input(z.string().uuid())
+    .query(async ({ input: bottleRunId }) => {
+      try {
+        // 1. Get basic bottle run info
+        const [bottleRun] = await db
+          .select()
+          .from(bottleRuns)
+          .where(eq(bottleRuns.id, bottleRunId))
+          .limit(1);
+
+        if (!bottleRun) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Bottle run not found",
+          });
+        }
+
+        // 2. Get batch composition with juice lots and costs
+        // Note: batchCompositions links to basefruitPurchaseItems for base fruit path
+        const compositionData = await db
+          .select({
+            compositionId: batchCompositions.id,
+            sourceType: batchCompositions.sourceType,
+            purchaseItemId: batchCompositions.purchaseItemId,
+            juicePurchaseItemId: batchCompositions.juicePurchaseItemId,
+            fractionOfBatch: batchCompositions.fractionOfBatch,
+            juiceVolume: batchCompositions.juiceVolume,
+            materialCost: batchCompositions.materialCost,
+            varietyId: batchCompositions.varietyId,
+            varietyName: baseFruitVarieties.name,
+            vendorId: batchCompositions.vendorId,
+            vendorName: vendors.name,
+          })
+          .from(batchCompositions)
+          .leftJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
+          .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+          .where(eq(batchCompositions.batchId, bottleRun.batchId));
+
+        // 3. Get apple loads - trace through purchase items used in this batch
+        const appleLoadsData: any[] = [];
+        for (const comp of compositionData) {
+          if (comp.sourceType === "base_fruit" && comp.purchaseItemId) {
+            // Get the press run loads that used this purchase item
+            const loads = await db
+              .select({
+                loadId: pressRunLoads.id,
+                pressRunId: pressRunLoads.pressRunId,
+                varietyName: baseFruitVarieties.name,
+                appleWeightKg: pressRunLoads.appleWeightKg,
+                juiceVolume: pressRunLoads.juiceVolume,
+                // Get purchase item details
+                purchaseItemQuantityKg: basefruitPurchaseItems.quantityKg,
+                pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+                totalCost: basefruitPurchaseItems.totalCost,
+                harvestDate: basefruitPurchaseItems.harvestDate,
+                // Get vendor through purchase
+                vendorId: basefruitPurchases.vendorId,
+              })
+              .from(pressRunLoads)
+              .innerJoin(basefruitPurchaseItems, eq(pressRunLoads.purchaseItemId, basefruitPurchaseItems.id))
+              .innerJoin(baseFruitVarieties, eq(pressRunLoads.fruitVarietyId, baseFruitVarieties.id))
+              .innerJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+              .where(eq(pressRunLoads.purchaseItemId, comp.purchaseItemId));
+
+            appleLoadsData.push(...loads);
+          }
+        }
+
+        // 4. Get fermentation measurements
+        const measurements = await db
+          .select()
+          .from(batchMeasurements)
+          .where(eq(batchMeasurements.batchId, bottleRun.batchId))
+          .orderBy(batchMeasurements.measurementDate);
+
+        // 5. Get additives
+        // Note: batchAdditives uses text fields (additiveType, additiveName)
+        // and doesn't have direct FK to additiveVarieties or purchase items
+        const additives = await db
+          .select({
+            id: batchAdditives.id,
+            additiveType: batchAdditives.additiveType,
+            additiveName: batchAdditives.additiveName,
+            amount: batchAdditives.amount,
+            unit: batchAdditives.unit,
+            addedAt: batchAdditives.addedAt,
+            addedBy: batchAdditives.addedBy,
+            notes: batchAdditives.notes,
+          })
+          .from(batchAdditives)
+          .where(eq(batchAdditives.batchId, bottleRun.batchId));
+
+        // 6. Get transfers (where this batch is the source or destination)
+        const transfers = await db
+          .select()
+          .from(batchTransfers)
+          .where(
+            or(
+              eq(batchTransfers.sourceBatchId, bottleRun.batchId),
+              eq(batchTransfers.destinationBatchId, bottleRun.batchId)
+            )
+          )
+          .orderBy(batchTransfers.transferredAt);
+
+        // 7. Get carbonation details
+        const carbonation = await db
+          .select()
+          .from(batchCarbonationOperations)
+          .where(eq(batchCarbonationOperations.batchId, bottleRun.batchId))
+          .orderBy(desc(batchCarbonationOperations.completedAt))
+          .limit(1);
+
+        // 8. Get packaging materials with costs
+        const packagingMaterials = await db
+          .select({
+            materialId: bottleRunMaterials.id,
+            materialType: bottleRunMaterials.materialType,
+            quantityUsed: bottleRunMaterials.quantityUsed,
+            itemId: packagingPurchaseItems.id,
+            packageType: packagingPurchaseItems.packageType,
+            materialTypePurchase: packagingPurchaseItems.materialType,
+            size: packagingPurchaseItems.size,
+            pricePerUnit: packagingPurchaseItems.pricePerUnit,
+            totalCost: sql<number>`${bottleRunMaterials.quantityUsed} * ${packagingPurchaseItems.pricePerUnit}`,
+          })
+          .from(bottleRunMaterials)
+          .leftJoin(packagingPurchaseItems, eq(bottleRunMaterials.packagingPurchaseItemId, packagingPurchaseItems.id))
+          .where(eq(bottleRunMaterials.bottleRunId, bottleRunId));
+
+        // 9. Get inventory items for this run
+        const inventory = await db
+          .select()
+          .from(inventoryItems)
+          .where(eq(inventoryItems.bottleRunId, bottleRunId));
+
+        // 10. Calculate COGS breakdown
+        // Apple costs from composition
+        const appleCosts = compositionData.reduce((total, comp) => {
+          return total + (parseFloat(comp.materialCost?.toString() || "0"));
+        }, 0);
+
+        // Additive costs - Note: batchAdditives doesn't track purchase costs
+        // This would require matching additives to purchase items by name/type
+        const additiveCosts = 0; // Placeholder for now
+
+        // Packaging costs from materials
+        const packagingCosts = packagingMaterials.reduce((total, mat) => {
+          return total + (parseFloat(mat.totalCost?.toString() || "0"));
+        }, 0);
+
+        // Labor and overhead from bottle run
+        const laborCost = (parseFloat(bottleRun.laborHours?.toString() || "0") *
+                          parseFloat(bottleRun.laborCostPerHour?.toString() || "0"));
+        const overheadCost = parseFloat(bottleRun.overheadCostAllocated?.toString() || "0");
+
+        const totalCogs = appleCosts + additiveCosts + packagingCosts + laborCost + overheadCost;
+        const costPerBottle = bottleRun.unitsProduced > 0 ? totalCogs / bottleRun.unitsProduced : 0;
+        const volumeTakenL = parseFloat(bottleRun.volumeTaken?.toString() || "0");
+        const costPerLiter = volumeTakenL > 0 ? totalCogs / volumeTakenL : 0;
+
+        // 11. Calculate yields
+        // Total apple weight input
+        const totalAppleKg = appleLoadsData.reduce((total, load) => {
+          return total + (parseFloat(load.appleWeightKg?.toString() || "0"));
+        }, 0);
+
+        // Total juice produced from compositions
+        const totalJuiceL = compositionData.reduce((total, comp) => {
+          return total + (parseFloat(comp.juiceVolume?.toString() || "0"));
+        }, 0);
+
+        const applesToJuiceYield = totalAppleKg > 0 ? (totalJuiceL / totalAppleKg) : 0;
+
+        // Get batch start volume (from composition total)
+        const batchStartVolume = totalJuiceL;
+
+        const juiceToPackagedYield = batchStartVolume > 0 ? (volumeTakenL / batchStartVolume) * 100 : 0;
+        const overallYield = totalAppleKg > 0 ? volumeTakenL / totalAppleKg : 0;
+
+        // 12. Calculate margins if retail price is set
+        const retailPrice = inventory[0] ? parseFloat(inventory[0].retailPrice?.toString() || "0") : 0;
+        const margins = retailPrice > 0 ? {
+          retailPrice,
+          costPerBottle,
+          grossMargin: retailPrice - costPerBottle,
+          grossMarginPercent: ((retailPrice - costPerBottle) / retailPrice) * 100,
+          markup: retailPrice - costPerBottle,
+          markupPercent: costPerBottle > 0 ? ((retailPrice - costPerBottle) / costPerBottle) * 100 : 0,
+        } : null;
+
+        // 13. Build enhanced composition with apple loads
+        const enhancedComposition = compositionData.map(comp => {
+          // Find apple loads for this composition
+          const loadsForComp = appleLoadsData.filter(load => load.purchaseItemId === comp.purchaseItemId);
+          return {
+            ...comp,
+            appleLoads: loadsForComp,
+            fractionPercent: comp.fractionOfBatch ? parseFloat(comp.fractionOfBatch.toString()) * 100 : 0,
+          };
+        });
+
+        return {
+          bottleRun: {
+            ...bottleRun,
+            volumeTaken: parseFloat(bottleRun.volumeTaken?.toString() || "0"),
+            loss: parseFloat(bottleRun.loss?.toString() || "0"),
+          },
+          composition: enhancedComposition,
+          fermentation: {
+            measurements,
+            additives,
+            transfers,
+            startDate: measurements[0]?.measurementDate || null,
+            endDate: measurements[measurements.length - 1]?.measurementDate || null,
+            durationDays: measurements.length > 1 ?
+              Math.floor((new Date(measurements[measurements.length - 1].measurementDate).getTime() -
+                         new Date(measurements[0].measurementDate).getTime()) / (1000 * 60 * 60 * 24)) : 0,
+          },
+          carbonation: carbonation[0] || null,
+          packagingMaterials,
+          cogs: {
+            appleCosts: {
+              totalCost: appleCosts,
+              costByVariety: compositionData.map(c => ({
+                variety: c.varietyName || "Unknown",
+                cost: parseFloat(c.materialCost?.toString() || "0"),
+                percentage: c.fractionOfBatch ? parseFloat(c.fractionOfBatch.toString()) * 100 : 0,
+              })),
+            },
+            additiveCosts: {
+              totalCost: additiveCosts,
+              note: "Additive costs not tracked in current schema",
+              items: additives.map(a => ({
+                name: a.additiveName || "Unknown",
+                type: a.additiveType || "",
+                amount: a.amount,
+                unit: a.unit,
+              })),
+            },
+            packagingCosts: {
+              totalCost: packagingCosts,
+              costByType: packagingMaterials.map(m => ({
+                type: m.materialType,
+                packageType: m.packageType || "",
+                size: m.size || "",
+                quantityUsed: m.quantityUsed,
+                pricePerUnit: parseFloat(m.pricePerUnit?.toString() || "0"),
+                cost: parseFloat(m.totalCost?.toString() || "0"),
+              })),
+            },
+            laborCost,
+            overheadCost,
+            totalCogs,
+            costPerBottle,
+            costPerLiter,
+          },
+          yields: {
+            applesToJuice: {
+              inputKg: totalAppleKg,
+              outputL: totalJuiceL,
+              yieldPercent: applesToJuiceYield,
+              lossKg: 0, // Could be calculated if we track press waste
+            },
+            juiceToPackaged: {
+              inputL: batchStartVolume,
+              outputL: volumeTakenL,
+              yieldPercent: juiceToPackagedYield,
+              lossL: batchStartVolume - volumeTakenL,
+            },
+            overallYield: {
+              inputKg: totalAppleKg,
+              outputBottles: bottleRun.unitsProduced,
+              kgPerBottle: bottleRun.unitsProduced > 0 ? totalAppleKg / bottleRun.unitsProduced : 0,
+            },
+          },
+          inventory: {
+            totalUnitsProduced: bottleRun.unitsProduced,
+            currentRemaining: inventory[0]?.currentQuantity || 0,
+            unitsSold: bottleRun.unitsProduced - (inventory[0]?.currentQuantity || 0),
+            inventoryValueRemaining: (inventory[0]?.currentQuantity || 0) * costPerBottle,
+            revenueIfSold: retailPrice > 0 ? (inventory[0]?.currentQuantity || 0) * retailPrice : 0,
+            potentialProfit: retailPrice > 0 ?
+              (inventory[0]?.currentQuantity || 0) * (retailPrice - costPerBottle) : 0,
+          },
+          margins,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error fetching enhanced bottle details:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch enhanced bottle details",
         });
       }
     }),

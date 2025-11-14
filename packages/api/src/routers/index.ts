@@ -1460,6 +1460,105 @@ export const appRouter = router({
           });
         }
       }),
+
+    // Get inventory levels with reorder status for a material type
+    inventoryLevels: createRbacProcedure("list", "purchase")
+      .input(
+        z.object({
+          materialType: z.enum(["basefruit", "additives", "juice", "packaging"]),
+        }),
+      )
+      .query(async ({ input }) => {
+        const { materialType } = input;
+
+        if (materialType === "basefruit") {
+          // Get all varieties with reorder thresholds
+          const varieties = await db
+            .select({
+              varietyId: baseFruitVarieties.id,
+              varietyName: baseFruitVarieties.name,
+              reorderThreshold: baseFruitVarieties.reorderThreshold,
+              reorderUnit: baseFruitVarieties.reorderUnit,
+            })
+            .from(baseFruitVarieties)
+            .where(
+              and(
+                isNull(baseFruitVarieties.deletedAt),
+                eq(baseFruitVarieties.isActive, true),
+              ),
+            );
+
+          // Calculate inventory for each variety
+          const inventoryLevels = await Promise.all(
+            varieties.map(async (variety) => {
+              // Total purchased (in kg)
+              const purchasedResult = await db
+                .select({
+                  total: sql<string>`COALESCE(SUM(CAST(${basefruitPurchaseItems.quantityKg} AS NUMERIC)), 0)`,
+                })
+                .from(basefruitPurchaseItems)
+                .where(
+                  and(
+                    eq(basefruitPurchaseItems.fruitVarietyId, variety.varietyId),
+                    isNull(basefruitPurchaseItems.deletedAt),
+                  ),
+                );
+
+              // Total used in batch compositions (in kg)
+              const usedResult = await db
+                .select({
+                  total: sql<string>`COALESCE(SUM(CAST(${batchCompositions.inputWeightKg} AS NUMERIC)), 0)`,
+                })
+                .from(batchCompositions)
+                .where(
+                  and(
+                    eq(batchCompositions.varietyId, variety.varietyId),
+                    isNull(batchCompositions.deletedAt),
+                  ),
+                );
+
+              const totalPurchased = parseFloat(
+                purchasedResult[0]?.total || "0",
+              );
+              const totalUsed = parseFloat(usedResult[0]?.total || "0");
+              const remaining = totalPurchased - totalUsed;
+
+              // Determine stock status
+              let stockStatus: "healthy" | "low" | "out" = "healthy";
+              if (remaining <= 0) {
+                stockStatus = "out";
+              } else if (
+                variety.reorderThreshold &&
+                parseFloat(variety.reorderThreshold) > 0
+              ) {
+                if (remaining <= parseFloat(variety.reorderThreshold)) {
+                  stockStatus = "low";
+                }
+              }
+
+              return {
+                varietyId: variety.varietyId,
+                varietyName: variety.varietyName,
+                totalPurchased,
+                totalUsed,
+                remaining,
+                unit: "kg",
+                reorderThreshold: variety.reorderThreshold
+                  ? parseFloat(variety.reorderThreshold)
+                  : null,
+                reorderUnit: variety.reorderUnit,
+                stockStatus,
+              };
+            }),
+          );
+
+          return inventoryLevels;
+        }
+
+        // For other material types, return empty for now
+        // TODO: Implement inventory tracking for additives, juice, packaging
+        return [];
+      }),
   }),
 
   // Purchase Line Integration for Apple Press workflow

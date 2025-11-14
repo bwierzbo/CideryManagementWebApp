@@ -37,6 +37,8 @@ import { formatDateTime } from "@/utils/date-format";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
 import { LabelComplianceCard } from "@/components/bottles/LabelComplianceCard";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
+import { COGSSummaryCard } from "@/components/bottles/COGSSummaryCard";
+import { MarginAnalysisCard } from "@/components/bottles/MarginAnalysisCard";
 
 // Lazy load heavy components
 const QAUpdateModal = lazy(() =>
@@ -88,6 +90,14 @@ export default function PackagingDetailPage() {
     error,
     refetch,
   } = trpc.bottles.get.useQuery(runId, {
+    enabled: !!runId,
+  });
+
+  // Fetch enhanced details with COGS and margins
+  const {
+    data: enhancedData,
+    isLoading: isLoadingEnhanced,
+  } = trpc.bottles.getEnhancedDetails.useQuery(runId, {
     enabled: !!runId,
   });
 
@@ -328,6 +338,20 @@ export default function PackagingDetailPage() {
             composition={runData.batch.composition || []}
           />
         </div>
+
+        {/* COGS and Margin Analysis Cards */}
+        {enhancedData && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
+            <COGSSummaryCard
+              cogsData={enhancedData.cogs}
+              unitsProduced={runData.unitsProduced}
+            />
+            <MarginAnalysisCard
+              margins={enhancedData.margins}
+              inventory={enhancedData.inventory}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Main Production Details */}

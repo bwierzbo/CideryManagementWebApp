@@ -17,6 +17,10 @@ import {
   packagingPurchases,
   packagingPurchaseItems,
   packagingVarieties,
+  // Finished goods inventory
+  inventoryItems,
+  inventoryDistributions,
+  inventoryAdjustments,
 } from "db";
 import { eq, and, desc, asc, like, or, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -670,6 +674,338 @@ export const inventoryRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to delete item",
+        });
+      }
+    }),
+
+  // ==============================================
+  // Finished Goods Inventory Management
+  // ==============================================
+
+  /**
+   * List finished goods inventory items (bottles)
+   * Returns inventory items with batch and packaging details
+   */
+  listFinishedGoods: createRbacProcedure("read", "package")
+    .input(
+      z.object({
+        limit: z.number().int().positive().default(50),
+        offset: z.number().int().nonnegative().default(0),
+        search: z.string().optional(),
+        status: z.enum(["all", "in_stock", "depleted"]).optional().default("in_stock"),
+      }),
+    )
+    .query(async ({ input }) => {
+      const { limit, offset, search, status } = input;
+
+      // Build where conditions
+      const conditions = [];
+
+      // Filter by status
+      if (status === "in_stock") {
+        conditions.push(sql`${inventoryItems.currentQuantity} > 0`);
+      } else if (status === "depleted") {
+        conditions.push(sql`${inventoryItems.currentQuantity} = 0`);
+      }
+
+      // Filter by search term (lot code)
+      if (search && search.trim().length > 0) {
+        conditions.push(
+          sql`${inventoryItems.lotCode} ILIKE ${`%${search}%`}`,
+        );
+      }
+
+      // Build where clause
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Get inventory items
+      const items = await db
+        .select({
+          id: inventoryItems.id,
+          lotCode: inventoryItems.lotCode,
+          packageType: inventoryItems.packageType,
+          packageSizeML: inventoryItems.packageSizeML,
+          currentQuantity: inventoryItems.currentQuantity,
+          retailPrice: inventoryItems.retailPrice,
+          wholesalePrice: inventoryItems.wholesalePrice,
+          expirationDate: inventoryItems.expirationDate,
+          createdAt: inventoryItems.createdAt,
+          updatedAt: inventoryItems.updatedAt,
+          // Relations
+          bottleRunId: inventoryItems.bottleRunId,
+          batchId: inventoryItems.batchId,
+        })
+        .from(inventoryItems)
+        .where(whereClause)
+        .orderBy(desc(inventoryItems.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      // Get total count
+      const totalCountResult = await db
+        .select({ count: sql<number>`COUNT(*)::int` })
+        .from(inventoryItems)
+        .where(whereClause);
+
+      const totalCount = totalCountResult[0]?.count || 0;
+
+      return {
+        items,
+        pagination: {
+          total: totalCount,
+          limit,
+          offset,
+          hasMore: offset + limit < totalCount,
+        },
+      };
+    }),
+
+  /**
+   * Distribute inventory items (finished goods)
+   * Tracks sales/distributions and updates quantity
+   */
+  distribute: createRbacProcedure("create", "package")
+    .input(
+      z.object({
+        inventoryItemId: z.string().uuid(),
+        distributionLocation: z.string().min(1),
+        quantityDistributed: z.number().int().positive(),
+        pricePerUnit: z.number().positive(),
+        distributionDate: z.string().datetime(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        // Get inventory item and validate
+        const [item] = await db
+          .select()
+          .from(inventoryItems)
+          .where(eq(inventoryItems.id, input.inventoryItemId))
+          .limit(1);
+
+        if (!item) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Inventory item not found",
+          });
+        }
+
+        const currentQty = item.currentQuantity || 0;
+        if (input.quantityDistributed > currentQty) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot distribute ${input.quantityDistributed} units. Only ${currentQty} available.`,
+          });
+        }
+
+        // Calculate total revenue
+        const totalRevenue = input.quantityDistributed * input.pricePerUnit;
+
+        // Create distribution record and update quantity in a transaction
+        await db.transaction(async (tx) => {
+          // Create distribution record
+          await tx.insert(inventoryDistributions).values({
+            inventoryItemId: input.inventoryItemId,
+            distributionDate: new Date(input.distributionDate),
+            distributionLocation: input.distributionLocation,
+            quantityDistributed: input.quantityDistributed,
+            pricePerUnit: input.pricePerUnit.toString(),
+            totalRevenue: totalRevenue.toString(),
+            notes: input.notes,
+            distributedBy: ctx.session?.user?.id || "unknown",
+          });
+
+          // Update inventory quantity
+          await tx
+            .update(inventoryItems)
+            .set({
+              currentQuantity: currentQty - input.quantityDistributed,
+              updatedAt: new Date(),
+            })
+            .where(eq(inventoryItems.id, input.inventoryItemId));
+        });
+
+        // Return updated item
+        const [updatedItem] = await db
+          .select()
+          .from(inventoryItems)
+          .where(eq(inventoryItems.id, input.inventoryItemId))
+          .limit(1);
+
+        return {
+          success: true,
+          item: updatedItem,
+          distribution: {
+            quantityDistributed: input.quantityDistributed,
+            totalRevenue,
+            remainingQuantity: (currentQty - input.quantityDistributed),
+          },
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error distributing inventory:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to distribute inventory",
+        });
+      }
+    }),
+
+  /**
+   * Get distribution history for an inventory item
+   */
+  getDistributions: createRbacProcedure("read", "package")
+    .input(z.string().uuid())
+    .query(async ({ input: inventoryItemId }) => {
+      try {
+        const distributions = await db
+          .select()
+          .from(inventoryDistributions)
+          .where(eq(inventoryDistributions.inventoryItemId, inventoryItemId))
+          .orderBy(desc(inventoryDistributions.distributionDate));
+
+        return distributions;
+      } catch (error) {
+        console.error("Error fetching distributions:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch distribution history",
+        });
+      }
+    }),
+
+  /**
+   * Adjust inventory quantities manually
+   */
+  adjustInventory: createRbacProcedure("update", "package")
+    .input(
+      z.object({
+        inventoryItemId: z.string().uuid(),
+        adjustmentType: z.enum(['breakage', 'sample', 'transfer', 'correction', 'void']),
+        quantityChange: z.number().int(),
+        reason: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        // Get inventory item
+        const [item] = await db
+          .select()
+          .from(inventoryItems)
+          .where(eq(inventoryItems.id, input.inventoryItemId))
+          .limit(1);
+
+        if (!item) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Inventory item not found",
+          });
+        }
+
+        const currentQty = item.currentQuantity || 0;
+        const newQty = currentQty + input.quantityChange;
+
+        if (newQty < 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Invalid adjustment. Would result in negative quantity (${newQty}).`,
+          });
+        }
+
+        // Create adjustment record and update quantity
+        await db.transaction(async (tx) => {
+          // Create adjustment record
+          await tx.insert(inventoryAdjustments).values({
+            inventoryItemId: input.inventoryItemId,
+            adjustmentType: input.adjustmentType,
+            quantityChange: input.quantityChange,
+            reason: input.reason,
+            adjustedBy: ctx.session?.user?.id || "unknown",
+            adjustedAt: new Date(),
+          });
+
+          // Update inventory quantity
+          await tx
+            .update(inventoryItems)
+            .set({
+              currentQuantity: newQty,
+              updatedAt: new Date(),
+            })
+            .where(eq(inventoryItems.id, input.inventoryItemId));
+        });
+
+        // Return updated item
+        const [updatedItem] = await db
+          .select()
+          .from(inventoryItems)
+          .where(eq(inventoryItems.id, input.inventoryItemId))
+          .limit(1);
+
+        return {
+          success: true,
+          item: updatedItem,
+          adjustment: {
+            previousQuantity: currentQty,
+            quantityChange: input.quantityChange,
+            newQuantity: newQty,
+          },
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error adjusting inventory:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to adjust inventory",
+        });
+      }
+    }),
+
+  /**
+   * Update pricing for an inventory item
+   */
+  updatePricing: createRbacProcedure("update", "package")
+    .input(
+      z.object({
+        inventoryItemId: z.string().uuid(),
+        retailPrice: z.number().positive().optional(),
+        wholesalePrice: z.number().positive().optional(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      try {
+        const updates: any = {
+          updatedAt: new Date(),
+        };
+
+        if (input.retailPrice !== undefined) {
+          updates.retailPrice = input.retailPrice.toString();
+        }
+        if (input.wholesalePrice !== undefined) {
+          updates.wholesalePrice = input.wholesalePrice.toString();
+        }
+
+        await db
+          .update(inventoryItems)
+          .set(updates)
+          .where(eq(inventoryItems.id, input.inventoryItemId));
+
+        // Return updated item
+        const [updatedItem] = await db
+          .select()
+          .from(inventoryItems)
+          .where(eq(inventoryItems.id, input.inventoryItemId))
+          .limit(1);
+
+        return {
+          success: true,
+          item: updatedItem,
+        };
+      } catch (error) {
+        console.error("Error updating pricing:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update pricing",
         });
       }
     }),

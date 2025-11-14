@@ -39,6 +39,7 @@ import { JuiceInventoryTable } from "@/components/inventory/JuiceInventoryTable"
 import { PackagingInventoryTable } from "@/components/inventory/PackagingInventoryTable";
 import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable";
 import { PackagingTable as BottleTable } from "@/components/bottles/bottle-table";
+import { FinishedGoodsTable } from "@/components/bottles/FinishedGoodsTable";
 import { InventoryFAB } from "@/components/inventory/InventoryFAB";
 import { InventoryItemDetailsModal } from "@/components/inventory/InventoryItemDetailsModal";
 import { EditBaseFruitItemModal } from "@/components/inventory/EditBaseFruitItemModal";
@@ -580,10 +581,7 @@ export default function InventoryPage() {
 
           {activeTab === "ciders" && (
             <div className="space-y-6">
-            <BottleTable
-              filters={{
-                status: "completed",
-              }}
+            <FinishedGoodsTable
               itemsPerPage={50}
               className=""
             />

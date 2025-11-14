@@ -136,6 +136,9 @@ export const baseFruitVarieties = pgTable(
     sugarBrix: intensityEnum("sugar_brix"),
     harvestWindow: harvestWindowEnum("harvest_window"),
     varietyNotes: text("variety_notes"),
+    // Inventory reorder tracking
+    reorderThreshold: decimal("reorder_threshold", { precision: 10, scale: 3 }),
+    reorderUnit: text("reorder_unit"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -186,6 +189,9 @@ export const additiveVarieties = pgTable(
     labelImpactNotes: text("label_impact_notes"),
     allergensVegan: boolean("allergens_vegan").notNull().default(false),
     allergensVeganNotes: text("allergens_vegan_notes"),
+    // Inventory reorder tracking
+    reorderThreshold: decimal("reorder_threshold", { precision: 10, scale: 3 }),
+    reorderUnit: text("reorder_unit"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),
@@ -229,6 +235,9 @@ export const juiceVarieties = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     isActive: boolean("is_active").notNull().default(true),
+    // Inventory reorder tracking
+    reorderThreshold: decimal("reorder_threshold", { precision: 10, scale: 3 }),
+    reorderUnit: text("reorder_unit"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),
@@ -271,6 +280,9 @@ export const packagingVarieties = pgTable(
     name: text("name").notNull(),
     itemType: packagingItemTypeEnum("item_type").notNull(),
     isActive: boolean("is_active").notNull().default(true),
+    // Inventory reorder tracking
+    reorderThreshold: decimal("reorder_threshold", { precision: 10, scale: 3 }),
+    reorderUnit: text("reorder_unit"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),
