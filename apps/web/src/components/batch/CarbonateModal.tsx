@@ -704,7 +704,7 @@ export function CarbonateModal({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
                     {sweetenerInventory.purchases.flatMap((purchase: any) =>
                       purchase.items?.map((item: any) => {
-                        const isSelected = watch("additivePurchaseItemId" as any) === item.id;
+                        const isSelected = watch("additivePurchaseItemId" as any) === purchase.id;
                         return (
                           <Card
                             key={item.id}
@@ -713,7 +713,7 @@ export function CarbonateModal({
                                 ? "border-primary bg-primary/5 ring-2 ring-primary"
                                 : "hover:border-primary/50 hover:bg-accent"
                             }`}
-                            onClick={() => setValue("additivePurchaseItemId" as any, item.id)}
+                            onClick={() => setValue("additivePurchaseItemId" as any, purchase.id)}
                           >
                             <CardContent className="p-4">
                               <div className="flex items-start justify-between">

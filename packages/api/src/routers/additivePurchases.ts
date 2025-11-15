@@ -19,7 +19,9 @@ export const additivePurchasesRouter = router({
       try {
         const { limit, offset, vendorId, itemType } = input;
 
-        const conditions = [isNull(additivePurchases.deletedAt)];
+        const conditions = [
+          isNull(additivePurchases.deletedAt),
+        ];
         if (vendorId) {
           conditions.push(eq(additivePurchases.vendorId, vendorId));
         }
@@ -41,8 +43,11 @@ export const additivePurchasesRouter = router({
             itemQuantity: additivePurchaseItems.quantity,
             itemUnit: additivePurchaseItems.unit,
             itemAdditiveVarietyId: additivePurchaseItems.additiveVarietyId,
+            itemDeletedAt: additivePurchaseItems.deletedAt,
             // Include variety itemType for filtering
             varietyItemType: additiveVarieties.itemType,
+            varietyIsActive: additiveVarieties.isActive,
+            varietyDeletedAt: additiveVarieties.deletedAt,
           })
           .from(additivePurchases)
           .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
@@ -53,12 +58,17 @@ export const additivePurchasesRouter = router({
           .limit(limit * 10) // Increase limit to account for multiple items per purchase
           .offset(offset);
 
-        // Group items by purchase
+        // Group items by purchase, filtering out soft-deleted items and inactive varieties
         const groupedPurchases = purchases.reduce((acc: any[], row) => {
           const existingPurchase = acc.find(p => p.id === row.id);
 
+          // Only include items that are not deleted and have active varieties
+          const shouldIncludeItem = row.itemId &&
+            !row.itemDeletedAt &&
+            (!row.varietyDeletedAt && row.varietyIsActive !== false);
+
           if (existingPurchase) {
-            if (row.itemId) {
+            if (shouldIncludeItem) {
               existingPurchase.items.push({
                 id: row.itemId,
                 productName: row.itemProductName,
@@ -79,7 +89,7 @@ export const additivePurchasesRouter = router({
               notes: row.notes,
               createdAt: row.createdAt,
               updatedAt: row.updatedAt,
-              items: row.itemId ? [{
+              items: shouldIncludeItem ? [{
                 id: row.itemId,
                 productName: row.itemProductName,
                 brandManufacturer: row.itemBrandManufacturer,
@@ -96,12 +106,24 @@ export const additivePurchasesRouter = router({
         // Filter purchases by itemType if specified
         let filteredPurchases = groupedPurchases;
         if (itemType) {
+          console.log(`[additivePurchases.list] Filtering for itemType: "${itemType}"`);
+          console.log(`[additivePurchases.list] Grouped purchases before filter:`, groupedPurchases.length);
+
           filteredPurchases = groupedPurchases
             .map(purchase => ({
               ...purchase,
-              items: purchase.items.filter((item: any) => item.varietyItemType === itemType)
+              items: purchase.items.filter((item: any) => {
+                const matches = item.varietyItemType === itemType;
+                if (!matches && item.varietyItemType) {
+                  console.log(`[additivePurchases.list] Item filtered out - expected: "${itemType}", got: "${item.varietyItemType}"`);
+                }
+                return matches;
+              })
             }))
             .filter(purchase => purchase.items.length > 0); // Remove purchases with no matching items
+
+          console.log(`[additivePurchases.list] Filtered purchases:`, filteredPurchases.length);
+          console.log(`[additivePurchases.list] Total items:`, filteredPurchases.reduce((sum, p) => sum + p.items.length, 0));
         }
 
         const totalCount = await db

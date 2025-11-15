@@ -209,11 +209,11 @@ export function BottleModal({
     setValue("materials", selectedMaterials);
   }, [selectedMaterials, setValue]);
 
-  // Calculate loss and loss percentage
-  const unitSizeL = (packageSizeMl || 0) / 1000;
-  const expectedVolumeL = (unitsProduced || 0) * unitSizeL;
-  const lossL = (volumeTakenL || 0) - expectedVolumeL;
-  const lossPercentage = volumeTakenL > 0 ? (lossL / volumeTakenL) * 100 : 0;
+  // Calculate loss and loss percentage (with NaN guards)
+  const unitSizeL = (packageSizeMl && !isNaN(packageSizeMl) ? packageSizeMl : 0) / 1000;
+  const expectedVolumeL = (unitsProduced && !isNaN(unitsProduced) ? unitsProduced : 0) * unitSizeL;
+  const lossL = (volumeTakenL && !isNaN(volumeTakenL) ? volumeTakenL : 0) - expectedVolumeL;
+  const lossPercentage = volumeTakenL && !isNaN(volumeTakenL) && volumeTakenL > 0 ? (lossL / volumeTakenL) * 100 : 0;
 
   // Determine loss status and styling
   const getLossStatus = () => {
@@ -431,7 +431,7 @@ export function BottleModal({
                 {errors.unitsProduced.message}
               </p>
             )}
-            {volumeTakenL && packageSizeMl && (
+            {volumeTakenL && !isNaN(volumeTakenL) && packageSizeMl && !isNaN(packageSizeMl) && (
               <p className="text-xs text-green-600 mt-1">
                 💡 Auto-calculated based on volume and package size (editable)
               </p>
@@ -448,7 +448,7 @@ export function BottleModal({
                 💡 Select Primary Packaging first (e.g., 750ml glass bottle) to set package size
               </p>
             )}
-            {unitsProduced && unitsProduced > 0 && (
+            {unitsProduced && !isNaN(unitsProduced) && unitsProduced > 0 && (
               <p className="text-xs text-blue-600">
                 💡 Quantity will auto-fill to {unitsProduced} when you select a material
               </p>

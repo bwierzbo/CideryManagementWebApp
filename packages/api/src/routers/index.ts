@@ -1709,6 +1709,92 @@ export const appRouter = router({
           message: `Details not implemented for ${materialType}`,
         });
       }),
+
+    // Bulk delete purchases
+    bulkDelete: createRbacProcedure("delete", "purchase")
+      .input(
+        z.object({
+          purchaseIds: z.array(z.string().uuid()).min(1).max(100),
+          materialType: z.enum(["basefruit", "additives", "juice", "packaging"]),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const { purchaseIds, materialType } = input;
+
+        // Soft delete purchases based on material type
+        if (materialType === "basefruit") {
+          await db
+            .update(basefruitPurchases)
+            .set({
+              deletedAt: sql`NOW()`,
+              updatedBy: ctx.session?.user?.id,
+            })
+            .where(
+              and(
+                inArray(basefruitPurchases.id, purchaseIds),
+                isNull(basefruitPurchases.deletedAt),
+              ),
+            );
+
+          return { deleted: purchaseIds.length };
+        }
+
+        if (materialType === "additives") {
+          await db
+            .update(additivePurchases)
+            .set({
+              deletedAt: sql`NOW()`,
+              updatedBy: ctx.session?.user?.id,
+            })
+            .where(
+              and(
+                inArray(additivePurchases.id, purchaseIds),
+                isNull(additivePurchases.deletedAt),
+              ),
+            );
+
+          return { deleted: purchaseIds.length };
+        }
+
+        if (materialType === "juice") {
+          await db
+            .update(juicePurchases)
+            .set({
+              deletedAt: sql`NOW()`,
+              updatedBy: ctx.session?.user?.id,
+            })
+            .where(
+              and(
+                inArray(juicePurchases.id, purchaseIds),
+                isNull(juicePurchases.deletedAt),
+              ),
+            );
+
+          return { deleted: purchaseIds.length };
+        }
+
+        if (materialType === "packaging") {
+          await db
+            .update(packagingPurchases)
+            .set({
+              deletedAt: sql`NOW()`,
+              updatedBy: ctx.session?.user?.id,
+            })
+            .where(
+              and(
+                inArray(packagingPurchases.id, purchaseIds),
+                isNull(packagingPurchases.deletedAt),
+              ),
+            );
+
+          return { deleted: purchaseIds.length };
+        }
+
+        throw new TRPCError({
+          code: "NOT_IMPLEMENTED",
+          message: `Bulk delete not implemented for ${materialType}`,
+        });
+      }),
   }),
 
   // Purchase Line Integration for Apple Press workflow
