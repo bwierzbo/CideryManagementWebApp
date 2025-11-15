@@ -131,6 +131,7 @@ export function FilterModal({
         title: "Filter Operation Successful",
         description: data.message,
       });
+      utils.vessel.list.invalidate();
       utils.vessel.liquidMap.invalidate();
       utils.batch.getActivityHistory.invalidate();
       utils.batch.list.invalidate();

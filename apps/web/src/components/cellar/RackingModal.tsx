@@ -177,6 +177,7 @@ export function RackingModal({
         title: "Batch Racked Successfully",
         description: data.message,
       });
+      utils.vessel.list.invalidate();
       utils.vessel.liquidMap.invalidate();
       utils.batch.list.invalidate();
       onClose();

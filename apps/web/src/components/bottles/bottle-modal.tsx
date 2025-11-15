@@ -291,6 +291,7 @@ export function BottleModal({
       });
 
       // Invalidate relevant queries to refresh data
+      utils.vessel.list.invalidate();
       utils.vessel.liquidMap.invalidate();
       utils.batch.list.invalidate();
       if (kegFillId) {

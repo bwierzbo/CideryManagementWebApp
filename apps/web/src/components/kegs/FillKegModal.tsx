@@ -144,6 +144,9 @@ export function FillKegModal({
         title: "Kegs Filled",
         description: `Successfully filled ${selectedKegIds.length} keg(s)`,
       });
+      utils.vessel.list.invalidate();
+      utils.vessel.liquidMap.invalidate();
+      utils.batch.list.invalidate();
       utils.kegs.listKegs.invalidate();
       utils.kegs.getAvailableKegs.invalidate();
       reset();

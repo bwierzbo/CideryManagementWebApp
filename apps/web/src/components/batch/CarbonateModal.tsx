@@ -312,6 +312,7 @@ export function CarbonateModal({
       });
 
       // Invalidate relevant queries
+      utils.vessel.list.invalidate();
       utils.batch.list.invalidate();
       utils.batch.get.invalidate({ batchId: batch.id });
       utils.vessel.liquidMap.invalidate();
@@ -340,6 +341,7 @@ export function CarbonateModal({
       });
 
       // Invalidate relevant queries
+      utils.vessel.list.invalidate();
       utils.batch.list.invalidate();
       utils.batch.get.invalidate({ batchId: batch.id });
       utils.vessel.liquidMap.invalidate();
