@@ -169,10 +169,10 @@ export default function PackagingDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        <main className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-          <div className="space-y-6">
-            <Skeleton className="h-8 w-64" />
-            <Skeleton className="h-96 w-full" />
+        <main className="max-w-6xl mx-auto py-3 md:py-8 px-3 sm:px-4 lg:px-8">
+          <div className="space-y-4 md:space-y-6">
+            <Skeleton className="h-7 md:h-8 w-48 md:w-64" />
+            <Skeleton className="h-64 md:h-96 w-full" />
           </div>
         </main>
       </div>
@@ -183,10 +183,10 @@ export default function PackagingDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        <main className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 p-4 text-red-600 bg-red-50 rounded-lg">
+        <main className="max-w-6xl mx-auto py-3 md:py-8 px-3 sm:px-4 lg:px-8">
+          <div className="flex items-center gap-2 p-3 md:p-4 text-red-600 bg-red-50 rounded-lg">
             <AlertTriangle className="w-4 h-4" />
-            <span>
+            <span className="text-sm md:text-base">
               Error loading packaging run: {error?.message || "Not found"}
             </span>
           </div>
@@ -199,61 +199,61 @@ export default function PackagingDetailPage() {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="max-w-6xl mx-auto py-4 md:py-8 px-4 sm:px-6 lg:px-8">
+      <main className="max-w-6xl mx-auto py-3 md:py-8 px-3 sm:px-4 lg:px-8">
         {/* Header */}
-        <div className="mb-6 md:mb-8">
-          <div className="flex items-center gap-2 md:gap-4 mb-3 md:mb-4">
+        <div className="mb-4 md:mb-6 lg:mb-8">
+          <div className="flex items-center gap-2 mb-2 md:mb-3">
             <Button
               variant="ghost"
               onClick={() => router.back()}
               size="sm"
-              className="h-8 md:h-10"
+              className="h-9 px-2 md:px-4"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
+              <ArrowLeft className="w-4 h-4 md:mr-2" />
+              <span className="hidden md:inline">Back</span>
             </Button>
           </div>
 
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2 md:gap-3">
-                <Package className="w-6 h-6 md:w-8 md:h-8 flex-shrink-0" />
+          <div className="flex flex-col gap-3 md:gap-4">
+            <div className="min-w-0">
+              <h1 className="text-lg md:text-2xl lg:text-3xl font-bold text-gray-900 flex items-center gap-2">
+                <Package className="w-5 h-5 md:w-7 md:h-7 flex-shrink-0" />
                 <span className="truncate">
                   {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
                 </span>
               </h1>
-              <p className="text-gray-600 mt-1 text-sm md:text-base break-words">
+              <p className="text-gray-600 mt-1 text-sm md:text-base">
                 {runData.unitsProduced.toLocaleString()} × {formatPackageSize(runData.packageSizeML, runData.packageType)}
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-start sm:items-center gap-2 flex-shrink-0">
-              {/* Pasteurized Badge */}
-              {runData.pasteurizedAt && (
-                <Badge
-                  className={cn(
-                    "text-xs md:text-sm self-start",
-                    "bg-orange-100 text-orange-800 hover:bg-orange-200",
-                  )}
-                >
-                  Pasteurized
-                </Badge>
-              )}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              {/* Badges */}
+              <div className="flex flex-wrap gap-2">
+                {runData.pasteurizedAt && (
+                  <Badge
+                    className={cn(
+                      "text-xs",
+                      "bg-orange-100 text-orange-800 hover:bg-orange-200",
+                    )}
+                  >
+                    Pasteurized
+                  </Badge>
+                )}
+                {runData.labeledAt && (
+                  <Badge
+                    className={cn(
+                      "text-xs",
+                      "bg-blue-100 text-blue-800 hover:bg-blue-200",
+                    )}
+                  >
+                    Labeled
+                  </Badge>
+                )}
+              </div>
 
-              {/* Labeled Badge - shown if labels have been physically applied */}
-              {runData.labeledAt && (
-                <Badge
-                  className={cn(
-                    "text-xs md:text-sm self-start",
-                    "bg-blue-100 text-blue-800 hover:bg-blue-200",
-                  )}
-                >
-                  Labeled
-                </Badge>
-              )}
-
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                {/* Export PDF and Update QA - other actions in main /bottles table */}
+              {/* Action Buttons */}
+              <div className="flex gap-2">
                 <Suspense fallback={<PDFExportSkeleton />}>
                   <AdvancedPDFExport
                     data={{
@@ -315,7 +315,6 @@ export default function PackagingDetailPage() {
                       setQaModalOpen(true);
                     }}
                     size="sm"
-                    className="flex-1 sm:flex-initial"
                   >
                     <Edit className="w-4 h-4 mr-2" />
                     <span className="hidden sm:inline">Update QA</span>
@@ -328,7 +327,7 @@ export default function PackagingDetailPage() {
         </div>
 
         {/* Label Compliance Summary Card */}
-        <div className="mb-4 md:mb-6">
+        <div className="mb-3 md:mb-4 lg:mb-6">
           <LabelComplianceCard
             measurements={runData.batch.history?.measurements || []}
             additives={runData.batch.history?.additives || []}
@@ -341,7 +340,7 @@ export default function PackagingDetailPage() {
 
         {/* COGS and Margin Analysis Cards */}
         {enhancedData && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mb-4 md:mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4 lg:gap-6 mb-3 md:mb-4 lg:mb-6">
             <COGSSummaryCard
               cogsData={enhancedData.cogs}
               unitsProduced={runData.unitsProduced}
@@ -353,44 +352,100 @@ export default function PackagingDetailPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-6">
           {/* Main Production Details */}
-          <div className="lg:col-span-2 space-y-4 md:space-y-6">
+          <div className="lg:col-span-2 space-y-3 md:space-y-4 lg:space-y-6">
             {/* Batch Composition */}
             {runData.batch.composition && runData.batch.composition.length > 0 && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Beaker className="w-5 h-5" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Beaker className="w-4 h-4 md:w-5 md:h-5" />
                     Batch Composition
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="text-xs md:text-sm">
                     Source materials for{" "}
                     {runData.batch.customName || runData.batch.name || `Batch ${runData.batchId.slice(0, 8)}`}
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
+                <CardContent className="pt-0">
+                  <div className="space-y-2">
                     {runData.batch.composition.map((comp: any, idx: number) => (
                       <div
                         key={idx}
-                        className="flex items-start justify-between p-3 border rounded-lg"
+                        className="flex items-start justify-between p-2.5 md:p-3 border rounded-lg"
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">
+                          <p className="font-medium text-sm md:text-base truncate">
                             {comp.varietyName || "Unknown variety"}
                           </p>
-                          <p className="text-sm text-gray-500 truncate">
+                          <p className="text-xs md:text-sm text-gray-500 truncate">
                             {comp.vendorName || "Unknown vendor"}
                           </p>
                         </div>
-                        <div className="text-right ml-4 flex-shrink-0">
-                          <p className="font-medium">
+                        <div className="text-right ml-3 md:ml-4 flex-shrink-0">
+                          <p className="font-medium text-sm md:text-base">
                             {comp.percentageOfBatch?.toFixed(1)}%
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-xs md:text-sm text-gray-500">
                             {comp.volumeL?.toFixed(1)}L
                           </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Packaging Materials */}
+            {enhancedData?.packagingMaterials && enhancedData.packagingMaterials.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Package className="w-4 h-4 md:w-5 md:h-5" />
+                    Packaging Materials Used
+                  </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    Materials consumed during this bottling run
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2">
+                    {enhancedData.packagingMaterials.map((material: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between p-2.5 md:p-3 border rounded-lg"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm md:text-base truncate">
+                            {material.materialName || "Unknown material"}
+                          </p>
+                          <div className="flex items-center gap-1.5 md:gap-2 mt-1">
+                            <Badge variant="secondary" className="text-xs">
+                              {material.materialTypePurchase || material.materialType}
+                            </Badge>
+                            {material.size && (
+                              <span className="text-xs text-gray-500">
+                                {material.size}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right ml-3 md:ml-4 flex-shrink-0">
+                          <p className="font-medium text-sm md:text-base">
+                            {material.quantityUsed} units
+                          </p>
+                          {material.pricePerUnit && (
+                            <p className="text-xs md:text-sm text-gray-500">
+                              ${parseFloat(material.pricePerUnit).toFixed(2)} each
+                            </p>
+                          )}
+                          {material.totalCost && (
+                            <p className="text-xs md:text-sm font-medium text-green-600">
+                              Total: ${parseFloat(material.totalCost.toString()).toFixed(2)}
+                            </p>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -404,26 +459,26 @@ export default function PackagingDetailPage() {
 
             {/* Production Information */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="w-5 h-5" />
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                  <Package className="w-4 h-4 md:w-5 md:h-5" />
                   Production Information
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 md:space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 md:gap-3">
                   <div>
-                    <p className="text-sm text-gray-500">Packaged Date</p>
-                    <p className="font-medium flex items-center gap-2">
-                      <Calendar className="w-4 h-4 flex-shrink-0" />
+                    <p className="text-xs md:text-sm text-gray-500">Packaged Date</p>
+                    <p className="font-medium text-sm md:text-base flex items-center gap-1.5 md:gap-2">
+                      <Calendar className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" />
                       <span className="truncate">
                         {formatDateDisplay(runData.packagedAt)}
                       </span>
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Package Type & Size</p>
-                    <p className="font-medium">
+                    <p className="text-xs md:text-sm text-gray-500">Package Type & Size</p>
+                    <p className="font-medium text-sm md:text-base">
                       {formatPackageSize(
                         runData.packageSizeML,
                         runData.packageType,
@@ -431,14 +486,14 @@ export default function PackagingDetailPage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Units Produced</p>
-                    <p className="font-medium text-lg">
+                    <p className="text-xs md:text-sm text-gray-500">Units Produced</p>
+                    <p className="font-medium text-base md:text-lg">
                       {runData.unitsProduced.toLocaleString()}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Volume Taken</p>
-                    <p className="font-medium">
+                    <p className="text-xs md:text-sm text-gray-500">Volume Taken</p>
+                    <p className="font-medium text-sm md:text-base">
                       {runData.volumeTaken.toFixed(1)}L
                     </p>
                   </div>
@@ -447,16 +502,16 @@ export default function PackagingDetailPage() {
                 <Separator />
 
                 {/* Loss Information */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 md:gap-3">
                   <div>
-                    <p className="text-sm text-gray-500">Loss Amount</p>
-                    <p className="font-medium">{runData.loss.toFixed(2)}L</p>
+                    <p className="text-xs md:text-sm text-gray-500">Loss Amount</p>
+                    <p className="font-medium text-sm md:text-base">{runData.loss.toFixed(2)}L</p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Loss Percentage</p>
+                    <p className="text-xs md:text-sm text-gray-500">Loss Percentage</p>
                     <p
                       className={cn(
-                        "font-medium text-lg",
+                        "font-medium text-base md:text-lg",
                         getLossColor(runData.lossPercentage),
                       )}
                     >
@@ -469,25 +524,25 @@ export default function PackagingDetailPage() {
 
             {/* Quality Assurance Data */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Beaker className="w-5 h-5" />
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                  <Beaker className="w-4 h-4 md:w-5 md:h-5" />
                   Quality Assurance
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-xs md:text-sm">
                   Quality control measurements and testing results
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3 md:space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 md:gap-3">
                   <div>
-                    <p className="text-sm text-gray-500 flex items-center gap-2">
-                      <Target className="w-4 h-4 flex-shrink-0" />
+                    <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
+                      <Target className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" />
                       Fill Check
                     </p>
                     <p
                       className={cn(
-                        "font-medium",
+                        "font-medium text-sm md:text-base",
                         getFillCheckColor(runData.fillCheck),
                       )}
                     >
@@ -498,30 +553,30 @@ export default function PackagingDetailPage() {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500">Fill Variance</p>
-                    <p className="font-medium">
+                    <p className="text-xs md:text-sm text-gray-500">Fill Variance</p>
+                    <p className="font-medium text-sm md:text-base">
                       {runData.fillVarianceML !== undefined
                         ? `${runData.fillVarianceML > 0 ? "+" : ""}${runData.fillVarianceML.toFixed(1)}ml`
                         : "Not measured"}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 flex items-center gap-2">
-                      <TestTube className="w-4 h-4 flex-shrink-0" />
+                    <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
+                      <TestTube className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" />
                       ABV at Packaging
                     </p>
-                    <p className="font-medium">
+                    <p className="font-medium text-sm md:text-base">
                       {runData.abvAtPackaging !== undefined
                         ? `${runData.abvAtPackaging.toFixed(2)}%`
                         : "Not measured"}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-500 flex items-center gap-2">
-                      <Droplets className="w-4 h-4 flex-shrink-0" />
+                    <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
+                      <Droplets className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" />
                       <span className="truncate">Carbonation Level</span>
                     </p>
-                    <p className="font-medium break-words">
+                    <p className="font-medium text-sm md:text-base break-words">
                       {getCarbonationDisplay(runData.carbonationLevel)}
                     </p>
                   </div>
@@ -530,19 +585,19 @@ export default function PackagingDetailPage() {
                 {(runData.testMethod || runData.testDate) && (
                   <>
                     <Separator />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 md:gap-3">
                       {runData.testMethod && (
                         <div>
-                          <p className="text-sm text-gray-500">Test Method</p>
-                          <p className="font-medium break-words">
+                          <p className="text-xs md:text-sm text-gray-500">Test Method</p>
+                          <p className="font-medium text-sm md:text-base break-words">
                             {runData.testMethod}
                           </p>
                         </div>
                       )}
                       {runData.testDate && (
                         <div>
-                          <p className="text-sm text-gray-500">Test Date</p>
-                          <p className="font-medium">
+                          <p className="text-xs md:text-sm text-gray-500">Test Date</p>
+                          <p className="font-medium text-sm md:text-base">
                             {formatDateDisplay(runData.testDate)}
                           </p>
                         </div>
@@ -555,11 +610,11 @@ export default function PackagingDetailPage() {
                   <>
                     <Separator />
                     <div>
-                      <p className="text-sm text-gray-500 flex items-center gap-2">
-                        <FileText className="w-4 h-4" />
+                      <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5 mb-1">
+                        <FileText className="w-3.5 h-3.5 md:w-4 md:h-4" />
                         QA Notes
                       </p>
-                      <p className="font-medium whitespace-pre-wrap">
+                      <p className="font-medium text-sm md:text-base whitespace-pre-wrap">
                         {runData.qaNotes}
                       </p>
                     </div>
@@ -572,12 +627,13 @@ export default function PackagingDetailPage() {
                   !runData.carbonationLevel &&
                   !runData.testMethod &&
                   !runData.qaNotes && (
-                    <div className="text-center py-8 text-gray-500">
-                      <Beaker className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No QA data recorded yet</p>
+                    <div className="text-center py-6 md:py-8 text-gray-500">
+                      <Beaker className="w-10 h-10 md:w-12 md:h-12 mx-auto mb-3 md:mb-4 opacity-50" />
+                      <p className="text-sm md:text-base">No QA data recorded yet</p>
                       {canUpdateQA && (
                         <Button
                           variant="outline"
+                          size="sm"
                           className="mt-2"
                           onClick={() => setQaModalOpen(true)}
                         >
@@ -592,14 +648,14 @@ export default function PackagingDetailPage() {
             {/* Production Notes */}
             {runData.productionNotes && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <FileText className="w-4 h-4 md:w-5 md:h-5" />
                     Production Notes
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="whitespace-pre-wrap">
+                  <p className="text-sm md:text-base whitespace-pre-wrap">
                     {runData.productionNotes}
                   </p>
                 </CardContent>
@@ -608,25 +664,25 @@ export default function PackagingDetailPage() {
           </div>
 
           {/* Sidebar - Inventory & Metadata */}
-          <div className="space-y-4 md:space-y-6">
+          <div className="space-y-3 md:space-y-4 lg:space-y-6">
             {/* Inventory Items */}
             {runData.inventory && runData.inventory.length > 0 && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Package className="w-5 h-5" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Package className="w-4 h-4 md:w-5 md:h-5" />
                     Inventory Items
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="text-xs md:text-sm">
                     {runData.inventory.length} item
                     {runData.inventory.length !== 1 ? "s" : ""} created
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="pt-0 space-y-2">
                   {runData.inventory.map((item: any) => (
-                    <div key={item.id} className="p-3 border rounded-lg">
-                      <p className="font-medium truncate">{item.lotCode}</p>
-                      <p className="text-sm text-gray-500">
+                    <div key={item.id} className="p-2.5 md:p-3 border rounded-lg">
+                      <p className="font-medium text-sm md:text-base truncate">{item.lotCode}</p>
+                      <p className="text-xs md:text-sm text-gray-500">
                         {item.packageSizeML && item.packageType
                           ? formatPackageSize(
                               item.packageSizeML,
@@ -634,7 +690,7 @@ export default function PackagingDetailPage() {
                             )
                           : "Unknown size"}
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-xs md:text-sm text-gray-500">
                         Expires:{" "}
                         {item.expirationDate
                           ? formatDateDisplay(item.expirationDate)
@@ -648,18 +704,18 @@ export default function PackagingDetailPage() {
 
             {/* Metadata */}
             <Card>
-              <CardHeader>
-                <CardTitle>Metadata</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base md:text-lg">Metadata</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2.5">
                 <div>
-                  <p className="text-sm text-gray-500">Created By</p>
-                  <p className="font-medium truncate">
+                  <p className="text-xs md:text-sm text-gray-500">Created By</p>
+                  <p className="font-medium text-sm md:text-base truncate">
                     {runData.createdByName || "Unknown"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">Created At</p>
+                  <p className="text-xs md:text-sm text-gray-500">Created At</p>
                   <p className="font-medium text-sm md:text-base">
                     {formatDateDisplay(runData.createdAt)}
                   </p>
@@ -667,7 +723,7 @@ export default function PackagingDetailPage() {
                 {runData.updatedAt &&
                   runData.updatedAt !== runData.createdAt && (
                     <div>
-                      <p className="text-sm text-gray-500">Last Updated</p>
+                      <p className="text-xs md:text-sm text-gray-500">Last Updated</p>
                       <p className="font-medium text-sm md:text-base">
                         {formatDateDisplay(runData.updatedAt)}
                       </p>
@@ -679,27 +735,27 @@ export default function PackagingDetailPage() {
             {/* Photos */}
             {runData.photos && runData.photos.length > 0 && (
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Eye className="w-5 h-5" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Eye className="w-4 h-4 md:w-5 md:h-5" />
                     Photos
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="text-xs md:text-sm">
                     {runData.photos.length} photo
                     {runData.photos.length !== 1 ? "s" : ""}
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="pt-0 space-y-3">
                   {runData.photos.map((photo: any) => (
                     <div key={photo.id} className="space-y-2">
                       <img
                         src={photo.photoUrl}
                         alt={photo.caption || "Packaging photo"}
-                        className="w-full rounded-lg max-h-64 md:max-h-80 object-cover"
+                        className="w-full rounded-lg max-h-48 md:max-h-64 lg:max-h-80 object-cover"
                         loading="lazy"
                       />
                       {photo.caption && (
-                        <p className="text-sm text-gray-600 break-words">
+                        <p className="text-xs md:text-sm text-gray-600 break-words">
                           {photo.caption}
                         </p>
                       )}

@@ -35,10 +35,11 @@ import { cn } from "@/lib/utils";
 const labelSchema = z.object({
   packagingItemId: z.string().min(1, "Please select a label"),
   quantity: z.number().int().positive("Quantity must be positive"),
-  labeledAt: z.date(),
+  labeledAt: z.string().min(1, "Please select a date"),
 });
 
-type LabelForm = z.infer<typeof labelSchema>;
+type LabelFormInput = z.infer<typeof labelSchema>;
+type LabelForm = LabelFormInput;
 
 interface LabelModalProps {
   open: boolean;
@@ -71,7 +72,8 @@ export function LabelModal({
     resolver: zodResolver(labelSchema),
     defaultValues: {
       quantity: unitsProduced,
-      labeledAt: new Date(),
+      labeledAt: new Date().toISOString().split('T')[0],
+      packagingItemId: "",
     },
   });
 
@@ -90,7 +92,8 @@ export function LabelModal({
     if (open) {
       reset({
         quantity: unitsProduced,
-        labeledAt: new Date(),
+        labeledAt: new Date().toISOString().split('T')[0],
+        packagingItemId: "",
       });
     }
   }, [open, reset, unitsProduced]);
@@ -125,7 +128,7 @@ export function LabelModal({
       bottleRunId,
       packagingItemId: data.packagingItemId,
       quantity: data.quantity,
-      labeledAt: data.labeledAt,
+      labeledAt: new Date(data.labeledAt),
     });
   };
 
@@ -270,8 +273,7 @@ export function LabelModal({
             <Input
               id="labeledAt"
               type="date"
-              {...register("labeledAt", { valueAsDate: true })}
-              defaultValue={new Date().toISOString().split('T')[0]}
+              {...register("labeledAt")}
             />
             {errors.labeledAt && (
               <p className="text-sm text-red-500">{errors.labeledAt.message}</p>
