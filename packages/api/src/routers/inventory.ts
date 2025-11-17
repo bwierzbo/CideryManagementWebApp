@@ -21,6 +21,8 @@ import {
   inventoryItems,
   inventoryDistributions,
   inventoryAdjustments,
+  // Batches
+  batches,
 } from "db";
 import { eq, and, desc, asc, like, or, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -708,17 +710,21 @@ export const inventoryRouter = router({
         conditions.push(sql`${inventoryItems.currentQuantity} = 0`);
       }
 
-      // Filter by search term (lot code)
+      // Filter by search term (batch name, custom name, or lot code)
       if (search && search.trim().length > 0) {
         conditions.push(
-          sql`${inventoryItems.lotCode} ILIKE ${`%${search}%`}`,
+          sql`(
+            ${batches.customName} ILIKE ${`%${search}%`} OR
+            ${batches.name} ILIKE ${`%${search}%`} OR
+            ${inventoryItems.lotCode} ILIKE ${`%${search}%`}
+          )`,
         );
       }
 
       // Build where clause
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      // Get inventory items
+      // Get inventory items with batch and bottle run details
       const items = await db
         .select({
           id: inventoryItems.id,
@@ -734,8 +740,12 @@ export const inventoryRouter = router({
           // Relations
           bottleRunId: inventoryItems.bottleRunId,
           batchId: inventoryItems.batchId,
+          // Batch details
+          batchName: batches.name,
+          batchCustomName: batches.customName,
         })
         .from(inventoryItems)
+        .leftJoin(batches, eq(inventoryItems.batchId, batches.id))
         .where(whereClause)
         .orderBy(desc(inventoryItems.createdAt))
         .limit(limit)
@@ -745,6 +755,7 @@ export const inventoryRouter = router({
       const totalCountResult = await db
         .select({ count: sql<number>`COUNT(*)::int` })
         .from(inventoryItems)
+        .leftJoin(batches, eq(inventoryItems.batchId, batches.id))
         .where(whereClause);
 
       const totalCount = totalCountResult[0]?.count || 0;

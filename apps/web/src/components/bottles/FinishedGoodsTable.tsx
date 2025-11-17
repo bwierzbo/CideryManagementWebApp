@@ -81,8 +81,12 @@ export function FinishedGoodsTable({
   // Format package type
   const formatPackageType = (type: string, sizeML: number | null) => {
     if (!sizeML) return type;
-    const sizeOz = (sizeML / 29.5735).toFixed(0);
-    return `${type} (${sizeOz} oz)`;
+    // Format as "750ml glass bottle" style
+    if (sizeML >= 1000) {
+      const liters = (sizeML / 1000).toFixed(1).replace(/\.0$/, '');
+      return `${liters}L ${type}`;
+    }
+    return `${sizeML}ml ${type}`;
   };
 
   // Handle distribute action
@@ -132,7 +136,7 @@ export function FinishedGoodsTable({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search lot codes..."
+              placeholder="Search cider names..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -158,7 +162,7 @@ export function FinishedGoodsTable({
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50">
-              <TableHead>Lot Code</TableHead>
+              <TableHead>Cider Name</TableHead>
               <TableHead>Package</TableHead>
               <TableHead className="text-right">Available</TableHead>
               <TableHead className="text-right">Retail Price</TableHead>
@@ -181,9 +185,9 @@ export function FinishedGoodsTable({
             ) : (
               items.map((item) => (
                 <TableRow key={item.id} className="hover:bg-gray-50">
-                  {/* Product Name (Lot Code) */}
+                  {/* Product Name (Custom Name or Batch Name) */}
                   <TableCell className="font-medium">
-                    {item.lotCode || "No Lot Code"}
+                    {item.batchCustomName || item.batchName || item.lotCode || "Unknown Cider"}
                   </TableCell>
 
                   {/* Package Type */}
@@ -302,7 +306,7 @@ export function FinishedGoodsTable({
             setSelectedItem(null);
           }}
           inventoryItemId={selectedItem.id}
-          productName={selectedItem.lotCode || "Product"}
+          productName={selectedItem.batchCustomName || selectedItem.batchName || selectedItem.lotCode || "Product"}
           currentQuantity={selectedItem.currentQuantity || 0}
           suggestedPrice={
             selectedItem.retailPrice ? parseFloat(selectedItem.retailPrice) : undefined
@@ -320,7 +324,7 @@ export function FinishedGoodsTable({
             setSelectedItem(null);
           }}
           inventoryItemId={selectedItem.id}
-          productName={selectedItem.lotCode || "Product"}
+          productName={selectedItem.batchCustomName || selectedItem.batchName || selectedItem.lotCode || "Product"}
           currentQuantity={selectedItem.currentQuantity || 0}
           onSuccess={handleActionSuccess}
         />
@@ -335,7 +339,7 @@ export function FinishedGoodsTable({
             setSelectedItem(null);
           }}
           inventoryItemId={selectedItem.id}
-          productName={selectedItem.lotCode || "Product"}
+          productName={selectedItem.batchCustomName || selectedItem.batchName || selectedItem.lotCode || "Product"}
           currentRetailPrice={selectedItem.retailPrice}
           currentWholesalePrice={selectedItem.wholesalePrice}
           onSuccess={handleActionSuccess}
