@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -46,6 +47,7 @@ export function FinishedGoodsTable({
   itemsPerPage = 50,
 }: FinishedGoodsTableProps) {
   const { toast } = useToast();
+  const router = useRouter();
 
   // Search and pagination state
   const [searchTerm, setSearchTerm] = useState("");
@@ -112,6 +114,13 @@ export function FinishedGoodsTable({
     refetch();
     utils.inventory.listFinishedGoods.invalidate();
     setSelectedItem(null);
+  };
+
+  // Handle row click to view details
+  const handleRowClick = (item: any) => {
+    if (item.bottleRunId) {
+      router.push(`/bottles/${item.bottleRunId}`);
+    }
   };
 
   // Loading state
@@ -184,7 +193,11 @@ export function FinishedGoodsTable({
               </TableRow>
             ) : (
               items.map((item) => (
-                <TableRow key={item.id} className="hover:bg-gray-50">
+                <TableRow
+                  key={item.id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => handleRowClick(item)}
+                >
                   {/* Product Name (Custom Name or Batch Name) */}
                   <TableCell className="font-medium">
                     {item.batchCustomName || item.batchName || item.lotCode || "Unknown Cider"}
@@ -240,7 +253,11 @@ export function FinishedGoodsTable({
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -248,17 +265,30 @@ export function FinishedGoodsTable({
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          onClick={() => handleDistribute(item)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDistribute(item);
+                          }}
                           disabled={(item.currentQuantity || 0) === 0}
                         >
                           <Send className="mr-2 h-4 w-4" />
                           Distribute
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleAdjustInventory(item)}>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAdjustInventory(item);
+                          }}
+                        >
                           <Edit className="mr-2 h-4 w-4" />
                           Adjust Inventory
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleUpdatePricing(item)}>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUpdatePricing(item);
+                          }}
+                        >
                           <TrendingUp className="mr-2 h-4 w-4" />
                           Update Pricing
                         </DropdownMenuItem>
