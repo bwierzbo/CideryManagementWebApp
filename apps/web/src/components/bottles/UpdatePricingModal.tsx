@@ -19,8 +19,16 @@ import { toast } from "@/hooks/use-toast";
 import { DollarSign, TrendingUp } from "lucide-react";
 
 const updatePricingSchema = z.object({
-  retailPrice: z.number().positive("Retail price must be positive").optional(),
-  wholesalePrice: z.number().positive("Wholesale price must be positive").optional(),
+  retailPrice: z
+    .number()
+    .positive("Retail price must be positive")
+    .optional()
+    .or(z.nan().transform(() => undefined)),
+  wholesalePrice: z
+    .number()
+    .positive("Wholesale price must be positive")
+    .optional()
+    .or(z.nan().transform(() => undefined)),
 }).refine(
   (data) => data.retailPrice !== undefined || data.wholesalePrice !== undefined,
   {
@@ -132,7 +140,7 @@ export function UpdatePricingModal({
             Update Pricing
           </DialogTitle>
           <DialogDescription>
-            Update retail and wholesale pricing for {productName}
+            Update retail or wholesale pricing for {productName}. You can update one or both prices.
           </DialogDescription>
         </DialogHeader>
 
@@ -161,7 +169,9 @@ export function UpdatePricingModal({
 
           {/* Retail Price */}
           <div>
-            <Label htmlFor="retailPrice">Retail Price (per unit)</Label>
+            <Label htmlFor="retailPrice">
+              Retail Price (per unit) <span className="text-gray-500 text-xs">(optional)</span>
+            </Label>
             <div className="relative mt-1">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
@@ -169,7 +179,7 @@ export function UpdatePricingModal({
                 type="number"
                 step="0.01"
                 min="0.01"
-                placeholder="0.00"
+                placeholder="Leave empty to keep current"
                 {...register("retailPrice", { valueAsNumber: true })}
                 className="pl-9"
               />
@@ -183,7 +193,9 @@ export function UpdatePricingModal({
 
           {/* Wholesale Price */}
           <div>
-            <Label htmlFor="wholesalePrice">Wholesale Price (per unit)</Label>
+            <Label htmlFor="wholesalePrice">
+              Wholesale Price (per unit) <span className="text-gray-500 text-xs">(optional)</span>
+            </Label>
             <div className="relative mt-1">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
@@ -191,7 +203,7 @@ export function UpdatePricingModal({
                 type="number"
                 step="0.01"
                 min="0.01"
-                placeholder="0.00"
+                placeholder="Leave empty to keep current"
                 {...register("wholesalePrice", { valueAsNumber: true })}
                 className="pl-9"
               />
