@@ -60,6 +60,7 @@ export function LabelModal({
 }: LabelModalProps) {
   const utils = trpc.useUtils();
   const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [appliedLabels, setAppliedLabels] = useState<Array<{name: string, quantity: number}>>([]);
 
   const {
     register,
@@ -81,13 +82,13 @@ export function LabelModal({
   const quantity = watch("quantity");
 
   // Get packaging items (labels) - filter by Secondary Packaging item type
-  const { data: packagingItems, isLoading: isLoadingItems } =
+  const { data: packagingItems, isLoading: isLoadingItems, refetch: refetchPackagingItems } =
     trpc.packagingPurchases.listInventory.useQuery(
       { itemType: "Secondary Packaging" },
       { enabled: open }
     );
 
-  // Reset form when modal opens
+  // Reset form and applied labels when modal opens
   useEffect(() => {
     if (open) {
       reset({
@@ -95,6 +96,7 @@ export function LabelModal({
         labeledAt: new Date().toISOString().split('T')[0],
         packagingItemId: "",
       });
+      setAppliedLabels([]);
     }
   }, [open, reset, unitsProduced]);
 
@@ -104,15 +106,30 @@ export function LabelModal({
   );
 
   const labelMutation = trpc.bottles.addLabel.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
+      const labelName = data.labelName || "Label";
       toast({
-        title: "Labels Applied",
-        description: `Successfully applied ${quantity} labels to ${bottleRunName}`,
+        title: "Label Applied",
+        description: `Successfully applied ${quantity} × ${labelName}`,
       });
+
+      // Add to applied labels list
+      setAppliedLabels(prev => [...prev, { name: labelName, quantity }]);
+
+      // Reset form fields for next label application
+      reset({
+        quantity: unitsProduced,
+        labeledAt: new Date().toISOString().split('T')[0],
+        packagingItemId: "",
+      });
+
+      // Refresh inventory and bottle data
       utils.bottles.list.invalidate();
-      utils.packagingPurchases.listInventory.invalidate();
+      utils.bottles.get.invalidate(bottleRunId);
+      refetchPackagingItems();
       onSuccess();
-      onClose();
+
+      // DO NOT close modal - allow adding more labels
     },
     onError: (error) => {
       toast({
@@ -136,7 +153,7 @@ export function LabelModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Tag className="w-5 h-5" />
@@ -147,6 +164,23 @@ export function LabelModal({
             {bottleRunName}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Applied Labels List */}
+        {appliedLabels.length > 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+            <h4 className="text-sm font-semibold text-green-900 mb-2">
+              Labels Applied:
+            </h4>
+            <ul className="space-y-1">
+              {appliedLabels.map((label, index) => (
+                <li key={index} className="flex items-center justify-between text-sm">
+                  <span className="text-green-800">{label.name}</span>
+                  <Badge variant="secondary">{label.quantity.toLocaleString()} units</Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Bottle Run Info */}
@@ -281,19 +315,10 @@ export function LabelModal({
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="flex-1"
-              disabled={labelMutation.isPending}
-            >
-              Cancel
-            </Button>
+          <div className="flex flex-col gap-2 pt-4">
             <Button
               type="submit"
-              className="flex-1"
+              className="w-full"
               disabled={
                 labelMutation.isPending ||
                 !selectedItemId ||
@@ -309,9 +334,18 @@ export function LabelModal({
               ) : (
                 <>
                   <Tag className="w-4 h-4 mr-2" />
-                  Apply Labels
+                  Apply Label
                 </>
               )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="w-full"
+              disabled={labelMutation.isPending}
+            >
+              Close
             </Button>
           </div>
         </form>

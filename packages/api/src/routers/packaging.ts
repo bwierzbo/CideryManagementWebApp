@@ -54,7 +54,7 @@ const packagingMaterialSchema = z.object({
 const createFromCellarSchema = z.object({
   batchId: z.string().uuid(),
   vesselId: z.string().uuid(),
-  packagedAt: z.date().or(z.string().transform((val) => new Date(val))).default(() => new Date()),
+  packagedAt: z.date().or(z.string().transform((val) => new Date(val))),
   packageSizeMl: z.number().positive(),
   unitsProduced: z.number().int().min(0),
   volumeTakenL: z.number().positive(),
@@ -791,16 +791,27 @@ export const bottlesRouter = router({
               : undefined,
             startDate: run.batchStartDate,
             endDate: run.batchEndDate,
-            composition: compositionData.map((c) => ({
-              varietyName: c.varietyName,
-              vendorName: c.vendorName,
-              volumeL: c.volumeL ? parseFloat(c.volumeL.toString()) : 0,
-              percentageOfBatch: c.percentageOfBatch
-                ? parseFloat(c.percentageOfBatch.toString()) * 100
-                : 0,
-              ph: c.ph ? parseFloat(c.ph.toString()) : null,
-              specificGravity: c.specificGravity ? parseFloat(c.specificGravity.toString()) : null,
-            })),
+            composition: (() => {
+              // Calculate total volume from all compositions
+              const totalVolumeL = compositionData.reduce((sum, c) =>
+                sum + (c.volumeL ? parseFloat(c.volumeL.toString()) : 0), 0
+              );
+
+              return compositionData.map((c) => {
+                const volumeL = c.volumeL ? parseFloat(c.volumeL.toString()) : 0;
+                // Calculate percentage based on actual volume, not stored fractionOfBatch
+                const percentageOfBatch = totalVolumeL > 0 ? (volumeL / totalVolumeL) * 100 : 0;
+
+                return {
+                  varietyName: c.varietyName,
+                  vendorName: c.vendorName,
+                  volumeL,
+                  percentageOfBatch,
+                  ph: c.ph ? parseFloat(c.ph.toString()) : null,
+                  specificGravity: c.specificGravity ? parseFloat(c.specificGravity.toString()) : null,
+                };
+              });
+            })(),
             history: {
               measurements: measurements.map((m) => ({
                 measurementDate: m.measurementDate,
@@ -1351,7 +1362,7 @@ export const bottlesRouter = router({
         bottleRunId: z.string().uuid(),
         packagingItemId: z.string().uuid(),
         quantity: z.number().int().positive(),
-        labeledAt: z.date().optional(),
+        labeledAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1389,7 +1400,7 @@ export const bottlesRouter = router({
             })
             .where(eq(packagingPurchaseItems.id, input.packagingItemId));
 
-          // Update bottle run notes
+          // Get bottle run to check if labeledAt is already set
           const [bottleRun] = await tx
             .select()
             .from(bottleRuns)
@@ -1403,25 +1414,31 @@ export const bottlesRouter = router({
             });
           }
 
-          const labeledAt = input.labeledAt || new Date();
-          const labelNote = `Applied ${input.quantity} labels (${packagingItem.size}) at ${labeledAt.toISOString()}`;
-          const updatedNotes = bottleRun.productionNotes
-            ? `${bottleRun.productionNotes}\n\n${labelNote}`
-            : labelNote;
+          // Insert label into bottleRunMaterials junction table
+          await tx.insert(bottleRunMaterials).values({
+            bottleRunId: input.bottleRunId,
+            packagingPurchaseItemId: input.packagingItemId,
+            quantityUsed: input.quantity,
+            materialType: "Labels",
+            createdBy: ctx.session.user.id,
+          });
 
-          const [updated] = await tx
-            .update(bottleRuns)
-            .set({
-              labeledAt: labeledAt,
-              productionNotes: updatedNotes,
-              updatedAt: new Date(),
-            })
-            .where(eq(bottleRuns.id, input.bottleRunId))
-            .returning();
+          // Update labeledAt timestamp only if not already set (first label application)
+          if (!bottleRun.labeledAt) {
+            const labeledAt = input.labeledAt || new Date();
+            await tx
+              .update(bottleRuns)
+              .set({
+                labeledAt: labeledAt,
+                updatedAt: new Date(),
+              })
+              .where(eq(bottleRuns.id, input.bottleRunId));
+          }
 
           return {
-            bottleRun: updated,
+            success: true,
             labelsRemaining: newQuantity,
+            labelName: packagingItem.size || "Label",
           };
         });
       } catch (error) {
@@ -1603,7 +1620,7 @@ export const bottlesRouter = router({
           .orderBy(desc(batchCarbonationOperations.completedAt))
           .limit(1);
 
-        // 8. Get packaging materials with costs
+        // 8. Get packaging materials with costs (including labels)
         const packagingMaterials = await db
           .select({
             materialId: bottleRunMaterials.id,
@@ -1613,6 +1630,7 @@ export const bottlesRouter = router({
             packageType: packagingPurchaseItems.packageType,
             materialTypePurchase: packagingPurchaseItems.materialType,
             size: packagingPurchaseItems.size,
+            materialName: packagingPurchaseItems.size, // Alias for UI compatibility
             pricePerUnit: packagingPurchaseItems.pricePerUnit,
             totalCost: sql<number>`${bottleRunMaterials.quantityUsed} * ${packagingPurchaseItems.pricePerUnit}`,
           })
@@ -1714,11 +1732,26 @@ export const bottlesRouter = router({
           cogs: {
             appleCosts: {
               totalCost: appleCosts,
-              costByVariety: compositionData.map(c => ({
-                variety: c.varietyName || "Unknown",
-                cost: parseFloat(c.materialCost?.toString() || "0"),
-                percentage: c.fractionOfBatch ? parseFloat(c.fractionOfBatch.toString()) * 100 : 0,
-              })),
+              costByVariety: (() => {
+                // Calculate total volume for percentage calculation
+                const totalVolumeL = compositionData.reduce((sum, c) =>
+                  sum + (c.juiceVolume ? parseFloat(c.juiceVolume.toString()) : 0), 0
+                );
+
+                // Filter for only apple/base fruit varieties and calculate percentages
+                return compositionData
+                  .filter(c => c.sourceType === 'base_fruit')
+                  .map(c => {
+                    const volumeL = c.juiceVolume ? parseFloat(c.juiceVolume.toString()) : 0;
+                    const percentage = totalVolumeL > 0 ? (volumeL / totalVolumeL) * 100 : 0;
+
+                    return {
+                      variety: c.varietyName || "Unknown",
+                      cost: parseFloat(c.materialCost?.toString() || "0"),
+                      percentage,
+                    };
+                  });
+              })(),
             },
             additiveCosts: {
               totalCost: additiveCosts,
