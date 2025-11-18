@@ -119,6 +119,8 @@ export function QAUpdateModal({
   // Watch form values for validation feedback
   const abvValue = watch("abvAtPackaging");
   const fillVarianceValue = watch("fillVarianceMl");
+  const fillCheckValue = watch("fillCheck");
+  const carbonationLevelValue = watch("carbonationLevel");
 
   // Get ABV status and styling
   const getABVStatus = () => {
@@ -272,6 +274,7 @@ export function QAUpdateModal({
               Fill Check
             </Label>
             <Select
+              value={fillCheckValue}
               onValueChange={(value) => setValue("fillCheck", value as any)}
             >
               <SelectTrigger className="h-10 md:h-11">
@@ -386,6 +389,7 @@ export function QAUpdateModal({
               Carbonation Level
             </Label>
             <Select
+              value={carbonationLevelValue}
               onValueChange={(value) =>
                 setValue("carbonationLevel", value as any)
               }
