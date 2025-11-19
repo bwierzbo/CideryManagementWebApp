@@ -1761,7 +1761,7 @@ export const batchRouter = router({
           });
         });
 
-        // Get bottle runs
+        // Get bottle runs (include both completed and active/null status)
         const bottles = await db
           .select({
             id: bottleRuns.id,
@@ -1781,7 +1781,11 @@ export const batchRouter = router({
           .where(
             and(
               eq(bottleRuns.batchId, input.batchId),
-              eq(bottleRuns.status, "completed"),
+              or(
+                eq(bottleRuns.status, "completed"),
+                eq(bottleRuns.status, "active"),
+                isNull(bottleRuns.status)
+              )
             ),
           );
 

@@ -34,6 +34,7 @@ export const fillCheckEnum = pgEnum("fill_check", [
   "not_tested",
 ]);
 export const bottleRunStatusEnum = pgEnum("bottle_run_status", [
+  "active",
   "completed",
   "voided",
 ]);

@@ -196,7 +196,7 @@ export function LabelModal({
           {/* Select Label */}
           <div className="space-y-2">
             <Label htmlFor="packagingItemId">
-              Label Type <span className="text-red-500">*</span>
+              Label <span className="text-red-500">*</span>
             </Label>
             {isLoadingItems ? (
               <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -219,7 +219,7 @@ export function LabelModal({
                   >
                     {selectedItemId
                       ? packagingItems?.items.find((item) => item.id === selectedItemId)?.size
-                      : "Select a label type..."}
+                      : "Select a label..."}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
