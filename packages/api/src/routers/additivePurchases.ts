@@ -106,16 +106,20 @@ export const additivePurchasesRouter = router({
         // Filter purchases by itemType if specified
         let filteredPurchases = groupedPurchases;
         if (itemType) {
-          console.log(`[additivePurchases.list] Filtering for itemType: "${itemType}"`);
+          // Normalize the search itemType (trim and lowercase for case-insensitive matching)
+          const normalizedSearchType = itemType.trim().toLowerCase();
+          console.log(`[additivePurchases.list] Filtering for itemType: "${itemType}" (normalized: "${normalizedSearchType}")`);
           console.log(`[additivePurchases.list] Grouped purchases before filter:`, groupedPurchases.length);
 
           filteredPurchases = groupedPurchases
             .map(purchase => ({
               ...purchase,
               items: purchase.items.filter((item: any) => {
-                const matches = item.varietyItemType === itemType;
+                // Normalize the item's varietyItemType for comparison
+                const normalizedItemType = item.varietyItemType?.trim().toLowerCase();
+                const matches = normalizedItemType === normalizedSearchType;
                 if (!matches && item.varietyItemType) {
-                  console.log(`[additivePurchases.list] Item filtered out - expected: "${itemType}", got: "${item.varietyItemType}"`);
+                  console.log(`[additivePurchases.list] Item filtered out - expected: "${itemType}" (normalized: "${normalizedSearchType}"), got: "${item.varietyItemType}" (normalized: "${normalizedItemType}")`);
                 }
                 return matches;
               })
