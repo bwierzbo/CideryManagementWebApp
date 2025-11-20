@@ -376,9 +376,41 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                           : "-"}
                       </TableCell>
                       <TableCell className="text-center">
-                        {batch.latestMeasurement?.abv
-                          ? `${Number(batch.latestMeasurement.abv).toFixed(1)}%`
-                          : "-"}
+                        {(() => {
+                          const measurement = batch.latestMeasurement;
+                          const og = batch.originalGravity;
+
+                          // Priority 1: Measured ABV from latest measurement
+                          if (measurement?.abv) {
+                            return `${Number(measurement.abv).toFixed(2)}%`;
+                          }
+
+                          // Priority 2: Calculate from latest SG measurement
+                          if (measurement?.specificGravity && og) {
+                            const fg = Number(measurement.specificGravity);
+                            const ogNum = Number(og);
+                            const estimatedAbv = (ogNum - fg) * 131.25;
+                            return (
+                              <span className="text-gray-600" title="Estimated from SG">
+                                ~{estimatedAbv.toFixed(2)}%
+                              </span>
+                            );
+                          }
+
+                          // Priority 3: Fall back to batch-level ABV
+                          if (batch.actualAbv) {
+                            return `${Number(batch.actualAbv).toFixed(2)}%`;
+                          }
+                          if (batch.estimatedAbv) {
+                            return (
+                              <span className="text-gray-600" title="Estimated ABV">
+                                ~{Number(batch.estimatedAbv).toFixed(2)}%
+                              </span>
+                            );
+                          }
+
+                          return "-";
+                        })()}
                       </TableCell>
                       <TableCell className="text-center">
                         {batch.latestMeasurement?.ph || "-"}
