@@ -1565,34 +1565,36 @@ function VesselMap() {
                           const measurement = liquidMapVessel.latestMeasurement;
                           const og = liquidMapVessel.originalGravity;
 
-                          // Priority 1: Measured ABV from latest measurement
-                          if (measurement?.abv) {
-                            return (
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">ABV:</span>
-                                <span className="font-medium">
-                                  {parseFloat(String(measurement.abv)).toFixed(2)}%
-                                </span>
-                              </div>
-                            );
+                          // Use latest measurement data (most recent source)
+                          if (measurement) {
+                            // Prefer measured ABV from the measurement
+                            if (measurement.abv) {
+                              return (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">ABV:</span>
+                                  <span className="font-medium">
+                                    {parseFloat(String(measurement.abv)).toFixed(2)}%
+                                  </span>
+                                </div>
+                              );
+                            }
+                            // Calculate from SG if available
+                            if (measurement.specificGravity && og) {
+                              const fg = parseFloat(String(measurement.specificGravity));
+                              const ogNum = parseFloat(String(og));
+                              const estimatedAbv = (ogNum - fg) * 131.25;
+                              return (
+                                <div className="flex justify-between">
+                                  <span className="text-gray-600">Est. ABV:</span>
+                                  <span className="font-medium">
+                                    {estimatedAbv.toFixed(2)}%
+                                  </span>
+                                </div>
+                              );
+                            }
                           }
 
-                          // Priority 2: Calculate from latest SG measurement
-                          if (measurement?.specificGravity && og) {
-                            const fg = parseFloat(String(measurement.specificGravity));
-                            const ogNum = parseFloat(String(og));
-                            const estimatedAbv = (ogNum - fg) * 131.25;
-                            return (
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">Est. ABV:</span>
-                                <span className="font-medium">
-                                  {estimatedAbv.toFixed(2)}%
-                                </span>
-                              </div>
-                            );
-                          }
-
-                          // Priority 3: Fall back to batch-level ABV
+                          // Fall back to batch-level ABV only if no measurements exist
                           if (liquidMapVessel.actualAbv || liquidMapVessel.estimatedAbv) {
                             return (
                               <div className="flex justify-between">

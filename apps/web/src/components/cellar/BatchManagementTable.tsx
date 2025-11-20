@@ -380,24 +380,26 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                           const measurement = batch.latestMeasurement;
                           const og = batch.originalGravity;
 
-                          // Priority 1: Measured ABV from latest measurement
-                          if (measurement?.abv) {
-                            return `${Number(measurement.abv).toFixed(2)}%`;
+                          // Use latest measurement data (most recent source)
+                          if (measurement) {
+                            // Prefer measured ABV from the measurement
+                            if (measurement.abv) {
+                              return `${Number(measurement.abv).toFixed(2)}%`;
+                            }
+                            // Calculate from SG if available
+                            if (measurement.specificGravity && og) {
+                              const fg = Number(measurement.specificGravity);
+                              const ogNum = Number(og);
+                              const estimatedAbv = (ogNum - fg) * 131.25;
+                              return (
+                                <span className="text-gray-600" title="Estimated from latest SG measurement">
+                                  ~{estimatedAbv.toFixed(2)}%
+                                </span>
+                              );
+                            }
                           }
 
-                          // Priority 2: Calculate from latest SG measurement
-                          if (measurement?.specificGravity && og) {
-                            const fg = Number(measurement.specificGravity);
-                            const ogNum = Number(og);
-                            const estimatedAbv = (ogNum - fg) * 131.25;
-                            return (
-                              <span className="text-gray-600" title="Estimated from SG">
-                                ~{estimatedAbv.toFixed(2)}%
-                              </span>
-                            );
-                          }
-
-                          // Priority 3: Fall back to batch-level ABV
+                          // Fall back to batch-level ABV only if no measurements exist
                           if (batch.actualAbv) {
                             return `${Number(batch.actualAbv).toFixed(2)}%`;
                           }
