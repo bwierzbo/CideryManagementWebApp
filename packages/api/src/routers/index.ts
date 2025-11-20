@@ -30,6 +30,7 @@ import { kegsRouter } from "./kegs";
 import { userRouter } from "./user";
 import { dashboardRouter } from "./dashboard";
 import { squareRouter } from "./square";
+import { MIN_WORKING_VOLUME_L } from "lib";
 import {
   db,
   vendors,
@@ -3030,8 +3031,8 @@ export const appRouter = router({
             const remainingVolumeL = currentVolumeL - actualTransferVolumeL;
             let remainingBatch = null;
 
-            // Check if this is a full transfer or partial transfer
-            if (remainingVolumeL > 0) {
+            // Check if this is a full transfer, partial transfer, or residual (< MIN_WORKING_VOLUME_L)
+            if (remainingVolumeL > MIN_WORKING_VOLUME_L) {
               // Partial transfer - create remaining batch in source vessel
               const newRemainingBatch = await tx
                 .insert(batches)
@@ -3109,8 +3110,54 @@ export const appRouter = router({
                 ctx.session?.user?.id,
                 "Remaining batch created after partial transfer via API",
               );
+            } else if (remainingVolumeL > 0) {
+              // Residual volume < MIN_WORKING_VOLUME_L - auto-empty as waste
+              console.log(
+                `Auto-emptying ${remainingVolumeL.toFixed(3)}L residual from vessel ${input.fromVesselId} (below ${MIN_WORKING_VOLUME_L}L threshold)`,
+              );
+
+              // Track the residual as additional loss
+              // Note: adjustedLoss already contains tolerance adjustments
+              // The residual will be reflected in the source batch completion
+
+              // Complete source batch and clear from vessel
+              await tx
+                .update(batches)
+                .set({
+                  currentVolume: "0",
+                  status: "completed",
+                  vesselId: null,
+                  endDate: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, sourceBatch[0].id));
+
+              // Set vessel to cleaning
+              await tx
+                .update(vessels)
+                .set({
+                  status: "cleaning",
+                  updatedAt: new Date(),
+                })
+                .where(eq(vessels.id, input.fromVesselId));
+
+              // Audit logging for auto-empty
+              await publishUpdateEvent(
+                "batches",
+                sourceBatch[0].id,
+                {
+                  batchId: sourceBatch[0].id,
+                  status: "completed",
+                  residualVolumeL: remainingVolumeL,
+                  autoEmptied: true,
+                  reason: `Residual ${remainingVolumeL.toFixed(3)}L below minimum working volume (${MIN_WORKING_VOLUME_L}L)`,
+                },
+                { previousStatus: sourceBatch[0].status },
+                ctx.session?.user?.id,
+                `Auto-emptied ${remainingVolumeL.toFixed(3)}L residual during transfer`,
+              );
             } else {
-              // Full transfer - source vessel needs cleaning
+              // Exact full transfer (remainingVolumeL = 0) - source vessel needs cleaning
               await tx
                 .update(vessels)
                 .set({

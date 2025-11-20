@@ -237,6 +237,27 @@ export const kegsRouter = router({
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
             )`,
+            latestFillRemainingVolume: sql<string>`(
+              SELECT keg_fills.remaining_volume FROM keg_fills
+              WHERE keg_fills.keg_id = kegs.id
+                AND keg_fills.status != 'voided'
+              ORDER BY keg_fills.filled_at DESC
+              LIMIT 1
+            )`,
+            latestFillVolumeTaken: sql<string>`(
+              SELECT keg_fills.volume_taken FROM keg_fills
+              WHERE keg_fills.keg_id = kegs.id
+                AND keg_fills.status != 'voided'
+              ORDER BY keg_fills.filled_at DESC
+              LIMIT 1
+            )`,
+            latestFillVolumeUnit: sql<string>`(
+              SELECT keg_fills.volume_taken_unit FROM keg_fills
+              WHERE keg_fills.keg_id = kegs.id
+                AND keg_fills.status != 'voided'
+              ORDER BY keg_fills.filled_at DESC
+              LIMIT 1
+            )`,
           })
           .from(kegs)
           .where(and(...conditions))
@@ -840,6 +861,7 @@ export const kegsRouter = router({
               filledAt: input.filledAt,
               volumeTaken: kegVolume.volumeTaken.toString(),
               volumeTakenUnit: input.volumeTakenUnit,
+              remainingVolume: kegVolume.volumeTaken.toString(), // Initialize with full volume
               loss: input.loss?.toString(),
               lossUnit: input.lossUnit,
               abvAtPackaging: null, // TODO: Calculate from batch measurements

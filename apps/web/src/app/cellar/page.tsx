@@ -1810,7 +1810,7 @@ function VesselMap() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handlePurgeTank(vessel.id, vessel.name)}
-                            disabled={currentVolume <= 0}
+                            disabled={!liquidMapVessel?.batchId}
                             className="text-orange-600"
                           >
                             <Droplets className="w-3 h-3 mr-1" />

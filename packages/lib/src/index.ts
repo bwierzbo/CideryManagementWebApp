@@ -16,6 +16,9 @@ export * from "./calculations/sugar";
 // Re-export apple-related constants and utilities (client-safe)
 export * from "./apples";
 
+// Re-export cellar operation constants (client-safe)
+export * from "./constants/cellar";
+
 // Re-export naming utilities (client-safe - no crypto)
 export * from "./naming/batchName";
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
+import { MIN_WORKING_VOLUME_L } from "lib";
 import {
   db,
   bottleRuns,
@@ -386,7 +387,8 @@ export const bottlesRouter = router({
 
           // 5. Update volume - keg fill OR vessel/batch
           const newVolumeL = currentVolumeL - input.volumeTakenL;
-          const EMPTY_THRESHOLD_L = 0.1;
+          // Use shared minimum working volume threshold (1.0L)
+          // Volumes below this are considered residual waste
 
           if (isBottlingFromKeg) {
             // Update keg fill remaining volume
@@ -401,7 +403,7 @@ export const bottlesRouter = router({
             // Note: Do NOT update batch volume - it was already deducted when the keg was filled
           } else {
             // Original vessel bottling - update batch volume
-            if (newVolumeL <= EMPTY_THRESHOLD_L) {
+            if (newVolumeL <= MIN_WORKING_VOLUME_L) {
               await tx
                 .update(batches)
                 .set({
@@ -435,7 +437,7 @@ export const bottlesRouter = router({
             }
           }
 
-          let vesselStatus = (!isBottlingFromKeg && newVolumeL <= EMPTY_THRESHOLD_L) ? ("cleaning" as any) : vessel.status;
+          let vesselStatus = (!isBottlingFromKeg && newVolumeL <= MIN_WORKING_VOLUME_L) ? ("cleaning" as any) : vessel.status;
 
           // 6. Generate lot code and create inventory item
           const lotCode = generateLotCode(

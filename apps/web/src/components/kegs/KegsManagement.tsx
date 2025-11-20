@@ -50,6 +50,7 @@ import { EditKegModal } from "./EditKegModal";
 import { KegDetailsModal } from "./KegDetailsModal";
 import { DistributeKegModal } from "./DistributeKegModal";
 import { BottleModal } from "@/components/bottles/bottle-modal";
+import { formatVolume, convertVolume, type VolumeUnit } from "lib";
 
 type KegStatus =
   | "all"
@@ -83,6 +84,9 @@ interface Keg {
   latestFillId: string | null;
   latestFillBatchName: string | null;
   latestFillDate: string | null;
+  latestFillRemainingVolume: string | null;
+  latestFillVolumeTaken: string | null;
+  latestFillVolumeUnit: string | null;
 }
 
 const KEG_STATUS_CONFIG = {
@@ -417,6 +421,48 @@ export function KegsManagement() {
                             {keg.capacityML / 1000}L ({keg.condition})
                           </span>
                         </div>
+
+                        {/* Current Volume - Only show for filled kegs */}
+                        {keg.status === "filled" && (keg.latestFillRemainingVolume || keg.latestFillVolumeTaken) && (() => {
+                          const currentVol = keg.latestFillRemainingVolume
+                            ? parseFloat(keg.latestFillRemainingVolume)
+                            : keg.latestFillVolumeTaken
+                              ? parseFloat(keg.latestFillVolumeTaken)
+                              : 0;
+                          const unit = (keg.latestFillVolumeUnit || "L") as VolumeUnit;
+                          const capacityL = keg.capacityML / 1000;
+
+                          // Convert current volume to liters for percentage calculation
+                          const currentVolL = convertVolume(currentVol, unit, "L");
+                          const fillPercentage = (currentVolL / capacityL) * 100;
+
+                          return (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <Wine className="w-4 h-4 text-gray-400" />
+                                <span>
+                                  {formatVolume(currentVol, unit)} / {capacityL}L remaining
+                                </span>
+                              </div>
+
+                              {/* Progress Bar */}
+                              <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all ${
+                                    fillPercentage > 90
+                                      ? "bg-green-500"
+                                      : fillPercentage > 50
+                                        ? "bg-blue-500"
+                                        : fillPercentage > 25
+                                          ? "bg-yellow-500"
+                                          : "bg-red-500"
+                                  }`}
+                                  style={{ width: `${Math.min(fillPercentage, 100)}%` }}
+                                />
+                              </div>
+                            </>
+                          );
+                        })()}
 
                         <div className="flex items-center gap-2">
                           <MapPin className="w-4 h-4 text-gray-400" />
