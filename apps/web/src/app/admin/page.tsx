@@ -65,6 +65,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDate } from "@/utils/date-format";
+import { useToast } from "@/hooks/use-toast";
 import { SquareIntegration } from "@/components/admin/SquareIntegration";
 
 // Form schemas
@@ -853,33 +854,61 @@ function ReferenceValues() {
 }
 
 function SystemSettings() {
-  // Mock system settings
-  const settings = [
-    {
-      id: "default_yield",
-      name: "Default Apple Yield",
-      value: "70%",
-      description: "Expected juice yield percentage from apples",
-    },
-    {
-      id: "fermentation_temp",
-      name: "Fermentation Temperature Range",
-      value: "16-20°C",
-      description: "Optimal temperature range for fermentation",
-    },
-    {
-      id: "package_loss",
-      name: "Expected Packaging Loss",
-      value: "2%",
-      description: "Expected volume loss during packaging",
-    },
-    {
-      id: "inventory_alert",
-      name: "Low Inventory Alert",
-      value: "100 bottles",
-      description: "Alert threshold for low inventory",
-    },
+  const { data: currentTimezone } = trpc.settings.getTimezone.useQuery();
+  const updateTimezoneMutation = trpc.settings.updateTimezone.useMutation();
+  const utils = trpc.useUtils();
+  const { toast } = useToast();
+
+  const [selectedTimezone, setSelectedTimezone] = useState("");
+
+  // Common US timezones
+  const timezones = [
+    { value: "America/New_York", label: "Eastern Time (ET)" },
+    { value: "America/Chicago", label: "Central Time (CT)" },
+    { value: "America/Denver", label: "Mountain Time (MT)" },
+    { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
+    { value: "America/Anchorage", label: "Alaska Time (AKT)" },
+    { value: "Pacific/Honolulu", label: "Hawaii Time (HST)" },
+    { value: "UTC", label: "UTC (Coordinated Universal Time)" },
   ];
+
+  const handleSave = async () => {
+    const timezoneToSave = selectedTimezone || currentTimezone;
+
+    if (!timezoneToSave) {
+      toast({
+        title: "Error",
+        description: "Please select a timezone",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await updateTimezoneMutation.mutateAsync({
+        timezone: timezoneToSave,
+      });
+
+      // Invalidate all queries to refresh dates throughout the app
+      utils.invalidate();
+
+      toast({
+        title: "Success",
+        description: "Timezone updated successfully. All dates will now display in the selected timezone.",
+      });
+
+      setSelectedTimezone("");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update timezone",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const displayTimezone = selectedTimezone || currentTimezone || "America/Los_Angeles";
+  const displayLabel = timezones.find((tz) => tz.value === displayTimezone)?.label || displayTimezone;
 
   return (
     <Card>
@@ -894,32 +923,48 @@ function SystemSettings() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {settings.map((setting) => (
-            <div
-              key={setting.id}
-              className="flex items-center justify-between p-4 border rounded-lg"
-            >
-              <div className="flex-1">
-                <h4 className="font-medium">{setting.name}</h4>
-                <p className="text-sm text-gray-600">{setting.description}</p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Input
-                  value={setting.value}
-                  className="w-32 text-right"
-                  readOnly
-                />
-                <Button size="sm" variant="outline">
-                  <Edit className="w-3 h-3" />
-                </Button>
-              </div>
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex-1">
+              <h4 className="font-medium">Display Timezone</h4>
+              <p className="text-sm text-gray-600">
+                All dates and times will be displayed in this timezone
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Current: {displayLabel}
+              </p>
             </div>
-          ))}
+            <div className="flex items-center space-x-2">
+              <Select
+                value={selectedTimezone || currentTimezone}
+                onValueChange={setSelectedTimezone}
+              >
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="Select timezone" />
+                </SelectTrigger>
+                <SelectContent>
+                  {timezones.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
         <div className="mt-6 flex justify-end">
-          <Button>
-            <Save className="w-4 h-4 mr-2" />
-            Save Settings
+          <Button
+            onClick={handleSave}
+            disabled={updateTimezoneMutation.isPending}
+          >
+            {updateTimezoneMutation.isPending ? (
+              <>Saving...</>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Settings
+              </>
+            )}
           </Button>
         </div>
       </CardContent>

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
 import { MIN_WORKING_VOLUME_L } from "lib";
+import { kegsRouter } from "./kegs";
 import {
   db,
   bottleRuns,
@@ -24,6 +25,7 @@ import {
   squareConfig,
   batchCarbonationOperations,
   kegFills,
+  kegFillMaterials,
   kegs,
   pressRuns,
   pressRunLoads,
@@ -37,6 +39,7 @@ import { publishCreateEvent, publishUpdateEvent } from "lib";
 import { syncInventoryToSquare } from "../lib/square-inventory-sync";
 import {
   getBottleRunsOptimized,
+  getUnifiedPackagingRuns,
   getBatchBottleRuns,
   getPackageSizesCached,
   getBottleRunInventory,
@@ -126,7 +129,7 @@ function calculateUnitSizeL(packageSizeMl: number): number {
  * Handles packaging operations from cellar to finished goods inventory
  * RBAC: Operator and above can create and read packaging runs
  */
-export const bottlesRouter = router({
+export const packagingRouter = router({
   /**
    * Create packaging run from cellar modal
    * Creates run, updates vessel volume, creates inventory
@@ -391,14 +394,36 @@ export const bottlesRouter = router({
           // Volumes below this are considered residual waste
 
           if (isBottlingFromKeg) {
-            // Update keg fill remaining volume
-            await tx
-              .update(kegFills)
-              .set({
-                remainingVolume: newVolumeL.toString(),
-                updatedAt: new Date(),
-              })
-              .where(eq(kegFills.id, kegFill.id));
+            // If keg is empty or below minimum working volume, delete the fill and set keg to cleaning
+            if (newVolumeL <= MIN_WORKING_VOLUME_L) {
+              // Delete associated keg fill materials first
+              await tx
+                .delete(kegFillMaterials)
+                .where(eq(kegFillMaterials.kegFillId, kegFill.id));
+
+              // Delete the keg fill
+              await tx
+                .delete(kegFills)
+                .where(eq(kegFills.id, kegFill.id));
+
+              // Update keg status to cleaning (needs cleaning before next use)
+              await tx
+                .update(kegs)
+                .set({
+                  status: "cleaning" as any,
+                  updatedAt: new Date(),
+                })
+                .where(eq(kegs.id, kegFill.kegId));
+            } else {
+              // Update keg fill remaining volume
+              await tx
+                .update(kegFills)
+                .set({
+                  remainingVolume: newVolumeL.toString(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(kegFills.id, kegFill.id));
+            }
 
             // Note: Do NOT update batch volume - it was already deducted when the keg was filled
           } else {
@@ -901,10 +926,10 @@ export const bottlesRouter = router({
           direction: input.direction,
         };
 
-        // Use optimized query with performance measurement
+        // Use unified query (bottles + kegs) with performance measurement
         const { result, metrics } = await measureQuery(
           "list-packaging-runs",
-          () => getBottleRunsOptimized(filters, pagination),
+          () => getUnifiedPackagingRuns(filters, pagination),
         );
 
         // Log performance metrics for monitoring
@@ -1821,6 +1846,16 @@ export const bottlesRouter = router({
         });
       }
     }),
+
+  /**
+   * Keg management operations (asset management and fill operations)
+   * Nested under packaging for unified packaging system
+   */
+  kegs: kegsRouter,
 });
 
-export type BottlesRouter = typeof bottlesRouter;
+export type PackagingRouter = typeof packagingRouter;
+export type BottlesRouter = typeof packagingRouter; // @deprecated - use PackagingRouter
+
+// Also export for backward compatibility during migration
+export const bottlesRouter = packagingRouter;

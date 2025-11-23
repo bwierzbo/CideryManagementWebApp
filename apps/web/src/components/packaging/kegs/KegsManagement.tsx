@@ -35,6 +35,7 @@ import {
   RotateCcw,
   Wine,
   MoreVertical,
+  CheckCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
@@ -49,7 +50,8 @@ import { AddKegModal } from "./AddKegModal";
 import { EditKegModal } from "./EditKegModal";
 import { KegDetailsModal } from "./KegDetailsModal";
 import { DistributeKegModal } from "./DistributeKegModal";
-import { BottleModal } from "@/components/bottles/bottle-modal";
+import { CleanKegModal } from "./CleanKegModal";
+import { BottleModal } from "@/components/packaging/bottle-modal";
 import { formatVolume, convertVolume, type VolumeUnit } from "lib";
 
 type KegStatus =
@@ -92,27 +94,33 @@ interface Keg {
 const KEG_STATUS_CONFIG = {
   available: {
     label: "Available",
-    color: "bg-green-100 text-green-800 border-green-300",
+    cardColor: "border-green-300 bg-green-50",
+    badgeColor: "bg-green-100 text-green-800 border-green-300",
   },
   filled: {
     label: "Filled",
-    color: "bg-blue-100 text-blue-800 border-blue-300",
+    cardColor: "border-blue-300 bg-blue-50",
+    badgeColor: "bg-blue-100 text-blue-800 border-blue-300",
   },
   distributed: {
     label: "Distributed",
-    color: "bg-orange-100 text-orange-800 border-orange-300",
+    cardColor: "border-purple-300 bg-purple-50",
+    badgeColor: "bg-purple-100 text-purple-800 border-purple-300",
   },
   cleaning: {
     label: "Cleaning",
-    color: "bg-gray-100 text-gray-800 border-gray-300",
+    cardColor: "border-yellow-300 bg-yellow-50",
+    badgeColor: "bg-yellow-100 text-yellow-800 border-yellow-300",
   },
   maintenance: {
     label: "Maintenance",
-    color: "bg-yellow-100 text-yellow-800 border-yellow-300",
+    cardColor: "border-orange-300 bg-orange-50",
+    badgeColor: "bg-orange-100 text-orange-800 border-orange-300",
   },
   retired: {
     label: "Retired",
-    color: "bg-red-100 text-red-800 border-red-300",
+    cardColor: "border-red-300 bg-red-50",
+    badgeColor: "bg-red-100 text-red-800 border-red-300",
   },
 };
 
@@ -150,6 +158,10 @@ export function KegsManagement() {
     batchName: string;
     currentVolumeL: number;
   } | null>(null);
+  const [selectedKegForCleaning, setSelectedKegForCleaning] = useState<{
+    kegId: string;
+    kegNumber: string;
+  } | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -158,7 +170,7 @@ export function KegsManagement() {
     data: kegsData,
     isLoading,
     error,
-  } = trpc.kegs.listKegs.useQuery({
+  } = trpc.packaging.kegs.listKegs.useQuery({
     status: statusFilter,
     kegType: kegTypeFilter,
     search: searchQuery || undefined,
@@ -166,13 +178,13 @@ export function KegsManagement() {
     offset: 0,
   });
 
-  const deleteKegMutation = trpc.kegs.deleteKeg.useMutation({
+  const deleteKegMutation = trpc.packaging.kegs.deleteKeg.useMutation({
     onSuccess: () => {
       toast({
         title: "Keg Retired",
         description: "Keg has been marked as retired",
       });
-      utils.kegs.listKegs.invalidate();
+      utils.packaging.kegs.listKegs.invalidate();
     },
     onError: (error) => {
       toast({
@@ -183,13 +195,13 @@ export function KegsManagement() {
     },
   });
 
-  const deleteKegFillMutation = trpc.kegs.deleteKegFill.useMutation({
+  const deleteKegFillMutation = trpc.packaging.kegs.deleteKegFill.useMutation({
     onSuccess: () => {
       toast({
         title: "Keg Fill Deleted",
         description: "Keg fill deleted and volume restored to batch",
       });
-      utils.kegs.listKegs.invalidate();
+      utils.packaging.kegs.listKegs.invalidate();
     },
     onError: (error) => {
       toast({
@@ -200,13 +212,13 @@ export function KegsManagement() {
     },
   });
 
-  const returnKegMutation = trpc.kegs.returnKegFill.useMutation({
+  const returnKegMutation = trpc.packaging.kegs.returnKegFill.useMutation({
     onSuccess: () => {
       toast({
         title: "Keg Returned",
         description: "Keg marked as returned and available",
       });
-      utils.kegs.listKegs.invalidate();
+      utils.packaging.kegs.listKegs.invalidate();
     },
     onError: (error) => {
       toast({
@@ -254,7 +266,7 @@ export function KegsManagement() {
 
   // Query for keg fill details when needed for bottling
   const [kegFillIdForQuery, setKegFillIdForQuery] = useState<string | null>(null);
-  const { data: kegFillDetails } = trpc.kegs.getKegFillDetails.useQuery(
+  const { data: kegFillDetails } = trpc.packaging.kegs.getKegFillDetails.useQuery(
     kegFillIdForQuery!,
     { enabled: !!kegFillIdForQuery }
   );
@@ -397,7 +409,7 @@ export function KegsManagement() {
                 return (
                   <Card
                     key={keg.id}
-                    className={`border-2 ${statusConfig.color} hover:shadow-md transition-shadow`}
+                    className={`border-2 ${statusConfig.cardColor} hover:shadow-md transition-all`}
                   >
                     <CardContent className="pt-6">
                       {/* Keg Number & Status */}
@@ -408,7 +420,7 @@ export function KegsManagement() {
                             {KEG_TYPE_LABELS[keg.kegType] || keg.kegType}
                           </p>
                         </div>
-                        <Badge className={statusConfig.color} variant="secondary">
+                        <Badge className={statusConfig.badgeColor} variant="secondary">
                           {statusConfig.label}
                         </Badge>
                       </div>
@@ -579,6 +591,23 @@ export function KegsManagement() {
                           </Button>
                         )}
 
+                        {keg.status === "cleaning" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setSelectedKegForCleaning({
+                                kegId: keg.id,
+                                kegNumber: keg.kegNumber,
+                              })
+                            }
+                            className="flex-1"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Clean Keg
+                          </Button>
+                        )}
+
                         {keg.status === "available" && (
                           <Button
                             size="sm"
@@ -614,7 +643,7 @@ export function KegsManagement() {
         onClose={() => setShowAddModal(false)}
         onSuccess={() => {
           setShowAddModal(false);
-          utils.kegs.listKegs.invalidate();
+          utils.packaging.kegs.listKegs.invalidate();
         }}
       />
 
@@ -625,7 +654,7 @@ export function KegsManagement() {
           kegId={selectedKegForEdit}
           onSuccess={() => {
             setSelectedKegForEdit(null);
-            utils.kegs.listKegs.invalidate();
+            utils.packaging.kegs.listKegs.invalidate();
           }}
         />
       )}
@@ -646,7 +675,7 @@ export function KegsManagement() {
           kegNumber={selectedKegForDistribution.kegNumber}
           onSuccess={() => {
             setSelectedKegForDistribution(null);
-            utils.kegs.listKegs.invalidate();
+            utils.packaging.kegs.listKegs.invalidate();
           }}
         />
       )}
@@ -660,6 +689,15 @@ export function KegsManagement() {
           batchId={selectedKegForBottling.batchId}
           currentVolumeL={selectedKegForBottling.currentVolumeL}
           kegFillId={selectedKegForBottling.kegFillId}
+        />
+      )}
+
+      {selectedKegForCleaning && (
+        <CleanKegModal
+          open={!!selectedKegForCleaning}
+          onClose={() => setSelectedKegForCleaning(null)}
+          kegId={selectedKegForCleaning.kegId}
+          kegNumber={selectedKegForCleaning.kegNumber}
         />
       )}
     </>

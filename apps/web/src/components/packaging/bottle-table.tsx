@@ -33,6 +33,9 @@ import {
   Flame,
   Tag,
   CheckCircle,
+  Beer,
+  Wine,
+  Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -41,9 +44,11 @@ import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { LabelModal } from "./LabelModal";
 import { PasteurizeModal } from "./PasteurizeModal";
+import { DistributeKegModal } from "./kegs/DistributeKegModal";
 
-// Type for bottling run from API
+// Type for packaging run from API
 interface PackagingRun {
+  source: 'bottle_run' | 'keg_fill';  // Discriminator field
   id: string;
   batchId: string;
   vesselId: string;
@@ -55,7 +60,7 @@ interface PackagingRun {
   volumeTakenL: number;
   lossL: number;
   lossPercentage: number;
-  status: "completed" | "voided" | null;
+  status: "completed" | "voided" | "filled" | "distributed" | "returned" | null;
   createdAt: string;
   // QA fields
   abvAtPackaging?: number | undefined;
@@ -69,6 +74,10 @@ interface PackagingRun {
   productionNotes?: string | null;
   pasteurizedAt?: string | null;
   labeledAt?: string | null;
+  // Keg-specific fields (only present when source === 'keg_fill')
+  kegId?: string;
+  kegNumber?: string | null;
+  remainingVolumeL?: number | null;
   // Relations
   batch: {
     id: string;
@@ -79,13 +88,14 @@ interface PackagingRun {
     id: string;
     name: string | null;
   };
-  qaTechnicianName?: string;
+  qaTechnicianName?: string | null;
 }
 
 // Table column configuration
 type SortField =
   | "packagedAt"
   | "batchName"
+  | "packageType"
   | "unitsProduced"
   | "lossPercentage";
 
@@ -151,11 +161,18 @@ export function PackagingTable({
   // Pasteurize modal state
   const [pasteurizeModalOpen, setPasteurizeModalOpen] = useState(false);
 
+  // Distribute keg modal state
+  const [distributeKegModalOpen, setDistributeKegModalOpen] = useState(false);
+  const [selectedKegForDistribution, setSelectedKegForDistribution] = useState<{
+    kegFillId: string;
+    kegNumber: string;
+  } | null>(null);
+
   // Mutations
   const utils = trpc.useUtils();
-  const markCompleteMutation = trpc.bottles.markComplete.useMutation({
+  const markCompleteMutation = trpc.packaging.markComplete.useMutation({
     onSuccess: () => {
-      utils.bottles.list.invalidate();
+      utils.packaging.list.invalidate();
       toast({
         title: "Success",
         description: "Bottle run marked as complete. Items are now in inventory.",
@@ -164,7 +181,7 @@ export function PackagingTable({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to mark bottle run as complete",
+        description: error.message || "Failed to mark packaging run as complete",
         variant: "destructive",
       });
     },
@@ -208,7 +225,7 @@ export function PackagingTable({
 
   // API query
   const { data, isLoading, error, refetch } =
-    trpc.bottles.list.useQuery(apiParams);
+    trpc.packaging.list.useQuery(apiParams);
 
   // Derived state
   const totalCount = data?.total || 0;
@@ -224,6 +241,8 @@ export function PackagingTable({
           return new Date(item.packagedAt);
         case "batchName":
           return item.batch.customName || item.batch.name || "";
+        case "packageType":
+          return item.packageType || "";
         case "unitsProduced":
           return item.unitsProduced;
         case "lossPercentage":
@@ -291,8 +310,12 @@ export function PackagingTable({
       if (onItemClick) {
         onItemClick(item);
       } else {
-        // Default navigation to detail page
-        router.push(`/bottles/${item.id}`);
+        // Route based on source type
+        if (item.source === 'keg_fill') {
+          router.push(`/keg-fills/${item.id}`);
+        } else {
+          router.push(`/packaging/${item.id}`);
+        }
       }
     },
     [onItemClick, router],
@@ -321,7 +344,7 @@ export function PackagingTable({
     if (item.status === "completed") {
       toast({
         title: "Already Complete",
-        description: "This bottle run is already marked as complete.",
+        description: "This packaging run is already marked as complete.",
       });
       return;
     }
@@ -351,6 +374,23 @@ export function PackagingTable({
     // The modal will handle invalidation, just close
     setPasteurizeModalOpen(false);
     setSelectedBottleRun(null);
+  }, []);
+
+  // Distribute keg handlers
+  const handleDistribute = useCallback((item: PackagingRun, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.source === 'keg_fill' && item.id && item.kegNumber) {
+      setSelectedKegForDistribution({
+        kegFillId: item.id,
+        kegNumber: item.kegNumber,
+      });
+      setDistributeKegModalOpen(true);
+    }
+  }, []);
+
+  const handleDistributeModalClose = useCallback(() => {
+    setDistributeKegModalOpen(false);
+    setSelectedKegForDistribution(null);
   }, []);
 
   // Format package size display
@@ -404,7 +444,7 @@ export function PackagingTable({
 
   // Helper function to generate CSV filename with filter parameters
   const generateFilename = useCallback(
-    (prefix: string = "bottling-runs") => {
+    (prefix: string = "packaging-runs") => {
       const date = new Date().toISOString().split("T")[0];
       const filterParams = [];
 
@@ -553,8 +593,8 @@ export function PackagingTable({
         <div className="flex items-center gap-3">
           <h2 className="text-base font-semibold text-gray-900">
             {totalCount > 0
-              ? `${totalCount} Bottling Run${totalCount !== 1 ? "s" : ""}`
-              : "No Bottling Runs"}
+              ? `${totalCount} Packaging Run${totalCount !== 1 ? "s" : ""}`
+              : "No Packaging Runs"}
           </h2>
         </div>
         <Button
@@ -575,7 +615,7 @@ export function PackagingTable({
             <div className="flex items-center gap-2 p-3 md:p-4 text-red-600 bg-red-50 rounded-lg mb-4 mx-3 md:mx-0">
               <AlertTriangle className="w-4 h-4 flex-shrink-0" />
               <span className="text-sm md:text-base">
-                Error loading bottling runs: {error.message}
+                Error loading packaging runs: {error.message}
               </span>
             </div>
           )}
@@ -602,10 +642,10 @@ export function PackagingTable({
               <div className="text-center py-12 px-3 text-muted-foreground">
                 <Package2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
                 <div className="text-lg font-medium">
-                  No bottling runs found
+                  No packaging runs found
                 </div>
                 <div className="text-sm mt-1">
-                  Bottling runs will appear here once created
+                  Packaging runs will appear here once created
                 </div>
               </div>
             ) : (
@@ -663,6 +703,33 @@ export function PackagingTable({
 
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
+                        <div className="text-muted-foreground">Type</div>
+                        <div className="font-medium flex items-center gap-1">
+                          {item.packageType === "keg" ? (
+                            <>
+                              <Beer className="w-3.5 h-3.5 text-amber-600" />
+                              <span className="text-amber-900">Keg</span>
+                            </>
+                          ) : item.packageType === "can" ? (
+                            <>
+                              <Package className="w-3.5 h-3.5 text-gray-600" />
+                              <span className="text-gray-900">Can</span>
+                            </>
+                          ) : (
+                            <>
+                              <Wine className="w-3.5 h-3.5 text-purple-600" />
+                              <span className="text-purple-900">Bottle</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Units</div>
+                        <div className="font-medium font-mono">
+                          {item.unitsProduced.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
                         <div className="text-muted-foreground">Package</div>
                         <div className="font-medium flex items-center gap-1">
                           <Package className="w-3 h-3" />
@@ -671,12 +738,6 @@ export function PackagingTable({
                             item.packageType,
                             item.packagingMaterialName,
                           )}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Units</div>
-                        <div className="font-medium font-mono">
-                          {item.unitsProduced.toLocaleString()}
                         </div>
                       </div>
                       <div className="flex justify-end">
@@ -702,40 +763,58 @@ export function PackagingTable({
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => handlePasteurize(item, e)}
-                              disabled={!!item.pasteurizedAt}
-                              className={cn(
-                                item.pasteurizedAt && "opacity-50 cursor-not-allowed"
-                              )}
-                            >
-                              <Flame className="mr-2 h-4 w-4" />
-                              {item.pasteurizedAt ? "Already Pasteurized" : "Pasteurize"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => handleLabel(item, e)}
-                              disabled={!!item.labeledAt}
-                              className={cn(
-                                item.labeledAt && "opacity-50 cursor-not-allowed"
-                              )}
-                            >
-                              <Tag className="mr-2 h-4 w-4" />
-                              {item.labeledAt ? "Already Labeled" : "Label"}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => handleMarkComplete(item, e)}
-                              disabled={item.status === "completed"}
-                              className={cn(
-                                item.status === "completed"
-                                  ? "opacity-50 cursor-not-allowed"
-                                  : "text-green-600 focus:text-green-600"
-                              )}
-                            >
-                              <CheckCircle className="mr-2 h-4 w-4" />
-                              {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
-                            </DropdownMenuItem>
+                            {item.packageType === "keg" ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => handleDistribute(item, e)}
+                                  disabled={item.status === "distributed"}
+                                  className={cn(
+                                    item.status === "distributed" && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  <Send className="mr-2 h-4 w-4" />
+                                  {item.status === "distributed" ? "Already Distributed" : "Distribute"}
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => handlePasteurize(item, e)}
+                                  disabled={!!item.pasteurizedAt}
+                                  className={cn(
+                                    item.pasteurizedAt && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  <Flame className="mr-2 h-4 w-4" />
+                                  {item.pasteurizedAt ? "Already Pasteurized" : "Pasteurize"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => handleLabel(item, e)}
+                                  disabled={!!item.labeledAt}
+                                  className={cn(
+                                    item.labeledAt && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  <Tag className="mr-2 h-4 w-4" />
+                                  {item.labeledAt ? "Already Labeled" : "Label"}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => handleMarkComplete(item, e)}
+                                  disabled={item.status === "completed"}
+                                  className={cn(
+                                    item.status === "completed"
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : "text-green-600 focus:text-green-600"
+                                  )}
+                                >
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                  {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -779,6 +858,13 @@ export function PackagingTable({
                   >
                     Batch
                   </SortableHeader>
+                  <SortableHeader
+                    sortDirection={getSortDirectionForDisplay("packageType")}
+                    onSort={() => handleColumnSort("packageType")}
+                    className="font-semibold text-gray-700 text-xs uppercase tracking-wide"
+                  >
+                    Type
+                  </SortableHeader>
                   <SortableHeader canSort={false} className="font-semibold text-gray-700 text-xs uppercase tracking-wide">
                     Container
                   </SortableHeader>
@@ -813,6 +899,9 @@ export function PackagingTable({
                         <Skeleton className="h-4 w-32" />
                       </TableCell>
                       <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
                         <Skeleton className="h-4 w-28" />
                       </TableCell>
                       <TableCell className="text-right">
@@ -837,9 +926,9 @@ export function PackagingTable({
                     >
                       <div className="flex flex-col items-center gap-2">
                         <Package2 className="w-8 h-8 text-muted-foreground/50" />
-                        <span>No bottling runs found</span>
+                        <span>No packaging runs found</span>
                         <span className="text-sm">
-                          Bottling runs will appear here once created
+                          Packaging runs will appear here once created
                         </span>
                       </div>
                     </TableCell>
@@ -893,6 +982,26 @@ export function PackagingTable({
                             {item.vessel.name ||
                               `Vessel ${item.vesselId.slice(0, 8)}`}
                           </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-2">
+                          {item.packageType === "keg" ? (
+                            <>
+                              <Beer className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                              <span className="text-sm font-medium text-amber-900">Keg</span>
+                            </>
+                          ) : item.packageType === "can" ? (
+                            <>
+                              <Package className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                              <span className="text-sm font-medium text-gray-900">Can</span>
+                            </>
+                          ) : (
+                            <>
+                              <Wine className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                              <span className="text-sm font-medium text-purple-900">Bottle</span>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="py-3">
@@ -955,40 +1064,58 @@ export function PackagingTable({
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => handlePasteurize(item, e)}
-                              disabled={!!item.pasteurizedAt}
-                              className={cn(
-                                item.pasteurizedAt && "opacity-50 cursor-not-allowed"
-                              )}
-                            >
-                              <Flame className="mr-2 h-4 w-4" />
-                              {item.pasteurizedAt ? "Already Pasteurized" : "Pasteurize"}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => handleLabel(item, e)}
-                              disabled={!!item.labeledAt}
-                              className={cn(
-                                item.labeledAt && "opacity-50 cursor-not-allowed"
-                              )}
-                            >
-                              <Tag className="mr-2 h-4 w-4" />
-                              {item.labeledAt ? "Already Labeled" : "Label"}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={(e) => handleMarkComplete(item, e)}
-                              disabled={item.status === "completed"}
-                              className={cn(
-                                item.status === "completed"
-                                  ? "opacity-50 cursor-not-allowed"
-                                  : "text-green-600 focus:text-green-600"
-                              )}
-                            >
-                              <CheckCircle className="mr-2 h-4 w-4" />
-                              {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
-                            </DropdownMenuItem>
+                            {item.packageType === "keg" ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => handleDistribute(item, e)}
+                                  disabled={item.status === "distributed"}
+                                  className={cn(
+                                    item.status === "distributed" && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  <Send className="mr-2 h-4 w-4" />
+                                  {item.status === "distributed" ? "Already Distributed" : "Distribute"}
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => handlePasteurize(item, e)}
+                                  disabled={!!item.pasteurizedAt}
+                                  className={cn(
+                                    item.pasteurizedAt && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  <Flame className="mr-2 h-4 w-4" />
+                                  {item.pasteurizedAt ? "Already Pasteurized" : "Pasteurize"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => handleLabel(item, e)}
+                                  disabled={!!item.labeledAt}
+                                  className={cn(
+                                    item.labeledAt && "opacity-50 cursor-not-allowed"
+                                  )}
+                                >
+                                  <Tag className="mr-2 h-4 w-4" />
+                                  {item.labeledAt ? "Already Labeled" : "Label"}
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={(e) => handleMarkComplete(item, e)}
+                                  disabled={item.status === "completed"}
+                                  className={cn(
+                                    item.status === "completed"
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : "text-green-600 focus:text-green-600"
+                                  )}
+                                >
+                                  <CheckCircle className="mr-2 h-4 w-4" />
+                                  {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1066,6 +1193,21 @@ export function PackagingTable({
           }
           unitsProduced={selectedBottleRun.unitsProduced}
           onSuccess={handlePasteurizeSuccess}
+        />
+      )}
+
+      {/* Distribute Keg Modal */}
+      {selectedKegForDistribution && (
+        <DistributeKegModal
+          open={distributeKegModalOpen}
+          onClose={handleDistributeModalClose}
+          kegFillId={selectedKegForDistribution.kegFillId}
+          kegNumber={selectedKegForDistribution.kegNumber}
+          onSuccess={() => {
+            setDistributeKegModalOpen(false);
+            setSelectedKegForDistribution(null);
+            utils.packaging.list.invalidate();
+          }}
         />
       )}
     </div>
