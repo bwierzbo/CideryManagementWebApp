@@ -11,18 +11,18 @@ import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
 
 // Lazy load heavy components
 const PackagingTable = lazy(() =>
-  import("@/components/bottles/bottle-table").then((m) => ({
+  import("@/components/packaging/bottle-table").then((m) => ({
     default: m.PackagingTable,
   })),
 );
 const PackagingFilters = lazy(() =>
-  import("@/components/bottles/bottle-filters").then((m) => ({
+  import("@/components/packaging/bottle-filters").then((m) => ({
     default: m.PackagingFilters,
   })),
 );
 
 // Types
-import type { PackagingFiltersState } from "@/components/bottles/bottle-filters";
+import type { PackagingFiltersState } from "@/components/packaging/bottle-filters";
 
 export default function PackagingPage() {
   const router = useRouter();
@@ -30,6 +30,7 @@ export default function PackagingPage() {
     dateFrom: null,
     dateTo: null,
     packageSizeML: null,
+    packageType: null,
     batchSearch: "",
     status: "active",
   });
@@ -55,7 +56,7 @@ export default function PackagingPage() {
   useEffect(() => {
     performanceMonitor.recordUserInteraction({
       type: "navigation",
-      target: "/bottles",
+      target: "/packaging",
       timestamp: performance.now(),
     });
   }, []);
@@ -91,7 +92,7 @@ export default function PackagingPage() {
 
     performanceMonitor.recordUserInteraction({
       type: "export",
-      target: "bottling-export-all",
+      target: "packaging-export-all",
       timestamp: startTime,
     });
 
@@ -99,7 +100,7 @@ export default function PackagingPage() {
       await tableData.exportCSV();
       const duration = performance.now() - startTime;
       performanceMonitor.completeUserInteraction(
-        "bottling-export-all",
+        "packaging-export-all",
         duration,
       );
     } finally {
@@ -115,7 +116,7 @@ export default function PackagingPage() {
 
     performanceMonitor.recordUserInteraction({
       type: "export",
-      target: "bottling-export-selected",
+      target: "packaging-export-selected",
       timestamp: startTime,
       metadata: { selectedCount: selectedItems.length },
     });
@@ -124,7 +125,7 @@ export default function PackagingPage() {
       await tableData.exportSelectedCSV(selectedItems);
       const duration = performance.now() - startTime;
       performanceMonitor.completeUserInteraction(
-        "bottling-export-selected",
+        "packaging-export-selected",
         duration,
       );
     } finally {
@@ -149,10 +150,10 @@ export default function PackagingPage() {
         {/* Page Header */}
         <div className="mb-5">
           <h1 className="text-2xl font-bold text-gray-900">
-            Bottling Runs
+            Packaging Runs
           </h1>
           <p className="text-gray-600 mt-1 text-sm">
-            View and manage bottling operations
+            View and manage packaging operations
           </p>
         </div>
 

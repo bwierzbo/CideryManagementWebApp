@@ -74,8 +74,8 @@ export function Navbar() {
       description: "Fermentation & Aging",
     },
     {
-      name: "Bottles",
-      href: "/bottles",
+      name: "Packaging",
+      href: "/packaging",
       icon: Package,
       description: "Bottles & Kegs",
     },

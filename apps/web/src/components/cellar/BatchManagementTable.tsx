@@ -119,7 +119,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const updateMutation = trpc.batch.update.useMutation({
     onSuccess: () => {
       utils.batch.list.invalidate();
-      utils.bottles.list.invalidate(); // Invalidate bottles list since it shows batch names
+      utils.packaging.list.invalidate(); // Invalidate bottles list since it shows batch names
       utils.dashboard.getRecentBatches.invalidate(); // Invalidate dashboard batch list
       toast({
         title: "Success",

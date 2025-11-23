@@ -119,7 +119,7 @@ export function FinishedGoodsTable({
   // Handle row click to view details
   const handleRowClick = (item: any) => {
     if (item.bottleRunId) {
-      router.push(`/bottles/${item.bottleRunId}`);
+      router.push(`/packaging/${item.bottleRunId}`);
     }
   };
 
@@ -187,7 +187,7 @@ export function FinishedGoodsTable({
                   <Wine className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                   <p className="font-medium">No finished goods in inventory</p>
                   <p className="text-sm mt-1">
-                    Complete bottling runs to create inventory items
+                    Complete packaging runs to create inventory items
                   </p>
                 </TableCell>
               </TableRow>

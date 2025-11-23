@@ -31,6 +31,7 @@ export interface PackagingFiltersState {
   dateFrom: Date | null;
   dateTo: Date | null;
   packageSizeML: number | null;
+  packageType: string | null; // Filter by package type (bottle, keg, can, or null for all)
   batchSearch: string;
   status: "active" | "completed";
 }
@@ -48,6 +49,7 @@ const defaultFilters: PackagingFiltersState = {
   dateFrom: null,
   dateTo: null,
   packageSizeML: null,
+  packageType: null, // null means "All Packaging"
   batchSearch: "",
   status: "active",
 };
@@ -72,7 +74,7 @@ export function PackagingFilters({
 
   // Get package sizes for dropdown
   const { data: packageSizes, isLoading: isLoadingPackageSizes } =
-    trpc.bottles.getPackageSizes.useQuery();
+    trpc.packaging.getPackageSizes.useQuery();
 
   // Update filters when debounced search changes
   useEffect(() => {
@@ -110,6 +112,7 @@ export function PackagingFilters({
     let count = 0;
     if (filters.dateFrom) count++;
     if (filters.dateTo) count++;
+    if (filters.packageType) count++;
     if (filters.packageSizeML) count++;
     if (filters.batchSearch.trim()) count++;
     return count;
@@ -235,6 +238,30 @@ export function PackagingFilters({
                   />
                 </div>
 
+                {/* Package Type */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">Package Type</Label>
+                  <Select
+                    value={filters.packageType || "all"}
+                    onValueChange={(value) =>
+                      handleFilterChange(
+                        "packageType",
+                        value === "all" ? null : value,
+                      )
+                    }
+                  >
+                    <SelectTrigger className="h-9 md:h-10">
+                      <SelectValue placeholder="All types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Packaging</SelectItem>
+                      <SelectItem value="bottle">Bottles Only</SelectItem>
+                      <SelectItem value="keg">Kegs Only</SelectItem>
+                      <SelectItem value="can">Cans Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Package Size */}
                 <div className="space-y-2">
                   <Label className="text-sm font-medium">Package Size</Label>
@@ -326,6 +353,23 @@ export function PackagingFilters({
                     className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
                     onClick={() => handleFilterChange("dateTo", null)}
                     aria-label="Remove date to filter"
+                  />
+                </Badge>
+              )}
+
+              {filters.packageType && (
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1 text-xs h-6"
+                >
+                  <Package className="w-3 h-3" />
+                  {filters.packageType === 'bottle' && 'Bottles Only'}
+                  {filters.packageType === 'keg' && 'Kegs Only'}
+                  {filters.packageType === 'can' && 'Cans Only'}
+                  <X
+                    className="w-3 h-3 cursor-pointer hover:text-red-500 min-w-[12px]"
+                    onClick={() => handleFilterChange("packageType", null)}
+                    aria-label="Remove package type filter"
                   />
                 </Badge>
               )}

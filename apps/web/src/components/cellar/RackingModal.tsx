@@ -31,10 +31,8 @@ import { Badge } from "@/components/ui/badge";
 
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
-  volumeAfter: z.number().positive("Volume must be positive"),
-  volumeToRack: z.number().positive("Volume to rack must be positive").optional(),
+  volumeToRack: z.number().positive("Volume to rack must be positive"),
   rackedAt: z.date(),
-  isPartialRack: z.boolean().optional(),
 });
 
 type RackingForm = z.infer<typeof rackingSchema>;
@@ -61,8 +59,8 @@ export function RackingModal({
   sourceVesselCapacityUnit,
 }: RackingModalProps) {
   const utils = trpc.useUtils();
-  const [calculatedLoss, setCalculatedLoss] = useState(0);
-  const [lossPercentage, setLossPercentage] = useState(0);
+  const [remainingVolume, setRemainingVolume] = useState(0);
+  const [isFullRack, setIsFullRack] = useState(false);
   const [selectedVesselHasBatch, setSelectedVesselHasBatch] = useState(false);
   const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<string | null>(null);
   const [vesselSearchQuery, setVesselSearchQuery] = useState("");
@@ -93,13 +91,11 @@ export function RackingModal({
     resolver: zodResolver(rackingSchema),
     defaultValues: {
       rackedAt: new Date(),
-      isPartialRack: false,
+      volumeToRack: undefined,
     },
   });
 
-  const volumeAfter = watch("volumeAfter");
   const volumeToRack = watch("volumeToRack");
-  const isPartialRack = watch("isPartialRack");
   const destinationVesselId = watch("destinationVesselId");
   const rackedAt = watch("rackedAt");
 
@@ -121,52 +117,38 @@ export function RackingModal({
     }
   }, [destinationVesselId, vesselsData]);
 
-  // Calculate loss whenever volumeAfter or volumeToRack changes
+  // Calculate remaining volume and determine if full rack
   useEffect(() => {
-    if (volumeAfter !== undefined) {
-      // Convert volumeAfter to liters for calculation (using source vessel's unit)
-      const afterL = sourceVesselCapacityUnit === "gal"
-        ? convertVolume(volumeAfter, "gal", "L")
-        : volumeAfter;
+    if (volumeToRack !== undefined && volumeToRack > 0) {
+      // Convert volumeToRack to liters for calculation
+      const toRackL = sourceVesselCapacityUnit === "gal"
+        ? convertVolume(volumeToRack, "gal", "L")
+        : volumeToRack;
 
-      let lossL: number;
-      let lossPercent: number;
+      const remainingL = currentVolumeL - toRackL;
+      setRemainingVolume(remainingL);
 
-      if (isPartialRack && volumeToRack !== undefined) {
-        // Partial rack: loss = volumeToRack - volumeAfter
-        const toRackL = sourceVesselCapacityUnit === "gal"
-          ? convertVolume(volumeToRack, "gal", "L")
-          : volumeToRack;
-
-        lossL = toRackL - afterL;
-        lossPercent = (lossL / toRackL) * 100;
-      } else {
-        // Full rack: loss = currentVolume - volumeAfter
-        lossL = currentVolumeL - afterL;
-        lossPercent = (lossL / currentVolumeL) * 100;
-      }
-
-      setCalculatedLoss(lossL);
-      setLossPercentage(lossPercent);
+      // Auto-determine: if remaining < 1L, treat as full rack (remainder is loss)
+      setIsFullRack(remainingL < 1.0);
     } else {
-      setCalculatedLoss(0);
-      setLossPercentage(0);
+      setRemainingVolume(0);
+      setIsFullRack(false);
     }
-  }, [volumeAfter, volumeToRack, isPartialRack, sourceVesselCapacityUnit, currentVolumeL]);
+  }, [volumeToRack, sourceVesselCapacityUnit, currentVolumeL]);
 
   // Reset form when modal closes
   useEffect(() => {
     if (!open) {
       reset();
-      setCalculatedLoss(0);
-      setLossPercentage(0);
+      setRemainingVolume(0);
+      setIsFullRack(false);
       setVesselSearchQuery("");
     } else {
-      // Set initial volume to current volume in source vessel's unit (no loss)
+      // Set initial volume to rack as current volume
       const initialVolume = sourceVesselCapacityUnit === "gal"
         ? convertVolume(currentVolumeL, "L", "gal")
         : currentVolumeL;
-      setValue("volumeAfter", initialVolume);
+      setValue("volumeToRack", initialVolume);
       setValue("rackedAt", new Date());
     }
   }, [open, reset, setValue, currentVolumeL, sourceVesselCapacityUnit]);
@@ -193,17 +175,13 @@ export function RackingModal({
 
   const onSubmit = (data: RackingForm) => {
     // Convert volumeToRack to liters for backend
-    const volumeToRackL = data.isPartialRack && data.volumeToRack
-      ? sourceVesselCapacityUnit === "gal"
-        ? convertVolume(data.volumeToRack, "gal", "L")
-        : data.volumeToRack
-      : undefined;
+    const volumeToRackL = sourceVesselCapacityUnit === "gal"
+      ? convertVolume(data.volumeToRack, "gal", "L")
+      : data.volumeToRack;
 
     rackBatchMutation.mutate({
       batchId,
       destinationVesselId: data.destinationVesselId,
-      volumeAfter: data.volumeAfter,
-      volumeAfterUnit: sourceVesselCapacityUnit, // Always use source vessel's unit
       volumeToRack: volumeToRackL,
       rackedAt: data.rackedAt,
     });
@@ -366,117 +344,61 @@ export function RackingModal({
             )}
           </div>
 
-          {/* Partial Rack Toggle (disabled for rack-to-self) */}
-          {!isRackToSelf && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isPartialRack"
-                  checked={isPartialRack}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setValue("isPartialRack", checked);
-                    if (!checked) {
-                      setValue("volumeToRack", undefined);
-                    }
-                  }}
-                  className="h-4 w-4"
-                />
-                <Label htmlFor="isPartialRack" className="cursor-pointer">
-                  Partial Rack (split batch)
-                </Label>
-              </div>
-              {isPartialRack && (
-                <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-800">
-                    A portion of the batch will be racked to the destination vessel, creating a new child batch.
-                    The remaining volume will stay in the source vessel.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Volume to Rack (for partial racking) */}
-          {isPartialRack && !isRackToSelf && (
-            <div className="space-y-2">
-              <Label htmlFor="volumeToRack">
-                Volume to Rack ({sourceVesselCapacityUnit}) <span className="text-red-500">*</span>
-              </Label>
-              <p className="text-xs text-gray-500">
-                Amount to transfer to destination vessel (before loss)
-              </p>
-              <Input
-                type="number"
-                step="0.01"
-                value={volumeToRack || ""}
-                onChange={(e) => setValue("volumeToRack", parseFloat(e.target.value) || 0)}
-                placeholder={`Enter volume in ${sourceVesselCapacityUnit}`}
-                className="w-full"
-              />
-              {errors.volumeToRack && (
-                <p className="text-sm text-red-500">{errors.volumeToRack.message}</p>
-              )}
-              {volumeToRack && volumeToRack > 0 && (
-                <p className="text-xs text-blue-600">
-                  Remaining in source: {sourceVesselCapacityUnit === "gal"
-                    ? `${((currentVolumeL - convertVolume(volumeToRack, "gal", "L")) / 3.78541).toFixed(1)} gal`
-                    : `${(currentVolumeL - volumeToRack).toFixed(1)} L`
-                  }
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Volume After Racking */}
+          {/* Volume to Rack */}
           <div className="space-y-2">
-            <Label htmlFor="volumeAfter">
-              Volume After Racking ({sourceVesselCapacityUnit}) <span className="text-red-500">*</span>
+            <Label htmlFor="volumeToRack">
+              Volume to Rack ({sourceVesselCapacityUnit}) <span className="text-red-500">*</span>
             </Label>
             <p className="text-xs text-gray-500">
-              {isPartialRack
-                ? "Volume that arrives in destination vessel (after loss during racking)"
-                : "Volume remaining after loss (entire batch moves for full rack)"
-              }
+              Amount to transfer to destination vessel
             </p>
             <Input
               type="number"
               step="0.01"
-              value={volumeAfter || ""}
-              onChange={(e) => setValue("volumeAfter", parseFloat(e.target.value) || 0)}
+              value={volumeToRack || ""}
+              onChange={(e) => setValue("volumeToRack", parseFloat(e.target.value) || 0)}
               placeholder={`Enter volume in ${sourceVesselCapacityUnit}`}
               className="w-full"
             />
-            {errors.volumeAfter && (
-              <p className="text-sm text-red-500">{errors.volumeAfter.message}</p>
+            {errors.volumeToRack && (
+              <p className="text-sm text-red-500">{errors.volumeToRack.message}</p>
             )}
           </div>
 
-          {/* Calculated Volume Loss Display */}
-          {volumeAfter !== undefined && calculatedLoss > 0 && (
+          {/* Remaining Volume & Rack Type Display */}
+          {volumeToRack && volumeToRack > 0 && (
             <div className={`p-4 rounded-lg border ${
-              lossPercentage > 10
-                ? "bg-amber-50 border-amber-200"
+              isFullRack
+                ? "bg-purple-50 border-purple-200"
                 : "bg-blue-50 border-blue-200"
             }`}>
-              <div className="flex items-start gap-2">
-                {lossPercentage > 10 && (
-                  <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <p className="text-sm font-medium">
-                    Calculated Volume Loss: {sourceVesselCapacityUnit === "gal"
-                      ? `${(calculatedLoss / 3.78541).toFixed(1)} gal`
-                      : `${calculatedLoss.toFixed(1)} L`
-                    }
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">
+                    {isFullRack ? "Full Rack" : "Partial Rack"}
+                  </span>
+                  <Badge variant={isFullRack ? "default" : "secondary"}>
+                    {isFullRack ? "Entire Batch" : "Split Batch"}
+                  </Badge>
+                </div>
+                <div className="text-xs space-y-1">
+                  <p>
+                    <span className="text-gray-600">Remaining in source:</span>{" "}
+                    <span className="font-medium">
+                      {sourceVesselCapacityUnit === "gal"
+                        ? `${(remainingVolume / 3.78541).toFixed(2)} gal`
+                        : `${remainingVolume.toFixed(2)} L`
+                      }
+                    </span>
                   </p>
-                  <p className="text-xs mt-1">
-                    Loss percentage: {lossPercentage.toFixed(1)}%
-                  </p>
-                  {lossPercentage > 10 && (
-                    <p className="text-xs text-amber-700 mt-1">
-                      ⚠️ Loss is higher than typical (5-10%). Please verify your measurements.
+                  {isFullRack && remainingVolume > 0 && (
+                    <p className="text-purple-700">
+                      ℹ️ Remainder &lt; 1L will be treated as loss
+                    </p>
+                  )}
+                  {!isFullRack && (
+                    <p className="text-blue-700">
+                      ℹ️ Remaining volume will stay in source vessel
                     </p>
                   )}
                 </div>
@@ -485,14 +407,14 @@ export function RackingModal({
           )}
 
           {/* Capacity Check (only for different vessels) */}
-          {!isRackToSelf && selectedVessel && volumeAfter && (
+          {!isRackToSelf && selectedVessel && volumeToRack && (
             <div className={`p-3 rounded-lg ${
-              volumeAfter > parseFloat(selectedVessel.vesselCapacity || "0")
+              volumeToRack > parseFloat(selectedVessel.vesselCapacity || "0")
                 ? "bg-red-50 border border-red-200"
                 : "bg-green-50 border border-green-200"
             }`}>
               <p className="text-sm font-medium">
-                {volumeAfter > parseFloat(selectedVessel.vesselCapacity || "0")
+                {volumeToRack > parseFloat(selectedVessel.vesselCapacity || "0")
                   ? "⚠️ Volume exceeds vessel capacity!"
                   : "✓ Volume fits in vessel"}
               </p>

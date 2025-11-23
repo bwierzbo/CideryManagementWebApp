@@ -330,9 +330,8 @@ export async function getBottleRunsOptimized(
     previousCursor = generateCursor(firstItem.packagedAt, firstItem.id);
   }
 
-  // Format results with source discriminator
+  // Format results
   const formattedResults: BottleRunListItem[] = results.map((item) => ({
-    source: 'bottle_run' as const,
     ...item,
     volumeTakenL: parseFloat(item.volumeTaken?.toString() || "0"),
     lossL: parseFloat(item.loss?.toString() || "0"),
@@ -443,7 +442,6 @@ export async function getBatchBottleRuns(
     }
 
     grouped.get(item.batchId)!.push({
-      source: 'bottle_run' as const,
       ...item,
       volumeTakenL: parseFloat(item.volumeTaken?.toString() || "0"),
       lossL: parseFloat(item.loss?.toString() || "0"),
@@ -590,7 +588,3 @@ export async function measureQuery<T>(
 
   return { result, metrics };
 }
-
-
-// Re-export unified packaging query
-export * from "./unified-packaging-query";

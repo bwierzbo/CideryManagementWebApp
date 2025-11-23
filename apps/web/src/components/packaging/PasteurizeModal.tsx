@@ -20,7 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { Flame, Info, Loader2 } from "lucide-react";
 
 const pasteurizeSchema = z.object({
-  pasteurizedAt: z.date(),
+  pasteurizedAt: z.string(),
   temperatureCelsius: z.number().min(0, "Temperature must be positive").max(100, "Temperature must be at most 100°C"),
   timeMinutes: z.number().positive("Time must be positive").max(120, "Time must be at most 120 minutes"),
   notes: z.string().optional(),
@@ -97,7 +97,7 @@ export function PasteurizeModal({
   } = useForm<PasteurizeForm>({
     resolver: zodResolver(pasteurizeSchema),
     defaultValues: {
-      pasteurizedAt: new Date(),
+      pasteurizedAt: new Date().toISOString().split('T')[0],
       temperatureCelsius: 72,
       timeMinutes: 15,
     },
@@ -115,20 +115,20 @@ export function PasteurizeModal({
   useEffect(() => {
     if (open) {
       reset({
-        pasteurizedAt: new Date(),
+        pasteurizedAt: new Date().toISOString().split('T')[0],
         temperatureCelsius: 72,
         timeMinutes: 15,
       });
     }
   }, [open, reset]);
 
-  const pasteurizeMutation = trpc.bottles.pasteurize.useMutation({
+  const pasteurizeMutation = trpc.packaging.pasteurize.useMutation({
     onSuccess: () => {
       toast({
         title: "Batch Pasteurized",
         description: `Successfully recorded pasteurization for ${bottleRunName} with ${calculatedPU} PU`,
       });
-      utils.bottles.list.invalidate();
+      utils.packaging.list.invalidate();
       onSuccess();
       onClose();
     },
@@ -143,10 +143,12 @@ export function PasteurizeModal({
 
   const onSubmit = (data: PasteurizeForm) => {
     const pu = calculatePU(data.temperatureCelsius, data.timeMinutes);
+    // Parse date at noon UTC to avoid timezone issues
+    const pasteurizedAt = new Date(`${data.pasteurizedAt}T12:00:00.000Z`);
 
     pasteurizeMutation.mutate({
       runId: bottleRunId,
-      pasteurizedAt: data.pasteurizedAt,
+      pasteurizedAt: pasteurizedAt,
       temperatureCelsius: data.temperatureCelsius,
       timeMinutes: data.timeMinutes,
       pasteurizationUnits: pu,
@@ -168,7 +170,7 @@ export function PasteurizeModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Bottle Run Info */}
+          {/* Packaging Run Info */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-600">Units Produced:</span>
@@ -186,8 +188,7 @@ export function PasteurizeModal({
             <Input
               id="pasteurizedAt"
               type="date"
-              {...register("pasteurizedAt", { valueAsDate: true })}
-              defaultValue={new Date().toISOString().split('T')[0]}
+              {...register("pasteurizedAt")}
             />
             {errors.pasteurizedAt && (
               <p className="text-sm text-red-500">{errors.pasteurizedAt.message}</p>

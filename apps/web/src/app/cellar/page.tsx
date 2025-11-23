@@ -81,17 +81,15 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { BatchManagementTable } from "@/components/cellar/BatchManagementTable";
 import { BatchHistoryModal } from "@/components/cellar/BatchHistoryModal";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
-import { BottleModal } from "@/components/bottles/bottle-modal";
-import { FillKegModal } from "@/components/kegs/FillKegModal";
+import { UnifiedPackagingModal } from "@/components/packaging/UnifiedPackagingModal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
 import { CleanTankModal } from "@/components/cellar/CleanTankModal";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
-import { KegsManagement } from "@/components/kegs/KegsManagement";
+import { KegsManagement } from "@/components/packaging/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 
 // Form schemas
@@ -920,18 +918,9 @@ function VesselMap() {
   const [showBatchHistory, setShowBatchHistory] = useState(false);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
 
-  // Bottle modal state
-  const [showBottleModal, setShowBottleModal] = useState(false);
-  const [selectedVesselForBottling, setSelectedVesselForBottling] = useState<{
-    id: string;
-    name: string;
-    batchId: string;
-    currentVolumeL: number;
-  } | null>(null);
-
-  // Keg fill modal state
-  const [showFillKegModal, setShowFillKegModal] = useState(false);
-  const [selectedVesselForKegging, setSelectedVesselForKegging] = useState<{
+  // Unified packaging modal state
+  const [showPackagingModal, setShowPackagingModal] = useState(false);
+  const [selectedVesselForPackaging, setSelectedVesselForPackaging] = useState<{
     id: string;
     name: string;
     batchId: string;
@@ -979,18 +968,23 @@ function VesselMap() {
     maxPressure: number;
   } | null>(null);
 
+  // Set to Aging modal state
+  const [showAgingModal, setShowAgingModal] = useState(false);
+  const [selectedVesselForAging, setSelectedVesselForAging] = useState<{
+    id: string;
+    name: string;
+    batchId: string;
+    batchName: string;
+  } | null>(null);
+  const [agingDateStr, setAgingDateStr] = useState<string>("");
+
   // CO₂ unit toggle state (volumes vs g/L)
   const [co2Unit, setCo2Unit] = useState<"vol" | "gL">("vol");
 
   // Memoized modal close handlers to prevent infinite loops
-  const handleCloseBottleModal = useCallback(() => {
-    setShowBottleModal(false);
-    setSelectedVesselForBottling(null);
-  }, []);
-
-  const handleCloseFillKegModal = useCallback(() => {
-    setShowFillKegModal(false);
-    setSelectedVesselForKegging(null);
+  const handleClosePackagingModal = useCallback(() => {
+    setShowPackagingModal(false);
+    setSelectedVesselForPackaging(null);
   }, []);
 
   const handleCloseFilterModal = useCallback(() => {
@@ -1036,6 +1030,27 @@ function VesselMap() {
       toast({
         title: "Tank Purged",
         description: "The tank has been purged and the batch removed.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateBatchStatusMutation = trpc.batch.update.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.vessel.list.invalidate(),
+        utils.vessel.liquidMap.invalidate(),
+        utils.batch.list.invalidate(),
+      ]);
+      toast({
+        title: "Batch Status Updated",
+        description: "Batch status has been updated successfully.",
       });
     },
     onError: (error) => {
@@ -1202,6 +1217,38 @@ function VesselMap() {
     setShowRackingModal(true);
   };
 
+  const handleSetToAging = (vesselId: string) => {
+    const vessel = vesselListQuery.data?.vessels?.find(
+      (v) => v.id === vesselId,
+    );
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
+    const batchName = liquidMapVessel?.batchCustomName || liquidMapVessel?.batchNumber || "Unnamed Batch";
+
+    if (!batchId) {
+      toast({
+        title: "Cannot Update Status",
+        description: "No batch found in this vessel",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Open modal to collect aging date
+    setSelectedVesselForAging({
+      id: vesselId,
+      name: vessel?.name || 'Unnamed Vessel',
+      batchId: batchId,
+      batchName: batchName,
+    });
+    // Default to today in YYYY-MM-DD format
+    const today = new Date();
+    setAgingDateStr(today.toISOString().split('T')[0]);
+    setShowAgingModal(true);
+  };
+
   const handleTankMeasurement = (vesselId: string) => {
     const liquidMapVessel = liquidMapQuery.data?.vessels.find(
       (v) => v.vesselId === vesselId,
@@ -1249,7 +1296,7 @@ function VesselMap() {
     }
   };
 
-  const handleBottle = (vesselId: string) => {
+  const handlePackage = (vesselId: string) => {
     const vessel = vesselListQuery.data?.vessels?.find(
       (v) => v.id === vesselId,
     );
@@ -1260,7 +1307,7 @@ function VesselMap() {
 
     if (!vessel || !batchId) {
       toast({
-        title: "Cannot Bottle",
+        title: "Cannot Package",
         description: "This vessel doesn't have an active batch.",
         variant: "destructive",
       });
@@ -1276,62 +1323,20 @@ function VesselMap() {
 
     if (currentVolumeL <= 0) {
       toast({
-        title: "Cannot Bottle",
+        title: "Cannot Package",
         description: "This vessel is empty.",
         variant: "destructive",
       });
       return;
     }
 
-    setSelectedVesselForBottling({
+    setSelectedVesselForPackaging({
       id: vesselId,
       name: vessel.name || "Unnamed Vessel",
       batchId,
       currentVolumeL,
     });
-    setShowBottleModal(true);
-  };
-
-  const handleFillKeg = (vesselId: string) => {
-    const vessel = vesselListQuery.data?.vessels?.find(
-      (v) => v.id === vesselId,
-    );
-    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
-      (v) => v.vesselId === vesselId,
-    );
-    const batchId = liquidMapVessel?.batchId;
-
-    if (!vessel || !batchId) {
-      toast({
-        title: "Cannot Fill Kegs",
-        description: "This vessel doesn't have an active batch.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const currentVolumeL = liquidMapVessel?.currentVolume
-      ? parseFloat(liquidMapVessel.currentVolume.toString())
-      : liquidMapVessel?.applePressRunVolume
-        ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
-        : 0;
-
-    if (currentVolumeL <= 0) {
-      toast({
-        title: "Cannot Fill Kegs",
-        description: "This vessel is empty.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setSelectedVesselForKegging({
-      id: vesselId,
-      name: vessel.name || "Unnamed Vessel",
-      batchId,
-      currentVolumeL,
-    });
-    setShowFillKegModal(true);
+    setShowPackagingModal(true);
   };
 
   const handleFilter = (vesselId: string) => {
@@ -1578,19 +1583,22 @@ function VesselMap() {
                                 </div>
                               );
                             }
-                            // Calculate from SG if available
+                            // Calculate from SG only if it's different from OG (fermentation has progressed)
                             if (measurement.specificGravity && og) {
                               const fg = parseFloat(String(measurement.specificGravity));
                               const ogNum = parseFloat(String(og));
-                              const estimatedAbv = (ogNum - fg) * 131.25;
-                              return (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600">Est. ABV:</span>
-                                  <span className="font-medium">
-                                    {estimatedAbv.toFixed(2)}%
-                                  </span>
-                                </div>
-                              );
+                              // Only show calculated ABV if SG has dropped (avoid 0% when only OG exists)
+                              if (fg < ogNum) {
+                                const estimatedAbv = (ogNum - fg) * 131.25;
+                                return (
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">Est. ABV:</span>
+                                    <span className="font-medium">
+                                      {estimatedAbv.toFixed(2)}%
+                                    </span>
+                                  </div>
+                                );
+                              }
                             }
                           }
 
@@ -1692,6 +1700,7 @@ function VesselMap() {
                 </div>
 
                 <div className="flex space-x-2">
+                  {/* Batch Actions */}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -1722,20 +1731,22 @@ function VesselMap() {
                         </DropdownMenuItem>
                       ) : (
                         <>
-                          <DropdownMenuItem
-                            onClick={() => setEditingVesselId(vessel.id)}
-                          >
-                            <Settings className="w-3 h-3 mr-2" />
-                            Edit Tank
-                          </DropdownMenuItem>
                           {/* Batch-specific actions based on fermentation stage */}
                           {liquidMapVessel?.batchStatus === "fermentation" && (
-                            <DropdownMenuItem
-                              onClick={() => handleRack(vessel.id)}
-                            >
-                              <FlaskConical className="w-3 h-3 mr-2" />
-                              Rack Batch
-                            </DropdownMenuItem>
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => handleRack(vessel.id)}
+                              >
+                                <FlaskConical className="w-3 h-3 mr-2" />
+                                Rack Batch
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleSetToAging(vessel.id)}
+                              >
+                                <Clock className="w-3 h-3 mr-2" />
+                                Set to Aging
+                              </DropdownMenuItem>
+                            </>
                           )}
                           {liquidMapVessel?.batchStatus === "aging" && (
                             <>
@@ -1758,22 +1769,13 @@ function VesselMap() {
                                 Filter
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={() => handleBottle(vessel.id)}
-                                disabled={
-                                  !liquidMapVessel?.batchId || currentVolume <= 0
-                                }
-                              >
-                                <Wine className="w-3 h-3 mr-2" />
-                                Bottle
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleFillKeg(vessel.id)}
+                                onClick={() => handlePackage(vessel.id)}
                                 disabled={
                                   !liquidMapVessel?.batchId || currentVolume <= 0
                                 }
                               >
                                 <Package className="w-3 h-3 mr-2" />
-                                Fill Kegs
+                                Package
                               </DropdownMenuItem>
                             </>
                           )}
@@ -1807,27 +1809,58 @@ function VesselMap() {
                             <ArrowRight className="w-3 h-3 mr-2" />
                             Transfer to Another Tank
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => handlePurgeTank(vessel.id, vessel.name)}
-                            disabled={!liquidMapVessel?.batchId}
-                            className="text-orange-600"
-                          >
-                            <Droplets className="w-3 h-3 mr-1" />
-                            Purge Tank
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() =>
-                              handleDeleteClick(vessel.id, vessel.name)
-                            }
-                            disabled={vessel.status === "available"}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="w-3 h-3 mr-1" />
-                            Delete
-                          </DropdownMenuItem>
                         </>
                       )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Tank Management Settings */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="px-2"
+                      >
+                        <Settings className="w-3 h-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      className="w-48"
+                      sideOffset={5}
+                    >
+                      <DropdownMenuLabel>Tank Management</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+
+                      <DropdownMenuItem
+                        onClick={() => setEditingVesselId(vessel.id)}
+                      >
+                        <Settings className="w-3 h-3 mr-2" />
+                        Edit Tank
+                      </DropdownMenuItem>
+
+                      <DropdownMenuSeparator />
+
+                      <DropdownMenuItem
+                        onClick={() => handlePurgeTank(vessel.id, vessel.name)}
+                        disabled={!liquidMapVessel?.batchId}
+                        className="text-orange-600"
+                      >
+                        <Droplets className="w-3 h-3 mr-2" />
+                        Purge Tank
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() =>
+                          handleDeleteClick(vessel.id, vessel.name)
+                        }
+                        disabled={vessel.status === "available"}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="w-3 h-3 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1954,27 +1987,17 @@ function VesselMap() {
           />
         )}
 
-        {/* Bottle Modal */}
-        {selectedVesselForBottling && (
-          <BottleModal
-            open={showBottleModal}
-            onClose={handleCloseBottleModal}
-            vesselId={selectedVesselForBottling.id}
-            vesselName={selectedVesselForBottling.name}
-            batchId={selectedVesselForBottling.batchId}
-            currentVolumeL={selectedVesselForBottling.currentVolumeL}
+        {/* Unified Packaging Modal (Bottles/Cans or Kegs) */}
+        {selectedVesselForPackaging && (
+          <UnifiedPackagingModal
+            open={showPackagingModal}
+            onClose={handleClosePackagingModal}
+            vesselId={selectedVesselForPackaging.id}
+            vesselName={selectedVesselForPackaging.name}
+            batchId={selectedVesselForPackaging.batchId}
+            currentVolumeL={selectedVesselForPackaging.currentVolumeL}
           />
         )}
-
-        {/* Fill Keg Modal */}
-        <FillKegModal
-          open={showFillKegModal && !!selectedVesselForKegging}
-          onClose={handleCloseFillKegModal}
-          vesselId={selectedVesselForKegging?.id || ""}
-          vesselName={selectedVesselForKegging?.name || ""}
-          batchId={selectedVesselForKegging?.batchId || ""}
-          currentVolumeL={selectedVesselForKegging?.currentVolumeL || 0}
-        />
 
         {/* Filter Modal */}
         {selectedVesselForFiltering && (
@@ -2044,6 +2067,80 @@ function VesselMap() {
           />
         )}
 
+        {/* Set to Aging Modal */}
+        {selectedVesselForAging && (
+          <Dialog
+            open={showAgingModal}
+            onOpenChange={(isOpen) => {
+              if (!isOpen) {
+                setShowAgingModal(false);
+                setSelectedVesselForAging(null);
+                setAgingDateStr("");
+              }
+            }}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Set Batch to Aging</DialogTitle>
+                <DialogDescription>
+                  Set {selectedVesselForAging.batchName} to aging status and specify when aging began
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="aging-date">Aging Start Date</Label>
+                  <Input
+                    id="aging-date"
+                    type="date"
+                    value={agingDateStr}
+                    onChange={(e) => setAgingDateStr(e.target.value)}
+                    max={new Date().toISOString().split('T')[0]}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    This date will be recorded as when the batch transitioned to the aging phase
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowAgingModal(false);
+                    setSelectedVesselForAging(null);
+                    setAgingDateStr("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (!agingDateStr) {
+                      toast({
+                        title: "Date Required",
+                        description: "Please select an aging start date",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    // Parse date at noon UTC to avoid timezone issues
+                    const startDate = new Date(`${agingDateStr}T12:00:00.000Z`);
+                    updateBatchStatusMutation.mutate({
+                      batchId: selectedVesselForAging.batchId,
+                      status: "aging",
+                      startDate: startDate,
+                    });
+                    setShowAgingModal(false);
+                    setSelectedVesselForAging(null);
+                    setAgingDateStr("");
+                  }}
+                >
+                  Set to Aging
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
         {/* Edit Tank Modal */}
         <Dialog
           open={!!editingVesselId}
@@ -2067,11 +2164,6 @@ function VesselMap() {
       </CardContent>
     </Card>
   );
-}
-
-function BatchDetails() {
-  // Replace the mock batch timeline with the full BatchManagementTable component
-  return <BatchManagementTable />;
 }
 
 function AddMeasurement() {
@@ -2249,7 +2341,7 @@ function AddMeasurement() {
 }
 
 export default function CellarPage() {
-  const [activeTab, setActiveTab] = useState<"vessels" | "batches" | "kegs">("vessels");
+  const [activeTab, setActiveTab] = useState<"vessels" | "kegs">("vessels");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2268,7 +2360,6 @@ export default function CellarPage() {
         <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg w-fit">
           {[
             { key: "vessels", label: "Vessel Map", icon: Beaker },
-            { key: "batches", label: "Batch Details", icon: Activity },
             { key: "kegs", label: "Keg Tracking", icon: Wine },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -2292,7 +2383,6 @@ export default function CellarPage() {
         {/* Tab Content */}
         <div className="space-y-8">
           {activeTab === "vessels" && <VesselMap />}
-          {activeTab === "batches" && <BatchDetails />}
           {activeTab === "kegs" && <KegsManagement />}
         </div>
       </main>

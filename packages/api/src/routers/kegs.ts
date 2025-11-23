@@ -167,7 +167,7 @@ export const kegsRouter = router({
   /**
    * List all kegs with filters
    */
-  listKegs: createRbacProcedure("list", "batch")
+  listKegs: createRbacProcedure("list", "package")
     .input(listKegsSchema)
     .query(async ({ input, ctx }) => {
       try {
@@ -294,7 +294,7 @@ export const kegsRouter = router({
   /**
    * Get detailed keg information with fill history
    */
-  getKegDetails: createRbacProcedure("list", "batch")
+  getKegDetails: createRbacProcedure("list", "package")
     .input(z.object({ kegId: z.string().uuid() }))
     .query(async ({ input }) => {
       try {
@@ -550,7 +550,7 @@ export const kegsRouter = router({
   /**
    * Get available kegs for filling
    */
-  getAvailableKegs: createRbacProcedure("list", "batch").query(
+  getAvailableKegs: createRbacProcedure("list", "package").query(
     async () => {
       try {
         const availableKegs = await db
@@ -586,7 +586,7 @@ export const kegsRouter = router({
   /**
    * Create a new keg asset
    */
-  createKeg: createRbacProcedure("create", "batch")
+  createKeg: createRbacProcedure("create", "package")
     .input(createKegSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -640,7 +640,7 @@ export const kegsRouter = router({
   /**
    * Update keg details
    */
-  updateKeg: createRbacProcedure("update", "batch")
+  updateKeg: createRbacProcedure("update", "package")
     .input(updateKegSchema)
     .mutation(async ({ input }) => {
       try {
@@ -720,7 +720,7 @@ export const kegsRouter = router({
   /**
    * Delete (retire) a keg
    */
-  deleteKeg: createRbacProcedure("delete", "batch")
+  deleteKeg: createRbacProcedure("delete", "package")
     .input(z.object({ kegId: z.string().uuid() }))
     .mutation(async ({ input }) => {
       try {
@@ -767,7 +767,7 @@ export const kegsRouter = router({
   /**
    * Fill kegs from vessel
    */
-  fillKegs: createRbacProcedure("create", "batch")
+  fillKegs: createRbacProcedure("create", "package")
     .input(fillKegsSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -915,7 +915,7 @@ export const kegsRouter = router({
   /**
    * Mark keg fill as distributed
    */
-  distributeKegFill: createRbacProcedure("update", "batch")
+  distributeKegFill: createRbacProcedure("update", "package")
     .input(distributeKegFillSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -976,7 +976,7 @@ export const kegsRouter = router({
   /**
    * Mark keg fill as returned
    */
-  returnKegFill: createRbacProcedure("update", "batch")
+  returnKegFill: createRbacProcedure("update", "package")
     .input(returnKegFillSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -1036,7 +1036,7 @@ export const kegsRouter = router({
   /**
    * Void a keg fill
    */
-  voidKegFill: createRbacProcedure("update", "batch")
+  voidKegFill: createRbacProcedure("update", "package")
     .input(voidKegFillSchema)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -1089,7 +1089,7 @@ export const kegsRouter = router({
   /**
    * Delete a keg fill (hard delete)
    */
-  deleteKegFill: createRbacProcedure("delete", "batch")
+  deleteKegFill: createRbacProcedure("delete", "package")
     .input(z.object({ kegFillId: z.string().uuid() }))
     .mutation(async ({ input }) => {
       try {
@@ -1143,10 +1143,70 @@ export const kegsRouter = router({
     }),
 
   /**
+   * Clean a keg (transition from cleaning to available status)
+   */
+  cleanKeg: createRbacProcedure("update", "package")
+    .input(
+      z.object({
+        kegId: z.string().uuid(),
+        cleanedAt: z
+          .date()
+          .or(z.string().transform((val) => new Date(val)))
+          .optional(),
+        notes: z.string().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        // Verify keg exists and is in cleaning status
+        const [keg] = await db
+          .select({ id: kegs.id, status: kegs.status, kegNumber: kegs.kegNumber })
+          .from(kegs)
+          .where(and(eq(kegs.id, input.kegId), isNull(kegs.deletedAt)))
+          .limit(1);
+
+        if (!keg) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Keg not found",
+          });
+        }
+
+        if (keg.status !== "cleaning") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Only kegs with cleaning status can be cleaned",
+          });
+        }
+
+        // Update keg status to available
+        await db
+          .update(kegs)
+          .set({
+            status: "available",
+            updatedAt: new Date(),
+          })
+          .where(eq(kegs.id, input.kegId));
+
+        return {
+          success: true,
+          message: `Keg ${keg.kegNumber} is now available`,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error cleaning keg:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to clean keg",
+        });
+      }
+    }),
+
+  /**
    * Get detailed information about a specific keg fill
    * Returns full fill details with batch composition, keg info, and history
    */
-  getKegFillDetails: createRbacProcedure("list", "batch")
+  getKegFillDetails: createRbacProcedure("list", "package")
     .input(z.string().uuid())
     .query(async ({ input: fillId }) => {
       try {

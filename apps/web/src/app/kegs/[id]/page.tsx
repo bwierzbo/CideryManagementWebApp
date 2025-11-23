@@ -36,7 +36,7 @@ import { trpc } from "@/utils/trpc";
 import { format } from "date-fns";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
-import { LabelComplianceCard } from "@/components/bottles/LabelComplianceCard";
+import { LabelComplianceCard } from "@/components/packaging/LabelComplianceCard";
 
 const KEG_STATUS_CONFIG = {
   available: {
@@ -86,7 +86,7 @@ export default function KegDetailPage() {
   const router = useRouter();
   const kegId = params.id as string;
 
-  const { data, isLoading, error } = trpc.kegs.getKegDetails.useQuery(
+  const { data, isLoading, error } = trpc.packaging.kegs.getKegDetails.useQuery(
     { kegId },
     { enabled: !!kegId }
   );

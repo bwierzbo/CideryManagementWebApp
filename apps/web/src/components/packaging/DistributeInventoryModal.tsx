@@ -101,12 +101,14 @@ export function DistributeInventoryModal({
       return;
     }
 
+    // Parse date at noon UTC to avoid timezone issues
+    const distributionDate = new Date(`${data.distributionDate}T12:00:00.000Z`);
     distributeMutation.mutate({
       inventoryItemId,
       distributionLocation: data.distributionLocation,
       quantityDistributed: data.quantityDistributed,
       pricePerUnit: data.pricePerUnit,
-      distributionDate: new Date(data.distributionDate).toISOString(),
+      distributionDate: distributionDate.toISOString(),
       notes: data.notes,
     });
   };

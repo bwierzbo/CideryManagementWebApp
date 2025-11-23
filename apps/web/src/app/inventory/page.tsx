@@ -38,8 +38,8 @@ import { AdditivesInventoryTable } from "@/components/inventory/AdditivesInvento
 import { JuiceInventoryTable } from "@/components/inventory/JuiceInventoryTable";
 import { PackagingInventoryTable } from "@/components/inventory/PackagingInventoryTable";
 import { PurchaseOrdersTable } from "@/components/inventory/PurchaseOrdersTable";
-import { PackagingTable as BottleTable } from "@/components/bottles/bottle-table";
-import { FinishedGoodsTable } from "@/components/bottles/FinishedGoodsTable";
+import { PackagingTable as BottleTable } from "@/components/packaging/bottle-table";
+import { FinishedGoodsTable } from "@/components/packaging/FinishedGoodsTable";
 import { InventoryFAB } from "@/components/inventory/InventoryFAB";
 import { InventoryItemDetailsModal } from "@/components/inventory/InventoryItemDetailsModal";
 import { EditBaseFruitItemModal } from "@/components/inventory/EditBaseFruitItemModal";

@@ -52,7 +52,7 @@ export function DistributeKegModal({
     },
   });
 
-  const distributeMutation = trpc.kegs.distributeKegFill.useMutation({
+  const distributeMutation = trpc.packaging.kegs.distributeKegFill.useMutation({
     onSuccess: () => {
       toast({
         title: "Keg Distributed",
@@ -71,9 +71,11 @@ export function DistributeKegModal({
   });
 
   const onSubmit = (data: DistributeKegForm) => {
+    // Parse date at noon UTC to avoid timezone issues
+    const distributedAt = new Date(`${data.distributedAt}T12:00:00.000Z`);
     distributeMutation.mutate({
       kegFillId,
-      distributedAt: new Date(data.distributedAt),
+      distributedAt: distributedAt,
       distributionLocation: data.distributionLocation,
     });
   };

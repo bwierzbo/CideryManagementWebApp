@@ -19,6 +19,7 @@ import {
   batchRackingOperations,
   juicePurchaseItems,
   juicePurchases,
+  auditLogs,
 } from "db";
 import { bottleRuns, kegFills, kegs } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
@@ -1254,12 +1255,36 @@ export const batchRouter = router({
         if (input.startDate) updateData.startDate = input.startDate;
         if (input.endDate) updateData.endDate = input.endDate;
 
+        // Capture old status for audit log
+        const oldStatus = existingBatch[0].status;
+
         // Update batch
         const updatedBatch = await db
           .update(batches)
           .set(updateData)
           .where(eq(batches.id, input.batchId))
           .returning();
+
+        // Create audit log if status changed
+        if (input.status && input.status !== oldStatus) {
+          await db.insert(auditLogs).values({
+            tableName: 'batches',
+            recordId: input.batchId,
+            operation: 'update',
+            oldData: { status: oldStatus },
+            newData: { status: input.status },
+            diffData: {
+              status: {
+                old: oldStatus,
+                new: input.status,
+              },
+            },
+            changedAt: input.startDate || new Date(), // Use startDate if provided (aging date)
+            reason: input.status === 'aging'
+              ? 'Batch transitioned to aging phase'
+              : `Batch status changed to ${input.status}`,
+          });
+        }
 
         return {
           success: true,
@@ -1873,6 +1898,44 @@ export const batchRouter = router({
           });
         });
 
+        // Get audit logs for status changes
+        const statusChangeLogs = await db
+          .select({
+            id: auditLogs.id,
+            changedAt: auditLogs.changedAt,
+            diffData: auditLogs.diffData,
+            reason: auditLogs.reason,
+          })
+          .from(auditLogs)
+          .where(
+            and(
+              eq(auditLogs.tableName, 'batches'),
+              eq(auditLogs.recordId, input.batchId),
+              eq(auditLogs.operation, 'update'),
+              sql`${auditLogs.diffData}->>'status' IS NOT NULL`
+            )
+          )
+          .orderBy(asc(auditLogs.changedAt));
+
+        // Add status change events to activities
+        statusChangeLogs.forEach((log) => {
+          const diffData = log.diffData as any;
+          const statusChange = diffData?.status;
+          if (statusChange && statusChange.old && statusChange.new) {
+            activities.push({
+              id: `status-change-${log.id}`,
+              type: "status_change",
+              timestamp: log.changedAt,
+              description: `Batch status changed from ${statusChange.old} to ${statusChange.new}`,
+              details: {
+                previousStatus: statusChange.old,
+                newStatus: statusChange.new,
+                reason: log.reason || undefined,
+              },
+            });
+          }
+        });
+
         // Sort all activities by timestamp - true chronological order (oldest to newest)
         activities.sort((a, b) => {
           const dateA = new Date(a.timestamp).getTime();
@@ -2013,11 +2076,11 @@ export const batchRouter = router({
           input.volumeBefore,
           input.volumeBeforeUnit as "L" | "gal" | "mL"
         );
-        const volumeAfterL = convertToLiters(
+        const volumeRackedL = convertToLiters(
           input.volumeAfter,
           input.volumeAfterUnit as "L" | "gal" | "mL"
         );
-        const volumeLossL = volumeBeforeL - volumeAfterL;
+        const volumeLossL = volumeBeforeL - volumeRackedL;
 
         // Create filter operation record
         const filterOperation = await db
@@ -2040,7 +2103,7 @@ export const batchRouter = router({
         await db
           .update(batches)
           .set({
-            currentVolume: volumeAfterL.toFixed(3),
+            currentVolume: volumeRackedL.toFixed(3),
             currentVolumeUnit: 'L',
             updatedAt: new Date(),
           })
@@ -2071,9 +2134,7 @@ export const batchRouter = router({
       z.object({
         batchId: z.string().uuid("Invalid batch ID"),
         destinationVesselId: z.string().uuid("Invalid destination vessel ID"),
-        volumeAfter: z.number().positive("Volume after must be positive"),
-        volumeAfterUnit: z.enum(['L', 'gal']).default('L'),
-        volumeToRack: z.number().positive("Volume to rack must be positive").optional(), // For partial racking
+        volumeToRack: z.number().positive("Volume to rack must be positive"),
         rackedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
       })
     )
@@ -2165,58 +2226,38 @@ export const batchRouter = router({
           const sourceVesselId = batch[0].vesselId;
           const isRackToSelf = sourceVesselId === input.destinationVesselId;
 
-          // Convert volumes to liters for calculations
-          const volumeAfterL = convertToLiters(
-            input.volumeAfter,
-            input.volumeAfterUnit as "L" | "gal" | "mL"
-          );
           const volumeBeforeL = batch[0].currentVolume
             ? parseFloat(batch[0].currentVolume)
             : 0;
 
-          // 3. Determine if this is a partial rack
-          const isPartialRack = input.volumeToRack && input.volumeToRack < volumeBeforeL;
+          // Validate volumeToRack is not greater than current volume
+          if (input.volumeToRack > volumeBeforeL) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Volume to rack (${input.volumeToRack.toFixed(1)}L) cannot be greater than current volume (${volumeBeforeL.toFixed(1)}L)`,
+            });
+          }
 
-          // For partial racking: volumeToRack is what moves, volumeAfter is what arrives (after loss)
-          // For full racking: volumeAfter is what remains after loss
+          // 3. Calculate remaining volume and auto-determine rack type
+          const remainingInSourceL = volumeBeforeL - input.volumeToRack;
+
+          // Auto-determine: if remaining < 1L, treat as full rack (remainder is loss)
+          const isPartialRack = remainingInSourceL >= 1.0;
+
           let volumeLossL: number;
           let volumeRackedL: number; // Amount that goes to destination
           let volumeRemainingInSourceL: number; // Amount that stays in source (for partial racks)
 
-          if (isPartialRack && input.volumeToRack) {
-            // Partial rack: split the batch
-            volumeRackedL = input.volumeToRack; // User-specified amount to rack
-            volumeLossL = volumeRackedL - volumeAfterL; // Loss during the rack
-            volumeRemainingInSourceL = volumeBeforeL - volumeRackedL; // What stays behind
-
-            // Validate volumeToRack is not greater than current volume
-            if (volumeRackedL > volumeBeforeL) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: `Volume to rack (${volumeRackedL.toFixed(1)}L) cannot be greater than current volume (${volumeBeforeL.toFixed(1)}L)`,
-              });
-            }
-
-            // Validate volumeAfter is not greater than volumeToRack
-            if (volumeAfterL > volumeRackedL) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: `Volume after racking (${volumeAfterL.toFixed(1)}L) cannot be greater than volume to rack (${volumeRackedL.toFixed(1)}L)`,
-              });
-            }
+          if (isPartialRack) {
+            // Partial rack: split the batch (remaining >= 1L stays in source)
+            volumeRackedL = input.volumeToRack;
+            volumeLossL = 0; // No loss assumed in partial rack
+            volumeRemainingInSourceL = remainingInSourceL;
           } else {
-            // Full rack: entire batch moves
-            volumeRackedL = volumeBeforeL;
-            volumeLossL = volumeBeforeL - volumeAfterL;
+            // Full rack: remainder < 1L is treated as loss
+            volumeRackedL = input.volumeToRack;
+            volumeLossL = remainingInSourceL; // Small remainder is loss
             volumeRemainingInSourceL = 0;
-
-            // Validate that volumeAfter is not greater than volumeBefore
-            if (volumeAfterL > volumeBeforeL) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: `Volume after racking (${volumeAfterL.toFixed(1)}L) cannot be greater than current volume (${volumeBeforeL.toFixed(1)}L)`,
-              });
-            }
           }
 
           // Validate that loss is not negative
@@ -2236,7 +2277,7 @@ export const batchRouter = router({
               destinationVesselId: input.destinationVesselId,
               volumeBefore: volumeBeforeL.toString(),
               volumeBeforeUnit: 'L',
-              volumeAfter: volumeAfterL.toString(),
+              volumeAfter: volumeRackedL.toString(),
               volumeAfterUnit: 'L',
               volumeLoss: volumeLossL.toString(),
               volumeLossUnit: 'L',
@@ -2259,10 +2300,11 @@ export const batchRouter = router({
               });
             }
 
-            // Generate child batch name (e.g., "Batch #25 - Racked 2025-01-09")
+            // Generate child batch name using numeric batch number
             const rackDate = input.rackedAt || new Date();
             const dateStr = rackDate.toISOString().split('T')[0];
-            const childBatchName = `${batch[0].name} - Racked ${dateStr}`;
+            const childBatchNumber = `${batch[0].batchNumber}-R${dateStr.replace(/-/g, '')}`; // e.g., "25-R20250109"
+            const childBatchName = `Batch #${childBatchNumber}`; // e.g., "Batch #25-R20250109"
 
             // Create child batch in destination vessel with racked volume
             const newBatch = await tx
@@ -2270,13 +2312,12 @@ export const batchRouter = router({
               .values({
                 vesselId: input.destinationVesselId,
                 name: childBatchName,
-                customName: batch[0].customName ? `${batch[0].customName} - Racked ${dateStr}` : null,
-                batchNumber: `${batch[0].batchNumber}-R${dateStr.replace(/-/g, '')}`, // e.g., "25-R20250109"
-                initialVolume: volumeAfterL.toString(),
+                customName: batch[0].customName, // Inherit parent's custom name without suffix
+                batchNumber: childBatchNumber,
+                initialVolume: volumeRackedL.toString(),
                 initialVolumeUnit: 'L',
-                currentVolume: volumeAfterL.toString(),
+                currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
-                status: "aging", // Racked batches start in aging
                 startDate: rackDate,
                 originPressRunId: batch[0].originPressRunId,
                 originJuicePurchaseItemId: batch[0].originJuicePurchaseItemId,
@@ -2288,6 +2329,107 @@ export const batchRouter = router({
               .returning();
 
             newChildBatch = newBatch[0];
+
+            // Copy composition from parent batch to child batch
+            const parentComposition = await tx
+              .select()
+              .from(batchCompositions)
+              .where(
+                and(
+                  eq(batchCompositions.batchId, input.batchId),
+                  isNull(batchCompositions.deletedAt),
+                ),
+              );
+
+            if (parentComposition.length > 0) {
+              // Calculate volume ratio for the child batch (what was racked out)
+              const volumeRatio = volumeRackedL / volumeBeforeL;
+
+              for (const comp of parentComposition) {
+                await tx.insert(batchCompositions).values({
+                  batchId: newChildBatch.id,
+                  sourceType: comp.sourceType,
+                  purchaseItemId: comp.purchaseItemId,
+                  varietyId: comp.varietyId,
+                  juicePurchaseItemId: comp.juicePurchaseItemId,
+                  vendorId: comp.vendorId,
+                  lotCode: comp.lotCode,
+                  inputWeightKg: comp.inputWeightKg
+                    ? (parseFloat(comp.inputWeightKg) * volumeRatio).toString()
+                    : "0",
+                  juiceVolume: (parseFloat(comp.juiceVolume || "0") * volumeRatio).toString(),
+                  juiceVolumeUnit: comp.juiceVolumeUnit,
+                  fractionOfBatch: comp.fractionOfBatch, // Keep same fraction
+                  materialCost: comp.materialCost
+                    ? (parseFloat(comp.materialCost) * volumeRatio).toString()
+                    : "0",
+                  avgBrix: comp.avgBrix,
+                  estSugarKg: comp.estSugarKg
+                    ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
+                    : undefined,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+            }
+
+            // Copy measurements from parent batch to child batch (up to rack date)
+            const parentMeasurements = await tx
+              .select()
+              .from(batchMeasurements)
+              .where(
+                and(
+                  eq(batchMeasurements.batchId, input.batchId),
+                  isNull(batchMeasurements.deletedAt),
+                  sql`${batchMeasurements.measurementDate} <= ${rackDate}`,
+                ),
+              );
+
+            for (const measurement of parentMeasurements) {
+              await tx.insert(batchMeasurements).values({
+                batchId: newChildBatch.id,
+                measurementDate: measurement.measurementDate,
+                specificGravity: measurement.specificGravity,
+                temperature: measurement.temperature,
+                ph: measurement.ph,
+                totalAcidity: measurement.totalAcidity,
+                abv: measurement.abv,
+                volume: measurement.volume,
+                volumeUnit: measurement.volumeUnit,
+                notes: measurement.notes,
+                takenBy: measurement.takenBy,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            }
+
+            // Copy additives from parent batch to child batch (up to rack date)
+            const parentAdditives = await tx
+              .select()
+              .from(batchAdditives)
+              .where(
+                and(
+                  eq(batchAdditives.batchId, input.batchId),
+                  isNull(batchAdditives.deletedAt),
+                  sql`${batchAdditives.addedAt} <= ${rackDate}`,
+                ),
+              );
+
+            for (const additive of parentAdditives) {
+              await tx.insert(batchAdditives).values({
+                batchId: newChildBatch.id,
+                vesselId: input.destinationVesselId,
+                additiveType: additive.additiveType,
+                additiveName: additive.additiveName,
+                amount: additive.amount,
+                unit: additive.unit,
+                notes: additive.notes,
+                addedAt: additive.addedAt,
+                addedBy: additive.addedBy,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            }
 
             // Update source batch - reduce volume, stay in source vessel
             updatedBatch = await tx
@@ -2308,26 +2450,25 @@ export const batchRouter = router({
                 sourceVesselId: sourceVesselId,
                 destinationBatchId: newChildBatch.id,
                 destinationVesselId: input.destinationVesselId,
-                volumeTransferred: volumeAfterL.toString(),
+                volumeTransferred: volumeRackedL.toString(),
                 volumeTransferredUnit: 'L',
                 loss: volumeLossL.toString(),
                 lossUnit: 'L',
                 totalVolumeProcessed: volumeRackedL.toString(),
                 totalVolumeProcessedUnit: 'L',
-                notes: `Partial rack: ${volumeAfterL.toFixed(1)}L transferred, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`,
+                notes: `Partial rack: ${volumeRackedL.toFixed(1)}L transferred, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`,
                 transferredAt: rackDate,
                 transferredBy: ctx.session?.user?.id,
               });
 
-            resultMessage = `Partial rack complete: ${volumeAfterL.toFixed(1)}L transferred to ${destinationVessel[0].name}, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source vessel`;
+            resultMessage = `Partial rack complete: ${volumeRackedL.toFixed(1)}L transferred to ${destinationVessel[0].name}, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source vessel`;
           } else if (isRackToSelf) {
             // 5a. RACK TO SELF: Update volume and transition to aging, don't change vessel
             updatedBatch = await tx
               .update(batches)
               .set({
-                currentVolume: volumeAfterL.toString(),
+                currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
-                status: "aging", // Racking transitions to aging stage
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, input.batchId))
@@ -2338,7 +2479,7 @@ export const batchRouter = router({
             // 5b. MERGE: Add volume to existing destination batch, then mark source batch as completed
             const destBatch = destinationBatch[0];
             const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
-            const mergedVolumeL = destCurrentVolumeL + volumeAfterL;
+            const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
 
             // Update destination batch with merged volume
             updatedBatch = await tx
@@ -2370,7 +2511,7 @@ export const batchRouter = router({
                 sourceVesselId: sourceVesselId,
                 destinationBatchId: destBatch.id,
                 destinationVesselId: input.destinationVesselId,
-                volumeTransferred: volumeAfterL.toString(),
+                volumeTransferred: volumeRackedL.toString(),
                 volumeTransferredUnit: 'L',
                 loss: volumeLossL.toString(),
                 lossUnit: 'L',
@@ -2384,14 +2525,13 @@ export const batchRouter = router({
             resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
           } else {
             // 5c. MOVE: Transfer batch to new empty vessel
-            // Racking transitions batch from "fermentation" to "aging"
+            // Full rack: Move batch to destination vessel
             updatedBatch = await tx
               .update(batches)
               .set({
                 vesselId: input.destinationVesselId,
-                currentVolume: volumeAfterL.toString(),
+                currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
-                status: "aging", // Racking always moves batch to aging stage
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, input.batchId))

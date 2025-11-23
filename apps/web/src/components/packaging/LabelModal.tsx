@@ -105,7 +105,7 @@ export function LabelModal({
     (item) => item.id === selectedItemId
   );
 
-  const labelMutation = trpc.bottles.addLabel.useMutation({
+  const labelMutation = trpc.packaging.addLabel.useMutation({
     onSuccess: (data) => {
       const labelName = data.labelName || "Label";
       toast({
@@ -124,8 +124,8 @@ export function LabelModal({
       });
 
       // Refresh inventory and bottle data
-      utils.bottles.list.invalidate();
-      utils.bottles.get.invalidate(bottleRunId);
+      utils.packaging.list.invalidate();
+      utils.packaging.get.invalidate(bottleRunId);
       refetchPackagingItems();
       onSuccess();
 
@@ -141,11 +141,13 @@ export function LabelModal({
   });
 
   const onSubmit = (data: LabelForm) => {
+    // Parse date at noon UTC to avoid timezone issues
+    const labeledAt = new Date(`${data.labeledAt}T12:00:00.000Z`);
     labelMutation.mutate({
       bottleRunId,
       packagingItemId: data.packagingItemId,
       quantity: data.quantity,
-      labeledAt: new Date(data.labeledAt),
+      labeledAt: labeledAt,
     });
   };
 
@@ -183,7 +185,7 @@ export function LabelModal({
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Bottle Run Info */}
+          {/* Packaging Run Info */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-gray-600">Bottles Produced:</span>

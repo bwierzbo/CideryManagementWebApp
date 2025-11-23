@@ -88,7 +88,7 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
     }
   }, [kegType, setValue]);
 
-  const createKegMutation = trpc.kegs.createKeg.useMutation({
+  const createKegMutation = trpc.packaging.kegs.createKeg.useMutation({
     onSuccess: () => {
       toast({
         title: "Keg Added",

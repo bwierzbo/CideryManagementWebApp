@@ -35,19 +35,19 @@ import { trpc } from "@/utils/trpc";
 import { performanceMonitor } from "@/lib/performance-monitor";
 import { formatDateTime } from "@/utils/date-format";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
-import { LabelComplianceCard } from "@/components/bottles/LabelComplianceCard";
+import { LabelComplianceCard } from "@/components/packaging/LabelComplianceCard";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
-import { COGSSummaryCard } from "@/components/bottles/COGSSummaryCard";
-import { MarginAnalysisCard } from "@/components/bottles/MarginAnalysisCard";
+import { COGSSummaryCard } from "@/components/packaging/COGSSummaryCard";
+import { MarginAnalysisCard } from "@/components/packaging/MarginAnalysisCard";
 
 // Lazy load heavy components
 const QAUpdateModal = lazy(() =>
-  import("@/components/bottles/qa-update-modal").then((m) => ({
+  import("@/components/packaging/qa-update-modal").then((m) => ({
     default: m.QAUpdateModal,
   })),
 );
 const AdvancedPDFExport = lazy(() =>
-  import("@/components/bottles/bottle-pdf-template").then((m) => ({
+  import("@/components/packaging/bottle-pdf-template").then((m) => ({
     default: m.AdvancedPDFExport,
   })),
 );
@@ -77,7 +77,7 @@ export default function PackagingDetailPage() {
   useEffect(() => {
     performanceMonitor.recordUserInteraction({
       type: "navigation",
-      target: `/bottles/${runId}`,
+      target: `/packaging/${runId}`,
       timestamp: performance.now(),
       metadata: { runId },
     });
@@ -89,7 +89,7 @@ export default function PackagingDetailPage() {
     isLoading,
     error,
     refetch,
-  } = trpc.bottles.get.useQuery(runId, {
+  } = trpc.packaging.get.useQuery(runId, {
     enabled: !!runId,
   });
 
@@ -97,7 +97,7 @@ export default function PackagingDetailPage() {
   const {
     data: enhancedData,
     isLoading: isLoadingEnhanced,
-  } = trpc.bottles.getEnhancedDetails.useQuery(runId, {
+  } = trpc.packaging.getEnhancedDetails.useQuery(runId, {
     enabled: !!runId,
   });
 
@@ -407,7 +407,7 @@ export default function PackagingDetailPage() {
                     Packaging Materials Used
                   </CardTitle>
                   <CardDescription className="text-xs md:text-sm">
-                    Materials consumed during this bottling run
+                    Materials consumed during this packaging run
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-0">

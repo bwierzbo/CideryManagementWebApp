@@ -1,24 +1,26 @@
 /**
  * Date formatting utilities for the Cidery Management App
- * All dates are displayed in Pacific timezone (America/Los_Angeles)
+ * Supports dynamic timezone configuration
  */
 
-const PACIFIC_TZ = "America/Los_Angeles";
+const DEFAULT_TZ = "America/Los_Angeles";
 
 /**
- * Format a date string or Date object for display in Pacific timezone
+ * Format a date string or Date object for display
  * @param date - ISO date string or Date object
  * @param options - Intl.DateTimeFormatOptions to customize the format
- * @returns Formatted date string in Pacific timezone
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Formatted date string in the specified timezone
  */
 export function formatDate(
   date: string | Date,
   options?: Intl.DateTimeFormatOptions,
+  timezone?: string,
 ): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
 
   const defaultOptions: Intl.DateTimeFormatOptions = {
-    timeZone: PACIFIC_TZ,
+    timeZone: timezone || DEFAULT_TZ,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -29,19 +31,21 @@ export function formatDate(
 }
 
 /**
- * Format a date and time for display in Pacific timezone
+ * Format a date and time for display
  * @param date - ISO date string or Date object
  * @param options - Intl.DateTimeFormatOptions to customize the format
- * @returns Formatted date and time string in Pacific timezone
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Formatted date and time string in the specified timezone
  */
 export function formatDateTime(
   date: string | Date,
   options?: Intl.DateTimeFormatOptions,
+  timezone?: string,
 ): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
 
   const defaultOptions: Intl.DateTimeFormatOptions = {
-    timeZone: PACIFIC_TZ,
+    timeZone: timezone || DEFAULT_TZ,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -56,26 +60,28 @@ export function formatDateTime(
 /**
  * Format a date for display in long format (e.g., "October 10, 2025")
  * @param date - ISO date string or Date object
- * @returns Formatted date string in Pacific timezone
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Formatted date string in the specified timezone
  */
-export function formatDateLong(date: string | Date): string {
+export function formatDateLong(date: string | Date, timezone?: string): string {
   return formatDate(date, {
     year: "numeric",
     month: "long",
     day: "numeric",
-  });
+  }, timezone);
 }
 
 /**
  * Format a date for display in short format (e.g., "10/10/2025")
  * @param date - ISO date string or Date object
- * @returns Formatted date string in Pacific timezone
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Formatted date string in the specified timezone
  */
-export function formatDateShort(date: string | Date): string {
+export function formatDateShort(date: string | Date, timezone?: string): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
 
   return dateObj.toLocaleDateString("en-US", {
-    timeZone: PACIFIC_TZ,
+    timeZone: timezone || DEFAULT_TZ,
     year: "numeric",
     month: "numeric",
     day: "numeric",
@@ -83,35 +89,47 @@ export function formatDateShort(date: string | Date): string {
 }
 
 /**
- * Get the current date/time in Pacific timezone
- * @returns Current date in Pacific timezone
+ * Get the current date/time in the specified timezone
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Current date in the specified timezone
  */
-export function nowInPacific(): Date {
+export function nowInTimezone(timezone?: string): Date {
   return new Date(
-    new Date().toLocaleString("en-US", { timeZone: PACIFIC_TZ })
+    new Date().toLocaleString("en-US", { timeZone: timezone || DEFAULT_TZ })
   );
 }
 
 /**
+ * Get the current date/time in Pacific timezone
+ * @returns Current date in Pacific timezone
+ * @deprecated Use nowInTimezone() instead
+ */
+export function nowInPacific(): Date {
+  return nowInTimezone(DEFAULT_TZ);
+}
+
+/**
  * Format a date for form inputs (YYYY-MM-DD format)
- * This extracts the date in Pacific timezone without time shift issues
+ * This extracts the date in the specified timezone without time shift issues
  * @param date - ISO date string or Date object
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
  * @returns Date string in YYYY-MM-DD format
  */
-export function formatDateForInput(date: string | Date): string {
+export function formatDateForInput(date: string | Date, timezone?: string): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
+  const tz = timezone || DEFAULT_TZ;
 
-  // Format in Pacific timezone to get the correct date components
+  // Format in specified timezone to get the correct date components
   const year = dateObj.toLocaleDateString("en-US", {
-    timeZone: PACIFIC_TZ,
+    timeZone: tz,
     year: "numeric",
   });
   const month = dateObj.toLocaleDateString("en-US", {
-    timeZone: PACIFIC_TZ,
+    timeZone: tz,
     month: "2-digit",
   });
   const day = dateObj.toLocaleDateString("en-US", {
-    timeZone: PACIFIC_TZ,
+    timeZone: tz,
     day: "2-digit",
   });
 

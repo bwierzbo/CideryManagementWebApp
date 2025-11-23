@@ -47,7 +47,7 @@ export function KegDetailsModal({
   const [showEditModal, setShowEditModal] = useState(false);
   const utils = trpc.useUtils();
 
-  const { data, isLoading } = trpc.kegs.getKegDetails.useQuery(
+  const { data, isLoading } = trpc.packaging.kegs.getKegDetails.useQuery(
     { kegId },
     { enabled: open && !!kegId },
   );
@@ -285,7 +285,7 @@ export function KegDetailsModal({
             kegId={kegId}
             onSuccess={() => {
               setShowEditModal(false);
-              utils.kegs.getKegDetails.invalidate({ kegId });
+              utils.packaging.kegs.getKegDetails.invalidate({ kegId });
             }}
           />
         )}

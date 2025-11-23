@@ -27,6 +27,7 @@ import { Wine, AlertTriangle, Loader2, Package } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
+import { PackageTypeSelector } from "../UnifiedPackagingModal";
 
 const fillKegsSchema = z.object({
   filledAt: z.string().min(1, "Date/time is required"),
@@ -46,6 +47,8 @@ interface FillKegModalProps {
   vesselName: string;
   batchId: string;
   currentVolumeL: number;
+  showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
+  onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
 }
 
 // Memoized keg item component to prevent re-renders
@@ -103,6 +106,8 @@ export function FillKegModal({
   vesselName,
   batchId,
   currentVolumeL,
+  showTypeSelector = false,
+  onTypeChange,
 }: FillKegModalProps) {
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
   const [kegVolumes, setKegVolumes] = useState<Record<string, number>>({});
@@ -128,7 +133,7 @@ export function FillKegModal({
 
   // Get available kegs with query stabilization to prevent infinite refetches
   const { data: kegsData, isLoading: kegsLoading } =
-    trpc.kegs.getAvailableKegs.useQuery(undefined, {
+    trpc.packaging.kegs.getAvailableKegs.useQuery(undefined, {
       enabled: open && !!vesselId && !!batchId,
       refetchOnWindowFocus: false,
       refetchOnMount: false,
@@ -138,7 +143,7 @@ export function FillKegModal({
 
   const availableKegs = React.useMemo(() => kegsData ?? [], [kegsData]);
 
-  const fillKegsMutation = trpc.kegs.fillKegs.useMutation({
+  const fillKegsMutation = trpc.packaging.kegs.fillKegs.useMutation({
     onSuccess: () => {
       toast({
         title: "Kegs Filled",
@@ -147,8 +152,8 @@ export function FillKegModal({
       utils.vessel.list.invalidate();
       utils.vessel.liquidMap.invalidate();
       utils.batch.list.invalidate();
-      utils.kegs.listKegs.invalidate();
-      utils.kegs.getAvailableKegs.invalidate();
+      utils.packaging.kegs.listKegs.invalidate();
+      utils.packaging.kegs.getAvailableKegs.invalidate();
       reset();
       setSelectedKegIds([]);
       setKegVolumes({});
@@ -277,13 +282,22 @@ export function FillKegModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Wine className="h-5 w-5" />
-            Fill Kegs from {vesselName}
+            Package from {vesselName}
           </DialogTitle>
           <DialogDescription>
             Select available kegs and record fill details. Current vessel volume:{" "}
             {currentVolumeL.toFixed(1)}L
           </DialogDescription>
         </DialogHeader>
+
+        {/* Package Type Selector (if enabled) */}
+        {showTypeSelector && onTypeChange && (
+          <PackageTypeSelector
+            value="kegs"
+            onChange={onTypeChange}
+            className="pb-4 border-b"
+          />
+        )}
 
         <form onSubmit={handleSubmit(onSubmit, onError)} className="space-y-6">
           {/* Available Kegs Selection */}

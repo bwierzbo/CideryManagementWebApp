@@ -26,6 +26,7 @@ import { AlertTriangle, CheckCircle, Plus, X } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
+import { PackageTypeSelector } from "./UnifiedPackagingModal";
 
 // Form validation schema
 const packagingMaterialSchema = z.object({
@@ -61,6 +62,8 @@ interface BottleModalProps {
   batchId: string;
   currentVolumeL: number;
   kegFillId?: string; // Optional - when bottling from a keg
+  showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
+  onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
 }
 
 export function BottleModal({
@@ -71,6 +74,8 @@ export function BottleModal({
   batchId,
   currentVolumeL,
   kegFillId,
+  showTypeSelector = false,
+  onTypeChange,
 }: BottleModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
@@ -91,7 +96,7 @@ export function BottleModal({
     limit: 100,
   });
   const createPackagingRunMutation =
-    trpc.bottles.createFromCellar.useMutation();
+    trpc.packaging.createFromCellar.useMutation();
   const utils = trpc.useUtils();
 
   const {
@@ -295,12 +300,12 @@ export function BottleModal({
       utils.vessel.liquidMap.invalidate();
       utils.batch.list.invalidate();
       if (kegFillId) {
-        utils.kegs.listKegs.invalidate();
+        utils.packaging.kegs.listKegs.invalidate();
       }
 
       // Show success toast with option to view packaging run
       toast({
-        title: "Bottle Run Created",
+        title: "Packaging Run Created",
         description: `Successfully packaged ${data.unitsProduced} units from ${vesselName}. Loss: ${result.lossL.toFixed(2)}L (${result.lossPercentage.toFixed(1)}%)`,
       });
 
@@ -313,7 +318,7 @@ export function BottleModal({
       const errorMessage =
         error instanceof Error ? error.message : "Unknown error occurred";
       toast({
-        title: "Failed to Create Bottle Run",
+        title: "Failed to Create Packaging Run",
         description: errorMessage,
         variant: "destructive",
       });
@@ -332,13 +337,22 @@ export function BottleModal({
       <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader className="pb-4">
           <DialogTitle className="text-lg md:text-xl truncate pr-8">
-            Bottle from {vesselName}
+            Package from {vesselName}
           </DialogTitle>
           <DialogDescription className="text-sm md:text-base">
             Package contents from this vessel. Available volume:{" "}
             {currentVolumeL.toFixed(1)}L
           </DialogDescription>
         </DialogHeader>
+
+        {/* Package Type Selector (if enabled) */}
+        {showTypeSelector && onTypeChange && (
+          <PackageTypeSelector
+            value="bottles"
+            onChange={onTypeChange}
+            className="pb-4 border-b"
+          />
+        )}
 
         <form
           onSubmit={handleSubmit(handleFormSubmit)}
@@ -683,7 +697,7 @@ export function BottleModal({
               <span className="hidden sm:inline">
                 {isSubmitting || createPackagingRunMutation.isPending
                   ? "Creating..."
-                  : "Complete & Go to /bottles"}
+                  : "Complete & Go to /packaging"}
               </span>
               <span className="sm:hidden">
                 {isSubmitting || createPackagingRunMutation.isPending

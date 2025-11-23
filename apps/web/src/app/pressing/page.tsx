@@ -351,9 +351,11 @@ function CompletedRunsSection({
   const handleSaveDate = () => {
     if (!editingPressRun || !newDate) return;
 
+    // Parse date at noon UTC to avoid timezone issues
+    const dateCompleted = new Date(`${newDate}T12:00:00.000Z`);
     updateDateMutation.mutate({
       id: editingPressRun.id,
-      dateCompleted: new Date(newDate),
+      dateCompleted: dateCompleted,
     });
   };
 

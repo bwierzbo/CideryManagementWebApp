@@ -41,13 +41,13 @@ export default function KegFillDetailPage() {
     data: fillData,
     isLoading,
     error,
-  } = trpc.kegs.getKegFillDetails.useQuery(fillId, {
+  } = trpc.packaging.kegs.getKegFillDetails.useQuery(fillId, {
     enabled: !!fillId,
   });
 
   // Delete mutation
   const utils = trpc.useUtils();
-  const deleteMutation = trpc.kegs.deleteKegFill.useMutation({
+  const deleteMutation = trpc.packaging.kegs.deleteKegFill.useMutation({
     onSuccess: () => {
       router.push("/cellar");
     },

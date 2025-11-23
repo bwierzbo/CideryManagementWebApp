@@ -25,11 +25,11 @@ import { packagingPurchasesRouter } from "./packagingPurchases";
 import { additiveVarietiesRouter } from "./additiveVarieties";
 import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
-import { bottlesRouter } from "./packaging";
-import { kegsRouter } from "./kegs";
+import { packagingRouter } from "./packaging";
 import { userRouter } from "./user";
 import { dashboardRouter } from "./dashboard";
 import { squareRouter } from "./square";
+import { settingsRouter } from "./settings";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import {
   db,
@@ -2367,11 +2367,8 @@ export const appRouter = router({
       }),
   }),
 
-  // Bottle runs management
-  bottles: bottlesRouter,
-
-  // Keg tracking and management
-  kegs: kegsRouter,
+  // Packaging management (bottles and kegs)
+  packaging: packagingRouter,
 
   // Apple Varieties management - comprehensive CRUD with new enriched fields
   fruitVariety: varietiesRouter,
@@ -3032,29 +3029,41 @@ export const appRouter = router({
             let remainingBatch = null;
 
             // Check if this is a full transfer, partial transfer, or residual (< MIN_WORKING_VOLUME_L)
+            let transferredBatch = null;
             if (remainingVolumeL > MIN_WORKING_VOLUME_L) {
-              // Partial transfer - create remaining batch in source vessel
-              const newRemainingBatch = await tx
+              // Partial transfer - create transferred batch in destination vessel, keep source in source
+              const transferDate = input.transferDate || new Date();
+              const dateStr = transferDate.toISOString().split('T')[0];
+              const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${dateStr.replace(/-/g, '')}`;
+              const transferredBatchName = `Batch #${transferredBatchNumber}`;
+
+              const newTransferredBatch = await tx
                 .insert(batches)
                 .values({
-                  vesselId: input.fromVesselId,
-                  name: `${sourceBatch[0].name} - Remaining`,
-                  batchNumber: `${sourceBatch[0].batchNumber}-R`,
-                  initialVolume: remainingVolumeL.toString(),
-                  initialVolumeUnit: sourceBatch[0].currentVolumeUnit || "L",
-                  currentVolume: remainingVolumeL.toString(),
-                  currentVolumeUnit: sourceBatch[0].currentVolumeUnit || "L",
-                  status: "fermentation",
+                  vesselId: input.toVesselId,
+                  name: transferredBatchName,
+                  batchNumber: transferredBatchNumber,
+                  customName: sourceBatch[0].customName, // Inherit parent's custom name
+                  initialVolume: input.volumeL.toString(),
+                  initialVolumeUnit: "L",
+                  currentVolume: input.volumeL.toString(),
+                  currentVolumeUnit: "L",
+                  status: sourceBatch[0].status || "fermentation",
                   originPressRunId: sourceBatch[0].originPressRunId,
-                  startDate: sourceBatch[0].startDate, // Preserve original batch start date
+                  originJuicePurchaseItemId: sourceBatch[0].originJuicePurchaseItemId,
+                  originalGravity: sourceBatch[0].originalGravity,
+                  finalGravity: sourceBatch[0].finalGravity,
+                  estimatedAbv: sourceBatch[0].estimatedAbv,
+                  actualAbv: sourceBatch[0].actualAbv,
+                  startDate: transferDate,
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 })
                 .returning();
 
-              remainingBatch = newRemainingBatch[0];
+              transferredBatch = newTransferredBatch[0];
 
-              // Copy composition from source batch to remaining batch
+              // Copy composition from source batch to transferred batch
               const sourceComposition = await tx
                 .select()
                 .from(batchCompositions)
@@ -3066,12 +3075,12 @@ export const appRouter = router({
                 );
 
               if (sourceComposition.length > 0) {
-                // Calculate new fractions based on volume ratio
-                const volumeRatio = remainingVolumeL / currentVolumeL;
+                // Calculate volume ratio for transferred portion
+                const volumeRatio = input.volumeL / currentVolumeL;
 
                 for (const comp of sourceComposition) {
                   await tx.insert(batchCompositions).values({
-                    batchId: remainingBatch.id,
+                    batchId: transferredBatch.id,
                     sourceType: comp.sourceType,
                     purchaseItemId: comp.purchaseItemId,
                     varietyId: comp.varietyId,
@@ -3097,19 +3106,31 @@ export const appRouter = router({
                 }
               }
 
-              // Audit logging for new remaining batch
+              // Update source batch - reduce volume, stay in source vessel
+              await tx
+                .update(batches)
+                .set({
+                  currentVolume: remainingVolumeL.toString(),
+                  currentVolumeUnit: "L",
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, sourceBatch[0].id));
+
+              // Audit logging for new transferred batch
               await publishCreateEvent(
                 "batches",
-                remainingBatch.id,
+                transferredBatch.id,
                 {
-                  batchId: remainingBatch.id,
-                  vesselId: input.fromVesselId,
-                  volumeL: remainingVolumeL,
-                  remainingFrom: sourceBatch[0].id,
+                  batchId: transferredBatch.id,
+                  vesselId: input.toVesselId,
+                  volumeL: input.volumeL,
+                  transferredFrom: sourceBatch[0].id,
                 },
                 ctx.session?.user?.id,
-                "Remaining batch created after partial transfer via API",
+                "Transferred batch created from partial transfer via API",
               );
+
+              remainingBatch = null; // No longer using "remaining" batch pattern
             } else if (remainingVolumeL > 0) {
               // Residual volume < MIN_WORKING_VOLUME_L - auto-empty as waste
               console.log(
@@ -3270,17 +3291,101 @@ export const appRouter = router({
                 `Batch blended into ${destBatch[0].name || destBatch[0].batchNumber} in ${destVessel[0].name || "Unknown Vessel"}`,
               );
             } else {
-              // NORMAL TRANSFER: Move the batch to the destination vessel
-              updatedBatch = await tx
-                .update(batches)
-                .set({
-                  vesselId: input.toVesselId,
-                  currentVolume: input.volumeL.toString(),
-                  currentVolumeUnit: "L",
-                  updatedAt: new Date(),
-                })
-                .where(eq(batches.id, sourceBatch[0].id))
-                .returning();
+              // NORMAL TRANSFER: For full transfers or partial transfers with blend,
+              // create transferred batch in destination and complete source batch
+              if (!isBlending) {
+                // Full transfer - move batch to destination vessel
+                const transferDate = input.transferDate || new Date();
+                const dateStr = transferDate.toISOString().split('T')[0];
+                const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${dateStr.replace(/-/g, '')}`;
+                const transferredBatchName = `Batch #${transferredBatchNumber}`;
+
+                const newTransferredBatch = await tx
+                  .insert(batches)
+                  .values({
+                    vesselId: input.toVesselId,
+                    name: transferredBatchName,
+                    batchNumber: transferredBatchNumber,
+                    customName: sourceBatch[0].customName,
+                    initialVolume: input.volumeL.toString(),
+                    initialVolumeUnit: "L",
+                    currentVolume: input.volumeL.toString(),
+                    currentVolumeUnit: "L",
+                    status: sourceBatch[0].status || "fermentation",
+                    originPressRunId: sourceBatch[0].originPressRunId,
+                    originJuicePurchaseItemId: sourceBatch[0].originJuicePurchaseItemId,
+                    originalGravity: sourceBatch[0].originalGravity,
+                    finalGravity: sourceBatch[0].finalGravity,
+                    estimatedAbv: sourceBatch[0].estimatedAbv,
+                    actualAbv: sourceBatch[0].actualAbv,
+                    startDate: transferDate,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .returning();
+
+                transferredBatch = newTransferredBatch[0];
+
+                // Copy composition to transferred batch
+                const sourceComposition = await tx
+                  .select()
+                  .from(batchCompositions)
+                  .where(
+                    and(
+                      eq(batchCompositions.batchId, sourceBatch[0].id),
+                      isNull(batchCompositions.deletedAt),
+                    ),
+                  );
+
+                if (sourceComposition.length > 0) {
+                  for (const comp of sourceComposition) {
+                    await tx.insert(batchCompositions).values({
+                      batchId: transferredBatch.id,
+                      sourceType: comp.sourceType,
+                      purchaseItemId: comp.purchaseItemId,
+                      varietyId: comp.varietyId,
+                      juicePurchaseItemId: comp.juicePurchaseItemId,
+                      vendorId: comp.vendorId,
+                      lotCode: comp.lotCode,
+                      inputWeightKg: comp.inputWeightKg,
+                      juiceVolume: comp.juiceVolume,
+                      juiceVolumeUnit: comp.juiceVolumeUnit,
+                      fractionOfBatch: comp.fractionOfBatch,
+                      materialCost: comp.materialCost,
+                      avgBrix: comp.avgBrix,
+                      estSugarKg: comp.estSugarKg,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    });
+                  }
+                }
+
+                // Complete source batch
+                await tx
+                  .update(batches)
+                  .set({
+                    currentVolume: "0",
+                    status: "completed",
+                    vesselId: null,
+                    endDate: new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(batches.id, sourceBatch[0].id));
+
+                updatedBatch = [transferredBatch];
+              } else {
+                // Blending - source batch completed, no new batch for source
+                updatedBatch = await tx
+                  .update(batches)
+                  .set({
+                    vesselId: input.toVesselId,
+                    currentVolume: input.volumeL.toString(),
+                    currentVolumeUnit: "L",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(batches.id, sourceBatch[0].id))
+                  .returning();
+              }
 
               // Update destination vessel status to fermenting
               await tx
@@ -3312,9 +3417,9 @@ export const appRouter = router({
               .values({
                 sourceBatchId: sourceBatch[0].id,
                 sourceVesselId: input.fromVesselId,
-                destinationBatchId: isBlending ? destBatch[0].id : sourceBatch[0].id,
+                destinationBatchId: isBlending ? destBatch[0].id : (transferredBatch?.id || sourceBatch[0].id),
                 destinationVesselId: input.toVesselId,
-                remainingBatchId: remainingBatch?.id || null,
+                remainingBatchId: null, // No longer using remaining batch pattern
                 volumeTransferred: input.volumeL.toString(),
                 volumeTransferredUnit: "L",
                 loss: adjustedLoss.toString(),
@@ -3882,6 +3987,9 @@ export const appRouter = router({
 
   // Square POS Integration
   square: squareRouter,
+
+  // System Settings
+  settings: settingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

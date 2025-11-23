@@ -76,7 +76,7 @@ export function QAUpdateModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // tRPC queries and mutations
-  const updateQAMutation = trpc.bottles.updateQA.useMutation();
+  const updateQAMutation = trpc.packaging.updateQA.useMutation();
   const utils = trpc.useUtils();
 
   const {
@@ -208,8 +208,8 @@ export function QAUpdateModal({
       await updateQAMutation.mutateAsync(updateData);
 
       // Invalidate relevant queries to refresh data
-      utils.bottles.get.invalidate(runId);
-      utils.bottles.list.invalidate();
+      utils.packaging.get.invalidate(runId);
+      utils.packaging.list.invalidate();
 
       // Show success toast
       toast({

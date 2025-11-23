@@ -64,7 +64,7 @@ export function EditDateDialog({
   const updateRacking = trpc.batch.updateRacking.useMutation();
   const updateFilter = trpc.batch.updateFilter.useMutation();
   const updateMerge = trpc.batch.updateMerge.useMutation();
-  const updateBottleRunDates = trpc.bottles.updateBottleRunDates.useMutation();
+  const updateBottleRunDates = trpc.packaging.updateBottleRunDates.useMutation();
   const updateCarbonation = trpc.carbonation.updateCarbonation.useMutation();
 
   const handleSubmit = async (e: React.FormEvent) => {

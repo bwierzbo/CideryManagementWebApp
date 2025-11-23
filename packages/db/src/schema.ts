@@ -1548,5 +1548,8 @@ export * from "./schema/packaging";
 // Re-export carbonation schema
 export * from "./schema/carbonation";
 
+// Re-export settings schema
+export * from "./schema/settings";
+
 // Re-export Square integration schema
 export * from "./schema/square";

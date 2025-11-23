@@ -23,6 +23,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -80,6 +87,8 @@ export default function BatchDetailsPage() {
   const [showCarbonateModal, setShowCarbonateModal] = useState(false);
   const [showCompleteCarbonationModal, setShowCompleteCarbonationModal] =
     useState(false);
+  const [showChangeStatusModal, setShowChangeStatusModal] = useState(false);
+  const [newStatus, setNewStatus] = useState<string>("");
   const [selectedCarbonationOperation, setSelectedCarbonationOperation] =
     useState<any>(null);
   const [isEditingStartDate, setIsEditingStartDate] = useState(false);
@@ -97,7 +106,7 @@ export default function BatchDetailsPage() {
   const updateBatchMutation = trpc.batch.update.useMutation({
     onSuccess: () => {
       utils.batch.get.invalidate({ batchId });
-      utils.bottles.list.invalidate(); // Invalidate bottles list since it shows batch names
+      utils.packaging.list.invalidate(); // Invalidate bottles list since it shows batch names
       utils.dashboard.getRecentBatches.invalidate(); // Invalidate dashboard batch list
       toast({
         title: "Success",
@@ -204,9 +213,11 @@ export default function BatchDetailsPage() {
     if (!editStartDate) return;
 
     try {
+      // Parse date at noon UTC to avoid timezone issues
+      const startDate = new Date(`${editStartDate}T12:00:00.000Z`);
       await updateBatchMutation.mutateAsync({
         batchId,
-        startDate: new Date(editStartDate),
+        startDate: startDate,
       });
       setIsEditingStartDate(false);
     } catch (error) {
@@ -535,6 +546,11 @@ export default function BatchDetailsPage() {
             <DropdownMenuItem onClick={() => setShowAdditiveForm(true)}>
               <Droplets className="w-4 h-4 mr-2" />
               Add Additive
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShowChangeStatusModal(true)}>
+              <Activity className="w-4 h-4 mr-2" />
+              Change Status
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -1423,6 +1439,89 @@ export default function BatchDetailsPage() {
           }}
         />
       )}
+
+      {/* Change Status Modal */}
+      <Dialog open={showChangeStatusModal} onOpenChange={setShowChangeStatusModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Batch Status</DialogTitle>
+            <DialogDescription>
+              Update the status of this batch to reflect its current stage in production.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Current Status</label>
+              <Badge className={getStatusColor(batch.status)}>
+                {batch.status}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">New Status</label>
+              <Select value={newStatus} onValueChange={setNewStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select new status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fermentation">Fermentation</SelectItem>
+                  <SelectItem value="aging">Aging</SelectItem>
+                  <SelectItem value="conditioning">Conditioning</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="discarded">Discarded</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowChangeStatusModal(false);
+                setNewStatus("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!newStatus) {
+                  toast({
+                    title: "Error",
+                    description: "Please select a new status",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                try {
+                  await updateBatchMutation.mutateAsync({
+                    batchId: batch.id,
+                    status: newStatus as any,
+                  });
+
+                  toast({
+                    title: "Success",
+                    description: `Batch status changed to ${newStatus}`,
+                  });
+
+                  setShowChangeStatusModal(false);
+                  setNewStatus("");
+                  utils.batch.get.invalidate({ batchId });
+                } catch (error) {
+                  toast({
+                    title: "Error",
+                    description: "Failed to update batch status",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              disabled={!newStatus || updateBatchMutation.isPending}
+            >
+              {updateBatchMutation.isPending ? "Updating..." : "Update Status"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

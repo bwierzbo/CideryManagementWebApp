@@ -91,7 +91,7 @@ export function EditKegModal({
   const utils = trpc.useUtils();
 
   // Fetch keg details
-  const { data: kegData, isLoading } = trpc.kegs.getKegDetails.useQuery(
+  const { data: kegData, isLoading } = trpc.packaging.kegs.getKegDetails.useQuery(
     { kegId },
     { enabled: open && !!kegId }
   );
@@ -116,14 +116,14 @@ export function EditKegModal({
     }
   }, [keg, open, reset]);
 
-  const updateKegMutation = trpc.kegs.updateKeg.useMutation({
+  const updateKegMutation = trpc.packaging.kegs.updateKeg.useMutation({
     onSuccess: () => {
       toast({
         title: "Keg Updated",
         description: "Keg details updated successfully",
       });
-      utils.kegs.listKegs.invalidate();
-      utils.kegs.getKegDetails.invalidate({ kegId });
+      utils.packaging.kegs.listKegs.invalidate();
+      utils.packaging.kegs.getKegDetails.invalidate({ kegId });
       onSuccess?.();
       onClose();
     },
