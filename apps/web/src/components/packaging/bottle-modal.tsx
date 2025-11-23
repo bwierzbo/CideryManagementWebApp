@@ -183,18 +183,6 @@ export function BottleModal({
     setSelectedMaterials([...selectedMaterials, newMaterial]);
     setValue("materials", [...selectedMaterials, newMaterial]);
 
-    // Auto-set package size from primary packaging material
-    if (selectedItem.type === "Primary Packaging") {
-      const parsedSize = parsePackageSizeFromName(selectedItem.varietyName || selectedItem.size || "");
-      if (parsedSize) {
-        setValue("packageSizeMl", parsedSize);
-        toast({
-          title: "Package Size Auto-Set",
-          description: `Set to ${parsedSize}ml from ${selectedItem.varietyName || selectedItem.size}`,
-        });
-      }
-    }
-
     setCurrentMaterialId("");
     setCurrentQuantity(1);
   };
@@ -205,6 +193,20 @@ export function BottleModal({
     setSelectedMaterials(updated);
     setValue("materials", updated);
   };
+
+  // Auto-detect package size when primary packaging is selected
+  useEffect(() => {
+    if (currentMaterialId) {
+      const selectedItem = allPackagingItems.find(item => item.id === currentMaterialId);
+      if (selectedItem && selectedItem.type === "Primary Packaging") {
+        const match = (selectedItem.varietyName || selectedItem.size || "").match(/(\d+)\s*ml/i);
+        const parsedSize = match ? parseInt(match[1]) : null;
+        if (parsedSize) {
+          setValue("packageSizeMl", parsedSize);
+        }
+      }
+    }
+  }, [currentMaterialId, allPackagingItems, setValue]);
 
   // Auto-fill quantity when material is selected
   useEffect(() => {
