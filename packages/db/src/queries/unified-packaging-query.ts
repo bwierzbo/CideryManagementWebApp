@@ -65,7 +65,15 @@ export async function getUnifiedPackagingRuns(
 
     // Package type filter (for bottles, exclude 'keg')
     if (filters.packageType && filters.packageType !== 'keg') {
-      bottleConditions.push(eq(bottleRuns.packageType, filters.packageType as any));
+      // Handle comma-separated package types (e.g., "bottle,can")
+      const types = filters.packageType.split(',').map(t => t.trim());
+      if (types.length === 1) {
+        bottleConditions.push(eq(bottleRuns.packageType, types[0] as any));
+      } else {
+        bottleConditions.push(
+          or(...types.map(type => eq(bottleRuns.packageType, type as any)))!
+        );
+      }
     }
 
     // Date filters
