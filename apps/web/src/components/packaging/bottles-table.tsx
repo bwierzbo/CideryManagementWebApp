@@ -99,7 +99,7 @@ type SortField =
   | "unitsProduced"
   | "lossPercentage";
 
-interface PackagingTableProps {
+interface BottlesTableProps {
   className?: string;
   itemsPerPage?: number;
   onItemClick?: (item: PackagingRun) => void;
@@ -122,7 +122,7 @@ interface PackagingTableProps {
   onSelectionChange?: (selectedIds: string[]) => void;
 }
 
-export function PackagingTable({
+export function BottlesTable({
   className,
   itemsPerPage = 25,
   onItemClick,
@@ -131,7 +131,7 @@ export function PackagingTable({
   enableSelection = false,
   selectedItems = [],
   onSelectionChange,
-}: PackagingTableProps) {
+}: BottlesTableProps) {
   // Toast for notifications
   const { toast } = useToast();
 
@@ -200,6 +200,7 @@ export function PackagingTable({
     const params: any = {
       limit: itemsPerPage,
       offset: currentPage * itemsPerPage,
+      packageType: "bottle,can", // Only show bottles and cans
     };
 
     // Add filters if provided
@@ -1215,12 +1216,12 @@ export function PackagingTable({
 }
 
 // Export a simplified version for basic usage
-export function SimplePackagingTable({
+export function SimpleBottlesTable({
   limit = 10,
   className,
 }: {
   limit?: number;
   className?: string;
 }) {
-  return <PackagingTable className={className} itemsPerPage={limit} />;
+  return <BottlesTable className={className} itemsPerPage={limit} />;
 }

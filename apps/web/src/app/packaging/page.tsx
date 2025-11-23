@@ -11,9 +11,14 @@ import { performanceMonitor } from "@/lib/performance-monitor";
 import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
 
 // Lazy load heavy components
-const PackagingTable = lazy(() =>
-  import("@/components/packaging/bottle-table").then((m) => ({
-    default: m.PackagingTable,
+const BottlesTable = lazy(() =>
+  import("@/components/packaging/bottles-table").then((m) => ({
+    default: m.BottlesTable,
+  })),
+);
+const KegsTable = lazy(() =>
+  import("@/components/packaging/kegs/KegsTable").then((m) => ({
+    default: m.KegsTable,
   })),
 );
 const PackagingFilters = lazy(() =>
@@ -148,12 +153,6 @@ export default function PackagingPage() {
     const newTab = value as "bottles" | "kegs";
     setActiveTab(newTab);
 
-    // Update packageType filter based on active tab
-    setFilters(prev => ({
-      ...prev,
-      packageType: newTab === "bottles" ? "bottle,can" : "keg",
-    }));
-
     // Clear selection when switching tabs
     setSelectedItems([]);
     setShowBulkActions(false);
@@ -265,7 +264,7 @@ export default function PackagingPage() {
                 </div>
               }
             >
-              <PackagingTable
+              <BottlesTable
                 filters={filters}
                 onDataChange={handleTableDataChange}
                 enableSelection={true}
@@ -301,8 +300,8 @@ export default function PackagingPage() {
                     <span className="text-sm font-medium text-blue-900 truncate">
                       <span className="hidden sm:inline">
                         {selectedItems.length === 1
-                          ? "1 run selected"
-                          : `${selectedItems.length} runs selected`}
+                          ? "1 keg selected"
+                          : `${selectedItems.length} kegs selected`}
                       </span>
                       <span className="sm:hidden">
                         {selectedItems.length === 1
@@ -359,7 +358,7 @@ export default function PackagingPage() {
                 </div>
               }
             >
-              <PackagingTable
+              <KegsTable
                 filters={filters}
                 onDataChange={handleTableDataChange}
                 enableSelection={true}
