@@ -95,6 +95,7 @@ export function BottleModal({
     itemType: "Labels",
     limit: 100,
   });
+  const packageSizesQuery = trpc.packaging.getPackageSizes.useQuery();
   const createPackagingRunMutation =
     trpc.packaging.createFromCellar.useMutation();
   const utils = trpc.useUtils();
@@ -120,13 +121,13 @@ export function BottleModal({
   const unitsProduced = watch("unitsProduced");
 
   // Auto-calculate units when volume and package size are set
+  // Always recalculate when either value changes
   useEffect(() => {
-    if (volumeTakenL && packageSizeMl && !unitsProduced) {
-      const unitSizeL = packageSizeMl / 1000;
-      const calculatedUnits = Math.floor(volumeTakenL / unitSizeL);
+    if (volumeTakenL && packageSizeMl) {
+      const calculatedUnits = Math.floor((volumeTakenL * 1000) / packageSizeMl);
       setValue("unitsProduced", calculatedUnits);
     }
-  }, [volumeTakenL, packageSizeMl, unitsProduced, setValue]);
+  }, [volumeTakenL, packageSizeMl, setValue]);
 
   // Combine all packaging inventory into one list
   const allPackagingItems = [
@@ -368,20 +369,53 @@ export function BottleModal({
             </p>
           </div>
 
-          {/* Package size display (auto-set from primary packaging material) */}
-          {packageSizeMl && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-              <Label className="text-sm font-medium text-green-900">
-                Package Size (from material)
-              </Label>
-              <p className="text-2xl font-bold text-green-700 mt-1">
-                {packageSizeMl}ml
+          {/* Package Size Selector */}
+          <div>
+            <Label
+              htmlFor="packageSize"
+              className="text-sm md:text-base font-medium"
+            >
+              Package Size *
+            </Label>
+            <Select
+              value={packageSizeMl ? String(packageSizeMl) : ""}
+              onValueChange={(value) => {
+                const sizeML = parseInt(value);
+                setValue("packageSizeMl", sizeML);
+              }}
+            >
+              <SelectTrigger className="h-10 md:h-11 text-base">
+                <SelectValue placeholder="Select package size" />
+              </SelectTrigger>
+              <SelectContent>
+                {packageSizesQuery.isLoading ? (
+                  <SelectItem value="loading" disabled>
+                    Loading sizes...
+                  </SelectItem>
+                ) : packageSizesQuery.data && packageSizesQuery.data.length > 0 ? (
+                  packageSizesQuery.data
+                    .filter((size) => size.packageType === "bottle" || size.packageType === "can")
+                    .map((size) => (
+                      <SelectItem key={size.id} value={String(size.sizeML)}>
+                        {size.displayName}
+                      </SelectItem>
+                    ))
+                ) : (
+                  <SelectItem value="none" disabled>
+                    No package sizes available
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {errors.packageSizeMl && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.packageSizeMl.message}
               </p>
-              <p className="text-xs text-green-600 mt-1">
-                Auto-detected from primary packaging selection
-              </p>
-            </div>
-          )}
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              💡 Will auto-update when you select primary packaging materials
+            </p>
+          </div>
 
           {/* Volume taken */}
           <div>
@@ -448,7 +482,7 @@ export function BottleModal({
             )}
             {volumeTakenL && !isNaN(volumeTakenL) && packageSizeMl && !isNaN(packageSizeMl) && (
               <p className="text-xs text-green-600 mt-1">
-                💡 Auto-calculated based on volume and package size (editable)
+                💡 Estimated based on volume and package size
               </p>
             )}
           </div>
@@ -458,11 +492,6 @@ export function BottleModal({
             <Label className="text-sm md:text-base font-medium">
               Packaging Materials *
             </Label>
-            {!packageSizeMl && (
-              <p className="text-xs text-amber-600">
-                💡 Select Primary Packaging first (e.g., 750ml glass bottle) to set package size
-              </p>
-            )}
             {unitsProduced && !isNaN(unitsProduced) && unitsProduced > 0 && (
               <p className="text-xs text-blue-600">
                 💡 Quantity will auto-fill to {unitsProduced} when you select a material
