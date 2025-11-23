@@ -110,8 +110,12 @@ export function BottleModal({
   } = useForm<BottleFormData>({
     resolver: zodResolver(bottleFormSchema),
     defaultValues: {
+      volumeTakenL: undefined,
+      packageSizeMl: undefined,
+      unitsProduced: undefined,
       packagedAt: new Date().toISOString().slice(0, 16), // Current date/time in local format
       notes: "",
+      materials: [],
     },
   });
 
@@ -123,7 +127,7 @@ export function BottleModal({
   // Auto-calculate units when volume and package size are set
   // Always recalculate when either value changes
   useEffect(() => {
-    if (volumeTakenL && packageSizeMl) {
+    if (volumeTakenL && packageSizeMl && !isNaN(volumeTakenL) && !isNaN(packageSizeMl)) {
       const calculatedUnits = Math.floor((volumeTakenL * 1000) / packageSizeMl);
       setValue("unitsProduced", calculatedUnits);
     }
