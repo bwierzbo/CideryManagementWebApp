@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -132,12 +132,12 @@ export function BottleModal({
     }
   }, [volumeTakenL, packageSizeMl, setValue]);
 
-  // Combine all packaging inventory into one list
-  const allPackagingItems = [
+  // Combine all packaging inventory into one list (memoized to prevent infinite loops)
+  const allPackagingItems = useMemo(() => [
     ...(primaryPackagingQuery.data?.items || []).map(item => ({ ...item, type: "Primary Packaging" })),
     ...(capsQuery.data?.items || []).map(item => ({ ...item, type: "Caps" })),
     ...(labelsQuery.data?.items || []).map(item => ({ ...item, type: "Labels" })),
-  ];
+  ], [primaryPackagingQuery.data?.items, capsQuery.data?.items, labelsQuery.data?.items]);
 
   // Parse package size from material name (e.g., "750ml glass bottle" → 750)
   const parsePackageSizeFromName = (name: string): number | null => {
@@ -201,12 +201,13 @@ export function BottleModal({
       if (selectedItem && selectedItem.type === "Primary Packaging") {
         const match = (selectedItem.varietyName || selectedItem.size || "").match(/(\d+)\s*ml/i);
         const parsedSize = match ? parseInt(match[1]) : null;
-        if (parsedSize) {
+        // Only update if value is actually changing to prevent infinite loop
+        if (parsedSize && parsedSize !== packageSizeMl) {
           setValue("packageSizeMl", parsedSize);
         }
       }
     }
-  }, [currentMaterialId, allPackagingItems, setValue]);
+  }, [currentMaterialId, allPackagingItems, packageSizeMl, setValue]);
 
   // Auto-fill quantity when material is selected
   useEffect(() => {
