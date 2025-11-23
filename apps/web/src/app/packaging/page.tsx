@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Plus, Download, X, Loader2, Beaker } from "lucide-react";
 import { performanceMonitor } from "@/lib/performance-monitor";
 import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
@@ -26,6 +27,7 @@ import type { PackagingFiltersState } from "@/components/packaging/bottle-filter
 
 export default function PackagingPage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<"bottles" | "kegs">("bottles");
   const [filters, setFilters] = useState<PackagingFiltersState>({
     dateFrom: null,
     dateTo: null,
@@ -142,6 +144,21 @@ export default function PackagingPage() {
     router.push("/cellar");
   }, [router]);
 
+  const handleTabChange = useCallback((value: string) => {
+    const newTab = value as "bottles" | "kegs";
+    setActiveTab(newTab);
+
+    // Update packageType filter based on active tab
+    setFilters(prev => ({
+      ...prev,
+      packageType: newTab === "bottles" ? "bottle,can" : "keg",
+    }));
+
+    // Clear selection when switching tabs
+    setSelectedItems([]);
+    setShowBulkActions(false);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -157,97 +174,201 @@ export default function PackagingPage() {
           </p>
         </div>
 
-        {/* Filters */}
-        <Suspense fallback={<PackagingFiltersSkeleton />}>
-          <PackagingFilters
-            onFiltersChange={handleFiltersChange}
-            onExportClick={handleExport}
-            isExporting={isExporting}
-            initialFilters={filters}
-            itemCount={tableData.count}
-          />
-        </Suspense>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+          <TabsList className="grid w-full max-w-[400px] grid-cols-2">
+            <TabsTrigger value="bottles">Bottles & Cans</TabsTrigger>
+            <TabsTrigger value="kegs">Kegs</TabsTrigger>
+          </TabsList>
 
-        {/* Bulk Actions Bar */}
-        {showBulkActions && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <Badge
-                  variant="secondary"
-                  className="bg-blue-600 text-white flex-shrink-0 px-2 py-0.5 font-semibold"
-                >
-                  {selectedItems.length}
-                </Badge>
-                <span className="text-sm font-medium text-blue-900 truncate">
-                  <span className="hidden sm:inline">
-                    {selectedItems.length === 1
-                      ? "1 run selected"
-                      : `${selectedItems.length} runs selected`}
-                  </span>
-                  <span className="sm:hidden">
-                    {selectedItems.length === 1
-                      ? "1 selected"
-                      : `${selectedItems.length} selected`}
-                  </span>
-                </span>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleBulkExport}
-                  disabled={isExporting}
-                  className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 flex-1 sm:flex-initial h-9"
-                >
-                  {isExporting ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                      <span className="hidden sm:inline">Exporting...</span>
-                      <span className="sm:hidden">...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-3.5 h-3.5 mr-2" />
+          <TabsContent value="bottles" className="space-y-4">
+            {/* Filters */}
+            <Suspense fallback={<PackagingFiltersSkeleton />}>
+              <PackagingFilters
+                onFiltersChange={handleFiltersChange}
+                onExportClick={handleExport}
+                isExporting={isExporting}
+                initialFilters={filters}
+                itemCount={tableData.count}
+              />
+            </Suspense>
+
+            {/* Bulk Actions Bar */}
+            {showBulkActions && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Badge
+                      variant="secondary"
+                      className="bg-blue-600 text-white flex-shrink-0 px-2 py-0.5 font-semibold"
+                    >
+                      {selectedItems.length}
+                    </Badge>
+                    <span className="text-sm font-medium text-blue-900 truncate">
                       <span className="hidden sm:inline">
-                        Export Selected
+                        {selectedItems.length === 1
+                          ? "1 run selected"
+                          : `${selectedItems.length} runs selected`}
                       </span>
-                      <span className="sm:hidden">Export</span>
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClearSelection}
-                  className="text-blue-700 hover:bg-blue-100 min-w-0 h-9"
-                >
-                  <X className="w-4 h-4 sm:mr-1" />
-                  <span className="hidden sm:inline">Clear</span>
-                </Button>
+                      <span className="sm:hidden">
+                        {selectedItems.length === 1
+                          ? "1 selected"
+                          : `${selectedItems.length} selected`}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkExport}
+                      disabled={isExporting}
+                      className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 flex-1 sm:flex-initial h-9"
+                    >
+                      {isExporting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                          <span className="hidden sm:inline">Exporting...</span>
+                          <span className="sm:hidden">...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5 mr-2" />
+                          <span className="hidden sm:inline">
+                            Export Selected
+                          </span>
+                          <span className="sm:hidden">Export</span>
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearSelection}
+                      className="text-blue-700 hover:bg-blue-100 min-w-0 h-9"
+                    >
+                      <X className="w-4 h-4 sm:mr-1" />
+                      <span className="hidden sm:inline">Clear</span>
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Main Content */}
-        <Suspense
-          fallback={
-            <div className="space-y-2">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <PackagingTableRowSkeleton key={index} />
-              ))}
-            </div>
-          }
-        >
-          <PackagingTable
-            filters={filters}
-            onDataChange={handleTableDataChange}
-            enableSelection={true}
-            selectedItems={selectedItems}
-            onSelectionChange={handleSelectionChange}
-          />
-        </Suspense>
+            {/* Main Content */}
+            <Suspense
+              fallback={
+                <div className="space-y-2">
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <PackagingTableRowSkeleton key={index} />
+                  ))}
+                </div>
+              }
+            >
+              <PackagingTable
+                filters={filters}
+                onDataChange={handleTableDataChange}
+                enableSelection={true}
+                selectedItems={selectedItems}
+                onSelectionChange={handleSelectionChange}
+              />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="kegs" className="space-y-4">
+            {/* Filters */}
+            <Suspense fallback={<PackagingFiltersSkeleton />}>
+              <PackagingFilters
+                onFiltersChange={handleFiltersChange}
+                onExportClick={handleExport}
+                isExporting={isExporting}
+                initialFilters={filters}
+                itemCount={tableData.count}
+              />
+            </Suspense>
+
+            {/* Bulk Actions Bar */}
+            {showBulkActions && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Badge
+                      variant="secondary"
+                      className="bg-blue-600 text-white flex-shrink-0 px-2 py-0.5 font-semibold"
+                    >
+                      {selectedItems.length}
+                    </Badge>
+                    <span className="text-sm font-medium text-blue-900 truncate">
+                      <span className="hidden sm:inline">
+                        {selectedItems.length === 1
+                          ? "1 run selected"
+                          : `${selectedItems.length} runs selected`}
+                      </span>
+                      <span className="sm:hidden">
+                        {selectedItems.length === 1
+                          ? "1 selected"
+                          : `${selectedItems.length} selected`}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkExport}
+                      disabled={isExporting}
+                      className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 flex-1 sm:flex-initial h-9"
+                    >
+                      {isExporting ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                          <span className="hidden sm:inline">Exporting...</span>
+                          <span className="sm:hidden">...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5 mr-2" />
+                          <span className="hidden sm:inline">
+                            Export Selected
+                          </span>
+                          <span className="sm:hidden">Export</span>
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearSelection}
+                      className="text-blue-700 hover:bg-blue-100 min-w-0 h-9"
+                    >
+                      <X className="w-4 h-4 sm:mr-1" />
+                      <span className="hidden sm:inline">Clear</span>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Main Content */}
+            <Suspense
+              fallback={
+                <div className="space-y-2">
+                  {Array.from({ length: 8 }).map((_, index) => (
+                    <PackagingTableRowSkeleton key={index} />
+                  ))}
+                </div>
+              }
+            >
+              <PackagingTable
+                filters={filters}
+                onDataChange={handleTableDataChange}
+                enableSelection={true}
+                selectedItems={selectedItems}
+                onSelectionChange={handleSelectionChange}
+              />
+            </Suspense>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
