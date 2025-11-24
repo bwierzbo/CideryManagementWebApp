@@ -20,10 +20,11 @@ import {
   juicePurchaseItems,
   juicePurchases,
   auditLogs,
+  packagingPurchaseItems,
 } from "db";
-import { bottleRuns, kegFills, kegs } from "db/src/schema/packaging";
+import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, desc, asc, sql, or, like } from "drizzle-orm";
+import { eq, and, isNull, desc, asc, sql, or, like, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
 import {
@@ -1848,7 +1849,7 @@ export const batchRouter = router({
             });
           }
 
-          // Add labeling event if labeled
+          // Add labeling event if labeled (will be populated below with label details)
           if (b.labeledAt) {
             activities.push({
               id: `label-${b.id}`,
@@ -1859,6 +1860,7 @@ export const batchRouter = router({
                 unitsLabeled: b.unitsProduced,
               },
               metadata: { id: b.id, labeledAt: b.labeledAt },
+              bottleRunId: b.id, // Temporary field for lookup
             });
           }
         });
@@ -1897,6 +1899,63 @@ export const batchRouter = router({
             },
           });
         });
+
+        // Get label details for all labeled bottle runs
+        const labeledBottleRunIds = bottles
+          .filter(b => b.labeledAt)
+          .map(b => b.id);
+
+        if (labeledBottleRunIds.length > 0) {
+          const labelDetails = await db
+            .select({
+              bottleRunId: bottleRunMaterials.bottleRunId,
+              labelName: packagingPurchaseItems.size,
+              quantity: bottleRunMaterials.quantityUsed,
+            })
+            .from(bottleRunMaterials)
+            .leftJoin(
+              packagingPurchaseItems,
+              eq(bottleRunMaterials.packagingPurchaseItemId, packagingPurchaseItems.id)
+            )
+            .where(
+              and(
+                inArray(bottleRunMaterials.bottleRunId, labeledBottleRunIds),
+                eq(bottleRunMaterials.materialType, "Labels")
+              )
+            );
+
+          // Group labels by bottle run
+          const labelsByBottleRun = labelDetails.reduce((acc, label) => {
+            if (!acc[label.bottleRunId]) {
+              acc[label.bottleRunId] = [];
+            }
+            acc[label.bottleRunId].push(label);
+            return acc;
+          }, {} as Record<string, typeof labelDetails>);
+
+          // Update label activities with detailed information
+          activities.forEach((activity: any) => {
+            if (activity.type === "label" && activity.bottleRunId) {
+              const labels = labelsByBottleRun[activity.bottleRunId];
+              if (labels && labels.length > 0) {
+                const labelDescriptions = labels.map((l: any) =>
+                  `${l.quantity.toLocaleString()}× ${l.labelName || 'Label'}`
+                ).join(", ");
+
+                activity.description = `Applied labels: ${labelDescriptions}`;
+                activity.details = {
+                  ...activity.details,
+                  labels: labels.map((l: any) => ({
+                    name: l.labelName || "Label",
+                    quantity: l.quantity,
+                  })),
+                };
+              }
+              // Remove temporary field
+              delete activity.bottleRunId;
+            }
+          });
+        }
 
         // Get audit logs for status changes
         const statusChangeLogs = await db

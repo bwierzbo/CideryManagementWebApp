@@ -64,6 +64,9 @@ export interface BottleRunListItem {
   fillCheck: string | null;
   abvAtPackaging: number | null;
   qaTechnicianName: string | null;
+  // Processing status fields
+  pasteurizedAt?: Date | null;
+  labeledAt?: Date | null;
 }
 
 export interface KegFillListItem {

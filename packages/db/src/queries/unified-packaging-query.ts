@@ -111,6 +111,8 @@ export async function getUnifiedPackagingRuns(
         createdAt: bottleRuns.createdAt,
         fillCheck: bottleRuns.fillCheck,
         abvAtPackaging: bottleRuns.abvAtPackaging,
+        pasteurizedAt: bottleRuns.pasteurizedAt,
+        labeledAt: bottleRuns.labeledAt,
         batchName: batches.name,
         batchCustomName: batches.customName,
         vesselName: vessels.name,
@@ -170,6 +172,8 @@ export async function getUnifiedPackagingRuns(
         ? parseFloat(item.abvAtPackaging.toString())
         : null,
       qaTechnicianName: item.qaTechnicianName,
+      pasteurizedAt: item.pasteurizedAt,
+      labeledAt: item.labeledAt,
     }));
 
     // Get count (use same conditions as main query)
