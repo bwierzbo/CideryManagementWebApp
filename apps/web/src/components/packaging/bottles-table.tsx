@@ -682,6 +682,22 @@ export function BottlesTable({
                           {item.vessel.name ||
                             `Vessel ${item.vesselId.slice(0, 8)}`}
                         </div>
+                        {(item.pasteurizedAt || item.labeledAt) && (
+                          <div className="flex gap-1 mt-1.5 flex-wrap">
+                            {item.pasteurizedAt && (
+                              <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 gap-1 px-1.5 py-0">
+                                <Flame className="h-3 w-3" />
+                                <span>Pasteurized</span>
+                              </Badge>
+                            )}
+                            {item.labeledAt && (
+                              <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 gap-1 px-1.5 py-0">
+                                <Tag className="h-3 w-3" />
+                                <span>Labeled</span>
+                              </Badge>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-2 flex-shrink-0">
                         <Badge
@@ -983,6 +999,22 @@ export function BottlesTable({
                             {item.vessel.name ||
                               `Vessel ${item.vesselId.slice(0, 8)}`}
                           </div>
+                          {(item.pasteurizedAt || item.labeledAt) && (
+                            <div className="flex gap-1 mt-1">
+                              {item.pasteurizedAt && (
+                                <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 gap-1 px-1.5 py-0">
+                                  <Flame className="h-3 w-3" />
+                                  <span>Pasteurized</span>
+                                </Badge>
+                              )}
+                              {item.labeledAt && (
+                                <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 gap-1 px-1.5 py-0">
+                                  <Tag className="h-3 w-3" />
+                                  <span>Labeled</span>
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="py-3">

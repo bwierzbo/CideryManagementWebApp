@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -29,17 +29,18 @@ import {
 } from "@/components/ui/command";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check } from "lucide-react";
+import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const labelSchema = z.object({
-  packagingItemId: z.string().min(1, "Please select a label"),
-  quantity: z.number().int().positive("Quantity must be positive"),
+  labels: z.array(z.object({
+    packagingItemId: z.string().min(1, "Please select a label"),
+    quantity: z.number().int().positive("Quantity must be positive"),
+  })).min(1, "At least one label is required"),
   labeledAt: z.string().min(1, "Please select a date"),
 });
 
-type LabelFormInput = z.infer<typeof labelSchema>;
-type LabelForm = LabelFormInput;
+type LabelForm = z.infer<typeof labelSchema>;
 
 interface LabelModalProps {
   open: boolean;
@@ -59,7 +60,7 @@ export function LabelModal({
   onSuccess,
 }: LabelModalProps) {
   const utils = trpc.useUtils();
-  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [comboboxOpen, setComboboxOpen] = useState<{[key: number]: boolean}>({});
   const [appliedLabels, setAppliedLabels] = useState<Array<{name: string, quantity: number}>>([]);
 
   const {
@@ -69,17 +70,21 @@ export function LabelModal({
     watch,
     setValue,
     reset,
+    control,
   } = useForm<LabelForm>({
     resolver: zodResolver(labelSchema),
     defaultValues: {
-      quantity: unitsProduced,
+      labels: [{ packagingItemId: "", quantity: unitsProduced }],
       labeledAt: new Date().toISOString().split('T')[0],
-      packagingItemId: "",
     },
   });
 
-  const selectedItemId = watch("packagingItemId");
-  const quantity = watch("quantity");
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "labels",
+  });
+
+  const labelsData = watch("labels");
 
   // Get packaging items (labels) - filter by Secondary Packaging item type
   const { data: packagingItems, isLoading: isLoadingItems, refetch: refetchPackagingItems } =
@@ -92,35 +97,51 @@ export function LabelModal({
   useEffect(() => {
     if (open) {
       reset({
-        quantity: unitsProduced,
+        labels: [{ packagingItemId: "", quantity: unitsProduced }],
         labeledAt: new Date().toISOString().split('T')[0],
-        packagingItemId: "",
       });
       setAppliedLabels([]);
+      setComboboxOpen({});
     }
   }, [open, reset, unitsProduced]);
 
-  // Find selected item details
-  const selectedItem = packagingItems?.items.find(
-    (item) => item.id === selectedItemId
-  );
+  const labelMutation = trpc.packaging.addLabel.useMutation();
 
-  const labelMutation = trpc.packaging.addLabel.useMutation({
-    onSuccess: (data) => {
-      const labelName = data.labelName || "Label";
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const onSubmit = async (data: LabelForm) => {
+    setIsSubmitting(true);
+    const labeledAt = new Date(`${data.labeledAt}T12:00:00.000Z`);
+    const appliedLabelsList: Array<{name: string, quantity: number}> = [];
+
+    try {
+      // Apply each label sequentially
+      for (const label of data.labels) {
+        const result = await labelMutation.mutateAsync({
+          bottleRunId,
+          packagingItemId: label.packagingItemId,
+          quantity: label.quantity,
+          labeledAt: labeledAt,
+        });
+
+        appliedLabelsList.push({
+          name: result.labelName || "Label",
+          quantity: label.quantity,
+        });
+      }
+
+      // Success - update applied labels list
+      setAppliedLabels(prev => [...prev, ...appliedLabelsList]);
+
       toast({
-        title: "Label Applied",
-        description: `Successfully applied ${quantity} × ${labelName}`,
+        title: "Labels Applied",
+        description: `Successfully applied ${appliedLabelsList.length} label type(s)`,
       });
 
-      // Add to applied labels list
-      setAppliedLabels(prev => [...prev, { name: labelName, quantity }]);
-
-      // Reset form fields for next label application
+      // Reset form for next batch of labels
       reset({
-        quantity: unitsProduced,
+        labels: [{ packagingItemId: "", quantity: unitsProduced }],
         labeledAt: new Date().toISOString().split('T')[0],
-        packagingItemId: "",
       });
 
       // Refresh inventory and bottle data
@@ -129,29 +150,16 @@ export function LabelModal({
       refetchPackagingItems();
       onSuccess();
 
-      // DO NOT close modal - allow adding more labels
-    },
-    onError: (error) => {
+    } catch (error: any) {
       toast({
         title: "Labeling Failed",
-        description: error.message,
+        description: error.message || "Failed to apply labels",
         variant: "destructive",
       });
-    },
-  });
-
-  const onSubmit = (data: LabelForm) => {
-    // Parse date at noon UTC to avoid timezone issues
-    const labeledAt = new Date(`${data.labeledAt}T12:00:00.000Z`);
-    labelMutation.mutate({
-      bottleRunId,
-      packagingItemId: data.packagingItemId,
-      quantity: data.quantity,
-      labeledAt: labeledAt,
-    });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
-
-  const hasInsufficientStock = selectedItem && quantity > selectedItem.quantity;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -195,111 +203,162 @@ export function LabelModal({
             </div>
           </div>
 
-          {/* Select Label */}
-          <div className="space-y-2">
-            <Label htmlFor="packagingItemId">
-              Label <span className="text-red-500">*</span>
-            </Label>
-            {isLoadingItems ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading labels...
-              </div>
-            ) : packagingItems?.items.length === 0 ? (
-              <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-3">
-                <AlertTriangle className="w-4 h-4 inline mr-2" />
-                No labels found in packaging inventory
-              </div>
-            ) : (
-              <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={comboboxOpen}
-                    className="w-full justify-between"
-                  >
-                    {selectedItemId
-                      ? packagingItems?.items.find((item) => item.id === selectedItemId)?.size
-                      : "Select a label..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-full p-0" align="start">
-                  <Command>
-                    <CommandInput placeholder="Search labels..." />
-                    <CommandEmpty>No label found.</CommandEmpty>
-                    <CommandGroup className="max-h-[200px] overflow-y-auto">
-                      {packagingItems?.items.map((item) => (
-                        <CommandItem
-                          key={item.id}
-                          value={item.size}
-                          onSelect={() => {
-                            setValue("packagingItemId", item.id);
-                            setComboboxOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedItemId === item.id ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          <div className="flex items-center justify-between flex-1">
-                            <span className="truncate">{item.size}</span>
-                            <Badge
-                              variant={item.quantity > 0 ? "default" : "destructive"}
-                              className="ml-2 flex-shrink-0"
-                            >
-                              {item.quantity} in stock
-                            </Badge>
-                          </div>
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            )}
-            {errors.packagingItemId && (
-              <p className="text-sm text-red-500">
-                {errors.packagingItemId.message}
-              </p>
-            )}
-          </div>
+          {/* Loading/Empty State */}
+          {isLoadingItems ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading labels...
+            </div>
+          ) : packagingItems?.items.length === 0 ? (
+            <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-3">
+              <AlertTriangle className="w-4 h-4 inline mr-2" />
+              No labels found in packaging inventory
+            </div>
+          ) : (
+            <>
+              {/* Labels to Apply */}
+              <div className="space-y-3">
+                <Label>Labels to Apply <span className="text-red-500">*</span></Label>
 
-          {/* Quantity */}
-          <div className="space-y-2">
-            <Label htmlFor="quantity">
-              Quantity to Apply <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="quantity"
-              type="number"
-              {...register("quantity", { valueAsNumber: true })}
-              placeholder="Enter quantity"
-            />
-            {errors.quantity && (
-              <p className="text-sm text-red-500">{errors.quantity.message}</p>
-            )}
-            {selectedItem && (
-              <div className="flex items-start gap-2 text-sm">
-                <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                <span className="text-gray-600">
-                  Available in stock: {selectedItem.quantity} labels
-                </span>
+                {fields.map((field, index) => {
+                  const selectedItem = packagingItems?.items.find(
+                    (item) => item.id === labelsData[index]?.packagingItemId
+                  );
+                  const hasInsufficientStock = selectedItem && labelsData[index]?.quantity > selectedItem.quantity;
+
+                  return (
+                    <div key={field.id} className="border border-gray-200 rounded-lg p-3 space-y-3">
+                      {/* Label Selector */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm">Label</Label>
+                          {fields.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => remove(index)}
+                              className="h-6 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Remove
+                            </Button>
+                          )}
+                        </div>
+
+                        <Popover
+                          open={comboboxOpen[index]}
+                          onOpenChange={(open) =>
+                            setComboboxOpen(prev => ({ ...prev, [index]: open }))
+                          }
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={comboboxOpen[index]}
+                              className="w-full justify-between"
+                            >
+                              {labelsData[index]?.packagingItemId
+                                ? packagingItems?.items.find(
+                                    (item) => item.id === labelsData[index]?.packagingItemId
+                                  )?.size
+                                : "Select a label..."}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search labels..." />
+                              <CommandEmpty>No label found.</CommandEmpty>
+                              <CommandGroup className="max-h-[300px] overflow-y-auto">
+                                {packagingItems?.items.map((item) => (
+                                  <CommandItem
+                                    key={item.id}
+                                    value={item.size}
+                                    onSelect={() => {
+                                      setValue(`labels.${index}.packagingItemId`, item.id);
+                                      setComboboxOpen(prev => ({ ...prev, [index]: false }));
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        labelsData[index]?.packagingItemId === item.id
+                                          ? "opacity-100"
+                                          : "opacity-0"
+                                      )}
+                                    />
+                                    <div className="flex items-center justify-between flex-1">
+                                      <span className="truncate">{item.size}</span>
+                                      <Badge
+                                        variant={item.quantity > 0 ? "default" : "destructive"}
+                                        className="ml-2 flex-shrink-0"
+                                      >
+                                        {item.quantity} in stock
+                                      </Badge>
+                                    </div>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        {errors.labels?.[index]?.packagingItemId && (
+                          <p className="text-sm text-red-500">
+                            {errors.labels[index]?.packagingItemId?.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Quantity */}
+                      <div className="space-y-2">
+                        <Label className="text-sm">Quantity</Label>
+                        <Input
+                          type="number"
+                          {...register(`labels.${index}.quantity`, { valueAsNumber: true })}
+                          placeholder="Enter quantity"
+                        />
+                        {errors.labels?.[index]?.quantity && (
+                          <p className="text-sm text-red-500">
+                            {errors.labels[index]?.quantity?.message}
+                          </p>
+                        )}
+                        {selectedItem && (
+                          <div className="flex items-start gap-2 text-sm">
+                            <Info className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                            <span className="text-gray-600">
+                              Available: {selectedItem.quantity} labels
+                            </span>
+                          </div>
+                        )}
+                        {hasInsufficientStock && (
+                          <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                            <span>
+                              Insufficient stock! Only {selectedItem?.quantity} available.
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Add Another Label Button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => append({ packagingItemId: "", quantity: unitsProduced })}
+                  className="w-full"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Another Label
+                </Button>
               </div>
-            )}
-            {hasInsufficientStock && (
-              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Insufficient stock! You only have {selectedItem?.quantity}{" "}
-                  labels available.
-                </span>
-              </div>
-            )}
-          </div>
+            </>
+          )}
 
           {/* Labeling Date */}
           <div className="space-y-2">
@@ -321,22 +380,17 @@ export function LabelModal({
             <Button
               type="submit"
               className="w-full"
-              disabled={
-                labelMutation.isPending ||
-                !selectedItemId ||
-                hasInsufficientStock ||
-                !quantity
-              }
+              disabled={isSubmitting || isLoadingItems}
             >
-              {labelMutation.isPending ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Applying...
+                  Applying {labelsData.length} label{labelsData.length > 1 ? 's' : ''}...
                 </>
               ) : (
                 <>
                   <Tag className="w-4 h-4 mr-2" />
-                  Apply Label
+                  Apply {labelsData.length} Label{labelsData.length > 1 ? 's' : ''}
                 </>
               )}
             </Button>
@@ -345,7 +399,7 @@ export function LabelModal({
               variant="outline"
               onClick={onClose}
               className="w-full"
-              disabled={labelMutation.isPending}
+              disabled={isSubmitting}
             >
               Close
             </Button>
