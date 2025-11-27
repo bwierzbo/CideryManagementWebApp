@@ -1755,10 +1755,22 @@ export const packagingRouter = router({
           .where(eq(inventoryItems.bottleRunId, bottleRunId));
 
         // 10. Calculate COGS breakdown
-        // Apple costs from composition
-        const appleCosts = compositionData.reduce((total, comp) => {
+        // First, get the batch's total volume from compositions
+        const batchTotalVolumeL = compositionData.reduce((total, comp) => {
+          return total + (parseFloat(comp.juiceVolume?.toString() || "0"));
+        }, 0);
+
+        // Get volume taken for this bottle run
+        const volumeTakenL = parseFloat(bottleRun.volumeTaken?.toString() || "0");
+
+        // Calculate proration factor: what fraction of the batch was bottled in this run
+        const prorationFactor = batchTotalVolumeL > 0 ? volumeTakenL / batchTotalVolumeL : 0;
+
+        // Apple costs from composition - PRORATED by volume taken
+        const totalBatchAppleCosts = compositionData.reduce((total, comp) => {
           return total + (parseFloat(comp.materialCost?.toString() || "0"));
         }, 0);
+        const appleCosts = totalBatchAppleCosts * prorationFactor;
 
         // Additive costs - Note: batchAdditives doesn't track purchase costs
         // This would require matching additives to purchase items by name/type
@@ -1776,7 +1788,6 @@ export const packagingRouter = router({
 
         const totalCogs = appleCosts + additiveCosts + packagingCosts + laborCost + overheadCost;
         const costPerBottle = bottleRun.unitsProduced > 0 ? totalCogs / bottleRun.unitsProduced : 0;
-        const volumeTakenL = parseFloat(bottleRun.volumeTaken?.toString() || "0");
         const costPerLiter = volumeTakenL > 0 ? totalCogs / volumeTakenL : 0;
 
         // 11. Calculate yields
@@ -1849,15 +1860,19 @@ export const packagingRouter = router({
                 );
 
                 // Filter for only apple/base fruit varieties and calculate percentages
+                // Apply proration factor to individual variety costs
                 return compositionData
                   .filter(c => c.sourceType === 'base_fruit')
                   .map(c => {
                     const volumeL = c.juiceVolume ? parseFloat(c.juiceVolume.toString()) : 0;
                     const percentage = totalVolumeL > 0 ? (volumeL / totalVolumeL) * 100 : 0;
+                    // Prorate the cost based on volume taken from batch
+                    const rawCost = parseFloat(c.materialCost?.toString() || "0");
+                    const proratedCost = rawCost * prorationFactor;
 
                     return {
                       variety: c.varietyName || "Unknown",
-                      cost: parseFloat(c.materialCost?.toString() || "0"),
+                      cost: proratedCost,
                       percentage,
                     };
                   });
