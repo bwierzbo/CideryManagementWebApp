@@ -1693,9 +1693,7 @@ export const packagingRouter = router({
           .where(eq(batchMeasurements.batchId, bottleRun.batchId))
           .orderBy(batchMeasurements.measurementDate);
 
-        // 5. Get additives
-        // Note: batchAdditives uses text fields (additiveType, additiveName)
-        // and doesn't have direct FK to additiveVarieties or purchase items
+        // 5. Get additives with cost tracking
         const additives = await db
           .select({
             id: batchAdditives.id,
@@ -1706,6 +1704,8 @@ export const packagingRouter = router({
             addedAt: batchAdditives.addedAt,
             addedBy: batchAdditives.addedBy,
             notes: batchAdditives.notes,
+            costPerUnit: batchAdditives.costPerUnit,
+            totalCost: batchAdditives.totalCost,
           })
           .from(batchAdditives)
           .where(eq(batchAdditives.batchId, bottleRun.batchId));
@@ -1772,9 +1772,11 @@ export const packagingRouter = router({
         }, 0);
         const appleCosts = totalBatchAppleCosts * prorationFactor;
 
-        // Additive costs - Note: batchAdditives doesn't track purchase costs
-        // This would require matching additives to purchase items by name/type
-        const additiveCosts = 0; // Placeholder for now
+        // Additive costs from batch additives - PRORATED by volume taken
+        const totalBatchAdditiveCosts = additives.reduce((total, additive) => {
+          return total + (parseFloat(additive.totalCost?.toString() || "0"));
+        }, 0);
+        const additiveCosts = totalBatchAdditiveCosts * prorationFactor;
 
         // Packaging costs from materials
         const packagingCosts = packagingMaterials.reduce((total, mat) => {
@@ -1880,13 +1882,18 @@ export const packagingRouter = router({
             },
             additiveCosts: {
               totalCost: additiveCosts,
-              note: "Additive costs not tracked in current schema",
-              items: additives.map(a => ({
-                name: a.additiveName || "Unknown",
-                type: a.additiveType || "",
-                amount: a.amount,
-                unit: a.unit,
-              })),
+              items: additives.map(a => {
+                const rawCost = parseFloat(a.totalCost?.toString() || "0");
+                const proratedCost = rawCost * prorationFactor;
+                return {
+                  name: a.additiveName || "Unknown",
+                  type: a.additiveType || "",
+                  amount: parseFloat(a.amount?.toString() || "0"),
+                  unit: a.unit,
+                  costPerUnit: parseFloat(a.costPerUnit?.toString() || "0"),
+                  totalCost: proratedCost,
+                };
+              }),
             },
             packagingCosts: {
               totalCost: packagingCosts,

@@ -21,6 +21,7 @@ import {
   juicePurchases,
   auditLogs,
   packagingPurchaseItems,
+  additivePurchaseItems,
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
@@ -69,6 +70,9 @@ const addAdditiveSchema = z.object({
   additiveName: z.string().min(1, "Additive name is required"),
   amount: z.number().positive("Amount must be positive"),
   unit: z.string().min(1, "Unit is required"),
+  // Cost tracking - link to purchase item for COGS
+  additivePurchaseItemId: z.string().uuid().optional(),
+  costPerUnit: z.number().min(0).optional(),
   notes: z.string().optional(),
   addedBy: z.string().optional(),
   addedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
@@ -770,6 +774,27 @@ export const batchRouter = router({
           });
         }
 
+        // Calculate cost if purchase item is provided
+        let costPerUnit = input.costPerUnit;
+        let totalCost: number | undefined;
+
+        if (input.additivePurchaseItemId && !costPerUnit) {
+          // Fetch cost from purchase item if not explicitly provided
+          const [purchaseItem] = await db
+            .select({ pricePerUnit: additivePurchaseItems.pricePerUnit })
+            .from(additivePurchaseItems)
+            .where(eq(additivePurchaseItems.id, input.additivePurchaseItemId))
+            .limit(1);
+
+          if (purchaseItem?.pricePerUnit) {
+            costPerUnit = parseFloat(purchaseItem.pricePerUnit.toString());
+          }
+        }
+
+        if (costPerUnit !== undefined) {
+          totalCost = input.amount * costPerUnit;
+        }
+
         // Create additive record
         const newAdditive = await db
           .insert(batchAdditives)
@@ -780,6 +805,9 @@ export const batchRouter = router({
             additiveName: input.additiveName,
             amount: input.amount.toString(),
             unit: input.unit,
+            additivePurchaseItemId: input.additivePurchaseItemId,
+            costPerUnit: costPerUnit?.toString(),
+            totalCost: totalCost?.toString(),
             notes: input.notes,
             addedBy: input.addedBy,
             addedAt: input.addedAt || new Date(),
@@ -2980,6 +3008,28 @@ export const batchRouter = router({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: `Cannot delete batch with status "${batch.status}". Only completed or discarded batches can be deleted.`,
+          });
+        }
+
+        // Check for active keg fills that reference this batch
+        const activeKegFills = await db
+          .select({ id: kegFills.id, kegNumber: kegs.kegNumber })
+          .from(kegFills)
+          .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+          .where(
+            and(
+              eq(kegFills.batchId, input.batchId),
+              inArray(kegFills.status, ["filled", "distributed"]),
+              isNull(kegFills.deletedAt)
+            )
+          )
+          .limit(5);
+
+        if (activeKegFills.length > 0) {
+          const kegNumbers = activeKegFills.map(f => f.kegNumber).join(", ");
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot delete batch with active keg fills. Return or void kegs first: ${kegNumbers}`,
           });
         }
 

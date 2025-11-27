@@ -26,6 +26,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandList,
 } from "@/components/ui/command";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
@@ -270,37 +271,39 @@ export function LabelModal({
                           <PopoverContent className="w-full p-0" align="start">
                             <Command>
                               <CommandInput placeholder="Search labels..." />
-                              <CommandEmpty>No label found.</CommandEmpty>
-                              <CommandGroup className="max-h-[300px] overflow-y-auto">
-                                {packagingItems?.items.map((item) => (
-                                  <CommandItem
-                                    key={item.id}
-                                    value={item.size}
-                                    onSelect={() => {
-                                      setValue(`labels.${index}.packagingItemId`, item.id);
-                                      setComboboxOpen(prev => ({ ...prev, [index]: false }));
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        labelsData[index]?.packagingItemId === item.id
-                                          ? "opacity-100"
-                                          : "opacity-0"
-                                      )}
-                                    />
-                                    <div className="flex items-center justify-between flex-1">
-                                      <span className="truncate">{item.size}</span>
-                                      <Badge
-                                        variant={item.quantity > 0 ? "default" : "destructive"}
-                                        className="ml-2 flex-shrink-0"
-                                      >
-                                        {item.quantity} in stock
-                                      </Badge>
-                                    </div>
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
+                              <CommandList className="max-h-[200px]">
+                                <CommandEmpty>No label found.</CommandEmpty>
+                                <CommandGroup>
+                                  {packagingItems?.items.map((item) => (
+                                    <CommandItem
+                                      key={item.id}
+                                      value={item.size}
+                                      onSelect={() => {
+                                        setValue(`labels.${index}.packagingItemId`, item.id);
+                                        setComboboxOpen(prev => ({ ...prev, [index]: false }));
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          labelsData[index]?.packagingItemId === item.id
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      <div className="flex items-center justify-between flex-1">
+                                        <span className="truncate">{item.size}</span>
+                                        <Badge
+                                          variant={item.quantity > 0 ? "default" : "destructive"}
+                                          className="ml-2 flex-shrink-0"
+                                        >
+                                          {item.quantity} in stock
+                                        </Badge>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
                             </Command>
                           </PopoverContent>
                         </Popover>

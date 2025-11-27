@@ -674,6 +674,12 @@ export const batchAdditives = pgTable("batch_additives", {
   additiveName: text("additive_name").notNull(),
   amount: decimal("amount", { precision: 10, scale: 3 }).notNull(),
   unit: text("unit").notNull(),
+  // Cost tracking fields - link to purchase and snapshot cost at time of use
+  additivePurchaseItemId: uuid("additive_purchase_item_id").references(
+    () => additivePurchaseItems.id,
+  ),
+  costPerUnit: decimal("cost_per_unit", { precision: 10, scale: 4 }),
+  totalCost: decimal("total_cost", { precision: 10, scale: 2 }),
   notes: text("notes"),
   addedAt: timestamp("added_at").notNull().defaultNow(),
   addedBy: text("added_by"),
