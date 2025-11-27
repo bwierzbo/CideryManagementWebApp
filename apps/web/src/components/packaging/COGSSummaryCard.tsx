@@ -23,6 +23,14 @@ interface COGSData {
   additiveCosts: {
     totalCost: number;
     note?: string;
+    items?: Array<{
+      name: string;
+      type: string;
+      amount: number;
+      unit: string;
+      costPerUnit: number;
+      totalCost: number;
+    }>;
   };
   packagingCosts: {
     totalCost: number;
@@ -77,6 +85,13 @@ export function COGSSummaryCard({
       percentage: getPercentage(cogsData.appleCosts.totalCost),
       icon: Package,
       color: "text-green-600 bg-green-50",
+    },
+    {
+      label: "Additives",
+      amount: cogsData.additiveCosts.totalCost,
+      percentage: getPercentage(cogsData.additiveCosts.totalCost),
+      icon: Package,
+      color: "text-amber-600 bg-amber-50",
     },
     {
       label: "Packaging",
@@ -173,11 +188,13 @@ export function COGSSummaryCard({
                                 "h-2 rounded-full",
                                 item.color.includes("green")
                                   ? "bg-green-500"
-                                  : item.color.includes("blue")
-                                    ? "bg-blue-500"
-                                    : item.color.includes("purple")
-                                      ? "bg-purple-500"
-                                      : "bg-orange-500"
+                                  : item.color.includes("amber")
+                                    ? "bg-amber-500"
+                                    : item.color.includes("blue")
+                                      ? "bg-blue-500"
+                                      : item.color.includes("purple")
+                                        ? "bg-purple-500"
+                                        : "bg-orange-500"
                               )}
                               style={{ width: `${item.percentage}%` }}
                             />
@@ -220,6 +237,38 @@ export function COGSSummaryCard({
                     <span className="font-semibold">
                       {formatCurrency(variety.cost)}
                     </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Detailed Breakdown - Additive Costs */}
+          {cogsData.additiveCosts.items && cogsData.additiveCosts.items.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                Additive Costs
+              </h4>
+              <div className="space-y-2">
+                {cogsData.additiveCosts.items.map((additive, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between text-sm py-2 border-b last:border-0"
+                  >
+                    <div className="flex-1">
+                      <span className="font-medium">{additive.name}</span>
+                      <span className="text-gray-500 ml-2">
+                        ({additive.type})
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-gray-500">
+                        {additive.amount} {additive.unit} × {formatCurrency(additive.costPerUnit)}/{additive.unit.includes('/') ? 'unit' : additive.unit}
+                      </div>
+                      <span className="font-semibold">
+                        {formatCurrency(additive.totalCost)}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
