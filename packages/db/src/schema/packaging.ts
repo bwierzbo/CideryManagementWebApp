@@ -131,6 +131,12 @@ export const bottleRuns = pgTable(
     sourceCarbonationOperationId: uuid("source_carbonation_operation_id")
       .references(() => batchCarbonationOperations.id),
 
+    /**
+     * Links to the keg fill if this bottle run was created from a keg
+     * NULL for bottles created directly from vessel
+     */
+    kegFillId: uuid("keg_fill_id").references(() => kegFills.id),
+
     // Pasteurization tracking
     /**
      * Temperature used for pasteurization in Celsius

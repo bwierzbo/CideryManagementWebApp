@@ -380,6 +380,8 @@ export const packagingRouter = router({
             lossPercentage: lossPercentage.toString(),
             // Link to most recent completed carbonation operation
             sourceCarbonationOperationId: latestCarbonation?.id ?? null,
+            // Link to keg fill if bottling from keg (for activity history tracking)
+            kegFillId: input.kegFillId ?? null,
             // Don't set status - let it default to null (active)
             createdBy: ctx.session.user.id,
           };
@@ -1635,6 +1637,33 @@ export const packagingRouter = router({
           });
         }
 
+        // 1b. If this bottle run came from a keg, get the source keg fill details
+        let sourceKegFill = null;
+        if (bottleRun.kegFillId) {
+          const [kegFillData] = await db
+            .select({
+              id: kegFills.id,
+              filledAt: kegFills.filledAt,
+              volumeTaken: kegFills.volumeTaken,
+              volumeTakenUnit: kegFills.volumeTakenUnit,
+              status: kegFills.status,
+              kegNumber: kegs.kegNumber,
+              kegType: kegs.kegType,
+              kegId: kegs.id,
+            })
+            .from(kegFills)
+            .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+            .where(eq(kegFills.id, bottleRun.kegFillId))
+            .limit(1);
+
+          if (kegFillData) {
+            sourceKegFill = {
+              ...kegFillData,
+              volumeTaken: parseFloat(kegFillData.volumeTaken?.toString() || "0"),
+            };
+          }
+        }
+
         // 2. Get batch composition with juice lots and costs
         // Note: batchCompositions links to basefruitPurchaseItems for base fruit path
         const compositionData = await db
@@ -1839,6 +1868,8 @@ export const packagingRouter = router({
             volumeTaken: parseFloat(bottleRun.volumeTaken?.toString() || "0"),
             loss: parseFloat(bottleRun.loss?.toString() || "0"),
           },
+          // If this bottle was sourced from a keg, include the keg fill details
+          sourceKegFill,
           composition: enhancedComposition,
           fermentation: {
             measurements,
