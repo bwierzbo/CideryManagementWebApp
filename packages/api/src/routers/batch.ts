@@ -1882,6 +1882,7 @@ export const batchRouter = router({
             and(
               eq(kegFills.batchId, input.batchId),
               sql`${kegFills.status} != 'voided'`,
+              isNull(kegFills.deletedAt)
             ),
           );
 

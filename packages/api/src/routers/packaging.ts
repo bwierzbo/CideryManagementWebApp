@@ -159,7 +159,12 @@ export const packagingRouter = router({
                 status: kegFills.status,
               })
               .from(kegFills)
-              .where(eq(kegFills.id, input.kegFillId!))
+              .where(
+                and(
+                  eq(kegFills.id, input.kegFillId!),
+                  isNull(kegFills.deletedAt)
+                )
+              )
               .limit(1);
 
             if (!kegFillData.length) {
@@ -319,14 +324,16 @@ export const packagingRouter = router({
           // 3. Determine package type and get run sequence
           const packageType = determinePackageType(input.packageSizeMl);
 
-          // Get count of packaging runs for this batch to determine sequence
+          // Get count of packaging runs for this batch ON THIS DATE to determine sequence
+          // Count all runs (not just completed) to prevent duplicate lot codes
+          const packagedDateStr = input.packagedAt.toISOString().split('T')[0];
           const runCountResult = await tx
             .select({ count: sql<number>`count(*)` })
             .from(bottleRuns)
             .where(
               and(
                 eq(bottleRuns.batchId, input.batchId),
-                eq(bottleRuns.status, "completed"),
+                sql`DATE(${bottleRuns.packagedAt}) = ${packagedDateStr}`
               ),
             );
 
@@ -394,16 +401,20 @@ export const packagingRouter = router({
           // Volumes below this are considered residual waste
 
           if (isBottlingFromKeg) {
-            // If keg is empty or below minimum working volume, delete the fill and set keg to cleaning
+            // If keg is empty or below minimum working volume, soft-delete the fill and set keg to cleaning
             if (newVolumeL <= MIN_WORKING_VOLUME_L) {
-              // Delete associated keg fill materials first
+              // Delete associated keg fill materials (hard delete - they're just junction records)
               await tx
                 .delete(kegFillMaterials)
                 .where(eq(kegFillMaterials.kegFillId, kegFill.id));
 
-              // Delete the keg fill
+              // Soft-delete the keg fill (preserves history)
               await tx
-                .delete(kegFills)
+                .update(kegFills)
+                .set({
+                  deletedAt: new Date(),
+                  updatedAt: new Date(),
+                })
                 .where(eq(kegFills.id, kegFill.id));
 
               // Update keg status to cleaning (needs cleaning before next use)
@@ -1281,6 +1292,78 @@ export const packagingRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to mark bottle run as complete",
+        });
+      }
+    }),
+
+  /**
+   * Get batch pasteurization planning data
+   * Returns batch composition for product classification and PU targeting
+   */
+  getBatchPasteurizationData: createRbacProcedure("read", "package")
+    .input(z.object({
+      batchId: z.string().uuid(),
+    }))
+    .query(async ({ input }) => {
+      try {
+        // Get batch with final gravity
+        const [batch] = await db
+          .select({
+            id: batches.id,
+            name: batches.name,
+            customName: batches.customName,
+            finalGravity: batches.finalGravity,
+          })
+          .from(batches)
+          .where(eq(batches.id, input.batchId))
+          .limit(1);
+
+        if (!batch) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Batch not found",
+          });
+        }
+
+        // Check for fruit additions
+        const fruitAdditives = await db
+          .select({
+            id: batchAdditives.id,
+            additiveName: batchAdditives.additiveName,
+            additiveType: batchAdditives.additiveType,
+          })
+          .from(batchAdditives)
+          .where(
+            and(
+              eq(batchAdditives.batchId, input.batchId),
+              or(
+                like(batchAdditives.additiveType, '%fruit%'),
+                like(batchAdditives.additiveName, '%fruit%'),
+                like(batchAdditives.additiveName, '%berry%'),
+                like(batchAdditives.additiveName, '%cherry%'),
+                like(batchAdditives.additiveName, '%peach%'),
+                like(batchAdditives.additiveName, '%apple%'),
+                like(batchAdditives.additiveName, '%plum%'),
+              )
+            )
+          );
+
+        const hasFruitAddition = fruitAdditives.length > 0;
+        const finalGravity = batch.finalGravity ? parseFloat(batch.finalGravity.toString()) : 1.000;
+
+        return {
+          batchId: batch.id,
+          batchName: batch.customName || batch.name || `Batch ${batch.id.slice(0, 8)}`,
+          finalGravity,
+          hasFruitAddition,
+          fruitAdditives: fruitAdditives.map(f => f.additiveName),
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error fetching batch pasteurization data:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch batch pasteurization data",
         });
       }
     }),

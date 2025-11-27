@@ -626,6 +626,7 @@ export const kegFills = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedBy: uuid("updated_by").references(() => users.id),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
   },
   (table) => ({
     kegIdx: index("keg_fills_keg_idx").on(table.kegId),

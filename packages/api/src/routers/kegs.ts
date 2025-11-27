@@ -219,6 +219,7 @@ export const kegsRouter = router({
               SELECT keg_fills.id FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
                 AND keg_fills.status != 'voided'
+                AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
             )`,
@@ -227,6 +228,7 @@ export const kegsRouter = router({
               LEFT JOIN batches b ON kf.batch_id = b.id
               WHERE kf.keg_id = kegs.id
                 AND kf.status != 'voided'
+                AND kf.deleted_at IS NULL
               ORDER BY kf.filled_at DESC
               LIMIT 1
             )`,
@@ -234,6 +236,7 @@ export const kegsRouter = router({
               SELECT keg_fills.filled_at FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
                 AND keg_fills.status != 'voided'
+                AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
             )`,
@@ -241,6 +244,7 @@ export const kegsRouter = router({
               SELECT keg_fills.remaining_volume FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
                 AND keg_fills.status != 'voided'
+                AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
             )`,
@@ -248,6 +252,7 @@ export const kegsRouter = router({
               SELECT keg_fills.volume_taken FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
                 AND keg_fills.status != 'voided'
+                AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
             )`,
@@ -255,6 +260,7 @@ export const kegsRouter = router({
               SELECT keg_fills.volume_taken_unit FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
                 AND keg_fills.status != 'voided'
+                AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
             )`,
@@ -339,7 +345,12 @@ export const kegsRouter = router({
           .leftJoin(batches, eq(kegFills.batchId, batches.id))
           .leftJoin(vessels, eq(kegFills.vesselId, vessels.id))
           .leftJoin(users, eq(kegFills.createdBy, users.id))
-          .where(eq(kegFills.kegId, input.kegId))
+          .where(
+            and(
+              eq(kegFills.kegId, input.kegId),
+              isNull(kegFills.deletedAt)
+            )
+          )
           .orderBy(desc(kegFills.filledAt));
 
         // Get comprehensive batch data for the latest fill (if exists)
@@ -732,6 +743,7 @@ export const kegsRouter = router({
             and(
               eq(kegFills.kegId, input.kegId),
               inArray(kegFills.status, ["filled", "distributed"]),
+              isNull(kegFills.deletedAt),
             ),
           )
           .limit(1);
@@ -923,7 +935,12 @@ export const kegsRouter = router({
         const [fill] = await db
           .select({ status: kegFills.status, kegId: kegFills.kegId })
           .from(kegFills)
-          .where(eq(kegFills.id, input.kegFillId))
+          .where(
+            and(
+              eq(kegFills.id, input.kegFillId),
+              isNull(kegFills.deletedAt)
+            )
+          )
           .limit(1);
 
         if (!fill) {
@@ -984,7 +1001,12 @@ export const kegsRouter = router({
         const [fill] = await db
           .select({ status: kegFills.status, kegId: kegFills.kegId })
           .from(kegFills)
-          .where(eq(kegFills.id, input.kegFillId))
+          .where(
+            and(
+              eq(kegFills.id, input.kegFillId),
+              isNull(kegFills.deletedAt)
+            )
+          )
           .limit(1);
 
         if (!fill) {
@@ -1044,7 +1066,12 @@ export const kegsRouter = router({
         const [fill] = await db
           .select({ kegId: kegFills.kegId })
           .from(kegFills)
-          .where(eq(kegFills.id, input.kegFillId))
+          .where(
+            and(
+              eq(kegFills.id, input.kegFillId),
+              isNull(kegFills.deletedAt)
+            )
+          )
           .limit(1);
 
         if (!fill) {
@@ -1102,7 +1129,12 @@ export const kegsRouter = router({
             loss: kegFills.loss,
           })
           .from(kegFills)
-          .where(eq(kegFills.id, input.kegFillId))
+          .where(
+            and(
+              eq(kegFills.id, input.kegFillId),
+              isNull(kegFills.deletedAt)
+            )
+          )
           .limit(1);
 
         if (!fill) {
@@ -1220,6 +1252,7 @@ export const kegsRouter = router({
             filledAt: kegFills.filledAt,
             volumeTaken: kegFills.volumeTaken,
             volumeTakenUnit: kegFills.volumeTakenUnit,
+            remainingVolume: kegFills.remainingVolume,
             loss: kegFills.loss,
             lossUnit: kegFills.lossUnit,
             carbonationMethod: kegFills.carbonationMethod,
@@ -1262,7 +1295,12 @@ export const kegsRouter = router({
             sql`users AS created_user`,
             sql`created_user.id = ${kegFills.createdBy}`,
           )
-          .where(eq(kegFills.id, fillId))
+          .where(
+            and(
+              eq(kegFills.id, fillId),
+              isNull(kegFills.deletedAt)
+            )
+          )
           .limit(1);
 
         if (!fillData.length) {

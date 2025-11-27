@@ -36,6 +36,9 @@ import {
   Wine,
   MoreVertical,
   CheckCircle,
+  Clock,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
@@ -51,7 +54,7 @@ import { EditKegModal } from "./EditKegModal";
 import { KegDetailsModal } from "./KegDetailsModal";
 import { DistributeKegModal } from "./DistributeKegModal";
 import { CleanKegModal } from "./CleanKegModal";
-import { BottleModal } from "@/components/packaging/bottle-modal";
+import { BottleFromKegModal } from "./BottleFromKegModal";
 import { formatVolume, convertVolume, type VolumeUnit } from "lib";
 
 type KegStatus =
@@ -131,6 +134,26 @@ const KEG_TYPE_LABELS: Record<string, string> = {
   sanke_30L: "Sanke 30L",
   sanke_50L: "Sanke 50L",
   other: "Other",
+};
+
+// Get icon for keg status - matches vessel map pattern
+const getKegStatusIcon = (status: string) => {
+  switch (status) {
+    case "available":
+      return <CheckCircle className="w-4 h-4 text-green-600" />;
+    case "filled":
+      return <Clock className="w-4 h-4 text-blue-600" />; // Like aging batch
+    case "distributed":
+      return <Send className="w-4 h-4 text-purple-600" />;
+    case "cleaning":
+      return <RotateCcw className="w-4 h-4 text-yellow-600" />; // Matches vessel map
+    case "maintenance":
+      return <AlertTriangle className="w-4 h-4 text-red-600" />; // Matches vessel map
+    case "retired":
+      return <XCircle className="w-4 h-4 text-gray-600" />;
+    default:
+      return <CheckCircle className="w-4 h-4 text-gray-600" />;
+  }
 };
 
 export function KegsManagement() {
@@ -275,9 +298,11 @@ export function KegsManagement() {
   React.useEffect(() => {
     if (kegFillDetails && kegFillIdForQuery) {
       // Get remaining volume or fall back to volume taken
-      const remainingVol = kegFillDetails.volumeTaken
-        ? parseFloat(kegFillDetails.volumeTaken.toString())
-        : 0;
+      const remainingVol = kegFillDetails.remainingVolume
+        ? parseFloat(kegFillDetails.remainingVolume.toString())
+        : kegFillDetails.volumeTaken
+          ? parseFloat(kegFillDetails.volumeTaken.toString())
+          : 0;
 
       setSelectedKegForBottling({
         kegFillId: kegFillIdForQuery,
@@ -420,9 +445,9 @@ export function KegsManagement() {
                             {KEG_TYPE_LABELS[keg.kegType] || keg.kegType}
                           </p>
                         </div>
-                        <Badge className={statusConfig.badgeColor} variant="secondary">
-                          {statusConfig.label}
-                        </Badge>
+                        <div className="flex items-center space-x-2">
+                          {getKegStatusIcon(keg.status)}
+                        </div>
                       </div>
 
                       {/* Keg Details */}
@@ -680,24 +705,30 @@ export function KegsManagement() {
         />
       )}
 
-      {selectedKegForBottling && (
-        <BottleModal
-          open={!!selectedKegForBottling}
-          onClose={() => setSelectedKegForBottling(null)}
-          vesselId={selectedKegForBottling.vesselId}
-          vesselName={`Keg ${selectedKegForBottling.kegNumber}`}
-          batchId={selectedKegForBottling.batchId}
-          currentVolumeL={selectedKegForBottling.currentVolumeL}
-          kegFillId={selectedKegForBottling.kegFillId}
-        />
-      )}
-
       {selectedKegForCleaning && (
         <CleanKegModal
           open={!!selectedKegForCleaning}
           onClose={() => setSelectedKegForCleaning(null)}
           kegId={selectedKegForCleaning.kegId}
           kegNumber={selectedKegForCleaning.kegNumber}
+        />
+      )}
+
+      {/* Bottle from Keg Modal */}
+      {selectedKegForBottling && (
+        <BottleFromKegModal
+          open={!!selectedKegForBottling}
+          onClose={() => setSelectedKegForBottling(null)}
+          kegFillId={selectedKegForBottling.kegFillId}
+          kegNumber={selectedKegForBottling.kegNumber}
+          batchId={selectedKegForBottling.batchId}
+          batchName={selectedKegForBottling.batchName}
+          vesselId={selectedKegForBottling.vesselId}
+          remainingVolumeL={selectedKegForBottling.currentVolumeL}
+          onSuccess={() => {
+            setSelectedKegForBottling(null);
+            utils.packaging.kegs.listKegs.invalidate();
+          }}
         />
       )}
     </>

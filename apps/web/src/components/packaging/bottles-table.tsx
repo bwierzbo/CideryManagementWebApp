@@ -1224,6 +1224,7 @@ export function BottlesTable({
             selectedBottleRun.batch.name ||
             `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
           }
+          batchId={selectedBottleRun.batchId}
           unitsProduced={selectedBottleRun.unitsProduced}
           onSuccess={handlePasteurizeSuccess}
         />
