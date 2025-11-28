@@ -461,9 +461,9 @@ export const inventoryRouter = router({
     .input(
       z.object({
         id: z.string().uuid(),
-        quantity: z.number().min(0).optional(),
+        quantity: z.number().or(z.string().transform((val) => parseFloat(val))).pipe(z.number().min(0)).optional(),
         unit: z.enum(["kg", "lb", "L", "gal"]).optional(),
-        harvestDate: z.date().optional().nullable(),
+        harvestDate: z.date().or(z.string().transform((val) => new Date(val))).optional().nullable(),
         notes: z.string().optional().nullable(),
       }),
     )

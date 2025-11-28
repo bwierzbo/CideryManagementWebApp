@@ -54,6 +54,7 @@ import { EditKegModal } from "./EditKegModal";
 import { KegDetailsModal } from "./KegDetailsModal";
 import { DistributeKegModal } from "./DistributeKegModal";
 import { CleanKegModal } from "./CleanKegModal";
+import { ReturnKegModal } from "./ReturnKegModal";
 import { BottleFromKegModal } from "./BottleFromKegModal";
 import { formatVolume, convertVolume, type VolumeUnit } from "lib";
 
@@ -185,6 +186,10 @@ export function KegsManagement() {
     kegId: string;
     kegNumber: string;
   } | null>(null);
+  const [selectedKegForReturn, setSelectedKegForReturn] = useState<{
+    kegFillId: string;
+    kegNumber: string;
+  } | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -235,23 +240,6 @@ export function KegsManagement() {
     },
   });
 
-  const returnKegMutation = trpc.packaging.kegs.returnKegFill.useMutation({
-    onSuccess: () => {
-      toast({
-        title: "Keg Returned",
-        description: "Keg marked as returned and available",
-      });
-      utils.packaging.kegs.listKegs.invalidate();
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
   const handleDeleteKeg = async (kegId: string, kegNumber: string) => {
     if (
       !confirm(
@@ -276,15 +264,8 @@ export function KegsManagement() {
     deleteKegFillMutation.mutate({ kegFillId });
   };
 
-  const handleReturnKeg = async (kegFillId: string, kegNumber: string) => {
-    if (!confirm(`Mark keg ${kegNumber} as returned?`)) {
-      return;
-    }
-
-    returnKegMutation.mutate({
-      kegFillId,
-      returnedAt: new Date(),
-    });
+  const handleReturnKeg = (kegFillId: string, kegNumber: string) => {
+    setSelectedKegForReturn({ kegFillId, kegNumber });
   };
 
   // Query for keg fill details when needed for bottling
@@ -711,6 +692,15 @@ export function KegsManagement() {
           onClose={() => setSelectedKegForCleaning(null)}
           kegId={selectedKegForCleaning.kegId}
           kegNumber={selectedKegForCleaning.kegNumber}
+        />
+      )}
+
+      {selectedKegForReturn && (
+        <ReturnKegModal
+          open={!!selectedKegForReturn}
+          onClose={() => setSelectedKegForReturn(null)}
+          kegFillId={selectedKegForReturn.kegFillId}
+          kegNumber={selectedKegForReturn.kegNumber}
         />
       )}
 

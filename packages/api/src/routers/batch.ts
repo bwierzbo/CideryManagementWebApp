@@ -2530,24 +2530,8 @@ export const batchRouter = router({
               .where(eq(batches.id, input.batchId))
               .returning();
 
-            // Create batch transfer record
-            await tx
-              .insert(batchTransfers)
-              .values({
-                sourceBatchId: input.batchId,
-                sourceVesselId: sourceVesselId,
-                destinationBatchId: newChildBatch.id,
-                destinationVesselId: input.destinationVesselId,
-                volumeTransferred: volumeRackedL.toString(),
-                volumeTransferredUnit: 'L',
-                loss: volumeLossL.toString(),
-                lossUnit: 'L',
-                totalVolumeProcessed: volumeRackedL.toString(),
-                totalVolumeProcessedUnit: 'L',
-                notes: `Partial rack: ${volumeRackedL.toFixed(1)}L transferred, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`,
-                transferredAt: rackDate,
-                transferredBy: ctx.session?.user?.id,
-              });
+            // Note: batchRackingOperations record (created earlier) captures all transfer info
+            // No separate batchTransfers record needed - avoids duplicate activity entries
 
             resultMessage = `Partial rack complete: ${volumeRackedL.toFixed(1)}L transferred to ${destinationVessel[0].name}, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source vessel`;
           } else if (isRackToSelf) {
@@ -2591,24 +2575,8 @@ export const batchRouter = router({
               })
               .where(eq(batches.id, input.batchId));
 
-            // Create batch transfer record for merge
-            await tx
-              .insert(batchTransfers)
-              .values({
-                sourceBatchId: input.batchId,
-                sourceVesselId: sourceVesselId,
-                destinationBatchId: destBatch.id,
-                destinationVesselId: input.destinationVesselId,
-                volumeTransferred: volumeRackedL.toString(),
-                volumeTransferredUnit: 'L',
-                loss: volumeLossL.toString(),
-                lossUnit: 'L',
-                totalVolumeProcessed: volumeBeforeL.toString(),
-                totalVolumeProcessedUnit: 'L',
-                notes: 'Racking merge operation',
-                transferredAt: input.rackedAt || new Date(),
-                transferredBy: ctx.session?.user?.id,
-              });
+            // Note: batchRackingOperations record (created earlier) captures all transfer info
+            // No separate batchTransfers record needed - avoids duplicate activity entries
 
             resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
           } else {

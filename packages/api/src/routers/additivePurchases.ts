@@ -169,7 +169,7 @@ export const additivePurchasesRouter = router({
                 .min(1, "Brand/manufacturer is required"),
               productName: z.string().min(1, "Product name is required"),
               quantity: z.number().positive("Quantity must be positive"),
-              unit: z.enum(["g", "kg", "oz", "lb"]),
+              unit: z.enum(["g", "kg", "oz", "lb", "L", "mL", "gal"]),
               lotBatchNumber: z.string().optional(),
               expirationDate: z
                 .date()
@@ -303,7 +303,7 @@ export const additivePurchasesRouter = router({
         brandManufacturer: z.string().optional(),
         productName: z.string().optional(),
         quantity: z.number().positive("Quantity must be positive").optional(),
-        unit: z.enum(["g", "kg", "oz", "lb"]).optional(),
+        unit: z.enum(["g", "kg", "oz", "lb", "L", "mL", "gal"]).optional(),
         lotBatchNumber: z.string().optional(),
         expirationDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         storageRequirements: z.string().optional(),

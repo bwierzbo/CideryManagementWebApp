@@ -1023,22 +1023,23 @@ export const kegsRouter = router({
           });
         }
 
-        // Update fill status
+        // Update fill status - mark as returned and empty
         await db
           .update(kegFills)
           .set({
             status: "returned",
             returnedAt: input.returnedAt,
+            remainingVolume: "0", // Keg is empty when returned
             updatedBy: ctx.user.id,
             updatedAt: new Date(),
           })
           .where(eq(kegFills.id, input.kegFillId));
 
-        // Update keg status to available
+        // Update keg status to cleaning (needs to be cleaned before next use)
         await db
           .update(kegs)
           .set({
-            status: "available",
+            status: "cleaning",
             currentLocation: "cellar",
             updatedAt: new Date(),
           })

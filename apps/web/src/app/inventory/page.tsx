@@ -140,11 +140,7 @@ export default function InventoryPage() {
           brandManufacturer: transaction.vendorName || transaction.vendorId,
           productName: item.additiveName || "Unknown Additive",
           quantity: item.quantity,
-          unit: (item.unit === "lb"
-            ? "lb"
-            : item.unit === "mL"
-              ? "oz"
-              : item.unit) as "g" | "kg" | "oz" | "lb",
+          unit: item.unit as "g" | "kg" | "oz" | "lb" | "L" | "mL" | "gal",
           pricePerUnit: item.unitCost,
           notes: item.notes,
         })),

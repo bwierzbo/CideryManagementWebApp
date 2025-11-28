@@ -134,23 +134,76 @@ export const packagingPurchasesRouter = router({
 
           const purchaseId = newPurchase[0].id;
 
-          // Create purchase items
-          const newItems = await tx
-            .insert(packagingPurchaseItems)
-            .values(
-              processedItems.map((item) => ({
-                purchaseId,
-                ...item,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              })),
-            )
-            .returning();
+          // Create or update purchase items
+          // For items with matching vendor + size + price, add to existing quantity
+          const resultItems = [];
+
+          for (const item of processedItems) {
+            // Check for existing item with same vendor + size + price
+            // Build price condition - handle null pricePerUnit
+            const priceCondition = item.pricePerUnit === null
+              ? isNull(packagingPurchaseItems.pricePerUnit)
+              : eq(packagingPurchaseItems.pricePerUnit, item.pricePerUnit);
+
+            const existingItem = await tx
+              .select({
+                id: packagingPurchaseItems.id,
+                quantity: packagingPurchaseItems.quantity,
+                totalCost: packagingPurchaseItems.totalCost,
+              })
+              .from(packagingPurchaseItems)
+              .innerJoin(
+                packagingPurchases,
+                eq(packagingPurchaseItems.purchaseId, packagingPurchases.id)
+              )
+              .where(
+                and(
+                  eq(packagingPurchases.vendorId, input.vendorId),
+                  eq(packagingPurchaseItems.size, item.size),
+                  priceCondition,
+                  isNull(packagingPurchaseItems.deletedAt)
+                )
+              )
+              .limit(1);
+
+            if (existingItem.length > 0) {
+              // Add to existing item's quantity
+              const newQuantity = existingItem[0].quantity + item.quantity;
+              const existingTotal = parseFloat(existingItem[0].totalCost || "0");
+              const itemTotal = parseFloat(item.totalCost || "0");
+              const newTotalCost = (existingTotal + itemTotal).toString();
+
+              const [updatedItem] = await tx
+                .update(packagingPurchaseItems)
+                .set({
+                  quantity: newQuantity,
+                  totalCost: newTotalCost,
+                  updatedAt: new Date(),
+                })
+                .where(eq(packagingPurchaseItems.id, existingItem[0].id))
+                .returning();
+
+              resultItems.push({ ...updatedItem, merged: true });
+            } else {
+              // Create new item
+              const [newItem] = await tx
+                .insert(packagingPurchaseItems)
+                .values({
+                  purchaseId,
+                  ...item,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .returning();
+
+              resultItems.push({ ...newItem, merged: false });
+            }
+          }
 
           return {
             success: true,
             purchase: newPurchase[0],
-            items: newItems,
+            items: resultItems,
             message: "Packaging purchase created successfully",
           };
         });
