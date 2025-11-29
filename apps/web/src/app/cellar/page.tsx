@@ -1373,11 +1373,13 @@ function VesselMap() {
       return;
     }
 
-    // Check if vessel is in aging status
-    if (vessel.status !== "available") {
+    const batchStatus = liquidMapVessel?.batchStatus;
+
+    // Check if batch is in fermentation or aging status
+    if (batchStatus !== "fermentation" && batchStatus !== "aging") {
       toast({
         title: "Cannot Filter",
-        description: "Filtering is only available for vessels in aging status.",
+        description: "Filtering is only available for batches in fermentation or aging status.",
         variant: "destructive",
       });
       return;
@@ -1745,6 +1747,15 @@ function VesselMap() {
                               >
                                 <Clock className="w-3 h-3 mr-2" />
                                 Set to Aging
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleFilter(vessel.id)}
+                                disabled={
+                                  !liquidMapVessel?.batchId || currentVolume <= 0
+                                }
+                              >
+                                <FilterIcon className="w-3 h-3 mr-2" />
+                                Filter
                               </DropdownMenuItem>
                             </>
                           )}
