@@ -70,6 +70,7 @@ import {
   Filter as FilterIcon,
   Package,
   Search,
+  History,
 } from "lucide-react";
 import {
   litersToGallons,
@@ -91,6 +92,7 @@ import { CleanTankModal } from "@/components/cellar/CleanTankModal";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { KegsManagement } from "@/components/packaging/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
+import { VesselHistoryModal } from "@/components/cellar/VesselHistoryModal";
 
 // Form schemas
 const measurementSchema = z.object({
@@ -917,6 +919,10 @@ function VesselMap() {
   // History modal state
   const [showBatchHistory, setShowBatchHistory] = useState(false);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
+  // Vessel history modal state
+  const [showVesselHistory, setShowVesselHistory] = useState(false);
+  const [selectedVesselForHistory, setSelectedVesselForHistory] = useState<string | null>(null);
 
   // Unified packaging modal state
   const [showPackagingModal, setShowPackagingModal] = useState(false);
@@ -1851,6 +1857,16 @@ function VesselMap() {
                         Edit Tank
                       </DropdownMenuItem>
 
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setSelectedVesselForHistory(vessel.id);
+                          setShowVesselHistory(true);
+                        }}
+                      >
+                        <History className="w-3 h-3 mr-2" />
+                        View Tank History
+                      </DropdownMenuItem>
+
                       <DropdownMenuSeparator />
 
                       <DropdownMenuItem
@@ -1994,6 +2010,18 @@ function VesselMap() {
             onClose={() => {
               setShowBatchHistory(false);
               setSelectedBatchId(null);
+            }}
+          />
+        )}
+
+        {/* Vessel History Modal */}
+        {selectedVesselForHistory && (
+          <VesselHistoryModal
+            vesselId={selectedVesselForHistory}
+            open={showVesselHistory}
+            onClose={() => {
+              setShowVesselHistory(false);
+              setSelectedVesselForHistory(null);
             }}
           />
         )}

@@ -2312,8 +2312,16 @@ export const batchRouter = router({
 
           const hasBatchInDestination = destinationBatch.length > 0;
 
+          // Prevent racking to vessels that already have a batch (unless racking to self for volume correction)
           const sourceVesselId = batch[0].vesselId;
           const isRackToSelf = sourceVesselId === input.destinationVesselId;
+
+          if (hasBatchInDestination && !isRackToSelf) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Destination vessel already has an active batch (${destinationBatch[0].name}). Each vessel can only hold one batch at a time.`,
+            });
+          }
 
           const volumeBeforeL = batch[0].currentVolume
             ? parseFloat(batch[0].currentVolume)
@@ -2397,9 +2405,10 @@ export const batchRouter = router({
 
             // Generate child batch name using numeric batch number
             const rackDate = input.rackedAt || new Date();
-            const dateStr = rackDate.toISOString().split('T')[0];
-            const childBatchNumber = `${batch[0].batchNumber}-R${dateStr.replace(/-/g, '')}`; // e.g., "25-R20250109"
-            const childBatchName = `Batch #${childBatchNumber}`; // e.g., "Batch #25-R20250109"
+            // Use current timestamp with milliseconds for unique suffix (not rackDate, to ensure uniqueness)
+            const uniqueSuffix = Date.now().toString(36); // Base36 timestamp for compact unique ID
+            const childBatchNumber = `${batch[0].batchNumber}-R${uniqueSuffix}`; // e.g., "25-Rm5abc123"
+            const childBatchName = `Batch #${childBatchNumber}`; // e.g., "Batch #25-Rm5abc123"
 
             // Create child batch in destination vessel with racked volume
             const newBatch = await tx

@@ -57,6 +57,9 @@ import {
   auditLogs,
   users,
   batchCarbonationOperations,
+  batchRackingOperations,
+  batchFilterOperations,
+  batchAdditives,
 } from "db";
 import {
   eq,
@@ -2234,6 +2237,26 @@ export const appRouter = router({
               });
             }
 
+            // Check if new vessel already has an active batch
+            const existingBatch = await tx
+              .select({ id: batches.id, name: batches.name })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.vesselId, input.newVesselId),
+                  inArray(batches.status, ["fermentation", "aging"]),
+                  isNull(batches.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            if (existingBatch.length > 0) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Destination vessel already has an active batch (${existingBatch[0].name}). Each vessel can only hold one batch at a time.`,
+              });
+            }
+
             // Check capacity
             const newVesselCapacityL = parseFloat(newVessel[0].capacity?.toString() || "0");
             if (input.volumeTransferredL > newVesselCapacityL) {
@@ -2960,7 +2983,7 @@ export const appRouter = router({
               });
             }
 
-            // Check if destination vessel exists has an active batch (blend scenario)
+            // Check if destination vessel already has an active batch
             const destBatch = await tx
               .select()
               .from(batches)
@@ -2973,6 +2996,7 @@ export const appRouter = router({
               )
               .limit(1);
 
+            // Check if destination vessel has an active batch (blend scenario)
             const isBlending = destBatch.length > 0;
             const destCurrentVolumeL = isBlending
               ? parseFloat(destBatch[0].currentVolume?.toString() || "0")
@@ -3033,8 +3057,9 @@ export const appRouter = router({
             if (remainingVolumeL > MIN_WORKING_VOLUME_L) {
               // Partial transfer - create transferred batch in destination vessel, keep source in source
               const transferDate = input.transferDate || new Date();
-              const dateStr = transferDate.toISOString().split('T')[0];
-              const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${dateStr.replace(/-/g, '')}`;
+              // Use current timestamp with milliseconds for unique suffix (not transferDate, to ensure uniqueness)
+              const uniqueSuffix = Date.now().toString(36); // Base36 timestamp for compact unique ID
+              const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${uniqueSuffix}`;
               const transferredBatchName = `Batch #${transferredBatchNumber}`;
 
               const newTransferredBatch = await tx
@@ -3191,7 +3216,20 @@ export const appRouter = router({
             let updatedBatch;
             let blendNote = "";
 
-            if (isBlending) {
+            // Skip destination handling if partial transfer already created the batch
+            if (transferredBatch && !isBlending) {
+              // Partial transfer already handled - just set updatedBatch for the return
+              updatedBatch = [transferredBatch];
+
+              // Update destination vessel status
+              await tx
+                .update(vessels)
+                .set({
+                  status: "available",
+                  updatedAt: new Date(),
+                })
+                .where(eq(vessels.id, input.toVesselId));
+            } else if (isBlending) {
               // BLENDING SCENARIO: Combine source batch into destination batch
               const newVolumeL = destCurrentVolumeL + input.volumeL;
 
@@ -3296,8 +3334,9 @@ export const appRouter = router({
               if (!isBlending) {
                 // Full transfer - move batch to destination vessel
                 const transferDate = input.transferDate || new Date();
-                const dateStr = transferDate.toISOString().split('T')[0];
-                const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${dateStr.replace(/-/g, '')}`;
+                // Use current timestamp with milliseconds for unique suffix (not transferDate, to ensure uniqueness)
+                const uniqueSuffix = Date.now().toString(36); // Base36 timestamp for compact unique ID
+                const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${uniqueSuffix}`;
                 const transferredBatchName = `Batch #${transferredBatchNumber}`;
 
                 const newTransferredBatch = await tx
@@ -3461,6 +3500,369 @@ export const appRouter = router({
           });
         }
       }),
+
+    // Get complete vessel history - all activities that occurred in this vessel
+    getHistory: createRbacProcedure("read", "vessel")
+      .input(
+        z.object({
+          vesselId: z.string().uuid("Invalid vessel ID"),
+          limit: z.number().min(1).max(200).default(50),
+          offset: z.number().min(0).default(0),
+        }),
+      )
+      .query(async ({ input }) => {
+        try {
+          // Get vessel info
+          const vessel = await db
+            .select()
+            .from(vessels)
+            .where(eq(vessels.id, input.vesselId))
+            .limit(1);
+
+          if (!vessel.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Vessel not found",
+            });
+          }
+
+          // Collect all activities from different sources
+          type ActivityItem = {
+            id: string;
+            type: string;
+            timestamp: Date;
+            description: string;
+            batchId?: string | null;
+            batchName?: string | null;
+            volumeChange?: string | null;
+            userId?: string | null;
+            userName?: string | null;
+            notes?: string | null;
+          };
+
+          const activities: ActivityItem[] = [];
+
+          // 1. Batches that have been in this vessel (created, moved in, completed)
+          const batchHistory = await db
+            .select({
+              id: batches.id,
+              name: batches.name,
+              customName: batches.customName,
+              initialVolume: batches.initialVolume,
+              currentVolume: batches.currentVolume,
+              status: batches.status,
+              startDate: batches.startDate,
+              endDate: batches.endDate,
+              vesselId: batches.vesselId,
+            })
+            .from(batches)
+            .where(
+              and(
+                eq(batches.vesselId, input.vesselId),
+                isNull(batches.deletedAt),
+              ),
+            );
+
+          for (const batch of batchHistory) {
+            if (batch.startDate) {
+              activities.push({
+                id: `batch-start-${batch.id}`,
+                type: "batch_started",
+                timestamp: batch.startDate,
+                description: `Batch ${batch.customName || batch.name} started with ${batch.initialVolume}L`,
+                batchId: batch.id,
+                batchName: batch.customName || batch.name,
+                volumeChange: `+${batch.initialVolume}L`,
+              });
+            }
+            if (batch.endDate && batch.status === "completed") {
+              activities.push({
+                id: `batch-end-${batch.id}`,
+                type: "batch_completed",
+                timestamp: batch.endDate,
+                description: `Batch ${batch.customName || batch.name} completed`,
+                batchId: batch.id,
+                batchName: batch.customName || batch.name,
+              });
+            }
+          }
+
+          // 2. Racking operations (in/out)
+          const sv = aliasedTable(vessels, "sv");
+          const dv = aliasedTable(vessels, "dv");
+          const rackingOps = await db
+            .select({
+              id: batchRackingOperations.id,
+              batchId: batchRackingOperations.batchId,
+              sourceVesselId: batchRackingOperations.sourceVesselId,
+              destVesselId: batchRackingOperations.destinationVesselId,
+              volumeBefore: batchRackingOperations.volumeBefore,
+              volumeAfter: batchRackingOperations.volumeAfter,
+              volumeLoss: batchRackingOperations.volumeLoss,
+              rackedAt: batchRackingOperations.rackedAt,
+              rackedBy: batchRackingOperations.rackedBy,
+              batchName: batches.name,
+              batchCustomName: batches.customName,
+              sourceVesselName: sv.name,
+              destVesselName: dv.name,
+              userName: users.name,
+            })
+            .from(batchRackingOperations)
+            .leftJoin(batches, eq(batchRackingOperations.batchId, batches.id))
+            .leftJoin(sv, eq(batchRackingOperations.sourceVesselId, sv.id))
+            .leftJoin(dv, eq(batchRackingOperations.destinationVesselId, dv.id))
+            .leftJoin(users, eq(batchRackingOperations.rackedBy, users.id))
+            .where(
+              and(
+                or(
+                  eq(batchRackingOperations.sourceVesselId, input.vesselId),
+                  eq(batchRackingOperations.destinationVesselId, input.vesselId),
+                ),
+                isNull(batchRackingOperations.deletedAt),
+              ),
+            );
+
+          for (const op of rackingOps) {
+            const isSource = op.sourceVesselId === input.vesselId;
+            const volumeRacked = parseFloat(op.volumeAfter || "0");
+            activities.push({
+              id: `racking-${op.id}`,
+              type: isSource ? "racking_out" : "racking_in",
+              timestamp: op.rackedAt || new Date(),
+              description: isSource
+                ? `Racked ${volumeRacked}L to ${op.destVesselName || "Unknown"}`
+                : `Racked ${volumeRacked}L from ${op.sourceVesselName || "Unknown"}`,
+              batchId: op.batchId,
+              batchName: op.batchCustomName || op.batchName,
+              volumeChange: isSource ? `-${volumeRacked}L` : `+${volumeRacked}L`,
+              userId: op.rackedBy,
+              userName: op.userName,
+            });
+          }
+
+          // 3. Transfers (in/out)
+          const tsv = aliasedTable(vessels, "tsv");
+          const tdv = aliasedTable(vessels, "tdv");
+          const transfers = await db
+            .select({
+              id: batchTransfers.id,
+              sourceVesselId: batchTransfers.sourceVesselId,
+              destVesselId: batchTransfers.destinationVesselId,
+              sourceBatchId: batchTransfers.sourceBatchId,
+              destBatchId: batchTransfers.destinationBatchId,
+              volumeTransferred: batchTransfers.volumeTransferred,
+              loss: batchTransfers.loss,
+              transferredAt: batchTransfers.transferredAt,
+              transferredBy: batchTransfers.transferredBy,
+              notes: batchTransfers.notes,
+              sourceVesselName: tsv.name,
+              destVesselName: tdv.name,
+              batchName: batches.name,
+              batchCustomName: batches.customName,
+              userName: users.name,
+            })
+            .from(batchTransfers)
+            .leftJoin(batches, eq(batchTransfers.sourceBatchId, batches.id))
+            .leftJoin(tsv, eq(batchTransfers.sourceVesselId, tsv.id))
+            .leftJoin(tdv, eq(batchTransfers.destinationVesselId, tdv.id))
+            .leftJoin(users, eq(batchTransfers.transferredBy, users.id))
+            .where(
+              and(
+                or(
+                  eq(batchTransfers.sourceVesselId, input.vesselId),
+                  eq(batchTransfers.destinationVesselId, input.vesselId),
+                ),
+                isNull(batchTransfers.deletedAt),
+              ),
+            );
+
+          for (const t of transfers) {
+            const isSource = t.sourceVesselId === input.vesselId;
+            const volume = parseFloat(t.volumeTransferred || "0");
+            activities.push({
+              id: `transfer-${t.id}`,
+              type: isSource ? "transfer_out" : "transfer_in",
+              timestamp: t.transferredAt || new Date(),
+              description: isSource
+                ? `Transferred ${volume}L to ${t.destVesselName || "Unknown"}`
+                : `Transferred ${volume}L from ${t.sourceVesselName || "Unknown"}`,
+              batchId: isSource ? t.sourceBatchId : t.destBatchId,
+              batchName: t.batchCustomName || t.batchName,
+              volumeChange: isSource ? `-${volume}L` : `+${volume}L`,
+              userId: t.transferredBy,
+              userName: t.userName,
+              notes: t.notes,
+            });
+          }
+
+          // 4. Filter operations
+          const filterOps = await db
+            .select({
+              id: batchFilterOperations.id,
+              batchId: batchFilterOperations.batchId,
+              filterType: batchFilterOperations.filterType,
+              volumeBefore: batchFilterOperations.volumeBefore,
+              volumeAfter: batchFilterOperations.volumeAfter,
+              volumeLoss: batchFilterOperations.volumeLoss,
+              filteredAt: batchFilterOperations.filteredAt,
+              filteredBy: batchFilterOperations.filteredBy,
+              batchName: batches.name,
+              batchCustomName: batches.customName,
+            })
+            .from(batchFilterOperations)
+            .leftJoin(batches, eq(batchFilterOperations.batchId, batches.id))
+            .where(
+              and(
+                eq(batchFilterOperations.vesselId, input.vesselId),
+                isNull(batchFilterOperations.deletedAt),
+              ),
+            );
+
+          for (const f of filterOps) {
+            const volBefore = parseFloat(f.volumeBefore || "0");
+            const volAfter = parseFloat(f.volumeAfter || "0");
+            activities.push({
+              id: `filter-${f.id}`,
+              type: "filtering",
+              timestamp: f.filteredAt || new Date(),
+              description: `Filtered (${f.filterType}): ${volBefore}L → ${volAfter}L`,
+              batchId: f.batchId,
+              batchName: f.batchCustomName || f.batchName,
+              volumeChange: `-${(volBefore - volAfter).toFixed(1)}L loss`,
+              userName: f.filteredBy, // filteredBy is stored as text (name), not userId
+            });
+          }
+
+          // 5. Measurements (for batches currently in this vessel)
+          const measurements = await db
+            .select({
+              id: batchMeasurements.id,
+              batchId: batchMeasurements.batchId,
+              measurementDate: batchMeasurements.measurementDate,
+              specificGravity: batchMeasurements.specificGravity,
+              abv: batchMeasurements.abv,
+              ph: batchMeasurements.ph,
+              temperature: batchMeasurements.temperature,
+              notes: batchMeasurements.notes,
+              batchName: batches.name,
+              batchCustomName: batches.customName,
+            })
+            .from(batchMeasurements)
+            .innerJoin(batches, eq(batchMeasurements.batchId, batches.id))
+            .where(
+              and(
+                eq(batches.vesselId, input.vesselId),
+                isNull(batchMeasurements.deletedAt),
+              ),
+            );
+
+          for (const m of measurements) {
+            const parts = [];
+            if (m.specificGravity) parts.push(`SG ${m.specificGravity}`);
+            if (m.ph) parts.push(`pH ${m.ph}`);
+            if (m.abv) parts.push(`ABV ${m.abv}%`);
+            if (m.temperature) parts.push(`${m.temperature}°`);
+            activities.push({
+              id: `measurement-${m.id}`,
+              type: "measurement",
+              timestamp: m.measurementDate || new Date(),
+              description: `Measurement: ${parts.join(", ") || "recorded"}`,
+              batchId: m.batchId,
+              batchName: m.batchCustomName || m.batchName,
+              notes: m.notes,
+            });
+          }
+
+          // 6. Additives (for batches in this vessel)
+          const additives = await db
+            .select({
+              id: batchAdditives.id,
+              batchId: batchAdditives.batchId,
+              additiveName: batchAdditives.additiveName,
+              amount: batchAdditives.amount,
+              unit: batchAdditives.unit,
+              addedAt: batchAdditives.addedAt,
+              addedBy: batchAdditives.addedBy,
+              notes: batchAdditives.notes,
+              batchName: batches.name,
+              batchCustomName: batches.customName,
+              userName: users.name,
+            })
+            .from(batchAdditives)
+            .innerJoin(batches, eq(batchAdditives.batchId, batches.id))
+            .leftJoin(users, eq(batchAdditives.addedBy, users.id))
+            .where(
+              and(
+                eq(batches.vesselId, input.vesselId),
+                isNull(batchAdditives.deletedAt),
+              ),
+            );
+
+          for (const a of additives) {
+            activities.push({
+              id: `additive-${a.id}`,
+              type: "additive",
+              timestamp: a.addedAt || new Date(),
+              description: `Added ${a.amount}${a.unit} ${a.additiveName}`,
+              batchId: a.batchId,
+              batchName: a.batchCustomName || a.batchName,
+              userId: a.addedBy,
+              userName: a.userName,
+              notes: a.notes,
+            });
+          }
+
+          // 7. Cleaning operations
+          const cleanings = await db
+            .select({
+              id: vesselCleaningOperations.id,
+              cleanedAt: vesselCleaningOperations.cleanedAt,
+              cleanedBy: vesselCleaningOperations.cleanedBy,
+              notes: vesselCleaningOperations.notes,
+              userName: users.name,
+            })
+            .from(vesselCleaningOperations)
+            .leftJoin(users, eq(vesselCleaningOperations.cleanedBy, users.id))
+            .where(eq(vesselCleaningOperations.vesselId, input.vesselId));
+
+          for (const c of cleanings) {
+            activities.push({
+              id: `cleaning-${c.id}`,
+              type: "cleaning",
+              timestamp: c.cleanedAt || new Date(),
+              description: "Tank cleaned",
+              userId: c.cleanedBy,
+              userName: c.userName,
+              notes: c.notes,
+            });
+          }
+
+          // Sort all activities by timestamp (newest first)
+          activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+          // Apply pagination
+          const paginatedActivities = activities.slice(
+            input.offset,
+            input.offset + input.limit,
+          );
+
+          return {
+            vessel: vessel[0],
+            activities: paginatedActivities,
+            totalCount: activities.length,
+            limit: input.limit,
+            offset: input.offset,
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          console.error("Error getting vessel history:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to get vessel history",
+          });
+        }
+      }),
+
     getTransferHistory: createRbacProcedure("read", "vessel")
       .input(
         z.object({
