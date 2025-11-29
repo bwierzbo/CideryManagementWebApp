@@ -138,7 +138,7 @@ const transferSchema = z.object({
   toVesselId: z.string().uuid("Select destination vessel"),
   volumeL: z.number().positive("Volume must be positive"),
   loss: z.preprocess(
-    (val) => val === "" || val === null || val === undefined ? undefined : Number(val),
+    (val) => val === "" || val === null || val === undefined || (typeof val === "number" && isNaN(val)) ? undefined : Number(val),
     z.number().min(0, "Loss cannot be negative").optional()
   ),
   transferDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
