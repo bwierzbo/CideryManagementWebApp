@@ -249,7 +249,7 @@ export function AddBatchAdditiveForm({
                   value={searchQuery}
                   onValueChange={setSearchQuery}
                 />
-                <CommandList>
+                <CommandList className="max-h-[200px]">
                   {isLoadingAdditives && (
                     <CommandEmpty>
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -268,7 +268,7 @@ export function AddBatchAdditiveForm({
                       {additives.map((additive) => (
                         <CommandItem
                           key={additive.id}
-                          value={additive.id}
+                          value={additive.name}
                           onSelect={() => handleSelectAdditive(additive.id)}
                         >
                           <div className="flex flex-col">
