@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
   volumeToRack: z.number().positive("Volume to rack must be positive"),
+  loss: z.number().min(0, "Loss cannot be negative").optional(),
   rackedAt: z.date(),
 });
 
@@ -92,10 +93,12 @@ export function RackingModal({
     defaultValues: {
       rackedAt: new Date(),
       volumeToRack: undefined,
+      loss: 0,
     },
   });
 
   const volumeToRack = watch("volumeToRack");
+  const loss = watch("loss");
   const destinationVesselId = watch("destinationVesselId");
   const rackedAt = watch("rackedAt");
 
@@ -120,21 +123,24 @@ export function RackingModal({
   // Calculate remaining volume and determine if full rack
   useEffect(() => {
     if (volumeToRack !== undefined && volumeToRack > 0) {
-      // Convert volumeToRack to liters for calculation
+      // Convert volumeToRack and loss to liters for calculation
       const toRackL = sourceVesselCapacityUnit === "gal"
         ? convertVolume(volumeToRack, "gal", "L")
         : volumeToRack;
+      const lossL = sourceVesselCapacityUnit === "gal"
+        ? convertVolume(loss || 0, "gal", "L")
+        : (loss || 0);
 
-      const remainingL = currentVolumeL - toRackL;
+      const remainingL = currentVolumeL - toRackL - lossL;
       setRemainingVolume(remainingL);
 
-      // Auto-determine: if remaining < 1L, treat as full rack (remainder is loss)
+      // Auto-determine: if remaining < 1L, treat as full rack
       setIsFullRack(remainingL < 1.0);
     } else {
       setRemainingVolume(0);
       setIsFullRack(false);
     }
-  }, [volumeToRack, sourceVesselCapacityUnit, currentVolumeL]);
+  }, [volumeToRack, loss, sourceVesselCapacityUnit, currentVolumeL]);
 
   // Reset form when modal closes
   useEffect(() => {
@@ -174,15 +180,19 @@ export function RackingModal({
   });
 
   const onSubmit = (data: RackingForm) => {
-    // Convert volumeToRack to liters for backend
+    // Convert volumeToRack and loss to liters for backend
     const volumeToRackL = sourceVesselCapacityUnit === "gal"
       ? convertVolume(data.volumeToRack, "gal", "L")
       : data.volumeToRack;
+    const lossL = sourceVesselCapacityUnit === "gal"
+      ? convertVolume(data.loss || 0, "gal", "L")
+      : (data.loss || 0);
 
     rackBatchMutation.mutate({
       batchId,
       destinationVesselId: data.destinationVesselId,
       volumeToRack: volumeToRackL,
+      loss: lossL,
       rackedAt: data.rackedAt,
     });
   };
@@ -362,6 +372,28 @@ export function RackingModal({
             />
             {errors.volumeToRack && (
               <p className="text-sm text-red-500">{errors.volumeToRack.message}</p>
+            )}
+          </div>
+
+          {/* Loss (Optional) */}
+          <div className="space-y-2">
+            <Label htmlFor="loss">
+              Loss ({sourceVesselCapacityUnit})
+            </Label>
+            <p className="text-xs text-gray-500">
+              Optional: sediment or spillage left behind
+            </p>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              value={loss || ""}
+              onChange={(e) => setValue("loss", parseFloat(e.target.value) || 0)}
+              placeholder="0"
+              className="w-full"
+            />
+            {errors.loss && (
+              <p className="text-sm text-red-500">{errors.loss.message}</p>
             )}
           </div>
 

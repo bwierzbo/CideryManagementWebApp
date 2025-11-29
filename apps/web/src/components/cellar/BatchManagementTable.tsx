@@ -256,9 +256,12 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="planned">Planned</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="packaged">Packaged</SelectItem>
+                <SelectItem value="active">Active (Fermenting/Aging)</SelectItem>
+                <SelectItem value="fermentation">Fermenting</SelectItem>
+                <SelectItem value="aging">Aging</SelectItem>
+                <SelectItem value="conditioning">Conditioning</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="discarded">Discarded</SelectItem>
               </SelectContent>
             </Select>
           </div>

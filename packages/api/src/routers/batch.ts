@@ -2223,6 +2223,7 @@ export const batchRouter = router({
         batchId: z.string().uuid("Invalid batch ID"),
         destinationVesselId: z.string().uuid("Invalid destination vessel ID"),
         volumeToRack: z.number().positive("Volume to rack must be positive"),
+        loss: z.number().min(0, "Loss cannot be negative").optional(),
         rackedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
       })
     )
@@ -2318,18 +2319,23 @@ export const batchRouter = router({
             ? parseFloat(batch[0].currentVolume)
             : 0;
 
-          // Validate volumeToRack is not greater than current volume
-          if (input.volumeToRack > volumeBeforeL) {
+          // Validate volumeToRack + loss is not greater than current volume
+          const totalToRemove = input.volumeToRack + (input.loss || 0);
+          if (totalToRemove > volumeBeforeL) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Volume to rack (${input.volumeToRack.toFixed(1)}L) cannot be greater than current volume (${volumeBeforeL.toFixed(1)}L)`,
+              message: `Volume to rack + loss (${totalToRemove.toFixed(1)}L) cannot be greater than current volume (${volumeBeforeL.toFixed(1)}L)`,
             });
           }
 
           // 3. Calculate remaining volume and auto-determine rack type
-          const remainingInSourceL = volumeBeforeL - input.volumeToRack;
+          // User-provided loss (defaults to 0)
+          const userProvidedLoss = input.loss || 0;
 
-          // Auto-determine: if remaining < 1L, treat as full rack (remainder is loss)
+          // Remaining = volumeBefore - volumeToRack - loss
+          const remainingInSourceL = volumeBeforeL - input.volumeToRack - userProvidedLoss;
+
+          // Auto-determine: if remaining < 1L, treat as full rack
           const isPartialRack = remainingInSourceL >= 1.0;
 
           let volumeLossL: number;
@@ -2339,12 +2345,13 @@ export const batchRouter = router({
           if (isPartialRack) {
             // Partial rack: split the batch (remaining >= 1L stays in source)
             volumeRackedL = input.volumeToRack;
-            volumeLossL = 0; // No loss assumed in partial rack
+            volumeLossL = userProvidedLoss; // Use user-provided loss
             volumeRemainingInSourceL = remainingInSourceL;
           } else {
-            // Full rack: remainder < 1L is treated as loss
+            // Full rack: remainder < 1L is treated as additional loss
             volumeRackedL = input.volumeToRack;
-            volumeLossL = remainingInSourceL; // Small remainder is loss
+            // Add any small remainder to user-provided loss
+            volumeLossL = userProvidedLoss + Math.max(0, remainingInSourceL);
             volumeRemainingInSourceL = 0;
           }
 
