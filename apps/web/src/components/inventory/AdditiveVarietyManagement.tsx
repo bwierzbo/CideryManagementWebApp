@@ -79,6 +79,9 @@ export function AdditiveVarietyManagement() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingVariety, setEditingVariety] = useState<any>(null);
 
+  // tRPC context for global cache invalidation
+  const utils = trpc.useContext();
+
   // Search and pagination state
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -108,11 +111,8 @@ export function AdditiveVarietyManagement() {
     };
   }, [debouncedSearchQuery, itemsPerPage, offset]);
 
-  const {
-    data: varietyData,
-    refetch: refetchVarieties,
-    isLoading,
-  } = trpc.additiveVarieties.list.useQuery(queryInput);
+  const { data: varietyData, isLoading } =
+    trpc.additiveVarieties.list.useQuery(queryInput);
 
   const varieties = React.useMemo(
     () => varietyData?.varieties || [],
@@ -127,7 +127,8 @@ export function AdditiveVarietyManagement() {
 
   const createVariety = trpc.additiveVarieties.create.useMutation({
     onSuccess: () => {
-      refetchVarieties();
+      // Invalidate cache globally so other components get fresh data
+      utils.additiveVarieties.list.invalidate();
       setIsAddDialogOpen(false);
       reset({
         name: "",
@@ -145,7 +146,7 @@ export function AdditiveVarietyManagement() {
 
   const updateVariety = trpc.additiveVarieties.update.useMutation({
     onSuccess: () => {
-      refetchVarieties();
+      utils.additiveVarieties.list.invalidate();
       setIsEditDialogOpen(false);
       setEditingVariety(null);
       reset({
@@ -160,7 +161,7 @@ export function AdditiveVarietyManagement() {
   });
 
   const deleteVariety = trpc.additiveVarieties.delete.useMutation({
-    onSuccess: () => refetchVarieties(),
+    onSuccess: () => utils.additiveVarieties.list.invalidate(),
   });
 
   const {
