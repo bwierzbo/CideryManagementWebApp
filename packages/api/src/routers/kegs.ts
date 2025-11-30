@@ -353,10 +353,11 @@ export const kegsRouter = router({
           )
           .orderBy(desc(kegFills.filledAt));
 
-        // Get comprehensive batch data for the latest fill (if exists)
+        // Get comprehensive batch data for the latest fill (only if fill is active)
         let latestFillBatch = null;
-        if (fills.length > 0) {
-          const latestFill = fills[0];
+        const latestFill = fills.length > 0 ? fills[0] : null;
+        // Only show current batch info if the latest fill is active (not returned/voided)
+        if (latestFill && (latestFill.status === 'filled' || latestFill.status === 'distributed')) {
           const batchId = latestFill.batchId;
 
           // Get batch composition
