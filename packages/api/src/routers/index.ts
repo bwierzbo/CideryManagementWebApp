@@ -4110,11 +4110,9 @@ export const appRouter = router({
               notes: batchAdditives.notes,
               batchName: batches.name,
               batchCustomName: batches.customName,
-              userName: users.name,
             })
             .from(batchAdditives)
             .innerJoin(batches, eq(batchAdditives.batchId, batches.id))
-            .leftJoin(users, eq(batchAdditives.addedBy, users.id))
             .where(
               and(
                 eq(batches.vesselId, input.vesselId),
@@ -4131,7 +4129,7 @@ export const appRouter = router({
               batchId: a.batchId,
               batchName: a.batchCustomName || a.batchName,
               userId: a.addedBy,
-              userName: a.userName,
+              userName: a.addedBy,
               notes: a.notes,
             });
           }
