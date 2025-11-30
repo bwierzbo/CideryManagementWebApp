@@ -214,11 +214,11 @@ export const kegsRouter = router({
             notes: kegs.notes,
             createdAt: kegs.createdAt,
             updatedAt: kegs.updatedAt,
-            // Get latest fill info via subquery
+            // Get latest fill info via subquery (exclude voided and returned fills)
             latestFillId: sql<string>`(
               SELECT keg_fills.id FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
-                AND keg_fills.status != 'voided'
+                AND keg_fills.status NOT IN ('voided', 'returned')
                 AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
@@ -227,7 +227,7 @@ export const kegsRouter = router({
               SELECT COALESCE(b.custom_name, b.name) FROM keg_fills kf
               LEFT JOIN batches b ON kf.batch_id = b.id
               WHERE kf.keg_id = kegs.id
-                AND kf.status != 'voided'
+                AND kf.status NOT IN ('voided', 'returned')
                 AND kf.deleted_at IS NULL
               ORDER BY kf.filled_at DESC
               LIMIT 1
@@ -235,7 +235,7 @@ export const kegsRouter = router({
             latestFillDate: sql<Date>`(
               SELECT keg_fills.filled_at FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
-                AND keg_fills.status != 'voided'
+                AND keg_fills.status NOT IN ('voided', 'returned')
                 AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
@@ -243,7 +243,7 @@ export const kegsRouter = router({
             latestFillRemainingVolume: sql<string>`(
               SELECT keg_fills.remaining_volume FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
-                AND keg_fills.status != 'voided'
+                AND keg_fills.status NOT IN ('voided', 'returned')
                 AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
@@ -251,7 +251,7 @@ export const kegsRouter = router({
             latestFillVolumeTaken: sql<string>`(
               SELECT keg_fills.volume_taken FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
-                AND keg_fills.status != 'voided'
+                AND keg_fills.status NOT IN ('voided', 'returned')
                 AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
@@ -259,7 +259,7 @@ export const kegsRouter = router({
             latestFillVolumeUnit: sql<string>`(
               SELECT keg_fills.volume_taken_unit FROM keg_fills
               WHERE keg_fills.keg_id = kegs.id
-                AND keg_fills.status != 'voided'
+                AND keg_fills.status NOT IN ('voided', 'returned')
                 AND keg_fills.deleted_at IS NULL
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
