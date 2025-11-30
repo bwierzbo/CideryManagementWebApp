@@ -3131,6 +3131,168 @@ export const appRouter = router({
                 }
               }
 
+              // Copy measurements from source batch to transferred batch
+              const sourceMeasurements = await tx
+                .select()
+                .from(batchMeasurements)
+                .where(
+                  and(
+                    eq(batchMeasurements.batchId, sourceBatch[0].id),
+                    isNull(batchMeasurements.deletedAt),
+                  ),
+                );
+
+              for (const measurement of sourceMeasurements) {
+                await tx.insert(batchMeasurements).values({
+                  batchId: transferredBatch.id,
+                  measurementDate: measurement.measurementDate,
+                  specificGravity: measurement.specificGravity,
+                  abv: measurement.abv,
+                  ph: measurement.ph,
+                  totalAcidity: measurement.totalAcidity,
+                  temperature: measurement.temperature,
+                  volume: measurement.volume,
+                  volumeUnit: measurement.volumeUnit,
+                  volumeLiters: measurement.volumeLiters,
+                  notes: measurement.notes,
+                  takenBy: measurement.takenBy,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
+              // Copy additives from source batch to transferred batch
+              const sourceAdditives = await tx
+                .select()
+                .from(batchAdditives)
+                .where(
+                  and(
+                    eq(batchAdditives.batchId, sourceBatch[0].id),
+                    isNull(batchAdditives.deletedAt),
+                  ),
+                );
+
+              for (const additive of sourceAdditives) {
+                await tx.insert(batchAdditives).values({
+                  batchId: transferredBatch.id,
+                  vesselId: input.toVesselId,
+                  additiveType: additive.additiveType,
+                  additiveName: additive.additiveName,
+                  amount: additive.amount,
+                  unit: additive.unit,
+                  additivePurchaseItemId: additive.additivePurchaseItemId,
+                  costPerUnit: additive.costPerUnit,
+                  totalCost: additive.totalCost,
+                  notes: additive.notes,
+                  addedAt: additive.addedAt,
+                  addedBy: additive.addedBy,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
+              // Copy racking operations from source batch to transferred batch
+              const sourceRackingOps = await tx
+                .select()
+                .from(batchRackingOperations)
+                .where(
+                  and(
+                    eq(batchRackingOperations.batchId, sourceBatch[0].id),
+                    isNull(batchRackingOperations.deletedAt),
+                  ),
+                );
+
+              for (const rackingOp of sourceRackingOps) {
+                await tx.insert(batchRackingOperations).values({
+                  batchId: transferredBatch.id,
+                  sourceVesselId: rackingOp.sourceVesselId,
+                  destinationVesselId: rackingOp.destinationVesselId,
+                  volumeBefore: rackingOp.volumeBefore,
+                  volumeBeforeUnit: rackingOp.volumeBeforeUnit,
+                  volumeAfter: rackingOp.volumeAfter,
+                  volumeAfterUnit: rackingOp.volumeAfterUnit,
+                  volumeLoss: rackingOp.volumeLoss,
+                  volumeLossUnit: rackingOp.volumeLossUnit,
+                  rackedBy: rackingOp.rackedBy,
+                  rackedAt: rackingOp.rackedAt,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
+              // Copy filter operations from source batch to transferred batch
+              const sourceFilterOps = await tx
+                .select()
+                .from(batchFilterOperations)
+                .where(
+                  and(
+                    eq(batchFilterOperations.batchId, sourceBatch[0].id),
+                    isNull(batchFilterOperations.deletedAt),
+                  ),
+                );
+
+              for (const filterOp of sourceFilterOps) {
+                await tx.insert(batchFilterOperations).values({
+                  batchId: transferredBatch.id,
+                  vesselId: input.toVesselId,
+                  filterType: filterOp.filterType,
+                  volumeBefore: filterOp.volumeBefore,
+                  volumeBeforeUnit: filterOp.volumeBeforeUnit,
+                  volumeAfter: filterOp.volumeAfter,
+                  volumeAfterUnit: filterOp.volumeAfterUnit,
+                  volumeLoss: filterOp.volumeLoss,
+                  filteredBy: filterOp.filteredBy,
+                  filteredAt: filterOp.filteredAt,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
+              // Copy carbonation operations from source batch to transferred batch
+              const sourceCarbonationOps = await tx
+                .select()
+                .from(batchCarbonationOperations)
+                .where(
+                  and(
+                    eq(batchCarbonationOperations.batchId, sourceBatch[0].id),
+                    isNull(batchCarbonationOperations.deletedAt),
+                  ),
+                );
+
+              for (const carbonationOp of sourceCarbonationOps) {
+                await tx.insert(batchCarbonationOperations).values({
+                  batchId: transferredBatch.id,
+                  vesselId: input.toVesselId,
+                  startedAt: carbonationOp.startedAt,
+                  completedAt: carbonationOp.completedAt,
+                  durationHours: carbonationOp.durationHours,
+                  startingVolume: carbonationOp.startingVolume,
+                  startingVolumeUnit: carbonationOp.startingVolumeUnit,
+                  startingTemperature: carbonationOp.startingTemperature,
+                  startingCo2Volumes: carbonationOp.startingCo2Volumes,
+                  targetCo2Volumes: carbonationOp.targetCo2Volumes,
+                  suggestedPressure: carbonationOp.suggestedPressure,
+                  carbonationProcess: carbonationOp.carbonationProcess,
+                  pressureApplied: carbonationOp.pressureApplied,
+                  gasType: carbonationOp.gasType,
+                  additivePurchaseId: carbonationOp.additivePurchaseId,
+                  primingSugarAmount: carbonationOp.primingSugarAmount,
+                  primingSugarType: carbonationOp.primingSugarType,
+                  finalPressure: carbonationOp.finalPressure,
+                  finalTemperature: carbonationOp.finalTemperature,
+                  finalCo2Volumes: carbonationOp.finalCo2Volumes,
+                  finalVolume: carbonationOp.finalVolume,
+                  finalVolumeUnit: carbonationOp.finalVolumeUnit,
+                  qualityCheck: carbonationOp.qualityCheck,
+                  qualityNotes: carbonationOp.qualityNotes,
+                  notes: carbonationOp.notes,
+                  performedBy: carbonationOp.performedBy,
+                  completedBy: carbonationOp.completedBy,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
               // Update source batch - reduce volume, stay in source vessel
               await tx
                 .update(batches)
@@ -3397,6 +3559,168 @@ export const appRouter = router({
                       updatedAt: new Date(),
                     });
                   }
+                }
+
+                // Copy measurements from source batch to transferred batch
+                const fullTransferMeasurements = await tx
+                  .select()
+                  .from(batchMeasurements)
+                  .where(
+                    and(
+                      eq(batchMeasurements.batchId, sourceBatch[0].id),
+                      isNull(batchMeasurements.deletedAt),
+                    ),
+                  );
+
+                for (const measurement of fullTransferMeasurements) {
+                  await tx.insert(batchMeasurements).values({
+                    batchId: transferredBatch.id,
+                    measurementDate: measurement.measurementDate,
+                    specificGravity: measurement.specificGravity,
+                    abv: measurement.abv,
+                    ph: measurement.ph,
+                    totalAcidity: measurement.totalAcidity,
+                    temperature: measurement.temperature,
+                    volume: measurement.volume,
+                    volumeUnit: measurement.volumeUnit,
+                    volumeLiters: measurement.volumeLiters,
+                    notes: measurement.notes,
+                    takenBy: measurement.takenBy,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+                }
+
+                // Copy additives from source batch to transferred batch
+                const fullTransferAdditives = await tx
+                  .select()
+                  .from(batchAdditives)
+                  .where(
+                    and(
+                      eq(batchAdditives.batchId, sourceBatch[0].id),
+                      isNull(batchAdditives.deletedAt),
+                    ),
+                  );
+
+                for (const additive of fullTransferAdditives) {
+                  await tx.insert(batchAdditives).values({
+                    batchId: transferredBatch.id,
+                    vesselId: input.toVesselId,
+                    additiveType: additive.additiveType,
+                    additiveName: additive.additiveName,
+                    amount: additive.amount,
+                    unit: additive.unit,
+                    additivePurchaseItemId: additive.additivePurchaseItemId,
+                    costPerUnit: additive.costPerUnit,
+                    totalCost: additive.totalCost,
+                    notes: additive.notes,
+                    addedAt: additive.addedAt,
+                    addedBy: additive.addedBy,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+                }
+
+                // Copy racking operations from source batch to transferred batch
+                const fullTransferRackingOps = await tx
+                  .select()
+                  .from(batchRackingOperations)
+                  .where(
+                    and(
+                      eq(batchRackingOperations.batchId, sourceBatch[0].id),
+                      isNull(batchRackingOperations.deletedAt),
+                    ),
+                  );
+
+                for (const rackingOp of fullTransferRackingOps) {
+                  await tx.insert(batchRackingOperations).values({
+                    batchId: transferredBatch.id,
+                    sourceVesselId: rackingOp.sourceVesselId,
+                    destinationVesselId: rackingOp.destinationVesselId,
+                    volumeBefore: rackingOp.volumeBefore,
+                    volumeBeforeUnit: rackingOp.volumeBeforeUnit,
+                    volumeAfter: rackingOp.volumeAfter,
+                    volumeAfterUnit: rackingOp.volumeAfterUnit,
+                    volumeLoss: rackingOp.volumeLoss,
+                    volumeLossUnit: rackingOp.volumeLossUnit,
+                    rackedBy: rackingOp.rackedBy,
+                    rackedAt: rackingOp.rackedAt,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+                }
+
+                // Copy filter operations from source batch to transferred batch
+                const fullTransferFilterOps = await tx
+                  .select()
+                  .from(batchFilterOperations)
+                  .where(
+                    and(
+                      eq(batchFilterOperations.batchId, sourceBatch[0].id),
+                      isNull(batchFilterOperations.deletedAt),
+                    ),
+                  );
+
+                for (const filterOp of fullTransferFilterOps) {
+                  await tx.insert(batchFilterOperations).values({
+                    batchId: transferredBatch.id,
+                    vesselId: input.toVesselId,
+                    filterType: filterOp.filterType,
+                    volumeBefore: filterOp.volumeBefore,
+                    volumeBeforeUnit: filterOp.volumeBeforeUnit,
+                    volumeAfter: filterOp.volumeAfter,
+                    volumeAfterUnit: filterOp.volumeAfterUnit,
+                    volumeLoss: filterOp.volumeLoss,
+                    filteredBy: filterOp.filteredBy,
+                    filteredAt: filterOp.filteredAt,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
+                }
+
+                // Copy carbonation operations from source batch to transferred batch
+                const fullTransferCarbonationOps = await tx
+                  .select()
+                  .from(batchCarbonationOperations)
+                  .where(
+                    and(
+                      eq(batchCarbonationOperations.batchId, sourceBatch[0].id),
+                      isNull(batchCarbonationOperations.deletedAt),
+                    ),
+                  );
+
+                for (const carbonationOp of fullTransferCarbonationOps) {
+                  await tx.insert(batchCarbonationOperations).values({
+                    batchId: transferredBatch.id,
+                    vesselId: input.toVesselId,
+                    startedAt: carbonationOp.startedAt,
+                    completedAt: carbonationOp.completedAt,
+                    durationHours: carbonationOp.durationHours,
+                    startingVolume: carbonationOp.startingVolume,
+                    startingVolumeUnit: carbonationOp.startingVolumeUnit,
+                    startingTemperature: carbonationOp.startingTemperature,
+                    startingCo2Volumes: carbonationOp.startingCo2Volumes,
+                    targetCo2Volumes: carbonationOp.targetCo2Volumes,
+                    suggestedPressure: carbonationOp.suggestedPressure,
+                    carbonationProcess: carbonationOp.carbonationProcess,
+                    pressureApplied: carbonationOp.pressureApplied,
+                    gasType: carbonationOp.gasType,
+                    additivePurchaseId: carbonationOp.additivePurchaseId,
+                    primingSugarAmount: carbonationOp.primingSugarAmount,
+                    primingSugarType: carbonationOp.primingSugarType,
+                    finalPressure: carbonationOp.finalPressure,
+                    finalTemperature: carbonationOp.finalTemperature,
+                    finalCo2Volumes: carbonationOp.finalCo2Volumes,
+                    finalVolume: carbonationOp.finalVolume,
+                    finalVolumeUnit: carbonationOp.finalVolumeUnit,
+                    qualityCheck: carbonationOp.qualityCheck,
+                    qualityNotes: carbonationOp.qualityNotes,
+                    notes: carbonationOp.notes,
+                    performedBy: carbonationOp.performedBy,
+                    completedBy: carbonationOp.completedBy,
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                  });
                 }
 
                 // Complete source batch

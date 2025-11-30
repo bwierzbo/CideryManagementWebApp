@@ -3017,11 +3017,12 @@ export const batchRouter = router({
           });
         }
 
-        // Soft delete the batch
+        // Soft delete the batch and clear vessel association
         await db
           .update(batches)
           .set({
             deletedAt: new Date(),
+            vesselId: null,
             updatedAt: new Date(),
           })
           .where(eq(batches.id, input.batchId));
