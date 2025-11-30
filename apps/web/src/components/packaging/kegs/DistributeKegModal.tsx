@@ -48,7 +48,7 @@ export function DistributeKegModal({
   } = useForm<DistributeKegForm>({
     resolver: zodResolver(distributeKegSchema),
     defaultValues: {
-      distributedAt: new Date().toISOString().split("T")[0],
+      distributedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
     },
   });
 
@@ -71,8 +71,7 @@ export function DistributeKegModal({
   });
 
   const onSubmit = (data: DistributeKegForm) => {
-    // Parse date at noon UTC to avoid timezone issues
-    const distributedAt = new Date(`${data.distributedAt}T12:00:00.000Z`);
+    const distributedAt = new Date(data.distributedAt);
     distributeMutation.mutate({
       kegFillId,
       distributedAt: distributedAt,
@@ -94,14 +93,14 @@ export function DistributeKegModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Distribution Date */}
+          {/* Distribution Date & Time */}
           <div>
             <Label htmlFor="distributedAt">
-              Distribution Date <span className="text-red-500">*</span>
+              Distribution Date & Time <span className="text-red-500">*</span>
             </Label>
             <Input
               id="distributedAt"
-              type="date"
+              type="datetime-local"
               {...register("distributedAt")}
               className="mt-1"
             />

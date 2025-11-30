@@ -57,7 +57,7 @@ export function DistributeInventoryModal({
   } = useForm<DistributeInventoryForm>({
     resolver: zodResolver(distributeInventorySchema),
     defaultValues: {
-      distributionDate: new Date().toISOString().split("T")[0],
+      distributionDate: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       pricePerUnit: suggestedPrice || 0,
       quantityDistributed: 0,
     },
@@ -101,8 +101,7 @@ export function DistributeInventoryModal({
       return;
     }
 
-    // Parse date at noon UTC to avoid timezone issues
-    const distributionDate = new Date(`${data.distributionDate}T12:00:00.000Z`);
+    const distributionDate = new Date(data.distributionDate);
     distributeMutation.mutate({
       inventoryItemId,
       distributionLocation: data.distributionLocation,
@@ -147,14 +146,14 @@ export function DistributeInventoryModal({
             </div>
           </div>
 
-          {/* Distribution Date */}
+          {/* Distribution Date & Time */}
           <div>
             <Label htmlFor="distributionDate">
-              Distribution Date <span className="text-red-500">*</span>
+              Distribution Date & Time <span className="text-red-500">*</span>
             </Label>
             <Input
               id="distributionDate"
-              type="date"
+              type="datetime-local"
               {...register("distributionDate")}
               className="mt-1"
             />

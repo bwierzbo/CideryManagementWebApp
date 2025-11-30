@@ -64,17 +64,17 @@ export function EditAdditiveDialog({
 
   useEffect(() => {
     if (additive && open) {
-      // Convert date to local date format
+      // Convert date to local datetime format (YYYY-MM-DDTHH:mm)
       const date = new Date(additive.addedAt);
-      const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+      const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
         .toISOString()
-        .split('T')[0];
+        .slice(0, 16);
 
       setAdditiveType(additive.additiveType);
       setAdditiveName(additive.additiveName);
       setAmount(additive.amount);
       setUnit(additive.unit);
-      setAddedDate(localDate);
+      setAddedDate(localDateTime);
       setNotes(additive.notes || "");
       setAddedBy(additive.addedBy || "");
     }
@@ -120,7 +120,7 @@ export function EditAdditiveDialog({
       additiveName,
       amount: parseFloat(amount),
       unit,
-      addedAt: new Date(addedDate + 'T00:00:00').toISOString(),
+      addedAt: new Date(addedDate).toISOString(),
     };
 
     if (notes !== undefined) updateData.notes = notes;
@@ -197,10 +197,10 @@ export function EditAdditiveDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="addedDate">Date Added</Label>
+            <Label htmlFor="addedDate">Date & Time Added</Label>
             <Input
               id="addedDate"
-              type="date"
+              type="datetime-local"
               value={addedDate}
               onChange={(e) => setAddedDate(e.target.value)}
             />

@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -84,6 +85,11 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     name: string;
   } | null>(null);
   const [editingBatch, setEditingBatch] = useState<EditingState | null>(null);
+
+  // Aging dialog state
+  const [agingDialogOpen, setAgingDialogOpen] = useState(false);
+  const [agingBatchId, setAgingBatchId] = useState<string | null>(null);
+  const [agingDate, setAgingDate] = useState("");
 
   const utils = trpc.useUtils();
 
@@ -170,10 +176,30 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   };
 
   const handleStatusChange = (batchId: string, newStatus: string) => {
-    updateMutation.mutate({
-      batchId,
-      status: newStatus as any,
-    });
+    if (newStatus === "aging") {
+      // Open modal with current datetime
+      const now = new Date();
+      setAgingDate(new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+      setAgingBatchId(batchId);
+      setAgingDialogOpen(true);
+    } else {
+      updateMutation.mutate({
+        batchId,
+        status: newStatus as any,
+      });
+    }
+  };
+
+  const handleAgingConfirm = () => {
+    if (agingBatchId) {
+      updateMutation.mutate({
+        batchId: agingBatchId,
+        status: "aging" as any,
+        startDate: new Date(agingDate),
+      });
+      setAgingDialogOpen(false);
+      setAgingBatchId(null);
+    }
   };
 
   const handleViewHistory = (batchId: string) => {
@@ -609,6 +635,37 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
               disabled={deleteMutation.isPending}
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Aging Dialog */}
+      <Dialog open={agingDialogOpen} onOpenChange={setAgingDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set to Aging</DialogTitle>
+            <DialogDescription>
+              When did aging begin for this batch?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="agingDate">Aging Start Date & Time</Label>
+              <Input
+                id="agingDate"
+                type="datetime-local"
+                value={agingDate}
+                onChange={(e) => setAgingDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAgingDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAgingConfirm} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? "Setting..." : "Set Aging"}
             </Button>
           </div>
         </DialogContent>

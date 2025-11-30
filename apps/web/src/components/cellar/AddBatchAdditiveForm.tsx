@@ -78,9 +78,9 @@ export function AddBatchAdditiveForm({
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [addedDate, setAddedDate] = useState(() => {
-    // Default to today's date in YYYY-MM-DD format
-    const today = new Date();
-    return today.toISOString().split('T')[0];
+    // Default to current date and time in YYYY-MM-DDTHH:mm format
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
 
   // Fetch available additives from inventory, filtered by type if selected
@@ -153,7 +153,7 @@ export function AddBatchAdditiveForm({
       additiveName: selectedAdditive.name,
       amount: parseFloat(amount),
       unit,
-      addedAt: new Date(addedDate + 'T00:00:00'),
+      addedAt: new Date(addedDate),
       notes: notes || undefined,
     };
 
@@ -347,10 +347,10 @@ export function AddBatchAdditiveForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="addedDate">Date Added *</Label>
+        <Label htmlFor="addedDate">Date & Time Added *</Label>
         <Input
           id="addedDate"
-          type="date"
+          type="datetime-local"
           value={addedDate}
           onChange={(e) => setAddedDate(e.target.value)}
           required
