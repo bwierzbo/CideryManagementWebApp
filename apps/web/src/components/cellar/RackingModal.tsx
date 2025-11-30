@@ -242,7 +242,12 @@ export function RackingModal({
             <Input
               type="datetime-local"
               value={rackedAt ? new Date(rackedAt.getTime() - rackedAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
-              onChange={(e) => setValue("rackedAt", new Date(e.target.value))}
+              onChange={(e) => {
+                const dateValue = new Date(e.target.value);
+                if (!isNaN(dateValue.getTime())) {
+                  setValue("rackedAt", dateValue);
+                }
+              }}
               className="w-full"
             />
             {errors.rackedAt && (
