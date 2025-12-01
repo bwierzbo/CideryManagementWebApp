@@ -32,7 +32,10 @@ import {
   Calendar,
   FileText,
   Apple,
+  ArrowRight,
+  Receipt,
 } from "lucide-react";
+import Link from "next/link";
 import { trpc } from "@/utils/trpc";
 import { formatDate } from "@/utils/date-format";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
@@ -243,6 +246,51 @@ export default function ReportsPage() {
               </Button>
             </div>
           </div>
+        </div>
+
+        {/* Quick Links to Dedicated Reports */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <Link href="/reports/sales">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-200 hover:border-green-400">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-green-100 rounded-lg">
+                      <DollarSign className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Sales Report</h3>
+                      <p className="text-sm text-gray-500">
+                        Revenue, margins, and sales analytics by channel
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/reports/ttb">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-200 hover:border-blue-400">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-100 rounded-lg">
+                      <Receipt className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">TTB Report</h3>
+                      <p className="text-sm text-gray-500">
+                        Form 5120.17 - Wine Premises Operations
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* Filter Controls */}
