@@ -1,6 +1,6 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/utils/trpc";
 import { format } from "date-fns";
 import {
@@ -64,13 +64,17 @@ export function VesselHistoryModal({ vesselId, open, onClose }: VesselHistoryMod
             <Droplets className="h-5 w-5" />
             {data?.vessel?.name || "Tank"} History
           </DialogTitle>
-          {data?.vessel && (
-            <div className="flex gap-2 text-sm text-muted-foreground">
-              <span>{data.vessel.capacity}{data.vessel.capacityUnit || "L"} capacity</span>
-              {data.vessel.material && <span>| {data.vessel.material}</span>}
-              {data.vessel.location && <span>| {data.vessel.location}</span>}
-            </div>
-          )}
+          <DialogDescription className="flex gap-2">
+            {data?.vessel ? (
+              <>
+                <span>{data.vessel.capacity}{data.vessel.capacityUnit || "L"} capacity</span>
+                {data.vessel.material && <span>| {data.vessel.material}</span>}
+                {data.vessel.location && <span>| {data.vessel.location}</span>}
+              </>
+            ) : (
+              "Loading vessel history..."
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="h-[60vh] overflow-y-auto pr-4">

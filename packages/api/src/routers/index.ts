@@ -3836,7 +3836,7 @@ export const appRouter = router({
       )
       .query(async ({ input }) => {
         try {
-          // Get vessel info
+          // Get vessel info first (required for validation)
           const vessel = await db
             .select()
             .from(vessels)
@@ -3866,27 +3866,194 @@ export const appRouter = router({
 
           const activities: ActivityItem[] = [];
 
-          // 1. Batches that have been in this vessel (created, moved in, completed)
-          const batchHistory = await db
-            .select({
-              id: batches.id,
-              name: batches.name,
-              customName: batches.customName,
-              initialVolume: batches.initialVolume,
-              currentVolume: batches.currentVolume,
-              status: batches.status,
-              startDate: batches.startDate,
-              endDate: batches.endDate,
-              vesselId: batches.vesselId,
-            })
-            .from(batches)
-            .where(
-              and(
-                eq(batches.vesselId, input.vesselId),
-                isNull(batches.deletedAt),
-              ),
-            );
+          // Define aliased tables for joins
+          const sv = aliasedTable(vessels, "sv");
+          const dv = aliasedTable(vessels, "dv");
+          const tsv = aliasedTable(vessels, "tsv");
+          const tdv = aliasedTable(vessels, "tdv");
 
+          // Run all independent queries in parallel for performance
+          const [
+            batchHistory,
+            rackingOps,
+            transfers,
+            filterOps,
+            measurements,
+            additives,
+            cleanings,
+          ] = await Promise.all([
+            // 1. Batches that have been in this vessel
+            db
+              .select({
+                id: batches.id,
+                name: batches.name,
+                customName: batches.customName,
+                initialVolume: batches.initialVolume,
+                currentVolume: batches.currentVolume,
+                status: batches.status,
+                startDate: batches.startDate,
+                endDate: batches.endDate,
+                vesselId: batches.vesselId,
+              })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.vesselId, input.vesselId),
+                  isNull(batches.deletedAt),
+                ),
+              ),
+
+            // 2. Racking operations (in/out)
+            db
+              .select({
+                id: batchRackingOperations.id,
+                batchId: batchRackingOperations.batchId,
+                sourceVesselId: batchRackingOperations.sourceVesselId,
+                destVesselId: batchRackingOperations.destinationVesselId,
+                volumeBefore: batchRackingOperations.volumeBefore,
+                volumeAfter: batchRackingOperations.volumeAfter,
+                volumeLoss: batchRackingOperations.volumeLoss,
+                rackedAt: batchRackingOperations.rackedAt,
+                rackedBy: batchRackingOperations.rackedBy,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+                sourceVesselName: sv.name,
+                destVesselName: dv.name,
+                userName: users.name,
+              })
+              .from(batchRackingOperations)
+              .leftJoin(batches, eq(batchRackingOperations.batchId, batches.id))
+              .leftJoin(sv, eq(batchRackingOperations.sourceVesselId, sv.id))
+              .leftJoin(dv, eq(batchRackingOperations.destinationVesselId, dv.id))
+              .leftJoin(users, eq(batchRackingOperations.rackedBy, users.id))
+              .where(
+                and(
+                  or(
+                    eq(batchRackingOperations.sourceVesselId, input.vesselId),
+                    eq(batchRackingOperations.destinationVesselId, input.vesselId),
+                  ),
+                  isNull(batchRackingOperations.deletedAt),
+                ),
+              ),
+
+            // 3. Transfers (in/out)
+            db
+              .select({
+                id: batchTransfers.id,
+                sourceVesselId: batchTransfers.sourceVesselId,
+                destVesselId: batchTransfers.destinationVesselId,
+                sourceBatchId: batchTransfers.sourceBatchId,
+                destBatchId: batchTransfers.destinationBatchId,
+                volumeTransferred: batchTransfers.volumeTransferred,
+                loss: batchTransfers.loss,
+                transferredAt: batchTransfers.transferredAt,
+                transferredBy: batchTransfers.transferredBy,
+                notes: batchTransfers.notes,
+                sourceVesselName: tsv.name,
+                destVesselName: tdv.name,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+                userName: users.name,
+              })
+              .from(batchTransfers)
+              .leftJoin(batches, eq(batchTransfers.sourceBatchId, batches.id))
+              .leftJoin(tsv, eq(batchTransfers.sourceVesselId, tsv.id))
+              .leftJoin(tdv, eq(batchTransfers.destinationVesselId, tdv.id))
+              .leftJoin(users, eq(batchTransfers.transferredBy, users.id))
+              .where(
+                and(
+                  or(
+                    eq(batchTransfers.sourceVesselId, input.vesselId),
+                    eq(batchTransfers.destinationVesselId, input.vesselId),
+                  ),
+                  isNull(batchTransfers.deletedAt),
+                ),
+              ),
+
+            // 4. Filter operations
+            db
+              .select({
+                id: batchFilterOperations.id,
+                batchId: batchFilterOperations.batchId,
+                filterType: batchFilterOperations.filterType,
+                volumeBefore: batchFilterOperations.volumeBefore,
+                volumeAfter: batchFilterOperations.volumeAfter,
+                volumeLoss: batchFilterOperations.volumeLoss,
+                filteredAt: batchFilterOperations.filteredAt,
+                filteredBy: batchFilterOperations.filteredBy,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+              })
+              .from(batchFilterOperations)
+              .leftJoin(batches, eq(batchFilterOperations.batchId, batches.id))
+              .where(
+                and(
+                  eq(batchFilterOperations.vesselId, input.vesselId),
+                  isNull(batchFilterOperations.deletedAt),
+                ),
+              ),
+
+            // 5. Measurements (for batches currently in this vessel)
+            db
+              .select({
+                id: batchMeasurements.id,
+                batchId: batchMeasurements.batchId,
+                measurementDate: batchMeasurements.measurementDate,
+                specificGravity: batchMeasurements.specificGravity,
+                abv: batchMeasurements.abv,
+                ph: batchMeasurements.ph,
+                temperature: batchMeasurements.temperature,
+                notes: batchMeasurements.notes,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+              })
+              .from(batchMeasurements)
+              .innerJoin(batches, eq(batchMeasurements.batchId, batches.id))
+              .where(
+                and(
+                  eq(batches.vesselId, input.vesselId),
+                  isNull(batchMeasurements.deletedAt),
+                ),
+              ),
+
+            // 6. Additives (for batches in this vessel)
+            db
+              .select({
+                id: batchAdditives.id,
+                batchId: batchAdditives.batchId,
+                additiveName: batchAdditives.additiveName,
+                amount: batchAdditives.amount,
+                unit: batchAdditives.unit,
+                addedAt: batchAdditives.addedAt,
+                addedBy: batchAdditives.addedBy,
+                notes: batchAdditives.notes,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+              })
+              .from(batchAdditives)
+              .innerJoin(batches, eq(batchAdditives.batchId, batches.id))
+              .where(
+                and(
+                  eq(batches.vesselId, input.vesselId),
+                  isNull(batchAdditives.deletedAt),
+                ),
+              ),
+
+            // 7. Cleaning operations
+            db
+              .select({
+                id: vesselCleaningOperations.id,
+                cleanedAt: vesselCleaningOperations.cleanedAt,
+                cleanedBy: vesselCleaningOperations.cleanedBy,
+                notes: vesselCleaningOperations.notes,
+                userName: users.name,
+              })
+              .from(vesselCleaningOperations)
+              .leftJoin(users, eq(vesselCleaningOperations.cleanedBy, users.id))
+              .where(eq(vesselCleaningOperations.vesselId, input.vesselId)),
+          ]);
+
+          // Process batch history
           for (const batch of batchHistory) {
             if (batch.startDate) {
               activities.push({
@@ -3911,41 +4078,7 @@ export const appRouter = router({
             }
           }
 
-          // 2. Racking operations (in/out)
-          const sv = aliasedTable(vessels, "sv");
-          const dv = aliasedTable(vessels, "dv");
-          const rackingOps = await db
-            .select({
-              id: batchRackingOperations.id,
-              batchId: batchRackingOperations.batchId,
-              sourceVesselId: batchRackingOperations.sourceVesselId,
-              destVesselId: batchRackingOperations.destinationVesselId,
-              volumeBefore: batchRackingOperations.volumeBefore,
-              volumeAfter: batchRackingOperations.volumeAfter,
-              volumeLoss: batchRackingOperations.volumeLoss,
-              rackedAt: batchRackingOperations.rackedAt,
-              rackedBy: batchRackingOperations.rackedBy,
-              batchName: batches.name,
-              batchCustomName: batches.customName,
-              sourceVesselName: sv.name,
-              destVesselName: dv.name,
-              userName: users.name,
-            })
-            .from(batchRackingOperations)
-            .leftJoin(batches, eq(batchRackingOperations.batchId, batches.id))
-            .leftJoin(sv, eq(batchRackingOperations.sourceVesselId, sv.id))
-            .leftJoin(dv, eq(batchRackingOperations.destinationVesselId, dv.id))
-            .leftJoin(users, eq(batchRackingOperations.rackedBy, users.id))
-            .where(
-              and(
-                or(
-                  eq(batchRackingOperations.sourceVesselId, input.vesselId),
-                  eq(batchRackingOperations.destinationVesselId, input.vesselId),
-                ),
-                isNull(batchRackingOperations.deletedAt),
-              ),
-            );
-
+          // Process racking operations
           for (const op of rackingOps) {
             const isSource = op.sourceVesselId === input.vesselId;
             const volumeRacked = parseFloat(op.volumeAfter || "0");
@@ -3964,42 +4097,7 @@ export const appRouter = router({
             });
           }
 
-          // 3. Transfers (in/out)
-          const tsv = aliasedTable(vessels, "tsv");
-          const tdv = aliasedTable(vessels, "tdv");
-          const transfers = await db
-            .select({
-              id: batchTransfers.id,
-              sourceVesselId: batchTransfers.sourceVesselId,
-              destVesselId: batchTransfers.destinationVesselId,
-              sourceBatchId: batchTransfers.sourceBatchId,
-              destBatchId: batchTransfers.destinationBatchId,
-              volumeTransferred: batchTransfers.volumeTransferred,
-              loss: batchTransfers.loss,
-              transferredAt: batchTransfers.transferredAt,
-              transferredBy: batchTransfers.transferredBy,
-              notes: batchTransfers.notes,
-              sourceVesselName: tsv.name,
-              destVesselName: tdv.name,
-              batchName: batches.name,
-              batchCustomName: batches.customName,
-              userName: users.name,
-            })
-            .from(batchTransfers)
-            .leftJoin(batches, eq(batchTransfers.sourceBatchId, batches.id))
-            .leftJoin(tsv, eq(batchTransfers.sourceVesselId, tsv.id))
-            .leftJoin(tdv, eq(batchTransfers.destinationVesselId, tdv.id))
-            .leftJoin(users, eq(batchTransfers.transferredBy, users.id))
-            .where(
-              and(
-                or(
-                  eq(batchTransfers.sourceVesselId, input.vesselId),
-                  eq(batchTransfers.destinationVesselId, input.vesselId),
-                ),
-                isNull(batchTransfers.deletedAt),
-              ),
-            );
-
+          // Process transfers
           for (const t of transfers) {
             const isSource = t.sourceVesselId === input.vesselId;
             const volume = parseFloat(t.volumeTransferred || "0");
@@ -4019,29 +4117,7 @@ export const appRouter = router({
             });
           }
 
-          // 4. Filter operations
-          const filterOps = await db
-            .select({
-              id: batchFilterOperations.id,
-              batchId: batchFilterOperations.batchId,
-              filterType: batchFilterOperations.filterType,
-              volumeBefore: batchFilterOperations.volumeBefore,
-              volumeAfter: batchFilterOperations.volumeAfter,
-              volumeLoss: batchFilterOperations.volumeLoss,
-              filteredAt: batchFilterOperations.filteredAt,
-              filteredBy: batchFilterOperations.filteredBy,
-              batchName: batches.name,
-              batchCustomName: batches.customName,
-            })
-            .from(batchFilterOperations)
-            .leftJoin(batches, eq(batchFilterOperations.batchId, batches.id))
-            .where(
-              and(
-                eq(batchFilterOperations.vesselId, input.vesselId),
-                isNull(batchFilterOperations.deletedAt),
-              ),
-            );
-
+          // Process filter operations
           for (const f of filterOps) {
             const volBefore = parseFloat(f.volumeBefore || "0");
             const volAfter = parseFloat(f.volumeAfter || "0");
@@ -4057,29 +4133,7 @@ export const appRouter = router({
             });
           }
 
-          // 5. Measurements (for batches currently in this vessel)
-          const measurements = await db
-            .select({
-              id: batchMeasurements.id,
-              batchId: batchMeasurements.batchId,
-              measurementDate: batchMeasurements.measurementDate,
-              specificGravity: batchMeasurements.specificGravity,
-              abv: batchMeasurements.abv,
-              ph: batchMeasurements.ph,
-              temperature: batchMeasurements.temperature,
-              notes: batchMeasurements.notes,
-              batchName: batches.name,
-              batchCustomName: batches.customName,
-            })
-            .from(batchMeasurements)
-            .innerJoin(batches, eq(batchMeasurements.batchId, batches.id))
-            .where(
-              and(
-                eq(batches.vesselId, input.vesselId),
-                isNull(batchMeasurements.deletedAt),
-              ),
-            );
-
+          // Process measurements
           for (const m of measurements) {
             const parts = [];
             if (m.specificGravity) parts.push(`SG ${m.specificGravity}`);
@@ -4097,29 +4151,7 @@ export const appRouter = router({
             });
           }
 
-          // 6. Additives (for batches in this vessel)
-          const additives = await db
-            .select({
-              id: batchAdditives.id,
-              batchId: batchAdditives.batchId,
-              additiveName: batchAdditives.additiveName,
-              amount: batchAdditives.amount,
-              unit: batchAdditives.unit,
-              addedAt: batchAdditives.addedAt,
-              addedBy: batchAdditives.addedBy,
-              notes: batchAdditives.notes,
-              batchName: batches.name,
-              batchCustomName: batches.customName,
-            })
-            .from(batchAdditives)
-            .innerJoin(batches, eq(batchAdditives.batchId, batches.id))
-            .where(
-              and(
-                eq(batches.vesselId, input.vesselId),
-                isNull(batchAdditives.deletedAt),
-              ),
-            );
-
+          // Process additives
           for (const a of additives) {
             activities.push({
               id: `additive-${a.id}`,
@@ -4134,19 +4166,7 @@ export const appRouter = router({
             });
           }
 
-          // 7. Cleaning operations
-          const cleanings = await db
-            .select({
-              id: vesselCleaningOperations.id,
-              cleanedAt: vesselCleaningOperations.cleanedAt,
-              cleanedBy: vesselCleaningOperations.cleanedBy,
-              notes: vesselCleaningOperations.notes,
-              userName: users.name,
-            })
-            .from(vesselCleaningOperations)
-            .leftJoin(users, eq(vesselCleaningOperations.cleanedBy, users.id))
-            .where(eq(vesselCleaningOperations.vesselId, input.vesselId));
-
+          // Process cleaning operations
           for (const c of cleanings) {
             activities.push({
               id: `cleaning-${c.id}`,
