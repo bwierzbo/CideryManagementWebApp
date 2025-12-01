@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -15,12 +15,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { Send, DollarSign, Package } from "lucide-react";
+import { Send, DollarSign, Package, Store } from "lucide-react";
 
 const distributeInventorySchema = z.object({
   distributionLocation: z.string().min(1, "Location is required"),
+  salesChannelId: z.string().uuid().optional(),
   quantityDistributed: z.number().int().positive("Quantity must be positive"),
   pricePerUnit: z.number().positive("Price must be positive"),
   distributionDate: z.string().min(1, "Date is required"),
@@ -48,18 +56,25 @@ export function DistributeInventoryModal({
   suggestedPrice,
   onSuccess,
 }: DistributeInventoryModalProps) {
+  // Fetch sales channels
+  const { data: salesChannels } = trpc.inventory.getSalesChannels.useQuery(undefined, {
+    enabled: open,
+  });
+
   const {
     register,
     handleSubmit,
     formState: { errors },
     watch,
     reset,
+    control,
   } = useForm<DistributeInventoryForm>({
     resolver: zodResolver(distributeInventorySchema),
     defaultValues: {
       distributionDate: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       pricePerUnit: suggestedPrice || 0,
       quantityDistributed: 0,
+      salesChannelId: undefined,
     },
   });
 
@@ -105,6 +120,7 @@ export function DistributeInventoryModal({
     distributeMutation.mutate({
       inventoryItemId,
       distributionLocation: data.distributionLocation,
+      salesChannelId: data.salesChannelId,
       quantityDistributed: data.quantityDistributed,
       pricePerUnit: data.pricePerUnit,
       distributionDate: distributionDate.toISOString(),
@@ -180,6 +196,38 @@ export function DistributeInventoryModal({
                 {errors.distributionLocation.message}
               </p>
             )}
+          </div>
+
+          {/* Sales Channel */}
+          <div>
+            <Label htmlFor="salesChannelId" className="flex items-center gap-2">
+              <Store className="h-4 w-4" />
+              Sales Channel
+            </Label>
+            <Controller
+              name="salesChannelId"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value || ""}
+                  onValueChange={(value) => field.onChange(value || undefined)}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select sales channel (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesChannels?.map((channel) => (
+                      <SelectItem key={channel.id} value={channel.id}>
+                        {channel.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              For TTB reporting and sales analytics
+            </p>
           </div>
 
           {/* Quantity and Price Row */}

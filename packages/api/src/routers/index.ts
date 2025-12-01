@@ -15,6 +15,8 @@ import { inventoryRouter } from "./inventory";
 // import { invoiceNumberRouter } from "./invoiceNumber"; // DROPPED: invoiceNumber field removed in migration 0024
 import { pressRunRouter } from "./pressRun";
 import { reportsRouter } from "./reports";
+import { ttbRouter } from "./ttb";
+import { salesRouter } from "./sales";
 import { varietiesRouter } from "./varieties";
 import { vendorRouter } from "./vendor";
 import { vendorVarietyRouter } from "./vendorVariety";
@@ -4708,6 +4710,10 @@ export const appRouter = router({
 
   // PDF report generation
   pdfReports: reportsRouter,
+
+  // TTB compliance reporting
+  ttb: ttbRouter,
+  sales: salesRouter,
 
   // Audit logging and reporting
   audit: auditRouter,

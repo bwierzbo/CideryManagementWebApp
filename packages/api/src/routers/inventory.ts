@@ -23,6 +23,8 @@ import {
   inventoryAdjustments,
   // Batches
   batches,
+  // Sales channels for TTB reporting
+  salesChannels,
 } from "db";
 import { eq, and, desc, asc, like, or, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -772,6 +774,27 @@ export const inventoryRouter = router({
     }),
 
   /**
+   * Get sales channels for dropdown selection
+   */
+  getSalesChannels: protectedProcedure.query(async () => {
+    try {
+      const channels = await db
+        .select()
+        .from(salesChannels)
+        .where(eq(salesChannels.isActive, true))
+        .orderBy(asc(salesChannels.sortOrder));
+
+      return channels;
+    } catch (error) {
+      console.error("Error fetching sales channels:", error);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to fetch sales channels",
+      });
+    }
+  }),
+
+  /**
    * Distribute inventory items (finished goods)
    * Tracks sales/distributions and updates quantity
    */
@@ -780,6 +803,7 @@ export const inventoryRouter = router({
       z.object({
         inventoryItemId: z.string().uuid(),
         distributionLocation: z.string().min(1),
+        salesChannelId: z.string().uuid().optional(),
         quantityDistributed: z.number().int().positive(),
         pricePerUnit: z.number().positive(),
         distributionDate: z.string().datetime(),
@@ -820,6 +844,7 @@ export const inventoryRouter = router({
             inventoryItemId: input.inventoryItemId,
             distributionDate: new Date(input.distributionDate),
             distributionLocation: input.distributionLocation,
+            salesChannelId: input.salesChannelId,
             quantityDistributed: input.quantityDistributed,
             pricePerUnit: input.pricePerUnit.toString(),
             totalRevenue: totalRevenue.toString(),

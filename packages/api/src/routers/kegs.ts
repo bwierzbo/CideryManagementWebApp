@@ -19,6 +19,7 @@ import {
   additiveVarieties,
   batchTransfers,
   batchCarbonationOperations,
+  salesChannels,
 } from "db";
 import { eq, and, desc, isNull, sql, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -119,6 +120,7 @@ const distributeKegFillSchema = z.object({
     .or(z.string().transform((val) => new Date(val)))
     .default(() => new Date()),
   distributionLocation: z.string().min(1, "Location is required"),
+  salesChannelId: z.string().uuid().optional(),
 });
 
 const returnKegFillSchema = z.object({
@@ -965,6 +967,7 @@ export const kegsRouter = router({
             status: "distributed",
             distributedAt: input.distributedAt,
             distributionLocation: input.distributionLocation,
+            salesChannelId: input.salesChannelId,
             updatedBy: ctx.user.id,
             updatedAt: new Date(),
           })

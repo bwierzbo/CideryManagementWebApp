@@ -15,6 +15,7 @@ import { relations, sql } from "drizzle-orm";
 import { unitEnum } from "./shared";
 import { batches, users, vessels } from "../schema";
 import { batchCarbonationOperations } from "./carbonation";
+import { salesChannels } from "./ttb";
 
 // Packaging-specific enums
 export const packageTypeEnum = pgEnum("package_type", ["bottle", "can", "keg"]);
@@ -437,6 +438,11 @@ export const inventoryDistributions = pgTable(
       .references(() => inventoryItems.id, { onDelete: "cascade" }),
     distributionDate: timestamp("distribution_date").notNull(),
     distributionLocation: text("distribution_location").notNull(),
+    /**
+     * Sales channel for TTB reporting and sales analytics
+     * References sales_channels table for categorization
+     */
+    salesChannelId: uuid("sales_channel_id").references(() => salesChannels.id),
     quantityDistributed: integer("quantity_distributed").notNull(),
     pricePerUnit: decimal("price_per_unit", { precision: 10, scale: 2 }).notNull(),
     totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).notNull(),
@@ -456,6 +462,9 @@ export const inventoryDistributions = pgTable(
     ),
     distributedByIdx: index("inventory_distributions_distributed_by_idx").on(
       table.distributedBy,
+    ),
+    salesChannelIdx: index("inventory_distributions_sales_channel_idx").on(
+      table.salesChannelId,
     ),
   }),
 );
@@ -502,6 +511,10 @@ export const inventoryDistributionsRelations = relations(
     distributedByUser: one(users, {
       fields: [inventoryDistributions.distributedBy],
       references: [users.id],
+    }),
+    salesChannel: one(salesChannels, {
+      fields: [inventoryDistributions.salesChannelId],
+      references: [salesChannels.id],
     }),
   }),
 );
@@ -617,6 +630,11 @@ export const kegFills = pgTable(
     status: kegFillStatusEnum("status").notNull().default("filled"),
     distributedAt: timestamp("distributed_at"),
     distributionLocation: text("distribution_location"),
+    /**
+     * Sales channel for TTB reporting and sales analytics
+     * References sales_channels table for categorization
+     */
+    salesChannelId: uuid("sales_channel_id").references(() => salesChannels.id),
     returnedAt: timestamp("returned_at"),
 
     // Metadata
@@ -643,6 +661,9 @@ export const kegFills = pgTable(
     kegStatusIdx: index("keg_fills_keg_status_idx").on(
       table.kegId,
       table.status,
+    ),
+    salesChannelIdx: index("keg_fills_sales_channel_idx").on(
+      table.salesChannelId,
     ),
   }),
 );
@@ -688,6 +709,10 @@ export const kegFillsRelations = relations(kegFills, ({ one, many }) => ({
   vessel: one(vessels, {
     fields: [kegFills.vesselId],
     references: [vessels.id],
+  }),
+  salesChannel: one(salesChannels, {
+    fields: [kegFills.salesChannelId],
+    references: [salesChannels.id],
   }),
   createdByUser: one(users, {
     fields: [kegFills.createdBy],

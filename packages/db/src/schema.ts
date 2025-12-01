@@ -1548,6 +1548,9 @@ export const applePressRunLoadsRelations = pressRunLoadsRelations;
 // Re-export audit schema
 export * from "./schema/audit";
 
+// Re-export TTB schema (must be before packaging for FK reference)
+export * from "./schema/ttb";
+
 // Re-export packaging schema
 export * from "./schema/packaging";
 

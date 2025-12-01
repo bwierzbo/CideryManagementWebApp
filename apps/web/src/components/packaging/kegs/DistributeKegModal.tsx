@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -14,13 +14,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { Send } from "lucide-react";
+import { Send, Store } from "lucide-react";
 
 const distributeKegSchema = z.object({
   distributedAt: z.string().min(1, "Date is required"),
   distributionLocation: z.string().min(1, "Location is required"),
+  salesChannelId: z.string().uuid().optional(),
 });
 
 type DistributeKegForm = z.infer<typeof distributeKegSchema>;
@@ -40,15 +48,22 @@ export function DistributeKegModal({
   kegNumber,
   onSuccess,
 }: DistributeKegModalProps) {
+  // Fetch sales channels
+  const { data: salesChannels } = trpc.inventory.getSalesChannels.useQuery(undefined, {
+    enabled: open,
+  });
+
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
+    control,
   } = useForm<DistributeKegForm>({
     resolver: zodResolver(distributeKegSchema),
     defaultValues: {
       distributedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      salesChannelId: undefined,
     },
   });
 
@@ -76,6 +91,7 @@ export function DistributeKegModal({
       kegFillId,
       distributedAt: distributedAt,
       distributionLocation: data.distributionLocation,
+      salesChannelId: data.salesChannelId,
     });
   };
 
@@ -127,6 +143,38 @@ export function DistributeKegModal({
                 {errors.distributionLocation.message}
               </p>
             )}
+          </div>
+
+          {/* Sales Channel */}
+          <div>
+            <Label htmlFor="salesChannelId" className="flex items-center gap-2">
+              <Store className="h-4 w-4" />
+              Sales Channel
+            </Label>
+            <Controller
+              name="salesChannelId"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  value={field.value || ""}
+                  onValueChange={(value) => field.onChange(value || undefined)}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select sales channel (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesChannels?.map((channel) => (
+                      <SelectItem key={channel.id} value={channel.id}>
+                        {channel.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              For TTB reporting and sales analytics
+            </p>
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">
