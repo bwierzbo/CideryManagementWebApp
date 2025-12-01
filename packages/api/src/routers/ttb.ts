@@ -92,7 +92,7 @@ export const ttbRouter = router({
    * Aggregates data from batches, inventory, distributions, and adjustments
    * to produce the complete form data.
    */
-  generateForm512017: createRbacProcedure("read", "reports")
+  generateForm512017: createRbacProcedure("read", "report")
     .input(generateForm512017Input)
     .query(async ({ input }) => {
       try {
@@ -455,7 +455,7 @@ export const ttbRouter = router({
   /**
    * Save a TTB report snapshot for audit/compliance purposes.
    */
-  saveReportSnapshot: createRbacProcedure("write", "reports")
+  saveReportSnapshot: createRbacProcedure("create", "report")
     .input(saveReportSnapshotInput)
     .mutation(async ({ input, ctx }) => {
       try {
@@ -612,7 +612,7 @@ export const ttbRouter = router({
   /**
    * Mark a report as submitted.
    */
-  submitReport: createRbacProcedure("write", "reports")
+  submitReport: createRbacProcedure("update", "report")
     .input(z.string().uuid())
     .mutation(async ({ input: reportId, ctx }) => {
       try {
