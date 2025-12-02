@@ -982,7 +982,7 @@ function VesselMap() {
     batchId: string;
     batchName: string;
   } | null>(null);
-  const [agingDateStr, setAgingDateStr] = useState<string>("");
+  const [agingDate, setAgingDate] = useState<Date | null>(null);
 
   // CO₂ unit toggle state (volumes vs g/L)
   const [co2Unit, setCo2Unit] = useState<"vol" | "gL">("vol");
@@ -1249,9 +1249,8 @@ function VesselMap() {
       batchId: batchId,
       batchName: batchName,
     });
-    // Default to today in YYYY-MM-DD format
-    const today = new Date();
-    setAgingDateStr(today.toISOString().split('T')[0]);
+    // Default to current date and time
+    setAgingDate(new Date());
     setShowAgingModal(true);
   };
 
@@ -2114,7 +2113,7 @@ function VesselMap() {
               if (!isOpen) {
                 setShowAgingModal(false);
                 setSelectedVesselForAging(null);
-                setAgingDateStr("");
+                setAgingDate(null);
               }
             }}
           >
@@ -2127,16 +2126,16 @@ function VesselMap() {
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="aging-date">Aging Start Date</Label>
+                  <Label htmlFor="aging-date">Aging Start Date & Time</Label>
                   <Input
                     id="aging-date"
-                    type="date"
-                    value={agingDateStr}
-                    onChange={(e) => setAgingDateStr(e.target.value)}
-                    max={new Date().toISOString().split('T')[0]}
+                    type="datetime-local"
+                    value={agingDate ? new Date(agingDate.getTime() - agingDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+                    onChange={(e) => setAgingDate(new Date(e.target.value))}
+                    max={new Date().toISOString().slice(0, 16)}
                   />
                   <p className="text-sm text-muted-foreground">
-                    This date will be recorded as when the batch transitioned to the aging phase
+                    This date and time will be recorded as when the batch transitioned to the aging phase
                   </p>
                 </div>
               </div>
@@ -2146,31 +2145,29 @@ function VesselMap() {
                   onClick={() => {
                     setShowAgingModal(false);
                     setSelectedVesselForAging(null);
-                    setAgingDateStr("");
+                    setAgingDate(null);
                   }}
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={() => {
-                    if (!agingDateStr) {
+                    if (!agingDate) {
                       toast({
                         title: "Date Required",
-                        description: "Please select an aging start date",
+                        description: "Please select an aging start date and time",
                         variant: "destructive",
                       });
                       return;
                     }
-                    // Parse date at noon UTC to avoid timezone issues
-                    const startDate = new Date(`${agingDateStr}T12:00:00.000Z`);
                     updateBatchStatusMutation.mutate({
                       batchId: selectedVesselForAging.batchId,
                       status: "aging",
-                      startDate: startDate,
+                      startDate: agingDate,
                     });
                     setShowAgingModal(false);
                     setSelectedVesselForAging(null);
-                    setAgingDateStr("");
+                    setAgingDate(null);
                   }}
                 >
                   Set to Aging
