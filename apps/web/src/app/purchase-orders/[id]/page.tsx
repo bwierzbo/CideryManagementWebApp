@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ import { formatDate } from "@/utils/date-format";
 export default function PurchaseOrderDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const [isExporting, setIsExporting] = useState(false);
 
   // Edit modal state
@@ -55,8 +56,9 @@ export default function PurchaseOrderDetailPage() {
   const [editAdditiveItem, setEditAdditiveItem] = useState<any | null>(null);
   const [editPackagingItem, setEditPackagingItem] = useState<any | null>(null);
 
-  // Get the ID from params
+  // Get the ID and materialType from params
   const id = params.id as string;
+  const materialType = searchParams.get("type") as "basefruit" | "additives" | "juice" | "packaging" | null;
 
   // Fetch purchase order details
   const {
@@ -65,7 +67,7 @@ export default function PurchaseOrderDetailPage() {
     error,
     refetch,
   } = trpc.purchase.getById.useQuery(
-    { id },
+    { id, materialType: materialType || undefined },
     {
       enabled: !!id,
     },

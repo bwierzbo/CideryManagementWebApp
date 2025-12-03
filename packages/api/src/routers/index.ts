@@ -616,41 +616,154 @@ export const appRouter = router({
       }),
 
     getById: createRbacProcedure("read", "purchase")
-      .input(z.object({ id: z.string().uuid() }))
+      .input(z.object({
+        id: z.string().uuid(),
+        materialType: z.enum(["basefruit", "additives", "juice", "packaging"]).optional(),
+      }))
       .query(async ({ input }) => {
         try {
-          const purchase = await db
-            .select()
-            .from(basefruitPurchases)
-            .where(
-              and(
-                eq(basefruitPurchases.id, input.id),
-                isNull(basefruitPurchases.deletedAt),
-              ),
-            )
-            .limit(1);
+          // If materialType is provided, query that specific table
+          // Otherwise, try all tables (backwards compatible)
+          const materialType = input.materialType;
 
-          if (!purchase.length) {
-            throw new TRPCError({
-              code: "NOT_FOUND",
-              message: "Purchase not found",
-            });
+          if (materialType === "basefruit" || !materialType) {
+            const purchase = await db
+              .select()
+              .from(basefruitPurchases)
+              .where(
+                and(
+                  eq(basefruitPurchases.id, input.id),
+                  isNull(basefruitPurchases.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            if (purchase.length) {
+              const items = await db
+                .select()
+                .from(basefruitPurchaseItems)
+                .where(
+                  and(
+                    eq(basefruitPurchaseItems.purchaseId, input.id),
+                    isNull(basefruitPurchaseItems.deletedAt),
+                  ),
+                );
+
+              return {
+                purchase: purchase[0],
+                items,
+                materialType: "basefruit" as const,
+              };
+            }
+            // If materialType was specified and not found, throw
+            if (materialType === "basefruit") {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Basefruit purchase not found",
+              });
+            }
           }
 
-          const items = await db
-            .select()
-            .from(basefruitPurchaseItems)
-            .where(
-              and(
-                eq(basefruitPurchaseItems.purchaseId, input.id),
-                isNull(basefruitPurchaseItems.deletedAt),
-              ),
-            );
+          if (materialType === "additives" || !materialType) {
+            const purchase = await db
+              .select()
+              .from(additivePurchases)
+              .where(
+                and(
+                  eq(additivePurchases.id, input.id),
+                  isNull(additivePurchases.deletedAt),
+                ),
+              )
+              .limit(1);
 
-          return {
-            purchase: purchase[0],
-            items,
-          };
+            if (purchase.length) {
+              const items = await db
+                .select()
+                .from(additivePurchaseItems)
+                .where(eq(additivePurchaseItems.purchaseId, input.id));
+
+              return {
+                purchase: purchase[0],
+                items,
+                materialType: "additives" as const,
+              };
+            }
+            if (materialType === "additives") {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Additive purchase not found",
+              });
+            }
+          }
+
+          if (materialType === "juice" || !materialType) {
+            const purchase = await db
+              .select()
+              .from(juicePurchases)
+              .where(
+                and(
+                  eq(juicePurchases.id, input.id),
+                  isNull(juicePurchases.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            if (purchase.length) {
+              const items = await db
+                .select()
+                .from(juicePurchaseItems)
+                .where(eq(juicePurchaseItems.purchaseId, input.id));
+
+              return {
+                purchase: purchase[0],
+                items,
+                materialType: "juice" as const,
+              };
+            }
+            if (materialType === "juice") {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Juice purchase not found",
+              });
+            }
+          }
+
+          if (materialType === "packaging" || !materialType) {
+            const purchase = await db
+              .select()
+              .from(packagingPurchases)
+              .where(
+                and(
+                  eq(packagingPurchases.id, input.id),
+                  isNull(packagingPurchases.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            if (purchase.length) {
+              const items = await db
+                .select()
+                .from(packagingPurchaseItems)
+                .where(eq(packagingPurchaseItems.purchaseId, input.id));
+
+              return {
+                purchase: purchase[0],
+                items,
+                materialType: "packaging" as const,
+              };
+            }
+            if (materialType === "packaging") {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: "Packaging purchase not found",
+              });
+            }
+          }
+
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Purchase not found",
+          });
         } catch (error) {
           if (error instanceof TRPCError) throw error;
           console.error("Error getting purchase:", error);

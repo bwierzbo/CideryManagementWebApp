@@ -761,8 +761,8 @@ export function PurchaseOrdersTable({
       if (onItemClick) {
         onItemClick(order);
       } else {
-        // Default navigation to order detail page
-        router.push(`/purchase-orders/${order.id}`);
+        // Default navigation to order detail page with materialType
+        router.push(`/purchase-orders/${order.id}?type=${order.materialType}`);
       }
     },
     [onItemClick, router],
