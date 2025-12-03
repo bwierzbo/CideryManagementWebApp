@@ -639,9 +639,30 @@ export const appRouter = router({
               .limit(1);
 
             if (purchase.length) {
+              // Join with baseFruitVarieties to get the variety name
               const items = await db
-                .select()
+                .select({
+                  id: basefruitPurchaseItems.id,
+                  purchaseId: basefruitPurchaseItems.purchaseId,
+                  fruitVarietyId: basefruitPurchaseItems.fruitVarietyId,
+                  fruitVarietyName: baseFruitVarieties.name,
+                  quantity: basefruitPurchaseItems.quantity,
+                  unit: basefruitPurchaseItems.unit,
+                  pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+                  totalCost: basefruitPurchaseItems.totalCost,
+                  quantityKg: basefruitPurchaseItems.quantityKg,
+                  harvestDate: basefruitPurchaseItems.harvestDate,
+                  notes: basefruitPurchaseItems.notes,
+                  isDepleted: basefruitPurchaseItems.isDepleted,
+                  depletedAt: basefruitPurchaseItems.depletedAt,
+                  createdAt: basefruitPurchaseItems.createdAt,
+                  deletedAt: basefruitPurchaseItems.deletedAt,
+                })
                 .from(basefruitPurchaseItems)
+                .leftJoin(
+                  baseFruitVarieties,
+                  eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+                )
                 .where(
                   and(
                     eq(basefruitPurchaseItems.purchaseId, input.id),
@@ -677,9 +698,32 @@ export const appRouter = router({
               .limit(1);
 
             if (purchase.length) {
+              // Join with additiveVarieties to get the variety name
               const items = await db
-                .select()
+                .select({
+                  id: additivePurchaseItems.id,
+                  purchaseId: additivePurchaseItems.purchaseId,
+                  additiveVarietyId: additivePurchaseItems.additiveVarietyId,
+                  additiveName: additiveVarieties.name,
+                  additiveType: additivePurchaseItems.additiveType,
+                  brandManufacturer: additivePurchaseItems.brandManufacturer,
+                  productName: additivePurchaseItems.productName,
+                  quantity: additivePurchaseItems.quantity,
+                  unit: additivePurchaseItems.unit,
+                  lotBatchNumber: additivePurchaseItems.lotBatchNumber,
+                  expirationDate: additivePurchaseItems.expirationDate,
+                  storageRequirements: additivePurchaseItems.storageRequirements,
+                  pricePerUnit: additivePurchaseItems.pricePerUnit,
+                  totalCost: additivePurchaseItems.totalCost,
+                  notes: additivePurchaseItems.notes,
+                  createdAt: additivePurchaseItems.createdAt,
+                  deletedAt: additivePurchaseItems.deletedAt,
+                })
                 .from(additivePurchaseItems)
+                .leftJoin(
+                  additiveVarieties,
+                  eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id),
+                )
                 .where(eq(additivePurchaseItems.purchaseId, input.id));
 
               return {
@@ -709,9 +753,34 @@ export const appRouter = router({
               .limit(1);
 
             if (purchase.length) {
+              // Join with juiceVarieties to get the variety name
               const items = await db
-                .select()
+                .select({
+                  id: juicePurchaseItems.id,
+                  purchaseId: juicePurchaseItems.purchaseId,
+                  juiceVarietyId: juicePurchaseItems.juiceVarietyId,
+                  juiceName: juiceVarieties.name,
+                  juiceType: juicePurchaseItems.juiceType,
+                  varietyName: juicePurchaseItems.varietyName,
+                  volume: juicePurchaseItems.volume,
+                  volumeUnit: juicePurchaseItems.volumeUnit,
+                  volumeL: juicePurchaseItems.volume, // Alias for frontend compatibility
+                  volumeAllocated: juicePurchaseItems.volumeAllocated,
+                  brix: juicePurchaseItems.brix,
+                  ph: juicePurchaseItems.ph,
+                  specificGravity: juicePurchaseItems.specificGravity,
+                  containerType: juicePurchaseItems.containerType,
+                  pricePerLiter: juicePurchaseItems.pricePerLiter,
+                  totalCost: juicePurchaseItems.totalCost,
+                  notes: juicePurchaseItems.notes,
+                  createdAt: juicePurchaseItems.createdAt,
+                  deletedAt: juicePurchaseItems.deletedAt,
+                })
                 .from(juicePurchaseItems)
+                .leftJoin(
+                  juiceVarieties,
+                  eq(juicePurchaseItems.juiceVarietyId, juiceVarieties.id),
+                )
                 .where(eq(juicePurchaseItems.purchaseId, input.id));
 
               return {
@@ -741,9 +810,30 @@ export const appRouter = router({
               .limit(1);
 
             if (purchase.length) {
+              // Join with packagingVarieties to get the variety name
               const items = await db
-                .select()
+                .select({
+                  id: packagingPurchaseItems.id,
+                  purchaseId: packagingPurchaseItems.purchaseId,
+                  packagingVarietyId: packagingPurchaseItems.packagingVarietyId,
+                  packagingName: packagingVarieties.name,
+                  packageType: packagingPurchaseItems.packageType,
+                  packagingType: packagingPurchaseItems.packageType, // Alias for frontend
+                  materialType: packagingPurchaseItems.materialType,
+                  size: packagingPurchaseItems.size,
+                  quantity: packagingPurchaseItems.quantity,
+                  unitType: packagingPurchaseItems.unitType,
+                  pricePerUnit: packagingPurchaseItems.pricePerUnit,
+                  totalCost: packagingPurchaseItems.totalCost,
+                  notes: packagingPurchaseItems.notes,
+                  createdAt: packagingPurchaseItems.createdAt,
+                  deletedAt: packagingPurchaseItems.deletedAt,
+                })
                 .from(packagingPurchaseItems)
+                .leftJoin(
+                  packagingVarieties,
+                  eq(packagingPurchaseItems.packagingVarietyId, packagingVarieties.id),
+                )
                 .where(eq(packagingPurchaseItems.purchaseId, input.id));
 
               return {
