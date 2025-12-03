@@ -182,32 +182,32 @@ export default function PurchaseOrderDetailPage() {
     if (item.fruitVarietyName) {
       return {
         name: item.fruitVarietyName,
-        details: `${item.quantity} ${item.unit}${item.harvestDate ? ` • Harvested: ${formatDateDisplay(item.harvestDate)}` : ""}`,
+        quantity: `${item.quantity} ${item.unit || ""}`.trim(),
         unitCost: item.pricePerUnit,
       };
     } else if (item.additiveName) {
       return {
         name: item.additiveName || item.productName,
-        details: `${item.quantity} ${item.unit}${item.brandManufacturer ? ` • ${item.brandManufacturer}` : ""}`,
+        quantity: `${item.quantity} ${item.unit || ""}`.trim(),
         unitCost: item.pricePerUnit,
       };
     } else if (item.juiceName || item.varietyName) {
       return {
         name: item.juiceName || item.varietyName,
-        details: `${item.volumeL}L${item.brix ? ` • ${item.brix}° Brix` : ""}${item.ph ? ` • pH ${item.ph}` : ""}`,
+        quantity: `${item.volumeL} L`,
         unitCost: item.pricePerLiter,
       };
     } else if (item.packagingName) {
       return {
         name: item.packagingName,
-        details: `${item.quantity} ${item.unitType}${item.packagingType ? ` • ${item.packagingType}` : ""}`,
+        quantity: `${item.quantity} ${item.unitType || ""}`.trim(),
         unitCost: item.pricePerUnit,
       };
     }
 
     return {
       name: "Unknown Item",
-      details: "No details available",
+      quantity: "—",
       unitCost: null,
     };
   };
@@ -412,7 +412,7 @@ export default function PurchaseOrderDetailPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Item</TableHead>
-                          <TableHead>Details</TableHead>
+                          <TableHead>Quantity</TableHead>
                           <TableHead className="text-right">
                             Unit Cost
                           </TableHead>
@@ -445,7 +445,7 @@ export default function PurchaseOrderDetailPage() {
                               </TableCell>
                               <TableCell>
                                 <div className="text-sm text-gray-600">
-                                  {itemDetails.details}
+                                  {itemDetails.quantity}
                                 </div>
                               </TableCell>
                               <TableCell className="text-right font-mono">
