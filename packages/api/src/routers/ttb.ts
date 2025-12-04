@@ -425,6 +425,233 @@ export const ttbRouter = router({
         });
 
         // ============================================
+        // Part IV: Materials Received and Used
+        // ============================================
+
+        // Query apple/fruit purchases in period
+        const fruitPurchases = await db
+          .select({
+            fruitType: baseFruitVarieties.fruitType,
+            totalKg: sql<number>`COALESCE(SUM(CAST(${basefruitPurchaseItems.quantityKg} AS DECIMAL)), 0)`,
+          })
+          .from(basefruitPurchaseItems)
+          .leftJoin(
+            basefruitPurchases,
+            eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id)
+          )
+          .leftJoin(
+            baseFruitVarieties,
+            eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id)
+          )
+          .where(
+            and(
+              gte(basefruitPurchases.purchaseDate, startDate),
+              lte(basefruitPurchases.purchaseDate, endDate)
+            )
+          )
+          .groupBy(baseFruitVarieties.fruitType);
+
+        let applesKg = 0;
+        let otherFruitKg = 0;
+        for (const row of fruitPurchases) {
+          if (row.fruitType === "apple") {
+            applesKg += Number(row.totalKg || 0);
+          } else {
+            otherFruitKg += Number(row.totalKg || 0);
+          }
+        }
+
+        // Convert kg to lbs (1 kg = 2.20462 lbs)
+        const applesLbs = applesKg * 2.20462;
+        const otherFruitLbs = otherFruitKg * 2.20462;
+
+        // Query juice produced from press runs in period
+        const juiceProduced = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${pressRuns.totalJuiceVolume} AS DECIMAL)), 0)`,
+          })
+          .from(pressRuns)
+          .where(
+            and(
+              isNull(pressRuns.deletedAt),
+              eq(pressRuns.status, "completed"),
+              gte(pressRuns.dateCompleted, startDate.toISOString().split("T")[0]),
+              lte(pressRuns.dateCompleted, endDate.toISOString().split("T")[0])
+            )
+          );
+
+        const juiceGallons = roundGallons(
+          litersToWineGallons(Number(juiceProduced[0]?.totalLiters || 0))
+        );
+
+        // Query sugar/additive purchases in period
+        // We'll look for additives with names containing 'sugar' or 'honey'
+        const additivePurchaseData = await db
+          .select({
+            varietyName: additiveVarieties.name,
+            totalQuantity: sql<number>`COALESCE(SUM(CAST(${additivePurchaseItems.quantity} AS DECIMAL)), 0)`,
+            unit: additivePurchaseItems.unit,
+          })
+          .from(additivePurchaseItems)
+          .leftJoin(
+            additivePurchases,
+            eq(additivePurchaseItems.purchaseId, additivePurchases.id)
+          )
+          .leftJoin(
+            additiveVarieties,
+            eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id)
+          )
+          .where(
+            and(
+              gte(additivePurchases.purchaseDate, startDate),
+              lte(additivePurchases.purchaseDate, endDate)
+            )
+          )
+          .groupBy(additiveVarieties.name, additivePurchaseItems.unit);
+
+        let sugarLbs = 0;
+        let honeyLbs = 0;
+        for (const row of additivePurchaseData) {
+          const name = (row.varietyName || "").toLowerCase();
+          const qty = Number(row.totalQuantity || 0);
+          // Convert to lbs if needed (assuming most are in kg or lbs)
+          const qtyLbs = row.unit === "kg" ? qty * 2.20462 : qty;
+
+          if (name.includes("sugar")) {
+            sugarLbs += qtyLbs;
+          } else if (name.includes("honey")) {
+            honeyLbs += qtyLbs;
+          }
+        }
+
+        const materials: MaterialsSection = {
+          applesReceivedLbs: Math.round(applesLbs),
+          applesUsedLbs: Math.round(applesLbs), // Assume all received is used
+          appleJuiceGallons: juiceGallons,
+          otherFruitReceivedLbs: Math.round(otherFruitLbs),
+          otherFruitUsedLbs: Math.round(otherFruitLbs),
+          sugarReceivedLbs: Math.round(sugarLbs),
+          sugarUsedLbs: Math.round(sugarLbs),
+          honeyReceivedLbs: Math.round(honeyLbs),
+          honeyUsedLbs: Math.round(honeyLbs),
+        };
+
+        // ============================================
+        // Part VII: In Fermenters End of Period
+        // ============================================
+
+        // Batches in "fermentation" status at end of period
+        const fermentingBatches = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)`,
+          })
+          .from(batches)
+          .where(
+            and(
+              isNull(batches.deletedAt),
+              eq(batches.status, "fermentation"),
+              lte(batches.startDate, endDate)
+            )
+          );
+
+        const fermenters: FermentersSection = {
+          gallonsInFermenters: roundGallons(
+            litersToWineGallons(Number(fermentingBatches[0]?.totalLiters || 0))
+          ),
+        };
+
+        // ============================================
+        // Part I Section A: Bulk Wines
+        // ============================================
+
+        // Calculate volume bottled during period
+        const bottledDuringPeriod = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
+          })
+          .from(bottleRuns)
+          .where(
+            and(
+              ne(bottleRuns.status, "voided"),
+              gte(bottleRuns.packagedAt, startDate),
+              lte(bottleRuns.packagedAt, endDate)
+            )
+          );
+
+        const bottledLiters = Number(bottledDuringPeriod[0]?.totalLiters || 0);
+        const bottledGallons = roundGallons(litersToWineGallons(bottledLiters));
+
+        // Build bulk wines section
+        const line11_total = beginningInventory.bulk + wineProducedGallons;
+        const line27_total = bottledGallons + taxPaidRemovals.total + otherRemovals.total;
+
+        const bulkWines: BulkWinesSection = {
+          line1_onHandFirst: beginningInventory.bulk,
+          line2_produced: wineProducedGallons,
+          line3_otherProduction: 0,
+          line4_receivedBonded: 0,
+          line5_receivedCustoms: 0,
+          line6_receivedReturned: 0,
+          line7_receivedTransfer: 0,
+          line8_dumpedToBulk: 0,
+          line9_transferredIn: 0,
+          line10_withdrawnFermenters: 0,
+          line11_total: roundGallons(line11_total),
+          line12_bottled: bottledGallons,
+          line13_exportTransfer: 0,
+          line14_bondedTransfer: 0,
+          line15_customsTransfer: 0,
+          line16_ftzTransfer: 0,
+          line17_taxpaid: taxPaidRemovals.total,
+          line18_taxFreeUS: 0,
+          line19_taxFreeExport: 0,
+          line20_transferredOut: 0,
+          line21_distillingMaterial: 0,
+          line22_spiritsAdded: 0,
+          line23_inventoryLosses: otherRemovals.total,
+          line24_destroyed: 0,
+          line25_returnedToBond: 0,
+          line26_other: 0,
+          line27_total: roundGallons(line27_total),
+          line28_onHandFermenters: fermenters.gallonsInFermenters,
+          line29_onHandFinished: roundGallons(endingInventory.bulk - fermenters.gallonsInFermenters),
+          line30_onHandUnfinished: 0,
+          line31_inTransit: 0,
+          line32_totalOnHand: endingInventory.bulk,
+        };
+
+        // ============================================
+        // Part I Section B: Bottled Wines
+        // ============================================
+
+        const bottledLine7_total = beginningInventory.bottled + bottledGallons;
+        const bottledLine19_total = taxPaidRemovals.total + otherRemovals.breakage;
+
+        const bottledWines: BottledWinesSection = {
+          line1_onHandFirst: beginningInventory.bottled,
+          line2_bottled: bottledGallons,
+          line3_receivedBonded: 0,
+          line4_receivedCustoms: 0,
+          line5_receivedReturned: 0,
+          line6_receivedTransfer: 0,
+          line7_total: roundGallons(bottledLine7_total),
+          line8_dumpedToBulk: 0,
+          line9_exportTransfer: 0,
+          line10_bondedTransfer: 0,
+          line11_customsTransfer: 0,
+          line12_ftzTransfer: 0,
+          line13_taxpaid: taxPaidRemovals.total,
+          line14_taxFreeUS: 0,
+          line15_taxFreeExport: 0,
+          line16_inventoryLosses: otherRemovals.breakage,
+          line17_destroyed: 0,
+          line18_returnedToBond: 0,
+          line19_total: roundGallons(bottledLine19_total),
+          line20_onHandEnd: endingInventory.bottled,
+          line21_inTransit: 0,
+        };
+
+        // ============================================
         // Build Response
         // ============================================
 
@@ -437,6 +664,10 @@ export const ttbRouter = router({
             month: periodType === "monthly" ? periodNumber : undefined,
             quarter: periodType === "quarterly" ? periodNumber : undefined,
           },
+          bulkWines,
+          bottledWines,
+          materials,
+          fermenters,
           beginningInventory,
           wineProduced: {
             total: wineProducedGallons,
