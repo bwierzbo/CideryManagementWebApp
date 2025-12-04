@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Table,
@@ -30,6 +30,8 @@ import {
   TrendingUp,
   Search,
   Wine,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +60,9 @@ export function FinishedGoodsTable({
   const [adjustModalOpen, setAdjustModalOpen] = useState(false);
   const [pricingModalOpen, setPricingModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
+
+  // Expanded SKU state
+  const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
 
   // Fetch finished goods
   const { data, isLoading, refetch } = trpc.inventory.listFinishedGoods.useQuery({
@@ -89,6 +94,60 @@ export function FinishedGoodsTable({
       return `${liters}L ${type}`;
     }
     return `${sizeML}ml ${type}`;
+  };
+
+  // Create SKU key from product name + package type + size
+  const getSkuKey = (item: any) => {
+    const name = item.batchCustomName || item.batchName || 'Unknown';
+    return `${name}|${item.packageType || 'bottle'}|${item.packageSizeML || 0}`;
+  };
+
+  // Get display name from SKU key
+  const getSkuDisplayName = (skuKey: string) => {
+    const [name] = skuKey.split('|');
+    return name;
+  };
+
+  // Group items by SKU
+  const groupedItems = useMemo(() => {
+    const items = data?.items || [];
+    const groups = new Map<string, {
+      skuKey: string;
+      items: any[];
+      totalQuantity: number;
+      packageType: string;
+      packageSizeML: number | null;
+      displayName: string;
+    }>();
+
+    for (const item of items) {
+      const key = getSkuKey(item);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          skuKey: key,
+          items: [],
+          totalQuantity: 0,
+          packageType: item.packageType || 'bottle',
+          packageSizeML: item.packageSizeML,
+          displayName: item.batchCustomName || item.batchName || 'Unknown',
+        });
+      }
+      const group = groups.get(key)!;
+      group.items.push(item);
+      group.totalQuantity += item.currentQuantity || 0;
+    }
+
+    return Array.from(groups.values());
+  }, [data?.items]);
+
+  // Toggle SKU expansion
+  const toggleExpand = (skuKey: string) => {
+    setExpandedSkus(prev => {
+      const next = new Set(prev);
+      if (next.has(skuKey)) next.delete(skuKey);
+      else next.add(skuKey);
+      return next;
+    });
   };
 
   // Handle distribute action
@@ -171,7 +230,8 @@ export function FinishedGoodsTable({
         <Table>
           <TableHeader>
             <TableRow className="bg-gray-50">
-              <TableHead>Cider Name</TableHead>
+              <TableHead className="w-8"></TableHead>
+              <TableHead>Product / Lot</TableHead>
               <TableHead>Package</TableHead>
               <TableHead className="text-right">Available</TableHead>
               <TableHead className="text-right">Retail Price</TableHead>
@@ -181,9 +241,9 @@ export function FinishedGoodsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.length === 0 ? (
+            {groupedItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                   <Wine className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                   <p className="font-medium">No finished goods in inventory</p>
                   <p className="text-sm mt-1">
@@ -192,111 +252,246 @@ export function FinishedGoodsTable({
                 </TableCell>
               </TableRow>
             ) : (
-              items.map((item) => (
-                <TableRow
-                  key={item.id}
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => handleRowClick(item)}
-                >
-                  {/* Product Name (Custom Name or Batch Name) */}
-                  <TableCell className="font-medium">
-                    {item.batchCustomName || item.batchName || item.lotCode || "Unknown Cider"}
-                  </TableCell>
+              groupedItems.map((group) => {
+                const isExpanded = expandedSkus.has(group.skuKey);
+                const hasMultipleLots = group.items.length > 1;
 
-                  {/* Package Type */}
-                  <TableCell>
-                    <Badge variant="outline" className="font-mono text-xs">
-                      {formatPackageType(
-                        item.packageType || "bottle",
-                        item.packageSizeML,
-                      )}
-                    </Badge>
-                  </TableCell>
-
-                  {/* Available Quantity */}
-                  <TableCell className="text-right">
-                    <span
-                      className={`font-semibold ${
-                        (item.currentQuantity || 0) === 0
-                          ? "text-red-600"
-                          : (item.currentQuantity || 0) < 50
-                            ? "text-yellow-600"
-                            : "text-green-600"
-                      }`}
+                return (
+                  <React.Fragment key={group.skuKey}>
+                    {/* SKU Group Row */}
+                    <TableRow
+                      className={`hover:bg-gray-50 ${hasMultipleLots ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-gray-50' : ''}`}
+                      onClick={() => hasMultipleLots && toggleExpand(group.skuKey)}
                     >
-                      {(item.currentQuantity || 0).toLocaleString()}
-                    </span>
-                  </TableCell>
+                      {/* Expand/Collapse */}
+                      <TableCell className="w-8 pr-0">
+                        {hasMultipleLots ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpand(group.skuKey);
+                            }}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        ) : null}
+                      </TableCell>
 
-                  {/* Retail Price */}
-                  <TableCell className="text-right font-mono text-sm">
-                    {formatCurrency(item.retailPrice)}
-                  </TableCell>
+                      {/* Product Name */}
+                      <TableCell className="font-semibold">
+                        {group.displayName}
+                        {hasMultipleLots && (
+                          <span className="ml-2 text-xs text-gray-500 font-normal">
+                            ({group.items.length} lots)
+                          </span>
+                        )}
+                      </TableCell>
 
-                  {/* Wholesale Price */}
-                  <TableCell className="text-right font-mono text-sm">
-                    {formatCurrency(item.wholesalePrice)}
-                  </TableCell>
+                      {/* Package Type */}
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {formatPackageType(group.packageType, group.packageSizeML)}
+                        </Badge>
+                      </TableCell>
 
-                  {/* Location - Show expiration date instead */}
-                  <TableCell>
-                    {item.expirationDate ? (
-                      <Badge variant="secondary" className="text-xs">
-                        Exp: {new Date(item.expirationDate).toLocaleDateString()}
-                      </Badge>
-                    ) : (
-                      <span className="text-gray-400 text-xs">No expiration</span>
-                    )}
-                  </TableCell>
+                      {/* Total Available Quantity */}
+                      <TableCell className="text-right">
+                        <span
+                          className={`font-semibold ${
+                            group.totalQuantity === 0
+                              ? "text-red-600"
+                              : group.totalQuantity < 50
+                                ? "text-yellow-600"
+                                : "text-green-600"
+                          }`}
+                        >
+                          {group.totalQuantity.toLocaleString()}
+                        </span>
+                      </TableCell>
 
-                  {/* Actions */}
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDistribute(item);
-                          }}
-                          disabled={(item.currentQuantity || 0) === 0}
-                        >
-                          <Send className="mr-2 h-4 w-4" />
-                          Distribute
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAdjustInventory(item);
-                          }}
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Adjust Inventory
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleUpdatePricing(item);
-                          }}
-                        >
-                          <TrendingUp className="mr-2 h-4 w-4" />
-                          Update Pricing
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
+                      {/* Price columns - show dash for grouped, or value if single item */}
+                      <TableCell className="text-right font-mono text-sm text-gray-400">
+                        {!hasMultipleLots ? formatCurrency(group.items[0]?.retailPrice) : "—"}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-gray-400">
+                        {!hasMultipleLots ? formatCurrency(group.items[0]?.wholesalePrice) : "—"}
+                      </TableCell>
+
+                      {/* Expiration - show earliest if multiple */}
+                      <TableCell>
+                        {!hasMultipleLots && group.items[0]?.expirationDate ? (
+                          <Badge variant="secondary" className="text-xs">
+                            Exp: {new Date(group.items[0].expirationDate).toLocaleDateString()}
+                          </Badge>
+                        ) : hasMultipleLots ? (
+                          <span className="text-gray-400 text-xs">Multiple dates</span>
+                        ) : (
+                          <span className="text-gray-400 text-xs">No expiration</span>
+                        )}
+                      </TableCell>
+
+                      {/* Actions - only for single-lot groups */}
+                      <TableCell className="text-right">
+                        {!hasMultipleLots && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDistribute(group.items[0]);
+                                }}
+                                disabled={(group.items[0]?.currentQuantity || 0) === 0}
+                              >
+                                <Send className="mr-2 h-4 w-4" />
+                                Distribute
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAdjustInventory(group.items[0]);
+                                }}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Adjust Inventory
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdatePricing(group.items[0]);
+                                }}
+                              >
+                                <TrendingUp className="mr-2 h-4 w-4" />
+                                Update Pricing
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Expanded Child Rows (Individual Lots) */}
+                    {isExpanded && hasMultipleLots && group.items.map((item) => (
+                      <TableRow
+                        key={item.id}
+                        className="bg-gray-50/50 hover:bg-gray-100 cursor-pointer"
+                        onClick={() => handleRowClick(item)}
+                      >
+                        {/* Indent spacer */}
+                        <TableCell className="w-8"></TableCell>
+
+                        {/* Lot Code */}
+                        <TableCell className="pl-8 text-sm text-gray-600">
+                          <span className="font-mono">{item.lotCode || "No lot code"}</span>
+                        </TableCell>
+
+                        {/* Package (empty for child) */}
+                        <TableCell></TableCell>
+
+                        {/* Quantity */}
+                        <TableCell className="text-right">
+                          <span
+                            className={`font-medium ${
+                              (item.currentQuantity || 0) === 0
+                                ? "text-red-600"
+                                : (item.currentQuantity || 0) < 50
+                                  ? "text-yellow-600"
+                                  : "text-green-600"
+                            }`}
+                          >
+                            {(item.currentQuantity || 0).toLocaleString()}
+                          </span>
+                        </TableCell>
+
+                        {/* Retail Price */}
+                        <TableCell className="text-right font-mono text-sm">
+                          {formatCurrency(item.retailPrice)}
+                        </TableCell>
+
+                        {/* Wholesale Price */}
+                        <TableCell className="text-right font-mono text-sm">
+                          {formatCurrency(item.wholesalePrice)}
+                        </TableCell>
+
+                        {/* Expiration */}
+                        <TableCell>
+                          {item.expirationDate ? (
+                            <Badge variant="secondary" className="text-xs">
+                              Exp: {new Date(item.expirationDate).toLocaleDateString()}
+                            </Badge>
+                          ) : (
+                            <span className="text-gray-400 text-xs">No expiration</span>
+                          )}
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDistribute(item);
+                                }}
+                                disabled={(item.currentQuantity || 0) === 0}
+                              >
+                                <Send className="mr-2 h-4 w-4" />
+                                Distribute
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAdjustInventory(item);
+                                }}
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Adjust Inventory
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdatePricing(item);
+                                }}
+                              >
+                                <TrendingUp className="mr-2 h-4 w-4" />
+                                Update Pricing
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
+                );
+              })
             )}
           </TableBody>
         </Table>
