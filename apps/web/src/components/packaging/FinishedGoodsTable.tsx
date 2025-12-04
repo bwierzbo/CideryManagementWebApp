@@ -175,10 +175,10 @@ export function FinishedGoodsTable({
     setSelectedItem(null);
   };
 
-  // Handle row click to view details
+  // Handle row click to view inventory item details
   const handleRowClick = (item: any) => {
-    if (item.bottleRunId) {
-      router.push(`/packaging/${item.bottleRunId}`);
+    if (item.id) {
+      router.push(`/inventory/finished/${item.id}`);
     }
   };
 
@@ -260,8 +260,15 @@ export function FinishedGoodsTable({
                   <React.Fragment key={group.skuKey}>
                     {/* SKU Group Row */}
                     <TableRow
-                      className={`hover:bg-gray-50 ${hasMultipleLots ? 'cursor-pointer' : ''} ${isExpanded ? 'bg-gray-50' : ''}`}
-                      onClick={() => hasMultipleLots && toggleExpand(group.skuKey)}
+                      className={`hover:bg-gray-50 cursor-pointer ${isExpanded ? 'bg-gray-50' : ''}`}
+                      onClick={() => {
+                        if (hasMultipleLots) {
+                          toggleExpand(group.skuKey);
+                        } else {
+                          // Single lot - navigate to detail page
+                          handleRowClick(group.items[0]);
+                        }
+                      }}
                     >
                       {/* Expand/Collapse */}
                       <TableCell className="w-8 pr-0">

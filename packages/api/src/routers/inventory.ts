@@ -21,10 +21,13 @@ import {
   inventoryItems,
   inventoryDistributions,
   inventoryAdjustments,
+  bottleRuns,
   // Batches
   batches,
   // Sales channels for TTB reporting
   salesChannels,
+  // Users for names
+  users,
 } from "db";
 import { eq, and, desc, asc, like, or, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -1042,6 +1045,184 @@ export const inventoryRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update pricing",
+        });
+      }
+    }),
+
+  /**
+   * Get detailed view of a finished good inventory item with full history
+   * Includes: item details, batch info, packaging run, distributions, adjustments
+   */
+  getFinishedGoodDetails: createRbacProcedure("read", "package")
+    .input(z.string().uuid())
+    .query(async ({ input: inventoryItemId }) => {
+      try {
+        // Get inventory item with batch and packaging run details
+        const [item] = await db
+          .select({
+            // Inventory item fields
+            id: inventoryItems.id,
+            lotCode: inventoryItems.lotCode,
+            packageType: inventoryItems.packageType,
+            packageSizeML: inventoryItems.packageSizeML,
+            currentQuantity: inventoryItems.currentQuantity,
+            retailPrice: inventoryItems.retailPrice,
+            wholesalePrice: inventoryItems.wholesalePrice,
+            expirationDate: inventoryItems.expirationDate,
+            createdAt: inventoryItems.createdAt,
+            updatedAt: inventoryItems.updatedAt,
+            // IDs for relations
+            bottleRunId: inventoryItems.bottleRunId,
+            batchId: inventoryItems.batchId,
+            // Batch details
+            batchName: batches.name,
+            batchCustomName: batches.customName,
+            batchStatus: batches.status,
+            // Packaging run details
+            packagedAt: bottleRuns.packagedAt,
+            unitsProduced: bottleRuns.unitsProduced,
+            volumeTaken: bottleRuns.volumeTaken,
+            loss: bottleRuns.loss,
+            abvAtPackaging: bottleRuns.abvAtPackaging,
+            carbonationLevel: bottleRuns.carbonationLevel,
+          })
+          .from(inventoryItems)
+          .leftJoin(batches, eq(inventoryItems.batchId, batches.id))
+          .leftJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
+          .where(eq(inventoryItems.id, inventoryItemId))
+          .limit(1);
+
+        if (!item) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Inventory item not found",
+          });
+        }
+
+        // Get distribution history with user names
+        const distributions = await db
+          .select({
+            id: inventoryDistributions.id,
+            distributionDate: inventoryDistributions.distributionDate,
+            distributionLocation: inventoryDistributions.distributionLocation,
+            quantityDistributed: inventoryDistributions.quantityDistributed,
+            pricePerUnit: inventoryDistributions.pricePerUnit,
+            totalRevenue: inventoryDistributions.totalRevenue,
+            notes: inventoryDistributions.notes,
+            createdAt: inventoryDistributions.createdAt,
+            // User info
+            distributedByName: users.name,
+            distributedByEmail: users.email,
+            // Sales channel
+            salesChannelId: inventoryDistributions.salesChannelId,
+          })
+          .from(inventoryDistributions)
+          .leftJoin(users, eq(inventoryDistributions.distributedBy, users.id))
+          .where(eq(inventoryDistributions.inventoryItemId, inventoryItemId))
+          .orderBy(desc(inventoryDistributions.distributionDate));
+
+        // Get adjustment history with user names
+        const adjustments = await db
+          .select({
+            id: inventoryAdjustments.id,
+            adjustmentType: inventoryAdjustments.adjustmentType,
+            quantityChange: inventoryAdjustments.quantityChange,
+            reason: inventoryAdjustments.reason,
+            adjustedAt: inventoryAdjustments.adjustedAt,
+            createdAt: inventoryAdjustments.createdAt,
+            // User info
+            adjustedByName: users.name,
+            adjustedByEmail: users.email,
+          })
+          .from(inventoryAdjustments)
+          .leftJoin(users, eq(inventoryAdjustments.adjustedBy, users.id))
+          .where(eq(inventoryAdjustments.inventoryItemId, inventoryItemId))
+          .orderBy(desc(inventoryAdjustments.adjustedAt));
+
+        // Get sales channel names for distributions
+        const channelIds = distributions
+          .filter(d => d.salesChannelId)
+          .map(d => d.salesChannelId as string);
+
+        let channelMap: Record<string, string> = {};
+        if (channelIds.length > 0) {
+          const channels = await db
+            .select({ id: salesChannels.id, name: salesChannels.name })
+            .from(salesChannels)
+            .where(sql`${salesChannels.id} IN ${channelIds}`);
+          channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
+        }
+
+        // Add channel names to distributions
+        const distributionsWithChannels = distributions.map(d => ({
+          ...d,
+          salesChannelName: d.salesChannelId ? channelMap[d.salesChannelId] : null,
+        }));
+
+        // Calculate summary statistics
+        const totalDistributed = distributions.reduce(
+          (sum, d) => sum + (d.quantityDistributed || 0),
+          0
+        );
+        const totalRevenue = distributions.reduce(
+          (sum, d) => sum + parseFloat(d.totalRevenue || "0"),
+          0
+        );
+        const totalAdjustments = adjustments.reduce(
+          (sum, a) => sum + (a.quantityChange || 0),
+          0
+        );
+
+        return {
+          item,
+          distributions: distributionsWithChannels,
+          adjustments,
+          summary: {
+            totalDistributed,
+            totalRevenue,
+            totalAdjustments,
+            distributionCount: distributions.length,
+            adjustmentCount: adjustments.length,
+          },
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error fetching finished good details:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch inventory item details",
+        });
+      }
+    }),
+
+  /**
+   * Get adjustment history for an inventory item
+   */
+  getAdjustments: createRbacProcedure("read", "package")
+    .input(z.string().uuid())
+    .query(async ({ input: inventoryItemId }) => {
+      try {
+        const adjustments = await db
+          .select({
+            id: inventoryAdjustments.id,
+            adjustmentType: inventoryAdjustments.adjustmentType,
+            quantityChange: inventoryAdjustments.quantityChange,
+            reason: inventoryAdjustments.reason,
+            adjustedAt: inventoryAdjustments.adjustedAt,
+            createdAt: inventoryAdjustments.createdAt,
+            adjustedByName: users.name,
+          })
+          .from(inventoryAdjustments)
+          .leftJoin(users, eq(inventoryAdjustments.adjustedBy, users.id))
+          .where(eq(inventoryAdjustments.inventoryItemId, inventoryItemId))
+          .orderBy(desc(inventoryAdjustments.adjustedAt));
+
+        return adjustments;
+      } catch (error) {
+        console.error("Error fetching adjustments:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch adjustment history",
         });
       }
     }),
