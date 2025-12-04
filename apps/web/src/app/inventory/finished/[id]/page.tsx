@@ -28,6 +28,13 @@ import {
   Minus,
   Plus,
   ExternalLink,
+  Beaker,
+  Target,
+  TestTube,
+  Droplets,
+  FileText,
+  Eye,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -35,6 +42,10 @@ import { formatDateTime } from "@/utils/date-format";
 import { DistributeInventoryModal } from "@/components/packaging/DistributeInventoryModal";
 import { AdjustInventoryModal } from "@/components/packaging/AdjustInventoryModal";
 import { UpdatePricingModal } from "@/components/packaging/UpdatePricingModal";
+import { LabelComplianceCard } from "@/components/packaging/LabelComplianceCard";
+import { COGSSummaryCard } from "@/components/packaging/COGSSummaryCard";
+import { MarginAnalysisCard } from "@/components/packaging/MarginAnalysisCard";
+import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 
 export default function FinishedGoodDetailPage() {
   const params = useParams();
@@ -55,6 +66,18 @@ export default function FinishedGoodDetailPage() {
   } = trpc.inventory.getFinishedGoodDetails.useQuery(itemId, {
     enabled: !!itemId,
   });
+
+  // Fetch full packaging run data for all production details
+  const { data: runData, isLoading: isLoadingRun } = trpc.packaging.get.useQuery(
+    data?.item?.bottleRunId || "",
+    { enabled: !!data?.item?.bottleRunId }
+  );
+
+  // Fetch enhanced details (COGS, margins, materials)
+  const { data: enhancedData, isLoading: isLoadingEnhanced } = trpc.packaging.getEnhancedDetails.useQuery(
+    data?.item?.bottleRunId || "",
+    { enabled: !!data?.item?.bottleRunId }
+  );
 
   const utils = trpc.useUtils();
 
@@ -90,6 +113,41 @@ export default function FinishedGoodDetailPage() {
       void: "Void",
     };
     return types[type] || type;
+  };
+
+  // Get loss percentage color
+  const getLossColor = (lossPercentage: number) => {
+    if (lossPercentage <= 2) return "text-green-600";
+    if (lossPercentage <= 5) return "text-yellow-600";
+    return "text-red-600";
+  };
+
+  // Get fill check color
+  const getFillCheckColor = (fillCheck: string | null) => {
+    switch (fillCheck) {
+      case "pass":
+        return "text-green-600";
+      case "fail":
+        return "text-red-600";
+      case "not_tested":
+        return "text-yellow-600";
+      default:
+        return "text-gray-500";
+    }
+  };
+
+  // Get carbonation level display
+  const getCarbonationDisplay = (level: string | null) => {
+    switch (level) {
+      case "still":
+        return "Still (no carbonation)";
+      case "petillant":
+        return "Pétillant (light carbonation)";
+      case "sparkling":
+        return "Sparkling (full carbonation)";
+      default:
+        return level || "Not specified";
+    }
   };
 
   // Handle successful actions
@@ -203,6 +261,34 @@ export default function FinishedGoodDetailPage() {
           </div>
         </div>
 
+        {/* Label Compliance Card */}
+        {runData && (
+          <div className="mb-3 md:mb-4 lg:mb-6">
+            <LabelComplianceCard
+              measurements={runData.batch?.history?.measurements || []}
+              additives={runData.batch?.history?.additives || []}
+              abvAtPackaging={runData.abvAtPackaging}
+              carbonationCo2Volumes={runData.carbonationCo2Volumes}
+              packageSizeML={runData.packageSizeML}
+              composition={runData.batch?.composition || []}
+            />
+          </div>
+        )}
+
+        {/* COGS and Margin Analysis Cards */}
+        {enhancedData && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4 lg:gap-6 mb-3 md:mb-4 lg:mb-6">
+            <COGSSummaryCard
+              cogsData={enhancedData.cogs}
+              unitsProduced={runData?.unitsProduced || 0}
+            />
+            <MarginAnalysisCard
+              margins={enhancedData.margins}
+              inventory={enhancedData.inventory}
+            />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 lg:gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-3 md:space-y-4 lg:space-y-6">
@@ -297,6 +383,291 @@ export default function FinishedGoodDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Batch Composition */}
+            {runData?.batch?.composition && runData.batch.composition.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Beaker className="w-4 h-4 md:w-5 md:h-5" />
+                    Batch Composition
+                  </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    Source materials for{" "}
+                    {item.batchCustomName || item.batchName || "this batch"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2">
+                    {runData.batch.composition.map((comp: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between p-2.5 md:p-3 border rounded-lg"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm md:text-base truncate">
+                            {comp.varietyName || "Unknown variety"}
+                          </p>
+                          <p className="text-xs md:text-sm text-gray-500 truncate">
+                            {comp.vendorName || "Unknown vendor"}
+                          </p>
+                        </div>
+                        <div className="text-right ml-3 md:ml-4 flex-shrink-0">
+                          <p className="font-medium text-sm md:text-base">
+                            {comp.percentageOfBatch?.toFixed(1)}%
+                          </p>
+                          <p className="text-xs md:text-sm text-gray-500">
+                            {comp.volumeL?.toFixed(1)}L
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Packaging Materials */}
+            {enhancedData?.packagingMaterials && enhancedData.packagingMaterials.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Package className="w-4 h-4 md:w-5 md:h-5" />
+                    Packaging Materials Used
+                  </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    Materials consumed during this packaging run
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2">
+                    {enhancedData.packagingMaterials.map((material: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between p-2.5 md:p-3 border rounded-lg"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm md:text-base truncate">
+                            {material.materialName || "Unknown material"}
+                          </p>
+                          <div className="flex items-center gap-1.5 md:gap-2 mt-1">
+                            <Badge variant="secondary" className="text-xs">
+                              {material.materialTypePurchase || material.materialType}
+                            </Badge>
+                            {material.size && (
+                              <span className="text-xs text-gray-500">
+                                {material.size}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right ml-3 md:ml-4 flex-shrink-0">
+                          <p className="font-medium text-sm md:text-base">
+                            {material.quantityUsed} units
+                          </p>
+                          {material.pricePerUnit && (
+                            <p className="text-xs md:text-sm text-gray-500">
+                              ${parseFloat(material.pricePerUnit).toFixed(2)} each
+                            </p>
+                          )}
+                          {material.totalCost && (
+                            <p className="text-xs md:text-sm font-medium text-green-600">
+                              Total: ${parseFloat(material.totalCost.toString()).toFixed(2)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Batch Activity Timeline */}
+            {item.batchId && (
+              <BatchActivityHistory batchId={item.batchId} />
+            )}
+
+            {/* Production Information with Loss */}
+            {runData && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Package className="w-4 h-4 md:w-5 md:h-5" />
+                    Production Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 md:gap-3">
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500">Packaged Date</p>
+                      <p className="font-medium text-sm md:text-base flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {runData.packagedAt
+                          ? new Date(runData.packagedAt).toLocaleDateString()
+                          : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500">Units Produced</p>
+                      <p className="font-medium text-base md:text-lg">
+                        {runData.unitsProduced?.toLocaleString() || "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500">Volume Taken</p>
+                      <p className="font-medium text-sm md:text-base">
+                        {runData.volumeTaken?.toFixed(1) || "-"}L
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500">Package Type</p>
+                      <p className="font-medium text-sm md:text-base">
+                        {formatPackageSize(runData.packageSizeML, runData.packageType)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid grid-cols-2 gap-2.5 md:gap-3">
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500">Loss Amount</p>
+                      <p className="font-medium text-sm md:text-base">
+                        {runData.loss?.toFixed(2) || "0.00"}L
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500">Loss Percentage</p>
+                      <p className={cn(
+                        "font-medium text-base md:text-lg",
+                        getLossColor(runData.lossPercentage || 0)
+                      )}>
+                        {runData.lossPercentage?.toFixed(1) || "0.0"}%
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Quality Assurance */}
+            {runData && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Beaker className="w-4 h-4 md:w-5 md:h-5" />
+                    Quality Assurance
+                  </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    Quality control measurements and testing results
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 md:gap-3">
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
+                        <Target className="w-3.5 h-3.5" />
+                        Fill Check
+                      </p>
+                      <p className={cn(
+                        "font-medium text-sm md:text-base",
+                        getFillCheckColor(runData.fillCheck)
+                      )}>
+                        {runData.fillCheck
+                          ? runData.fillCheck.charAt(0).toUpperCase() +
+                            runData.fillCheck.slice(1).replace("_", " ")
+                          : "Not tested"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500">Fill Variance</p>
+                      <p className="font-medium text-sm md:text-base">
+                        {runData.fillVarianceML !== undefined && runData.fillVarianceML !== null
+                          ? `${runData.fillVarianceML > 0 ? "+" : ""}${runData.fillVarianceML.toFixed(1)}ml`
+                          : "Not measured"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
+                        <TestTube className="w-3.5 h-3.5" />
+                        ABV at Packaging
+                      </p>
+                      <p className="font-medium text-sm md:text-base">
+                        {runData.abvAtPackaging !== undefined && runData.abvAtPackaging !== null
+                          ? `${Number(runData.abvAtPackaging).toFixed(2)}%`
+                          : "Not measured"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
+                        <Droplets className="w-3.5 h-3.5" />
+                        Carbonation
+                      </p>
+                      <p className="font-medium text-sm md:text-base">
+                        {getCarbonationDisplay(runData.carbonationLevel)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(runData.testMethod || runData.testDate) && (
+                    <>
+                      <Separator />
+                      <div className="grid grid-cols-2 gap-2.5 md:gap-3">
+                        {runData.testMethod && (
+                          <div>
+                            <p className="text-xs md:text-sm text-gray-500">Test Method</p>
+                            <p className="font-medium text-sm md:text-base">
+                              {runData.testMethod}
+                            </p>
+                          </div>
+                        )}
+                        {runData.testDate && (
+                          <div>
+                            <p className="text-xs md:text-sm text-gray-500">Test Date</p>
+                            <p className="font-medium text-sm md:text-base">
+                              {new Date(runData.testDate).toLocaleDateString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {runData.qaNotes && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5 mb-1">
+                          <FileText className="w-3.5 h-3.5" />
+                          QA Notes
+                        </p>
+                        <p className="font-medium text-sm md:text-base whitespace-pre-wrap">
+                          {runData.qaNotes}
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Production Notes */}
+            {runData?.productionNotes && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <FileText className="w-4 h-4 md:w-5 md:h-5" />
+                    Production Notes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm md:text-base whitespace-pre-wrap">
+                    {runData.productionNotes}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Distribution History */}
             <Card>
@@ -520,6 +891,73 @@ export default function FinishedGoodDetailPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Photos */}
+            {runData?.photos && runData.photos.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Eye className="w-4 h-4 md:w-5 md:h-5" />
+                    Photos
+                  </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    {runData.photos.length} photo
+                    {runData.photos.length !== 1 ? "s" : ""}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                  {runData.photos.map((photo: any) => (
+                    <div key={photo.id} className="space-y-2">
+                      <img
+                        src={photo.photoUrl}
+                        alt={photo.caption || "Packaging photo"}
+                        className="w-full rounded-lg max-h-48 md:max-h-64 lg:max-h-80 object-cover"
+                        loading="lazy"
+                      />
+                      {photo.caption && (
+                        <p className="text-xs md:text-sm text-gray-600 break-words">
+                          {photo.caption}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 break-words">
+                        {photo.uploaderName} • {formatDateTime(new Date(photo.uploadedAt))}
+                      </p>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Metadata */}
+            {runData && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base md:text-lg">Metadata</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div>
+                    <p className="text-xs text-gray-500">Created By</p>
+                    <p className="font-medium text-sm truncate">
+                      {runData.createdByName || "Unknown"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Packaged At</p>
+                    <p className="text-sm">
+                      {formatDateTime(new Date(runData.createdAt))}
+                    </p>
+                  </div>
+                  {runData.updatedAt && runData.updatedAt !== runData.createdAt && (
+                    <div>
+                      <p className="text-xs text-gray-500">Last Updated</p>
+                      <p className="text-sm">
+                        {formatDateTime(new Date(runData.updatedAt))}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </main>
