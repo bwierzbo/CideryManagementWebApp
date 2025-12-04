@@ -70,25 +70,15 @@ export function EditAdditiveItemModal({
     if (open && item) {
       console.log("Prefilling edit form with item data:", item);
 
-      // Parse quantity - handle both string and number types
-      let quantity = 0;
-      if (item.quantity) {
-        quantity = typeof item.quantity === 'string'
-          ? parseFloat(item.quantity)
-          : item.quantity;
-      } else if (item.originalQuantity) {
-        quantity = typeof item.originalQuantity === 'string'
-          ? parseFloat(item.originalQuantity)
-          : item.originalQuantity;
-      }
+      // Parse quantity - database returns decimals as strings, ensure numeric type
+      const rawQuantity = item.quantity ?? item.originalQuantity;
+      const quantity = rawQuantity ? Number(parseFloat(String(rawQuantity))) : 0;
 
       // Parse price per unit
-      let pricePerUnit = undefined;
-      if (item.pricePerUnit !== null && item.pricePerUnit !== undefined) {
-        pricePerUnit = typeof item.pricePerUnit === 'string'
-          ? parseFloat(item.pricePerUnit)
-          : item.pricePerUnit;
-      }
+      const rawPrice = item.pricePerUnit;
+      const pricePerUnit = rawPrice !== null && rawPrice !== undefined
+        ? Number(parseFloat(String(rawPrice)))
+        : undefined;
 
       // Format purchaseDate for date input (convert from ISO to YYYY-MM-DD)
       let purchaseDate = "";

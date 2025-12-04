@@ -77,10 +77,16 @@ export function EditBaseFruitItemModal({
         purchaseDate = formatDateForInput(item.createdAt);
       }
 
+      // Parse numeric values - database returns decimals as strings like "40.000"
+      const rawQuantity = item.originalQuantity ?? item.quantity;
+      const parsedQuantity = rawQuantity ? Number(parseFloat(String(rawQuantity))) : 0;
+      const rawPrice = item.pricePerUnit;
+      const parsedPrice = rawPrice ? Number(parseFloat(String(rawPrice))) : 0;
+
       reset({
-        quantity: parseFloat(item.originalQuantity || item.quantity) || 0,
+        quantity: parsedQuantity,
         unit: item.originalUnit || item.unit || "lb",
-        pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : 0,
+        pricePerUnit: parsedPrice,
         purchaseDate: purchaseDate,
         harvestDate: item.harvestDate || "",
         notes: item.notes || "",

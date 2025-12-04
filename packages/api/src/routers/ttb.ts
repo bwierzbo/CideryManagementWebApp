@@ -21,6 +21,14 @@ import {
   batchRackingOperations,
   bottleRuns,
   users,
+  basefruitPurchases,
+  basefruitPurchaseItems,
+  baseFruitVarieties,
+  pressRunLoads,
+  pressRuns,
+  additivePurchases,
+  additivePurchaseItems,
+  additiveVarieties,
 } from "db";
 import {
   eq,
@@ -46,6 +54,10 @@ import {
   type InventoryBreakdown,
   type TaxPaidRemovals,
   type OtherRemovals,
+  type BulkWinesSection,
+  type BottledWinesSection,
+  type MaterialsSection,
+  type FermentersSection,
 } from "lib";
 
 // Input schemas

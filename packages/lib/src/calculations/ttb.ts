@@ -233,16 +233,186 @@ export interface OtherRemovals {
 }
 
 /**
+ * Part I Section A - Bulk Wines (lines 1-32)
+ * Hard Cider column (f) values in wine gallons
+ */
+export interface BulkWinesSection {
+  /** Line 1: On hand first of period */
+  line1_onHandFirst: number;
+  /** Line 2: Produced by fermentation */
+  line2_produced: number;
+  /** Line 3: Produced by other processes */
+  line3_otherProduction: number;
+  /** Line 4: Received - bonded wine premises */
+  line4_receivedBonded: number;
+  /** Line 5: Received - customs custody */
+  line5_receivedCustoms: number;
+  /** Line 6: Received - returned after removal */
+  line6_receivedReturned: number;
+  /** Line 7: Received - by transfer in bond */
+  line7_receivedTransfer: number;
+  /** Line 8: Bottled wine dumped to bulk */
+  line8_dumpedToBulk: number;
+  /** Line 9: Wine transferred - from other wine classes */
+  line9_transferredIn: number;
+  /** Line 10: Withdrawn from fermenters */
+  line10_withdrawnFermenters: number;
+  /** Line 11: TOTAL (lines 1-10) */
+  line11_total: number;
+  /** Line 12: Bottled or packed (transferred to bottled wine storage) */
+  line12_bottled: number;
+  /** Line 13: Transferred - for export */
+  line13_exportTransfer: number;
+  /** Line 14: Transferred - to bonded wine premises */
+  line14_bondedTransfer: number;
+  /** Line 15: Transferred - to customs bonded warehouse */
+  line15_customsTransfer: number;
+  /** Line 16: Transferred - to foreign trade zone */
+  line16_ftzTransfer: number;
+  /** Line 17: Taxpaid removals */
+  line17_taxpaid: number;
+  /** Line 18: Tax-free removals - for use US */
+  line18_taxFreeUS: number;
+  /** Line 19: Tax-free removals - for export use */
+  line19_taxFreeExport: number;
+  /** Line 20: Wine transferred - to other wine tax classes */
+  line20_transferredOut: number;
+  /** Line 21: Used for distilling material or vinegar stock */
+  line21_distillingMaterial: number;
+  /** Line 22: Wine spirits added (winemaking) */
+  line22_spiritsAdded: number;
+  /** Line 23: Inventory losses */
+  line23_inventoryLosses: number;
+  /** Line 24: Destroyed */
+  line24_destroyed: number;
+  /** Line 25: Returned to bond */
+  line25_returnedToBond: number;
+  /** Line 26: Other (describe in remarks) */
+  line26_other: number;
+  /** Line 27: TOTAL (lines 12-26) */
+  line27_total: number;
+  /** Line 28: On hand - in fermenters */
+  line28_onHandFermenters: number;
+  /** Line 29: On hand - finished (not bottled) */
+  line29_onHandFinished: number;
+  /** Line 30: On hand - unfinished (other) */
+  line30_onHandUnfinished: number;
+  /** Line 31: In transit */
+  line31_inTransit: number;
+  /** Line 32: TOTAL on hand end of period (lines 28-31) */
+  line32_totalOnHand: number;
+}
+
+/**
+ * Part I Section B - Bottled Wines (lines 1-21)
+ * Hard Cider column values in wine gallons
+ */
+export interface BottledWinesSection {
+  /** Line 1: On hand first of period */
+  line1_onHandFirst: number;
+  /** Line 2: Bottled or packed (from bulk) */
+  line2_bottled: number;
+  /** Line 3: Received - bonded wine premises */
+  line3_receivedBonded: number;
+  /** Line 4: Received - customs custody */
+  line4_receivedCustoms: number;
+  /** Line 5: Received - returned after removal */
+  line5_receivedReturned: number;
+  /** Line 6: Received - by transfer in bond */
+  line6_receivedTransfer: number;
+  /** Line 7: TOTAL (lines 1-6) */
+  line7_total: number;
+  /** Line 8: Dumped to bulk */
+  line8_dumpedToBulk: number;
+  /** Line 9: Transferred - for export */
+  line9_exportTransfer: number;
+  /** Line 10: Transferred - to bonded wine premises */
+  line10_bondedTransfer: number;
+  /** Line 11: Transferred - to customs bonded warehouse */
+  line11_customsTransfer: number;
+  /** Line 12: Transferred - to foreign trade zone */
+  line12_ftzTransfer: number;
+  /** Line 13: Taxpaid removals */
+  line13_taxpaid: number;
+  /** Line 14: Tax-free removals - for use US */
+  line14_taxFreeUS: number;
+  /** Line 15: Tax-free removals - for export use */
+  line15_taxFreeExport: number;
+  /** Line 16: Inventory losses or shortages */
+  line16_inventoryLosses: number;
+  /** Line 17: Destroyed */
+  line17_destroyed: number;
+  /** Line 18: Returned to bond */
+  line18_returnedToBond: number;
+  /** Line 19: TOTAL (lines 8-18) */
+  line19_total: number;
+  /** Line 20: On hand end of period */
+  line20_onHandEnd: number;
+  /** Line 21: In transit */
+  line21_inTransit: number;
+}
+
+/**
+ * Part IV - Materials Received and Used
+ */
+export interface MaterialsSection {
+  /** Apples received (pounds) */
+  applesReceivedLbs: number;
+  /** Apples used (pounds) */
+  applesUsedLbs: number;
+  /** Juice/cider from apples (gallons) */
+  appleJuiceGallons: number;
+  /** Other fruit/berries received (pounds) */
+  otherFruitReceivedLbs: number;
+  /** Other fruit/berries used (pounds) */
+  otherFruitUsedLbs: number;
+  /** Sugar received (pounds) */
+  sugarReceivedLbs: number;
+  /** Sugar used (pounds) */
+  sugarUsedLbs: number;
+  /** Honey received (pounds) */
+  honeyReceivedLbs: number;
+  /** Honey used (pounds) */
+  honeyUsedLbs: number;
+  /** Other materials description */
+  otherMaterialsDescription?: string;
+  /** Other materials received */
+  otherMaterialsReceived?: number;
+  /** Other materials used */
+  otherMaterialsUsed?: number;
+}
+
+/**
+ * Part VII - In Fermenters End of Period
+ */
+export interface FermentersSection {
+  /** Gallons of wine in fermenters */
+  gallonsInFermenters: number;
+}
+
+/**
  * Complete TTB Form 5120.17 data structure
  */
 export interface TTBForm512017Data {
   /** Reporting period information */
   reportingPeriod: TTBReportingPeriod;
 
-  /** Part I - Beginning Inventory */
+  /** Part I Section A - Bulk Wines */
+  bulkWines: BulkWinesSection;
+
+  /** Part I Section B - Bottled Wines */
+  bottledWines: BottledWinesSection;
+
+  /** Part IV - Materials Received and Used */
+  materials: MaterialsSection;
+
+  /** Part VII - In Fermenters End of Period */
+  fermenters: FermentersSection;
+
+  /** Part I - Beginning Inventory (legacy - for backwards compat) */
   beginningInventory: InventoryBreakdown;
 
-  /** Part II - Wine/Cider Produced */
+  /** Part II - Wine/Cider Produced (legacy) */
   wineProduced: {
     /** Wine gallons produced this period */
     total: number;
@@ -256,13 +426,13 @@ export interface TTBForm512017Data {
     total: number;
   };
 
-  /** Part IV - Tax-Paid Removals */
+  /** Part IV - Tax-Paid Removals (legacy) */
   taxPaidRemovals: TaxPaidRemovals;
 
-  /** Part V - Other Removals */
+  /** Part V - Other Removals (legacy) */
   otherRemovals: OtherRemovals;
 
-  /** Part VI - Ending Inventory */
+  /** Part VI - Ending Inventory (legacy) */
   endingInventory: InventoryBreakdown;
 
   /** Tax Summary */

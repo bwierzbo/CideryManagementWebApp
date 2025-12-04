@@ -70,25 +70,15 @@ export function EditPackagingItemModal({
     if (open && item) {
       console.log("Prefilling edit form with item data:", item);
 
-      // Parse quantity - handle both string and number types
-      let quantity = 0;
-      if (item.quantity) {
-        quantity = typeof item.quantity === 'string'
-          ? parseInt(item.quantity, 10)
-          : item.quantity;
-      }
+      // Parse quantity - database returns integers as numbers but ensure type safety
+      const rawQuantity = item.quantity;
+      const quantity = rawQuantity ? Number(parseInt(String(rawQuantity), 10)) : 0;
 
-      // Parse price per unit
-      let pricePerUnit = undefined;
-      if (item.pricePerUnit !== null && item.pricePerUnit !== undefined) {
-        pricePerUnit = typeof item.pricePerUnit === 'string'
-          ? parseFloat(item.pricePerUnit)
-          : item.pricePerUnit;
-      } else if (item.unitCost !== null && item.unitCost !== undefined) {
-        pricePerUnit = typeof item.unitCost === 'string'
-          ? parseFloat(item.unitCost)
-          : item.unitCost;
-      }
+      // Parse price per unit - database returns decimals as strings
+      const rawPrice = item.pricePerUnit ?? item.unitCost;
+      const pricePerUnit = rawPrice !== null && rawPrice !== undefined
+        ? Number(parseFloat(String(rawPrice)))
+        : undefined;
 
       // Format purchaseDate for date input (convert from ISO to YYYY-MM-DD)
       let purchaseDate = "";
