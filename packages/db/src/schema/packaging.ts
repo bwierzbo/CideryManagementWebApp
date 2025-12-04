@@ -188,6 +188,10 @@ export const bottleRuns = pgTable(
     // Metadata
     productionNotes: text("production_notes"),
     status: bottleRunStatusEnum("status").default("completed"),
+    /**
+     * When the packaging run was marked as complete
+     */
+    completedAt: timestamp("completed_at"),
     voidReason: text("void_reason"),
     voidedAt: timestamp("voided_at"),
     voidedBy: uuid("voided_by"),

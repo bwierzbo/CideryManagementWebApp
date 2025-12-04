@@ -72,7 +72,7 @@ export function PasteurizeModal({
   } = useForm<PasteurizeForm>({
     resolver: zodResolver(pasteurizeSchema),
     defaultValues: {
-      pasteurizedAt: new Date().toISOString().split('T')[0],
+      pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       temperatureCelsius: 65, // Hot-start bath temperature
       timeMinutes: 8, // Default based on typical 750ml glass profile
     },
@@ -110,7 +110,7 @@ export function PasteurizeModal({
   useEffect(() => {
     if (open && plan) {
       reset({
-        pasteurizedAt: new Date().toISOString().split('T')[0],
+        pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
         temperatureCelsius: 65,
         timeMinutes: Math.ceil(plan.total_bath_time_min),
       });
@@ -138,7 +138,7 @@ export function PasteurizeModal({
 
   const onSubmit = (data: PasteurizeForm) => {
     const pu = calculatePU(data.temperatureCelsius, data.timeMinutes);
-    const pasteurizedAt = new Date(`${data.pasteurizedAt}T12:00:00.000Z`);
+    const pasteurizedAt = new Date(data.pasteurizedAt);
 
     pasteurizeMutation.mutate({
       runId: bottleRunId,
@@ -286,14 +286,14 @@ export function PasteurizeModal({
                 <span className="font-semibold text-gray-900">Actual Pasteurization</span>
               </div>
 
-              {/* Date */}
+              {/* Date & Time */}
               <div className="space-y-2">
                 <Label htmlFor="pasteurizedAt">
-                  Pasteurization Date <span className="text-red-500">*</span>
+                  Pasteurization Date & Time <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="pasteurizedAt"
-                  type="date"
+                  type="datetime-local"
                   {...register("pasteurizedAt")}
                 />
                 {errors.pasteurizedAt && (

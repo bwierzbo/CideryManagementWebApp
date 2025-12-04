@@ -76,7 +76,7 @@ export function LabelModal({
     resolver: zodResolver(labelSchema),
     defaultValues: {
       labels: [{ packagingItemId: "", quantity: unitsProduced }],
-      labeledAt: new Date().toISOString().split('T')[0],
+      labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
     },
   });
 
@@ -99,7 +99,7 @@ export function LabelModal({
     if (open) {
       reset({
         labels: [{ packagingItemId: "", quantity: unitsProduced }],
-        labeledAt: new Date().toISOString().split('T')[0],
+        labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       });
       setAppliedLabels([]);
       setComboboxOpen({});
@@ -112,7 +112,7 @@ export function LabelModal({
 
   const onSubmit = async (data: LabelForm) => {
     setIsSubmitting(true);
-    const labeledAt = new Date(`${data.labeledAt}T12:00:00.000Z`);
+    const labeledAt = new Date(data.labeledAt);
     const appliedLabelsList: Array<{name: string, quantity: number}> = [];
 
     try {
@@ -142,7 +142,7 @@ export function LabelModal({
       // Reset form for next batch of labels
       reset({
         labels: [{ packagingItemId: "", quantity: unitsProduced }],
-        labeledAt: new Date().toISOString().split('T')[0],
+        labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       });
 
       // Refresh inventory and bottle data
@@ -268,10 +268,10 @@ export function LabelModal({
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0" align="start">
-                            <Command>
+                          <PopoverContent className="w-[300px] p-0" align="start">
+                            <Command shouldFilter={true}>
                               <CommandInput placeholder="Search labels..." />
-                              <CommandList className="max-h-[200px]">
+                              <CommandList className="max-h-[200px] overflow-y-auto overscroll-contain">
                                 <CommandEmpty>No label found.</CommandEmpty>
                                 <CommandGroup>
                                   {packagingItems?.items.map((item) => (
@@ -363,14 +363,14 @@ export function LabelModal({
             </>
           )}
 
-          {/* Labeling Date */}
+          {/* Labeling Date & Time */}
           <div className="space-y-2">
             <Label htmlFor="labeledAt">
-              Labeling Date <span className="text-red-500">*</span>
+              Labeling Date & Time <span className="text-red-500">*</span>
             </Label>
             <Input
               id="labeledAt"
-              type="date"
+              type="datetime-local"
               {...register("labeledAt")}
             />
             {errors.labeledAt && (
