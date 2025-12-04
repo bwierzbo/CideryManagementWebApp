@@ -31,6 +31,7 @@ const pasteurizeSchema = z.object({
   pasteurizedAt: z.string(),
   temperatureCelsius: z.number().min(0, "Temperature must be positive").max(100, "Temperature must be at most 100°C"),
   timeMinutes: z.number().positive("Time must be positive").max(120, "Time must be at most 120 minutes"),
+  bottlesLost: z.number().int().min(0, "Must be 0 or more").optional(),
   notes: z.string().optional(),
 });
 
@@ -75,6 +76,7 @@ export function PasteurizeModal({
       pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       temperatureCelsius: 65, // Hot-start bath temperature
       timeMinutes: 8, // Default based on typical 750ml glass profile
+      bottlesLost: 0,
     },
   });
 
@@ -113,6 +115,7 @@ export function PasteurizeModal({
         pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
         temperatureCelsius: 65,
         timeMinutes: Math.ceil(plan.total_bath_time_min),
+        bottlesLost: 0,
       });
     }
   }, [open, plan, reset]);
@@ -146,6 +149,7 @@ export function PasteurizeModal({
       temperatureCelsius: data.temperatureCelsius,
       timeMinutes: data.timeMinutes,
       pasteurizationUnits: pu,
+      bottlesLost: data.bottlesLost,
       notes: data.notes,
     });
   };
@@ -332,6 +336,24 @@ export function PasteurizeModal({
                 />
                 {errors.timeMinutes && (
                   <p className="text-sm text-red-500">{errors.timeMinutes.message}</p>
+                )}
+              </div>
+
+              {/* Bottles Lost */}
+              <div className="space-y-2">
+                <Label htmlFor="bottlesLost">
+                  Bottles Lost (breakage/waste)
+                </Label>
+                <Input
+                  id="bottlesLost"
+                  type="number"
+                  min="0"
+                  step="1"
+                  {...register("bottlesLost", { valueAsNumber: true })}
+                  placeholder="0"
+                />
+                {errors.bottlesLost && (
+                  <p className="text-sm text-red-500">{errors.bottlesLost.message}</p>
                 )}
               </div>
             </div>

@@ -1385,12 +1385,14 @@ export const packagingRouter = router({
         temperatureCelsius: z.number().min(0).max(100),
         timeMinutes: z.number().positive().max(120),
         pasteurizationUnits: z.number().positive(),
+        bottlesLost: z.number().int().min(0).optional(),
         notes: z.string().optional(),
       }),
     )
     .mutation(async ({ input }) => {
       try {
         const pasteurizedAt = input.pasteurizedAt || new Date();
+        const lossNote = input.bottlesLost ? ` (${input.bottlesLost} bottles lost)` : '';
 
         const [updated] = await db
           .update(bottleRuns)
@@ -1399,9 +1401,10 @@ export const packagingRouter = router({
             pasteurizationTimeMinutes: input.timeMinutes.toString(),
             pasteurizationUnits: input.pasteurizationUnits.toString(),
             pasteurizedAt: pasteurizedAt,
+            pasteurizationLoss: input.bottlesLost || null,
             productionNotes: input.notes
-              ? `${input.notes}\n\nPasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)`
-              : `Pasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)`,
+              ? `${input.notes}\n\nPasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`
+              : `Pasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`,
             updatedAt: new Date(),
           })
           .where(eq(bottleRuns.id, input.runId))

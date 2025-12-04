@@ -165,6 +165,10 @@ export const bottleRuns = pgTable(
      * When pasteurization was completed
      */
     pasteurizedAt: timestamp("pasteurized_at"),
+    /**
+     * Number of bottles lost/wasted during pasteurization (breakage, etc.)
+     */
+    pasteurizationLoss: integer("pasteurization_loss"),
 
     /**
      * When labels were physically applied to bottles
