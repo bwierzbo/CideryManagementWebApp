@@ -899,7 +899,7 @@ export const kegsRouter = router({
             })
             .where(eq(kegs.id, kegVolume.kegId));
 
-          // Add materials if provided
+          // Add materials if provided and update inventory
           if (input.materials && input.materials.length > 0) {
             await db.insert(kegFillMaterials).values(
               input.materials.map((m) => ({
@@ -910,6 +910,16 @@ export const kegsRouter = router({
                 createdBy: userId,
               })),
             );
+
+            // Increment quantityUsed on packaging inventory for each material
+            for (const material of input.materials) {
+              await db.execute(sql`
+                UPDATE packaging_purchase_items
+                SET quantity_used = quantity_used + ${material.quantityUsed},
+                    updated_at = NOW()
+                WHERE id = ${material.packagingPurchaseItemId}
+              `);
+            }
           }
         }
 

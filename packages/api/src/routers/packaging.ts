@@ -543,15 +543,13 @@ export const packagingRouter = router({
                 createdBy: ctx.session.user.id,
               });
 
-              // Deduct quantity from packaging inventory
-              // Note: This assumes packaging inventory is tracked in a table
-              // You may need to adjust this based on your actual inventory structure
+              // Increment quantityUsed on packaging inventory
               await tx.execute(sql`
                 UPDATE packaging_purchase_items
-                SET quantity = quantity - ${material.quantityUsed},
+                SET quantity_used = quantity_used + ${material.quantityUsed},
                     updated_at = NOW()
                 WHERE id = ${material.packagingPurchaseItemId}
-                AND quantity >= ${material.quantityUsed}
+                AND (quantity - quantity_used) >= ${material.quantityUsed}
               `);
             }
           }
@@ -1500,20 +1498,20 @@ export const packagingRouter = router({
             });
           }
 
-          // Check if enough stock
-          if (packagingItem.quantity < input.quantity) {
+          // Check if enough stock (available = quantity - quantityUsed)
+          const available = packagingItem.quantity - (packagingItem.quantityUsed || 0);
+          if (available < input.quantity) {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Insufficient labels in stock. Available: ${packagingItem.quantity}, Requested: ${input.quantity}`,
+              message: `Insufficient labels in stock. Available: ${available}, Requested: ${input.quantity}`,
             });
           }
 
-          // Reduce label quantity
-          const newQuantity = packagingItem.quantity - input.quantity;
+          // Increment quantityUsed instead of decrementing quantity
           await tx
             .update(packagingPurchaseItems)
             .set({
-              quantity: newQuantity,
+              quantityUsed: sql`${packagingPurchaseItems.quantityUsed} + ${input.quantity}`,
               updatedAt: new Date(),
             })
             .where(eq(packagingPurchaseItems.id, input.packagingItemId));
@@ -1553,9 +1551,12 @@ export const packagingRouter = router({
               .where(eq(bottleRuns.id, input.bottleRunId));
           }
 
+          // Calculate remaining labels after this usage
+          const labelsRemaining = available - input.quantity;
+
           return {
             success: true,
-            labelsRemaining: newQuantity,
+            labelsRemaining,
             labelName: packagingItem.size || "Label",
           };
         });

@@ -391,6 +391,9 @@ export const additivePurchaseItems = pgTable("additive_purchase_items", {
   brandManufacturer: text("brand_manufacturer"),
   productName: text("product_name"),
   quantity: decimal("quantity", { precision: 10, scale: 3 }).notNull(),
+  quantityUsed: decimal("quantity_used", { precision: 10, scale: 3 })
+    .notNull()
+    .default("0"),
   unit: text("unit").notNull(),
   lotBatchNumber: text("lot_batch_number"),
   expirationDate: date("expiration_date"),
@@ -472,6 +475,7 @@ export const packagingPurchaseItems = pgTable("packaging_purchase_items", {
   materialType: text("material_type"),
   size: text("size").notNull(),
   quantity: integer("quantity").notNull(),
+  quantityUsed: integer("quantity_used").notNull().default(0),
   unitType: text("unit_type"),
   pricePerUnit: decimal("price_per_unit", { precision: 8, scale: 4 }),
   totalCost: decimal("total_cost", { precision: 10, scale: 2 }),

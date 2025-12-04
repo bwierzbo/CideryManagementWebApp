@@ -814,6 +814,17 @@ export const batchRouter = router({
           })
           .returning();
 
+        // Update quantityUsed on the source purchase item if provided
+        if (input.additivePurchaseItemId) {
+          await db
+            .update(additivePurchaseItems)
+            .set({
+              quantityUsed: sql`${additivePurchaseItems.quantityUsed} + ${input.amount.toString()}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(additivePurchaseItems.id, input.additivePurchaseItemId));
+        }
+
         // If sugar is added, auto-create estimated measurement
         let estimatedMeasurement = null;
         if (input.additiveType === "Sugar & Sweeteners") {

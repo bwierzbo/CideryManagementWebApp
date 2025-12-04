@@ -101,8 +101,8 @@ export const inventoryRouter = router({
           .select({
             id: sql<string>`CONCAT('additive-', ${additivePurchaseItems.id})`,
             packageId: sql<string | null>`NULL`,
-            currentBottleCount: sql<number>`COALESCE(CAST(${additivePurchaseItems.quantity} AS NUMERIC), 0)`,
-            reservedBottleCount: sql<number>`0`,
+            currentBottleCount: sql<number>`COALESCE(CAST(${additivePurchaseItems.quantity} AS NUMERIC) - CAST(COALESCE(${additivePurchaseItems.quantityUsed}, 0) AS NUMERIC), 0)`,
+            reservedBottleCount: sql<number>`CAST(COALESCE(${additivePurchaseItems.quantityUsed}, 0) AS NUMERIC)`,
             materialType: sql<string>`'additive'`,
             metadata: sql<unknown>`json_build_object(
               'purchaseId', ${additivePurchases.id},
@@ -181,8 +181,8 @@ export const inventoryRouter = router({
           .select({
             id: sql<string>`CONCAT('packaging-', ${packagingPurchaseItems.id})`,
             packageId: sql<string | null>`NULL`,
-            currentBottleCount: sql<number>`COALESCE(CAST(${packagingPurchaseItems.quantity} AS NUMERIC), 0)`,
-            reservedBottleCount: sql<number>`0`,
+            currentBottleCount: sql<number>`COALESCE(CAST(${packagingPurchaseItems.quantity} AS NUMERIC) - CAST(COALESCE(${packagingPurchaseItems.quantityUsed}, 0) AS NUMERIC), 0)`,
+            reservedBottleCount: sql<number>`CAST(COALESCE(${packagingPurchaseItems.quantityUsed}, 0) AS NUMERIC)`,
             materialType: sql<string>`'packaging'`,
             metadata: sql<unknown>`json_build_object(
               'purchaseId', ${packagingPurchases.id},
