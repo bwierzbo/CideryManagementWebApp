@@ -63,8 +63,6 @@ import {
   ShoppingCart,
   ChevronDown,
   ChevronRight,
-  BarChart3,
-  PieChart,
   ChevronLeft,
   ChevronsLeft,
   ChevronRight as ChevronRightIcon,
@@ -152,7 +150,6 @@ export function PurchaseOrdersTable({
   const [endDate, setEndDate] = useState<Date | null>(null);
 
   // UI state
-  const [showReports, setShowReports] = useState(false);
   const [pageSize, setPageSize] = useState(itemsPerPage);
   const [detailsPurchase, setDetailsPurchase] = useState<{
     id: string;
@@ -993,112 +990,6 @@ export function PurchaseOrdersTable({
             </CardContent>
           </Card>
         </div>
-      )}
-
-      {/* Spending Reports */}
-      {showFilters && (
-        <Card>
-          <CardHeader className="cursor-pointer" onClick={() => setShowReports(!showReports)}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {showReports ? (
-                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="w-5 h-5 text-muted-foreground" />
-                )}
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" />
-                  Spending Reports
-                </CardTitle>
-              </div>
-              <CardDescription>
-                {showReports ? "Hide detailed breakdown" : "Show detailed breakdown"}
-              </CardDescription>
-            </div>
-          </CardHeader>
-          {showReports && (
-            <CardContent>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Spending by Vendor */}
-                <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4" />
-                    Top Vendors by Spending
-                  </h3>
-                  <div className="space-y-2">
-                    {summaryStats.topVendors.length > 0 ? (
-                      summaryStats.topVendors.map(([vendor, stats], idx) => (
-                        <div
-                          key={vendor}
-                          className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-semibold text-sm">
-                              {idx + 1}
-                            </div>
-                            <div>
-                              <p className="font-medium">{vendor}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {stats.count} transaction{stats.count !== 1 ? "s" : ""}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold">{formatCurrency(stats.total)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {((stats.total / summaryStats.totalSpent) * 100).toFixed(1)}%
-                            </p>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-4 text-center">
-                        No vendor data available
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Spending by Material Type */}
-                <div>
-                  <h3 className="font-semibold mb-3 flex items-center gap-2">
-                    <PieChart className="w-4 h-4" />
-                    Spending by Material Type
-                  </h3>
-                  <div className="space-y-2">
-                    {Object.entries(summaryStats.byMaterialType).length > 0 ? (
-                      Object.entries(summaryStats.byMaterialType)
-                        .sort((a, b) => b[1].total - a[1].total)
-                        .map(([type, stats]) => (
-                          <div
-                            key={type}
-                            className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex items-center gap-3">
-                              {getMaterialTypeBadge(type)}
-                              <p className="text-xs text-muted-foreground">
-                                {stats.count} transaction{stats.count !== 1 ? "s" : ""}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-bold">{formatCurrency(stats.total)}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {((stats.total / summaryStats.totalSpent) * 100).toFixed(1)}%
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground py-4 text-center">
-                        No material type data available
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          )}
-        </Card>
       )}
 
       {/* Filters */}
