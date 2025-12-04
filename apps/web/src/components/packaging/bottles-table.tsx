@@ -44,6 +44,7 @@ import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { LabelModal } from "./LabelModal";
 import { PasteurizeModal } from "./PasteurizeModal";
+import { MarkCompleteModal } from "./MarkCompleteModal";
 import { DistributeKegModal } from "./kegs/DistributeKegModal";
 
 // Type for packaging run from API
@@ -161,6 +162,9 @@ export function BottlesTable({
   // Pasteurize modal state
   const [pasteurizeModalOpen, setPasteurizeModalOpen] = useState(false);
 
+  // Mark complete modal state
+  const [markCompleteModalOpen, setMarkCompleteModalOpen] = useState(false);
+
   // Distribute keg modal state
   const [distributeKegModalOpen, setDistributeKegModalOpen] = useState(false);
   const [selectedKegForDistribution, setSelectedKegForDistribution] = useState<{
@@ -168,24 +172,8 @@ export function BottlesTable({
     kegNumber: string;
   } | null>(null);
 
-  // Mutations
+  // Utils for cache invalidation
   const utils = trpc.useUtils();
-  const markCompleteMutation = trpc.packaging.markComplete.useMutation({
-    onSuccess: () => {
-      utils.packaging.list.invalidate();
-      toast({
-        title: "Success",
-        description: "Bottle run marked as complete. Items are now in inventory.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to mark packaging run as complete",
-        variant: "destructive",
-      });
-    },
-  });
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -350,8 +338,9 @@ export function BottlesTable({
       return;
     }
 
-    markCompleteMutation.mutate({ runId: item.id });
-  }, [markCompleteMutation, toast]);
+    setSelectedBottleRun(item);
+    setMarkCompleteModalOpen(true);
+  }, [toast]);
 
   // Label modal handlers
   const handleLabelModalClose = useCallback(() => {
@@ -374,6 +363,18 @@ export function BottlesTable({
   const handlePasteurizeSuccess = useCallback(() => {
     // The modal will handle invalidation, just close
     setPasteurizeModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  // Mark complete modal handlers
+  const handleMarkCompleteModalClose = useCallback(() => {
+    setMarkCompleteModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  const handleMarkCompleteSuccess = useCallback(() => {
+    // The modal will handle invalidation, just close
+    setMarkCompleteModalOpen(false);
     setSelectedBottleRun(null);
   }, []);
 
@@ -1227,6 +1228,21 @@ export function BottlesTable({
           batchId={selectedBottleRun.batchId}
           unitsProduced={selectedBottleRun.unitsProduced}
           onSuccess={handlePasteurizeSuccess}
+        />
+      )}
+
+      {/* Mark Complete Modal */}
+      {selectedBottleRun && (
+        <MarkCompleteModal
+          open={markCompleteModalOpen}
+          onClose={handleMarkCompleteModalClose}
+          bottleRunId={selectedBottleRun.id}
+          bottleRunName={
+            selectedBottleRun.batch.customName ||
+            selectedBottleRun.batch.name ||
+            `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
+          }
+          onSuccess={handleMarkCompleteSuccess}
         />
       )}
 

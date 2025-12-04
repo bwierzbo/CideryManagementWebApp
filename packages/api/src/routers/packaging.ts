@@ -1257,15 +1257,21 @@ export const packagingRouter = router({
    * Mark a bottle run as completed
    */
   markComplete: createRbacProcedure("update", "package")
-    .input(z.object({ runId: z.string().uuid() }))
+    .input(z.object({
+      runId: z.string().uuid(),
+      completedAt: z.date().optional(),
+    }))
     .mutation(async ({ input }) => {
       try {
         return await db.transaction(async (tx) => {
+          const completedAt = input.completedAt || new Date();
+
           // Update bottle run status to completed
           const [updated] = await tx
             .update(bottleRuns)
             .set({
               status: "completed",
+              completedAt: completedAt,
               updatedAt: new Date(),
             })
             .where(eq(bottleRuns.id, input.runId))
