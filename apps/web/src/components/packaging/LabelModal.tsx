@@ -272,7 +272,10 @@ export function LabelModal({
                           <PopoverContent className="w-[300px] p-0" align="start">
                             <Command shouldFilter={true}>
                               <CommandInput placeholder="Search labels..." />
-                              <CommandList className="max-h-[200px] overflow-y-auto overscroll-contain touch-pan-y" style={{ pointerEvents: 'auto' }}>
+                              <CommandList
+                                className="max-h-[200px] overflow-y-auto overscroll-contain touch-pan-y"
+                                onWheel={(e) => e.stopPropagation()}
+                              >
                                 <CommandEmpty>No label found.</CommandEmpty>
                                 <CommandGroup>
                                   {packagingItems?.items.map((item) => (
