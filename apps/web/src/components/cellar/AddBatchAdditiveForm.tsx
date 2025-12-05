@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Package, AlertTriangle } from "lucide-react";
 import {
   Command,
   CommandEmpty,
@@ -28,6 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface AddBatchAdditiveFormProps {
@@ -70,8 +71,7 @@ export function AddBatchAdditiveForm({
   onCancel,
 }: AddBatchAdditiveFormProps) {
   const [selectedAdditiveType, setSelectedAdditiveType] = useState("");
-  const [selectedAdditiveId, setSelectedAdditiveId] = useState("");
-  const [selectedAdditive, setSelectedAdditive] = useState<any>(null);
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<any>(null);
   const [amount, setAmount] = useState("");
   const [unit, setUnit] = useState("");
   const [notes, setNotes] = useState("");
@@ -83,30 +83,34 @@ export function AddBatchAdditiveForm({
     return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
 
-  // Fetch available additives from inventory, filtered by type if selected
-  const { data: additiveData, isLoading: isLoadingAdditives } =
-    trpc.additiveVarieties.list.useQuery(
+  // Fetch available additive inventory items, filtered by type
+  const { data: inventoryData, isLoading: isLoadingInventory } =
+    trpc.additivePurchases.listInventory.useQuery(
       {
-        search: searchQuery,
-        limit: 50,
-        includeInactive: false,
-        sortBy: "name",
-        sortOrder: "asc",
+        itemType: selectedAdditiveType,
+        onlyAvailable: true,
       },
       {
         enabled: !!selectedAdditiveType,
       },
     );
 
-  // Filter additives by selected type
-  const filteredAdditives = useMemo(() => {
-    if (!additiveData?.varieties || !selectedAdditiveType) return [];
-    return additiveData.varieties.filter(
-      (additive) => additive.itemType === selectedAdditiveType,
-    );
-  }, [additiveData?.varieties, selectedAdditiveType]);
+  // Filter inventory items by search query
+  const filteredInventory = useMemo(() => {
+    if (!inventoryData?.items) return [];
+    if (!searchQuery) return inventoryData.items;
 
-  const additives = useMemo(() => filteredAdditives, [filteredAdditives]);
+    const query = searchQuery.toLowerCase();
+    return inventoryData.items.filter(
+      (item) =>
+        item.varietyName?.toLowerCase().includes(query) ||
+        item.productName?.toLowerCase().includes(query) ||
+        item.brandManufacturer?.toLowerCase().includes(query) ||
+        item.vendorName?.toLowerCase().includes(query)
+    );
+  }, [inventoryData?.items, searchQuery]);
+
+  const utils = trpc.useUtils();
 
   const addAdditive = trpc.batch.addAdditive.useMutation({
     onSuccess: (data) => {
@@ -116,6 +120,9 @@ export function AddBatchAdditiveForm({
           ? "Additive recorded with estimated SG and ABV measurement"
           : "Additive recorded successfully",
       });
+      // Invalidate inventory queries to reflect the usage
+      utils.additivePurchases.listInventory.invalidate();
+      utils.additivePurchases.list.invalidate();
       onSuccess();
     },
     onError: (error) => {
@@ -129,16 +136,16 @@ export function AddBatchAdditiveForm({
 
   const handleAdditiveTypeChange = (value: string) => {
     setSelectedAdditiveType(value);
-    // Reset additive selection when type changes
-    setSelectedAdditiveId("");
-    setSelectedAdditive(null);
+    // Reset inventory item selection when type changes
+    setSelectedInventoryItem(null);
+    setUnit("");
     setSearchQuery("");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedAdditiveType || !selectedAdditive || !amount || !unit || !addedDate) {
+    if (!selectedAdditiveType || !selectedInventoryItem || !amount || !unit || !addedDate) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -147,38 +154,50 @@ export function AddBatchAdditiveForm({
       return;
     }
 
+    const parsedAmount = parseFloat(amount);
+    if (parsedAmount > selectedInventoryItem.availableQuantity) {
+      toast({
+        title: "Error",
+        description: `Amount exceeds available quantity (${selectedInventoryItem.availableQuantity.toFixed(2)} ${selectedInventoryItem.unit} available)`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const additiveData = {
       batchId,
-      additiveType: selectedAdditive.itemType,
-      additiveName: selectedAdditive.name,
-      amount: parseFloat(amount),
+      additiveType: selectedInventoryItem.varietyItemType,
+      additiveName: selectedInventoryItem.varietyName || selectedInventoryItem.productName,
+      amount: parsedAmount,
       unit,
       addedAt: new Date(addedDate),
       notes: notes || undefined,
+      // This is the key - pass the purchase item ID to decrement inventory
+      additivePurchaseItemId: selectedInventoryItem.id,
+      // Also pass cost for COGS calculation
+      costPerUnit: selectedInventoryItem.pricePerUnit ? parseFloat(selectedInventoryItem.pricePerUnit) : undefined,
     };
 
     addAdditive.mutate(additiveData);
   };
 
-  const handleSelectAdditive = (additiveId: string) => {
-    const additive = additives.find((a) => a.id === additiveId);
-    if (additive) {
-      setSelectedAdditive(additive);
-      setSelectedAdditiveId(additiveId);
+  const handleSelectInventoryItem = (itemId: string) => {
+    const item = filteredInventory.find((i) => i.id === itemId);
+    if (item) {
+      setSelectedInventoryItem(item);
+      // Auto-set the unit from the inventory item
+      setUnit(item.unit);
       setOpen(false);
     }
   };
 
-  const getAdditiveTypeLabel = (type: string) => {
-    const typeLabels: Record<string, string> = {
-      nutrient: "Nutrient",
-      acid: "Acid",
-      enzyme: "Enzyme",
-      clarifier: "Clarifier",
-      preservative: "Preservative",
-      other: "Other",
-    };
-    return typeLabels[type] || type;
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch {
+      return dateStr;
+    }
   };
 
   return (
@@ -215,7 +234,7 @@ export function AddBatchAdditiveForm({
 
       {selectedAdditiveType && (
         <div className="space-y-2">
-          <Label>Select Additive from Inventory *</Label>
+          <Label>Select from Inventory *</Label>
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
               <Button
@@ -223,91 +242,144 @@ export function AddBatchAdditiveForm({
                 role="combobox"
                 aria-expanded={open}
                 disabled={!selectedAdditiveType}
-                className="w-full justify-between text-left font-normal"
+                className="w-full justify-between text-left font-normal h-auto min-h-10"
               >
-                {selectedAdditive ? (
-                  <div className="flex items-center justify-between w-full">
-                    <span>{selectedAdditive.name}</span>
-                    <span className="text-muted-foreground text-sm ml-2">
-                      ({getAdditiveTypeLabel(selectedAdditive.itemType)})
-                    </span>
+                {selectedInventoryItem ? (
+                  <div className="flex items-center justify-between w-full py-1">
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{selectedInventoryItem.varietyName || selectedInventoryItem.productName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {selectedInventoryItem.brandManufacturer} • {selectedInventoryItem.vendorName}
+                      </span>
+                    </div>
+                    <Badge variant="secondary" className="ml-2">
+                      {selectedInventoryItem.availableQuantity.toFixed(2)} {selectedInventoryItem.unit}
+                    </Badge>
                   </div>
                 ) : (
                   <span className="text-muted-foreground">
                     {selectedAdditiveType
-                      ? `Search ${selectedAdditiveType.toLowerCase()} additives...`
+                      ? `Search ${selectedAdditiveType.toLowerCase()} in inventory...`
                       : "Select additive type first..."}
                   </span>
                 )}
-                <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                <Package className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-full p-0" align="start">
+            <PopoverContent className="w-[400px] p-0" align="start">
               <Command>
                 <CommandInput
-                  placeholder={`Search ${selectedAdditiveType.toLowerCase()} additives...`}
+                  placeholder={`Search ${selectedAdditiveType.toLowerCase()} inventory...`}
                   value={searchQuery}
                   onValueChange={setSearchQuery}
                 />
-                <CommandList className="max-h-[200px]">
-                  {isLoadingAdditives && (
+                <CommandList className="max-h-[300px]">
+                  {isLoadingInventory && (
                     <CommandEmpty>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Loading additives...
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Loading inventory...
+                      </div>
                     </CommandEmpty>
                   )}
-                  {!isLoadingAdditives && additives.length === 0 && (
+                  {!isLoadingInventory && filteredInventory.length === 0 && (
                     <CommandEmpty>
-                      {selectedAdditiveType
-                        ? `No ${selectedAdditiveType.toLowerCase()} additives found in inventory.`
-                        : "Select an additive type first."}
+                      <div className="py-6 text-center">
+                        <Package className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          {selectedAdditiveType
+                            ? `No ${selectedAdditiveType.toLowerCase()} found in inventory.`
+                            : "Select an additive type first."}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Purchase additives in Inventory → Additives to add stock.
+                        </p>
+                      </div>
                     </CommandEmpty>
                   )}
-                  {!isLoadingAdditives && additives.length > 0 && (
-                    <CommandGroup heading="Available Additives">
-                      {additives.map((additive) => (
-                        <CommandItem
-                          key={additive.id}
-                          value={additive.name}
-                          onSelect={() => handleSelectAdditive(additive.id)}
-                        >
-                          <div className="flex flex-col">
-                            <span className="font-medium">{additive.name}</span>
-                            <span className="text-sm text-muted-foreground">
-                              Type: {getAdditiveTypeLabel(additive.itemType)}
-                              {additive.labelImpact && " • Label Impact"}
-                              {additive.allergensVegan &&
-                                " • Allergen/Vegan Concern"}
-                            </span>
-                          </div>
-                        </CommandItem>
-                      ))}
+                  {!isLoadingInventory && filteredInventory.length > 0 && (
+                    <CommandGroup heading="Available Inventory">
+                      {filteredInventory.map((item) => {
+                        const isLowStock = item.availableQuantity < item.quantity * 0.2;
+                        const expirationDate = formatDate(item.expirationDate);
+                        const isExpiringSoon = item.expirationDate &&
+                          new Date(item.expirationDate) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+                        return (
+                          <CommandItem
+                            key={item.id}
+                            value={`${item.varietyName} ${item.productName} ${item.brandManufacturer}`}
+                            onSelect={() => handleSelectInventoryItem(item.id)}
+                            className="py-2"
+                          >
+                            <div className="flex flex-col flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium">
+                                  {item.varietyName || item.productName}
+                                </span>
+                                <Badge
+                                  variant={isLowStock ? "destructive" : "secondary"}
+                                  className="ml-2"
+                                >
+                                  {item.availableQuantity.toFixed(2)} {item.unit}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                {item.brandManufacturer && `${item.brandManufacturer} • `}
+                                {item.vendorName}
+                                {item.lotBatchNumber && ` • Lot: ${item.lotBatchNumber}`}
+                              </div>
+                              {(expirationDate || isLowStock) && (
+                                <div className="flex items-center gap-2 mt-1">
+                                  {expirationDate && (
+                                    <span className={cn(
+                                      "text-xs",
+                                      isExpiringSoon ? "text-orange-600" : "text-muted-foreground"
+                                    )}>
+                                      Exp: {expirationDate}
+                                    </span>
+                                  )}
+                                  {isLowStock && (
+                                    <span className="text-xs text-red-600 flex items-center">
+                                      <AlertTriangle className="h-3 w-3 mr-0.5" />
+                                      Low stock
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </CommandItem>
+                        );
+                      })}
                     </CommandGroup>
                   )}
                 </CommandList>
               </Command>
             </PopoverContent>
           </Popover>
-          {selectedAdditive && (
+          {selectedInventoryItem && (
             <div className="mt-2 p-3 bg-muted rounded-md text-sm">
-              <div className="font-medium mb-1">
-                Selected: {selectedAdditive.name}
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-medium">
+                  {selectedInventoryItem.varietyName || selectedInventoryItem.productName}
+                </span>
+                <Badge variant="outline">
+                  Available: {selectedInventoryItem.availableQuantity.toFixed(2)} {selectedInventoryItem.unit}
+                </Badge>
               </div>
-              <div className="text-muted-foreground">
-                Type: {getAdditiveTypeLabel(selectedAdditive.itemType)}
-                {selectedAdditive.labelImpact && (
-                  <div className="mt-1">
-                    ⚠️ Label Impact:{" "}
-                    {selectedAdditive.labelImpactNotes ||
-                      "May require label disclosure"}
-                  </div>
+              <div className="text-muted-foreground space-y-1 text-xs">
+                {selectedInventoryItem.brandManufacturer && (
+                  <div>Brand: {selectedInventoryItem.brandManufacturer}</div>
                 )}
-                {selectedAdditive.allergensVegan && (
-                  <div className="mt-1">
-                    ⚠️ Allergen/Vegan:{" "}
-                    {selectedAdditive.allergensVeganNotes ||
-                      "May contain allergens or affect vegan status"}
-                  </div>
+                <div>Vendor: {selectedInventoryItem.vendorName}</div>
+                {selectedInventoryItem.lotBatchNumber && (
+                  <div>Lot #: {selectedInventoryItem.lotBatchNumber}</div>
+                )}
+                {selectedInventoryItem.expirationDate && (
+                  <div>Expires: {formatDate(selectedInventoryItem.expirationDate)}</div>
+                )}
+                {selectedInventoryItem.pricePerUnit && (
+                  <div>Cost: ${parseFloat(selectedInventoryItem.pricePerUnit).toFixed(4)}/{selectedInventoryItem.unit}</div>
                 )}
               </div>
             </div>

@@ -396,4 +396,94 @@ export const additivePurchasesRouter = router({
         });
       }
     }),
+
+  // List available additive inventory items (for selection when adding to batches)
+  listInventory: createRbacProcedure("list", "purchase")
+    .input(
+      z.object({
+        additiveVarietyId: z.string().uuid().optional(),
+        itemType: z.string().optional(), // Filter by additive type category
+        onlyAvailable: z.boolean().default(true), // Only show items with available quantity
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        const { additiveVarietyId, itemType, onlyAvailable } = input;
+
+        // Build conditions
+        const conditions = [isNull(additivePurchaseItems.deletedAt)];
+
+        if (additiveVarietyId) {
+          conditions.push(eq(additivePurchaseItems.additiveVarietyId, additiveVarietyId));
+        }
+
+        const items = await db
+          .select({
+            id: additivePurchaseItems.id,
+            purchaseId: additivePurchaseItems.purchaseId,
+            additiveVarietyId: additivePurchaseItems.additiveVarietyId,
+            brandManufacturer: additivePurchaseItems.brandManufacturer,
+            productName: additivePurchaseItems.productName,
+            quantity: additivePurchaseItems.quantity,
+            quantityUsed: additivePurchaseItems.quantityUsed,
+            unit: additivePurchaseItems.unit,
+            lotBatchNumber: additivePurchaseItems.lotBatchNumber,
+            expirationDate: additivePurchaseItems.expirationDate,
+            pricePerUnit: additivePurchaseItems.pricePerUnit,
+            purchaseDate: additivePurchases.purchaseDate,
+            vendorId: additivePurchases.vendorId,
+            vendorName: vendors.name,
+            varietyName: additiveVarieties.name,
+            varietyItemType: additiveVarieties.itemType,
+          })
+          .from(additivePurchaseItems)
+          .innerJoin(additivePurchases, eq(additivePurchaseItems.purchaseId, additivePurchases.id))
+          .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
+          .leftJoin(additiveVarieties, eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id))
+          .where(and(...conditions))
+          .orderBy(asc(additivePurchaseItems.expirationDate), desc(additivePurchases.purchaseDate));
+
+        // Calculate available quantity and filter
+        const processedItems = items
+          .map((item) => {
+            const quantity = parseFloat(item.quantity);
+            const quantityUsed = parseFloat(item.quantityUsed);
+            const availableQuantity = quantity - quantityUsed;
+
+            return {
+              ...item,
+              quantity,
+              quantityUsed,
+              availableQuantity,
+            };
+          })
+          .filter((item) => {
+            // Filter by itemType if specified
+            if (itemType) {
+              const normalizedSearchType = itemType.trim().toLowerCase();
+              const normalizedItemType = item.varietyItemType?.trim().toLowerCase();
+              if (normalizedItemType !== normalizedSearchType) {
+                return false;
+              }
+            }
+
+            // Filter by availability if requested
+            if (onlyAvailable && item.availableQuantity <= 0) {
+              return false;
+            }
+
+            return true;
+          });
+
+        return {
+          items: processedItems,
+        };
+      } catch (error) {
+        console.error("Error listing additive inventory:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to list additive inventory",
+        });
+      }
+    }),
 });
