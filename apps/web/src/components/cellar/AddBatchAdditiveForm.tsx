@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Search, Package, AlertTriangle } from "lucide-react";
+import { Loader2, Search, Package, AlertTriangle, Calculator } from "lucide-react";
 import {
   Command,
   CommandEmpty,
@@ -82,6 +82,25 @@ export function AddBatchAdditiveForm({
     const now = new Date();
     return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
+  const [dosageRate, setDosageRate] = useState("");
+
+  // Fetch batch history to get measurements with volume
+  const { data: batchHistory } = trpc.batch.getHistory.useQuery(
+    { batchId },
+    { enabled: !!batchId }
+  );
+
+  // Get batch volume in liters from most recent measurement
+  const batchVolumeLiters = useMemo(() => {
+    if (!batchHistory?.measurements?.length) return null;
+    // Find the most recent measurement with volume
+    const measurementWithVolume = batchHistory.measurements.find(m => m.volume);
+    if (!measurementWithVolume?.volume) return null;
+
+    const volume = parseFloat(String(measurementWithVolume.volume));
+    // Volume unit in measurements is typically L (liters)
+    return volume;
+  }, [batchHistory]);
 
   // Fetch available additive inventory items, filtered by type
   const { data: inventoryData, isLoading: isLoadingInventory } =
@@ -190,6 +209,26 @@ export function AddBatchAdditiveForm({
       setOpen(false);
     }
   };
+
+  // Handle dosage rate change - calculate amount from rate * volume
+  const handleDosageRateChange = (rate: string) => {
+    setDosageRate(rate);
+    const rateNum = parseFloat(rate);
+    if (!isNaN(rateNum) && rateNum > 0 && batchVolumeLiters) {
+      const calculatedAmount = rateNum * batchVolumeLiters;
+      setAmount(calculatedAmount.toFixed(1));
+      setUnit("ml");
+    }
+  };
+
+  // Calculate display value for the dosage result
+  const calculatedDosage = useMemo(() => {
+    const rateNum = parseFloat(dosageRate);
+    if (!isNaN(rateNum) && rateNum > 0 && batchVolumeLiters) {
+      return rateNum * batchVolumeLiters;
+    }
+    return null;
+  }, [dosageRate, batchVolumeLiters]);
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return null;
@@ -396,7 +435,11 @@ export function AddBatchAdditiveForm({
             step="0.001"
             placeholder="0.000"
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => {
+              setAmount(e.target.value);
+              // Clear dosage rate when manually entering amount
+              setDosageRate("");
+            }}
             required
           />
         </div>
@@ -417,6 +460,37 @@ export function AddBatchAdditiveForm({
           </Select>
         </div>
       </div>
+
+      {/* Dosage Rate Calculator */}
+      {batchVolumeLiters && (
+        <div className="p-3 bg-muted/50 border rounded-md space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Calculator className="h-4 w-4" />
+            <span>Dosage Calculator</span>
+            <span className="text-muted-foreground font-normal">
+              (Batch volume: {batchVolumeLiters.toLocaleString()} L)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="Enter rate"
+                value={dosageRate}
+                onChange={(e) => handleDosageRateChange(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">mL/L</span>
+          </div>
+          {calculatedDosage !== null && (
+            <div className="text-sm text-blue-700 bg-blue-50 p-2 rounded">
+              {dosageRate} mL/L × {batchVolumeLiters.toLocaleString()} L = <strong>{calculatedDosage.toLocaleString()} mL</strong>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="addedDate">Date & Time Added *</Label>
