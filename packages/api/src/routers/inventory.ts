@@ -28,6 +28,13 @@ import {
   salesChannels,
   // Users for names
   users,
+  // Usage tracking tables for activity history
+  batchAdditives,
+  batchCompositions,
+  pressRunLoads,
+  pressRuns,
+  vessels,
+  bottleRunMaterials,
 } from "db";
 import { eq, and, desc, asc, like, or, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -748,9 +755,12 @@ export const inventoryRouter = router({
           // Batch details
           batchName: batches.name,
           batchCustomName: batches.customName,
+          // Bottle run details
+          packagedAt: bottleRuns.packagedAt,
         })
         .from(inventoryItems)
         .leftJoin(batches, eq(inventoryItems.batchId, batches.id))
+        .leftJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
         .where(whereClause)
         .orderBy(desc(inventoryItems.createdAt))
         .limit(limit)
@@ -1223,6 +1233,253 @@ export const inventoryRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch adjustment history",
+        });
+      }
+    }),
+
+  /**
+   * Get activity history for a raw material inventory item
+   * Queries usage from different tables based on material type
+   */
+  getRawMaterialActivityHistory: protectedProcedure
+    .input(
+      z.object({
+        itemId: z.string().uuid(),
+        itemType: z.enum(["basefruit", "additive", "juice", "packaging"]),
+      }),
+    )
+    .query(async ({ input }) => {
+      const { itemId, itemType } = input;
+
+      interface ActivityEvent {
+        id: string;
+        type: "usage" | "adjustment" | "edit" | "creation";
+        timestamp: Date;
+        description: string;
+        details: {
+          quantity?: number;
+          unit?: string;
+          linkedEntity?: { id: string; name: string; type: string };
+          notes?: string;
+        };
+      }
+
+      const activities: ActivityEvent[] = [];
+
+      try {
+        // Query usage based on material type
+        switch (itemType) {
+          case "basefruit": {
+            // Base fruit is used in press runs via pressRunLoads
+            const pressRunUsage = await db
+              .select({
+                id: pressRunLoads.id,
+                pressRunId: pressRuns.id,
+                pressRunName: pressRuns.pressRunName,
+                dateCompleted: pressRuns.dateCompleted,
+                appleWeightKg: pressRunLoads.appleWeightKg,
+                originalWeight: pressRunLoads.originalWeight,
+                originalWeightUnit: pressRunLoads.originalWeightUnit,
+                createdAt: pressRunLoads.createdAt,
+              })
+              .from(pressRunLoads)
+              .leftJoin(pressRuns, eq(pressRunLoads.pressRunId, pressRuns.id))
+              .where(eq(pressRunLoads.purchaseItemId, itemId))
+              .orderBy(desc(pressRunLoads.createdAt));
+
+            for (const usage of pressRunUsage) {
+              const weight = usage.originalWeight
+                ? `${usage.originalWeight} ${usage.originalWeightUnit || "kg"}`
+                : `${usage.appleWeightKg} kg`;
+              activities.push({
+                id: `usage-${usage.id}`,
+                type: "usage",
+                timestamp: new Date(usage.dateCompleted || usage.createdAt || new Date()),
+                description: `Used ${weight} in Press Run "${usage.pressRunName || "Unnamed"}"`,
+                details: {
+                  quantity: parseFloat(usage.originalWeight || usage.appleWeightKg || "0"),
+                  unit: usage.originalWeightUnit || "kg",
+                  linkedEntity: usage.pressRunId
+                    ? { id: usage.pressRunId, name: usage.pressRunName || "Press Run", type: "pressRun" }
+                    : undefined,
+                },
+              });
+            }
+            break;
+          }
+
+          case "additive": {
+            // Additives are used in batches via batchAdditives
+            const batchUsage = await db
+              .select({
+                id: batchAdditives.id,
+                batchId: batches.id,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+                vesselName: vessels.name,
+                amount: batchAdditives.amount,
+                unit: batchAdditives.unit,
+                addedAt: batchAdditives.addedAt,
+                notes: batchAdditives.notes,
+              })
+              .from(batchAdditives)
+              .leftJoin(batches, eq(batchAdditives.batchId, batches.id))
+              .leftJoin(vessels, eq(batchAdditives.vesselId, vessels.id))
+              .where(
+                and(
+                  eq(batchAdditives.additivePurchaseItemId, itemId),
+                  isNull(batchAdditives.deletedAt),
+                ),
+              )
+              .orderBy(desc(batchAdditives.addedAt));
+
+            for (const usage of batchUsage) {
+              const batchDisplayName = usage.batchCustomName || usage.batchName || "Unknown Batch";
+              activities.push({
+                id: `usage-${usage.id}`,
+                type: "usage",
+                timestamp: new Date(usage.addedAt || new Date()),
+                description: `Added ${usage.amount} ${usage.unit} to Batch "${batchDisplayName}"${usage.vesselName ? ` in ${usage.vesselName}` : ""}`,
+                details: {
+                  quantity: parseFloat(usage.amount || "0"),
+                  unit: usage.unit || "",
+                  linkedEntity: usage.batchId
+                    ? { id: usage.batchId, name: batchDisplayName, type: "batch" }
+                    : undefined,
+                  notes: usage.notes || undefined,
+                },
+              });
+            }
+            break;
+          }
+
+          case "juice": {
+            // Juice is allocated to batches via batchCompositions
+            const batchAllocation = await db
+              .select({
+                id: batchCompositions.id,
+                batchId: batches.id,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+                juiceVolume: batchCompositions.juiceVolume,
+                createdAt: batchCompositions.createdAt,
+              })
+              .from(batchCompositions)
+              .leftJoin(batches, eq(batchCompositions.batchId, batches.id))
+              .where(eq(batchCompositions.juicePurchaseItemId, itemId))
+              .orderBy(desc(batchCompositions.createdAt));
+
+            for (const allocation of batchAllocation) {
+              const batchDisplayName = allocation.batchCustomName || allocation.batchName || "Unknown Batch";
+              activities.push({
+                id: `usage-${allocation.id}`,
+                type: "usage",
+                timestamp: new Date(allocation.createdAt || new Date()),
+                description: `Allocated ${allocation.juiceVolume}L to Batch "${batchDisplayName}"`,
+                details: {
+                  quantity: parseFloat(allocation.juiceVolume || "0"),
+                  unit: "L",
+                  linkedEntity: allocation.batchId
+                    ? { id: allocation.batchId, name: batchDisplayName, type: "batch" }
+                    : undefined,
+                },
+              });
+            }
+            break;
+          }
+
+          case "packaging": {
+            // Packaging is used in bottle runs via bottleRunMaterials
+            const packagingUsage = await db
+              .select({
+                id: bottleRunMaterials.id,
+                bottleRunId: bottleRuns.id,
+                batchId: batches.id,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+                packagedAt: bottleRuns.packagedAt,
+                quantityUsed: bottleRunMaterials.quantityUsed,
+                materialType: bottleRunMaterials.materialType,
+                createdAt: bottleRunMaterials.createdAt,
+              })
+              .from(bottleRunMaterials)
+              .leftJoin(bottleRuns, eq(bottleRunMaterials.bottleRunId, bottleRuns.id))
+              .leftJoin(batches, eq(bottleRuns.batchId, batches.id))
+              .where(eq(bottleRunMaterials.packagingPurchaseItemId, itemId))
+              .orderBy(desc(bottleRunMaterials.createdAt));
+
+            for (const usage of packagingUsage) {
+              const batchDisplayName = usage.batchCustomName || usage.batchName || "Unknown Batch";
+              activities.push({
+                id: `usage-${usage.id}`,
+                type: "usage",
+                timestamp: new Date(usage.packagedAt || usage.createdAt || new Date()),
+                description: `Used ${usage.quantityUsed} units (${usage.materialType}) in packaging run for "${batchDisplayName}"`,
+                details: {
+                  quantity: usage.quantityUsed || 0,
+                  unit: "units",
+                  linkedEntity: usage.batchId
+                    ? { id: usage.batchId, name: batchDisplayName, type: "batch" }
+                    : undefined,
+                },
+              });
+            }
+            break;
+          }
+        }
+
+        // Query audit logs for all edits/creation
+        const tableName = `${itemType}_purchase_items`;
+        const auditEntries = await db
+          .select({
+            id: auditLogs.id,
+            operation: auditLogs.operation,
+            changedAt: auditLogs.changedAt,
+            changedByName: users.name,
+            reason: auditLogs.reason,
+            diffData: auditLogs.diffData,
+          })
+          .from(auditLogs)
+          .leftJoin(users, eq(auditLogs.changedBy, users.id))
+          .where(
+            and(
+              eq(auditLogs.tableName, tableName),
+              eq(auditLogs.recordId, itemId),
+            ),
+          )
+          .orderBy(desc(auditLogs.changedAt));
+
+        for (const entry of auditEntries) {
+          const isCreation = entry.operation === "create";
+          activities.push({
+            id: `audit-${entry.id}`,
+            type: isCreation ? "creation" : "edit",
+            timestamp: new Date(entry.changedAt || new Date()),
+            description: isCreation
+              ? `Item created${entry.changedByName ? ` by ${entry.changedByName}` : ""}`
+              : `Item updated${entry.changedByName ? ` by ${entry.changedByName}` : ""}`,
+            details: {
+              notes: entry.reason || undefined,
+            },
+          });
+        }
+
+        // Sort all activities by timestamp (newest first)
+        activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        return {
+          activities,
+          summary: {
+            totalActivities: activities.length,
+            usageCount: activities.filter((a) => a.type === "usage").length,
+            editCount: activities.filter((a) => a.type === "edit").length,
+          },
+        };
+      } catch (error) {
+        console.error("Error fetching raw material activity history:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch activity history",
         });
       }
     }),
