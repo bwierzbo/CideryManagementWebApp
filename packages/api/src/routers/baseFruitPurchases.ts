@@ -36,6 +36,7 @@ export const baseFruitPurchasesRouter = router({
             pricePerUnit: basefruitPurchaseItems.pricePerUnit,
             totalCost: basefruitPurchaseItems.totalCost,
             notes: basefruitPurchaseItems.notes,
+            purchaseDate: basefruitPurchases.purchaseDate,
             createdAt: basefruitPurchases.purchaseDate,
             updatedAt: basefruitPurchases.updatedAt,
           })
@@ -53,6 +54,7 @@ export const baseFruitPurchasesRouter = router({
             and(
               isNull(basefruitPurchaseItems.deletedAt),
               isNull(basefruitPurchases.deletedAt),
+              eq(basefruitPurchaseItems.isDepleted, false),
             ),
           )
           .orderBy(desc(basefruitPurchases.purchaseDate))
@@ -71,6 +73,7 @@ export const baseFruitPurchasesRouter = router({
             and(
               isNull(basefruitPurchaseItems.deletedAt),
               isNull(basefruitPurchases.deletedAt),
+              eq(basefruitPurchaseItems.isDepleted, false),
             ),
           );
 
