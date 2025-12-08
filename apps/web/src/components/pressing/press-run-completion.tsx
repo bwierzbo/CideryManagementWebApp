@@ -57,6 +57,19 @@ export function PressRunCompletion({
     }
   }, [pressRunData, pressRunLoading, pressRunError]);
 
+  // Auto-populate depletedPurchaseItems with all purchase items from loads
+  React.useEffect(() => {
+    if (pressRunData?.loads && depletedPurchaseItems.size === 0) {
+      const purchaseItemIds = pressRunData.loads
+        .map((load) => load.purchaseItemId)
+        .filter((id): id is string => !!id);
+
+      if (purchaseItemIds.length > 0) {
+        setDepletedPurchaseItems(new Set(purchaseItemIds));
+      }
+    }
+  }, [pressRunData]);
+
   // Completion mutation
   const completePressRunMutation = trpc.pressRun.complete.useMutation({
     onSuccess: (result) => {
