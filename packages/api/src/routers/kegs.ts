@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { router, createRbacProcedure } from "../trpc";
+import { MIN_WORKING_VOLUME_L } from "lib";
 import {
   db,
   kegs,
@@ -853,13 +854,39 @@ export const kegsRouter = router({
         if (currentBatch?.currentVolume) {
           const newVolume = parseFloat(currentBatch.currentVolume.toString()) - totalDeduction;
 
-          await db
-            .update(batches)
-            .set({
-              currentVolume: newVolume.toString(),
-              updatedAt: new Date(),
-            })
-            .where(eq(batches.id, input.batchId));
+          // Check if batch is exhausted (below minimum working volume threshold)
+          if (newVolume <= MIN_WORKING_VOLUME_L) {
+            // Complete the batch - no usable volume remaining
+            await db
+              .update(batches)
+              .set({
+                currentVolume: "0",
+                currentVolumeUnit: currentBatch.currentVolumeUnit || "L",
+                status: "completed",
+                vesselId: null,
+                endDate: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
+
+            // Set vessel to cleaning status
+            await db
+              .update(vessels)
+              .set({
+                status: "cleaning" as any,
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, input.vesselId));
+          } else {
+            // Partial kegging - just update volume
+            await db
+              .update(batches)
+              .set({
+                currentVolume: newVolume.toString(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
+          }
         }
 
         // Create keg fills and update keg status in a transaction
