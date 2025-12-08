@@ -236,7 +236,7 @@ export function FinishedGoodsTable({
               <TableHead className="text-right">Available</TableHead>
               <TableHead className="text-right">Retail Price</TableHead>
               <TableHead className="text-right">Wholesale Price</TableHead>
-              <TableHead>Expiration</TableHead>
+              <TableHead>Bottled</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -331,16 +331,16 @@ export function FinishedGoodsTable({
                         {!hasMultipleLots ? formatCurrency(group.items[0]?.wholesalePrice) : "—"}
                       </TableCell>
 
-                      {/* Expiration - show earliest if multiple */}
+                      {/* Bottled Date */}
                       <TableCell>
-                        {!hasMultipleLots && group.items[0]?.expirationDate ? (
-                          <Badge variant="secondary" className="text-xs">
-                            Exp: {new Date(group.items[0].expirationDate).toLocaleDateString()}
-                          </Badge>
+                        {!hasMultipleLots && group.items[0]?.packagedAt ? (
+                          <span className="text-sm text-gray-600">
+                            {new Date(group.items[0].packagedAt).toLocaleDateString()}
+                          </span>
                         ) : hasMultipleLots ? (
                           <span className="text-gray-400 text-xs">Multiple dates</span>
                         ) : (
-                          <span className="text-gray-400 text-xs">No expiration</span>
+                          <span className="text-gray-400 text-xs">—</span>
                         )}
                       </TableCell>
 
@@ -404,10 +404,8 @@ export function FinishedGoodsTable({
                         {/* Indent spacer */}
                         <TableCell className="w-8"></TableCell>
 
-                        {/* Lot Code */}
-                        <TableCell className="pl-8 text-sm text-gray-600">
-                          <span className="font-mono">{item.lotCode || "No lot code"}</span>
-                        </TableCell>
+                        {/* Product (empty for child) */}
+                        <TableCell></TableCell>
 
                         {/* Package (empty for child) */}
                         <TableCell></TableCell>
@@ -437,15 +435,13 @@ export function FinishedGoodsTable({
                           {formatCurrency(item.wholesalePrice)}
                         </TableCell>
 
-                        {/* Expiration */}
+                        {/* Bottled Date (for alignment with header) */}
                         <TableCell>
-                          {item.expirationDate ? (
-                            <Badge variant="secondary" className="text-xs">
-                              Exp: {new Date(item.expirationDate).toLocaleDateString()}
-                            </Badge>
-                          ) : (
-                            <span className="text-gray-400 text-xs">No expiration</span>
-                          )}
+                          <span className="text-sm text-gray-600">
+                            {item.packagedAt
+                              ? new Date(item.packagedAt).toLocaleDateString()
+                              : "—"}
+                          </span>
                         </TableCell>
 
                         {/* Actions */}

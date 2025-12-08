@@ -185,7 +185,9 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
             </Label>
             <Input
               id="capacityML"
-              type="number"
+              type="text"
+              inputMode="decimal"
+              pattern="^\d*\.?\d+$"
               {...register("capacityML", { valueAsNumber: true })}
               className="mt-1"
             />
@@ -218,8 +220,9 @@ export function AddKegModal({ open, onClose, onSuccess }: AddKegModalProps) {
               <Label htmlFor="purchaseCost">Purchase Cost ($)</Label>
               <Input
                 id="purchaseCost"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="^\d*\.?\d{0,2}$"
                 placeholder="0.00"
                 {...register("purchaseCost", { valueAsNumber: true })}
                 className="mt-1"

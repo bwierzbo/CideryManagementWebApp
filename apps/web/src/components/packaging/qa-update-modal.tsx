@@ -303,8 +303,9 @@ export function QAUpdateModal({
             </Label>
             <Input
               id="fillVarianceMl"
-              type="number"
-              step="0.1"
+              type="text"
+              inputMode="decimal"
+              pattern="^-?\d*\.?\d+$"
               placeholder="e.g., -5.2 (underfill) or +3.1 (overfill)"
               className="h-10 md:h-11 text-base"
               {...register("fillVarianceMl", { valueAsNumber: true })}
@@ -348,8 +349,9 @@ export function QAUpdateModal({
             </Label>
             <Input
               id="abvAtPackaging"
-              type="number"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
+              pattern="^\d*\.?\d+$"
               min="0"
               max="100"
               placeholder="e.g., 6.5"

@@ -209,7 +209,9 @@ export function AdjustInventoryModal({
             <div className="mt-1">
               <Input
                 id="quantityChange"
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="^-?\d+$"
                 placeholder="Enter positive or negative number"
                 {...register("quantityChange", { valueAsNumber: true })}
                 className={

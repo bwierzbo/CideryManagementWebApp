@@ -312,8 +312,9 @@ export function PasteurizeModal({
                 </Label>
                 <Input
                   id="temperatureCelsius"
-                  type="number"
-                  step="0.1"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\d*\.?\d+$"
                   {...register("temperatureCelsius", { valueAsNumber: true })}
                   placeholder="65"
                 />
@@ -329,8 +330,9 @@ export function PasteurizeModal({
                 </Label>
                 <Input
                   id="timeMinutes"
-                  type="number"
-                  step="0.1"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\d*\.?\d+$"
                   {...register("timeMinutes", { valueAsNumber: true })}
                   placeholder={plan ? Math.ceil(plan.total_bath_time_min).toString() : "8"}
                 />
@@ -346,9 +348,10 @@ export function PasteurizeModal({
                 </Label>
                 <Input
                   id="bottlesLost"
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="^\d+$"
                   min="0"
-                  step="1"
                   {...register("bottlesLost", { valueAsNumber: true })}
                   placeholder="0"
                 />

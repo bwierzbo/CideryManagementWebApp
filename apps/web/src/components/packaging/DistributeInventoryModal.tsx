@@ -239,7 +239,9 @@ export function DistributeInventoryModal({
               </Label>
               <Input
                 id="quantityDistributed"
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="^\d+$"
                 min="1"
                 max={currentQuantity}
                 placeholder="0"
@@ -262,8 +264,9 @@ export function DistributeInventoryModal({
                 <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   id="pricePerUnit"
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\d*\.?\d{0,2}$"
                   min="0.01"
                   placeholder="0.00"
                   {...register("pricePerUnit", { valueAsNumber: true })}

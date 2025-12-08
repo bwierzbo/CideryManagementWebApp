@@ -366,8 +366,9 @@ export function FillKegModal({
                       </div>
                       <div className="w-28">
                         <Input
-                          type="number"
-                          step="0.1"
+                          type="text"
+                          inputMode="decimal"
+                          pattern="^\d*\.?\d+$"
                           placeholder="Volume (L)"
                           value={kegVolumes[kegId] ?? ''}
                           onChange={(e) => {

@@ -361,8 +361,9 @@ export function BottleFromKegModal({
             </div>
             <Input
               id="volumeTakenL"
-              type="number"
-              step="0.001"
+              type="text"
+              inputMode="decimal"
+              pattern="^\d*\.?\d+$"
               max={remainingVolumeL}
               placeholder={`Max ${remainingVolumeL.toFixed(1)}L available`}
               className="h-10 md:h-11 text-base"
@@ -464,7 +465,9 @@ export function BottleFromKegModal({
 
                 <div className="flex gap-2">
                   <Input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="^\d+$"
                     min="1"
                     value={currentQuantity}
                     onChange={(e) => setCurrentQuantity(parseInt(e.target.value) || 1)}
@@ -529,7 +532,9 @@ export function BottleFromKegModal({
             </Label>
             <Input
               id="unitsProduced"
-              type="number"
+              type="text"
+              inputMode="numeric"
+              pattern="^\d+$"
               min="0"
               placeholder={
                 volumeTakenL && packageSizeMl && !isNaN(volumeTakenL) && !isNaN(packageSizeMl)

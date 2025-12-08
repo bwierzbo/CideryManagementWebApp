@@ -322,7 +322,9 @@ export function LabelModal({
                       <div className="space-y-2">
                         <Label className="text-sm">Quantity</Label>
                         <Input
-                          type="number"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="^\d+$"
                           {...register(`labels.${index}.quantity`, { valueAsNumber: true })}
                           placeholder="Enter quantity"
                         />

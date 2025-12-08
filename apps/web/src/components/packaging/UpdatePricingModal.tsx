@@ -176,8 +176,9 @@ export function UpdatePricingModal({
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 id="retailPrice"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="^\d*\.?\d{0,2}$"
                 min="0.01"
                 placeholder="Leave empty to keep current"
                 {...register("retailPrice", { valueAsNumber: true })}
@@ -200,8 +201,9 @@ export function UpdatePricingModal({
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 id="wholesalePrice"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="^\d*\.?\d{0,2}$"
                 min="0.01"
                 placeholder="Leave empty to keep current"
                 {...register("wholesalePrice", { valueAsNumber: true })}
