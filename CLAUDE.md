@@ -248,3 +248,119 @@ Required for development:
 - Database schema is in `public` schema (neon_auth was cleaned up in Oct 2025)
 - no more commenting out code if somethings not working, ask me if you should implement whatever unfinished feature or remove it but do not commend out code to fix build errors
 - always manually run the migration for me
+
+## New Developer Onboarding
+
+This section helps new developers get started with the project using Claude Code.
+
+### Getting Started with Claude Code
+
+1. **Install Claude Code CLI** from [claude.ai/code](https://claude.ai/code)
+2. **Navigate to the project directory** in your terminal
+3. **Run `claude`** to start an interactive session
+4. Claude automatically reads this file (`CLAUDE.md`) for project context
+
+### First-Time Setup Checklist
+
+```bash
+# 1. Clone and enter the project
+git clone https://github.com/bwierzbo/CideryManagementWebApp.git
+cd CideryManagementWebApp
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Set up environment files (see below)
+
+# 4. Run database migrations
+pnpm db:migrate
+
+# 5. Seed sample data
+pnpm db:seed
+
+# 6. Start development server
+pnpm dev
+```
+
+### Environment File Setup
+
+You need to create `.env` files in three locations with the DATABASE_URL:
+
+| File Location | Required Variables |
+|---------------|-------------------|
+| `.env.local` (root) | DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET |
+| `apps/web/.env.local` | DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET |
+| `packages/db/.env` | DATABASE_URL |
+
+**Example `.env.local` content:**
+```env
+DATABASE_URL=postgresql://user:password@host/database?sslmode=require
+NEXTAUTH_URL=http://localhost:3001
+NEXTAUTH_SECRET=your-secret-key-here
+```
+
+### Key Project Files to Understand
+
+| File/Directory | Purpose |
+|----------------|---------|
+| `CLAUDE.md` | This file - Claude's project context |
+| `README.md` | Project overview and setup instructions |
+| `packages/db/src/schema.ts` | Main database schema (Drizzle ORM) |
+| `packages/db/src/schema/` | Additional schema files (packaging, audit) |
+| `packages/api/src/routers/` | tRPC API endpoints |
+| `apps/web/src/app/` | Next.js pages (App Router) |
+| `apps/web/src/components/` | React components |
+| `packages/lib/src/` | Shared utilities and calculations |
+
+### Database Operations with Claude
+
+Claude can help with database tasks. Here are common requests:
+
+**Viewing the database:**
+```bash
+pnpm --filter db run db:studio
+```
+
+**Common database commands:**
+- `pnpm db:migrate` - Apply pending migrations
+- `pnpm db:seed` - Seed sample data
+- `pnpm --filter db run db:test` - Test database queries
+
+**Ask Claude to:**
+- "Add a new field to the batches table"
+- "Create a migration for the new column"
+- "Write a query to get all batches with their vessels"
+
+### Common Development Tasks
+
+**Starting development:**
+```bash
+pnpm dev                        # Start all services (port 3001)
+pnpm --filter web run dev       # Start only web app
+```
+
+**Before committing:**
+```bash
+pnpm typecheck                  # Check for TypeScript errors
+pnpm lint                       # Run linter
+pnpm build                      # Full production build
+```
+
+**Database changes:**
+```bash
+# After modifying schema.ts:
+pnpm db:generate                # Generate migration files
+pnpm db:migrate                 # Apply migrations
+```
+
+### Asking Claude for Help
+
+Good prompts for this project:
+
+- "Help me add a new field to track [X] in the batch entity"
+- "Create a new tRPC endpoint for [feature]"
+- "Fix the TypeScript error in [file]"
+- "Explain how the pressing flow works"
+- "Update the UI to show [data] on the [page] page"
+
+Claude will read the relevant files and provide code that follows the project patterns.
