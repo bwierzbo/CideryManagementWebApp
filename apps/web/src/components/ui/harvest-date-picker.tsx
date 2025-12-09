@@ -43,6 +43,9 @@ const HarvestDatePicker = React.forwardRef<
     },
     ref,
   ) => {
+    // Local state to track input value for text input
+    const [inputValue, setInputValue] = React.useState("");
+
     // Convert value to string format for input
     const dateValue = React.useMemo(() => {
       if (!value) return "";
@@ -54,43 +57,50 @@ const HarvestDatePicker = React.forwardRef<
       }
     }, [value]);
 
+    // Sync local input state with value prop
+    React.useEffect(() => {
+      setInputValue(dateValue);
+    }, [dateValue]);
+
     // Get today's date for validation
     const today = formatDateForInput(new Date());
 
-    // Set max date if future dates are not allowed
-    const maxDate = allowFutureDates ? undefined : today;
-
     const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const dateString = e.target.value;
+
+      // Update local input state immediately for text display
+      setInputValue(dateString);
 
       if (!dateString) {
         onChange?.(null);
         return;
       }
 
-      // Parse date object from input value using timezone-aware parser
-      const selectedDate = parseDateInput(dateString);
+      // Only validate and trigger onChange if we have a complete date string
+      if (dateString.length === 10 && dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // Parse date object from input value using timezone-aware parser
+        const selectedDate = parseDateInput(dateString);
 
-      // Validate the date
-      if (!selectedDate) {
-        onChange?.(null);
-        return;
-      }
-
-      // Check if future dates are allowed
-      if (!allowFutureDates) {
-        const todayAtMidnight = new Date();
-        todayAtMidnight.setHours(23, 59, 59, 999); // End of today
-        if (selectedDate > todayAtMidnight) {
-          onChange?.(null);
+        // Validate the date
+        if (!selectedDate) {
           return;
         }
-      }
 
-      onChange?.(selectedDate);
+        // Check if future dates are allowed
+        if (!allowFutureDates) {
+          const todayAtMidnight = new Date();
+          todayAtMidnight.setHours(23, 59, 59, 999); // End of today
+          if (selectedDate > todayAtMidnight) {
+            return;
+          }
+        }
+
+        onChange?.(selectedDate);
+      }
     };
 
     const handleClear = () => {
+      setInputValue("");
       onChange?.(null);
     };
 
@@ -98,17 +108,29 @@ const HarvestDatePicker = React.forwardRef<
     const getValidationError = () => {
       if (error) return error;
 
-      if (required && !dateValue) {
+      if (required && !inputValue) {
         return "Harvest date is required";
       }
 
-      if (dateValue && !allowFutureDates) {
-        const selectedDate = parseDateInput(dateValue);
-        if (selectedDate) {
-          const todayAtMidnight = new Date();
-          todayAtMidnight.setHours(23, 59, 59, 999); // End of today
-          if (selectedDate > todayAtMidnight) {
-            return "Harvest date cannot be in the future";
+      // Validate format if user has typed something
+      if (inputValue && inputValue.length > 0) {
+        // Check if format is complete and valid
+        if (inputValue.length === 10) {
+          if (!inputValue.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            return "Invalid date format (use YYYY-MM-DD)";
+          }
+
+          const selectedDate = parseDateInput(inputValue);
+          if (!selectedDate) {
+            return "Invalid date";
+          }
+
+          if (!allowFutureDates) {
+            const todayAtMidnight = new Date();
+            todayAtMidnight.setHours(23, 59, 59, 999); // End of today
+            if (selectedDate > todayAtMidnight) {
+              return "Harvest date cannot be in the future";
+            }
           }
         }
       }
@@ -136,14 +158,15 @@ const HarvestDatePicker = React.forwardRef<
             <Input
               ref={ref}
               id={id}
-              type="date"
-              value={dateValue}
+              type="text"
+              inputMode="numeric"
+              pattern="\d{4}-\d{2}-\d{2}"
+              value={inputValue}
               onChange={handleDateChange}
               disabled={disabled}
-              max={maxDate}
-              placeholder={placeholder}
+              placeholder={placeholder || "YYYY-MM-DD"}
               className={cn(
-                showClearButton && dateValue && !disabled ? "pr-8" : "", // Make room for clear button only
+                showClearButton && inputValue && !disabled ? "pr-8" : "", // Make room for clear button only
                 validationError &&
                   "border-red-500 focus:border-red-500 focus:ring-red-500",
                 className,
