@@ -9,6 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,6 +46,7 @@ import {
   X,
   BarChart3,
   List,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
@@ -61,6 +72,8 @@ export function BatchHistoryModal({
   const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
   const [editingAdditive, setEditingAdditive] = useState<any>(null);
   const [measurementView, setMeasurementView] = useState<"chart" | "list">("chart");
+  const [deletingMeasurement, setDeletingMeasurement] = useState<any>(null);
+  const [deletingAdditive, setDeletingAdditive] = useState<any>(null);
 
   const utils = trpc.useUtils();
 
@@ -89,6 +102,42 @@ export function BatchHistoryModal({
     },
   });
 
+  const deleteMeasurement = trpc.batch.deleteMeasurement.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Measurement deleted successfully",
+      });
+      refetch();
+      setDeletingMeasurement(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete measurement",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteAdditive = trpc.batch.deleteAdditive.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Additive deleted successfully",
+      });
+      refetch();
+      setDeletingAdditive(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete additive",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleEditName = () => {
     setEditedName(data?.batch.customName || "");
     setIsEditingName(true);
@@ -104,6 +153,18 @@ export function BatchHistoryModal({
   const handleCancelEdit = () => {
     setIsEditingName(false);
     setEditedName("");
+  };
+
+  const handleConfirmDeleteMeasurement = () => {
+    if (deletingMeasurement) {
+      deleteMeasurement.mutate({ measurementId: deletingMeasurement.id });
+    }
+  };
+
+  const handleConfirmDeleteAdditive = () => {
+    if (deletingAdditive) {
+      deleteAdditive.mutate({ additiveId: deletingAdditive.id });
+    }
   };
 
   if (!open) return null;
@@ -478,14 +539,26 @@ export function BatchHistoryModal({
                             {m.volume?.toFixed(1) || "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingMeasurement(m)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-1 justify-end">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditingMeasurement(m)}
+                                className="h-8 w-8 p-0"
+                                title="Edit measurement"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDeletingMeasurement(m)}
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete measurement"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -544,14 +617,26 @@ export function BatchHistoryModal({
                           <TableCell>{a.addedBy || "-"}</TableCell>
                           <TableCell>{a.notes || "-"}</TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingAdditive(a)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-1 justify-end">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditingAdditive(a)}
+                                className="h-8 w-8 p-0"
+                                title="Edit additive"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setDeletingAdditive(a)}
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete additive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -600,6 +685,66 @@ export function BatchHistoryModal({
           setEditingAdditive(null);
         }}
       />
+
+      {/* Delete Confirmation Dialogs */}
+      <AlertDialog
+        open={!!deletingMeasurement}
+        onOpenChange={(open) => !open && setDeletingMeasurement(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Measurement</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this measurement from{" "}
+              {deletingMeasurement &&
+                format(new Date(deletingMeasurement.measurementDate), "MMM dd, yyyy")}
+              ? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMeasurement.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteMeasurement}
+              disabled={deleteMeasurement.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteMeasurement.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!deletingAdditive}
+        onOpenChange={(open) => !open && setDeletingAdditive(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Additive</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the additive "{deletingAdditive?.additiveName}"
+              added on{" "}
+              {deletingAdditive &&
+                format(new Date(deletingAdditive.addedAt), "MMM dd, yyyy")}
+              ? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteAdditive.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteAdditive}
+              disabled={deleteAdditive.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteAdditive.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

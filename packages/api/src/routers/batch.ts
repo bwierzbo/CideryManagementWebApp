@@ -92,6 +92,14 @@ const updateMeasurementSchema = z.object({
   takenBy: z.string().optional(),
 });
 
+const deleteMeasurementSchema = z.object({
+  measurementId: z.string().uuid("Invalid measurement ID"),
+});
+
+const deleteAdditiveSchema = z.object({
+  additiveId: z.string().uuid("Invalid additive ID"),
+});
+
 const updateAdditiveSchema = z.object({
   additiveId: z.string().uuid("Invalid additive ID"),
   additiveType: z.string().min(1).optional(),
@@ -1059,6 +1067,104 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to update additive",
+        });
+      }
+    }),
+
+  /**
+   * Delete measurement (soft delete)
+   */
+  deleteMeasurement: createRbacProcedure("delete", "batch")
+    .input(deleteMeasurementSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify measurement exists and isn't already deleted
+        const existingMeasurement = await db
+          .select()
+          .from(batchMeasurements)
+          .where(
+            and(
+              eq(batchMeasurements.id, input.measurementId),
+              isNull(batchMeasurements.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingMeasurement.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Measurement not found or already deleted",
+          });
+        }
+
+        // Soft delete by setting deletedAt timestamp
+        await db
+          .update(batchMeasurements)
+          .set({
+            deletedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(batchMeasurements.id, input.measurementId));
+
+        return {
+          success: true,
+          message: "Measurement deleted successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error deleting measurement:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete measurement",
+        });
+      }
+    }),
+
+  /**
+   * Delete additive (soft delete)
+   */
+  deleteAdditive: createRbacProcedure("delete", "batch")
+    .input(deleteAdditiveSchema)
+    .mutation(async ({ input }) => {
+      try {
+        // Verify additive exists and isn't already deleted
+        const existingAdditive = await db
+          .select()
+          .from(batchAdditives)
+          .where(
+            and(
+              eq(batchAdditives.id, input.additiveId),
+              isNull(batchAdditives.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!existingAdditive.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Additive not found or already deleted",
+          });
+        }
+
+        // Soft delete by setting deletedAt timestamp
+        await db
+          .update(batchAdditives)
+          .set({
+            deletedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(batchAdditives.id, input.additiveId));
+
+        return {
+          success: true,
+          message: "Additive deleted successfully",
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error deleting additive:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete additive",
         });
       }
     }),
