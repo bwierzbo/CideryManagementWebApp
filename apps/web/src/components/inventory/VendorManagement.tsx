@@ -223,7 +223,7 @@ export function VendorManagement({
               Vendors
             </CardTitle>
             <CardDescription>
-              Manage your apple suppliers and vendors
+              Manage your base fruit suppliers and vendors
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -270,7 +270,7 @@ export function VendorManagement({
               <DialogDescription>
                 {editingVendor
                   ? "Update vendor information and contact details."
-                  : "Create a new vendor to track apple purchases from."}
+                  : "Create a new vendor to track base fruit purchases from."}
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -359,7 +359,7 @@ export function VendorManagement({
             <p className="text-gray-500">
               {searchQuery
                 ? `No vendors match "${searchQuery}". Try a different search term.`
-                : "Start by adding your first vendor to track apple purchases."}
+                : "Start by adding your first vendor to track base fruit purchases."}
             </p>
           </div>
         )}

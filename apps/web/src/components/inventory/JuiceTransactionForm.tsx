@@ -571,7 +571,9 @@ export function JuiceTransactionForm({
                   <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <Input
                     id="purchaseDate"
-                    type="date"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="YYYY-MM-DD"
                     value={purchaseDate}
                     onChange={(e) => handlePurchaseDateChange(e.target.value)}
                     className="pl-10 h-12 max-w-xs"

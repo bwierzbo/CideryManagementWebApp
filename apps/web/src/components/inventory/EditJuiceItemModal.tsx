@@ -211,7 +211,9 @@ export function EditJuiceItemModal({
             </Label>
             <Input
               id="purchaseDate"
-              type="date"
+              type="text"
+              inputMode="numeric"
+              placeholder="YYYY-MM-DD"
               {...register("purchaseDate")}
               className="mt-1"
             />

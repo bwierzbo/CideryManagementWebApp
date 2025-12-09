@@ -240,7 +240,9 @@ export function EditBaseFruitItemModal({
               </Label>
               <Input
                 id="purchaseDate"
-                type="date"
+                type="text"
+                inputMode="numeric"
+                placeholder="YYYY-MM-DD"
                 {...register("purchaseDate")}
                 className="mt-1"
               />
@@ -256,7 +258,9 @@ export function EditBaseFruitItemModal({
             <Label htmlFor="harvestDate">Harvest Date</Label>
             <Input
               id="harvestDate"
-              type="date"
+              type="text"
+              inputMode="numeric"
+              placeholder="YYYY-MM-DD"
               {...register("harvestDate")}
               className="mt-1"
             />

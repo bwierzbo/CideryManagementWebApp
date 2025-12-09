@@ -81,8 +81,10 @@ interface BaseFruitPurchaseItem {
   pricePerUnit: number | null;
   totalCost: number | null;
   notes: string | null;
+  purchaseDate: string | null;
   createdAt: string;
   updatedAt: string;
+  materialType: "basefruit";
 }
 
 // Table column configuration
@@ -210,8 +212,10 @@ export function BaseFruitTable({
         pricePerUnit: item.pricePerUnit ? parseFloat(item.pricePerUnit) : null,
         totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
         notes: item.notes,
+        purchaseDate: item.purchaseDate || null,
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
+        materialType: "basefruit" as const,
       } as BaseFruitPurchaseItem;
     });
   }, [listData]);

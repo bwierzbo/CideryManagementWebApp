@@ -44,7 +44,7 @@ import { z } from "zod";
 
 // Form schemas - same as original purchasing page
 const purchaseLineSchema = z.object({
-  appleVarietyId: z.string().uuid("Select an apple variety"),
+  appleVarietyId: z.string().uuid("Select a base fruit variety"),
   quantity: z.number().positive("Quantity must be positive").optional(),
   unit: z.enum(["kg", "lb", "bushel"]),
   pricePerUnit: z.number().nonnegative("Price cannot be negative").optional(),
@@ -59,7 +59,7 @@ const purchaseSchema = z.object({
   notes: z.string().optional(),
   lines: z
     .array(purchaseLineSchema)
-    .min(1, "At least one apple variety is required"),
+    .min(1, "At least one base fruit variety is required"),
 });
 
 type PurchaseForm = z.infer<typeof purchaseSchema>;
@@ -377,7 +377,7 @@ export function AppleTransactionForm({
         addNotification(
           "error",
           "Incomplete Form",
-          "Please add at least one apple variety with quantity",
+          "Please add at least one base fruit variety with quantity",
         );
         return;
       }
@@ -459,7 +459,7 @@ export function AppleTransactionForm({
             Record Base Fruit Purchase
           </CardTitle>
           <CardDescription>
-            Record a new apple purchase from vendors
+            Record a new base fruit purchase from vendors
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -552,7 +552,9 @@ export function AppleTransactionForm({
                   <Label htmlFor="purchaseDate">Purchase Date</Label>
                   <Input
                     id="purchaseDate"
-                    type="date"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="YYYY-MM-DD"
                     value={purchaseDate}
                     onChange={(e) => handlePurchaseDateChange(e.target.value)}
                     className="h-12"
@@ -595,7 +597,7 @@ export function AppleTransactionForm({
             {/* Purchase Lines */}
             <div>
               <div className="mb-4">
-                <h3 className="text-lg font-medium">Apple Varieties</h3>
+                <h3 className="text-lg font-medium">Base Fruit Varieties</h3>
               </div>
 
               <div className="space-y-4">
@@ -605,7 +607,7 @@ export function AppleTransactionForm({
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium text-gray-900">
-                          Apple Variety #{index + 1}
+                          Base Fruit Variety #{index + 1}
                         </h4>
                         {lines.length > 1 && (
                           <Button
@@ -620,9 +622,9 @@ export function AppleTransactionForm({
                         )}
                       </div>
 
-                      {/* Apple Variety Selection */}
+                      {/* Base Fruit Variety Selection */}
                       <div>
-                        <Label>Apple Variety</Label>
+                        <Label>Base Fruit Variety</Label>
                         <Select
                           onValueChange={(value) => {
                             const newLines = [...lines];
@@ -810,7 +812,7 @@ export function AppleTransactionForm({
                 ))}
               </div>
 
-              {/* Add Apple Variety Button - repositioned for mobile UX */}
+              {/* Add Base Fruit Variety Button - repositioned for mobile UX */}
               <div className="mt-4">
                 <Button
                   type="button"
@@ -819,7 +821,7 @@ export function AppleTransactionForm({
                   className="w-full md:w-auto"
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Apple Variety
+                  Add Base Fruit Variety
                 </Button>
               </div>
 
