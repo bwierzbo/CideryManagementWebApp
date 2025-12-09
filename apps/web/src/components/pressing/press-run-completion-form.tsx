@@ -412,7 +412,7 @@ export function PressRunCompletionForm({
                                   <SelectValue placeholder="Select vessel..." />
                                 </SelectTrigger>
                               </FormControl>
-                              <SelectContent>
+                              <SelectContent className="max-h-[300px] overflow-y-auto">
                                 {vesselsLoading ? (
                                   <SelectItem value="loading" disabled>
                                     Loading vessels...
