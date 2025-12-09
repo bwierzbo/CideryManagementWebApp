@@ -3743,8 +3743,12 @@ export const appRouter = router({
                     ),
                   );
 
+                // Calculate volume ratio for proportioning compositions
+                const volumeRatio = input.volumeL / currentVolumeL;
+
                 if (sourceComposition.length > 0) {
                   for (const comp of sourceComposition) {
+                    // Copy proportioned composition to destination batch
                     await tx.insert(batchCompositions).values({
                       batchId: transferredBatch.id,
                       sourceType: comp.sourceType,
@@ -3753,16 +3757,46 @@ export const appRouter = router({
                       juicePurchaseItemId: comp.juicePurchaseItemId,
                       vendorId: comp.vendorId,
                       lotCode: comp.lotCode,
-                      inputWeightKg: comp.inputWeightKg,
-                      juiceVolume: comp.juiceVolume,
+                      // Proportioned values based on volume ratio
+                      inputWeightKg: comp.inputWeightKg
+                        ? (parseFloat(comp.inputWeightKg) * volumeRatio).toString()
+                        : "0",
+                      juiceVolume: (parseFloat(comp.juiceVolume) * volumeRatio).toString(),
                       juiceVolumeUnit: comp.juiceVolumeUnit,
-                      fractionOfBatch: comp.fractionOfBatch,
-                      materialCost: comp.materialCost,
+                      fractionOfBatch: comp.fractionOfBatch, // Keep same percentage
+                      materialCost: comp.materialCost
+                        ? (parseFloat(comp.materialCost) * volumeRatio).toString()
+                        : "0",
                       avgBrix: comp.avgBrix,
-                      estSugarKg: comp.estSugarKg,
+                      estSugarKg: comp.estSugarKg
+                        ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
+                        : undefined,
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     });
+                  }
+
+                  // Update source batch compositions for partial transfer
+                  if (remainingVolumeL > 0) {
+                    const remainingRatio = 1 - volumeRatio;
+                    for (const comp of sourceComposition) {
+                      await tx
+                        .update(batchCompositions)
+                        .set({
+                          inputWeightKg: comp.inputWeightKg
+                            ? (parseFloat(comp.inputWeightKg) * remainingRatio).toString()
+                            : "0",
+                          juiceVolume: (parseFloat(comp.juiceVolume) * remainingRatio).toString(),
+                          materialCost: comp.materialCost
+                            ? (parseFloat(comp.materialCost) * remainingRatio).toString()
+                            : "0",
+                          estSugarKg: comp.estSugarKg
+                            ? (parseFloat(comp.estSugarKg) * remainingRatio).toString()
+                            : undefined,
+                          updatedAt: new Date(),
+                        })
+                        .where(eq(batchCompositions.id, comp.id));
+                    }
                   }
                 }
 
