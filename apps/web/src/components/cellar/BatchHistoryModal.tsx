@@ -724,7 +724,7 @@ export function BatchHistoryModal({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Additive</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the additive "{deletingAdditive?.additiveName}"
+              Are you sure you want to delete the additive &quot;{deletingAdditive?.additiveName}&quot;
               added on{" "}
               {deletingAdditive &&
                 format(new Date(deletingAdditive.addedAt), "MMM dd, yyyy")}

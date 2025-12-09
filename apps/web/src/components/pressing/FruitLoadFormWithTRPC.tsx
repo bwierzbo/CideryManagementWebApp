@@ -47,7 +47,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 const fruitLoadSchema = z.object({
   vendorId: z.string().uuid("Please select a vendor"),
   purchaseItemId: z.string().uuid("Please select a purchase line"),
-  fruitVarietyId: z.string().uuid("Please select an apple variety"),
+  fruitVarietyId: z.string().uuid("Please select a base fruit variety"),
   weight: z
     .number()
     .min(0.1, "Weight must be at least 0.1")
@@ -399,7 +399,7 @@ export function FruitLoadFormWithTRPC({
                     </Select>
                   </FormControl>
                   <FormDescription>
-                    Select the vendor supplying this apple load
+                    Select the vendor supplying this base fruit load
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -534,7 +534,7 @@ export function FruitLoadFormWithTRPC({
             {/* Weight Input with Unit Toggle - Only show when purchase line is selected */}
             {selectedPurchaseItem && (
               <div className="space-y-4">
-                <Label className="text-base font-medium">Apple Weight</Label>
+                <Label className="text-base font-medium">Base Fruit Weight</Label>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Weight Input */}
