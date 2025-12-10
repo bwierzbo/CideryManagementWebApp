@@ -767,8 +767,8 @@ function TankTransferForm({
           <Input
             id="volumeL"
             type="number"
-            step="0.1"
-            max={currentVolume}
+            step="any"
+            max={Number.isFinite(currentVolume) ? currentVolume : undefined}
             placeholder="Amount to transfer"
             {...register("volumeL", { valueAsNumber: true })}
           />

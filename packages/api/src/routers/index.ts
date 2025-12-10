@@ -3636,35 +3636,108 @@ export const appRouter = router({
                 // Calculate fraction based on how much of the transferred volume contributes to final
                 const volumeRatio = input.volumeL / currentVolumeL; // Fraction of source batch transferred
 
+                // Get existing compositions in destination batch for merge handling
+                const destComposition = await tx
+                  .select()
+                  .from(batchCompositions)
+                  .where(
+                    and(
+                      eq(batchCompositions.batchId, destBatch[0].id),
+                      isNull(batchCompositions.deletedAt),
+                    ),
+                  );
+
                 for (const comp of sourceComposition) {
                   // Each composition component gets added proportionally
                   const transferredVolume = parseFloat(comp.juiceVolume || "0") * volumeRatio;
-                  const newFraction = transferredVolume / newVolumeL;
+                  const transferredInputWeightKg = comp.inputWeightKg
+                    ? parseFloat(comp.inputWeightKg) * volumeRatio
+                    : 0;
+                  const transferredMaterialCost = comp.materialCost
+                    ? parseFloat(comp.materialCost) * volumeRatio
+                    : 0;
+                  const transferredEstSugarKg = comp.estSugarKg
+                    ? parseFloat(comp.estSugarKg) * volumeRatio
+                    : 0;
 
-                  await tx.insert(batchCompositions).values({
-                    batchId: destBatch[0].id,
-                    sourceType: comp.sourceType,
-                    purchaseItemId: comp.purchaseItemId,
-                    varietyId: comp.varietyId,
-                    juicePurchaseItemId: comp.juicePurchaseItemId,
-                    vendorId: comp.vendorId,
-                    lotCode: comp.lotCode,
-                    inputWeightKg: comp.inputWeightKg
-                      ? (parseFloat(comp.inputWeightKg) * volumeRatio).toString()
-                      : "0",
-                    juiceVolume: transferredVolume.toString(),
-                    juiceVolumeUnit: comp.juiceVolumeUnit,
-                    fractionOfBatch: newFraction.toString(),
-                    materialCost: comp.materialCost
-                      ? (parseFloat(comp.materialCost) * volumeRatio).toString()
-                      : "0",
-                    avgBrix: comp.avgBrix,
-                    estSugarKg: comp.estSugarKg
-                      ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
-                      : undefined,
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
+                  // Check if this composition source already exists in destination batch
+                  const existingComp = destComposition.find((dc) => {
+                    if (comp.sourceType === "base_fruit" && comp.purchaseItemId) {
+                      return dc.purchaseItemId === comp.purchaseItemId;
+                    } else if (comp.sourceType === "juice_purchase" && comp.juicePurchaseItemId) {
+                      return dc.juicePurchaseItemId === comp.juicePurchaseItemId;
+                    }
+                    return false;
                   });
+
+                  if (existingComp) {
+                    // Update existing composition by adding transferred values
+                    const existingVolume = parseFloat(existingComp.juiceVolume || "0");
+                    const existingInputWeightKg = parseFloat(existingComp.inputWeightKg || "0");
+                    const existingMaterialCost = parseFloat(existingComp.materialCost || "0");
+                    const existingEstSugarKg = parseFloat(existingComp.estSugarKg || "0");
+
+                    const newVolume = existingVolume + transferredVolume;
+                    const newFraction = newVolume / newVolumeL;
+
+                    await tx
+                      .update(batchCompositions)
+                      .set({
+                        inputWeightKg: (existingInputWeightKg + transferredInputWeightKg).toString(),
+                        juiceVolume: newVolume.toString(),
+                        fractionOfBatch: newFraction.toString(),
+                        materialCost: (existingMaterialCost + transferredMaterialCost).toString(),
+                        estSugarKg: (existingEstSugarKg + transferredEstSugarKg).toString(),
+                        updatedAt: new Date(),
+                      })
+                      .where(eq(batchCompositions.id, existingComp.id));
+                  } else {
+                    // Insert new composition
+                    const newFraction = transferredVolume / newVolumeL;
+
+                    await tx.insert(batchCompositions).values({
+                      batchId: destBatch[0].id,
+                      sourceType: comp.sourceType,
+                      purchaseItemId: comp.purchaseItemId,
+                      varietyId: comp.varietyId,
+                      juicePurchaseItemId: comp.juicePurchaseItemId,
+                      vendorId: comp.vendorId,
+                      lotCode: comp.lotCode,
+                      inputWeightKg: transferredInputWeightKg.toString(),
+                      juiceVolume: transferredVolume.toString(),
+                      juiceVolumeUnit: comp.juiceVolumeUnit,
+                      fractionOfBatch: newFraction.toString(),
+                      materialCost: transferredMaterialCost.toString(),
+                      avgBrix: comp.avgBrix,
+                      estSugarKg: transferredEstSugarKg > 0 ? transferredEstSugarKg.toString() : undefined,
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                    });
+                  }
+                }
+
+                // Recalculate fractions for all existing destination compositions
+                // (their fractions need to be adjusted because total volume changed)
+                const allDestCompositions = await tx
+                  .select()
+                  .from(batchCompositions)
+                  .where(
+                    and(
+                      eq(batchCompositions.batchId, destBatch[0].id),
+                      isNull(batchCompositions.deletedAt),
+                    ),
+                  );
+
+                for (const dc of allDestCompositions) {
+                  const volume = parseFloat(dc.juiceVolume || "0");
+                  const newFraction = volume / newVolumeL;
+                  await tx
+                    .update(batchCompositions)
+                    .set({
+                      fractionOfBatch: newFraction.toString(),
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(batchCompositions.id, dc.id));
                 }
               }
 

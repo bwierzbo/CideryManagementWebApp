@@ -52,6 +52,9 @@ export function VolumeInput({
     onValueChange?.(newValue);
   };
 
+  // Only pass max if it's a valid finite number
+  const validMax = typeof max === "number" && isFinite(max) ? max : undefined;
+
   return (
     <div className={cn("flex gap-2", className)}>
       <Input
@@ -63,7 +66,7 @@ export function VolumeInput({
         placeholder={placeholder}
         disabled={disabled}
         min={min}
-        max={max}
+        max={validMax}
         step={step}
         required={required}
         className="flex-1"
