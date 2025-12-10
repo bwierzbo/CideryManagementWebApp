@@ -291,9 +291,32 @@ async function logSync(params: LogSyncParams) {
 }
 
 /**
- * Get Square catalog items (products) for mapping UI
+ * Get Square catalog categories for filtering
  */
-export async function getSquareCatalogItems(locationId: string) {
+export async function getSquareCategories() {
+  const squareClient = getSquareClient();
+
+  // Fetch all categories
+  const responsePage = await squareClient.catalog.list({ types: "CATEGORY" });
+
+  const categories: any[] = [];
+  for await (const item of responsePage) {
+    categories.push(item);
+  }
+
+  // Transform to simpler format for UI
+  return categories.map((cat: any) => ({
+    id: cat.id,
+    name: cat.categoryData?.name || "Unnamed Category",
+  })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Get Square catalog items (products) for mapping UI
+ * @param locationId - Square location ID
+ * @param categoryIds - Optional array of category IDs to filter by
+ */
+export async function getSquareCatalogItems(locationId: string, categoryIds?: string[]) {
   const squareClient = getSquareClient();
 
   // catalog.list returns a Page iterator
@@ -305,8 +328,18 @@ export async function getSquareCatalogItems(locationId: string) {
     items.push(item);
   }
 
+  // Filter by category if specified
+  let filteredItems = items;
+  if (categoryIds && categoryIds.length > 0) {
+    filteredItems = items.filter((item: any) => {
+      const itemCategories = item.itemData?.categories || [];
+      // Check if item has any of the selected categories
+      return itemCategories.some((cat: any) => categoryIds.includes(cat.id));
+    });
+  }
+
   // Transform to simpler format for UI
-  return items.map((item: any) => {
+  return filteredItems.map((item: any) => {
     const itemData = item.itemData;
     const variations = itemData?.variations || [];
 
@@ -314,6 +347,7 @@ export async function getSquareCatalogItems(locationId: string) {
       id: item.id,
       name: itemData?.name || "Unnamed Product",
       description: itemData?.description,
+      categoryIds: (itemData?.categories || []).map((c: any) => c.id),
       variations: variations.map((v: any) => ({
         id: v.id,
         name: v.itemVariationData?.name || "Default",

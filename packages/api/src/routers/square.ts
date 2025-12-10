@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
-import { db, inventoryItems, squareConfig, squareSyncLog } from "db";
+import { db, inventoryItems, squareConfig, squareSyncLog, bottleRuns } from "db";
 import { eq, desc, and, isNull, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import {
@@ -18,6 +18,7 @@ import {
   syncInventoryToSquare,
   syncInventoryFromSquare,
   getSquareCatalogItems,
+  getSquareCategories,
 } from "../lib/square-inventory-sync";
 
 export const squareRouter = router({
@@ -27,6 +28,18 @@ export const squareRouter = router({
    */
   getConfig: adminProcedure.query(async () => {
     const config = await db.query.squareConfig.findFirst();
+
+    // Initialize client from stored config if not already initialized
+    if (config?.accessTokenEncrypted && !isSquareClientInitialized()) {
+      try {
+        initializeSquareClient(
+          config.accessTokenEncrypted,
+          config.environment || "production"
+        );
+      } catch (error) {
+        console.error("Failed to initialize Square client from stored config:", error);
+      }
+    }
 
     return {
       configured: !!config?.accessTokenEncrypted,
@@ -145,9 +158,47 @@ export const squareRouter = router({
     }),
 
   /**
+   * Get Square catalog categories for filtering
+   */
+  getCategories: adminProcedure.query(async () => {
+    try {
+      const config = await db.query.squareConfig.findFirst();
+
+      if (!config?.accessTokenEncrypted) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Square not configured. Please set up Square integration first.",
+        });
+      }
+
+      if (!isSquareClientInitialized()) {
+        initializeSquareClient(
+          config.accessTokenEncrypted,
+          config.environment || "production"
+        );
+      }
+
+      const categories = await getSquareCategories();
+      return { categories };
+    } catch (error: any) {
+      console.error("Error fetching Square categories:", error);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: error.message || "Failed to fetch Square categories",
+      });
+    }
+  }),
+
+  /**
    * Get Square catalog items for product mapping
    */
-  getCatalogItems: adminProcedure.query(async () => {
+  getCatalogItems: adminProcedure
+    .input(
+      z.object({
+        categoryIds: z.array(z.string()).optional(),
+      }).optional()
+    )
+    .query(async ({ input }) => {
     try {
       const config = await db.query.squareConfig.findFirst();
 
@@ -172,7 +223,10 @@ export const squareRouter = router({
         );
       }
 
-      const catalogItems = await getSquareCatalogItems(config.locationId);
+      const catalogItems = await getSquareCatalogItems(
+        config.locationId,
+        input?.categoryIds
+      );
 
       return {
         items: catalogItems,
@@ -263,8 +317,10 @@ export const squareRouter = router({
           squareVariationId: inventoryItems.squareVariationId,
           squareSyncEnabled: inventoryItems.squareSyncEnabled,
           squareSyncedAt: inventoryItems.squareSyncedAt,
+          productName: bottleRuns.productName,
         })
         .from(inventoryItems)
+        .leftJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
         .where(
           and(
             isNull(inventoryItems.deletedAt),

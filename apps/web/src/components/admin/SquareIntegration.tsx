@@ -360,6 +360,7 @@ function ProductMapping() {
   const [selectedSquareVariation, setSelectedSquareVariation] = useState<string | null>(null);
   const [selectedSquareCatalogItem, setSelectedSquareCatalogItem] = useState<string | null>(null);
   const [showOnlyUnmapped, setShowOnlyUnmapped] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   const { data: inventoryData, refetch: refetchInventory } =
     trpc.square.getInventoryMappings.useQuery({
@@ -368,7 +369,19 @@ function ProductMapping() {
       onlyUnmapped: showOnlyUnmapped,
     });
 
-  const { data: catalogData } = trpc.square.getCatalogItems.useQuery();
+  const { data: categoriesData } = trpc.square.getCategories.useQuery();
+
+  const { data: catalogData } = trpc.square.getCatalogItems.useQuery({
+    categoryIds: selectedCategories.length > 0 ? selectedCategories : undefined,
+  });
+
+  const toggleCategory = (categoryId: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(categoryId)
+        ? prev.filter((id) => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
 
   const mapProduct = trpc.square.mapProduct.useMutation({
     onSuccess: () => {
@@ -454,7 +467,7 @@ function ProductMapping() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">{item.lotCode || "No Lot Code"}</p>
+                      <p className="font-medium">{item.productName || item.lotCode || "No Name"}</p>
                       <p className="text-sm text-gray-600">
                         {item.packageType} - {item.packageSizeML}ml
                       </p>
@@ -480,9 +493,39 @@ function ProductMapping() {
             <CardTitle className="text-base">Square Catalog</CardTitle>
             <CardDescription>
               {catalogData?.items?.length || 0} products available
+              {selectedCategories.length > 0 && ` (filtered by ${selectedCategories.length} categories)`}
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Category Filter */}
+            {categoriesData?.categories && categoriesData.categories.length > 0 && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-700 mb-2">Filter by Category:</p>
+                <div className="flex flex-wrap gap-2">
+                  {categoriesData.categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => toggleCategory(cat.id)}
+                      className={`px-3 py-1 text-sm rounded-full transition-colors ${
+                        selectedCategories.includes(cat.id)
+                          ? "bg-blue-600 text-white"
+                          : "bg-white border border-gray-300 text-gray-700 hover:border-blue-400"
+                      }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                  {selectedCategories.length > 0 && (
+                    <button
+                      onClick={() => setSelectedCategories([])}
+                      className="px-3 py-1 text-sm rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {catalogData?.items?.map((item) => (
                 <div key={item.id} className="border rounded-lg p-3">

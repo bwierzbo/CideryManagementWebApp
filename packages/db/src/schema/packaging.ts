@@ -190,6 +190,7 @@ export const bottleRuns = pgTable(
     overheadCostAllocated: decimal("overhead_cost_allocated", { precision: 10, scale: 2 }),
 
     // Metadata
+    productName: text("product_name"),
     productionNotes: text("production_notes"),
     status: bottleRunStatusEnum("status").default("completed"),
     /**
