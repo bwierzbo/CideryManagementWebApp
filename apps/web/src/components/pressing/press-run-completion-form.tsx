@@ -68,6 +68,8 @@ const assignmentSchema = z.object({
     .number()
     .min(0.1, "Volume must be at least 0.1L")
     .max(50000, "Volume cannot exceed 50,000L"),
+  transferLossL: z.number().min(0),
+  transferLossNotes: z.string().optional(),
 });
 
 // Completion Form Schema based on task requirements
@@ -140,7 +142,7 @@ export function PressRunCompletionForm({
     defaultValues: {
       completionDate: formatDateForInput(new Date()), // Today's date in YYYY-MM-DD format
       juiceVolumeUnit: "L",
-      assignments: [{ toVesselId: "", volumeL: 0 }],
+      assignments: [{ toVesselId: "", volumeL: 0, transferLossL: 0, transferLossNotes: "" }],
       laborHours: 0,
       workerCount: 1,
     },
@@ -156,6 +158,12 @@ export function PressRunCompletionForm({
       (sum, assignment) => sum + (assignment.volumeL || 0),
       0,
     ) || 0;
+  const totalTransferLossL =
+    watchedValues.assignments?.reduce(
+      (sum, assignment) => sum + (assignment.transferLossL || 0),
+      0,
+    ) || 0;
+  const netVolumeL = assignedVolumeL - totalTransferLossL;
 
   // Calculate remaining with floating-point tolerance clamping
   const VOLUME_EPSILON = 0.01; // 10mL tolerance
@@ -242,7 +250,7 @@ export function PressRunCompletionForm({
     const currentAssignments = watchedValues.assignments || [];
     form.setValue("assignments", [
       ...currentAssignments,
-      { toVesselId: "", volumeL: 0 },
+      { toVesselId: "", volumeL: 0, transferLossL: 0, transferLossNotes: "" },
     ]);
   };
 
@@ -393,7 +401,7 @@ export function PressRunCompletionForm({
                 {watchedValues.assignments?.map((assignment, index) => (
                   <div
                     key={index}
-                    className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-lg"
+                    className="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 border rounded-lg"
                   >
                     {/* Vessel Selection */}
                     <div className="space-y-2">
@@ -508,6 +516,55 @@ export function PressRunCompletionForm({
                       />
                     </div>
 
+                    {/* Transfer Loss */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        Transfer Loss ({watchedValues.juiceVolumeUnit || "L"})
+                      </Label>
+                      <FormField
+                        control={form.control}
+                        name={`assignments.${index}.transferLossL`}
+                        render={({ field }) => {
+                          const displayValue =
+                            watchedValues.juiceVolumeUnit === "gal" &&
+                            field.value > 0
+                              ? litersToGallons(field.value)
+                              : watchedValues.juiceVolumeUnit === "gal"
+                                ? ""
+                                : field.value || "";
+
+                          const handleChange = (value: string) => {
+                            const numValue = parseFloat(value) || 0;
+                            const litersValue =
+                              watchedValues.juiceVolumeUnit === "gal" &&
+                              numValue > 0
+                                ? gallonsToLiters(numValue)
+                                : watchedValues.juiceVolumeUnit === "gal"
+                                  ? 0
+                                  : numValue;
+                            field.onChange(litersValue);
+                          };
+
+                          return (
+                            <FormItem>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="0"
+                                  value={displayValue}
+                                  onChange={(e) => handleChange(e.target.value)}
+                                  className="h-10"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }}
+                      />
+                    </div>
+
                     {/* Actions */}
                     <div className="space-y-2">
                       <Label className="text-sm font-medium">Actions</Label>
@@ -553,10 +610,33 @@ export function PressRunCompletionForm({
                       </div>
                     </div>
 
+                    {/* Transfer Loss Notes - only show if there's a loss */}
+                    {assignment.transferLossL > 0 && (
+                      <div className="md:col-span-4 mt-2">
+                        <FormField
+                          control={form.control}
+                          name={`assignments.${index}.transferLossNotes`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-sm">Loss Reason</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="e.g., Open valve, spillage..."
+                                  {...field}
+                                  className="h-10"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    )}
+
                     {/* Capacity Validation for this assignment */}
                     {assignmentsWithVessels[index]?.vessel &&
                       assignment.volumeL > 0 && (
-                        <div className="md:col-span-3 mt-2">
+                        <div className="md:col-span-4 mt-2">
                           {(() => {
                             const vessel =
                               assignmentsWithVessels[index].vessel!;
@@ -669,6 +749,18 @@ export function PressRunCompletionForm({
                         : isGallons
                           ? 0
                           : assignedVolumeL;
+                    const displayLoss =
+                      isGallons && totalTransferLossL > 0
+                        ? litersToGallons(totalTransferLossL)
+                        : isGallons
+                          ? 0
+                          : totalTransferLossL;
+                    const displayNet =
+                      isGallons && netVolumeL > 0
+                        ? litersToGallons(netVolumeL)
+                        : isGallons
+                          ? 0
+                          : netVolumeL;
                     const displayRemaining =
                       isGallons && remainingVolumeL > 0
                         ? litersToGallons(remainingVolumeL)
@@ -694,6 +786,24 @@ export function PressRunCompletionForm({
                             {unit}
                           </span>
                         </div>
+                        {totalTransferLossL > 0 && (
+                          <>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-orange-700">Transfer Loss:</span>
+                              <span className="font-medium text-orange-700">
+                                -{displayLoss.toFixed(1)}
+                                {unit}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm">
+                              <span className="text-blue-800">Net to Vessels:</span>
+                              <span className="font-medium text-blue-900">
+                                {displayNet.toFixed(1)}
+                                {unit}
+                              </span>
+                            </div>
+                          </>
+                        )}
                         <div className="flex justify-between items-center text-sm border-t border-blue-200 pt-2">
                           <span className="text-blue-800">Remaining:</span>
                           <span

@@ -69,7 +69,7 @@ export function EditMeasurementDialog({
       setAbv(measurement.abv || "");
       setPh(measurement.ph || "");
       setTotalAcidity(measurement.totalAcidity || "");
-      setTemperature(measurement.temperature || "");
+      setTemperature(measurement.temperature || "20");
       setVolume(measurement.volume || "");
       setVolumeUnit(measurement.volumeUnit || "L");
       setNotes(measurement.notes || "");

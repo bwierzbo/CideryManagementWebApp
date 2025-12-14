@@ -652,9 +652,39 @@ export const batchRouter = router({
           }
         }
 
+        // Get all contributing press runs from merge history (for blends)
+        const mergeHistoryPressRuns = await db
+          .select({
+            id: batchMergeHistory.id,
+            pressRunId: batchMergeHistory.sourcePressRunId,
+            pressRunName: pressRuns.pressRunName,
+            totalAppleWeightKg: pressRuns.totalAppleWeightKg,
+            volumeAdded: batchMergeHistory.volumeAdded,
+            volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
+            mergedAt: batchMergeHistory.mergedAt,
+          })
+          .from(batchMergeHistory)
+          .innerJoin(pressRuns, eq(batchMergeHistory.sourcePressRunId, pressRuns.id))
+          .where(
+            and(
+              eq(batchMergeHistory.targetBatchId, input.batchId),
+              isNull(batchMergeHistory.deletedAt),
+            ),
+          )
+          .orderBy(asc(batchMergeHistory.mergedAt));
+
         return {
           batch,
           origin: originDetails,
+          contributingPressRuns: mergeHistoryPressRuns.map((m) => ({
+            id: m.id,
+            pressRunId: m.pressRunId,
+            pressRunName: m.pressRunName,
+            totalAppleWeightKg: m.totalAppleWeightKg ? parseFloat(m.totalAppleWeightKg) : null,
+            volumeAdded: parseFloat(m.volumeAdded),
+            volumeAddedUnit: m.volumeAddedUnit,
+            mergedAt: m.mergedAt,
+          })),
           composition: composition.map((item) => ({
             vendorName: item.vendorName || "Unknown Vendor",
             varietyName: item.varietyName || "Unknown",
@@ -785,17 +815,24 @@ export const batchRouter = router({
         // Calculate cost if purchase item is provided
         let costPerUnit = input.costPerUnit;
         let totalCost: number | undefined;
+        let purchaseItemUnit: string | null = null;
 
-        if (input.additivePurchaseItemId && !costPerUnit) {
-          // Fetch cost from purchase item if not explicitly provided
+        if (input.additivePurchaseItemId) {
+          // Fetch cost and unit from purchase item
           const [purchaseItem] = await db
-            .select({ pricePerUnit: additivePurchaseItems.pricePerUnit })
+            .select({
+              pricePerUnit: additivePurchaseItems.pricePerUnit,
+              unit: additivePurchaseItems.unit
+            })
             .from(additivePurchaseItems)
             .where(eq(additivePurchaseItems.id, input.additivePurchaseItemId))
             .limit(1);
 
-          if (purchaseItem?.pricePerUnit) {
-            costPerUnit = parseFloat(purchaseItem.pricePerUnit.toString());
+          if (purchaseItem) {
+            purchaseItemUnit = purchaseItem.unit;
+            if (!costPerUnit && purchaseItem.pricePerUnit) {
+              costPerUnit = parseFloat(purchaseItem.pricePerUnit.toString());
+            }
           }
         }
 
@@ -823,11 +860,45 @@ export const batchRouter = router({
           .returning();
 
         // Update quantityUsed on the source purchase item if provided
-        if (input.additivePurchaseItemId) {
+        if (input.additivePurchaseItemId && purchaseItemUnit) {
+          // Convert amount to purchase item's unit if different
+          let amountInPurchaseUnit = input.amount;
+
+          if (input.unit !== purchaseItemUnit) {
+            // Weight conversions
+            const toGrams: Record<string, number> = {
+              'g': 1,
+              'kg': 1000,
+              'lb': 453.592,
+              'lbs': 453.592,
+              'oz': 28.3495,
+            };
+
+            // Volume conversions (to mL)
+            const toMl: Record<string, number> = {
+              'ml': 1,
+              'mL': 1,
+              'L': 1000,
+              'gal': 3785.41,
+            };
+
+            // Check if both are weight units
+            if (toGrams[input.unit] && toGrams[purchaseItemUnit]) {
+              const amountInGrams = input.amount * toGrams[input.unit];
+              amountInPurchaseUnit = amountInGrams / toGrams[purchaseItemUnit];
+            }
+            // Check if both are volume units
+            else if (toMl[input.unit] && toMl[purchaseItemUnit]) {
+              const amountInMl = input.amount * toMl[input.unit];
+              amountInPurchaseUnit = amountInMl / toMl[purchaseItemUnit];
+            }
+            // If units are incompatible (e.g., weight vs volume), use raw amount
+          }
+
           await db
             .update(additivePurchaseItems)
             .set({
-              quantityUsed: sql`${additivePurchaseItems.quantityUsed} + ${input.amount.toString()}`,
+              quantityUsed: sql`${additivePurchaseItems.quantityUsed} + ${amountInPurchaseUnit.toString()}`,
               updatedAt: new Date(),
             })
             .where(eq(additivePurchaseItems.id, input.additivePurchaseItemId));
@@ -1515,6 +1586,60 @@ export const batchRouter = router({
           });
         }
 
+        // Find ancestor batches using recursive CTE
+        // This traces the lineage of "Remaining" batches back to their origins
+        // Each ancestor includes the split timestamp (when this batch was created from it)
+        const ancestorChainResult = await db.execute<{
+          batch_id: string;
+          batch_name: string;
+          split_timestamp: Date;
+          depth: number;
+        }>(sql`
+          WITH RECURSIVE ancestors AS (
+            -- Base case: find the transfer that created this batch
+            SELECT
+              bt.source_batch_id as batch_id,
+              b.name as batch_name,
+              bt.transferred_at as split_timestamp,
+              1 as depth
+            FROM batch_transfers bt
+            JOIN batches b ON b.id = bt.source_batch_id
+            WHERE bt.remaining_batch_id = ${input.batchId}
+              AND bt.deleted_at IS NULL
+
+            UNION ALL
+
+            -- Recursive case: find transfers that created parent batches
+            SELECT
+              bt.source_batch_id,
+              b.name,
+              bt.transferred_at,
+              a.depth + 1
+            FROM batch_transfers bt
+            JOIN batches b ON b.id = bt.source_batch_id
+            JOIN ancestors a ON bt.remaining_batch_id = a.batch_id
+            WHERE bt.deleted_at IS NULL
+          )
+          SELECT * FROM ancestors ORDER BY depth DESC
+        `);
+
+        // Convert to array with proper typing
+        const ancestorChain = (ancestorChainResult.rows || []) as Array<{
+          batch_id: string;
+          batch_name: string;
+          split_timestamp: Date;
+          depth: number;
+        }>;
+
+        // Build list of all batch IDs to query (current + ancestors)
+        const allBatchIds = [input.batchId, ...ancestorChain.map(a => a.batch_id)];
+
+        // Create a map of batch ID to split timestamp for filtering
+        const splitTimestampMap = new Map<string, Date>();
+        ancestorChain.forEach(a => {
+          splitTimestampMap.set(a.batch_id, new Date(a.split_timestamp));
+        });
+
         // Run all independent queries in parallel for performance
         const [
           earliestTransfer,
@@ -1549,10 +1674,11 @@ export const batchRouter = router({
             .orderBy(asc(batchTransfers.transferredAt))
             .limit(1),
 
-          // Get measurements
+          // Get measurements - includes ancestor batches before split
           db
             .select({
               id: batchMeasurements.id,
+              batchId: batchMeasurements.batchId,
               measurementDate: batchMeasurements.measurementDate,
               specificGravity: batchMeasurements.specificGravity,
               abv: batchMeasurements.abv,
@@ -1567,15 +1693,16 @@ export const batchRouter = router({
             .from(batchMeasurements)
             .where(
               and(
-                eq(batchMeasurements.batchId, input.batchId),
+                inArray(batchMeasurements.batchId, allBatchIds),
                 isNull(batchMeasurements.deletedAt),
               ),
             ),
 
-          // Get additives
+          // Get additives - includes ancestor batches before split
           db
             .select({
               id: batchAdditives.id,
+              batchId: batchAdditives.batchId,
               addedAt: batchAdditives.addedAt,
               additiveType: batchAdditives.additiveType,
               additiveName: batchAdditives.additiveName,
@@ -1587,15 +1714,16 @@ export const batchRouter = router({
             .from(batchAdditives)
             .where(
               and(
-                eq(batchAdditives.batchId, input.batchId),
+                inArray(batchAdditives.batchId, allBatchIds),
                 isNull(batchAdditives.deletedAt),
               ),
             ),
 
-          // Get merge history
+          // Get merge history - includes ancestor batches before split
           db
             .select({
               id: batchMergeHistory.id,
+              targetBatchId: batchMergeHistory.targetBatchId,
               mergedAt: batchMergeHistory.mergedAt,
               volumeAdded: batchMergeHistory.volumeAdded,
               volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
@@ -1629,12 +1757,12 @@ export const batchRouter = router({
             )
             .where(
               and(
-                eq(batchMergeHistory.targetBatchId, input.batchId),
+                inArray(batchMergeHistory.targetBatchId, allBatchIds),
                 isNull(batchMergeHistory.deletedAt),
               ),
             ),
 
-          // Get transfers (as source or destination)
+          // Get transfers (as source or destination) - includes ancestor batches before split
           db
             .select({
               id: batchTransfers.id,
@@ -1675,15 +1803,23 @@ export const batchRouter = router({
                 or(
                   eq(batchTransfers.sourceBatchId, input.batchId),
                   eq(batchTransfers.destinationBatchId, input.batchId),
+                  // Include ancestor batch transfers
+                  ...(allBatchIds.length > 1
+                    ? [inArray(batchTransfers.sourceBatchId, allBatchIds.slice(1))]
+                    : []),
+                  ...(allBatchIds.length > 1
+                    ? [inArray(batchTransfers.destinationBatchId, allBatchIds.slice(1))]
+                    : []),
                 ),
                 isNull(batchTransfers.deletedAt),
               ),
             ),
 
-          // Get racking operations
+          // Get racking operations - includes ancestor batches before split
           db
             .select({
               id: batchRackingOperations.id,
+              batchId: batchRackingOperations.batchId,
               rackedAt: batchRackingOperations.rackedAt,
               sourceVesselId: batchRackingOperations.sourceVesselId,
               destinationVesselId: batchRackingOperations.destinationVesselId,
@@ -1708,15 +1844,16 @@ export const batchRouter = router({
             )
             .where(
               and(
-                eq(batchRackingOperations.batchId, input.batchId),
+                inArray(batchRackingOperations.batchId, allBatchIds),
                 isNull(batchRackingOperations.deletedAt),
               ),
             ),
 
-          // Get filter operations
+          // Get filter operations - includes ancestor batches before split
           db
             .select({
               id: batchFilterOperations.id,
+              batchId: batchFilterOperations.batchId,
               filteredAt: batchFilterOperations.filteredAt,
               filterType: batchFilterOperations.filterType,
               volumeBefore: batchFilterOperations.volumeBefore,
@@ -1729,15 +1866,16 @@ export const batchRouter = router({
             .from(batchFilterOperations)
             .where(
               and(
-                eq(batchFilterOperations.batchId, input.batchId),
+                inArray(batchFilterOperations.batchId, allBatchIds),
                 isNull(batchFilterOperations.deletedAt),
               ),
             ),
 
-          // Get carbonation operations
+          // Get carbonation operations - includes ancestor batches before split
           db
             .select({
               id: batchCarbonationOperations.id,
+              batchId: batchCarbonationOperations.batchId,
               startedAt: batchCarbonationOperations.startedAt,
               completedAt: batchCarbonationOperations.completedAt,
               carbonationProcess: batchCarbonationOperations.carbonationProcess,
@@ -1750,7 +1888,7 @@ export const batchRouter = router({
             .from(batchCarbonationOperations)
             .where(
               and(
-                eq(batchCarbonationOperations.batchId, input.batchId),
+                inArray(batchCarbonationOperations.batchId, allBatchIds),
                 isNull(batchCarbonationOperations.deletedAt),
               ),
             ),
@@ -1826,6 +1964,22 @@ export const batchRouter = router({
 
         const activities: any[] = [];
 
+        // Helper function to check if an activity from an ancestor should be included
+        // Activities are only included if they occurred before the batch was split off
+        const shouldIncludeAncestorActivity = (activityBatchId: string, activityTimestamp: Date): boolean => {
+          if (activityBatchId === input.batchId) return true; // Own activity - always include
+          const splitTime = splitTimestampMap.get(activityBatchId);
+          if (!splitTime) return true; // No split time found, include by default
+          return new Date(activityTimestamp) < splitTime;
+        };
+
+        // Helper function to get inherited info for an activity
+        const getInheritedInfo = (activityBatchId: string): { inherited: boolean; inheritedFrom?: string } => {
+          if (activityBatchId === input.batchId) return { inherited: false };
+          const ancestor = ancestorChain.find(a => a.batch_id === activityBatchId);
+          return { inherited: true, inheritedFrom: ancestor?.batch_name || "parent batch" };
+        };
+
         // Add batch creation event - handle press run or juice purchase origins
         // Use earliest transfer's source vessel if available, otherwise use current or press run vessel
         const creationVessel = earliestTransfer[0]?.sourceVesselName || batch[0].pressRunVesselName || batch[0].vesselName;
@@ -1853,8 +2007,10 @@ export const batchRouter = router({
               : {},
         });
 
-        // Process measurements
+        // Process measurements (filter by split timestamp for ancestors)
         measurements.forEach((m) => {
+          if (!shouldIncludeAncestorActivity(m.batchId, m.measurementDate)) return;
+
           const details = [];
           if (m.specificGravity) details.push(`SG: ${m.specificGravity}`);
           if (m.abv) details.push(`ABV: ${m.abv}%`);
@@ -1863,6 +2019,7 @@ export const batchRouter = router({
           if (m.temperature) details.push(`Temp: ${m.temperature}°C`);
           if (m.volume) details.push(`Volume: ${m.volume}${m.volumeUnit || 'L'}`);
 
+          const inheritedInfo = getInheritedInfo(m.batchId);
           activities.push({
             id: `measurement-${m.id}`,
             type: "measurement",
@@ -1876,11 +2033,15 @@ export const batchRouter = router({
                   }
                 : {},
             metadata: m, // Include full measurement object for editing
+            ...inheritedInfo,
           });
         });
 
-        // Process additives
+        // Process additives (filter by split timestamp for ancestors)
         additives.forEach((a) => {
+          if (!shouldIncludeAncestorActivity(a.batchId, a.addedAt)) return;
+
+          const inheritedInfo = getInheritedInfo(a.batchId);
           activities.push({
             id: `additive-${a.id}`,
             type: "additive",
@@ -1892,11 +2053,14 @@ export const batchRouter = router({
               notes: a.notes || null,
             },
             metadata: a, // Include full additive object for editing
+            ...inheritedInfo,
           });
         });
 
-        // Process merges
+        // Process merges (filter by split timestamp for ancestors)
         merges.forEach((m) => {
+          if (!shouldIncludeAncestorActivity(m.targetBatchId, m.mergedAt)) return;
+
           let sourceDescription = "another batch";
           if (m.sourceType === "press_run" && m.pressRunName) {
             sourceDescription = `Press Run ${m.pressRunName}`;
@@ -1906,6 +2070,7 @@ export const batchRouter = router({
             sourceDescription = `${juiceLabel}${vendorLabel}`;
           }
 
+          const inheritedInfo = getInheritedInfo(m.targetBatchId);
           activities.push({
             id: `merge-${m.id}`,
             type: "merge",
@@ -1917,13 +2082,22 @@ export const batchRouter = router({
               notes: m.notes || null,
             },
             metadata: { id: m.id, mergedAt: m.mergedAt },
+            ...inheritedInfo,
           });
         });
 
-        // Process transfers
+        // Process transfers (filter by split timestamp for ancestors)
         transfers.forEach((t) => {
+          // Determine which batch ID to use for filtering (source for same-batch moves, otherwise the relevant one)
+          const relevantBatchId = t.sourceBatchId === t.destinationBatchId
+            ? t.sourceBatchId
+            : (allBatchIds.includes(t.sourceBatchId) ? t.sourceBatchId : t.destinationBatchId);
+
+          if (!shouldIncludeAncestorActivity(relevantBatchId, t.transferredAt)) return;
+
           // Check if this is a vessel move (same batch moved) or traditional transfer (different batches)
           const isSameBatch = t.sourceBatchId === t.destinationBatchId;
+          const inheritedInfo = getInheritedInfo(relevantBatchId);
 
           if (isSameBatch) {
             // Vessel move: batch moved from one vessel to another
@@ -1939,10 +2113,12 @@ export const batchRouter = router({
                 notes: t.notes || null,
               },
               metadata: { id: t.id, transferredAt: t.transferredAt },
+              ...inheritedInfo,
             });
           } else {
             // Traditional transfer: different batches involved
-            const isSource = t.sourceBatchId === input.batchId;
+            // For inherited transfers, check if this batch was the source
+            const isSource = t.sourceBatchId === input.batchId || allBatchIds.includes(t.sourceBatchId);
             activities.push({
               id: `transfer-${t.id}`,
               type: "transfer",
@@ -1956,12 +2132,16 @@ export const batchRouter = router({
                 notes: t.notes || null,
               },
               metadata: { id: t.id, transferredAt: t.transferredAt },
+              ...inheritedInfo,
             });
           }
         });
 
-        // Process racking operations
+        // Process racking operations (filter by split timestamp for ancestors)
         rackingOps.forEach((r) => {
+          if (!shouldIncludeAncestorActivity(r.batchId, r.rackedAt)) return;
+
+          const inheritedInfo = getInheritedInfo(r.batchId);
           activities.push({
             id: `rack-${r.id}`,
             type: "rack",
@@ -1976,11 +2156,15 @@ export const batchRouter = router({
               toVessel: r.destVesselName || null,
             },
             metadata: { id: r.id, rackedAt: r.rackedAt },
+            ...inheritedInfo,
           });
         });
 
-        // Process filter operations
+        // Process filter operations (filter by split timestamp for ancestors)
         filterOps.forEach((f) => {
+          if (!shouldIncludeAncestorActivity(f.batchId, f.filteredAt)) return;
+
+          const inheritedInfo = getInheritedInfo(f.batchId);
           activities.push({
             id: `filter-${f.id}`,
             type: "filter",
@@ -1994,14 +2178,18 @@ export const batchRouter = router({
               lossPercentage: `${((parseFloat(f.volumeLoss) / parseFloat(f.volumeBefore)) * 100).toFixed(1)}%`,
             },
             metadata: { id: f.id, filteredAt: f.filteredAt },
+            ...inheritedInfo,
           });
         });
 
-        // Process carbonation operations
+        // Process carbonation operations (filter by split timestamp for ancestors)
         carbonationOps.forEach((c) => {
           // Single carbonation event - use completed date if available, otherwise started date
           const timestamp = c.completedAt || c.startedAt;
+          if (!shouldIncludeAncestorActivity(c.batchId, timestamp)) return;
+
           const isCompleted = !!c.completedAt;
+          const inheritedInfo = getInheritedInfo(c.batchId);
 
           activities.push({
             id: `carbonation-${c.id}`,
@@ -2019,6 +2207,7 @@ export const batchRouter = router({
               status: isCompleted ? 'completed' : 'in progress',
             },
             metadata: { id: c.id, startedAt: c.startedAt, completedAt: c.completedAt },
+            ...inheritedInfo,
           });
         });
 

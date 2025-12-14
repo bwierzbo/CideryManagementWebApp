@@ -186,7 +186,7 @@ export function BatchHistoryModal({
       return <div className="text-center py-8">No data available</div>;
     }
 
-    const { batch, origin, composition, measurements, additives } = data;
+    const { batch, origin, contributingPressRuns, composition, measurements, additives } = data;
 
     return (
       <Tabs defaultValue="overview" className="w-full">
@@ -334,40 +334,59 @@ export function BatchHistoryModal({
               </Card>
             )}
 
-            {/* Origin Info */}
-            {origin && (
+            {/* Origin Info - Show all contributing press runs */}
+            {(origin || (contributingPressRuns && contributingPressRuns.length > 0)) && (
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Factory className="w-5 h-5" />
-                    Press Run Origin
+                    Press Run Origin{contributingPressRuns && contributingPressRuns.length > 0 ? "s" : ""}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-gray-600">Press Run</p>
-                      <p className="font-semibold">
-                        {origin.pressRunName || "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Total Apples</p>
-                      <p className="font-semibold">
-                        {origin.totalAppleWeightKg
-                          ? `${parseFloat(origin.totalAppleWeightKg).toFixed(1)} kg`
-                          : "N/A"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-600">Total Juice</p>
-                      <p className="font-semibold">
-                        {origin.totalJuiceVolume
-                          ? `${parseFloat(origin.totalJuiceVolume).toFixed(1)} ${origin.totalJuiceVolumeUnit || 'L'}`
-                          : "N/A"}
-                      </p>
-                    </div>
-                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Press Run</TableHead>
+                        <TableHead className="text-right">Apple Weight</TableHead>
+                        <TableHead className="text-right">Juice Volume</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {origin && (
+                        <TableRow>
+                          <TableCell className="font-medium">
+                            {origin.pressRunName || "N/A"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {origin.totalAppleWeightKg
+                              ? `${parseFloat(origin.totalAppleWeightKg).toFixed(1)} kg`
+                              : "N/A"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {origin.totalJuiceVolume
+                              ? `${parseFloat(origin.totalJuiceVolume).toFixed(1)} ${origin.totalJuiceVolumeUnit || 'L'}`
+                              : "N/A"}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {contributingPressRuns && contributingPressRuns.map((pr) => (
+                        <TableRow key={pr.id}>
+                          <TableCell className="font-medium">
+                            {pr.pressRunName || "N/A"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {pr.totalAppleWeightKg
+                              ? `${pr.totalAppleWeightKg.toFixed(1)} kg`
+                              : "N/A"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {`${pr.volumeAdded.toFixed(1)} ${pr.volumeAddedUnit || 'L'}`}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
             )}

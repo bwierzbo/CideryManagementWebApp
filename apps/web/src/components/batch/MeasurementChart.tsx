@@ -134,7 +134,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
                     stroke="#3b82f6"
                     fontSize={12}
                     tickLine={false}
-                    domain={["auto", "auto"]}
+                    domain={[0.9, 1.1]}
                     label={{
                       value: "Specific Gravity",
                       angle: -90,

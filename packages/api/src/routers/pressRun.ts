@@ -14,6 +14,8 @@ import {
   batches,
   batchCompositions,
   batchMergeHistory,
+  batchTransfers,
+  batchRackingOperations,
 } from "db";
 import { eq, and, desc, asc, sql, isNull, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -63,6 +65,8 @@ const completeSchema = z.object({
       z.object({
         toVesselId: z.string().uuid("Invalid vessel ID"),
         volumeL: z.number().positive("Volume must be positive"),
+        transferLossL: z.number().min(0).default(0),
+        transferLossNotes: z.string().optional(),
       }),
     )
     .min(1, "At least one vessel assignment is required"),
@@ -1155,6 +1159,8 @@ export const pressRunRouter = router({
                 currentVolumeUnit: batches.currentVolumeUnit,
                 initialVolume: batches.initialVolume,
                 initialVolumeUnit: batches.initialVolumeUnit,
+                transferLossL: batches.transferLossL,
+                transferLossNotes: batches.transferLossNotes,
               })
               .from(batches)
               .where(
@@ -1176,30 +1182,52 @@ export const pressRunRouter = router({
               const currentVolume = parseFloat(
                 existingBatch[0].currentVolume?.toString() || "0",
               );
-              const newVolume = currentVolume + assignment.volumeL;
 
-              // Update existing batch volume
+              // Calculate net volume (gross volume minus transfer loss)
+              const transferLossL = assignment.transferLossL || 0;
+              const netVolumeL = assignment.volumeL - transferLossL;
+              const newVolume = currentVolume + netVolumeL;
+
+              // Update existing batch volume (and add transfer loss info if this is the first loss recorded)
+              const updateData: Record<string, unknown> = {
+                currentVolume: newVolume.toString(),
+                currentVolumeUnit: existingBatch[0].currentVolumeUnit || "L",
+                updatedAt: new Date(),
+              };
+
+              // If there's a transfer loss and batch doesn't already have one, record it
+              if (transferLossL > 0) {
+                const existingLoss = parseFloat(existingBatch[0].transferLossL?.toString() || "0");
+                updateData.transferLossL = (existingLoss + transferLossL).toString();
+                if (assignment.transferLossNotes) {
+                  const existingNotes = existingBatch[0].transferLossNotes || "";
+                  updateData.transferLossNotes = existingNotes
+                    ? `${existingNotes}; ${assignment.transferLossNotes}`
+                    : assignment.transferLossNotes;
+                }
+              }
+
               await tx
                 .update(batches)
-                .set({
-                  currentVolume: newVolume.toString(),
-                  currentVolumeUnit: existingBatch[0].currentVolumeUnit || "L",
-                  updatedAt: new Date(),
-                })
+                .set(updateData)
                 .where(eq(batches.id, batchId));
 
-              // Create merge history entry
+              // Create merge history entry - record net volume added
+              const mergeNotes = transferLossL > 0
+                ? `Press run juice added to existing batch (${transferLossL}L transfer loss${assignment.transferLossNotes ? `: ${assignment.transferLossNotes}` : ''})`
+                : `Press run juice added to existing batch`;
+
               await tx.insert(batchMergeHistory).values({
                 targetBatchId: batchId,
                 sourcePressRunId: input.pressRunId,
                 sourceType: "press_run",
-                volumeAdded: assignment.volumeL.toString(),
+                volumeAdded: netVolumeL.toString(),
                 volumeAddedUnit: "L",
                 targetVolumeBefore: currentVolume.toString(),
                 targetVolumeBeforeUnit: "L",
                 targetVolumeAfter: newVolume.toString(),
                 targetVolumeAfterUnit: "L",
-                notes: `Press run juice added to existing batch`,
+                notes: mergeNotes,
                 mergedAt: input.completionDate,
                 mergedBy: ctx.session?.user?.id,
                 createdAt: new Date(),
@@ -1261,6 +1289,10 @@ export const pressRunRouter = router({
                 sequenceSuffix++;
               }
 
+              // Calculate net volume (gross volume minus transfer loss)
+              const transferLossL = assignment.transferLossL || 0;
+              const netVolumeL = assignment.volumeL - transferLossL;
+
               // Create batch record
               const newBatch = await tx
                 .insert(batches)
@@ -1268,13 +1300,15 @@ export const pressRunRouter = router({
                   vesselId: assignment.toVesselId,
                   name: batchName,
                   batchNumber: batchName, // Add batch_number for database compatibility
-                  initialVolume: assignment.volumeL.toString(),
+                  initialVolume: netVolumeL.toString(),
                   initialVolumeUnit: "L",
-                  currentVolume: assignment.volumeL.toString(),
+                  currentVolume: netVolumeL.toString(),
                   currentVolumeUnit: "L",
                   status: "fermentation",
                   startDate: pressRunCompletionDate,
                   originPressRunId: input.pressRunId,
+                  transferLossL: transferLossL > 0 ? transferLossL.toString() : null,
+                  transferLossNotes: assignment.transferLossNotes || null,
                 })
                 .returning({ id: batches.id });
 
@@ -1684,7 +1718,192 @@ export const pressRunRouter = router({
           );
         }
 
-        // Enhance press runs with load counts and varieties
+        // Get vessel assignments for each completed press run
+        // This includes batches created from press runs AND merges into existing batches
+        let vesselAssignmentsByPressRun: Record<string, Array<{ vesselName: string; volumeL: number }>> = {};
+
+        const completedPressRunIds = pressRunsList
+          .filter(pr => pr.status === 'completed')
+          .map(pr => pr.id);
+
+        if (completedPressRunIds.length > 0) {
+          // Get all vessels for name lookup
+          const allVessels = await db
+            .select({ id: vessels.id, name: vessels.name })
+            .from(vessels)
+            .where(isNull(vessels.deletedAt));
+
+          const vesselNameMap: Record<string, string> = {};
+          for (const v of allVessels) {
+            vesselNameMap[v.id] = v.name ?? 'Unknown Vessel';
+          }
+
+          // 1. Get batches created directly from these press runs (with their initial volumes)
+          // Include deleted batches for historical tracking - we want to show where juice went
+          // even if that batch was later deleted
+          const batchesFromPressRuns = await db
+            .select({
+              batchId: batches.id,
+              pressRunId: batches.originPressRunId,
+              vesselId: batches.vesselId,
+              initialVolume: batches.initialVolume,
+              name: batches.name,
+            })
+            .from(batches)
+            .where(inArray(batches.originPressRunId, completedPressRunIds));
+
+          // Get batch IDs that were created by transfers (not directly from press run)
+          // A batch is considered "created by transfer" only if:
+          // 1. It's a destination in a non-self transfer
+          // 2. AND the source batch has the SAME originPressRunId (meaning it's a derivative, not external juice)
+          const batchIdsFromPressRuns = batchesFromPressRuns.map(b => b.batchId);
+          let batchesCreatedByTransfer: Set<string> = new Set();
+
+          if (batchIdsFromPressRuns.length > 0) {
+            const transferDestinations = await db
+              .select({
+                sourceBatchId: batchTransfers.sourceBatchId,
+                destinationBatchId: batchTransfers.destinationBatchId
+              })
+              .from(batchTransfers)
+              .where(inArray(batchTransfers.destinationBatchId, batchIdsFromPressRuns));
+
+            // Get originPressRunId for all source batches
+            const sourceBatchIds = transferDestinations
+              .map(t => t.sourceBatchId)
+              .filter((id): id is string => id !== null && id !== undefined);
+
+            let sourceBatchOrigins: Record<string, string | null> = {};
+            if (sourceBatchIds.length > 0) {
+              const sourceBatches = await db
+                .select({ id: batches.id, originPressRunId: batches.originPressRunId })
+                .from(batches)
+                .where(inArray(batches.id, sourceBatchIds));
+
+              for (const sb of sourceBatches) {
+                sourceBatchOrigins[sb.id] = sb.originPressRunId;
+              }
+            }
+
+            // Build a map of destination batch ID to its originPressRunId
+            const destBatchOrigins: Record<string, string | null> = {};
+            for (const b of batchesFromPressRuns) {
+              destBatchOrigins[b.batchId] = b.pressRunId;
+            }
+
+            for (const t of transferDestinations) {
+              if (!t.destinationBatchId || t.sourceBatchId === t.destinationBatchId) continue;
+
+              // Check if source batch has the same originPressRunId as destination
+              const sourceOrigin = t.sourceBatchId ? sourceBatchOrigins[t.sourceBatchId] : null;
+              const destOrigin = destBatchOrigins[t.destinationBatchId];
+
+              // Only mark as derivative if source has same origin (derivative batch)
+              // If source has different/null origin, the destination was likely created from the press run
+              // and later received external juice
+              if (sourceOrigin === destOrigin && sourceOrigin !== null) {
+                batchesCreatedByTransfer.add(t.destinationBatchId);
+              }
+            }
+          }
+
+          // Group batches by press run, excluding derivative batches
+          for (const batch of batchesFromPressRuns) {
+            if (!batch.pressRunId) continue;
+
+            // Skip batches that were created by transfers - they didn't come directly from the press run
+            if (batchesCreatedByTransfer.has(batch.batchId)) continue;
+
+            // Skip derivative batches (those created from splits/rackings that inherited originPressRunId)
+            // These have naming patterns like " - Remaining", " - Split", etc.
+            if (batch.name && (
+              batch.name.includes(' - Remaining') ||
+              batch.name.includes(' - Split') ||
+              batch.name.includes('-Tmi') // Transfer-created batch naming pattern
+            )) continue;
+
+            if (!vesselAssignmentsByPressRun[batch.pressRunId]) {
+              vesselAssignmentsByPressRun[batch.pressRunId] = [];
+            }
+
+            let vesselName = 'Unknown Vessel';
+            if (batch.vesselId && vesselNameMap[batch.vesselId]) {
+              vesselName = vesselNameMap[batch.vesselId];
+            } else if (batch.name) {
+              // Extract vessel name from batch name pattern: YYYY-MM-DD_VesselName_Code
+              const parts = batch.name.split('_');
+              if (parts.length >= 2) {
+                vesselName = parts[1];
+              }
+            }
+
+            vesselAssignmentsByPressRun[batch.pressRunId].push({
+              vesselName,
+              volumeL: batch.initialVolume ? parseFloat(batch.initialVolume.toString()) : 0,
+            });
+          }
+
+          // 2. Get merges from these press runs into existing batches
+          const merges = await db
+            .select({
+              pressRunId: batchMergeHistory.sourcePressRunId,
+              volumeAdded: batchMergeHistory.volumeAdded,
+              targetBatchId: batchMergeHistory.targetBatchId,
+            })
+            .from(batchMergeHistory)
+            .where(
+              and(
+                inArray(batchMergeHistory.sourcePressRunId, completedPressRunIds),
+                isNull(batchMergeHistory.deletedAt),
+              ),
+            );
+
+          // Get target batch info for merges
+          const targetBatchIds = merges.map(m => m.targetBatchId).filter(Boolean) as string[];
+          let targetBatchMap: Record<string, { vesselId: string | null; name: string | null }> = {};
+
+          if (targetBatchIds.length > 0) {
+            const targetBatches = await db
+              .select({ id: batches.id, vesselId: batches.vesselId, name: batches.name })
+              .from(batches)
+              .where(inArray(batches.id, targetBatchIds));
+
+            for (const batch of targetBatches) {
+              targetBatchMap[batch.id] = { vesselId: batch.vesselId, name: batch.name };
+            }
+          }
+
+          // Add merges to vessel assignments
+          for (const merge of merges) {
+            if (!merge.pressRunId) continue;
+
+            if (!vesselAssignmentsByPressRun[merge.pressRunId]) {
+              vesselAssignmentsByPressRun[merge.pressRunId] = [];
+            }
+
+            const targetBatch = targetBatchMap[merge.targetBatchId];
+            let vesselName = 'Unknown Vessel';
+
+            if (targetBatch) {
+              if (targetBatch.vesselId && vesselNameMap[targetBatch.vesselId]) {
+                vesselName = vesselNameMap[targetBatch.vesselId];
+              } else if (targetBatch.name) {
+                // Extract vessel name from batch name pattern
+                const parts = targetBatch.name.split('_');
+                if (parts.length >= 2) {
+                  vesselName = parts[1];
+                }
+              }
+            }
+
+            vesselAssignmentsByPressRun[merge.pressRunId].push({
+              vesselName,
+              volumeL: merge.volumeAdded ? parseFloat(merge.volumeAdded.toString()) : 0,
+            });
+          }
+        }
+
+        // Enhance press runs with load counts, varieties, and vessel assignments
         const enhancedPressRuns = pressRunsList.map((pressRun) => ({
           ...pressRun,
           loadCount: loadCounts[pressRun.id] || 0,
@@ -1692,6 +1911,7 @@ export const pressRunRouter = router({
           extractionRatePercent: pressRun.extractionRate
             ? Math.round(parseFloat(pressRun.extractionRate) * 10000) / 100
             : null,
+          vesselAssignments: vesselAssignmentsByPressRun[pressRun.id] || [],
         }));
 
         return {
@@ -1838,24 +2058,141 @@ export const pressRunRouter = router({
           );
         }
 
-        // Get vessel assignments (batches created from this press run)
-        const vesselAssignments = await db
+        // Get batches created from this press run
+        const batchesFromPressRun = await db
           .select({
             batchId: batches.id,
             batchName: batches.name,
-            vesselId: vessels.id,
-            vesselName: vessels.name,
-            volumeL: batches.initialVolume,
+            vesselId: batches.vesselId,
+            initialVolume: batches.initialVolume,
+            startDate: batches.startDate,
           })
           .from(batches)
-          .leftJoin(vessels, eq(batches.vesselId, vessels.id))
           .where(
             and(
               eq(batches.originPressRunId, input.id),
               isNull(batches.deletedAt),
             ),
-          )
-          .orderBy(asc(vessels.name));
+          );
+
+        // Get all vessel names for lookup
+        const allVessels = await db.select({ id: vessels.id, name: vessels.name }).from(vessels);
+        const vesselNameMap: Record<string, string> = {};
+        for (const v of allVessels) {
+          vesselNameMap[v.id] = v.name ?? 'Unknown Vessel';
+        }
+
+        // Build list of initial vessel assignments (where juice from press run went)
+        // This includes both:
+        // 1. Batches created directly from the press run (originPressRunId)
+        // 2. Merges into existing batches (batchMergeHistory)
+        const vesselAssignments: Array<{
+          vesselId: string;
+          vesselName: string;
+          volumeL: number;
+        }> = [];
+
+        // 1. Get batches created directly from this press run
+        for (const batch of batchesFromPressRun) {
+          // Check if this batch was created by a transfer (not directly from press run)
+          const transfersIn = await db
+            .select({ id: batchTransfers.id })
+            .from(batchTransfers)
+            .where(eq(batchTransfers.destinationBatchId, batch.batchId))
+            .limit(1);
+
+          // Skip batches created by transfers - they didn't come directly from the press run
+          if (transfersIn.length > 0) continue;
+
+          // Get racking operations to find original vessel
+          const rackings = await db
+            .select({ sourceVesselId: batchRackingOperations.sourceVesselId })
+            .from(batchRackingOperations)
+            .where(eq(batchRackingOperations.batchId, batch.batchId))
+            .orderBy(asc(batchRackingOperations.rackedAt))
+            .limit(1);
+
+          // Get outgoing transfers to find original vessel
+          const transfersOut = await db
+            .select({ sourceVesselId: batchTransfers.sourceVesselId })
+            .from(batchTransfers)
+            .where(eq(batchTransfers.sourceBatchId, batch.batchId))
+            .orderBy(asc(batchTransfers.transferredAt))
+            .limit(1);
+
+          // Determine the initial vessel where juice was placed
+          let initialVesselId: string | null = null;
+          if (rackings.length > 0 && rackings[0].sourceVesselId) {
+            initialVesselId = rackings[0].sourceVesselId;
+          } else if (transfersOut.length > 0 && transfersOut[0].sourceVesselId) {
+            initialVesselId = transfersOut[0].sourceVesselId;
+          } else {
+            initialVesselId = batch.vesselId;
+          }
+
+          if (initialVesselId) {
+            vesselAssignments.push({
+              vesselId: initialVesselId,
+              vesselName: vesselNameMap[initialVesselId] || 'Unknown Vessel',
+              volumeL: batch.initialVolume ? parseFloat(batch.initialVolume.toString()) : 0,
+            });
+          }
+        }
+
+        // 2. Get merges from this press run into existing batches
+        const merges = await db
+          .select({
+            volumeAdded: batchMergeHistory.volumeAdded,
+            targetBatchId: batchMergeHistory.targetBatchId,
+          })
+          .from(batchMergeHistory)
+          .where(
+            and(
+              eq(batchMergeHistory.sourcePressRunId, input.id),
+              isNull(batchMergeHistory.deletedAt),
+            ),
+          );
+
+        for (const merge of merges) {
+          // Get the vessel for the target batch
+          const targetBatch = await db
+            .select({ vesselId: batches.vesselId, name: batches.name })
+            .from(batches)
+            .where(eq(batches.id, merge.targetBatchId))
+            .limit(1);
+
+          if (targetBatch.length > 0) {
+            let vesselName = 'Unknown Vessel';
+            let vesselId = targetBatch[0].vesselId;
+
+            if (vesselId && vesselNameMap[vesselId]) {
+              // Batch still has a vessel assigned
+              vesselName = vesselNameMap[vesselId];
+            } else {
+              // Batch has been moved/completed - extract vessel name from batch name
+              // Batch names follow pattern: YYYY-MM-DD_VesselName_CompositionCode
+              const batchName = targetBatch[0].name;
+              if (batchName) {
+                const parts = batchName.split('_');
+                if (parts.length >= 2) {
+                  vesselName = parts[1]; // Second part is typically the vessel name
+                }
+              }
+              vesselId = null;
+            }
+
+            vesselAssignments.push({
+              vesselId: vesselId || 'unknown',
+              vesselName,
+              volumeL: merge.volumeAdded ? parseFloat(merge.volumeAdded.toString()) : 0,
+            });
+          }
+        }
+
+        // Calculate unassigned volume (total juice - sum of all assignments)
+        const totalJuiceVolume = pressRun.totalJuiceVolume ? parseFloat(pressRun.totalJuiceVolume) : 0;
+        const assignedVolume = vesselAssignments.reduce((sum, a) => sum + a.volumeL, 0);
+        const unassignedVolume = totalJuiceVolume - assignedVolume;
 
         return {
           pressRun: {
@@ -1902,15 +2239,8 @@ export const pressRunRouter = router({
               >,
             ),
           },
-          vesselAssignments: vesselAssignments.map((assignment) => ({
-            batchId: assignment.batchId,
-            batchName: assignment.batchName,
-            vesselId: assignment.vesselId,
-            vesselName: assignment.vesselName,
-            volumeL: assignment.volumeL
-              ? parseFloat(assignment.volumeL.toString())
-              : 0,
-          })),
+          vesselAssignments,
+          unassignedVolume: unassignedVolume > 0.1 ? unassignedVolume : 0, // Only show if > 0.1L to handle rounding
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;

@@ -553,6 +553,9 @@ export const batches = pgTable(
     finalGravity: decimal("final_gravity", { precision: 5, scale: 3 }),
     estimatedAbv: decimal("estimated_abv", { precision: 4, scale: 2 }),
     actualAbv: decimal("actual_abv", { precision: 4, scale: 2 }),
+    // Transfer loss tracking (juice lost during transfer from press run to vessel)
+    transferLossL: decimal("transfer_loss_l", { precision: 10, scale: 3 }),
+    transferLossNotes: text("transfer_loss_notes"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),

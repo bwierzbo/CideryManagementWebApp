@@ -31,7 +31,7 @@ export function AddBatchMeasurementForm({
   const [abv, setAbv] = useState("");
   const [ph, setPh] = useState("");
   const [totalAcidity, setTotalAcidity] = useState("");
-  const [temperature, setTemperature] = useState("");
+  const [temperature, setTemperature] = useState("20");
   const [notes, setNotes] = useState("");
 
   const addMeasurement = trpc.batch.addMeasurement.useMutation({
