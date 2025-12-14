@@ -270,6 +270,14 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                           >
                             {activity.type}
                           </Badge>
+                          {activity.inherited && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-gray-100 text-gray-600 border-gray-300"
+                            >
+                              inherited
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted-foreground">
                             {format(
                               new Date(activity.timestamp),
@@ -280,6 +288,11 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
 
                         <p className="font-medium text-sm">
                           {activity.description}
+                          {activity.inherited && activity.inheritedFrom && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              (from {activity.inheritedFrom})
+                            </span>
+                          )}
                         </p>
 
                         {isExpanded && activity.details &&

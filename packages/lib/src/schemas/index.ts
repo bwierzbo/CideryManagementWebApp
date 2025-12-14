@@ -56,16 +56,14 @@ export const cogsItemTypeSchema = z.enum([
 // Additive type enum schema
 export const additiveTypeSchema = z.enum(
   [
+    "Fermentation Organisms",
     "Sugar & Sweeteners",
     "Flavorings & Adjuncts",
-    "Fermentation Organisms",
     "Enzymes",
-    "Antioxidants & Antimicrobials",
-    "Tannins & Mouthfeel",
-    "Acids & Bases",
     "Nutrients",
-    "Stabilizers",
-    "Refining & Clarifying",
+    "Acids",
+    "Tannins & Mouthfeel",
+    "Preservatives",
   ],
   {
     message: "Invalid additive type",

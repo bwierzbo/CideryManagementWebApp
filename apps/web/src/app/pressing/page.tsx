@@ -298,14 +298,17 @@ function CompletedRunsSection({
     return pressRuns.filter((pressRun) => {
       const searchLower = searchTerm.toLowerCase();
       const varietiesText = pressRun.varieties.join(" ").toLowerCase();
-      const vesselText = pressRun.vesselName?.toLowerCase() || "";
+      const vesselAssignmentsText = (pressRun.vesselAssignments || [])
+        .map((a: { vesselName: string }) => a.vesselName)
+        .join(" ")
+        .toLowerCase();
       const dateText = pressRun.dateCompleted
         ? formatDate(new Date(pressRun.dateCompleted)).toLowerCase()
         : "";
 
       return (
         varietiesText.includes(searchLower) ||
-        vesselText.includes(searchLower) ||
+        vesselAssignmentsText.includes(searchLower) ||
         dateText.includes(searchLower)
       );
     });
@@ -499,12 +502,16 @@ function CompletedRunsSection({
                           ? run.varieties.join(", ")
                           : "Mixed varieties"}
                       </p>
-                      {run.vesselName && (
-                        <div className="flex items-center gap-1 mt-1">
-                          <Droplets className="w-3.5 h-3.5 text-blue-600" />
-                          <p className="text-sm text-blue-700 font-medium">
-                            {run.vesselName}
-                          </p>
+                      {run.vesselAssignments && run.vesselAssignments.length > 0 && (
+                        <div className="mt-1 space-y-0.5">
+                          {run.vesselAssignments.map((assignment: { vesselName: string; volumeL: number }, idx: number) => (
+                            <div key={idx} className="flex items-center gap-1">
+                              <Droplets className="w-3.5 h-3.5 text-blue-600" />
+                              <p className="text-sm text-blue-700 font-medium">
+                                {assignment.volumeL.toFixed(1)}L → {assignment.vesselName}
+                              </p>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

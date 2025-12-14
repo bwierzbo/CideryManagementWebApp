@@ -51,16 +51,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 const ADDITIVE_TYPES = [
+  "Fermentation Organisms",
   "Sugar & Sweeteners",
   "Flavorings & Adjuncts",
-  "Fermentation Organisms",
   "Enzymes",
-  "Antioxidants & Antimicrobials",
-  "Tannins & Mouthfeel",
-  "Acids & Bases",
   "Nutrients",
-  "Stabilizers",
-  "Refining & Clarifying",
+  "Acids",
+  "Tannins & Mouthfeel",
+  "Preservatives",
 ] as const;
 
 const varietySchema = z.object({

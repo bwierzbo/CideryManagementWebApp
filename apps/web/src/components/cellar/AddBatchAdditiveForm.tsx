@@ -50,19 +50,14 @@ const units = [
 ];
 
 const additiveTypes = [
+  { value: "Fermentation Organisms", label: "Fermentation Organisms" },
   { value: "Sugar & Sweeteners", label: "Sugar & Sweeteners" },
   { value: "Flavorings & Adjuncts", label: "Flavorings & Adjuncts" },
-  { value: "Fermentation Organisms", label: "Fermentation Organisms" },
   { value: "Enzymes", label: "Enzymes" },
-  {
-    value: "Antioxidants & Antimicrobials",
-    label: "Antioxidants & Antimicrobials",
-  },
-  { value: "Tannins & Mouthfeel", label: "Tannins & Mouthfeel" },
-  { value: "Acids & Bases", label: "Acids & Bases" },
   { value: "Nutrients", label: "Nutrients" },
-  { value: "Stabilizers", label: "Stabilizers" },
-  { value: "Refining & Clarifying", label: "Refining & Clarifying" },
+  { value: "Acids", label: "Acids" },
+  { value: "Tannins & Mouthfeel", label: "Tannins & Mouthfeel" },
+  { value: "Preservatives", label: "Preservatives" },
 ];
 
 export function AddBatchAdditiveForm({
@@ -147,7 +142,7 @@ export function AddBatchAdditiveForm({
     onError: (error) => {
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to add additive",
         variant: "destructive",
       });
     },
@@ -174,7 +169,9 @@ export function AddBatchAdditiveForm({
     }
 
     const parsedAmount = parseFloat(amount);
-    if (parsedAmount > selectedInventoryItem.availableQuantity) {
+
+    // Only compare if units match - otherwise allow (API will validate)
+    if (unit === selectedInventoryItem.unit && parsedAmount > selectedInventoryItem.availableQuantity) {
       toast({
         title: "Error",
         description: `Amount exceeds available quantity (${selectedInventoryItem.availableQuantity.toFixed(2)} ${selectedInventoryItem.unit} available)`,
@@ -183,10 +180,23 @@ export function AddBatchAdditiveForm({
       return;
     }
 
+    // Use the selected type from dropdown as fallback if varietyItemType is null
+    const additiveType = selectedInventoryItem.varietyItemType || selectedAdditiveType;
+    const additiveName = selectedInventoryItem.varietyName || selectedInventoryItem.productName || "Unknown";
+
+    if (!additiveType || !additiveName) {
+      toast({
+        title: "Error",
+        description: "Could not determine additive type or name. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const additiveData = {
       batchId,
-      additiveType: selectedInventoryItem.varietyItemType,
-      additiveName: selectedInventoryItem.varietyName || selectedInventoryItem.productName,
+      additiveType,
+      additiveName,
       amount: parsedAmount,
       unit,
       addedAt: new Date(addedDate),

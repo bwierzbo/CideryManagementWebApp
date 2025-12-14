@@ -352,25 +352,48 @@ export default function PressRunDetailsPage() {
                 </div>
               )}
 
-            {pressRun?.vesselAssignments && pressRun.vesselAssignments.length > 0 && (
-              <div className="pt-2 border-t">
-                <div className="flex items-start">
-                  <Droplets className="w-4 h-4 text-blue-600 mr-2 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="text-sm text-gray-600 mb-2">Assigned to Vessels</p>
-                    <div className="space-y-1">
-                      {pressRun.vesselAssignments.map((assignment: any) => (
-                        <div key={assignment.batchId} className="flex items-center justify-between text-sm">
-                          <span className="font-medium text-blue-700">
-                            {assignment.vesselName || 'Unknown Vessel'}
-                          </span>
-                          <span className="text-gray-600">
-                            {assignment.volumeL.toFixed(1)}L
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+            {(pressRun?.vesselAssignments?.length > 0 || pressRun?.unassignedVolume > 0) && (
+              <div className="pt-4 border-t">
+                {/* Header row */}
+                <div className="grid grid-cols-2 gap-4 mb-2">
+                  <div>
+                    <p className="text-sm text-gray-600">Volume</p>
                   </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Assigned to Vessel</p>
+                  </div>
+                </div>
+                {/* Data rows */}
+                <div className="space-y-1">
+                  {pressRun.vesselAssignments?.map((assignment: any, index: number) => (
+                    <div key={`${assignment.vesselId}-${index}`} className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="font-medium">
+                          {assignment.volumeL.toFixed(1)}L
+                        </span>
+                      </div>
+                      <div className="flex items-center">
+                        <Droplets className="w-4 h-4 text-blue-600 mr-2" />
+                        <span className="font-medium text-blue-700">
+                          {assignment.vesselName || 'Unknown Vessel'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {pressRun?.unassignedVolume > 0 && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="font-medium text-amber-600">
+                          {pressRun.unassignedVolume.toFixed(1)}L
+                        </span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-medium text-amber-600">
+                          Unassigned
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
