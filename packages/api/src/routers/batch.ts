@@ -2730,6 +2730,49 @@ export const batchRouter = router({
               });
             }
 
+            // SAFETY CHECK: If destination has a batch, MERGE instead of creating child batch
+            const destCheckForPartial = await tx
+              .select({ id: batches.id, name: batches.name, currentVolume: batches.currentVolume })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.vesselId, input.destinationVesselId),
+                  isNull(batches.deletedAt)
+                )
+              )
+              .limit(1);
+
+            if (destCheckForPartial.length > 0) {
+              // Destination has a batch - MERGE partial rack into it
+              const destBatch = destCheckForPartial[0];
+              const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
+              const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
+
+              // Update destination batch with merged volume
+              updatedBatch = await tx
+                .update(batches)
+                .set({
+                  currentVolume: mergedVolumeL.toString(),
+                  currentVolumeUnit: 'L',
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, destBatch.id))
+                .returning();
+
+              // Update source batch - reduce volume (partial rack keeps source active)
+              await tx
+                .update(batches)
+                .set({
+                  currentVolume: volumeRemainingInSourceL.toString(),
+                  currentVolumeUnit: 'L',
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, input.batchId));
+
+              resultMessage = `Partial rack merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L), ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`;
+            } else {
+              // No batch in destination - proceed with normal partial rack (create child batch)
+
             // Generate child batch name using numeric batch number
             const rackDate = input.rackedAt || new Date();
             // Use current timestamp with milliseconds for unique suffix (not rackDate, to ensure uniqueness)
@@ -2877,6 +2920,7 @@ export const batchRouter = router({
             // No separate batchTransfers record needed - avoids duplicate activity entries
 
             resultMessage = `Partial rack complete: ${volumeRackedL.toFixed(1)}L transferred to ${destinationVessel[0].name}, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source vessel`;
+            }
           } else if (isRackToSelf) {
             // 5a. RACK TO SELF: Update volume and transition to aging, don't change vessel
             updatedBatch = await tx
