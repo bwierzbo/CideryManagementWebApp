@@ -97,6 +97,34 @@ const finishPressRunSchema = z.object({
     .min(1, "At least one load with juice volume is required"),
 });
 
+// Schema for creating a press run with all inventory selections in one step
+const createWithInventorySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        purchaseItemId: z.string().uuid("Invalid purchase item ID"),
+        fruitVarietyId: z.string().uuid("Invalid fruit variety ID"),
+        quantityKg: z.number().positive("Quantity must be positive"),
+      }),
+    )
+    .min(1, "At least one inventory item is required"),
+  completionDate: z.date().or(z.string().transform((val) => new Date(val))),
+  totalJuiceVolumeL: z.number().positive("Total juice volume must be positive"),
+  assignments: z
+    .array(
+      z.object({
+        toVesselId: z.string().uuid("Invalid vessel ID"),
+        volumeL: z.number().positive("Volume must be positive"),
+        transferLossL: z.number().min(0).default(0),
+        transferLossNotes: z.string().optional(),
+      }),
+    )
+    .min(1, "At least one vessel assignment is required"),
+  laborHours: z.number().min(0).optional(),
+  workerCount: z.number().int().min(1).optional(),
+  notes: z.string().optional(),
+});
+
 const listPressRunsSchema = z.object({
   status: z.enum(["draft", "in_progress", "completed", "cancelled"]).optional(),
   vendorId: z.string().uuid().optional(),
@@ -157,6 +185,467 @@ export const pressRunRouter = router({
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error creating press run:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create press run",
+        });
+      }
+    }),
+
+  // Create press run with all inventory items and complete it in one step
+  createWithInventory: createRbacProcedure("create", "press_run")
+    .input(createWithInventorySchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // 1. Validate all purchase items exist and have sufficient inventory
+          const purchaseItemIds = input.items.map((item) => item.purchaseItemId);
+
+          const purchaseItems = await tx
+            .select({
+              id: basefruitPurchaseItems.id,
+              purchaseId: basefruitPurchaseItems.purchaseId,
+              fruitVarietyId: basefruitPurchaseItems.fruitVarietyId,
+              quantityKg: basefruitPurchaseItems.quantityKg,
+              isDepleted: basefruitPurchaseItems.isDepleted,
+              totalCost: basefruitPurchaseItems.totalCost,
+              vendorId: basefruitPurchases.vendorId,
+              varietyName: baseFruitVarieties.name,
+            })
+            .from(basefruitPurchaseItems)
+            .innerJoin(
+              basefruitPurchases,
+              eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id),
+            )
+            .innerJoin(
+              baseFruitVarieties,
+              eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+            )
+            .where(
+              and(
+                inArray(basefruitPurchaseItems.id, purchaseItemIds),
+                isNull(basefruitPurchaseItems.deletedAt),
+                eq(basefruitPurchaseItems.isDepleted, false),
+              ),
+            );
+
+          if (purchaseItems.length !== purchaseItemIds.length) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "One or more purchase items not found or already depleted",
+            });
+          }
+
+          // Get consumption data for these items
+          const consumptions = await tx
+            .select({
+              purchaseItemId: pressRunLoads.purchaseItemId,
+              consumedKg: sql<number>`COALESCE(SUM(CAST(${pressRunLoads.appleWeightKg} AS NUMERIC)), 0)`,
+            })
+            .from(pressRunLoads)
+            .where(
+              and(
+                isNull(pressRunLoads.deletedAt),
+                inArray(pressRunLoads.purchaseItemId, purchaseItemIds),
+              ),
+            )
+            .groupBy(pressRunLoads.purchaseItemId);
+
+          const consumptionMap = new Map<string, number>();
+          consumptions.forEach((c) => {
+            consumptionMap.set(c.purchaseItemId, parseFloat(c.consumedKg.toString()));
+          });
+
+          // Validate quantities
+          for (const inputItem of input.items) {
+            const purchaseItem = purchaseItems.find(
+              (p) => p.id === inputItem.purchaseItemId,
+            );
+            if (!purchaseItem) continue;
+
+            const totalKg = parseFloat(purchaseItem.quantityKg || "0");
+            const consumedKg = consumptionMap.get(inputItem.purchaseItemId) || 0;
+            const availableKg = totalKg - consumedKg;
+
+            if (inputItem.quantityKg > availableKg + 0.001) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Requested quantity (${inputItem.quantityKg.toFixed(1)} kg) exceeds available (${availableKg.toFixed(1)} kg) for ${purchaseItem.varietyName}`,
+              });
+            }
+          }
+
+          // 2. Validate vessels exist and have capacity
+          const totalAssignedVolume = input.assignments.reduce(
+            (sum, a) => sum + a.volumeL,
+            0,
+          );
+
+          if (totalAssignedVolume > input.totalJuiceVolumeL + 0.02) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Total assigned volume (${totalAssignedVolume.toFixed(2)}L) exceeds total juice volume (${input.totalJuiceVolumeL.toFixed(2)}L)`,
+            });
+          }
+
+          for (const assignment of input.assignments) {
+            const vessel = await tx
+              .select({
+                id: vessels.id,
+                capacity: vessels.capacity,
+                capacityUnit: vessels.capacityUnit,
+                name: vessels.name,
+              })
+              .from(vessels)
+              .where(
+                and(eq(vessels.id, assignment.toVesselId), isNull(vessels.deletedAt)),
+              )
+              .limit(1);
+
+            if (!vessel.length) {
+              throw new TRPCError({
+                code: "NOT_FOUND",
+                message: `Vessel not found: ${assignment.toVesselId}`,
+              });
+            }
+
+            const existingBatch = await tx
+              .select({
+                id: batches.id,
+                currentVolume: batches.currentVolume,
+              })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.vesselId, assignment.toVesselId),
+                  eq(batches.status, "fermentation"),
+                  isNull(batches.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            const vesselCapacity = parseFloat(vessel[0].capacity?.toString() || "0");
+            const currentVolume =
+              existingBatch.length > 0
+                ? parseFloat(existingBatch[0].currentVolume?.toString() || "0")
+                : 0;
+            const remainingCapacity = vesselCapacity - currentVolume;
+
+            if (assignment.volumeL > remainingCapacity + 0.001) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Assignment volume (${assignment.volumeL}L) exceeds remaining capacity (${remainingCapacity.toFixed(1)}L) in vessel ${vessel[0].name}`,
+              });
+            }
+          }
+
+          // 3. Generate press run name
+          const completionDateStr = input.completionDate.toISOString().split("T")[0];
+          const existingRuns = await tx
+            .select({ pressRunName: pressRuns.pressRunName })
+            .from(pressRuns)
+            .where(
+              and(
+                sql`${pressRuns.pressRunName} LIKE ${completionDateStr + "-%"}`,
+                isNull(pressRuns.deletedAt),
+              ),
+            )
+            .orderBy(desc(pressRuns.pressRunName));
+
+          let sequenceNumber = 1;
+          if (existingRuns.length > 0) {
+            const pattern = new RegExp(`^${completionDateStr}-(\\d+)$`);
+            for (const run of existingRuns) {
+              if (run.pressRunName) {
+                const match = run.pressRunName.match(pattern);
+                if (match) {
+                  const num = parseInt(match[1], 10);
+                  if (num >= sequenceNumber) {
+                    sequenceNumber = num + 1;
+                  }
+                }
+              }
+            }
+          }
+          const pressRunName = `${completionDateStr}-${String(sequenceNumber).padStart(2, "0")}`;
+
+          // 4. Calculate total apple weight
+          const totalAppleWeightKg = input.items.reduce(
+            (sum, item) => sum + item.quantityKg,
+            0,
+          );
+          const extractionRate =
+            totalAppleWeightKg > 0
+              ? input.totalJuiceVolumeL / totalAppleWeightKg
+              : 0;
+
+          // 5. Create the press run
+          const newPressRun = await tx
+            .insert(pressRuns)
+            .values({
+              pressRunName,
+              status: "completed",
+              dateCompleted: completionDateStr,
+              totalAppleWeightKg: totalAppleWeightKg.toString(),
+              totalJuiceVolume: input.totalJuiceVolumeL.toString(),
+              totalJuiceVolumeUnit: "L",
+              extractionRate: extractionRate.toString(),
+              laborHours: input.laborHours?.toString(),
+              notes: input.notes,
+              createdBy: ctx.session?.user?.id,
+              updatedBy: ctx.session?.user?.id,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning();
+
+          const pressRunId = newPressRun[0].id;
+
+          // 6. Create press run loads for each item
+          const depletedPurchaseItemIds: string[] = [];
+
+          for (let i = 0; i < input.items.length; i++) {
+            const item = input.items[i];
+            const purchaseItem = purchaseItems.find(
+              (p) => p.id === item.purchaseItemId,
+            )!;
+
+            await tx.insert(pressRunLoads).values({
+              pressRunId,
+              purchaseItemId: item.purchaseItemId,
+              fruitVarietyId: item.fruitVarietyId,
+              appleWeightKg: item.quantityKg.toString(),
+              originalWeight: item.quantityKg.toString(),
+              originalWeightUnit: "kg",
+              loadSequence: i + 1,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+
+            // Check if this item should be marked as depleted
+            const totalKg = parseFloat(purchaseItem.quantityKg || "0");
+            const consumedKg = consumptionMap.get(item.purchaseItemId) || 0;
+            const remainingAfter = totalKg - consumedKg - item.quantityKg;
+
+            if (remainingAfter <= 0.001) {
+              depletedPurchaseItemIds.push(item.purchaseItemId);
+            }
+          }
+
+          // 7. Mark depleted items
+          if (depletedPurchaseItemIds.length > 0) {
+            await tx
+              .update(basefruitPurchaseItems)
+              .set({
+                isDepleted: true,
+                depletedAt: new Date(),
+                depletedBy: ctx.session?.user?.id,
+                depletedInPressRun: pressRunId,
+                updatedAt: new Date(),
+              })
+              .where(inArray(basefruitPurchaseItems.id, depletedPurchaseItemIds));
+          }
+
+          // 8. Create batches for each vessel assignment
+          const createdBatchIds: string[] = [];
+
+          for (const assignment of input.assignments) {
+            const vessel = await tx
+              .select({ id: vessels.id, name: vessels.name })
+              .from(vessels)
+              .where(eq(vessels.id, assignment.toVesselId))
+              .limit(1);
+
+            const vesselInfo = vessel[0];
+
+            // Check for existing batch
+            const existingBatch = await tx
+              .select({
+                id: batches.id,
+                name: batches.name,
+                currentVolume: batches.currentVolume,
+                currentVolumeUnit: batches.currentVolumeUnit,
+                transferLossL: batches.transferLossL,
+                transferLossNotes: batches.transferLossNotes,
+              })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.vesselId, assignment.toVesselId),
+                  eq(batches.status, "fermentation"),
+                  isNull(batches.deletedAt),
+                ),
+              )
+              .limit(1);
+
+            const transferLossL = assignment.transferLossL || 0;
+            const netVolumeL = assignment.volumeL - transferLossL;
+
+            let batchId: string;
+
+            if (existingBatch.length > 0) {
+              // Add to existing batch
+              batchId = existingBatch[0].id;
+              const currentVolume = parseFloat(
+                existingBatch[0].currentVolume?.toString() || "0",
+              );
+              const newVolume = currentVolume + netVolumeL;
+
+              const updateData: Record<string, unknown> = {
+                currentVolume: newVolume.toString(),
+                currentVolumeUnit: existingBatch[0].currentVolumeUnit || "L",
+                updatedAt: new Date(),
+              };
+
+              if (transferLossL > 0) {
+                const existingLoss = parseFloat(
+                  existingBatch[0].transferLossL?.toString() || "0",
+                );
+                updateData.transferLossL = (existingLoss + transferLossL).toString();
+                if (assignment.transferLossNotes) {
+                  const existingNotes = existingBatch[0].transferLossNotes || "";
+                  updateData.transferLossNotes = existingNotes
+                    ? `${existingNotes}; ${assignment.transferLossNotes}`
+                    : assignment.transferLossNotes;
+                }
+              }
+
+              await tx.update(batches).set(updateData).where(eq(batches.id, batchId));
+
+              // Create merge history
+              await tx.insert(batchMergeHistory).values({
+                targetBatchId: batchId,
+                sourcePressRunId: pressRunId,
+                sourceType: "press_run",
+                volumeAdded: netVolumeL.toString(),
+                volumeAddedUnit: "L",
+                targetVolumeBefore: currentVolume.toString(),
+                targetVolumeBeforeUnit: "L",
+                targetVolumeAfter: newVolume.toString(),
+                targetVolumeAfterUnit: "L",
+                notes: `Press run juice added to existing batch`,
+                mergedAt: input.completionDate,
+                mergedBy: ctx.session?.user?.id,
+                createdAt: new Date(),
+              });
+            } else {
+              // Create new batch
+              const batchCompositionData: BatchComposition[] = input.items.map(
+                (item) => {
+                  const purchaseItem = purchaseItems.find(
+                    (p) => p.id === item.purchaseItemId,
+                  )!;
+                  const fraction = item.quantityKg / totalAppleWeightKg;
+                  return {
+                    varietyName: purchaseItem.varietyName,
+                    fractionOfBatch: fraction,
+                  };
+                },
+              );
+
+              const baseBatchName = generateBatchNameFromComposition({
+                date: input.completionDate,
+                vesselCode: vesselInfo.name || vesselInfo.id.substring(0, 6).toUpperCase(),
+                batchCompositions: batchCompositionData,
+              });
+
+              // Ensure unique batch name
+              let batchName = baseBatchName;
+              let sequenceSuffix = 2;
+              while (true) {
+                const existingBatchWithName = await tx
+                  .select({ id: batches.id })
+                  .from(batches)
+                  .where(and(eq(batches.name, batchName), isNull(batches.deletedAt)))
+                  .limit(1);
+
+                if (existingBatchWithName.length === 0) break;
+                batchName = `${baseBatchName}_${sequenceSuffix}`;
+                sequenceSuffix++;
+              }
+
+              const newBatch = await tx
+                .insert(batches)
+                .values({
+                  vesselId: assignment.toVesselId,
+                  name: batchName,
+                  batchNumber: batchName,
+                  initialVolume: netVolumeL.toString(),
+                  initialVolumeUnit: "L",
+                  currentVolume: netVolumeL.toString(),
+                  currentVolumeUnit: "L",
+                  status: "fermentation",
+                  startDate: input.completionDate,
+                  originPressRunId: pressRunId,
+                  transferLossL: transferLossL > 0 ? transferLossL.toString() : null,
+                  transferLossNotes: assignment.transferLossNotes || null,
+                })
+                .returning({ id: batches.id });
+
+              batchId = newBatch[0].id;
+
+              // Create batch compositions
+              for (const item of input.items) {
+                const purchaseItem = purchaseItems.find(
+                  (p) => p.id === item.purchaseItemId,
+                )!;
+                const fraction = item.quantityKg / totalAppleWeightKg;
+                const juiceVolumeL = assignment.volumeL * fraction;
+                const materialCost = parseFloat(purchaseItem.totalCost || "0") * fraction;
+
+                await tx.insert(batchCompositions).values({
+                  batchId,
+                  purchaseItemId: item.purchaseItemId,
+                  vendorId: purchaseItem.vendorId,
+                  varietyId: item.fruitVarietyId,
+                  fractionOfBatch: fraction.toString(),
+                  inputWeightKg: item.quantityKg.toString(),
+                  juiceVolume: juiceVolumeL.toString(),
+                  juiceVolumeUnit: "L",
+                  materialCost: materialCost.toString(),
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+            }
+
+            createdBatchIds.push(batchId);
+
+            // Update vessel status
+            await tx
+              .update(vessels)
+              .set({ status: "available", updatedAt: new Date() })
+              .where(eq(vessels.id, assignment.toVesselId));
+          }
+
+          // Publish audit event
+          await publishCreateEvent(
+            "press_runs",
+            pressRunId,
+            {
+              pressRunId,
+              pressRunName,
+              status: "completed",
+              totalAppleWeightKg,
+              totalJuiceVolumeL: input.totalJuiceVolumeL,
+              itemCount: input.items.length,
+              vesselCount: input.assignments.length,
+            },
+            ctx.session?.user?.id,
+            "Press run created and completed via Build Press Run UI",
+          );
+
+          return {
+            success: true,
+            pressRunId,
+            pressRunName,
+            batchIds: createdBatchIds,
+            message: "Press run created and completed successfully",
+          };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error creating press run with inventory:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to create press run",
@@ -2857,6 +3346,185 @@ export const pressRunRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch available purchase lines",
+        });
+      }
+    }),
+
+  // Get all available inventory grouped by vendor for the Build Press Run UI
+  getInventoryGroupedByVendor: createRbacProcedure("read", "press_run")
+    .input(
+      z.object({
+        vendorFilter: z.string().optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        // Get all non-depleted purchase items with their consumption data
+        const purchaseItems = await db
+          .select({
+            purchaseItemId: basefruitPurchaseItems.id,
+            purchaseId: basefruitPurchases.id,
+            vendorId: vendors.id,
+            vendorName: vendors.name,
+            fruitVarietyId: basefruitPurchaseItems.fruitVarietyId,
+            varietyName: baseFruitVarieties.name,
+            quantityKg: basefruitPurchaseItems.quantityKg,
+            originalQuantity: basefruitPurchaseItems.quantity,
+            originalUnit: basefruitPurchaseItems.unit,
+            purchaseDate: basefruitPurchases.purchaseDate,
+            harvestDate: basefruitPurchaseItems.harvestDate,
+            pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+            totalCost: basefruitPurchaseItems.totalCost,
+          })
+          .from(basefruitPurchaseItems)
+          .innerJoin(
+            basefruitPurchases,
+            eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id),
+          )
+          .innerJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+          .innerJoin(
+            baseFruitVarieties,
+            eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
+          )
+          .where(
+            and(
+              isNull(basefruitPurchaseItems.deletedAt),
+              isNull(basefruitPurchases.deletedAt),
+              isNull(vendors.deletedAt),
+              isNull(baseFruitVarieties.deletedAt),
+              eq(basefruitPurchaseItems.isDepleted, false),
+              input.vendorFilter
+                ? sql`LOWER(${vendors.name}) LIKE LOWER(${"%" + input.vendorFilter + "%"})`
+                : sql`1=1`,
+            ),
+          )
+          .orderBy(asc(vendors.name), desc(basefruitPurchases.purchaseDate));
+
+        if (purchaseItems.length === 0) {
+          return {
+            vendors: [],
+            summary: {
+              totalVendors: 0,
+              totalItems: 0,
+              totalAvailableKg: 0,
+            },
+          };
+        }
+
+        // Get consumption data for all purchase items - sum of all press run loads
+        const consumptions = await db
+          .select({
+            purchaseItemId: pressRunLoads.purchaseItemId,
+            consumedKg: sql<number>`COALESCE(SUM(CAST(${pressRunLoads.appleWeightKg} AS NUMERIC)), 0)`,
+          })
+          .from(pressRunLoads)
+          .where(
+            and(
+              isNull(pressRunLoads.deletedAt),
+              inArray(
+                pressRunLoads.purchaseItemId,
+                purchaseItems.map((item) => item.purchaseItemId),
+              ),
+            ),
+          )
+          .groupBy(pressRunLoads.purchaseItemId);
+
+        // Create consumption map
+        const consumptionMap = new Map<string, number>();
+        consumptions.forEach((c) => {
+          consumptionMap.set(
+            c.purchaseItemId,
+            parseFloat(c.consumedKg.toString()),
+          );
+        });
+
+        // Group by vendor and calculate available quantities
+        const vendorMap = new Map<
+          string,
+          {
+            vendorId: string;
+            vendorName: string;
+            items: Array<{
+              purchaseItemId: string;
+              purchaseId: string;
+              fruitVarietyId: string;
+              varietyName: string;
+              purchaseDate: Date;
+              harvestDate: string | null;
+              totalQuantityKg: number;
+              consumedQuantityKg: number;
+              availableQuantityKg: number;
+              pricePerUnit: number | null;
+              totalCost: number | null;
+            }>;
+            totalAvailableKg: number;
+          }
+        >();
+
+        for (const item of purchaseItems) {
+          const totalKg = parseFloat(item.quantityKg || "0");
+          const consumedKg = consumptionMap.get(item.purchaseItemId) || 0;
+          const availableKg = Math.max(0, totalKg - consumedKg);
+
+          // Skip items with no available quantity
+          if (availableKg <= 0) continue;
+
+          if (!vendorMap.has(item.vendorId)) {
+            vendorMap.set(item.vendorId, {
+              vendorId: item.vendorId,
+              vendorName: item.vendorName,
+              items: [],
+              totalAvailableKg: 0,
+            });
+          }
+
+          const vendor = vendorMap.get(item.vendorId)!;
+          vendor.items.push({
+            purchaseItemId: item.purchaseItemId,
+            purchaseId: item.purchaseId,
+            fruitVarietyId: item.fruitVarietyId,
+            varietyName: item.varietyName,
+            purchaseDate: item.purchaseDate,
+            harvestDate: item.harvestDate,
+            totalQuantityKg: totalKg,
+            consumedQuantityKg: consumedKg,
+            availableQuantityKg: availableKg,
+            pricePerUnit: item.pricePerUnit
+              ? parseFloat(item.pricePerUnit)
+              : null,
+            totalCost: item.totalCost ? parseFloat(item.totalCost) : null,
+          });
+          vendor.totalAvailableKg += availableKg;
+        }
+
+        // Convert to array and sort
+        const vendorList = Array.from(vendorMap.values()).sort((a, b) =>
+          a.vendorName.localeCompare(b.vendorName),
+        );
+
+        // Calculate summary
+        const totalAvailableKg = vendorList.reduce(
+          (sum, v) => sum + v.totalAvailableKg,
+          0,
+        );
+        const totalItems = vendorList.reduce(
+          (sum, v) => sum + v.items.length,
+          0,
+        );
+
+        return {
+          vendors: vendorList,
+          summary: {
+            totalVendors: vendorList.length,
+            totalItems,
+            totalAvailableKg,
+          },
+        };
+      } catch (error) {
+        console.error("Error fetching grouped inventory:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch inventory",
         });
       }
     }),

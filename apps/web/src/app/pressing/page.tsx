@@ -735,33 +735,46 @@ function CompletedRunsSection({
   );
 }
 
-// Action Button - Start New Press Run
+// Action Buttons - Start New Press Run + Build Press Run
 function ActionButtons({
   onStartNewRun,
   isCreating,
+  onBuildPressRun,
 }: {
   onStartNewRun: () => void;
   isCreating: boolean;
+  onBuildPressRun: () => void;
 }) {
   return (
-    <Button
-      size="lg"
-      className="w-full h-12 bg-amber-600 hover:bg-amber-700"
-      onClick={onStartNewRun}
-      disabled={isCreating}
-    >
-      {isCreating ? (
-        <>
-          <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-          Creating Press Run...
-        </>
-      ) : (
-        <>
-          <Plus className="w-5 h-5 mr-2" />
-          Start New Press Run
-        </>
-      )}
-    </Button>
+    <div className="flex flex-col sm:flex-row gap-3">
+      <Button
+        size="lg"
+        className="flex-1 h-12 bg-amber-600 hover:bg-amber-700"
+        onClick={onBuildPressRun}
+      >
+        <Scale className="w-5 h-5 mr-2" />
+        Build Press Run
+      </Button>
+      <Button
+        size="lg"
+        variant="outline"
+        className="flex-1 h-12"
+        onClick={onStartNewRun}
+        disabled={isCreating}
+      >
+        {isCreating ? (
+          <>
+            <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+            Creating...
+          </>
+        ) : (
+          <>
+            <Plus className="w-5 h-5 mr-2" />
+            Start Load-by-Load
+          </>
+        )}
+      </Button>
+    </div>
   );
 }
 
@@ -950,11 +963,12 @@ export default function PressingPage() {
           </p>
         </div>
 
-        {/* Start New Press Run Button */}
+        {/* Press Run Buttons */}
         <div className="mb-6">
           <ActionButtons
             onStartNewRun={handleStartNewRun}
             isCreating={createPressRunMutation.isPending}
+            onBuildPressRun={() => router.push("/pressing/create")}
           />
         </div>
 
