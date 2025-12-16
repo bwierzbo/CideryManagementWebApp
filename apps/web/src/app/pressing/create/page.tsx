@@ -683,7 +683,7 @@ export default function BuildPressRunPage() {
                       type="number"
                       step="0.1"
                       min="0"
-                      value={assignment.transferLossL || ""}
+                      value={assignment.transferLossL}
                       onChange={(e) =>
                         updateAssignment(index, "transferLossL", parseFloat(e.target.value) || 0)
                       }
@@ -710,9 +710,22 @@ export default function BuildPressRunPage() {
             {/* Volume Summary */}
             <div className="bg-gray-50 p-4 rounded-lg space-y-2 text-sm">
               <div className="flex justify-between">
+                <span>Total Fruit Weight:</span>
+                <span className="font-medium">{totalSelectedKg.toFixed(1)} kg ({(totalSelectedKg * 2.20462).toFixed(1)} lbs)</span>
+              </div>
+              <div className="flex justify-between">
                 <span>Total Juice Volume:</span>
                 <span className="font-medium">{totalJuiceVolumeL.toFixed(2)} L</span>
               </div>
+              <div className="flex justify-between">
+                <span className="font-medium text-green-700">Extraction Rate:</span>
+                <span className="font-medium text-green-700">
+                  {totalSelectedKg > 0 && totalJuiceVolumeL > 0
+                    ? `${((totalJuiceVolumeL / totalSelectedKg) * 100).toFixed(1)}%`
+                    : "—"}
+                </span>
+              </div>
+              <Separator />
               <div className="flex justify-between">
                 <span>Total Assigned:</span>
                 <span className="font-medium">{totalAssignedVolumeL.toFixed(2)} L</span>
@@ -721,7 +734,6 @@ export default function BuildPressRunPage() {
                 <span>Transfer Loss:</span>
                 <span className="font-medium">{totalTransferLossL.toFixed(2)} L</span>
               </div>
-              <Separator />
               <div className="flex justify-between">
                 <span>Remaining:</span>
                 <span

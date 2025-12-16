@@ -527,22 +527,16 @@ export function PressRunCompletionForm({
                         name={`assignments.${index}.transferLossL`}
                         render={({ field }) => {
                           const displayValue =
-                            watchedValues.juiceVolumeUnit === "gal" &&
-                            field.value > 0
-                              ? litersToGallons(field.value)
-                              : watchedValues.juiceVolumeUnit === "gal"
-                                ? ""
-                                : field.value || "";
+                            watchedValues.juiceVolumeUnit === "gal"
+                              ? litersToGallons(field.value || 0)
+                              : field.value || 0;
 
                           const handleChange = (value: string) => {
                             const numValue = parseFloat(value) || 0;
                             const litersValue =
-                              watchedValues.juiceVolumeUnit === "gal" &&
-                              numValue > 0
+                              watchedValues.juiceVolumeUnit === "gal"
                                 ? gallonsToLiters(numValue)
-                                : watchedValues.juiceVolumeUnit === "gal"
-                                  ? 0
-                                  : numValue;
+                                : numValue;
                             field.onChange(litersValue);
                           };
 
@@ -553,7 +547,6 @@ export function PressRunCompletionForm({
                                   type="number"
                                   step="0.01"
                                   min="0"
-                                  placeholder="0"
                                   value={displayValue}
                                   onChange={(e) => handleChange(e.target.value)}
                                   className="h-10"
