@@ -504,7 +504,9 @@ export default function PressRunDetailsPage() {
                         </p>
                       </div>
                       <Badge variant="outline">
-                        {parseFloat(load.appleWeightKg || "0").toFixed(1)} kg
+                        {load.originalWeight && load.originalWeightUnit
+                          ? `${parseFloat(load.originalWeight).toFixed(1)} ${load.originalWeightUnit === "lb" ? "lbs" : load.originalWeightUnit}`
+                          : `${parseFloat(load.appleWeightKg || "0").toFixed(1)} kg`}
                       </Badge>
                     </div>
 
