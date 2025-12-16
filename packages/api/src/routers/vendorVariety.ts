@@ -164,30 +164,65 @@ export const vendorVarietyRouter = router({
             }
           }
 
-          // Check if link already exists
+          // Check if link already exists (including soft-deleted)
           const existingLink = await tx
-            .select({ id: vendorVarieties.id })
+            .select({ id: vendorVarieties.id, deletedAt: vendorVarieties.deletedAt })
             .from(vendorVarieties)
             .where(
               and(
                 eq(vendorVarieties.vendorId, input.vendorId),
                 eq(vendorVarieties.varietyId, varietyId),
-                isNull(vendorVarieties.deletedAt),
               ),
             )
             .limit(1);
 
           if (existingLink.length) {
+            // If the link exists and is NOT deleted, it's already active
+            if (!existingLink[0].deletedAt) {
+              return {
+                success: true,
+                alreadyExists: true,
+                varietyId,
+                varietyName,
+                message: `${vendor[0].name} is already linked to ${varietyName}`,
+              };
+            }
+
+            // If the link exists but IS deleted, un-delete it
+            await tx
+              .update(vendorVarieties)
+              .set({
+                deletedAt: null,
+                updatedAt: new Date(),
+              })
+              .where(eq(vendorVarieties.id, existingLink[0].id));
+
+            // Audit log for vendor-variety link restoration
+            await tx.insert(auditLogs).values({
+              tableName: "vendor_varieties",
+              recordId: existingLink[0].id,
+              operation: "update",
+              newData: {
+                vendorId: input.vendorId,
+                varietyId,
+                vendorName: vendor[0].name,
+                varietyName,
+                action: "restored",
+              },
+              changedBy: ctx.session?.user?.id,
+              reason: "Vendor-variety link restored (previously deleted)",
+            });
+
             return {
               success: true,
-              alreadyExists: true,
+              alreadyExists: false,
               varietyId,
               varietyName,
-              message: `${vendor[0].name} is already linked to ${varietyName}`,
+              message: `${vendor[0].name} linked to ${varietyName} (restored)`,
             };
           }
 
-          // Create the vendor-variety link
+          // Create the vendor-variety link (only if no link exists at all)
           const newLink = await tx
             .insert(vendorVarieties)
             .values({
