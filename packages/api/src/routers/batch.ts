@@ -2924,19 +2924,62 @@ export const batchRouter = router({
             resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
           } else {
             // 5c. MOVE: Transfer batch to new empty vessel
-            // Full rack: Move batch to destination vessel
-            updatedBatch = await tx
-              .update(batches)
-              .set({
-                vesselId: input.destinationVesselId,
-                currentVolume: volumeRackedL.toString(),
-                currentVolumeUnit: 'L',
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, input.batchId))
-              .returning();
+            // SAFETY CHECK: Re-verify destination is actually empty to prevent data loss
+            const destSafetyCheck = await tx
+              .select({ id: batches.id, name: batches.name, currentVolume: batches.currentVolume })
+              .from(batches)
+              .where(
+                and(
+                  eq(batches.vesselId, input.destinationVesselId),
+                  isNull(batches.deletedAt)
+                )
+              )
+              .limit(1);
 
-            resultMessage = `Batch racked to ${destinationVessel[0].name}`;
+            if (destSafetyCheck.length > 0) {
+              // Destination has a batch - MERGE instead of overwriting
+              const destBatch = destSafetyCheck[0];
+              const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
+              const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
+
+              // Update destination batch with merged volume
+              updatedBatch = await tx
+                .update(batches)
+                .set({
+                  currentVolume: mergedVolumeL.toString(),
+                  currentVolumeUnit: 'L',
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, destBatch.id))
+                .returning();
+
+              // Mark source batch as completed (not deleted - preserve history)
+              await tx
+                .update(batches)
+                .set({
+                  vesselId: null,
+                  status: "completed",
+                  currentVolume: "0",
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, input.batchId));
+
+              resultMessage = `Batch racked and merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L)`;
+            } else {
+              // Full rack: Move batch to destination vessel
+              updatedBatch = await tx
+                .update(batches)
+                .set({
+                  vesselId: input.destinationVesselId,
+                  currentVolume: volumeRackedL.toString(),
+                  currentVolumeUnit: 'L',
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, input.batchId))
+                .returning();
+
+              resultMessage = `Batch racked to ${destinationVessel[0].name}`;
+            }
           }
 
           // 6. Update source vessel status to cleaning (only if full rack and not rack-to-self)
