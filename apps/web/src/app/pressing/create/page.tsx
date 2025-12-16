@@ -56,6 +56,14 @@ import {
 import { trpc } from "@/utils/trpc";
 import { formatDate, formatDateForInput } from "@/utils/date-format";
 import { gallonsToLiters, litersToGallons } from "lib";
+import {
+  WeightDisplay,
+  convertWeight,
+  normalizeUnit,
+  formatUnit,
+  toKg,
+  type WeightUnit,
+} from "@/components/ui/weight-display";
 
 // Type for selected inventory items
 interface InventorySelection {
@@ -84,6 +92,7 @@ export default function BuildPressRunPage() {
   const [vendorFilter, setVendorFilter] = useState("");
   const [expandedVendors, setExpandedVendors] = useState<Set<string>>(new Set());
   const [selections, setSelections] = useState<Map<string, InventorySelection>>(new Map());
+  const [vendorWeightUnits, setVendorWeightUnits] = useState<Map<string, WeightUnit>>(new Map());
   const [completionDate, setCompletionDate] = useState(formatDateForInput(new Date()));
   const [totalJuiceVolumeL, setTotalJuiceVolumeL] = useState<number>(0);
   const [juiceVolumeUnit, setJuiceVolumeUnit] = useState<"L" | "gal">("L");
@@ -202,6 +211,20 @@ export default function BuildPressRunPage() {
       } else {
         next.add(vendorId);
       }
+      return next;
+    });
+  };
+
+  // Get the display unit for a vendor (defaults to first item's original unit)
+  const getVendorDisplayUnit = (vendorId: string, defaultUnit: WeightUnit = "kg"): WeightUnit => {
+    return vendorWeightUnits.get(vendorId) || defaultUnit;
+  };
+
+  // Toggle weight unit for an entire vendor section
+  const toggleVendorWeightUnit = (vendorId: string, currentUnit: WeightUnit) => {
+    setVendorWeightUnits((prev) => {
+      const next = new Map(prev);
+      next.set(vendorId, currentUnit === "kg" ? "lb" : "kg");
       return next;
     });
   };
@@ -408,7 +431,14 @@ export default function BuildPressRunPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredVendors.map((vendor) => (
+              {filteredVendors.map((vendor) => {
+                // Get the first item's original unit as the default for this vendor
+                const defaultUnit = vendor.items.length > 0
+                  ? normalizeUnit(vendor.items[0].originalUnit)
+                  : "kg";
+                const displayUnit = getVendorDisplayUnit(vendor.vendorId, defaultUnit);
+
+                return (
                 <Collapsible
                   key={vendor.vendorId}
                   open={expandedVendors.has(vendor.vendorId)}
@@ -427,9 +457,13 @@ export default function BuildPressRunPage() {
                           {vendor.items.length} item(s)
                         </Badge>
                       </div>
-                      <span className="text-sm text-gray-500">
-                        {vendor.totalAvailableKg.toFixed(1)} kg available
-                      </span>
+                      <WeightDisplay
+                        weightKg={vendor.totalAvailableKg}
+                        originalUnit={defaultUnit}
+                        displayUnit={displayUnit}
+                        onToggle={(newUnit) => toggleVendorWeightUnit(vendor.vendorId, displayUnit)}
+                        className="text-sm text-gray-500"
+                      />
                     </div>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -471,7 +505,13 @@ export default function BuildPressRunPage() {
                                 </div>
                               </div>
                               <div className="text-sm text-gray-600">
-                                {item.availableQuantityKg.toFixed(1)} kg available
+                                <WeightDisplay
+                                  weightKg={item.availableQuantityKg}
+                                  originalUnit={normalizeUnit(item.originalUnit)}
+                                  displayUnit={displayUnit}
+                                  onToggle={() => toggleVendorWeightUnit(vendor.vendorId, displayUnit)}
+                                />
+                                {" available"}
                               </div>
                               {isSelected && (
                                 <div className="md:col-span-2 flex items-center gap-2">
@@ -480,17 +520,21 @@ export default function BuildPressRunPage() {
                                     type="number"
                                     step="0.1"
                                     min="0.1"
-                                    max={item.availableQuantityKg}
-                                    value={selection?.useQuantityKg || ""}
-                                    onChange={(e) =>
-                                      handleQuantityChange(
-                                        item.purchaseItemId,
-                                        parseFloat(e.target.value) || 0
-                                      )
+                                    max={convertWeight(item.availableQuantityKg, displayUnit)}
+                                    value={
+                                      selection?.useQuantityKg
+                                        ? convertWeight(selection.useQuantityKg, displayUnit).toFixed(1)
+                                        : ""
                                     }
+                                    onChange={(e) => {
+                                      const valueInDisplayUnit = parseFloat(e.target.value) || 0;
+                                      // Convert to kg for storage
+                                      const valueInKg = toKg(valueInDisplayUnit, displayUnit);
+                                      handleQuantityChange(item.purchaseItemId, valueInKg);
+                                    }}
                                     className="w-24"
                                   />
-                                  <span className="text-sm text-gray-500">kg</span>
+                                  <span className="text-sm text-gray-500">{formatUnit(displayUnit)}</span>
                                   {selection?.useAll && (
                                     <Badge variant="secondary" className="text-xs">
                                       All
@@ -505,7 +549,8 @@ export default function BuildPressRunPage() {
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

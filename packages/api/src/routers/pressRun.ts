@@ -3454,6 +3454,8 @@ export const pressRunRouter = router({
               totalQuantityKg: number;
               consumedQuantityKg: number;
               availableQuantityKg: number;
+              originalQuantity: number;
+              originalUnit: string;
               pricePerUnit: number | null;
               totalCost: number | null;
             }>;
@@ -3489,6 +3491,8 @@ export const pressRunRouter = router({
             totalQuantityKg: totalKg,
             consumedQuantityKg: consumedKg,
             availableQuantityKg: availableKg,
+            originalQuantity: parseFloat(item.originalQuantity || "0"),
+            originalUnit: item.originalUnit || "kg",
             pricePerUnit: item.pricePerUnit
               ? parseFloat(item.pricePerUnit)
               : null,
