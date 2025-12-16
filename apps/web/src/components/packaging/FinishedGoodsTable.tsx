@@ -34,6 +34,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
+import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { DistributeInventoryModal } from "./DistributeInventoryModal";
 import { AdjustInventoryModal } from "./AdjustInventoryModal";
@@ -335,7 +336,7 @@ export function FinishedGoodsTable({
                       <TableCell>
                         {!hasMultipleLots && group.items[0]?.packagedAt ? (
                           <span className="text-sm text-gray-600">
-                            {new Date(group.items[0].packagedAt).toLocaleDateString()}
+                            {formatDate(group.items[0].packagedAt)}
                           </span>
                         ) : hasMultipleLots ? (
                           <span className="text-gray-400 text-xs">Multiple dates</span>
@@ -439,7 +440,7 @@ export function FinishedGoodsTable({
                         <TableCell>
                           <span className="text-sm text-gray-600">
                             {item.packagedAt
-                              ? new Date(item.packagedAt).toLocaleDateString()
+                              ? formatDate(item.packagedAt)
                               : "—"}
                           </span>
                         </TableCell>

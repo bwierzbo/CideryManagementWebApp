@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
-import { formatDateTime } from "@/utils/date-format";
+import { formatDate, formatDateTime } from "@/utils/date-format";
 import { DistributeInventoryModal } from "@/components/packaging/DistributeInventoryModal";
 import { AdjustInventoryModal } from "@/components/packaging/AdjustInventoryModal";
 import { UpdatePricingModal } from "@/components/packaging/UpdatePricingModal";
@@ -362,7 +362,7 @@ export default function FinishedGoodDetailPage() {
                     <p className="font-medium text-sm md:text-base flex items-center gap-1.5">
                       <Calendar className="w-3.5 h-3.5" />
                       {item.packagedAt
-                        ? new Date(item.packagedAt).toLocaleDateString()
+                        ? formatDate(item.packagedAt)
                         : "-"}
                     </p>
                   </div>
@@ -370,7 +370,7 @@ export default function FinishedGoodDetailPage() {
                     <p className="text-xs md:text-sm text-gray-500">Expiration Date</p>
                     <p className="font-medium text-sm md:text-base">
                       {item.expirationDate
-                        ? new Date(item.expirationDate).toLocaleDateString()
+                        ? formatDate(item.expirationDate)
                         : "No expiration"}
                     </p>
                   </div>
@@ -504,7 +504,7 @@ export default function FinishedGoodDetailPage() {
                       <p className="font-medium text-sm md:text-base flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5" />
                         {runData.packagedAt
-                          ? new Date(runData.packagedAt).toLocaleDateString()
+                          ? formatDate(runData.packagedAt)
                           : "-"}
                       </p>
                     </div>
@@ -626,7 +626,7 @@ export default function FinishedGoodDetailPage() {
                           <div>
                             <p className="text-xs md:text-sm text-gray-500">Test Date</p>
                             <p className="font-medium text-sm md:text-base">
-                              {new Date(runData.testDate).toLocaleDateString()}
+                              {formatDate(runData.testDate)}
                             </p>
                           </div>
                         )}

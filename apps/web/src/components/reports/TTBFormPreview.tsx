@@ -15,6 +15,7 @@ import {
   BarChart3,
   FileText,
 } from "lucide-react";
+import { formatDate } from "@/utils/date-format";
 import type { TTBForm512017Data } from "lib";
 
 // tRPC serializes dates as strings, so we need a serialized version of the type
@@ -81,7 +82,7 @@ export function TTBFormPreview({ formData, periodLabel }: TTBFormPreviewProps) {
                 TTB Form 5120.17 - Report of Wine Premises Operations
               </CardTitle>
               <CardDescription className="mt-1">
-                {periodLabel} ({startDate.toLocaleDateString()} - {endDate.toLocaleDateString()})
+                {periodLabel} ({formatDate(startDate)} - {formatDate(endDate)})
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">

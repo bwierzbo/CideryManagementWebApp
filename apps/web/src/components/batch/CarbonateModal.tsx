@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/utils/trpc";
+import { formatDate } from "@/utils/date-format";
 import { toast } from "@/hooks/use-toast";
 import {
   Gauge,
@@ -732,7 +733,7 @@ export function CarbonateModal({
                                     </div>
                                   )}
                                   <div className="text-xs text-muted-foreground mt-1">
-                                    Purchased: {new Date(purchase.purchaseDate).toLocaleDateString()}
+                                    Purchased: {formatDate(purchase.purchaseDate)}
                                   </div>
                                 </div>
                                 {isSelected && (

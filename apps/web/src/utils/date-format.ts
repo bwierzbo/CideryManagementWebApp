@@ -22,8 +22,8 @@ export function formatDate(
   const defaultOptions: Intl.DateTimeFormatOptions = {
     timeZone: timezone || DEFAULT_TZ,
     year: "numeric",
-    month: "short",
-    day: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     ...options,
   };
 
@@ -47,14 +47,15 @@ export function formatDateTime(
   const defaultOptions: Intl.DateTimeFormatOptions = {
     timeZone: timezone || DEFAULT_TZ,
     year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
+    hour12: true,
     ...options,
   };
 
-  return dateObj.toLocaleDateString("en-US", defaultOptions);
+  return dateObj.toLocaleString("en-US", defaultOptions);
 }
 
 /**

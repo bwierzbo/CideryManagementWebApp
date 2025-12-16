@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { trpc } from "@/utils/trpc";
+import { formatDate as formatDateUtil } from "@/utils/date-format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -243,7 +244,7 @@ export function AddBatchAdditiveForm({
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return null;
     try {
-      return new Date(dateStr).toLocaleDateString();
+      return formatDateUtil(dateStr);
     } catch {
       return dateStr;
     }

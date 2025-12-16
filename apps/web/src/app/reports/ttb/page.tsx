@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
+import { formatDate } from "@/utils/date-format";
 import {
   Card,
   CardContent,
@@ -462,7 +463,7 @@ export default function TTBReportsPage() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-sm text-gray-500">
-                              {new Date(report.createdAt).toLocaleDateString()}
+                              {formatDate(report.createdAt)}
                               {report.generatedByName && (
                                 <div className="text-xs">by {report.generatedByName}</div>
                               )}

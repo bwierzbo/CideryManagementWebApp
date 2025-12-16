@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/utils/trpc";
+import { formatDate } from "@/utils/date-format";
 import { toast } from "@/hooks/use-toast";
 import { AlertTriangle, Info, Beaker } from "lucide-react";
 import { calculatePrimingSugar } from "lib";
@@ -362,7 +363,7 @@ export function BottleConditioningModal({
                     ) : sweetenerInventory?.purchases && sweetenerInventory.purchases.length > 0 ? (
                       sweetenerInventory.purchases.map((purchase) => (
                         <SelectItem key={purchase.id} value={purchase.id}>
-                          {purchase.vendorName} - {new Date(purchase.purchaseDate).toLocaleDateString()}
+                          {purchase.vendorName} - {formatDate(purchase.purchaseDate)}
                         </SelectItem>
                       ))
                     ) : (

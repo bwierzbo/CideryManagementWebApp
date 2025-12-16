@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { formatDateTime } from "@/utils/date-format";
 import {
   CheckCircle2,
   Droplets,
@@ -50,7 +51,7 @@ export function PressRunCompletionSuccess({
   const extractionPercentage = completedPressRun.extractionRate * 100;
 
   // Format completion time
-  const completionTime = new Date(completedPressRun.dateCompleted).toLocaleString();
+  const completionTime = formatDateTime(completedPressRun.dateCompleted);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/utils/trpc";
+import { formatDateTime } from "@/utils/date-format";
 import { toast } from "@/hooks/use-toast";
 import {
   CheckCircle2,
@@ -281,7 +282,7 @@ export function CompleteCarbonationModal({
               <div>
                 <span className="text-muted-foreground">Started:</span>{" "}
                 <span className="font-medium">
-                  {new Date(carbonationOperation.startedAt).toLocaleString()}
+                  {formatDateTime(carbonationOperation.startedAt)}
                 </span>
               </div>
 
