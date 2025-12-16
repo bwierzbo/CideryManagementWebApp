@@ -1,6 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
+import {
+  WeightDisplay,
+  type WeightUnit,
+} from "@/components/ui/weight-display";
 import { trpc } from "@/utils/trpc";
 import {
   Dialog,
@@ -74,6 +78,7 @@ export function BatchHistoryModal({
   const [measurementView, setMeasurementView] = useState<"chart" | "list">("chart");
   const [deletingMeasurement, setDeletingMeasurement] = useState<any>(null);
   const [deletingAdditive, setDeletingAdditive] = useState<any>(null);
+  const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
 
   const utils = trpc.useUtils();
 
@@ -359,9 +364,16 @@ export function BatchHistoryModal({
                             {origin.pressRunName || "N/A"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {origin.totalAppleWeightKg
-                              ? `${parseFloat(origin.totalAppleWeightKg).toFixed(1)} kg`
-                              : "N/A"}
+                            {origin.totalAppleWeightKg ? (
+                              <WeightDisplay
+                                weightKg={parseFloat(origin.totalAppleWeightKg)}
+                                originalUnit="lb"
+                                displayUnit={weightDisplayUnit}
+                                onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                              />
+                            ) : (
+                              "N/A"
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {origin.totalJuiceVolume
@@ -376,9 +388,16 @@ export function BatchHistoryModal({
                             {pr.pressRunName || "N/A"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {pr.totalAppleWeightKg
-                              ? `${pr.totalAppleWeightKg.toFixed(1)} kg`
-                              : "N/A"}
+                            {pr.totalAppleWeightKg ? (
+                              <WeightDisplay
+                                weightKg={pr.totalAppleWeightKg}
+                                originalUnit="lb"
+                                displayUnit={weightDisplayUnit}
+                                onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                              />
+                            ) : (
+                              "N/A"
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {`${pr.volumeAdded.toFixed(1)} ${pr.volumeAddedUnit || 'L'}`}
@@ -411,7 +430,7 @@ export function BatchHistoryModal({
                       <TableHead>Source</TableHead>
                       <TableHead>Vendor</TableHead>
                       <TableHead>Variety</TableHead>
-                      <TableHead className="text-right">Weight (kg)</TableHead>
+                      <TableHead className="text-right">Weight</TableHead>
                       <TableHead className="text-right">Volume (L)</TableHead>
                       <TableHead className="text-right">Percentage</TableHead>
                       <TableHead className="text-right">pH</TableHead>
@@ -436,9 +455,16 @@ export function BatchHistoryModal({
                         <TableCell>{item.vendorName}</TableCell>
                         <TableCell>{item.varietyName}</TableCell>
                         <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase"
-                            ? "—"
-                            : item.inputWeightKg.toFixed(1)}
+                          {item.sourceType === "juice_purchase" ? (
+                            "—"
+                          ) : (
+                            <WeightDisplay
+                              weightKg={item.inputWeightKg}
+                              originalUnit="lb"
+                              displayUnit={weightDisplayUnit}
+                              onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                            />
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           {item.juiceVolume.toFixed(1)}

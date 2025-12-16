@@ -1,6 +1,12 @@
 "use client";
 
 import React, { useState, useCallback, useMemo } from "react";
+import {
+  WeightDisplay,
+  toKg,
+  normalizeUnit,
+  type WeightUnit,
+} from "@/components/ui/weight-display";
 import { useRouter } from "next/navigation";
 import {
   Table,
@@ -122,6 +128,7 @@ export function BaseFruitTable({
     varietyId: string;
     varietyName: string;
   } | null>(null);
+  const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
 
   // Sorting state using the reusable hook
   const {
@@ -615,10 +622,13 @@ export function BaseFruitTable({
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-mono">
-                        {formatQuantity(
-                          item.originalQuantity,
-                          item.originalUnit,
-                        )}
+                        <WeightDisplay
+                          weightKg={toKg(item.originalQuantity, normalizeUnit(item.originalUnit))}
+                          originalUnit={normalizeUnit(item.originalUnit)}
+                          displayUnit={weightDisplayUnit}
+                          onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                          decimals={0}
+                        />
                       </TableCell>
                       <TableCell>
                         {item.notes ? (

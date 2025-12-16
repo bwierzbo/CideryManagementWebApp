@@ -3135,7 +3135,10 @@ export const appRouter = router({
           toVesselId: z.string().uuid("Invalid destination vessel ID"),
           volumeL: z.number().positive("Transfer volume must be positive"),
           loss: z.number().min(0, "Loss cannot be negative").optional(),
-          transferDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+          transferDate: z.preprocess(
+            (val) => val === null || val === undefined ? undefined : val,
+            z.date().or(z.string().transform((val) => new Date(val))).optional()
+          ),
           notes: z.string().optional(),
         }),
       )
@@ -3616,6 +3619,9 @@ export const appRouter = router({
                 .update(batches)
                 .set({
                   status: "completed",
+                  currentVolume: "0",
+                  currentVolumeUnit: "L",
+                  vesselId: null,
                   deletedAt: new Date(),
                   updatedAt: new Date(),
                 })

@@ -166,7 +166,8 @@ export function PressRunCompletionForm({
   const netVolumeL = assignedVolumeL - totalTransferLossL;
 
   // Calculate remaining with floating-point tolerance clamping
-  const VOLUME_EPSILON = 0.01; // 10mL tolerance
+  const VOLUME_EPSILON = 0.01; // 10mL tolerance for near-zero clamping
+  const COMPLETION_TOLERANCE_L = 0.5; // 500mL (~0.13 gal) tolerance for form completion
   const rawRemainingVolumeL = canonicalVolumeL - assignedVolumeL;
   const remainingVolumeL = Math.abs(rawRemainingVolumeL) < VOLUME_EPSILON ? 0 : rawRemainingVolumeL;
 
@@ -807,13 +808,13 @@ export function PressRunCompletionForm({
                         <div className="flex justify-between items-center text-sm border-t border-blue-200 pt-2">
                           <span className="text-blue-800">Remaining:</span>
                           <span
-                            className={`font-medium ${remainingVolumeL < 0 ? "text-red-600" : remainingVolumeL > 0.1 ? "text-yellow-600" : "text-green-600"}`}
+                            className={`font-medium ${remainingVolumeL < 0 ? "text-red-600" : remainingVolumeL > COMPLETION_TOLERANCE_L ? "text-yellow-600" : "text-green-600"}`}
                           >
                             {displayRemaining.toFixed(1)}
                             {unit}
                           </span>
                         </div>
-                        {remainingVolumeL < -0.1 && (
+                        {remainingVolumeL < -COMPLETION_TOLERANCE_L && (
                           <div className="bg-red-100 p-2 rounded border border-red-200">
                             <p className="text-sm text-red-800 flex items-center">
                               <AlertTriangle className="w-4 h-4 mr-1" />
@@ -823,7 +824,7 @@ export function PressRunCompletionForm({
                             </p>
                           </div>
                         )}
-                        {remainingVolumeL > 0.1 && (
+                        {remainingVolumeL > COMPLETION_TOLERANCE_L && (
                           <div className="bg-yellow-100 p-2 rounded border border-yellow-200">
                             <p className="text-sm text-yellow-800 flex items-center">
                               <AlertTriangle className="w-4 h-4 mr-1" />
@@ -943,7 +944,7 @@ export function PressRunCompletionForm({
               type="submit"
               className="flex-1 h-12 bg-green-600 hover:bg-green-700"
               disabled={
-                !form.formState.isValid || Math.abs(remainingVolumeL) > 0.1
+                !form.formState.isValid || Math.abs(remainingVolumeL) > COMPLETION_TOLERANCE_L
               }
             >
               <CheckCircle2 className="w-5 h-5 mr-2" />

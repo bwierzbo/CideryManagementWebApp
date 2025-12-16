@@ -141,7 +141,10 @@ const transferSchema = z.object({
     (val) => val === "" || val === null || val === undefined || (typeof val === "number" && isNaN(val)) ? undefined : Number(val),
     z.number().min(0, "Loss cannot be negative").optional()
   ),
-  transferDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  transferDate: z.preprocess(
+    (val) => val === null || val === undefined ? undefined : val,
+    z.date().or(z.string().transform((val) => new Date(val))).optional()
+  ),
   notes: z.string().optional(),
 });
 

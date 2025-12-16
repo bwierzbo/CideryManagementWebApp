@@ -28,6 +28,11 @@ import {
   TrendingUp,
   Droplets,
 } from "lucide-react";
+import {
+  WeightDisplay,
+  normalizeUnit,
+  type WeightUnit,
+} from "@/components/ui/weight-display";
 
 export default function PressRunDetailsPage() {
   const router = useRouter();
@@ -45,6 +50,7 @@ export default function PressRunDetailsPage() {
   const [editingLoad, setEditingLoad] = useState<any>(null);
   const [isUpdatingLoad, setIsUpdatingLoad] = useState(false);
   const [isDeletingLoad, setIsDeletingLoad] = useState(false);
+  const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
 
   // Get tRPC context for cache invalidation
   const utils = trpc.useContext();
@@ -298,7 +304,14 @@ export default function PressRunDetailsPage() {
                 <Scale className="w-4 h-4 text-gray-500 mr-2" />
                 <div>
                   <p className="text-sm text-gray-600">Total Weight</p>
-                  <p className="font-medium">{totalWeightLbs.toFixed(1)} lbs</p>
+                  <p className="font-medium">
+                    <WeightDisplay
+                      weightKg={totalWeight}
+                      originalUnit="lb"
+                      displayUnit={weightDisplayUnit}
+                      onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                    />
+                  </p>
                 </div>
               </div>
               <div className="flex items-center">
@@ -504,9 +517,12 @@ export default function PressRunDetailsPage() {
                         </p>
                       </div>
                       <Badge variant="outline">
-                        {load.originalWeight && load.originalWeightUnit
-                          ? `${parseFloat(load.originalWeight).toFixed(1)} ${load.originalWeightUnit === "lb" ? "lbs" : load.originalWeightUnit}`
-                          : `${parseFloat(load.appleWeightKg || "0").toFixed(1)} kg`}
+                        <WeightDisplay
+                          weightKg={parseFloat(load.appleWeightKg || "0")}
+                          originalUnit={normalizeUnit(load.originalWeightUnit || undefined)}
+                          displayUnit={weightDisplayUnit}
+                          onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                        />
                       </Badge>
                     </div>
 

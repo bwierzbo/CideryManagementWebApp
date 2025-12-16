@@ -51,6 +51,10 @@ import {
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/utils/date-format";
+import {
+  WeightDisplay,
+  type WeightUnit,
+} from "@/components/ui/weight-display";
 
 interface PressRun {
   id: string;
@@ -74,6 +78,7 @@ function ActiveRunsSection({
   onCompletePressRun: (pressRunId: string) => void;
   onCancelPressRun: (pressRunId: string) => void;
 }) {
+  const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
   const {
     data: pressRunsData,
     isLoading,
@@ -179,7 +184,14 @@ function ActiveRunsSection({
                   <Scale className="w-4 h-4 text-gray-500 mr-2" />
                   <div>
                     <p className="text-xs text-gray-600">Total Apples</p>
-                    <p className="font-medium text-sm">{run.totalAppleKg} kg</p>
+                    <p className="font-medium text-sm">
+                      <WeightDisplay
+                        weightKg={run.totalAppleKg}
+                        originalUnit="lb"
+                        displayUnit={weightDisplayUnit}
+                        onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                      />
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center">
@@ -253,6 +265,7 @@ function CompletedRunsSection({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
+  const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
   const [editDateModalOpen, setEditDateModalOpen] = useState(false);
   const [editingPressRun, setEditingPressRun] = useState<{
     id: string;
@@ -559,15 +572,18 @@ function CompletedRunsSection({
                     <div>
                       <p className="text-xs text-gray-600">Apples</p>
                       <p className="font-medium text-sm">
-                        {run.totalAppleWeightKg
-                          ? `${parseFloat(run.totalAppleWeightKg).toFixed(0)} kg`
-                          : "—"}
+                        {run.totalAppleWeightKg ? (
+                          <WeightDisplay
+                            weightKg={parseFloat(run.totalAppleWeightKg)}
+                            originalUnit="lb"
+                            decimals={0}
+                            displayUnit={weightDisplayUnit}
+                            onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                          />
+                        ) : (
+                          "—"
+                        )}
                       </p>
-                      {run.totalAppleWeightKg && (
-                        <p className="text-xs text-gray-500">
-                          {(parseFloat(run.totalAppleWeightKg) * 2.20462).toFixed(0)} lbs
-                        </p>
-                      )}
                     </div>
                     <div>
                       <p className="text-xs text-gray-600">Juice</p>

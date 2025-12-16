@@ -74,6 +74,10 @@ import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { CompleteCarbonationModal } from "@/components/batch/CompleteCarbonationModal";
 import { toast } from "@/hooks/use-toast";
+import {
+  WeightDisplay,
+  type WeightUnit,
+} from "@/components/ui/weight-display";
 
 export default function BatchDetailsPage() {
   const params = useParams();
@@ -99,6 +103,7 @@ export default function BatchDetailsPage() {
   const [editBatchNumber, setEditBatchNumber] = useState("");
   const [isEditingCustomName, setIsEditingCustomName] = useState(false);
   const [editCustomName, setEditCustomName] = useState("");
+  const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
 
   const utils = trpc.useUtils();
 
@@ -1044,8 +1049,13 @@ export default function BatchDetailsPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-3 gap-4 text-sm font-medium bg-gray-50 p-3 rounded-lg">
                     <div>
-                      Total Input Weight: {totalCompositionWeightLbs.toFixed(1)} lbs
-                      <span className="text-xs text-gray-500 ml-1">({totalCompositionWeight.toFixed(1)} kg)</span>
+                      Total Input Weight:{" "}
+                      <WeightDisplay
+                        weightKg={totalCompositionWeight}
+                        originalUnit="lb"
+                        displayUnit={weightDisplayUnit}
+                        onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                      />
                     </div>
                     <div>
                       Total Juice Volume: {totalCompositionVolume.toFixed(1)} L
@@ -1068,9 +1078,7 @@ export default function BatchDetailsPage() {
                         <TableHead>Source</TableHead>
                         <TableHead>Vendor</TableHead>
                         <TableHead>Variety</TableHead>
-                        <TableHead className="text-right">
-                          Weight (lbs)
-                        </TableHead>
+                        <TableHead className="text-right">Weight</TableHead>
                         <TableHead className="text-right">Volume (L)</TableHead>
                         <TableHead className="text-right">% of Batch</TableHead>
                         <TableHead className="text-right">pH</TableHead>
@@ -1096,9 +1104,16 @@ export default function BatchDetailsPage() {
                           </TableCell>
                           <TableCell>{comp.varietyName}</TableCell>
                           <TableCell className="text-right">
-                            {comp.sourceType === "juice_purchase"
-                              ? "—"
-                              : (comp.inputWeightKg * 2.20462).toFixed(1)}
+                            {comp.sourceType === "juice_purchase" ? (
+                              "—"
+                            ) : (
+                              <WeightDisplay
+                                weightKg={comp.inputWeightKg}
+                                originalUnit="lb"
+                                displayUnit={weightDisplayUnit}
+                                onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                              />
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {comp.juiceVolume.toFixed(1)}
