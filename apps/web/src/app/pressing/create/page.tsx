@@ -649,7 +649,7 @@ export default function BuildPressRunPage() {
                       <SelectTrigger>
                         <SelectValue placeholder="Select vessel..." />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="max-h-60 overflow-y-auto">
                         {availableVessels.map((vessel) => (
                           <SelectItem key={vessel.id} value={vessel.id}>
                             <div className="flex items-center justify-between w-full gap-2">
