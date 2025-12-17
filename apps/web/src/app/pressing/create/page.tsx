@@ -111,7 +111,7 @@ export default function BuildPressRunPage() {
     vendorFilter: vendorFilter || undefined,
   });
 
-  const { data: vesselsData, isLoading: vesselsLoading } = trpc.vessel.list.useQuery();
+  const { data: vesselsData, isLoading: vesselsLoading } = trpc.vessel.listWithBatches.useQuery();
 
   // Mutation
   const createMutation = trpc.pressRun.createWithInventory.useMutation({
@@ -140,27 +140,19 @@ export default function BuildPressRunPage() {
 
   const availableVessels = useMemo(() => {
     if (!vesselsData?.vessels) return [];
-    return vesselsData.vessels
-      .filter((v: { deletedAt: string | null }) => !v.deletedAt)
-      .map((vessel: {
-        id: string;
-        name: string | null;
-        capacity: string;
-        currentBatch?: { currentVolume: string } | null
-      }) => {
-        const capacity = parseFloat(vessel.capacity?.toString() || "0");
-        const currentVolume = vessel.currentBatch
-          ? parseFloat(vessel.currentBatch.currentVolume?.toString() || "0")
-          : 0;
-        return {
-          id: vessel.id,
-          name: vessel.name || "Unnamed",
-          capacity,
-          currentVolume,
-          remainingCapacityL: capacity - currentVolume,
-          currentBatch: vessel.currentBatch,
-        };
-      });
+    return vesselsData.vessels.map((vessel) => {
+      const capacity = parseFloat(vessel.capacity?.toString() || "0");
+      const remainingCapacityL = parseFloat(vessel.remainingCapacityL?.toString() || "0");
+      const currentVolume = capacity - remainingCapacityL;
+      return {
+        id: vessel.id,
+        name: vessel.name || "Unnamed",
+        capacity,
+        currentVolume,
+        remainingCapacityL,
+        currentBatch: vessel.currentBatch,
+      };
+    });
   }, [vesselsData]);
 
   const filteredVendors = useMemo(() => {

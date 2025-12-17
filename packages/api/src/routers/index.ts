@@ -2648,7 +2648,7 @@ export const appRouter = router({
             batches,
             and(
               eq(vessels.id, batches.vesselId),
-              eq(batches.status, "fermentation"),
+              inArray(batches.status, ["fermentation", "aging", "conditioning"]),
               isNull(batches.deletedAt),
             ),
           )
