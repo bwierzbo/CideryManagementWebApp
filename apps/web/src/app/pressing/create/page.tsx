@@ -99,6 +99,7 @@ export default function BuildPressRunPage() {
   const [assignments, setAssignments] = useState<VesselAssignment[]>([
     { toVesselId: "", volumeL: 0, transferLossL: 0, transferLossNotes: "" },
   ]);
+  const [vesselVolumeUnit, setVesselVolumeUnit] = useState<"L" | "gal">("L");
   const [laborHours, setLaborHours] = useState<number | undefined>();
   const [workerCount, setWorkerCount] = useState<number | undefined>();
   const [notes, setNotes] = useState("");
@@ -628,10 +629,24 @@ export default function BuildPressRunPage() {
                 <Beaker className="w-4 h-4" />
                 Vessel Assignments
               </Label>
-              <Button type="button" variant="outline" size="sm" onClick={addAssignment}>
-                <Plus className="w-4 h-4 mr-1" />
-                Add Vessel
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={vesselVolumeUnit}
+                  onValueChange={(v: "L" | "gal") => setVesselVolumeUnit(v)}
+                >
+                  <SelectTrigger className="w-24 h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="L">Liters</SelectItem>
+                    <SelectItem value="gal">Gallons</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" size="sm" onClick={addAssignment}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Vessel
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -665,28 +680,48 @@ export default function BuildPressRunPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm">Volume (L)</Label>
+                    <Label className="text-sm">Volume ({vesselVolumeUnit})</Label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
-                      value={assignment.volumeL || ""}
-                      onChange={(e) =>
-                        updateAssignment(index, "volumeL", parseFloat(e.target.value) || 0)
+                      value={
+                        assignment.volumeL
+                          ? vesselVolumeUnit === "gal"
+                            ? parseFloat(litersToGallons(assignment.volumeL).toFixed(2))
+                            : parseFloat(assignment.volumeL.toFixed(2))
+                          : ""
                       }
+                      onChange={(e) => {
+                        const inputValue = parseFloat(e.target.value) || 0;
+                        const valueInLiters = vesselVolumeUnit === "gal"
+                          ? gallonsToLiters(inputValue)
+                          : inputValue;
+                        updateAssignment(index, "volumeL", valueInLiters);
+                      }}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm">Transfer Loss (L)</Label>
+                    <Label className="text-sm">Transfer Loss ({vesselVolumeUnit})</Label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
-                      value={assignment.transferLossL}
-                      onChange={(e) =>
-                        updateAssignment(index, "transferLossL", parseFloat(e.target.value) || 0)
+                      value={
+                        assignment.transferLossL
+                          ? vesselVolumeUnit === "gal"
+                            ? parseFloat(litersToGallons(assignment.transferLossL).toFixed(2))
+                            : parseFloat(assignment.transferLossL.toFixed(2))
+                          : 0
                       }
+                      onChange={(e) => {
+                        const inputValue = parseFloat(e.target.value) || 0;
+                        const valueInLiters = vesselVolumeUnit === "gal"
+                          ? gallonsToLiters(inputValue)
+                          : inputValue;
+                        updateAssignment(index, "transferLossL", valueInLiters);
+                      }}
                     />
                   </div>
 
