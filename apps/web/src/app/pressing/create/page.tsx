@@ -655,7 +655,7 @@ export default function BuildPressRunPage() {
                             <div className="flex items-center justify-between w-full gap-2">
                               <span>{vessel.name}</span>
                               <span className="text-xs text-gray-500">
-                                {vessel.remainingCapacityL.toFixed(0)}L free
+                                ({vessel.remainingCapacityL.toFixed(0)} of {vessel.capacity.toFixed(0)} L available)
                               </span>
                             </div>
                           </SelectItem>
