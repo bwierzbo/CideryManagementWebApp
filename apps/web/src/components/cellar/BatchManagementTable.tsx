@@ -56,7 +56,7 @@ import {
   FlaskConical,
   History,
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatDate } from "@/utils/date-format";
 import { BatchHistoryModal } from "./BatchHistoryModal";
 import { AddBatchMeasurementForm } from "./AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "./AddBatchAdditiveForm";
@@ -395,7 +395,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {format(new Date(batch.startDate), "MMM dd, yyyy")}
+                        {formatDate(batch.startDate)}
                       </TableCell>
                       <TableCell className="text-center">
                         {batch.latestMeasurement?.specificGravity

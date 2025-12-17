@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
   TooltipProps,
 } from "recharts";
-import { format } from "date-fns";
+import { formatDateForChart } from "@/utils/date-format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Beaker, Thermometer, Droplets } from "lucide-react";
 
@@ -81,7 +81,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
       const measurementDate = new Date(m.measurementDate);
       return {
         date: measurementDate.toISOString(),
-        dateLabel: format(measurementDate, "MMM dd"),
+        dateLabel: formatDateForChart(measurementDate),
         sg: m.specificGravity ?? undefined,
         abv: m.abv ?? undefined,
         ph: m.ph ?? undefined,

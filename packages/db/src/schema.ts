@@ -1569,3 +1569,6 @@ export * from "./schema/settings";
 
 // Re-export Square integration schema
 export * from "./schema/square";
+
+// Re-export organization schema
+export * from "./schema/organization";

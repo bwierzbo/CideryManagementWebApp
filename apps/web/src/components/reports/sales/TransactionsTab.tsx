@@ -19,7 +19,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
-import { format } from "date-fns";
+import { formatDate, formatTime } from "@/utils/date-format";
 
 interface TransactionsTabProps {
   startDate: string;
@@ -166,9 +166,9 @@ export function TransactionsTab({ startDate, endDate }: TransactionsTabProps) {
                   {data.transactions.map((tx) => (
                     <tr key={tx.id} className="border-b hover:bg-gray-50">
                       <td className="py-3 px-4 text-gray-500">
-                        {format(new Date(tx.date), "MMM d, yyyy")}
+                        {formatDate(tx.date)}
                         <div className="text-xs text-gray-400">
-                          {format(new Date(tx.date), "h:mm a")}
+                          {formatTime(tx.date)}
                         </div>
                       </td>
                       <td className="py-3 px-4">

@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
-import { format } from "date-fns";
+import { formatDate } from "@/utils/date-format";
 import { MeasurementChart } from "@/components/batch/MeasurementChart";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { LabelComplianceCard } from "@/components/packaging/LabelComplianceCard";
@@ -252,7 +252,7 @@ export default function KegDetailPage() {
                     <div>
                       <p className="text-sm text-gray-600">Purchase Date</p>
                       <p className="font-semibold">
-                        {format(new Date(keg.purchaseDate), "MMM d, yyyy")}
+                        {formatDate(keg.purchaseDate)}
                       </p>
                     </div>
                   )}
@@ -398,10 +398,7 @@ export default function KegDetailPage() {
                               <TableCell>
                                 <div className="flex items-center gap-1 text-sm">
                                   <Calendar className="w-3 h-3 text-gray-400" />
-                                  {format(
-                                    new Date(fill.filledAt),
-                                    "MMM d, yyyy"
-                                  )}
+                                  {formatDate(fill.filledAt)}
                                 </div>
                               </TableCell>
                               <TableCell className="font-medium">
@@ -423,10 +420,7 @@ export default function KegDetailPage() {
                               <TableCell>
                                 {fill.distributedAt ? (
                                   <div className="text-sm">
-                                    {format(
-                                      new Date(fill.distributedAt),
-                                      "MMM d, yyyy"
-                                    )}
+                                    {formatDate(fill.distributedAt)}
                                   </div>
                                 ) : (
                                   <span className="text-gray-400">-</span>
@@ -440,10 +434,7 @@ export default function KegDetailPage() {
                               <TableCell>
                                 {fill.returnedAt ? (
                                   <div className="text-sm">
-                                    {format(
-                                      new Date(fill.returnedAt),
-                                      "MMM d, yyyy"
-                                    )}
+                                    {formatDate(fill.returnedAt)}
                                   </div>
                                 ) : (
                                   <span className="text-gray-400">-</span>
@@ -490,7 +481,7 @@ export default function KegDetailPage() {
                   <div>
                     <p className="text-sm text-gray-500">Last Filled</p>
                     <p className="font-medium">
-                      {format(new Date(fills[0].filledAt), "MMM d, yyyy")}
+                      {formatDate(fills[0].filledAt)}
                     </p>
                   </div>
                 )}
@@ -514,14 +505,14 @@ export default function KegDetailPage() {
                 <div>
                   <p className="text-sm text-gray-500">Registered</p>
                   <p className="font-medium text-sm">
-                    {format(new Date(keg.createdAt), "MMM d, yyyy")}
+                    {formatDate(keg.createdAt)}
                   </p>
                 </div>
                 {keg.updatedAt && keg.updatedAt !== keg.createdAt && (
                   <div>
                     <p className="text-sm text-gray-500">Last Updated</p>
                     <p className="font-medium text-sm">
-                      {format(new Date(keg.updatedAt), "MMM d, yyyy")}
+                      {formatDate(keg.updatedAt)}
                     </p>
                   </div>
                 )}

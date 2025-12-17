@@ -28,7 +28,8 @@ import {
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { startOfMonth, endOfMonth } from "date-fns";
+import { formatDateForInput } from "@/utils/date-format";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { SalesOverviewTab } from "@/components/reports/sales/SalesOverviewTab";
 import { downloadSalesReportPDF, type SalesReportPDFData } from "@/utils/pdf/salesReport";
@@ -43,16 +44,16 @@ const defaultStartDate = startOfMonth(new Date());
 const defaultEndDate = endOfMonth(new Date());
 
 export default function SalesReportPage() {
-  const [startDate, setStartDate] = useState(format(defaultStartDate, "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState(format(defaultEndDate, "yyyy-MM-dd"));
+  const [startDate, setStartDate] = useState(formatDateForInput(defaultStartDate));
+  const [endDate, setEndDate] = useState(formatDateForInput(defaultEndDate));
   const [dateLabel, setDateLabel] = useState("This Month");
   const [activeTab, setActiveTab] = useState("overview");
   const [isExporting, setIsExporting] = useState(false);
 
   // Handle date range changes from picker
   const handleDateRangeChange = (start: Date, end: Date, label: string) => {
-    setStartDate(format(start, "yyyy-MM-dd"));
-    setEndDate(format(end, "yyyy-MM-dd"));
+    setStartDate(formatDateForInput(start));
+    setEndDate(formatDateForInput(end));
     setDateLabel(label);
   };
 

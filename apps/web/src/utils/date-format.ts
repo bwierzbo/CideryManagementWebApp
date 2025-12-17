@@ -59,6 +59,39 @@ export function formatDateTime(
 }
 
 /**
+ * Format a date for chart labels (e.g., "Dec 15")
+ * @param date - ISO date string or Date object
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Formatted date string for charts
+ */
+export function formatDateForChart(date: string | Date, timezone?: string): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+
+  return dateObj.toLocaleDateString("en-US", {
+    timeZone: timezone || DEFAULT_TZ,
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Format time only for display (e.g., "2:30 PM")
+ * @param date - ISO date string or Date object
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Formatted time string in the specified timezone
+ */
+export function formatTime(date: string | Date, timezone?: string): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+
+  return dateObj.toLocaleTimeString("en-US", {
+    timeZone: timezone || DEFAULT_TZ,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+/**
  * Format a date for display in long format (e.g., "October 10, 2025")
  * @param date - ISO date string or Date object
  * @param timezone - IANA timezone string (defaults to Pacific if not provided)
@@ -135,6 +168,42 @@ export function formatDateForInput(date: string | Date, timezone?: string): stri
   });
 
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Format a date for datetime-local inputs (YYYY-MM-DDTHH:mm format)
+ * @param date - ISO date string or Date object
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Date string in YYYY-MM-DDTHH:mm format
+ */
+export function formatDateTimeForInput(date: string | Date, timezone?: string): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  const tz = timezone || DEFAULT_TZ;
+
+  // Format in specified timezone to get the correct date components
+  const year = dateObj.toLocaleDateString("en-US", {
+    timeZone: tz,
+    year: "numeric",
+  });
+  const month = dateObj.toLocaleDateString("en-US", {
+    timeZone: tz,
+    month: "2-digit",
+  });
+  const day = dateObj.toLocaleDateString("en-US", {
+    timeZone: tz,
+    day: "2-digit",
+  });
+  const hour = dateObj.toLocaleTimeString("en-US", {
+    timeZone: tz,
+    hour: "2-digit",
+    hour12: false,
+  });
+  const minute = dateObj.toLocaleTimeString("en-US", {
+    timeZone: tz,
+    minute: "2-digit",
+  });
+
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
 /**

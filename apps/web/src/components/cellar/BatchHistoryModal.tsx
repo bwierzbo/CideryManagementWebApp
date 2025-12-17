@@ -52,7 +52,7 @@ import {
   List,
   Trash2,
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatDate, formatDateTime } from "@/utils/date-format";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { useToast } from "@/hooks/use-toast";
 import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
@@ -284,7 +284,7 @@ export function BatchHistoryModal({
                   <div>
                     <p className="text-sm text-gray-600">Start Date</p>
                     <p className="font-semibold">
-                      {format(new Date(batch.startDate), "MMM dd, yyyy")}
+                      {formatDate(batch.startDate)}
                     </p>
                   </div>
                 </div>
@@ -560,10 +560,7 @@ export function BatchHistoryModal({
                       measurements.map((m) => (
                         <TableRow key={m.id}>
                           <TableCell>
-                            {format(
-                              new Date(m.measurementDate),
-                              "MMM dd, yyyy",
-                            )}
+                            {formatDate(m.measurementDate)}
                           </TableCell>
                           <TableCell className="text-right">
                             {m.specificGravity?.toFixed(3) || "-"}
@@ -651,7 +648,7 @@ export function BatchHistoryModal({
                       additives.map((a) => (
                         <TableRow key={a.id}>
                           <TableCell>
-                            {format(new Date(a.addedAt), "MMM dd, yyyy HH:mm")}
+                            {formatDateTime(a.addedAt)}
                           </TableCell>
                           <TableCell>{a.additiveType}</TableCell>
                           <TableCell>{a.additiveName}</TableCell>
@@ -742,7 +739,7 @@ export function BatchHistoryModal({
             <AlertDialogDescription>
               Are you sure you want to delete this measurement from{" "}
               {deletingMeasurement &&
-                format(new Date(deletingMeasurement.measurementDate), "MMM dd, yyyy")}
+                formatDate(deletingMeasurement.measurementDate)}
               ? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -772,7 +769,7 @@ export function BatchHistoryModal({
               Are you sure you want to delete the additive &quot;{deletingAdditive?.additiveName}&quot;
               added on{" "}
               {deletingAdditive &&
-                format(new Date(deletingAdditive.addedAt), "MMM dd, yyyy")}
+                formatDate(deletingAdditive.addedAt)}
               ? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

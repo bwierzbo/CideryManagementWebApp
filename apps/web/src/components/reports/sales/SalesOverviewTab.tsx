@@ -21,7 +21,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { format } from "date-fns";
+import { formatDateForChart } from "@/utils/date-format";
 
 const CHANNEL_COLORS = [
   "#10b981", // green - tasting room
@@ -83,7 +83,7 @@ export function SalesOverviewTab({
 
   // Format trend data for chart
   const chartData = trendsData?.trends.map((t) => ({
-    date: format(new Date(t.date as string), "MMM d"),
+    date: formatDateForChart(t.date as string),
     revenue: t.revenue,
     units: t.units,
   })) || [];

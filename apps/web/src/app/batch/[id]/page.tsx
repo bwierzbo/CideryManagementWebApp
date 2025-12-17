@@ -67,7 +67,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { format } from "date-fns";
+import { formatDate, formatDateTime, formatDateForInput } from "@/utils/date-format";
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
@@ -209,7 +209,7 @@ export default function BatchDetailsPage() {
 
   const handleStartDateEdit = () => {
     if (batch) {
-      setEditStartDate(format(new Date(batch.startDate), "yyyy-MM-dd"));
+      setEditStartDate(formatDateForInput(batch.startDate));
       setIsEditingStartDate(true);
     }
   };
@@ -519,7 +519,7 @@ export default function BatchDetailsPage() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <span className="text-gray-600">
-                      Started: {format(new Date(batch.startDate), "MMM dd, yyyy")}
+                      Started: {formatDate(batch.startDate)}
                     </span>
                     <Button
                       variant="ghost"
@@ -724,7 +724,7 @@ export default function BatchDetailsPage() {
                       </div>
                     ) : (
                       <div className="text-lg font-medium">
-                        {format(new Date(batch.startDate), "MMM dd, yyyy")}
+                        {formatDate(batch.startDate)}
                       </div>
                     )}
                   </div>
@@ -734,7 +734,7 @@ export default function BatchDetailsPage() {
                         End Date
                       </label>
                       <div className="text-lg font-medium">
-                        {format(new Date(batch.endDate), "MMM dd, yyyy")}
+                        {formatDate(batch.endDate)}
                       </div>
                     </div>
                   )}
@@ -790,7 +790,7 @@ export default function BatchDetailsPage() {
                       Created
                     </label>
                     <div className="text-sm text-gray-700">
-                      {format(new Date(batch.createdAt), "MMM dd, yyyy HH:mm")}
+                      {formatDateTime(batch.createdAt)}
                     </div>
                   </div>
                   <div>
@@ -798,7 +798,7 @@ export default function BatchDetailsPage() {
                       Last Updated
                     </label>
                     <div className="text-sm text-gray-700">
-                      {format(new Date(batch.updatedAt), "MMM dd, yyyy HH:mm")}
+                      {formatDateTime(batch.updatedAt)}
                     </div>
                   </div>
                 </div>
@@ -818,10 +818,7 @@ export default function BatchDetailsPage() {
                   <div className="space-y-3">
                     <div className="text-sm text-gray-600 mb-3">
                       Taken on{" "}
-                      {format(
-                        new Date(latestMeasurement.measurementDate),
-                        "MMM dd, yyyy",
-                      )}
+                      {formatDate(latestMeasurement.measurementDate)}
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       {latestMeasurement.specificGravity && (
@@ -926,7 +923,7 @@ export default function BatchDetailsPage() {
                       return (
                         <TableRow key={op.id}>
                           <TableCell>
-                            {format(new Date(op.startedAt), "MMM d, yyyy HH:mm")}
+                            {formatDateTime(op.startedAt)}
                           </TableCell>
                           <TableCell>{op.targetCO2Volumes} vol</TableCell>
                           <TableCell>{op.pressureApplied} PSI</TableCell>
@@ -1172,10 +1169,7 @@ export default function BatchDetailsPage() {
                     {history.measurements.map((measurement) => (
                       <TableRow key={measurement.id}>
                         <TableCell>
-                          {format(
-                            new Date(measurement.measurementDate),
-                            "MMM dd, yyyy",
-                          )}
+                          {formatDate(measurement.measurementDate)}
                         </TableCell>
                         <TableCell className="text-right">
                           {measurement.specificGravity?.toFixed(3) || "-"}
@@ -1241,10 +1235,7 @@ export default function BatchDetailsPage() {
                     {history.additives.map((additive) => (
                       <TableRow key={additive.id}>
                         <TableCell>
-                          {format(
-                            new Date(additive.addedAt),
-                            "MMM dd, yyyy HH:mm",
-                          )}
+                          {formatDateTime(additive.addedAt)}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">
@@ -1306,10 +1297,7 @@ export default function BatchDetailsPage() {
                     {transfers.transfers.map((transfer) => (
                       <TableRow key={transfer.id}>
                         <TableCell>
-                          {format(
-                            new Date(transfer.transferredAt),
-                            "MMM dd, yyyy HH:mm",
-                          )}
+                          {formatDateTime(transfer.transferredAt)}
                         </TableCell>
                         <TableCell>{transfer.sourceVesselName}</TableCell>
                         <TableCell>{transfer.destinationVesselName}</TableCell>

@@ -21,7 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Package, Calendar, MapPin, Loader2, Wine, Edit } from "lucide-react";
-import { format } from "date-fns";
+import { formatDate } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
 import { EditKegModal } from "./EditKegModal";
 
@@ -139,7 +139,7 @@ export function KegDetailsModal({
                     <div>
                       <p className="text-sm text-gray-600">Purchase Date</p>
                       <p className="font-semibold">
-                        {format(new Date(keg.purchaseDate), "MMM d, yyyy")}
+                        {formatDate(keg.purchaseDate)}
                       </p>
                     </div>
                   )}
@@ -208,10 +208,7 @@ export function KegDetailsModal({
                                 <TableCell>
                                   <div className="flex items-center gap-1 text-sm">
                                     <Calendar className="w-3 h-3 text-gray-400" />
-                                    {format(
-                                      new Date(fill.filledAt),
-                                      "MMM d, yyyy",
-                                    )}
+                                    {formatDate(fill.filledAt)}
                                   </div>
                                 </TableCell>
                                 <TableCell className="font-medium">
@@ -233,10 +230,7 @@ export function KegDetailsModal({
                                 <TableCell>
                                   {fill.distributedAt ? (
                                     <div className="text-sm">
-                                      {format(
-                                        new Date(fill.distributedAt),
-                                        "MMM d, yyyy",
-                                      )}
+                                      {formatDate(fill.distributedAt)}
                                     </div>
                                   ) : (
                                     <span className="text-gray-400">-</span>
@@ -255,10 +249,7 @@ export function KegDetailsModal({
                                 <TableCell>
                                   {fill.returnedAt ? (
                                     <div className="text-sm">
-                                      {format(
-                                        new Date(fill.returnedAt),
-                                        "MMM d, yyyy",
-                                      )}
+                                      {formatDate(fill.returnedAt)}
                                     </div>
                                   ) : (
                                     <span className="text-gray-400">-</span>

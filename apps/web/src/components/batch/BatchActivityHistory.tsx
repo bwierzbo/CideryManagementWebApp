@@ -39,7 +39,7 @@ import {
   BarChart3,
   List,
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatDateTime } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
 import { EditMeasurementDialog } from "@/components/cellar/EditMeasurementDialog";
@@ -279,10 +279,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                             </Badge>
                           )}
                           <span className="text-xs text-muted-foreground">
-                            {format(
-                              new Date(activity.timestamp),
-                              "MMM dd, yyyy 'at' h:mm a",
-                            )}
+                            {formatDateTime(activity.timestamp)}
                           </span>
                         </div>
 
@@ -648,7 +645,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                       <div key={idx} className="text-sm">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(m.measurementDate), "MMM dd, yyyy 'at' h:mm a")}
+                            {formatDateTime(m.measurementDate)}
                           </span>
                         </div>
                         <div className="text-gray-700">
@@ -674,7 +671,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                       <div key={idx} className="text-sm">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(a.timestamp), "MMM dd, yyyy 'at' h:mm a")}
+                            {formatDateTime(a.timestamp)}
                           </span>
                         </div>
                         <div className="text-gray-700">{a.description}</div>
@@ -695,7 +692,7 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
                       <div key={idx} className="text-sm">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(t.timestamp), "MMM dd, yyyy 'at' h:mm a")}
+                            {formatDateTime(t.timestamp)}
                           </span>
                         </div>
                         <div className="text-gray-700">{t.description}</div>

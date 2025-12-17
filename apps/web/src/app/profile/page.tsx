@@ -31,7 +31,7 @@ import {
   Lock,
 } from "lucide-react";
 import { api } from "@/server/client";
-import { format } from "date-fns";
+import { formatDate, formatDateTime } from "@/utils/date-format";
 
 export default function ProfilePage() {
   const { data: session, update } = useSession();
@@ -244,7 +244,7 @@ export default function ProfilePage() {
                             Member Since
                           </div>
                           <span className="text-sm">
-                            {format(new Date(profile.createdAt), "MMM d, yyyy")}
+                            {formatDate(profile.createdAt)}
                           </span>
                         </div>
 
@@ -255,7 +255,7 @@ export default function ProfilePage() {
                               Last Login
                             </div>
                             <span className="text-sm">
-                              {format(new Date(profile.lastLoginAt), "MMM d, yyyy h:mm a")}
+                              {formatDateTime(profile.lastLoginAt)}
                             </span>
                           </div>
                         )}

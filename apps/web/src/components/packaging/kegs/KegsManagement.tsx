@@ -40,7 +40,7 @@ import {
   AlertTriangle,
   XCircle,
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatDate } from "@/utils/date-format";
 import { toast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -504,7 +504,7 @@ export function KegsManagement() {
                             onClick={() => router.push(`/keg-fills/${keg.latestFillId}`)}
                             className="text-xs text-gray-500 hover:text-blue-600 transition-colors cursor-pointer"
                           >
-                            Filled: {format(new Date(keg.latestFillDate), "MMM d, yyyy")}
+                            Filled: {formatDate(keg.latestFillDate)}
                           </button>
                         )}
                       </div>

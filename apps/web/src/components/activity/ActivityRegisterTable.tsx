@@ -34,7 +34,7 @@ import {
   Calendar,
   ArrowUpDown,
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatDateTime } from "@/utils/date-format";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -236,7 +236,7 @@ export function ActivityRegisterTable() {
                     return (
                       <TableRow key={activity.id}>
                         <TableCell className="whitespace-nowrap">
-                          {format(new Date(activity.activity_date), "MMM d, yyyy h:mm a")}
+                          {formatDateTime(activity.activity_date)}
                         </TableCell>
                         <TableCell>
                           <Badge className={activityConfig.color} variant="secondary">

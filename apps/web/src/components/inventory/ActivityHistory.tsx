@@ -17,7 +17,7 @@ import {
   FlaskConical,
   ExternalLink,
 } from "lucide-react";
-import { format } from "date-fns";
+import { formatDateTime } from "@/utils/date-format";
 import { cn } from "@/lib/utils";
 
 export interface ActivityEvent {
@@ -186,10 +186,7 @@ export function ActivityHistory({
                           {label}
                         </Badge>
                         <span className="text-xs text-muted-foreground">
-                          {format(
-                            new Date(activity.timestamp),
-                            "MMM dd, yyyy 'at' h:mm a"
-                          )}
+                          {formatDateTime(activity.timestamp)}
                         </span>
                       </div>
 

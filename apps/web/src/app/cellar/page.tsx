@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { format } from "date-fns";
+import { formatDateTimeForInput } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -645,7 +645,7 @@ function TankTransferForm({
           id="transferDate"
           type="datetime-local"
           {...register("transferDate")}
-          defaultValue={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+          defaultValue={formatDateTimeForInput(new Date())}
           className="w-full"
         />
         {errors.transferDate && (

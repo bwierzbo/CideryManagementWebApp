@@ -44,7 +44,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { api } from "@/server/client";
-import { format } from "date-fns";
+import { formatDate } from "@/utils/date-format";
 
 export default function UserManagementPage() {
   const { data: session } = useSession();
@@ -164,12 +164,12 @@ export default function UserManagementPage() {
                     <TableCell>{getStatusBadge(user.isActive)}</TableCell>
                     <TableCell>
                       {user.lastLoginAt
-                        ? format(new Date(user.lastLoginAt), "MMM d, yyyy")
+                        ? formatDate(user.lastLoginAt)
                         : "Never"
                       }
                     </TableCell>
                     <TableCell>
-                      {format(new Date(user.createdAt), "MMM d, yyyy")}
+                      {formatDate(user.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button

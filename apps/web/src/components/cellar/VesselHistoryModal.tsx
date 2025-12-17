@@ -2,7 +2,7 @@
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/utils/trpc";
-import { format } from "date-fns";
+import { formatDateTime } from "@/utils/date-format";
 import {
   Loader2,
   Beaker,
@@ -114,7 +114,7 @@ export function VesselHistoryModal({ vesselId, open, onClose }: VesselHistoryMod
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                        <span>{format(new Date(activity.timestamp), "MMM d, yyyy 'at' h:mm a")}</span>
+                        <span>{formatDateTime(activity.timestamp)}</span>
                         {activity.batchName && (
                           <>
                             <span>|</span>
