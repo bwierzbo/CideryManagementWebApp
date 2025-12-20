@@ -5,11 +5,25 @@ import {
   enhancedAuditMiddleware,
   createAuditMiddleware,
 } from "./middleware/audit";
-import type { Session } from "next-auth";
+
+// Define our own User type to avoid NextAuth module augmentation issues
+export interface AuthUser {
+  id: string;
+  email?: string | null;
+  name?: string | null;
+  image?: string | null;
+  role: string;
+  isActive?: boolean;
+}
+
+export interface AuthSession {
+  user: AuthUser;
+  expires: string;
+}
 
 export interface Context {
-  session: Session | null;
-  user: Session["user"] | null;
+  session: AuthSession | null;
+  user: AuthUser | null;
 }
 
 /**

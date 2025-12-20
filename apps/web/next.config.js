@@ -2,110 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  // Turbopack configuration (required for Next.js 16)
+  turbopack: {},
+
   // Performance optimizations
   experimental: {
     optimizePackageImports: ["lucide-react", "date-fns"],
-    turbo: {
-      rules: {
-        "*.svg": {
-          loaders: ["@svgr/webpack"],
-          as: "*.js",
-        },
-      },
-    },
-  },
-
-  // Bundle optimization
-  webpack: (config, { dev, isServer, webpack }) => {
-    // Inject self polyfill at the top of server bundles
-    if (isServer) {
-      config.plugins.push(
-        new webpack.BannerPlugin({
-          banner: 'if (typeof self === "undefined") { var self = global; }',
-          raw: true,
-          entryOnly: false,
-        })
-      );
-    }
-
-    // Enable SWC minification for better performance
-    if (!dev && !isServer) {
-      // Only apply aggressive code splitting for client bundles
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: {
-          chunks: "all",
-          cacheGroups: {
-            // Separate vendor chunks for better caching
-            vendor: {
-              test: /[\\/]node_modules[\\/]/,
-              name: "vendors",
-              chunks: "all",
-              enforce: true,
-            },
-            // Create separate chunks for large libraries
-            react: {
-              test: /[\\/]node_modules[\\/](react|react-dom)[\\/]/,
-              name: "react",
-              chunks: "all",
-              enforce: true,
-            },
-            // UI library chunk
-            ui: {
-              test: /[\\/]node_modules[\\/](@radix-ui|@headlessui|framer-motion)[\\/]/,
-              name: "ui-libs",
-              chunks: "all",
-              enforce: true,
-            },
-            // Chart/visualization libraries
-            charts: {
-              test: /[\\/]node_modules[\\/](recharts|d3|chart\.js)[\\/]/,
-              name: "charts",
-              chunks: "all",
-              enforce: true,
-            },
-            // PDF and export libraries
-            pdf: {
-              test: /[\\/]node_modules[\\/](@react-pdf|jspdf|html2canvas)[\\/]/,
-              name: "pdf-libs",
-              chunks: "all",
-              enforce: true,
-            },
-            // Utility libraries
-            utils: {
-              test: /[\\/]node_modules[\\/](lodash|date-fns|clsx|class-variance-authority)[\\/]/,
-              name: "utils",
-              chunks: "all",
-              enforce: true,
-            },
-            // Common application code
-            common: {
-              name: "common",
-              minChunks: 2,
-              chunks: "all",
-              enforce: true,
-            },
-          },
-        },
-      };
-
-      // Tree shaking for better bundle size
-      config.optimization.usedExports = true;
-    }
-
-    // Optimize images
-    config.module.rules.push({
-      test: /\.(png|jpe?g|gif|svg)$/,
-      use: {
-        loader: "file-loader",
-        options: {
-          publicPath: "/_next/static/images/",
-          outputPath: "static/images/",
-        },
-      },
-    });
-
-    return config;
   },
 
   // Image optimization
@@ -128,23 +30,6 @@ const nextConfig = {
     // Number of pages that should be kept simultaneously without being disposed
     pagesBufferLength: 2,
   },
-
-  // Generate bundle analyzer in production
-  ...(process.env.ANALYZE === "true" && {
-    webpack: (config, { dev, isServer }) => {
-      if (!dev && !isServer) {
-        const { BundleAnalyzerPlugin } = require("webpack-bundle-analyzer");
-        config.plugins.push(
-          new BundleAnalyzerPlugin({
-            analyzerMode: "static",
-            reportFilename: "../bundle-analysis.html",
-            openAnalyzer: false,
-          }),
-        );
-      }
-      return config;
-    },
-  }),
 
   // Performance monitoring
   generateBuildId: async () => {
