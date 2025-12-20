@@ -160,14 +160,17 @@ export function RackingModal({
   }, [open, reset, setValue, currentVolumeL, sourceVesselCapacityUnit]);
 
   const rackBatchMutation = trpc.batch.rackBatch.useMutation({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       toast({
         title: "Batch Racked Successfully",
         description: data.message,
       });
-      utils.vessel.list.invalidate();
-      utils.vessel.liquidMap.invalidate();
-      utils.batch.list.invalidate();
+      // Await invalidations to ensure data is refetched before closing modal
+      await Promise.all([
+        utils.vessel.list.invalidate(),
+        utils.vessel.liquidMap.invalidate(),
+        utils.batch.list.invalidate(),
+      ]);
       onClose();
     },
     onError: (error) => {

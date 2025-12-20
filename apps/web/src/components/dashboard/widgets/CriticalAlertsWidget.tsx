@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { AlertTriangle, CheckCircle2, AlertCircle, Clock, Beaker } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { WidgetWrapper } from "./WidgetWrapper";
 import { WidgetProps, WidgetConfig } from "./types";
@@ -30,7 +30,7 @@ function AlertItem({ type, title, description, link, compact }: AlertItemProps) 
     },
     info: {
       bg: "bg-blue-50 border-blue-200",
-      icon: <Clock className="w-4 h-4 text-blue-600" />,
+      icon: <Beaker className="w-4 h-4 text-blue-600" />,
       text: "text-blue-800",
     },
   };
@@ -66,45 +66,77 @@ function AlertItem({ type, title, description, link, compact }: AlertItemProps) 
 
 /**
  * Critical Alerts Widget
- * Shows critical alerts that need immediate attention
+ * Shows critical alerts based on SG-based fermentation tracking:
+ * - Stalled fermentations (highest priority)
+ * - Batches needing terminal confirmation
+ * - Overdue measurements based on fermentation stage
  */
 export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
-  // Get tasks data to check for overdue measurements
-  const { data: tasksData, isPending: tasksPending } = trpc.dashboard.getTasks.useQuery({
-    measurementThresholdDays: 7, // Only show really overdue ones as critical
-    limit: 5,
+  // Get tasks data using SG-based fermentation tracking
+  const { data: tasksData, isPending: tasksPending, refetch } = trpc.dashboard.getTasks.useQuery({
+    limit: 20, // Get more to properly categorize
   });
 
   const isLoading = tasksPending;
 
-  // Build alerts from available data
+  // Build alerts from available data based on task types
   const alerts: AlertItemProps[] = [];
 
-  // Add critical alerts for very overdue measurements (7+ days)
   if (tasksData?.tasks) {
-    const criticalTasks = tasksData.tasks.filter((t) => t.priority === "high");
-    if (criticalTasks.length > 0) {
+    // Stalled fermentations are always critical
+    const stalledTasks = tasksData.tasks.filter((t) => t.taskType === "stalled_fermentation");
+    if (stalledTasks.length > 0) {
+      const avgPercent = Math.round(
+        stalledTasks.reduce((sum, t) => sum + t.percentFermented, 0) / stalledTasks.length
+      );
       alerts.push({
         type: "critical",
-        title: `${criticalTasks.length} batch${criticalTasks.length > 1 ? "es" : ""} overdue for measurement`,
-        description: `Last measured ${criticalTasks[0].daysSinceLastMeasurement}+ days ago`,
+        title: `${stalledTasks.length} stalled fermentation${stalledTasks.length > 1 ? "s" : ""}`,
+        description: `Avg ${avgPercent}% complete - consider temperature adjustment or yeast addition`,
         link: "/cellar",
       });
     }
 
-    // Add warnings for moderately overdue (5-6 days)
-    const warningTasks = tasksData.tasks.filter((t) => t.priority === "medium");
-    if (warningTasks.length > 0) {
+    // High priority measurements (very overdue)
+    const highPriorityMeasurements = tasksData.tasks.filter(
+      (t) => t.taskType === "measurement_needed" && t.priority === "high"
+    );
+    if (highPriorityMeasurements.length > 0) {
+      alerts.push({
+        type: "critical",
+        title: `${highPriorityMeasurements.length} batch${highPriorityMeasurements.length > 1 ? "es" : ""} very overdue for measurement`,
+        description: `Significantly past recommended measurement schedule`,
+        link: "/cellar",
+      });
+    }
+
+    // Terminal confirmation needed
+    const terminalTasks = tasksData.tasks.filter((t) => t.taskType === "confirm_terminal");
+    if (terminalTasks.length > 0) {
       alerts.push({
         type: "warning",
-        title: `${warningTasks.length} batch${warningTasks.length > 1 ? "es" : ""} need measurement soon`,
-        description: "Approaching measurement threshold",
+        title: `${terminalTasks.length} batch${terminalTasks.length > 1 ? "es" : ""} need terminal confirmation`,
+        description: "Take another hydrometer reading to confirm final gravity",
+        link: "/cellar",
+      });
+    }
+
+    // Medium priority measurements (due based on stage)
+    const mediumPriorityMeasurements = tasksData.tasks.filter(
+      (t) => t.taskType === "measurement_needed" && t.priority === "medium"
+    );
+    if (mediumPriorityMeasurements.length > 0) {
+      alerts.push({
+        type: "info",
+        title: `${mediumPriorityMeasurements.length} batch${mediumPriorityMeasurements.length > 1 ? "es" : ""} due for measurement`,
+        description: "Measurement recommended based on fermentation stage",
         link: "/cellar",
       });
     }
   }
 
   const handleRefresh = () => {
+    refetch();
     onRefresh?.();
   };
 
@@ -121,7 +153,7 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
         <div className="text-center py-4">
           <CheckCircle2 className="w-10 h-10 mx-auto text-green-400 mb-2" />
           <p className="text-sm text-gray-600 font-medium">All Clear</p>
-          <p className="text-xs text-gray-500">No critical alerts</p>
+          <p className="text-xs text-gray-500">No fermentation alerts</p>
         </div>
       }
     >

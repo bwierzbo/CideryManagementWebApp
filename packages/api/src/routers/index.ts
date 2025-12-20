@@ -3059,6 +3059,8 @@ export const appRouter = router({
               ph: batchMeasurements.ph,
               temperature: batchMeasurements.temperature,
               measurementDate: batchMeasurements.measurementDate,
+              isEstimated: batchMeasurements.isEstimated,
+              estimateSource: batchMeasurements.estimateSource,
             })
             .from(batchMeasurements)
             .where(
@@ -3069,10 +3071,48 @@ export const appRouter = router({
             )
             .orderBy(desc(batchMeasurements.measurementDate));
 
-          // Group by batch and take the latest
+          // Group by batch and merge to get latest non-null value for each field
+          // Also track when each field was last measured and whether it's estimated
           for (const m of measurementsList) {
             if (!latestMeasurements.has(m.batchId)) {
-              latestMeasurements.set(m.batchId, m);
+              // First measurement for this batch - use as base
+              latestMeasurements.set(m.batchId, {
+                batchId: m.batchId,
+                specificGravity: m.specificGravity,
+                specificGravityDate: m.specificGravity !== null ? m.measurementDate : null,
+                specificGravityIsEstimated: m.specificGravity !== null ? m.isEstimated : null,
+                abv: m.abv,
+                abvDate: m.abv !== null ? m.measurementDate : null,
+                ph: m.ph,
+                phDate: m.ph !== null ? m.measurementDate : null,
+                phIsEstimated: m.ph !== null ? m.isEstimated : null,
+                temperature: m.temperature,
+                temperatureDate: m.temperature !== null ? m.measurementDate : null,
+                measurementDate: m.measurementDate, // Keep the most recent date
+                isEstimated: m.isEstimated, // Overall flag for the latest measurement
+                estimateSource: m.estimateSource,
+              });
+            } else {
+              // Fill in any null values from older measurements
+              const existing = latestMeasurements.get(m.batchId);
+              if (existing.specificGravity === null && m.specificGravity !== null) {
+                existing.specificGravity = m.specificGravity;
+                existing.specificGravityDate = m.measurementDate;
+                existing.specificGravityIsEstimated = m.isEstimated;
+              }
+              if (existing.abv === null && m.abv !== null) {
+                existing.abv = m.abv;
+                existing.abvDate = m.measurementDate;
+              }
+              if (existing.ph === null && m.ph !== null) {
+                existing.ph = m.ph;
+                existing.phDate = m.measurementDate;
+                existing.phIsEstimated = m.isEstimated;
+              }
+              if (existing.temperature === null && m.temperature !== null) {
+                existing.temperature = m.temperature;
+                existing.temperatureDate = m.measurementDate;
+              }
             }
           }
         }
@@ -3103,11 +3143,98 @@ export const appRouter = router({
         };
         const packagedVolumeL = 0; // TODO: Implement when packaging tables are ready
 
-        // Combine vessel data with measurements
+        // Get last activity for vessels without batches (empty/available vessels)
+        const vesselIdsWithoutBatches = vesselsWithBatches
+          .filter((v) => !v.batchId)
+          .map((v) => v.vesselId);
+
+        let lastActivityMap = new Map<string, { type: string; date: Date }>();
+        if (vesselIdsWithoutBatches.length > 0) {
+          // Get last cleaning for each vessel
+          const lastCleanings = await db
+            .select({
+              vesselId: vesselCleaningOperations.vesselId,
+              cleanedAt: vesselCleaningOperations.cleanedAt,
+            })
+            .from(vesselCleaningOperations)
+            .where(
+              and(
+                inArray(vesselCleaningOperations.vesselId, vesselIdsWithoutBatches),
+                isNull(vesselCleaningOperations.deletedAt),
+              ),
+            )
+            .orderBy(desc(vesselCleaningOperations.cleanedAt));
+
+          // Get last transfer where vessel was the source (batch transferred out)
+          const lastTransfersOut = await db
+            .select({
+              vesselId: batchTransfers.sourceVesselId,
+              transferredAt: batchTransfers.transferredAt,
+            })
+            .from(batchTransfers)
+            .where(
+              and(
+                inArray(batchTransfers.sourceVesselId, vesselIdsWithoutBatches),
+                isNull(batchTransfers.deletedAt),
+              ),
+            )
+            .orderBy(desc(batchTransfers.transferredAt));
+
+          // Get last racking where vessel was the source (batch racked out)
+          const lastRackingsOut = await db
+            .select({
+              vesselId: batchRackingOperations.sourceVesselId,
+              rackedAt: batchRackingOperations.rackedAt,
+            })
+            .from(batchRackingOperations)
+            .where(
+              and(
+                inArray(batchRackingOperations.sourceVesselId, vesselIdsWithoutBatches),
+                isNull(batchRackingOperations.deletedAt),
+              ),
+            )
+            .orderBy(desc(batchRackingOperations.rackedAt));
+
+          // Build map with most recent activity per vessel
+          for (const cleaning of lastCleanings) {
+            if (!lastActivityMap.has(cleaning.vesselId)) {
+              lastActivityMap.set(cleaning.vesselId, {
+                type: "cleaned",
+                date: cleaning.cleanedAt,
+              });
+            }
+          }
+
+          for (const transfer of lastTransfersOut) {
+            const existing = lastActivityMap.get(transfer.vesselId);
+            if (!existing || transfer.transferredAt > existing.date) {
+              lastActivityMap.set(transfer.vesselId, {
+                type: "transferred",
+                date: transfer.transferredAt,
+              });
+            }
+          }
+
+          // Also consider racking operations as "transferred" (batch left the vessel)
+          for (const racking of lastRackingsOut) {
+            const existing = lastActivityMap.get(racking.vesselId);
+            if (!existing || racking.rackedAt > existing.date) {
+              lastActivityMap.set(racking.vesselId, {
+                type: "transferred",
+                date: racking.rackedAt,
+              });
+            }
+          }
+        }
+
+        // Combine vessel data with measurements and last activity
         const vesselsWithMeasurements = vesselsWithBatches.map((vessel) => ({
           ...vessel,
           latestMeasurement: vessel.batchId
             ? latestMeasurements.get(vessel.batchId)
+            : null,
+          lastActivity: !vessel.batchId
+            ? lastActivityMap.get(vessel.vesselId) || null
             : null,
         }));
 

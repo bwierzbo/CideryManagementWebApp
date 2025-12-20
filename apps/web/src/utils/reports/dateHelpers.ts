@@ -1,6 +1,7 @@
 /**
  * Date helper utilities for report date range selection
  */
+import { formatDate, formatDateForInput as centralizedFormatDateForInput } from "@/utils/date-format";
 
 export type DateRangePreset =
   | "this-month"
@@ -163,36 +164,25 @@ export function getDateRangeFromPreset(preset: DateRangePreset): DateRange | nul
 }
 
 /**
- * Format a date range for display
+ * Format a date range for display using centralized formatDate
  */
 export function formatDateRangeDisplay(startDate: Date, endDate: Date): string {
-  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
-  const start = startDate.toLocaleDateString("en-US", options);
-  const end = endDate.toLocaleDateString("en-US", options);
+  const start = formatDate(startDate);
+  const end = formatDate(endDate);
 
   return `${start} - ${end}`;
 }
 
 /**
  * Format a date range for filenames (safe characters only)
+ * Uses YYYY-MM-DD format which is safe for filenames
  */
 export function formatDateRangeFilename(startDate: Date, endDate: Date): string {
-  const formatDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  return `${formatDate(startDate)}_${formatDate(endDate)}`;
+  return `${centralizedFormatDateForInput(startDate)}_${centralizedFormatDateForInput(endDate)}`;
 }
 
 /**
  * Format a date to YYYY-MM-DD for input[type="date"]
+ * Re-exported from centralized date-format utility for backwards compatibility
  */
-export function formatDateForInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+export { centralizedFormatDateForInput as formatDateForInput };

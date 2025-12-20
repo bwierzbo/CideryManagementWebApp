@@ -4,6 +4,7 @@
  */
 
 import type { TDocumentDefinitions, Content } from "pdfmake/interfaces";
+import { formatDate as formatDateUtil, formatDateTime } from "@/utils/date-format";
 
 // Lazy import pdfMake to avoid SSR issues
 const getPdfMake = async () => {
@@ -93,11 +94,11 @@ function formatGallons(value: number): string {
 }
 
 /**
- * Format a date as MM/DD/YYYY
+ * Format a date as MM/DD/YYYY using centralized utility
  */
 function formatDate(date: Date | string | null): string {
   if (!date) return "N/A";
-  return new Date(date).toLocaleDateString("en-US");
+  return formatDateUtil(date);
 }
 
 /**
@@ -456,7 +457,7 @@ export function generateTTBFormPDF(
 
   // Footer with generation timestamp
   content.push({
-    text: `Report generated: ${new Date().toLocaleString("en-US")}`,
+    text: `Report generated: ${formatDateTime(new Date())}`,
     style: "footer",
     margin: [0, 30, 0, 0],
   });

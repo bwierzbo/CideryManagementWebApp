@@ -194,7 +194,7 @@ export function Navbar() {
                     </DropdownMenuItem>
                     {session.user?.role === "admin" && (
                       <DropdownMenuItem asChild>
-                        <Link href="/admin/users" className="flex items-center cursor-pointer">
+                        <Link href="/admin" className="flex items-center cursor-pointer">
                           <Users className="w-4 h-4 mr-2" />
                           Manage Users
                         </Link>
@@ -296,7 +296,7 @@ export function Navbar() {
                     </Link>
                     {session.user?.role === "admin" && (
                       <Link
-                        href="/admin/users"
+                        href="/admin"
                         onClick={() => setIsMobileMenuOpen(false)}
                         className="flex items-center px-3 py-3 rounded-lg text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-gray-50 transition-colors"
                       >

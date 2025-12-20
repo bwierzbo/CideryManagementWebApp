@@ -22,6 +22,7 @@ import {
   auditLogs,
   packagingPurchaseItems,
   additivePurchaseItems,
+  organizationSettings,
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
@@ -32,7 +33,12 @@ import {
   calculateEstimatedSGAfterAddition,
   calculateEstimatedABV,
   convertSugarToGrams,
+  analyzeFermentationProgress,
+  type FermentationMeasurement,
+  type StageThresholds,
+  type StallSettings,
 } from "lib";
+import { correctSgForTemperature } from "lib/src/calc/sg-correction";
 
 // Input validation schemas
 const batchIdSchema = z.object({
@@ -60,6 +66,7 @@ const addMeasurementSchema = z.object({
   temperature: z.number().min(0).max(40).optional(),
   volume: z.number().positive().optional(),
   volumeUnit: z.enum(['L', 'gal']).default('L'),
+  measurementMethod: z.enum(['hydrometer', 'refractometer', 'calculated']).default('hydrometer'),
   notes: z.string().optional(),
   takenBy: z.string().optional(),
 });
@@ -733,18 +740,40 @@ export const batchRouter = router({
     .input(addMeasurementSchema)
     .mutation(async ({ input }) => {
       try {
-        // Verify batch exists
-        const batchExists = await db
-          .select({ id: batches.id })
+        // Verify batch exists and get current OG
+        const batchData = await db
+          .select({ id: batches.id, originalGravity: batches.originalGravity })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
           .limit(1);
 
-        if (!batchExists.length) {
+        if (!batchData.length) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Batch not found",
           });
+        }
+
+        // Fetch organization settings for SG correction preferences
+        const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+        const [settings] = await db
+          .select({
+            sgTemperatureCorrectionEnabled: organizationSettings.sgTemperatureCorrectionEnabled,
+            hydrometerCalibrationTempC: organizationSettings.hydrometerCalibrationTempC,
+          })
+          .from(organizationSettings)
+          .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+          .limit(1);
+
+        // Apply temperature correction to SG if enabled and both values are provided
+        let correctedSg = input.specificGravity;
+        const sgCorrectionEnabled = settings?.sgTemperatureCorrectionEnabled ?? true;
+        const calibrationTempC = settings?.hydrometerCalibrationTempC
+          ? parseFloat(settings.hydrometerCalibrationTempC)
+          : 15.56;
+
+        if (sgCorrectionEnabled && input.specificGravity && input.temperature) {
+          correctedSg = correctSgForTemperature(input.specificGravity, input.temperature, calibrationTempC);
         }
 
         // Create measurement
@@ -753,22 +782,38 @@ export const batchRouter = router({
           .values({
             batchId: input.batchId,
             measurementDate: input.measurementDate,
-            specificGravity: input.specificGravity?.toString(),
+            specificGravity: correctedSg?.toString(),
             abv: input.abv?.toString(),
             ph: input.ph?.toString(),
             totalAcidity: input.totalAcidity?.toString(),
             temperature: input.temperature?.toString(),
             volume: input.volume?.toString(),
             volumeUnit: input.volumeUnit,
+            measurementMethod: input.measurementMethod,
             notes: input.notes,
             takenBy: input.takenBy,
           })
           .returning();
 
+        // Auto-set Original Gravity if batch doesn't have one and this measurement has SG
+        let ogAutoSet = false;
+        if (!batchData[0].originalGravity && correctedSg) {
+          await db
+            .update(batches)
+            .set({
+              originalGravity: correctedSg.toString(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+          ogAutoSet = true;
+        }
+
         return {
           success: true,
           measurement: newMeasurement[0],
-          message: "Measurement added successfully",
+          message: ogAutoSet
+            ? "Measurement added successfully. Original Gravity auto-set from this measurement."
+            : "Measurement added successfully",
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -1043,13 +1088,43 @@ export const batchRouter = router({
           });
         }
 
+        // Fetch organization settings for SG correction preferences
+        const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+        const [settings] = await db
+          .select({
+            sgTemperatureCorrectionEnabled: organizationSettings.sgTemperatureCorrectionEnabled,
+            hydrometerCalibrationTempC: organizationSettings.hydrometerCalibrationTempC,
+          })
+          .from(organizationSettings)
+          .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+          .limit(1);
+
+        const sgCorrectionEnabled = settings?.sgTemperatureCorrectionEnabled ?? true;
+        const calibrationTempC = settings?.hydrometerCalibrationTempC
+          ? parseFloat(settings.hydrometerCalibrationTempC)
+          : 15.56;
+
         // Build update object
         const updateData: any = {
           updatedAt: new Date(),
         };
 
         if (input.measurementDate) updateData.measurementDate = input.measurementDate;
-        if (input.specificGravity !== undefined) updateData.specificGravity = input.specificGravity.toString();
+
+        // Apply temperature correction to SG if enabled and updating SG with a temperature value
+        if (input.specificGravity !== undefined) {
+          // Use input temperature if provided, otherwise use existing measurement's temperature
+          const tempForCorrection = input.temperature ??
+            (existingMeasurement[0].temperature ? parseFloat(existingMeasurement[0].temperature) : null);
+
+          if (sgCorrectionEnabled && tempForCorrection !== null) {
+            const correctedSg = correctSgForTemperature(input.specificGravity, tempForCorrection, calibrationTempC);
+            updateData.specificGravity = correctedSg.toString();
+          } else {
+            updateData.specificGravity = input.specificGravity.toString();
+          }
+        }
+
         if (input.abv !== undefined) updateData.abv = input.abv.toString();
         if (input.ph !== undefined) updateData.ph = input.ph.toString();
         if (input.totalAcidity !== undefined) updateData.totalAcidity = input.totalAcidity.toString();
@@ -2639,16 +2714,12 @@ export const batchRouter = router({
 
           const hasBatchInDestination = destinationBatch.length > 0;
 
-          // Prevent racking to vessels that already have a batch (unless racking to self for volume correction)
+          // Determine if racking to self (for volume loss recording)
           const sourceVesselId = batch[0].vesselId;
           const isRackToSelf = sourceVesselId === input.destinationVesselId;
 
-          if (hasBatchInDestination && !isRackToSelf) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Destination vessel already has an active batch (${destinationBatch[0].name}). Each vessel can only hold one batch at a time.`,
-            });
-          }
+          // NOTE: hasBatchInDestination && !isRackToSelf will trigger MERGE flow below
+          // We allow racking into occupied vessels to merge batches together
 
           const volumeBeforeL = batch[0].currentVolume
             ? parseFloat(batch[0].currentVolume)
@@ -2768,6 +2839,107 @@ export const batchRouter = router({
                   updatedAt: new Date(),
                 })
                 .where(eq(batches.id, input.batchId));
+
+              // Create merge history entry for partial batch-to-batch merge
+              await tx.insert(batchMergeHistory).values({
+                targetBatchId: destBatch.id,
+                sourceBatchId: input.batchId,
+                sourceType: "batch_transfer",
+                volumeAdded: volumeRackedL.toString(),
+                volumeAddedUnit: "L",
+                targetVolumeBefore: destCurrentVolumeL.toString(),
+                targetVolumeBeforeUnit: "L",
+                targetVolumeAfter: mergedVolumeL.toString(),
+                targetVolumeAfterUnit: "L",
+                mergedAt: input.rackedAt || new Date(),
+                mergedBy: ctx.session?.user?.id,
+                createdAt: new Date(),
+              });
+
+              // Calculate and create estimated blended measurements for partial rack merge
+              const [srcMeasurement] = await tx
+                .select()
+                .from(batchMeasurements)
+                .where(and(eq(batchMeasurements.batchId, input.batchId), isNull(batchMeasurements.deletedAt)))
+                .orderBy(desc(batchMeasurements.measurementDate))
+                .limit(1);
+
+              const [dstMeasurement] = await tx
+                .select()
+                .from(batchMeasurements)
+                .where(and(eq(batchMeasurements.batchId, destBatch.id), isNull(batchMeasurements.deletedAt)))
+                .orderBy(desc(batchMeasurements.measurementDate))
+                .limit(1);
+
+              if (srcMeasurement || dstMeasurement) {
+                const srcVol = volumeRackedL;
+                const dstVol = destCurrentVolumeL;
+                const totVol = mergedVolumeL;
+
+                const blendVal = (sVal: string | null, dVal: string | null): string | null => {
+                  const s = sVal ? parseFloat(sVal) : null;
+                  const d = dVal ? parseFloat(dVal) : null;
+                  if (s !== null && d !== null) return ((s * srcVol + d * dstVol) / totVol).toString();
+                  if (s !== null) return s.toString();
+                  if (d !== null) return d.toString();
+                  return null;
+                };
+
+                const srcName = batch[0].customName || batch[0].name;
+                const dstName = destBatch.name;
+
+                await tx.insert(batchMeasurements).values({
+                  batchId: destBatch.id,
+                  measurementDate: input.rackedAt || new Date(),
+                  specificGravity: blendVal(srcMeasurement?.specificGravity, dstMeasurement?.specificGravity),
+                  abv: blendVal(srcMeasurement?.abv, dstMeasurement?.abv),
+                  ph: blendVal(srcMeasurement?.ph, dstMeasurement?.ph),
+                  totalAcidity: blendVal(srcMeasurement?.totalAcidity, dstMeasurement?.totalAcidity),
+                  temperature: blendVal(srcMeasurement?.temperature, dstMeasurement?.temperature),
+                  volume: mergedVolumeL.toString(),
+                  volumeUnit: "L",
+                  volumeLiters: mergedVolumeL.toString(),
+                  isEstimated: true,
+                  estimateSource: `Volume-weighted blend: ${srcVol.toFixed(1)}L from ${srcName} + ${dstVol.toFixed(1)}L from ${dstName}`,
+                  notes: `Estimated values from partial rack merge`,
+                  takenBy: ctx.session?.user?.name || "System",
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
+              // Copy compositions from source batch to destination
+              const srcCompositions = await tx
+                .select()
+                .from(batchCompositions)
+                .where(and(eq(batchCompositions.batchId, input.batchId), isNull(batchCompositions.deletedAt)));
+
+              for (const comp of srcCompositions) {
+                // Scale composition by volume ratio
+                const volumeRatio = volumeRackedL / volumeBeforeL;
+                const scaledInputWeight = comp.inputWeightKg ? (parseFloat(comp.inputWeightKg) * volumeRatio).toString() : comp.inputWeightKg;
+                const scaledJuiceVol = comp.juiceVolume ? (parseFloat(comp.juiceVolume) * volumeRatio).toString() : comp.juiceVolume;
+                const scaledMaterialCost = comp.materialCost ? (parseFloat(comp.materialCost) * volumeRatio).toString() : comp.materialCost;
+                const scaledEstSugar = comp.estSugarKg ? (parseFloat(comp.estSugarKg) * volumeRatio).toString() : comp.estSugarKg;
+                await tx.insert(batchCompositions).values({
+                  batchId: destBatch.id,
+                  sourceType: comp.sourceType,
+                  purchaseItemId: comp.purchaseItemId,
+                  varietyId: comp.varietyId,
+                  juicePurchaseItemId: comp.juicePurchaseItemId,
+                  vendorId: comp.vendorId,
+                  lotCode: comp.lotCode,
+                  inputWeightKg: scaledInputWeight,
+                  juiceVolume: scaledJuiceVol,
+                  juiceVolumeUnit: comp.juiceVolumeUnit,
+                  fractionOfBatch: comp.fractionOfBatch,
+                  materialCost: scaledMaterialCost,
+                  avgBrix: comp.avgBrix,
+                  estSugarKg: scaledEstSugar,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
 
               resultMessage = `Partial rack merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L), ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`;
             } else {
@@ -2962,8 +3134,106 @@ export const batchRouter = router({
               })
               .where(eq(batches.id, input.batchId));
 
-            // Note: batchRackingOperations record (created earlier) captures all transfer info
-            // No separate batchTransfers record needed - avoids duplicate activity entries
+            // Create merge history entry for batch-to-batch merge
+            await tx.insert(batchMergeHistory).values({
+              targetBatchId: destBatch.id,
+              sourceBatchId: input.batchId,
+              sourceType: "batch_transfer",
+              volumeAdded: volumeRackedL.toString(),
+              volumeAddedUnit: "L",
+              targetVolumeBefore: destCurrentVolumeL.toString(),
+              targetVolumeBeforeUnit: "L",
+              targetVolumeAfter: mergedVolumeL.toString(),
+              targetVolumeAfterUnit: "L",
+              mergedAt: input.rackedAt || new Date(),
+              mergedBy: ctx.session?.user?.id,
+              createdAt: new Date(),
+            });
+
+            // Calculate and create estimated blended measurements
+            const [sourceMeasurement] = await tx
+              .select()
+              .from(batchMeasurements)
+              .where(and(eq(batchMeasurements.batchId, input.batchId), isNull(batchMeasurements.deletedAt)))
+              .orderBy(desc(batchMeasurements.measurementDate))
+              .limit(1);
+
+            const [destMeasurement] = await tx
+              .select()
+              .from(batchMeasurements)
+              .where(and(eq(batchMeasurements.batchId, destBatch.id), isNull(batchMeasurements.deletedAt)))
+              .orderBy(desc(batchMeasurements.measurementDate))
+              .limit(1);
+
+            // Only create estimated measurement if at least one batch has measurements
+            if (sourceMeasurement || destMeasurement) {
+              const sourceVol = volumeRackedL;
+              const destVol = destCurrentVolumeL;
+              const totalVol = mergedVolumeL;
+
+              // Helper function for volume-weighted average
+              const blendValue = (sourceVal: string | null, destVal: string | null): string | null => {
+                const sVal = sourceVal ? parseFloat(sourceVal) : null;
+                const dVal = destVal ? parseFloat(destVal) : null;
+                if (sVal !== null && dVal !== null) {
+                  return ((sVal * sourceVol + dVal * destVol) / totalVol).toString();
+                } else if (sVal !== null) {
+                  return sVal.toString();
+                } else if (dVal !== null) {
+                  return dVal.toString();
+                }
+                return null;
+              };
+
+              const sourceBatchName = batch[0].customName || batch[0].name;
+              const destBatchName = destBatch.customName || destBatch.name;
+
+              await tx.insert(batchMeasurements).values({
+                batchId: destBatch.id,
+                measurementDate: input.rackedAt || new Date(),
+                specificGravity: blendValue(sourceMeasurement?.specificGravity, destMeasurement?.specificGravity),
+                abv: blendValue(sourceMeasurement?.abv, destMeasurement?.abv),
+                ph: blendValue(sourceMeasurement?.ph, destMeasurement?.ph),
+                totalAcidity: blendValue(sourceMeasurement?.totalAcidity, destMeasurement?.totalAcidity),
+                temperature: blendValue(sourceMeasurement?.temperature, destMeasurement?.temperature),
+                volume: mergedVolumeL.toString(),
+                volumeUnit: "L",
+                volumeLiters: mergedVolumeL.toString(),
+                isEstimated: true,
+                estimateSource: `Volume-weighted blend: ${sourceVol.toFixed(1)}L from ${sourceBatchName} + ${destVol.toFixed(1)}L from ${destBatchName}`,
+                notes: `Estimated values from merge of ${sourceBatchName} into ${destBatchName}`,
+                takenBy: ctx.session?.user?.name || "System",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            }
+
+            // Copy compositions from source batch to destination (proportionally)
+            const sourceCompositions = await tx
+              .select()
+              .from(batchCompositions)
+              .where(and(eq(batchCompositions.batchId, input.batchId), isNull(batchCompositions.deletedAt)));
+
+            for (const comp of sourceCompositions) {
+              await tx.insert(batchCompositions).values({
+                batchId: destBatch.id,
+                sourceType: comp.sourceType,
+                purchaseItemId: comp.purchaseItemId,
+                varietyId: comp.varietyId,
+                juicePurchaseItemId: comp.juicePurchaseItemId,
+                vendorId: comp.vendorId,
+                lotCode: comp.lotCode,
+                inputWeightKg: comp.inputWeightKg,
+                juiceVolume: comp.juiceVolume,
+                juiceVolumeUnit: comp.juiceVolumeUnit,
+                fractionOfBatch: comp.fractionOfBatch,
+                materialCost: comp.materialCost,
+                avgBrix: comp.avgBrix,
+                estSugarKg: comp.estSugarKg,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            }
 
             resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
           } else {
@@ -3008,6 +3278,107 @@ export const batchRouter = router({
                 })
                 .where(eq(batches.id, input.batchId));
 
+              // Create merge history entry for batch-to-batch merge (safety check path)
+              await tx.insert(batchMergeHistory).values({
+                targetBatchId: destBatch.id,
+                sourceBatchId: input.batchId,
+                sourceType: "batch_transfer",
+                volumeAdded: volumeRackedL.toString(),
+                volumeAddedUnit: "L",
+                targetVolumeBefore: destCurrentVolumeL.toString(),
+                targetVolumeBeforeUnit: "L",
+                targetVolumeAfter: mergedVolumeL.toString(),
+                targetVolumeAfterUnit: "L",
+                mergedAt: input.rackedAt || new Date(),
+                mergedBy: ctx.session?.user?.id,
+                createdAt: new Date(),
+              });
+
+              // Calculate and create estimated blended measurements (safety check path)
+              const [sourceMeasurementSafety] = await tx
+                .select()
+                .from(batchMeasurements)
+                .where(and(eq(batchMeasurements.batchId, input.batchId), isNull(batchMeasurements.deletedAt)))
+                .orderBy(desc(batchMeasurements.measurementDate))
+                .limit(1);
+
+              const [destMeasurementSafety] = await tx
+                .select()
+                .from(batchMeasurements)
+                .where(and(eq(batchMeasurements.batchId, destBatch.id), isNull(batchMeasurements.deletedAt)))
+                .orderBy(desc(batchMeasurements.measurementDate))
+                .limit(1);
+
+              // Only create estimated measurement if at least one batch has measurements
+              if (sourceMeasurementSafety || destMeasurementSafety) {
+                const sourceVol = volumeRackedL;
+                const destVol = destCurrentVolumeL;
+                const totalVol = mergedVolumeL;
+
+                // Helper function for volume-weighted average
+                const blendValueSafety = (sourceVal: string | null, destVal: string | null): string | null => {
+                  const sVal = sourceVal ? parseFloat(sourceVal) : null;
+                  const dVal = destVal ? parseFloat(destVal) : null;
+                  if (sVal !== null && dVal !== null) {
+                    return ((sVal * sourceVol + dVal * destVol) / totalVol).toString();
+                  } else if (sVal !== null) {
+                    return sVal.toString();
+                  } else if (dVal !== null) {
+                    return dVal.toString();
+                  }
+                  return null;
+                };
+
+                const sourceBatchNameSafety = batch[0].customName || batch[0].name;
+                const destBatchNameSafety = destBatch.name;
+
+                await tx.insert(batchMeasurements).values({
+                  batchId: destBatch.id,
+                  measurementDate: input.rackedAt || new Date(),
+                  specificGravity: blendValueSafety(sourceMeasurementSafety?.specificGravity, destMeasurementSafety?.specificGravity),
+                  abv: blendValueSafety(sourceMeasurementSafety?.abv, destMeasurementSafety?.abv),
+                  ph: blendValueSafety(sourceMeasurementSafety?.ph, destMeasurementSafety?.ph),
+                  totalAcidity: blendValueSafety(sourceMeasurementSafety?.totalAcidity, destMeasurementSafety?.totalAcidity),
+                  temperature: blendValueSafety(sourceMeasurementSafety?.temperature, destMeasurementSafety?.temperature),
+                  volume: mergedVolumeL.toString(),
+                  volumeUnit: "L",
+                  volumeLiters: mergedVolumeL.toString(),
+                  isEstimated: true,
+                  estimateSource: `Volume-weighted blend: ${sourceVol.toFixed(1)}L from ${sourceBatchNameSafety} + ${destVol.toFixed(1)}L from ${destBatchNameSafety}`,
+                  notes: `Estimated values from merge of ${sourceBatchNameSafety} into ${destBatchNameSafety}`,
+                  takenBy: ctx.session?.user?.name || "System",
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
+              // Copy compositions from source batch to destination (safety check path)
+              const sourceCompositionsSafety = await tx
+                .select()
+                .from(batchCompositions)
+                .where(and(eq(batchCompositions.batchId, input.batchId), isNull(batchCompositions.deletedAt)));
+
+              for (const comp of sourceCompositionsSafety) {
+                await tx.insert(batchCompositions).values({
+                  batchId: destBatch.id,
+                  sourceType: comp.sourceType,
+                  purchaseItemId: comp.purchaseItemId,
+                  varietyId: comp.varietyId,
+                  juicePurchaseItemId: comp.juicePurchaseItemId,
+                  vendorId: comp.vendorId,
+                  lotCode: comp.lotCode,
+                  inputWeightKg: comp.inputWeightKg,
+                  juiceVolume: comp.juiceVolume,
+                  juiceVolumeUnit: comp.juiceVolumeUnit,
+                  fractionOfBatch: comp.fractionOfBatch,
+                  materialCost: comp.materialCost,
+                  avgBrix: comp.avgBrix,
+                  estSugarKg: comp.estSugarKg,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
               resultMessage = `Batch racked and merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L)`;
             } else {
               // Full rack: Move batch to destination vessel
@@ -3036,6 +3407,16 @@ export const batchRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, sourceVesselId));
+
+            // Clear press runs pointing to the source vessel
+            // This prevents the liquidMap query from showing stale press run volume
+            await tx
+              .update(pressRuns)
+              .set({
+                vesselId: null,
+                updatedAt: new Date(),
+              })
+              .where(eq(pressRuns.vesselId, sourceVesselId));
           }
 
           // 7. Update destination vessel status (only if not rack-to-self and doesn't have batch already)
@@ -3463,6 +3844,155 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to delete batch",
+        });
+      }
+    }),
+
+  /**
+   * Get fermentation progress for a batch
+   * Calculates stage, percentage fermented, stall detection, and recommendations
+   */
+  getFermentationProgress: createRbacProcedure("read", "batch")
+    .input(z.object({ batchId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      try {
+        // Get batch with original gravity and target FG
+        const batch = await db
+          .select({
+            id: batches.id,
+            name: batches.name,
+            originalGravity: batches.originalGravity,
+            targetFinalGravity: batches.targetFinalGravity,
+            fermentationStage: batches.fermentationStage,
+            status: batches.status,
+          })
+          .from(batches)
+          .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
+          .limit(1);
+
+        if (!batch.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Batch not found",
+          });
+        }
+
+        const batchData = batch[0];
+
+        // Get all measurements for the batch (newest first)
+        const measurements = await db
+          .select({
+            specificGravity: batchMeasurements.specificGravity,
+            measurementDate: batchMeasurements.measurementDate,
+            measurementMethod: batchMeasurements.measurementMethod,
+          })
+          .from(batchMeasurements)
+          .where(
+            and(
+              eq(batchMeasurements.batchId, input.batchId),
+              isNull(batchMeasurements.deletedAt)
+            )
+          )
+          .orderBy(desc(batchMeasurements.measurementDate));
+
+        // Get organization settings for thresholds
+        const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+        const [settings] = await db
+          .select({
+            fermentationStageEarlyMax: organizationSettings.fermentationStageEarlyMax,
+            fermentationStageMidMax: organizationSettings.fermentationStageMidMax,
+            fermentationStageApproachingDryMax: organizationSettings.fermentationStageApproachingDryMax,
+            stallDetectionEnabled: organizationSettings.stallDetectionEnabled,
+            stallDetectionDays: organizationSettings.stallDetectionDays,
+            stallDetectionThreshold: organizationSettings.stallDetectionThreshold,
+            terminalConfirmationHours: organizationSettings.terminalConfirmationHours,
+            defaultTargetFgDry: organizationSettings.defaultTargetFgDry,
+          })
+          .from(organizationSettings)
+          .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+          .limit(1);
+
+        // Build stage thresholds from settings
+        const stageThresholds: StageThresholds = {
+          earlyMax: settings?.fermentationStageEarlyMax ?? 70,
+          midMax: settings?.fermentationStageMidMax ?? 90,
+          approachingDryMax: settings?.fermentationStageApproachingDryMax ?? 98,
+        };
+
+        // Build stall settings from settings
+        const stallSettings: StallSettings = {
+          enabled: settings?.stallDetectionEnabled ?? true,
+          days: settings?.stallDetectionDays ?? 3,
+          threshold: settings?.stallDetectionThreshold
+            ? parseFloat(settings.stallDetectionThreshold)
+            : 0.001,
+        };
+
+        const terminalConfirmationHours = settings?.terminalConfirmationHours ?? 48;
+
+        // Get current SG (from most recent measurement)
+        const currentSg = measurements.length > 0 && measurements[0].specificGravity
+          ? parseFloat(measurements[0].specificGravity)
+          : null;
+
+        // Get OG from batch
+        const originalGravity = batchData.originalGravity
+          ? parseFloat(batchData.originalGravity)
+          : null;
+
+        // Get target FG (from batch or default to dry style)
+        const targetFinalGravity = batchData.targetFinalGravity
+          ? parseFloat(batchData.targetFinalGravity)
+          : (settings?.defaultTargetFgDry
+            ? parseFloat(settings.defaultTargetFgDry)
+            : 0.998);
+
+        // Convert measurements to FermentationMeasurement format
+        const fermentationMeasurements: FermentationMeasurement[] = measurements
+          .filter(m => m.specificGravity !== null)
+          .map(m => ({
+            specificGravity: parseFloat(m.specificGravity!),
+            measurementDate: new Date(m.measurementDate),
+            method: (m.measurementMethod as "hydrometer" | "refractometer" | "calculated") || "hydrometer",
+          }));
+
+        // Calculate fermentation progress using the lib function
+        const progress = analyzeFermentationProgress({
+          originalGravity,
+          currentGravity: currentSg,
+          targetFinalGravity,
+          measurements: fermentationMeasurements,
+          stageThresholds,
+          stallSettings,
+          terminalConfirmationHours,
+        });
+
+        // Update batch fermentation stage if it changed
+        if (progress.stage !== batchData.fermentationStage && progress.stage !== "unknown") {
+          await db
+            .update(batches)
+            .set({
+              fermentationStage: progress.stage,
+              fermentationStageUpdatedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+        }
+
+        return {
+          batchId: input.batchId,
+          batchName: batchData.name,
+          originalGravity,
+          currentGravity: currentSg,
+          targetFinalGravity,
+          ...progress,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error getting fermentation progress:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to get fermentation progress",
         });
       }
     }),

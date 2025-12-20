@@ -1,9 +1,30 @@
 /**
  * Date formatting utilities for the Cidery Management App
- * Supports dynamic timezone configuration
+ * Supports dynamic timezone configuration and user format preferences
  */
 
 const DEFAULT_TZ = "America/Los_Angeles";
+
+/**
+ * Date format types matching organization settings
+ */
+export type DateFormatType = "mdy" | "dmy" | "ymd";
+export type TimeFormatType = "12h" | "24h";
+
+/**
+ * Get locale string based on date format preference
+ */
+function getLocaleForFormat(format: DateFormatType): string {
+  switch (format) {
+    case "dmy":
+      return "en-GB"; // DD/MM/YYYY
+    case "ymd":
+      return "sv-SE"; // YYYY-MM-DD (Swedish uses ISO format)
+    case "mdy":
+    default:
+      return "en-US"; // MM/DD/YYYY
+  }
+}
 
 /**
  * Format a date string or Date object for display
@@ -240,4 +261,107 @@ export function parseDateInput(dateString: string): Date | null {
   }
 
   return date;
+}
+
+// ============================================
+// PREFERENCE-AWARE FORMATTING FUNCTIONS
+// ============================================
+
+/**
+ * Format options for preference-aware formatting
+ */
+export interface FormatPreferences {
+  dateFormat?: DateFormatType;
+  timeFormat?: TimeFormatType;
+  timezone?: string;
+}
+
+/**
+ * Format a date with user preferences
+ * @param date - ISO date string or Date object
+ * @param preferences - User format preferences
+ * @returns Formatted date string according to user preferences
+ */
+export function formatDateWithPreferences(
+  date: string | Date,
+  preferences: FormatPreferences = {},
+): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  const { dateFormat = "mdy", timezone = DEFAULT_TZ } = preferences;
+  const locale = getLocaleForFormat(dateFormat);
+
+  return dateObj.toLocaleDateString(locale, {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+/**
+ * Format a date and time with user preferences
+ * @param date - ISO date string or Date object
+ * @param preferences - User format preferences
+ * @returns Formatted date and time string according to user preferences
+ */
+export function formatDateTimeWithPreferences(
+  date: string | Date,
+  preferences: FormatPreferences = {},
+): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  const { dateFormat = "mdy", timeFormat = "12h", timezone = DEFAULT_TZ } = preferences;
+  const locale = getLocaleForFormat(dateFormat);
+
+  return dateObj.toLocaleString(locale, {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: timeFormat === "12h",
+  });
+}
+
+/**
+ * Format time only with user preferences
+ * @param date - ISO date string or Date object
+ * @param preferences - User format preferences
+ * @returns Formatted time string according to user preferences
+ */
+export function formatTimeWithPreferences(
+  date: string | Date,
+  preferences: FormatPreferences = {},
+): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  const { timeFormat = "12h", timezone = DEFAULT_TZ } = preferences;
+
+  return dateObj.toLocaleTimeString("en-US", {
+    timeZone: timezone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: timeFormat === "12h",
+  });
+}
+
+/**
+ * Format a date in long format with user preferences (e.g., "October 10, 2025" or "10 October 2025")
+ * @param date - ISO date string or Date object
+ * @param preferences - User format preferences
+ * @returns Formatted date string according to user preferences
+ */
+export function formatDateLongWithPreferences(
+  date: string | Date,
+  preferences: FormatPreferences = {},
+): string {
+  const dateObj = typeof date === "string" ? new Date(date) : date;
+  const { dateFormat = "mdy", timezone = DEFAULT_TZ } = preferences;
+  const locale = getLocaleForFormat(dateFormat);
+
+  return dateObj.toLocaleDateString(locale, {
+    timeZone: timezone,
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 }

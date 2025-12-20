@@ -6,8 +6,16 @@ import {
   vendors,
   batchMeasurements,
   vessels,
+  organizationSettings,
 } from "db";
 import { eq, and, isNull, sql, desc, or, inArray, lt } from "drizzle-orm";
+import {
+  analyzeFermentationProgress,
+  getRecommendedMeasurementFrequency,
+  type FermentationMeasurement,
+  type StageThresholds,
+  type StallSettings,
+} from "lib";
 
 /**
  * Dashboard Router
@@ -173,23 +181,58 @@ export const dashboardRouter = router({
 
   /**
    * Get actionable tasks for the dashboard
-   * Returns batches needing measurement, ready for next step, etc.
+   * Uses SG-based fermentation stage tracking instead of arbitrary day thresholds
+   * Returns batches needing measurement based on fermentation stage, stalled fermentations, etc.
    */
   getTasks: protectedProcedure
     .input(
       z.object({
-        measurementThresholdDays: z.number().default(3),
         limit: z.number().default(10),
       }).optional()
     )
     .query(async ({ input }) => {
-      const thresholdDays = input?.measurementThresholdDays ?? 3;
       const limit = input?.limit ?? 10;
-      const thresholdDate = new Date();
-      thresholdDate.setDate(thresholdDate.getDate() - thresholdDays);
 
       try {
-        // Get active batches with their latest measurement date
+        // Get organization settings for fermentation thresholds
+        const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+        const [settings] = await db
+          .select({
+            fermentationStageEarlyMax: organizationSettings.fermentationStageEarlyMax,
+            fermentationStageMidMax: organizationSettings.fermentationStageMidMax,
+            fermentationStageApproachingDryMax: organizationSettings.fermentationStageApproachingDryMax,
+            stallDetectionEnabled: organizationSettings.stallDetectionEnabled,
+            stallDetectionDays: organizationSettings.stallDetectionDays,
+            stallDetectionThreshold: organizationSettings.stallDetectionThreshold,
+            terminalConfirmationHours: organizationSettings.terminalConfirmationHours,
+            defaultTargetFgDry: organizationSettings.defaultTargetFgDry,
+          })
+          .from(organizationSettings)
+          .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+          .limit(1);
+
+        // Build stage thresholds from settings
+        const stageThresholds: StageThresholds = {
+          earlyMax: settings?.fermentationStageEarlyMax ?? 70,
+          midMax: settings?.fermentationStageMidMax ?? 90,
+          approachingDryMax: settings?.fermentationStageApproachingDryMax ?? 98,
+        };
+
+        // Build stall settings from settings
+        const stallSettings: StallSettings = {
+          enabled: settings?.stallDetectionEnabled ?? true,
+          days: settings?.stallDetectionDays ?? 3,
+          threshold: settings?.stallDetectionThreshold
+            ? parseFloat(settings.stallDetectionThreshold)
+            : 0.001,
+        };
+
+        const terminalConfirmationHours = settings?.terminalConfirmationHours ?? 48;
+        const defaultTargetFg = settings?.defaultTargetFgDry
+          ? parseFloat(settings.defaultTargetFgDry)
+          : 0.998;
+
+        // Get active batches with their gravity data
         const activeBatches = await db
           .select({
             id: batches.id,
@@ -199,6 +242,9 @@ export const dashboardRouter = router({
             vesselId: batches.vesselId,
             vesselName: vessels.name,
             startDate: batches.startDate,
+            originalGravity: batches.originalGravity,
+            targetFinalGravity: batches.targetFinalGravity,
+            fermentationStage: batches.fermentationStage,
           })
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
@@ -210,66 +256,131 @@ export const dashboardRouter = router({
           )
           .orderBy(desc(batches.startDate));
 
-        // Get latest measurement for each batch
-        const tasksNeedingMeasurement: Array<{
+        // Build task list based on fermentation progress
+        const tasks: Array<{
           id: string;
           batchNumber: string;
           customName: string | null;
           vesselName: string | null;
-          taskType: "measurement_needed";
+          taskType: "measurement_needed" | "stalled_fermentation" | "confirm_terminal";
           daysSinceLastMeasurement: number;
           priority: "high" | "medium" | "low";
+          percentFermented: number;
+          fermentationStage: string;
+          recommendedAction: string;
         }> = [];
 
         for (const batch of activeBatches) {
-          const latestMeasurement = await db
+          // Get all measurements for this batch
+          const measurements = await db
             .select({
+              specificGravity: batchMeasurements.specificGravity,
               measurementDate: batchMeasurements.measurementDate,
+              measurementMethod: batchMeasurements.measurementMethod,
             })
             .from(batchMeasurements)
-            .where(eq(batchMeasurements.batchId, batch.id))
-            .orderBy(desc(batchMeasurements.measurementDate))
-            .limit(1);
+            .where(
+              and(
+                eq(batchMeasurements.batchId, batch.id),
+                isNull(batchMeasurements.deletedAt)
+              )
+            )
+            .orderBy(desc(batchMeasurements.measurementDate));
 
-          const lastMeasurementDate = latestMeasurement[0]?.measurementDate;
+          // Convert to FermentationMeasurement format
+          const fermentationMeasurements: FermentationMeasurement[] = measurements
+            .filter(m => m.specificGravity !== null)
+            .map(m => ({
+              specificGravity: parseFloat(m.specificGravity!),
+              measurementDate: new Date(m.measurementDate),
+              method: (m.measurementMethod as "hydrometer" | "refractometer" | "calculated") || "hydrometer",
+            }));
 
-          // Calculate days since last measurement
-          let daysSince = 0;
-          if (lastMeasurementDate) {
-            daysSince = Math.floor(
-              (Date.now() - new Date(lastMeasurementDate).getTime()) /
-                (1000 * 60 * 60 * 24)
-            );
-          } else if (batch.startDate) {
-            // No measurements yet, use start date
-            daysSince = Math.floor(
-              (Date.now() - new Date(batch.startDate).getTime()) /
-                (1000 * 60 * 60 * 24)
-            );
-          }
+          // Get gravity values
+          const originalGravity = batch.originalGravity
+            ? parseFloat(batch.originalGravity)
+            : null;
+          const currentSg = fermentationMeasurements.length > 0
+            ? fermentationMeasurements[0].specificGravity
+            : null;
+          const targetFinalGravity = batch.targetFinalGravity
+            ? parseFloat(batch.targetFinalGravity)
+            : defaultTargetFg;
 
-          // Add to tasks if measurement is overdue
-          if (daysSince >= thresholdDays) {
-            tasksNeedingMeasurement.push({
+          // Analyze fermentation progress
+          const progress = analyzeFermentationProgress({
+            originalGravity,
+            currentGravity: currentSg,
+            targetFinalGravity,
+            measurements: fermentationMeasurements,
+            stageThresholds,
+            stallSettings,
+            terminalConfirmationHours,
+          });
+
+          // Determine if this batch needs attention
+          const frequency = getRecommendedMeasurementFrequency(progress.stage);
+          const measurementDue = progress.daysSinceLastMeasurement >= frequency.maxDays;
+          const isVeryOverdue = progress.daysSinceLastMeasurement >= frequency.maxDays * 2;
+
+          // Add to tasks based on conditions
+          if (progress.isStalled) {
+            // Stalled fermentation is always high priority
+            tasks.push({
+              id: batch.id,
+              batchNumber: batch.batchNumber,
+              customName: batch.customName,
+              vesselName: batch.vesselName,
+              taskType: "stalled_fermentation",
+              daysSinceLastMeasurement: progress.daysSinceLastMeasurement,
+              priority: "high",
+              percentFermented: progress.percentFermented,
+              fermentationStage: progress.stage,
+              recommendedAction: progress.recommendedAction,
+            });
+          } else if (progress.stage === "terminal" && !progress.isTerminalConfirmed) {
+            // Terminal but needs confirmation
+            tasks.push({
+              id: batch.id,
+              batchNumber: batch.batchNumber,
+              customName: batch.customName,
+              vesselName: batch.vesselName,
+              taskType: "confirm_terminal",
+              daysSinceLastMeasurement: progress.daysSinceLastMeasurement,
+              priority: "medium",
+              percentFermented: progress.percentFermented,
+              fermentationStage: progress.stage,
+              recommendedAction: progress.recommendedAction,
+            });
+          } else if (measurementDue) {
+            // Measurement is due based on stage
+            tasks.push({
               id: batch.id,
               batchNumber: batch.batchNumber,
               customName: batch.customName,
               vesselName: batch.vesselName,
               taskType: "measurement_needed",
-              daysSinceLastMeasurement: daysSince,
-              priority: daysSince >= 7 ? "high" : daysSince >= 5 ? "medium" : "low",
+              daysSinceLastMeasurement: progress.daysSinceLastMeasurement,
+              priority: isVeryOverdue ? "high" : "medium",
+              percentFermented: progress.percentFermented,
+              fermentationStage: progress.stage,
+              recommendedAction: progress.recommendedAction,
             });
           }
         }
 
-        // Sort by days since last measurement (most overdue first)
-        tasksNeedingMeasurement.sort(
-          (a, b) => b.daysSinceLastMeasurement - a.daysSinceLastMeasurement
-        );
+        // Sort by priority (high first), then by days since last measurement
+        tasks.sort((a, b) => {
+          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+            return priorityOrder[a.priority] - priorityOrder[b.priority];
+          }
+          return b.daysSinceLastMeasurement - a.daysSinceLastMeasurement;
+        });
 
         return {
-          tasks: tasksNeedingMeasurement.slice(0, limit),
-          totalCount: tasksNeedingMeasurement.length,
+          tasks: tasks.slice(0, limit),
+          totalCount: tasks.length,
         };
       } catch (error) {
         console.error("Error fetching tasks:", error);

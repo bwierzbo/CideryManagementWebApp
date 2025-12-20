@@ -551,8 +551,12 @@ export const batches = pgTable(
     // Gravity and ABV tracking
     originalGravity: decimal("original_gravity", { precision: 5, scale: 3 }),
     finalGravity: decimal("final_gravity", { precision: 5, scale: 3 }),
+    targetFinalGravity: decimal("target_final_gravity", { precision: 5, scale: 3 }), // Expected final gravity for % fermented calculation
     estimatedAbv: decimal("estimated_abv", { precision: 4, scale: 2 }),
     actualAbv: decimal("actual_abv", { precision: 4, scale: 2 }),
+    // Fermentation stage tracking (SG-based)
+    fermentationStage: text("fermentation_stage").$type<"early" | "mid" | "approaching_dry" | "terminal" | "unknown">().default("unknown"),
+    fermentationStageUpdatedAt: timestamp("fermentation_stage_updated_at", { withTimezone: true }),
     // Transfer loss tracking (juice lost during transfer from press run to vessel)
     transferLossL: decimal("transfer_loss_l", { precision: 10, scale: 3 }),
     transferLossNotes: text("transfer_loss_notes"),
@@ -662,6 +666,11 @@ export const batchMeasurements = pgTable("batch_measurements", {
   volume: decimal("volume", { precision: 10, scale: 3 }),
   volumeUnit: unitEnum("volume_unit").notNull().default("L"),
   volumeLiters: decimal("volume_liters", { precision: 10, scale: 3 }), // Normalized volume in liters (auto-maintained by trigger)
+  // Estimated vs Measured tracking
+  isEstimated: boolean("is_estimated").notNull().default(false), // true = calculated estimate, false = actual measurement
+  estimateSource: text("estimate_source"), // Description of how estimate was calculated (e.g., "Merge from Batch #X", "Volume-weighted blend")
+  // Measurement method tracking for terminal confirmation
+  measurementMethod: text("measurement_method").$type<"hydrometer" | "refractometer" | "calculated">().default("hydrometer"),
   notes: text("notes"),
   takenBy: text("taken_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1063,6 +1072,9 @@ export const batchMergeHistory = pgTable(
     sourceJuicePurchaseItemId: uuid("source_juice_purchase_item_id").references(
       () => juicePurchaseItems.id,
     ),
+    sourceBatchId: uuid("source_batch_id").references(() => batches.id, {
+      onDelete: "set null",
+    }),
     sourceType: text("source_type").notNull(), // 'press_run', 'batch_transfer', or 'juice_purchase'
     // Volume details
     volumeAdded: decimal("volume_added", {
@@ -1099,6 +1111,9 @@ export const batchMergeHistory = pgTable(
     sourceJuicePurchaseIdx: index(
       "batch_merge_history_source_juice_purchase_idx",
     ).on(table.sourceJuicePurchaseItemId),
+    sourceBatchIdx: index("batch_merge_history_source_batch_idx").on(
+      table.sourceBatchId,
+    ),
     mergedAtIdx: index("batch_merge_history_merged_at_idx").on(table.mergedAt),
   }),
 );

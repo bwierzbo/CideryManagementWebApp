@@ -9,6 +9,7 @@ import { ToastProvider } from "../components/ui/toast-provider";
 import { performanceMonitor } from "../lib/performance-monitor";
 import { IdleTimeoutProvider } from "../components/providers/idle-timeout-provider";
 import { TimezoneProvider } from "../contexts/TimezoneContext";
+import { SettingsProvider } from "../contexts/SettingsContext";
 
 // Enhanced QueryClient with performance optimizations
 function createOptimizedQueryClient() {
@@ -107,9 +108,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <IdleTimeoutProvider>
         <trpc.Provider client={trpcClient} queryClient={queryClient}>
           <QueryClientProvider client={queryClient}>
-            <TimezoneProvider>
-              <ToastProvider>{children}</ToastProvider>
-            </TimezoneProvider>
+            <SettingsProvider>
+              <TimezoneProvider>
+                <ToastProvider>{children}</ToastProvider>
+              </TimezoneProvider>
+            </SettingsProvider>
           </QueryClientProvider>
         </trpc.Provider>
       </IdleTimeoutProvider>

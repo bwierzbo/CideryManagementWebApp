@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +21,8 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -59,14 +62,35 @@ import {
   X,
   XCircle,
   CreditCard,
+  UserCheck,
+  UserX,
+  Monitor,
+  Calendar,
+  Clock,
+  Palette,
+  DollarSign,
+  Ruler,
+  Droplet,
+  Scale,
+  Thermometer,
+  Gauge,
+  Building2,
+  Bell,
+  Beaker,
+  Package,
+  Lock,
+  Loader2,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
+import { api } from "@/server/client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { SquareIntegration } from "@/components/admin/SquareIntegration";
+import { useSettings } from "@/contexts/SettingsContext";
+import { cn } from "@/lib/utils";
 
 // Form schemas
 const userSchema = z.object({
@@ -95,277 +119,209 @@ type UserForm = z.infer<typeof userSchema>;
 type AppleVarietyForm = z.infer<typeof appleVarietySchema>;
 
 function UserManagement() {
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const { data: session } = useSession();
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  // Mock user data
-  const users = [
-    {
-      id: "1",
-      email: "admin@example.com",
-      name: "Admin User",
-      role: "admin",
-      isActive: true,
-      lastLogin: "2024-01-27 10:30",
-      createdAt: "2024-01-01",
-    },
-    {
-      id: "2",
-      email: "operator@example.com",
-      name: "Operator User",
-      role: "operator",
-      isActive: true,
-      lastLogin: "2024-01-26 16:45",
-      createdAt: "2024-01-05",
-    },
-    {
-      id: "3",
-      email: "john.cellar@cidery.com",
-      name: "John Smith",
-      role: "operator",
-      isActive: false,
-      lastLogin: "2024-01-20 09:15",
-      createdAt: "2024-01-10",
-    },
-  ];
+  // Fetch users from real API
+  const { data: users, refetch, isLoading } = api.user.listUsers.useQuery();
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    setValue,
-    reset,
-  } = useForm<UserForm>({
-    resolver: zodResolver(userSchema),
+  // Update user mutation
+  const updateUserMutation = api.user.updateUser.useMutation({
+    onSuccess: () => {
+      refetch();
+      setIsEditDialogOpen(false);
+      setSelectedUser(null);
+    },
   });
 
-  const onSubmit = (data: UserForm) => {
-    console.log("User data:", data);
-    // TODO: Implement user creation mutation
-    setIsAddDialogOpen(false);
-    reset();
+  const handleRoleChange = (userId: string, role: "admin" | "operator" | "viewer") => {
+    updateUserMutation.mutate({ userId, role });
   };
 
-  const promoteUser = (userId: string, currentRole: string) => {
-    console.log(`Promoting user ${userId} from ${currentRole}`);
-    // TODO: Implement user role update
+  const handleStatusToggle = (userId: string, isActive: boolean) => {
+    updateUserMutation.mutate({ userId, isActive });
   };
 
-  const toggleUserStatus = (userId: string, currentStatus: boolean) => {
-    console.log(
-      `${currentStatus ? "Deactivating" : "Activating"} user ${userId}`,
+  const getRoleBadge = (role: string) => {
+    const variants: Record<string, "default" | "secondary" | "destructive"> = {
+      admin: "destructive",
+      operator: "default",
+      viewer: "secondary",
+    };
+    return (
+      <Badge variant={variants[role] || "default"}>
+        {role.charAt(0).toUpperCase() + role.slice(1)}
+      </Badge>
     );
-    // TODO: Implement user status toggle
+  };
+
+  const getStatusBadge = (isActive: boolean) => {
+    return isActive ? (
+      <Badge variant="outline" className="border-green-500 text-green-600">
+        <UserCheck className="h-3 w-3 mr-1" />
+        Active
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="border-red-500 text-red-600">
+        <UserX className="h-3 w-3 mr-1" />
+        Inactive
+      </Badge>
+    );
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-600" />
-              User Management
-            </CardTitle>
-            <CardDescription>
-              Manage system users and their permissions
-            </CardDescription>
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                User Management
+              </CardTitle>
+              <CardDescription>
+                {users?.length || 0} registered users
+              </CardDescription>
+            </div>
+            <Button
+              onClick={() => refetch()}
+              variant="outline"
+              size="sm"
+              className="flex items-center"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Add User
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New User</DialogTitle>
-                <DialogDescription>
-                  Create a new system user with appropriate permissions.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div>
-                  <Label htmlFor="email">Email Address</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    {...register("email")}
-                    placeholder="user@example.com"
-                  />
-                  {errors.email && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {errors.email.message}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    {...register("name")}
-                    placeholder="John Smith"
-                  />
-                  {errors.name && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {errors.name.message}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <Label htmlFor="role">Role</Label>
-                  <Select
-                    onValueChange={(value: "admin" | "operator") =>
-                      setValue("role", value)
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8 text-gray-500">
+              Loading users...
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Last Login</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users?.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">{user.name}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>{getRoleBadge(user.role)}</TableCell>
+                    <TableCell>{getStatusBadge(user.isActive)}</TableCell>
+                    <TableCell>
+                      {user.lastLoginAt
+                        ? formatDate(user.lastLoginAt)
+                        : "Never"
+                      }
+                    </TableCell>
+                    <TableCell>
+                      {formatDate(user.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        onClick={() => {
+                          setSelectedUser(user);
+                          setIsEditDialogOpen(true);
+                        }}
+                        variant="ghost"
+                        size="sm"
+                        disabled={user.id === session?.user?.id}
+                      >
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit User Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Manage user role and status for {selectedUser?.name}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedUser && (
+            <div className="space-y-6 pt-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Email</label>
+                <p className="text-sm text-gray-600">{selectedUser.email}</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Role</label>
+                <Select
+                  value={selectedUser.role}
+                  onValueChange={(value) =>
+                    handleRoleChange(selectedUser.id, value as any)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="operator">Operator</SelectItem>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  Admin: Full access | Operator: Create/Edit | Viewer: Read-only
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Account Status</label>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">
+                    {selectedUser.isActive ? "Active" : "Inactive"}
+                  </span>
+                  <Switch
+                    checked={selectedUser.isActive}
+                    onCheckedChange={(checked) =>
+                      handleStatusToggle(selectedUser.id, checked)
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="operator">Operator</SelectItem>
-                      <SelectItem value="admin">Administrator</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.role && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {errors.role.message}
-                    </p>
-                  )}
+                  />
                 </div>
-                <div>
-                  <Label htmlFor="password">Password</Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      {...register("password")}
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  {errors.password && (
-                    <p className="text-sm text-red-600 mt-1">
-                      {errors.password.message}
-                    </p>
-                  )}
-                </div>
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsAddDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit">Create User</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Last Login</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="w-[150px]">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map((user) => (
-              <TableRow key={user.id}>
-                <TableCell>
-                  <div className="flex items-center space-x-2">
-                    <div
-                      className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        user.role === "admin" ? "bg-red-100" : "bg-blue-100"
-                      }`}
-                    >
-                      {user.role === "admin" ? (
-                        <Crown className="w-4 h-4 text-red-600" />
-                      ) : (
-                        <User className="w-4 h-4 text-blue-600" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium">{user.name}</p>
-                      <p className="text-sm text-gray-600">{user.email}</p>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                      user.role === "admin"
-                        ? "bg-red-100 text-red-800"
-                        : "bg-blue-100 text-blue-800"
-                    }`}
-                  >
-                    {user.role}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <span
-                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                      user.isActive
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {user.isActive ? "Active" : "Inactive"}
-                  </span>
-                </TableCell>
-                <TableCell className="text-sm">{user.lastLogin}</TableCell>
-                <TableCell className="text-sm">{user.createdAt}</TableCell>
-                <TableCell>
-                  <div className="flex space-x-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => promoteUser(user.id, user.role)}
-                      disabled={user.role === "admin"}
-                    >
-                      <Shield className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => toggleUserStatus(user.id, user.isActive)}
-                    >
-                      {user.isActive ? (
-                        <EyeOff className="w-3 h-3" />
-                      ) : (
-                        <Eye className="w-3 h-3" />
-                      )}
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      <Edit className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                <p className="text-xs text-gray-500">
+                  Inactive users cannot sign in
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditDialogOpen(false);
+                    setSelectedUser(null);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -853,13 +809,96 @@ function ReferenceValues() {
   );
 }
 
+// Helper component for disabled/not implemented settings
+function DisabledOverlay({ children, implemented = false }: { children: React.ReactNode; implemented?: boolean }) {
+  if (implemented) return <>{children}</>;
+
+  return (
+    <div className="relative">
+      <div className="absolute inset-0 bg-gray-100/60 z-10 rounded-lg flex items-center justify-center">
+        <Badge variant="secondary" className="flex items-center gap-1">
+          <Lock className="w-3 h-3" />
+          Coming Soon
+        </Badge>
+      </div>
+      <div className="opacity-50 pointer-events-none">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Section header with implementation status
+function SettingsSectionHeader({
+  title,
+  description,
+  icon: Icon,
+  implemented = false
+}: {
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  implemented?: boolean;
+}) {
+  return (
+    <div className="flex items-start justify-between">
+      <div className="flex items-center gap-3">
+        <div className={cn(
+          "p-2 rounded-lg",
+          implemented ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-400"
+        )}>
+          <Icon className="w-5 h-5" />
+        </div>
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <p className="text-sm text-gray-500">{description}</p>
+        </div>
+      </div>
+      {!implemented && (
+        <Badge variant="outline" className="text-gray-400">
+          Not Implemented
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 function SystemSettings() {
   const { data: currentTimezone } = trpc.settings.getTimezone.useQuery();
   const updateTimezoneMutation = trpc.settings.updateTimezone.useMutation();
+  const { settings, isLoading: isLoadingSettings, refetch } = useSettings();
   const utils = trpc.useUtils();
   const { toast } = useToast();
 
   const [selectedTimezone, setSelectedTimezone] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Local state for form values
+  const [formData, setFormData] = useState({
+    dateFormat: settings.dateFormat,
+    timeFormat: settings.timeFormat,
+    theme: settings.theme,
+    defaultCurrency: settings.defaultCurrency,
+    volumeUnits: settings.volumeUnits,
+    volumeShowSecondary: settings.volumeShowSecondary,
+    weightUnits: settings.weightUnits,
+    weightShowSecondary: settings.weightShowSecondary,
+    temperatureUnits: settings.temperatureUnits,
+    temperatureShowSecondary: settings.temperatureShowSecondary,
+    densityUnits: settings.densityUnits,
+    densityShowSecondary: settings.densityShowSecondary,
+    pressureUnits: settings.pressureUnits,
+    pressureShowSecondary: settings.pressureShowSecondary,
+    stalledBatchDays: settings.stalledBatchDays,
+    longAgingDays: settings.longAgingDays,
+    lowInventoryThreshold: settings.lowInventoryThreshold,
+    ttbReminderDays: settings.ttbReminderDays,
+    defaultTargetCO2: settings.defaultTargetCO2,
+    sgDecimalPlaces: settings.sgDecimalPlaces,
+    phDecimalPlaces: settings.phDecimalPlaces,
+    sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
+    hydrometerCalibrationTempC: settings.hydrometerCalibrationTempC,
+  });
 
   // Common US timezones
   const timezones = [
@@ -872,57 +911,84 @@ function SystemSettings() {
     { value: "UTC", label: "UTC (Coordinated Universal Time)" },
   ];
 
+  // Update mutation for organization settings
+  const updateSettingsMutation = trpc.settings.updateOrganizationSettings.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Settings Saved",
+        description: "Your preferences have been updated.",
+      });
+      refetch();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSave = async () => {
-    const timezoneToSave = selectedTimezone || currentTimezone;
-
-    if (!timezoneToSave) {
-      toast({
-        title: "Error",
-        description: "Please select a timezone",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    setIsSaving(true);
     try {
-      await updateTimezoneMutation.mutateAsync({
-        timezone: timezoneToSave,
+      // Save timezone if changed
+      const timezoneToSave = selectedTimezone || currentTimezone;
+      if (timezoneToSave && selectedTimezone) {
+        await updateTimezoneMutation.mutateAsync({
+          timezone: timezoneToSave,
+        });
+      }
+
+      // Save other settings
+      await updateSettingsMutation.mutateAsync({
+        dateFormat: formData.dateFormat,
+        timeFormat: formData.timeFormat,
+        sgDecimalPlaces: formData.sgDecimalPlaces,
+        phDecimalPlaces: formData.phDecimalPlaces,
+        sgTemperatureCorrectionEnabled: formData.sgTemperatureCorrectionEnabled,
+        hydrometerCalibrationTempC: formData.hydrometerCalibrationTempC,
       });
 
-      // Invalidate all queries to refresh dates throughout the app
       utils.invalidate();
-
-      toast({
-        title: "Success",
-        description: "Timezone updated successfully. All dates will now display in the selected timezone.",
-      });
-
       setSelectedTimezone("");
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to update timezone",
-        variant: "destructive",
-      });
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  // Update form when settings load
+  React.useEffect(() => {
+    if (!isLoadingSettings) {
+      setFormData(prev => ({
+        ...prev,
+        dateFormat: settings.dateFormat,
+        timeFormat: settings.timeFormat,
+        theme: settings.theme,
+        sgDecimalPlaces: settings.sgDecimalPlaces,
+        phDecimalPlaces: settings.phDecimalPlaces,
+        sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
+        hydrometerCalibrationTempC: settings.hydrometerCalibrationTempC,
+      }));
+    }
+  }, [isLoadingSettings, settings]);
 
   const displayTimezone = selectedTimezone || currentTimezone || "America/Los_Angeles";
   const displayLabel = timezones.find((tz) => tz.value === displayTimezone)?.label || displayTimezone;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Settings className="w-5 h-5 text-purple-600" />
-          System Settings
-        </CardTitle>
-        <CardDescription>
-          Configure system-wide settings and defaults
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Timezone Settings */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Timezone"
+            description="Configure the timezone for displaying dates and times"
+            icon={Clock}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent>
           <div className="flex items-center justify-between p-4 border rounded-lg">
             <div className="flex-1">
               <h4 className="font-medium">Display Timezone</h4>
@@ -933,42 +999,411 @@ function SystemSettings() {
                 Current: {displayLabel}
               </p>
             </div>
-            <div className="flex items-center space-x-2">
+            <Select
+              value={selectedTimezone || currentTimezone}
+              onValueChange={setSelectedTimezone}
+            >
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Select timezone" />
+              </SelectTrigger>
+              <SelectContent>
+                {timezones.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Display Preferences */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Display Preferences"
+            description="Configure how dates, times, and other information are displayed"
+            icon={Monitor}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Date Format */}
+            <div className="space-y-2">
+              <Label htmlFor="dateFormat" className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-purple-600" />
+                Date Format
+              </Label>
               <Select
-                value={selectedTimezone || currentTimezone}
-                onValueChange={setSelectedTimezone}
+                value={formData.dateFormat}
+                onValueChange={(value) => setFormData({ ...formData, dateFormat: value as any })}
               >
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder="Select timezone" />
+                <SelectTrigger id="dateFormat">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {timezones.map((tz) => (
-                    <SelectItem key={tz.value} value={tz.value}>
-                      {tz.label}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="mdy">MM/DD/YYYY (US)</SelectItem>
+                  <SelectItem value="dmy">DD/MM/YYYY (UK/EU)</SelectItem>
+                  <SelectItem value="ymd">YYYY-MM-DD (ISO)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Example: {formData.dateFormat === "mdy" ? "12/19/2025" : formData.dateFormat === "dmy" ? "19/12/2025" : "2025-12-19"}
+              </p>
+            </div>
+
+            {/* Time Format */}
+            <div className="space-y-2">
+              <Label htmlFor="timeFormat" className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-purple-600" />
+                Time Format
+              </Label>
+              <Select
+                value={formData.timeFormat}
+                onValueChange={(value) => setFormData({ ...formData, timeFormat: value as any })}
+              >
+                <SelectTrigger id="timeFormat">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="12h">12-hour (2:30 PM)</SelectItem>
+                  <SelectItem value="24h">24-hour (14:30)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Theme - NOT IMPLEMENTED */}
+            <DisabledOverlay implemented={false}>
+              <div className="space-y-2">
+                <Label htmlFor="theme" className="flex items-center gap-2">
+                  <Palette className="w-4 h-4" />
+                  Theme
+                </Label>
+                <Select value={formData.theme}>
+                  <SelectTrigger id="theme">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="light">Light</SelectItem>
+                    <SelectItem value="dark">Dark</SelectItem>
+                    <SelectItem value="system">System</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </DisabledOverlay>
+
+            {/* Currency - NOT IMPLEMENTED */}
+            <DisabledOverlay implemented={false}>
+              <div className="space-y-2">
+                <Label htmlFor="currency" className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  Currency
+                </Label>
+                <Select value={formData.defaultCurrency}>
+                  <SelectTrigger id="currency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                    <SelectItem value="CAD">CAD ($)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </DisabledOverlay>
           </div>
-        </div>
-        <div className="mt-6 flex justify-end">
-          <Button
-            onClick={handleSave}
-            disabled={updateTimezoneMutation.isPending}
-          >
-            {updateTimezoneMutation.isPending ? (
-              <>Saving...</>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save Settings
-              </>
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* Measurement Display - IMPLEMENTED */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Measurement Display"
+            description="Configure decimal places for measurements"
+            icon={Gauge}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* SG Decimal Places */}
+            <div className="space-y-2">
+              <Label htmlFor="sgDecimals" className="flex items-center gap-2">
+                <Gauge className="w-4 h-4 text-purple-600" />
+                Specific Gravity (SG) Decimals
+              </Label>
+              <Select
+                value={String(formData.sgDecimalPlaces)}
+                onValueChange={(value) => setFormData({ ...formData, sgDecimalPlaces: parseInt(value) })}
+              >
+                <SelectTrigger id="sgDecimals">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2">2 decimals (1.05)</SelectItem>
+                  <SelectItem value="3">3 decimals (1.050)</SelectItem>
+                  <SelectItem value="4">4 decimals (1.0500)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Example: {(1.0523).toFixed(formData.sgDecimalPlaces)}
+              </p>
+            </div>
+
+            {/* pH Decimal Places */}
+            <div className="space-y-2">
+              <Label htmlFor="phDecimals" className="flex items-center gap-2">
+                <Beaker className="w-4 h-4 text-purple-600" />
+                pH Decimals
+              </Label>
+              <Select
+                value={String(formData.phDecimalPlaces)}
+                onValueChange={(value) => setFormData({ ...formData, phDecimalPlaces: parseInt(value) })}
+              >
+                <SelectTrigger id="phDecimals">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 decimal (3.5)</SelectItem>
+                  <SelectItem value="2">2 decimals (3.50)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500">
+                Example: {(3.457).toFixed(formData.phDecimalPlaces)}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Measurement Corrections - IMPLEMENTED */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Measurement Corrections"
+            description="Configure automatic corrections for measurement readings"
+            icon={Thermometer}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* SG Temperature Correction Toggle */}
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="flex-1">
+              <h4 className="font-medium flex items-center gap-2">
+                <Thermometer className="w-4 h-4 text-purple-600" />
+                SG Temperature Correction
+              </h4>
+              <p className="text-sm text-gray-600 mt-1">
+                Automatically correct specific gravity readings for temperature variance from calibration temperature
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Hydrometers are calibrated at a specific temperature. When the sample temperature differs,
+                the density reading needs correction for accurate measurements.
+              </p>
+            </div>
+            <Switch
+              checked={formData.sgTemperatureCorrectionEnabled}
+              onCheckedChange={(checked) => setFormData({ ...formData, sgTemperatureCorrectionEnabled: checked })}
+            />
+          </div>
+
+          {/* Hydrometer Calibration Temperature */}
+          <div className={cn(
+            "space-y-2 transition-opacity",
+            !formData.sgTemperatureCorrectionEnabled && "opacity-50"
+          )}>
+            <Label htmlFor="calibrationTemp" className="flex items-center gap-2">
+              <Gauge className="w-4 h-4 text-purple-600" />
+              Hydrometer Calibration Temperature
+            </Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select
+                value={formData.hydrometerCalibrationTempC}
+                onValueChange={(value) => setFormData({ ...formData, hydrometerCalibrationTempC: value })}
+                disabled={!formData.sgTemperatureCorrectionEnabled}
+              >
+                <SelectTrigger id="calibrationTemp">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="15.56">60°F / 15.56°C (US Standard)</SelectItem>
+                  <SelectItem value="20">68°F / 20°C (Lab Standard)</SelectItem>
+                  <SelectItem value="15">59°F / 15°C (European)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 flex items-center">
+                Check your hydrometer documentation for its calibration temperature
+              </p>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Most US hydrometers are calibrated at 60°F (15.56°C). Lab-grade hydrometers often use 68°F (20°C).
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Unit Preferences - NOT IMPLEMENTED */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Unit Preferences"
+            description="Choose your preferred measurement units"
+            icon={Ruler}
+            implemented={false}
+          />
+        </CardHeader>
+        <CardContent>
+          <DisabledOverlay implemented={false}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Droplet className="w-4 h-4" />
+                  Volume
+                </Label>
+                <Select value={formData.volumeUnits}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="gallons">Gallons</SelectItem>
+                    <SelectItem value="liters">Liters</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Scale className="w-4 h-4" />
+                  Weight
+                </Label>
+                <Select value={formData.weightUnits}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pounds">Pounds (lb)</SelectItem>
+                    <SelectItem value="kilograms">Kilograms (kg)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Thermometer className="w-4 h-4" />
+                  Temperature
+                </Label>
+                <Select value={formData.temperatureUnits}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fahrenheit">Fahrenheit (F)</SelectItem>
+                    <SelectItem value="celsius">Celsius (C)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="flex items-center gap-2">
+                  <Gauge className="w-4 h-4" />
+                  Density
+                </Label>
+                <Select value={formData.densityUnits}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sg">Specific Gravity (SG)</SelectItem>
+                    <SelectItem value="brix">Brix</SelectItem>
+                    <SelectItem value="plato">Plato</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </DisabledOverlay>
+        </CardContent>
+      </Card>
+
+      {/* Alert Thresholds - NOT IMPLEMENTED */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Alert Thresholds"
+            description="Configure when you receive alerts and notifications"
+            icon={Bell}
+            implemented={false}
+          />
+        </CardHeader>
+        <CardContent>
+          <DisabledOverlay implemented={false}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <Label htmlFor="stalledBatch">Stalled Batch Alert (days)</Label>
+                <Input
+                  id="stalledBatch"
+                  type="number"
+                  value={formData.stalledBatchDays}
+                  readOnly
+                />
+                <p className="text-xs text-gray-500">Alert when a batch has no activity for this many days</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="longAging">Long Aging Alert (days)</Label>
+                <Input
+                  id="longAging"
+                  type="number"
+                  value={formData.longAgingDays}
+                  readOnly
+                />
+                <p className="text-xs text-gray-500">Alert when a batch exceeds this aging time</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lowInventory">Low Inventory Threshold</Label>
+                <Input
+                  id="lowInventory"
+                  type="number"
+                  value={formData.lowInventoryThreshold}
+                  readOnly
+                />
+                <p className="text-xs text-gray-500">Alert when packaged inventory falls below this count</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ttbReminder">TTB Report Reminder (days)</Label>
+                <Input
+                  id="ttbReminder"
+                  type="number"
+                  value={formData.ttbReminderDays}
+                  readOnly
+                />
+                <p className="text-xs text-gray-500">Remind before TTB report due date</p>
+              </div>
+            </div>
+          </DisabledOverlay>
+        </CardContent>
+      </Card>
+
+      {/* Save Button */}
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || updateTimezoneMutation.isPending}
+          size="lg"
+          className="bg-purple-600 hover:bg-purple-700"
+        >
+          {isSaving ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4 mr-2" />
+          )}
+          Save Settings
+        </Button>
+      </div>
+    </div>
   );
 }
 

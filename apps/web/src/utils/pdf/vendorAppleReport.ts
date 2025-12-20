@@ -3,6 +3,7 @@
  */
 
 import type { TDocumentDefinitions, Content } from "pdfmake/interfaces";
+import { formatDate as formatDateUtil } from "@/utils/date-format";
 
 // Lazy import pdfMake to avoid SSR issues
 const getPdfMake = async () => {
@@ -72,11 +73,11 @@ function formatNumber(value: number | null, decimals: number = 2): string {
 }
 
 /**
- * Format a date as MM/DD/YYYY
+ * Format a date as MM/DD/YYYY using centralized utility
  */
 function formatDate(date: Date | null): string {
   if (!date) return "N/A";
-  return new Date(date).toLocaleDateString("en-US");
+  return formatDateUtil(date);
 }
 
 /**

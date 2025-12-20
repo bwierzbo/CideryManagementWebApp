@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardList, Beaker, AlertTriangle, Clock } from "lucide-react";
+import { ClipboardList, Beaker, AlertTriangle, Clock, CheckCircle } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { WidgetWrapper } from "./WidgetWrapper";
 import { WidgetProps, WidgetConfig } from "./types";
 import { registerWidget, WIDGET_IDS } from "./registry";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 
 interface TaskItemProps {
   batchNumber: string;
@@ -15,8 +16,31 @@ interface TaskItemProps {
   vesselName: string | null;
   daysSince: number;
   priority: "high" | "medium" | "low";
+  taskType: "measurement_needed" | "stalled_fermentation" | "confirm_terminal";
+  percentFermented: number;
+  fermentationStage: string;
+  recommendedAction: string;
   compact?: boolean;
   batchId: string;
+}
+
+function getStageLabel(stage: string): string {
+  switch (stage) {
+    case "early": return "Early";
+    case "mid": return "Mid";
+    case "approaching_dry": return "Near Dry";
+    case "terminal": return "Terminal";
+    default: return "Unknown";
+  }
+}
+
+function getTaskTypeLabel(taskType: string): string {
+  switch (taskType) {
+    case "stalled_fermentation": return "Stalled";
+    case "confirm_terminal": return "Confirm FG";
+    case "measurement_needed": return "Measure";
+    default: return "Action";
+  }
 }
 
 function TaskItem({
@@ -25,6 +49,10 @@ function TaskItem({
   vesselName,
   daysSince,
   priority,
+  taskType,
+  percentFermented,
+  fermentationStage,
+  recommendedAction,
   compact,
   batchId,
 }: TaskItemProps) {
@@ -34,65 +62,87 @@ function TaskItem({
     low: "bg-blue-100 text-blue-800 border-blue-200",
   };
 
-  const priorityIcons = {
-    high: <AlertTriangle className="w-3 h-3" />,
-    medium: <Clock className="w-3 h-3" />,
-    low: <Beaker className="w-3 h-3" />,
+  const taskTypeIcons = {
+    stalled_fermentation: <AlertTriangle className="w-3 h-3" />,
+    confirm_terminal: <CheckCircle className="w-3 h-3" />,
+    measurement_needed: <Beaker className="w-3 h-3" />,
   };
 
   return (
     <Link
       href={`/batch/${batchId}`}
       className={cn(
-        "flex items-center justify-between rounded-lg hover:bg-gray-50 transition-colors",
+        "block rounded-lg hover:bg-gray-50 transition-colors",
         compact ? "p-2" : "p-3"
       )}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <div
-          className={cn(
-            "flex items-center justify-center rounded-lg border",
-            priorityColors[priority],
-            compact ? "w-7 h-7" : "w-9 h-9"
-          )}
-        >
-          {priorityIcons[priority]}
-        </div>
-        <div className="min-w-0">
-          <p
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2 min-w-0">
+          <div
             className={cn(
-              "font-medium text-gray-900 truncate",
-              compact ? "text-xs" : "text-sm"
+              "flex items-center justify-center rounded-lg border shrink-0",
+              priorityColors[priority],
+              compact ? "w-6 h-6" : "w-8 h-8"
             )}
           >
-            {customName || batchNumber}
-          </p>
-          {vesselName && (
-            <p className="text-xs text-gray-500 truncate">{vesselName}</p>
-          )}
+            {taskTypeIcons[taskType]}
+          </div>
+          <div className="min-w-0">
+            <p
+              className={cn(
+                "font-medium text-gray-900 truncate",
+                compact ? "text-xs" : "text-sm"
+              )}
+            >
+              {customName || batchNumber}
+            </p>
+            {vesselName && !compact && (
+              <p className="text-xs text-gray-500 truncate">{vesselName}</p>
+            )}
+          </div>
         </div>
+        <Badge
+          variant="outline"
+          className={cn(
+            "ml-2 shrink-0",
+            priorityColors[priority],
+            compact && "text-xs px-1.5 py-0"
+          )}
+        >
+          {getTaskTypeLabel(taskType)}
+        </Badge>
       </div>
-      <Badge
-        variant="outline"
-        className={cn(
-          "ml-2 shrink-0",
-          priorityColors[priority],
-          compact && "text-xs px-1.5 py-0"
-        )}
-      >
-        {daysSince}d ago
-      </Badge>
+
+      {/* Fermentation progress */}
+      <div className={cn("mt-2", compact && "mt-1")}>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs text-gray-500">
+            {getStageLabel(fermentationStage)} • {percentFermented.toFixed(0)}%
+          </span>
+          <span className="text-xs text-gray-400">
+            {daysSince}d since last
+          </span>
+        </div>
+        <Progress value={Math.min(100, percentFermented)} className="h-1.5" />
+      </div>
+
+      {/* Recommended action - only show in non-compact mode */}
+      {!compact && recommendedAction && (
+        <p className="text-xs text-gray-500 mt-1 truncate" title={recommendedAction}>
+          {recommendedAction}
+        </p>
+      )}
     </Link>
   );
 }
 
 /**
  * Today's Tasks Widget
- * Shows batches needing measurement and other actionable items
+ * Shows batches needing measurement based on fermentation stage,
+ * stalled fermentations, and other actionable items
  */
 export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps) {
   const { data, isPending, error, refetch } = trpc.dashboard.getTasks.useQuery({
-    measurementThresholdDays: 3,
     limit: limit,
   });
 
@@ -103,6 +153,10 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
 
   const tasks = data?.tasks ?? [];
   const totalCount = data?.totalCount ?? 0;
+
+  // Count by task type for summary
+  const stalledCount = tasks.filter(t => t.taskType === "stalled_fermentation").length;
+  const confirmCount = tasks.filter(t => t.taskType === "confirm_terminal").length;
 
   return (
     <WidgetWrapper
@@ -119,15 +173,22 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
         <div className="text-center py-4">
           <ClipboardList className="w-8 h-8 mx-auto text-green-400 mb-2" />
           <p className="text-sm text-gray-600 font-medium">All caught up!</p>
-          <p className="text-xs text-gray-500">No batches need measurement</p>
+          <p className="text-xs text-gray-500">No batches need attention</p>
         </div>
       }
       headerActions={
-        totalCount > tasks.length ? (
-          <Badge variant="secondary" className="text-xs">
-            +{totalCount - tasks.length} more
-          </Badge>
-        ) : null
+        <div className="flex items-center gap-1">
+          {stalledCount > 0 && (
+            <Badge variant="destructive" className="text-xs px-1.5">
+              {stalledCount} stalled
+            </Badge>
+          )}
+          {totalCount > tasks.length && (
+            <Badge variant="secondary" className="text-xs">
+              +{totalCount - tasks.length} more
+            </Badge>
+          )}
+        </div>
       }
     >
       <div className={cn("divide-y", compact ? "-mx-2" : "-mx-3")}>
@@ -140,6 +201,10 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
             vesselName={task.vesselName}
             daysSince={task.daysSinceLastMeasurement}
             priority={task.priority}
+            taskType={task.taskType}
+            percentFermented={task.percentFermented}
+            fermentationStage={task.fermentationStage}
+            recommendedAction={task.recommendedAction}
             compact={compact}
           />
         ))}

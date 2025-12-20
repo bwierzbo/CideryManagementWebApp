@@ -17,6 +17,8 @@
     "db:export": "tsx src/scripts/export-data.ts",
     "db:import": "tsx src/scripts/import-data.ts",
     "db:reset-password": "tsx src/scripts/reset-password.ts",
+    "db:seed-settings": "tsx src/scripts/seed-organization-settings.ts",
+    "db:backfill-fermentation": "tsx scripts/backfill-fermentation-stages.ts",
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint \"**/*.{ts,tsx}\"",

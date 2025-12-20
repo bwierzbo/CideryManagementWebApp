@@ -30,6 +30,7 @@ const varietyUpdateSchema = z.object({
       .min(1, "Name is required")
       .max(100, "Name too long")
       .optional(),
+    fruitType: z.enum(["apple", "pear", "plum"]).optional(),
     ciderCategory: zCiderCategory.nullable().optional(),
     tannin: zIntensity.nullable().optional(),
     acid: zIntensity.nullable().optional(),
@@ -235,6 +236,8 @@ export const varietiesRouter = router({
         };
 
         if (input.patch.name !== undefined) updateData.name = input.patch.name;
+        if (input.patch.fruitType !== undefined)
+          updateData.fruitType = input.patch.fruitType;
         if (input.patch.ciderCategory !== undefined)
           updateData.ciderCategory = input.patch.ciderCategory;
         if (input.patch.tannin !== undefined)

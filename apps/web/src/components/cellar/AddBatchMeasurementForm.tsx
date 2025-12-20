@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
@@ -14,6 +21,8 @@ interface AddBatchMeasurementFormProps {
   onSuccess: () => void;
   onCancel: () => void;
 }
+
+type MeasurementMethod = "hydrometer" | "refractometer" | "calculated";
 
 export function AddBatchMeasurementForm({
   batchId,
@@ -27,6 +36,7 @@ export function AddBatchMeasurementForm({
     .slice(0, 16); // Format: YYYY-MM-DDTHH:mm
 
   const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime);
+  const [measurementMethod, setMeasurementMethod] = useState<MeasurementMethod>("hydrometer");
   const [specificGravity, setSpecificGravity] = useState("");
   const [abv, setAbv] = useState("");
   const [ph, setPh] = useState("");
@@ -66,6 +76,7 @@ export function AddBatchMeasurementForm({
     const measurementData: any = {
       batchId,
       measurementDate: new Date(measurementDateTime).toISOString(),
+      measurementMethod,
     };
 
     if (specificGravity)
@@ -81,7 +92,7 @@ export function AddBatchMeasurementForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-1 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="measurementDateTime">Measurement Date & Time</Label>
           <Input
@@ -91,6 +102,26 @@ export function AddBatchMeasurementForm({
             onChange={(e) => setMeasurementDateTime(e.target.value)}
             className="w-full"
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="measurementMethod">Measurement Method</Label>
+          <Select
+            value={measurementMethod}
+            onValueChange={(value) => setMeasurementMethod(value as MeasurementMethod)}
+          >
+            <SelectTrigger id="measurementMethod">
+              <SelectValue placeholder="Select method" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="hydrometer">Hydrometer</SelectItem>
+              <SelectItem value="refractometer">Refractometer</SelectItem>
+              <SelectItem value="calculated">Calculated</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Hydrometer readings are used for terminal gravity confirmation
+          </p>
         </div>
       </div>
 

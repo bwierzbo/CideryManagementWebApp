@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { formatDateTimeForInput } from "@/utils/date-format";
+import { formatDateTimeForInput, formatDate } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,7 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
+import { useOrganizationSettings } from "@/contexts/SettingsContext";
 import {
   Beaker,
   Droplets,
@@ -900,6 +901,7 @@ function TankTransferForm({
 }
 
 function VesselMap() {
+  const orgSettings = useOrganizationSettings();
   const [showAddTank, setShowAddTank] = useState(false);
   const [editingVesselId, setEditingVesselId] = useState<string | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -1566,7 +1568,18 @@ function VesselMap() {
                       </p>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
-                        No active batch
+                        {(() => {
+                          const lastActivity = (liquidMapVessel as any)?.lastActivity;
+                          if (lastActivity) {
+                            const activityDate = formatDate(lastActivity.date);
+                            if (lastActivity.type === "cleaned") {
+                              return `Cleaned ${activityDate}`;
+                            } else if (lastActivity.type === "transferred") {
+                              return `Batch transferred ${activityDate}`;
+                            }
+                          }
+                          return "No active batch";
+                        })()}
                       </p>
                     )}
                   </div>
@@ -1575,61 +1588,48 @@ function VesselMap() {
                   <div className="space-y-1 text-xs h-[60px]">
                     {liquidMapVessel?.batchId ? (
                       <>
-                        {/* ABV - from latest measurement or batch calculation */}
+                        {/* ABV - show Est ABV / Pot ABV format */}
                         {(() => {
                           const measurement = liquidMapVessel.latestMeasurement;
                           const og = liquidMapVessel.originalGravity;
+                          const ASSUMED_FG = 1.000;
 
-                          // Use latest measurement data (most recent source)
-                          if (measurement) {
-                            // Prefer measured ABV from the measurement
-                            if (measurement.abv) {
-                              return (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600">ABV:</span>
-                                  <span className="font-medium">
-                                    {parseFloat(String(measurement.abv)).toFixed(2)}%
-                                  </span>
-                                </div>
-                              );
-                            }
-                            // Calculate from SG only if it's different from OG (fermentation has progressed)
-                            if (measurement.specificGravity && og) {
-                              const fg = parseFloat(String(measurement.specificGravity));
-                              const ogNum = parseFloat(String(og));
-                              // Only show calculated ABV if SG has dropped (avoid 0% when only OG exists)
-                              if (fg < ogNum) {
-                                const estimatedAbv = (ogNum - fg) * 131.25;
-                                return (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">Est. ABV:</span>
-                                    <span className="font-medium">
-                                      {estimatedAbv.toFixed(2)}%
-                                    </span>
-                                  </div>
-                                );
-                              }
+                          // Calculate potential ABV (if OG exists)
+                          let potentialAbv: number | null = null;
+                          if (og) {
+                            const ogNum = parseFloat(String(og));
+                            potentialAbv = (ogNum - ASSUMED_FG) * 131.25;
+                          }
+
+                          // Calculate estimated ABV (if we have both OG and current SG)
+                          let estimatedAbv: number | null = null;
+                          if (measurement?.specificGravity && og) {
+                            const fg = parseFloat(String(measurement.specificGravity));
+                            const ogNum = parseFloat(String(og));
+                            if (fg < ogNum) {
+                              estimatedAbv = (ogNum - fg) * 131.25;
                             }
                           }
 
-                          // Fall back to batch-level ABV only if no measurements exist
-                          if (liquidMapVessel.actualAbv || liquidMapVessel.estimatedAbv) {
-                            return (
-                              <div className="flex justify-between">
-                                <span className="text-gray-600">
-                                  {liquidMapVessel.actualAbv ? 'ABV:' : 'Est. ABV:'}
-                                </span>
-                                <span className="font-medium">
-                                  {liquidMapVessel.actualAbv
-                                    ? `${parseFloat(String(liquidMapVessel.actualAbv)).toFixed(2)}%`
-                                    : `${parseFloat(String(liquidMapVessel.estimatedAbv)).toFixed(2)}%`
-                                  }
-                                </span>
-                              </div>
-                            );
+                          // Use measured ABV if available
+                          if (measurement?.abv) {
+                            estimatedAbv = parseFloat(String(measurement.abv));
                           }
 
-                          return null;
+                          // Format: "Est ABV / Pot ABV" or "--/Pot ABV" or "--/--"
+                          const estDisplay = estimatedAbv !== null ? `${estimatedAbv.toFixed(1)}%` : "--";
+                          const potDisplay = potentialAbv !== null && potentialAbv > 0 ? `${potentialAbv.toFixed(1)}%` : "--";
+
+                          return (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600" title="Estimated ABV / Potential ABV (if ferments to 1.000)">ABV:</span>
+                              <span className="font-medium">
+                                <span title="Current estimated ABV">{estDisplay}</span>
+                                <span className="text-gray-400 mx-0.5">/</span>
+                                <span className="text-gray-500" title="Potential ABV if ferments dry">{potDisplay}</span>
+                              </span>
+                            </div>
+                          );
                         })()}
                         {/* Show CO₂ if pressure vessel with carbonation data */}
                         {liquidMapVessel.isPressureVessel === "yes" && (liquidMapVessel.carbonationFinalCo2 || liquidMapVessel.carbonationTargetCo2) && (
@@ -1641,7 +1641,6 @@ function VesselMap() {
                               title="Click to toggle between volumes and g/L"
                             >
                               {(() => {
-                                // Prefer final CO₂ if carbonation is completed, otherwise show target
                                 const co2Value = liquidMapVessel.carbonationFinalCo2
                                   ? parseFloat(String(liquidMapVessel.carbonationFinalCo2))
                                   : parseFloat(String(liquidMapVessel.carbonationTargetCo2));
@@ -1654,18 +1653,42 @@ function VesselMap() {
                           </div>
                         )}
                         {liquidMapVessel.latestMeasurement?.specificGravity && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">SG:</span>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">
+                              SG
+                              {liquidMapVessel.latestMeasurement.specificGravityIsEstimated === true ? (
+                                <span className="text-orange-500 text-[10px] ml-0.5" title="Estimated">(E)</span>
+                              ) : (
+                                <span className="text-green-600 text-[10px] ml-0.5" title="Measured">(M)</span>
+                              )}:
+                            </span>
                             <span className="font-medium">
-                              {liquidMapVessel.latestMeasurement.specificGravity}
+                              {Number(liquidMapVessel.latestMeasurement.specificGravity).toFixed(orgSettings.sgDecimalPlaces)}
+                              {liquidMapVessel.latestMeasurement.specificGravityDate && (
+                                <span className="text-gray-400 text-[10px] ml-1">
+                                  {formatDate(liquidMapVessel.latestMeasurement.specificGravityDate)}
+                                </span>
+                              )}
                             </span>
                           </div>
                         )}
                         {liquidMapVessel.latestMeasurement?.ph && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">pH:</span>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-600">
+                              pH
+                              {liquidMapVessel.latestMeasurement.phIsEstimated === true ? (
+                                <span className="text-orange-500 text-[10px] ml-0.5" title="Estimated">(E)</span>
+                              ) : (
+                                <span className="text-green-600 text-[10px] ml-0.5" title="Measured">(M)</span>
+                              )}:
+                            </span>
                             <span className="font-medium">
-                              {liquidMapVessel.latestMeasurement.ph}
+                              {Number(liquidMapVessel.latestMeasurement.ph).toFixed(orgSettings.phDecimalPlaces)}
+                              {liquidMapVessel.latestMeasurement.phDate && (
+                                <span className="text-gray-400 text-[10px] ml-1">
+                                  {formatDate(liquidMapVessel.latestMeasurement.phDate)}
+                                </span>
+                              )}
                             </span>
                           </div>
                         )}

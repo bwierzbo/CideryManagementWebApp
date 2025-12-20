@@ -4,6 +4,7 @@
  */
 
 import type { TTBFormPDFData } from "../pdf/ttbForm512017";
+import { formatDate as formatDateUtil, formatDateTime } from "@/utils/date-format";
 
 // Re-export the type for convenience
 export type { TTBFormPDFData as TTBFormExcelData };
@@ -35,11 +36,11 @@ function formatGallons(value: number): string {
 }
 
 /**
- * Format a date as MM/DD/YYYY
+ * Format a date as MM/DD/YYYY using centralized utility
  */
 function formatDate(date: Date | string | null): string {
   if (!date) return "N/A";
-  return new Date(date).toLocaleDateString("en-US");
+  return formatDateUtil(date);
 }
 
 /**
@@ -94,7 +95,7 @@ export async function generateTTBFormExcel(
       formData.reconciliation.balanced ? "BALANCED" : "INVESTIGATE",
     ],
     [],
-    ["Report generated:", new Date().toLocaleString("en-US")],
+    ["Report generated:", formatDateTime(new Date())],
   ];
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);

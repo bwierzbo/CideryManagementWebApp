@@ -154,6 +154,53 @@ export const organizationSettings = pgTable(
     ttbReminderDays: integer("ttb_reminder_days").notNull().default(7),
 
     // ==========================================
+    // Fermentation Stage Tracking
+    // ==========================================
+    // Stage thresholds (percentage of fermentation complete)
+    fermentationStageEarlyMax: integer("fermentation_stage_early_max")
+      .notNull()
+      .default(70), // Early stage: 0-70%
+    fermentationStageMidMax: integer("fermentation_stage_mid_max")
+      .notNull()
+      .default(90), // Mid stage: 70-90%
+    fermentationStageApproachingDryMax: integer("fermentation_stage_approaching_dry_max")
+      .notNull()
+      .default(98), // Approaching dry: 90-98%, Terminal: 98%+
+
+    // Stall detection settings
+    stallDetectionEnabled: boolean("stall_detection_enabled")
+      .notNull()
+      .default(true),
+    stallDetectionDays: integer("stall_detection_days")
+      .notNull()
+      .default(3), // Days with no SG change to trigger stall
+    stallDetectionThreshold: decimal("stall_detection_threshold", {
+      precision: 5,
+      scale: 4,
+    })
+      .notNull()
+      .default("0.001"), // Min SG change to not be considered stalled
+
+    // Terminal stage confirmation
+    terminalConfirmationHours: integer("terminal_confirmation_hours")
+      .notNull()
+      .default(48), // Hours between identical readings to confirm terminal
+
+    // Default target FG by cider style
+    defaultTargetFgDry: decimal("default_target_fg_dry", { precision: 5, scale: 3 })
+      .notNull()
+      .default("0.998"),
+    defaultTargetFgSemiDry: decimal("default_target_fg_semi_dry", { precision: 5, scale: 3 })
+      .notNull()
+      .default("1.005"),
+    defaultTargetFgSemiSweet: decimal("default_target_fg_semi_sweet", { precision: 5, scale: 3 })
+      .notNull()
+      .default("1.012"),
+    defaultTargetFgSweet: decimal("default_target_fg_sweet", { precision: 5, scale: 3 })
+      .notNull()
+      .default("1.020"),
+
+    // ==========================================
     // UX Preferences - Units
     // ==========================================
     volumeUnits: volumeUnitsEnum("volume_units").notNull().default("gallons"),
@@ -186,6 +233,27 @@ export const organizationSettings = pgTable(
     timeFormat: timeFormatEnum("time_format").notNull().default("12h"),
     theme: themeEnum("theme").notNull().default("system"),
     defaultCurrency: text("default_currency").notNull().default("USD"),
+
+    // ==========================================
+    // UX Preferences - Decimal Places
+    // ==========================================
+    sgDecimalPlaces: integer("sg_decimal_places").notNull().default(3),
+    phDecimalPlaces: integer("ph_decimal_places").notNull().default(1),
+
+    // ==========================================
+    // Measurement Corrections
+    // ==========================================
+    // Enable automatic temperature correction for SG readings
+    sgTemperatureCorrectionEnabled: boolean("sg_temperature_correction_enabled")
+      .notNull()
+      .default(true),
+    // Hydrometer calibration temperature in Celsius (default: 15.56°C = 60°F)
+    hydrometerCalibrationTempC: decimal("hydrometer_calibration_temp_c", {
+      precision: 5,
+      scale: 2,
+    })
+      .notNull()
+      .default("15.56"),
 
     // ==========================================
     // Timestamps
