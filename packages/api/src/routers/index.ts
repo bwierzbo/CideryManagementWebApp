@@ -3024,6 +3024,15 @@ export const appRouter = router({
               eq(pressRuns.vesselId, vessels.id),
               isNull(pressRuns.deletedAt),
               eq(pressRuns.status, "completed"),
+              // Only get the latest completed press run per vessel to avoid duplicate rows
+              sql`press_runs.id = (
+                SELECT id FROM press_runs pr
+                WHERE pr.vessel_id = vessels.id
+                  AND pr.deleted_at IS NULL
+                  AND pr.status = 'completed'
+                ORDER BY pr.completed_at DESC NULLS LAST, pr.created_at DESC
+                LIMIT 1
+              )`,
             ),
           )
           .leftJoin(
