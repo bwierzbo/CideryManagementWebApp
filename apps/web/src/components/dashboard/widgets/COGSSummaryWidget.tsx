@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { DollarSign, TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
 import { trpc } from "@/utils/trpc";
@@ -26,14 +27,20 @@ function formatPercent(value: number): string {
  * Shows cost summary and margins across products
  */
 export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
-  // Get last 30 days of margin data
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - 30);
+  // Memoize dates to prevent infinite re-fetching
+  const { startDateStr, endDateStr } = useMemo(() => {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 30);
+    return {
+      startDateStr: startDate.toISOString(),
+      endDateStr: endDate.toISOString(),
+    };
+  }, []);
 
   const { data, isPending, error, refetch } = trpc.sales.getMargins.useQuery({
-    startDate: startDate.toISOString(),
-    endDate: endDate.toISOString(),
+    startDate: startDateStr,
+    endDate: endDateStr,
   });
 
   const handleRefresh = () => {

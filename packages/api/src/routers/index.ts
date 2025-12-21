@@ -3030,7 +3030,7 @@ export const appRouter = router({
                 WHERE pr.vessel_id = vessels.id
                   AND pr.deleted_at IS NULL
                   AND pr.status = 'completed'
-                ORDER BY pr.completed_at DESC NULLS LAST, pr.created_at DESC
+                ORDER BY pr.date_completed DESC NULLS LAST, pr.created_at DESC
                 LIMIT 1
               )`,
             ),
