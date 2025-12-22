@@ -94,6 +94,7 @@ import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { KegsManagement } from "@/components/packaging/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 import { VesselHistoryModal } from "@/components/cellar/VesselHistoryModal";
+import { BatchManagementTable } from "@/components/cellar/BatchManagementTable";
 
 // Form schemas
 const measurementSchema = z.object({
@@ -2403,7 +2404,7 @@ function AddMeasurement() {
 }
 
 export default function CellarPage() {
-  const [activeTab, setActiveTab] = useState<"vessels" | "kegs">("vessels");
+  const [activeTab, setActiveTab] = useState<"vessels" | "batches" | "kegs">("vessels");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -2422,6 +2423,7 @@ export default function CellarPage() {
         <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg w-fit">
           {[
             { key: "vessels", label: "Vessel Map", icon: Beaker },
+            { key: "batches", label: "Batch List", icon: FlaskConical },
             { key: "kegs", label: "Keg Tracking", icon: Wine },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -2445,6 +2447,7 @@ export default function CellarPage() {
         {/* Tab Content */}
         <div className="space-y-8">
           {activeTab === "vessels" && <VesselMap />}
+          {activeTab === "batches" && <BatchManagementTable />}
           {activeTab === "kegs" && <KegsManagement />}
         </div>
       </main>

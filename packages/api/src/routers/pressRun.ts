@@ -211,6 +211,7 @@ export const pressRunRouter = router({
               totalCost: basefruitPurchaseItems.totalCost,
               vendorId: basefruitPurchases.vendorId,
               varietyName: baseFruitVarieties.name,
+              fruitType: baseFruitVarieties.fruitType,
             })
             .from(basefruitPurchaseItems)
             .innerJoin(
@@ -369,7 +370,7 @@ export const pressRunRouter = router({
           }
           const pressRunName = `${completionDateStr}-${String(sequenceNumber).padStart(2, "0")}`;
 
-          // 4. Calculate total apple weight
+          // 4. Calculate total apple weight and pear percentage
           const totalAppleWeightKg = input.items.reduce(
             (sum, item) => sum + item.quantityKg,
             0,
@@ -378,6 +379,17 @@ export const pressRunRouter = router({
             totalAppleWeightKg > 0
               ? input.totalJuiceVolumeL / totalAppleWeightKg
               : 0;
+
+          // Calculate pear percentage to determine if batch is perry (>50% pears)
+          const pearWeightKg = input.items.reduce((sum, item) => {
+            const purchaseItem = purchaseItems.find(p => p.id === item.purchaseItemId);
+            if (purchaseItem?.fruitType === "pear") {
+              return sum + item.quantityKg;
+            }
+            return sum;
+          }, 0);
+          const pearPercentage = totalAppleWeightKg > 0 ? (pearWeightKg / totalAppleWeightKg) * 100 : 0;
+          const productType = pearPercentage > 50 ? "perry" : "cider";
 
           // 5. Create the press run
           const newPressRun = await tx
@@ -575,6 +587,7 @@ export const pressRunRouter = router({
                   currentVolume: netVolumeL.toString(),
                   currentVolumeUnit: "L",
                   status: "fermentation",
+                  productType: productType,
                   startDate: input.completionDate,
                   originPressRunId: pressRunId,
                   transferLossL: transferLossL > 0 ? transferLossL.toString() : null,
@@ -1161,6 +1174,7 @@ export const pressRunRouter = router({
               vendorName: vendors.name,
               fruitVarietyId: pressRunLoads.fruitVarietyId,
               varietyName: baseFruitVarieties.name,
+              fruitType: baseFruitVarieties.fruitType,
               appleWeightKg: pressRunLoads.appleWeightKg,
               juiceVolume: pressRunLoads.juiceVolume,
               juiceVolumeUnit: pressRunLoads.juiceVolumeUnit,
@@ -1197,6 +1211,16 @@ export const pressRunRouter = router({
             0,
           );
 
+          // Calculate pear percentage to determine if batch is perry (>50% pears)
+          const pearWeightKg = loads.reduce((sum, load) => {
+            if (load.fruitType === "pear") {
+              return sum + parseFloat(load.appleWeightKg || "0");
+            }
+            return sum;
+          }, 0);
+          const pearPercentage = totalWeight > 0 ? (pearWeightKg / totalWeight) * 100 : 0;
+          const productType = pearPercentage > 50 ? "perry" : "cider";
+
           // Generate batch composition for naming
           const batchCompositionData: BatchComposition[] = loads.map((load) => {
             const fraction =
@@ -1227,6 +1251,7 @@ export const pressRunRouter = router({
               currentVolume: totalJuiceVolumeL.toString(),
               currentVolumeUnit: "L",
               status: "fermentation",
+              productType: productType,
               startDate: input.completionDate,
               originPressRunId: input.pressRunId,
             })
@@ -1582,6 +1607,7 @@ export const pressRunRouter = router({
               purchaseItemId: pressRunLoads.purchaseItemId,
               fruitVarietyId: pressRunLoads.fruitVarietyId,
               varietyName: baseFruitVarieties.name,
+              fruitType: baseFruitVarieties.fruitType,
               appleWeightKg: pressRunLoads.appleWeightKg,
               vendorId: vendors.id,
               totalCost: basefruitPurchaseItems.totalCost,
@@ -1625,6 +1651,16 @@ export const pressRunRouter = router({
               message: "Total apple weight must be greater than zero",
             });
           }
+
+          // Calculate pear percentage to determine if batch is perry (>50% pears)
+          const pearWeightKg = loads.reduce((sum, load) => {
+            if (load.fruitType === "pear") {
+              return sum + parseFloat(load.appleWeightKg || "0");
+            }
+            return sum;
+          }, 0);
+          const pearPercentage = totalWeight > 0 ? (pearWeightKg / totalWeight) * 100 : 0;
+          const productType = pearPercentage > 50 ? "perry" : "cider";
 
           const createdBatchIds: string[] = [];
 
@@ -1794,6 +1830,7 @@ export const pressRunRouter = router({
                   currentVolume: netVolumeL.toString(),
                   currentVolumeUnit: "L",
                   status: "fermentation",
+                  productType: productType,
                   startDate: pressRunCompletionDate,
                   originPressRunId: input.pressRunId,
                   transferLossL: transferLossL > 0 ? transferLossL.toString() : null,

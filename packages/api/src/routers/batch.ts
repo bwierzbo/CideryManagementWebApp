@@ -47,7 +47,9 @@ const batchIdSchema = z.object({
 
 const listBatchesSchema = z.object({
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
+  productType: z.enum(["cider", "perry", "brandy", "pommeau", "other"]).optional(),
   vesselId: z.string().uuid().optional(),
+  unassigned: z.boolean().optional(), // Filter for batches without a vessel
   search: z.string().optional(),
   limit: z.number().int().positive().max(100).default(50),
   offset: z.number().int().min(0).default(0),
@@ -362,8 +364,17 @@ export const batchRouter = router({
           conditions.push(eq(batches.status, input.status));
         }
 
+        if (input.productType) {
+          conditions.push(eq(batches.productType, input.productType));
+        }
+
         if (input.vesselId) {
           conditions.push(eq(batches.vesselId, input.vesselId));
+        }
+
+        // Filter for unassigned batches (no vessel)
+        if (input.unassigned) {
+          conditions.push(isNull(batches.vesselId));
         }
 
         if (input.search) {
@@ -385,8 +396,10 @@ export const batchRouter = router({
           .select({
             id: batches.id,
             name: batches.name,
+            batchNumber: batches.batchNumber,
             customName: batches.customName,
             status: batches.status,
+            productType: batches.productType,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
             vesselCapacity: vessels.capacity,
@@ -2643,6 +2656,7 @@ export const batchRouter = router({
               currentVolume: batches.currentVolume,
               currentVolumeUnit: batches.currentVolumeUnit,
               status: batches.status,
+              productType: batches.productType,
               originalGravity: batches.originalGravity,
               finalGravity: batches.finalGravity,
               estimatedAbv: batches.estimatedAbv,
@@ -2964,6 +2978,7 @@ export const batchRouter = router({
                 initialVolumeUnit: 'L',
                 currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
+                productType: batch[0].productType, // Inherit parent's product type
                 startDate: rackDate,
                 originPressRunId: batch[0].originPressRunId,
                 originJuicePurchaseItemId: batch[0].originJuicePurchaseItemId,

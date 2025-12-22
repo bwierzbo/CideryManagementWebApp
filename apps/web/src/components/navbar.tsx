@@ -9,6 +9,7 @@ import {
   ShoppingCart,
   Grape,
   Beaker,
+  Wine,
   Package,
   Archive,
   FileText,
@@ -72,6 +73,12 @@ export function Navbar() {
       href: "/cellar",
       icon: Beaker,
       description: "Fermentation & Aging",
+    },
+    {
+      name: "Distillation",
+      href: "/distillation",
+      icon: Wine,
+      description: "Brandy & Pommeau",
     },
     {
       name: "Packaging",

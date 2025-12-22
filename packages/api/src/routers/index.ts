@@ -32,6 +32,7 @@ import { userRouter } from "./user";
 import { dashboardRouter } from "./dashboard";
 import { squareRouter } from "./square";
 import { settingsRouter } from "./settings";
+import { distillationRouter } from "./distillation";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import {
   db,
@@ -62,6 +63,7 @@ import {
   batchRackingOperations,
   batchFilterOperations,
   batchAdditives,
+  distillationRecords,
 } from "db";
 import {
   eq,
@@ -2248,6 +2250,9 @@ export const appRouter = router({
   // Carbonation operations (imported from carbonation.ts)
   carbonation: carbonationRouter,
 
+  // Distillation operations (cider → brandy, TIB tracking)
+  distillation: distillationRouter,
+
   // Batch transfer operations
   batchTransfer: router({
     list: createRbacProcedure("list", "batch").query(async () => {
@@ -4335,6 +4340,7 @@ export const appRouter = router({
             measurements,
             additives,
             cleanings,
+            distillationShipments,
           ] = await Promise.all([
             // 1. Batches that have been in this vessel
             db
@@ -4505,6 +4511,33 @@ export const appRouter = router({
               .from(vesselCleaningOperations)
               .leftJoin(users, eq(vesselCleaningOperations.cleanedBy, users.id))
               .where(eq(vesselCleaningOperations.vesselId, input.vesselId)),
+
+            // 8. Distillation shipments (for batches in this vessel)
+            db
+              .select({
+                id: distillationRecords.id,
+                sourceBatchId: distillationRecords.sourceBatchId,
+                sourceVolume: distillationRecords.sourceVolume,
+                sourceVolumeUnit: distillationRecords.sourceVolumeUnit,
+                distilleryName: distillationRecords.distilleryName,
+                sentAt: distillationRecords.sentAt,
+                sentBy: distillationRecords.sentBy,
+                tibOutboundNumber: distillationRecords.tibOutboundNumber,
+                status: distillationRecords.status,
+                notes: distillationRecords.notes,
+                batchName: batches.name,
+                batchCustomName: batches.customName,
+                userName: users.name,
+              })
+              .from(distillationRecords)
+              .innerJoin(batches, eq(distillationRecords.sourceBatchId, batches.id))
+              .leftJoin(users, eq(distillationRecords.sentBy, users.id))
+              .where(
+                and(
+                  eq(batches.vesselId, input.vesselId),
+                  isNull(distillationRecords.deletedAt),
+                ),
+              ),
           ]);
 
           // Process batch history
@@ -4630,6 +4663,24 @@ export const appRouter = router({
               userId: c.cleanedBy,
               userName: c.userName,
               notes: c.notes,
+            });
+          }
+
+          // Process distillation shipments
+          for (const d of distillationShipments) {
+            const volume = parseFloat(d.sourceVolume || "0");
+            const unit = d.sourceVolumeUnit || "L";
+            activities.push({
+              id: `distillation-${d.id}`,
+              type: "distillation_sent",
+              timestamp: d.sentAt || new Date(),
+              description: `Sent ${volume}${unit} to ${d.distilleryName}${d.tibOutboundNumber ? ` (TIB: ${d.tibOutboundNumber})` : ""}`,
+              batchId: d.sourceBatchId,
+              batchName: d.batchCustomName || d.batchName,
+              volumeChange: `-${volume}${unit}`,
+              userId: d.sentBy,
+              userName: d.userName,
+              notes: d.notes,
             });
           }
 

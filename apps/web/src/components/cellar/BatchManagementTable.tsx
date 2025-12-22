@@ -55,11 +55,15 @@ import {
   Droplets,
   FlaskConical,
   History,
+  Truck,
+  Wine,
 } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 import { BatchHistoryModal } from "./BatchHistoryModal";
 import { AddBatchMeasurementForm } from "./AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "./AddBatchAdditiveForm";
+import { SendToDistilleryDialog } from "./SendToDistilleryDialog";
+import { CreateFortifiedBlendDialog } from "./CreateFortifiedBlendDialog";
 import { toast } from "@/hooks/use-toast";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 
@@ -75,6 +79,8 @@ interface EditingState {
 export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [productTypeFilter, setProductTypeFilter] = useState<string>("all");
+  const [unassignedFilter, setUnassignedFilter] = useState(false);
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showMeasurementForm, setShowMeasurementForm] = useState(false);
@@ -91,12 +97,23 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [agingBatchId, setAgingBatchId] = useState<string | null>(null);
   const [agingDate, setAgingDate] = useState("");
 
+  // Send to distillery dialog state
+  const [showSendToDistillery, setShowSendToDistillery] = useState(false);
+  const [sendToDistilleryBatchId, setSendToDistilleryBatchId] = useState<string | null>(null);
+
+  // Create fortified blend dialog state
+  const [showFortifiedBlend, setShowFortifiedBlend] = useState(false);
+  const [fortifiedBlendBatchId, setFortifiedBlendBatchId] = useState<string | null>(null);
+  const [fortifiedBlendBatchType, setFortifiedBlendBatchType] = useState<"cider" | "perry" | "brandy">("cider");
+
   const utils = trpc.useUtils();
 
   // Fetch batches
   const { data, isLoading, error } = trpc.batch.list.useQuery({
     search: search || undefined,
     status: statusFilter !== "all" ? (statusFilter as any) : undefined,
+    productType: productTypeFilter !== "all" ? (productTypeFilter as any) : undefined,
+    unassigned: unassignedFilter || undefined,
     sortBy: "startDate",
     sortOrder: "desc",
   });
@@ -217,6 +234,17 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     setShowAdditiveForm(true);
   };
 
+  const handleSendToDistillery = (batchId: string) => {
+    setSendToDistilleryBatchId(batchId);
+    setShowSendToDistillery(true);
+  };
+
+  const handleCreateFortifiedBlend = (batchId: string, productType: string | null) => {
+    setFortifiedBlendBatchId(batchId);
+    setFortifiedBlendBatchType(productType === "brandy" ? "brandy" : productType === "perry" ? "perry" : "cider");
+    setShowFortifiedBlend(true);
+  };
+
   if (isLoading) {
     return (
       <Card className={className}>
@@ -265,8 +293,8 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
         </CardHeader>
         <CardContent>
           {/* Filters */}
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1 relative">
+          <div className="flex flex-wrap gap-4 mb-6">
+            <div className="flex-1 min-w-[200px] relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 placeholder="Search batches..."
@@ -290,6 +318,27 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                 <SelectItem value="discarded">Discarded</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={productTypeFilter} onValueChange={setProductTypeFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Product type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="cider">Cider</SelectItem>
+                <SelectItem value="perry">Perry</SelectItem>
+                <SelectItem value="brandy">Brandy</SelectItem>
+                <SelectItem value="pommeau">Fortified</SelectItem>
+              </SelectContent>
+            </Select>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={unassignedFilter}
+                onChange={(e) => setUnassignedFilter(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Unassigned only</span>
+            </label>
           </div>
 
           {/* Batch Table */}
@@ -299,6 +348,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                 <TableRow>
                   <TableHead>Batch ID</TableHead>
                   <TableHead>Batch Name</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Vessel</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Start Date</TableHead>
@@ -315,7 +365,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                 {batches.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={10}
+                      colSpan={11}
                       className="text-center text-gray-500 py-8"
                     >
                       No batches found
@@ -383,6 +433,26 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                             <Edit2 className="w-3 h-3" />
                           </div>
                         )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            batch.productType === "brandy"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : batch.productType === "pommeau"
+                              ? "bg-purple-50 text-purple-700 border-purple-200"
+                              : batch.productType === "perry"
+                              ? "bg-green-50 text-green-700 border-green-200"
+                              : "bg-yellow-50 text-yellow-700 border-yellow-200"
+                          }
+                        >
+                          {batch.productType === "pommeau"
+                            ? "Fortified"
+                            : batch.productType
+                            ? batch.productType.charAt(0).toUpperCase() + batch.productType.slice(1)
+                            : "Cider"}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         {batch.vesselName || (
@@ -479,6 +549,35 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                               <Droplets className="w-4 h-4 mr-2" />
                               Add Additive
                             </DropdownMenuItem>
+                            {/* Context-aware actions based on product type */}
+                            {(batch.productType === "cider" || batch.productType === "perry" || !batch.productType) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleSendToDistillery(batch.id)}
+                                >
+                                  <Truck className="w-4 h-4 mr-2" />
+                                  Send to Distillery
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleCreateFortifiedBlend(batch.id, batch.productType)}
+                                >
+                                  <Wine className="w-4 h-4 mr-2" />
+                                  Create Fortified Blend
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            {batch.productType === "brandy" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleCreateFortifiedBlend(batch.id, batch.productType)}
+                                >
+                                  <Wine className="w-4 h-4 mr-2" />
+                                  Create Fortified Blend
+                                </DropdownMenuItem>
+                              </>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() =>
@@ -670,6 +769,30 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Send to Distillery Dialog */}
+      <SendToDistilleryDialog
+        open={showSendToDistillery}
+        onOpenChange={(open) => {
+          setShowSendToDistillery(open);
+          if (!open) setSendToDistilleryBatchId(null);
+        }}
+        preselectedBatchId={sendToDistilleryBatchId || undefined}
+      />
+
+      {/* Create Fortified Blend Dialog */}
+      <CreateFortifiedBlendDialog
+        open={showFortifiedBlend}
+        onOpenChange={(open) => {
+          setShowFortifiedBlend(open);
+          if (!open) {
+            setFortifiedBlendBatchId(null);
+            setFortifiedBlendBatchType("cider");
+          }
+        }}
+        preselectedBatchId={fortifiedBlendBatchId || undefined}
+        preselectedBatchType={fortifiedBlendBatchType}
+      />
     </>
   );
 }

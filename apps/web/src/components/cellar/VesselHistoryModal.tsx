@@ -15,6 +15,7 @@ import {
   PlayCircle,
   CheckCircle,
   Brush,
+  Truck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -35,6 +36,7 @@ const activityIcons: Record<string, React.ReactNode> = {
   measurement: <Beaker className="h-4 w-4 text-cyan-600" />,
   additive: <FlaskConical className="h-4 w-4 text-pink-600" />,
   cleaning: <Brush className="h-4 w-4 text-emerald-600" />,
+  distillation_sent: <Truck className="h-4 w-4 text-amber-600" />,
 };
 
 const activityColors: Record<string, string> = {
@@ -48,6 +50,7 @@ const activityColors: Record<string, string> = {
   measurement: "bg-cyan-50 border-cyan-200",
   additive: "bg-pink-50 border-pink-200",
   cleaning: "bg-emerald-50 border-emerald-200",
+  distillation_sent: "bg-amber-50 border-amber-200",
 };
 
 export function VesselHistoryModal({ vesselId, open, onClose }: VesselHistoryModalProps) {

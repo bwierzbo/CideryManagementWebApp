@@ -328,6 +328,53 @@ export const activityRegisterRouter = router({
             FROM vessel_cleaning_operations vco
             LEFT JOIN vessels v ON vco.vessel_id = v.id
             WHERE vco.deleted_at IS NULL
+
+            UNION ALL
+
+            -- Distillation Shipments (Sent to Distillery)
+            SELECT
+              dr.id::text as id,
+              'distillation_sent' as type,
+              'cellar' as category,
+              dr.sent_at as activity_date,
+              'Sent to Distillery' as activity_type,
+              b.name as vendor_name,
+              jsonb_build_object(
+                'batchCode', b.name,
+                'batchName', COALESCE(b.custom_name, b.name),
+                'distilleryName', dr.distillery_name,
+                'sourceVolume', dr.source_volume,
+                'sourceVolumeUnit', dr.source_volume_unit,
+                'tibNumber', dr.tib_outbound_number,
+                'status', dr.status
+              ) as metadata
+            FROM distillation_records dr
+            LEFT JOIN batches b ON dr.source_batch_id = b.id
+            WHERE dr.deleted_at IS NULL AND dr.sent_at IS NOT NULL
+
+            UNION ALL
+
+            -- Distillation Receipts (Brandy Received)
+            SELECT
+              dr.id::text as id,
+              'distillation_received' as type,
+              'cellar' as category,
+              dr.received_at as activity_date,
+              'Brandy Received' as activity_type,
+              rb.name as vendor_name,
+              jsonb_build_object(
+                'brandyBatchCode', rb.name,
+                'brandyBatchName', COALESCE(rb.custom_name, rb.name),
+                'distilleryName', dr.distillery_name,
+                'receivedVolume', dr.received_volume,
+                'receivedVolumeUnit', dr.received_volume_unit,
+                'receivedAbv', dr.received_abv,
+                'tibNumber', dr.tib_inbound_number,
+                'status', dr.status
+              ) as metadata
+            FROM distillation_records dr
+            LEFT JOIN batches rb ON dr.result_batch_id = rb.id
+            WHERE dr.deleted_at IS NULL AND dr.received_at IS NOT NULL
           )
           SELECT *
           FROM all_activities
@@ -381,6 +428,12 @@ export const activityRegisterRouter = router({
             UNION ALL
             SELECT vco.id, vco.cleaned_at as activity_date, 'vessels' as category
             FROM vessel_cleaning_operations vco WHERE vco.deleted_at IS NULL
+            UNION ALL
+            SELECT dr.id, dr.sent_at as activity_date, 'cellar' as category
+            FROM distillation_records dr WHERE dr.deleted_at IS NULL AND dr.sent_at IS NOT NULL
+            UNION ALL
+            SELECT dr.id, dr.received_at as activity_date, 'cellar' as category
+            FROM distillation_records dr WHERE dr.deleted_at IS NULL AND dr.received_at IS NOT NULL
           )
           SELECT COUNT(*)::int as count
           FROM all_activities

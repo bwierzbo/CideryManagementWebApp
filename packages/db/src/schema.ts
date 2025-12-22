@@ -66,6 +66,22 @@ export const pressRunStatusEnum = pgEnum("press_run_status", [
 ]);
 export const fruitTypeEnum = pgEnum("fruit_type", ["apple", "pear", "plum"]);
 
+// Product type for batches (cider, perry, brandy, pommeau)
+export const productTypeEnum = pgEnum("product_type", [
+  "cider",    // Standard cider
+  "perry",    // Pear cider
+  "brandy",   // Distilled spirit
+  "pommeau",  // Juice + brandy blend
+  "other",
+]);
+
+// Distillation record status
+export const distillationRecordStatusEnum = pgEnum("distillation_record_status", [
+  "sent",       // Cider sent to distillery
+  "received",   // Brandy received back
+  "cancelled",  // Record cancelled
+]);
+
 // Fruit variety characteristic enums
 export const ciderCategoryEnum = pgEnum("cider_category_enum", [
   "sweet",
@@ -537,6 +553,7 @@ export const batches = pgTable(
       scale: 3,
     }), // Normalized volume in liters (auto-maintained by trigger)
     status: batchStatusEnum("status").notNull().default("fermentation"),
+    productType: productTypeEnum("product_type").notNull().default("cider"),
     startDate: timestamp("start_date", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1094,6 +1111,9 @@ export const batchMergeHistory = pgTable(
     targetVolumeAfterUnit: unitEnum("target_volume_after_unit").notNull().default("L"),
     // Composition snapshot at time of merge
     compositionSnapshot: jsonb("composition_snapshot"), // Store varieties and percentages
+    // ABV tracking for pommeau/brandy blends
+    sourceAbv: decimal("source_abv", { precision: 4, scale: 2 }), // ABV of source being added
+    resultingAbv: decimal("resulting_abv", { precision: 4, scale: 2 }), // Calculated ABV after blend
     notes: text("notes"),
     // Metadata
     mergedAt: timestamp("merged_at").notNull().defaultNow(),
@@ -1115,6 +1135,60 @@ export const batchMergeHistory = pgTable(
       table.sourceBatchId,
     ),
     mergedAtIdx: index("batch_merge_history_merged_at_idx").on(table.mergedAt),
+  }),
+);
+
+// Distillation records for tracking cider → brandy transformation
+export const distillationRecords = pgTable(
+  "distillation_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Source batch (cider sent out)
+    sourceBatchId: uuid("source_batch_id")
+      .notNull()
+      .references(() => batches.id),
+    sourceVolume: decimal("source_volume", { precision: 10, scale: 3 }).notNull(),
+    sourceVolumeUnit: unitEnum("source_volume_unit").notNull().default("L"),
+    sourceVolumeLiters: decimal("source_volume_liters", { precision: 10, scale: 3 }),
+    sourceAbv: decimal("source_abv", { precision: 4, scale: 2 }), // Typically ~6-8%
+
+    // Distillery info
+    distilleryName: text("distillery_name").notNull(),
+    distilleryAddress: text("distillery_address"),
+    distilleryPermitNumber: text("distillery_permit_number"),
+
+    // Outbound tracking
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+    sentBy: uuid("sent_by").references(() => users.id),
+    tibOutboundNumber: text("tib_outbound_number"), // TTB TIB number for outbound
+
+    // Return tracking (brandy received)
+    resultBatchId: uuid("result_batch_id").references(() => batches.id), // Created brandy batch
+    receivedVolume: decimal("received_volume", { precision: 10, scale: 3 }),
+    receivedVolumeUnit: unitEnum("received_volume_unit").default("L"),
+    receivedVolumeLiters: decimal("received_volume_liters", { precision: 10, scale: 3 }),
+    receivedAbv: decimal("received_abv", { precision: 4, scale: 2 }), // Typically 40-70%
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    receivedBy: uuid("received_by").references(() => users.id),
+    tibInboundNumber: text("tib_inbound_number"), // TTB TIB number for inbound
+
+    // Yield/Loss tracking (for TTB reporting)
+    proofGallonsSent: decimal("proof_gallons_sent", { precision: 10, scale: 3 }),
+    proofGallonsReceived: decimal("proof_gallons_received", { precision: 10, scale: 3 }),
+
+    // Status and audit
+    status: distillationRecordStatusEnum("status").notNull().default("sent"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    sourceBatchIdx: index("distillation_records_source_batch_idx").on(table.sourceBatchId),
+    resultBatchIdx: index("distillation_records_result_batch_idx").on(table.resultBatchId),
+    statusIdx: index("distillation_records_status_idx").on(table.status),
+    sentAtIdx: index("distillation_records_sent_at_idx").on(table.sentAt),
   }),
 );
 
@@ -1359,6 +1433,10 @@ export const batchesRelations = relations(batches, ({ one, many }) => ({
   mergeHistory: many(batchMergeHistory),
   // Filter operations
   filterOperations: many(batchFilterOperations),
+  // Distillation records (as source cider)
+  distillationRecordsAsSource: many(distillationRecords, { relationName: "sourceBatch" }),
+  // Distillation records (as result brandy)
+  distillationRecordsAsResult: many(distillationRecords, { relationName: "resultBatch" }),
 }));
 
 export const batchMergeHistoryRelations = relations(
@@ -1371,6 +1449,30 @@ export const batchMergeHistoryRelations = relations(
     sourcePressRun: one(pressRuns, {
       fields: [batchMergeHistory.sourcePressRunId],
       references: [pressRuns.id],
+    }),
+  }),
+);
+
+export const distillationRecordsRelations = relations(
+  distillationRecords,
+  ({ one }) => ({
+    sourceBatch: one(batches, {
+      fields: [distillationRecords.sourceBatchId],
+      references: [batches.id],
+      relationName: "sourceBatch",
+    }),
+    resultBatch: one(batches, {
+      fields: [distillationRecords.resultBatchId],
+      references: [batches.id],
+      relationName: "resultBatch",
+    }),
+    sentByUser: one(users, {
+      fields: [distillationRecords.sentBy],
+      references: [users.id],
+    }),
+    receivedByUser: one(users, {
+      fields: [distillationRecords.receivedBy],
+      references: [users.id],
     }),
   }),
 );
