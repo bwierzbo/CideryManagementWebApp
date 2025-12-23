@@ -51,7 +51,7 @@ const listBatchesSchema = z.object({
   vesselId: z.string().uuid().optional(),
   unassigned: z.boolean().optional(), // Filter for batches without a vessel
   search: z.string().optional(),
-  limit: z.number().int().positive().max(100).default(50),
+  limit: z.number().int().positive().max(200).default(50),
   offset: z.number().int().min(0).default(0),
   sortBy: z.enum(["name", "startDate", "status"]).default("startDate"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
@@ -160,6 +160,7 @@ const updateBatchSchema = z.object({
   name: z.string().optional(),
   batchNumber: z.string().optional(),
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
+  productType: z.enum(["cider", "perry", "brandy", "pommeau", "other"]).optional(),
   customName: z.string().optional(),
   startDate: z
     .date()
@@ -1555,13 +1556,15 @@ export const batchRouter = router({
         if (input.name) updateData.name = input.name;
         if (input.batchNumber) updateData.batchNumber = input.batchNumber;
         if (input.status) updateData.status = input.status;
+        if (input.productType) updateData.productType = input.productType;
         if (input.customName !== undefined)
           updateData.customName = input.customName;
         if (input.startDate) updateData.startDate = input.startDate;
         if (input.endDate) updateData.endDate = input.endDate;
 
-        // Capture old status for audit log
+        // Capture old values for audit log
         const oldStatus = existingBatch[0].status;
+        const oldProductType = existingBatch[0].productType;
 
         // Update batch
         const updatedBatch = await db
@@ -1588,6 +1591,25 @@ export const batchRouter = router({
             reason: input.status === 'aging'
               ? 'Batch transitioned to aging phase'
               : `Batch status changed to ${input.status}`,
+          });
+        }
+
+        // Create audit log if productType changed
+        if (input.productType && input.productType !== oldProductType) {
+          await db.insert(auditLogs).values({
+            tableName: 'batches',
+            recordId: input.batchId,
+            operation: 'update',
+            oldData: { productType: oldProductType },
+            newData: { productType: input.productType },
+            diffData: {
+              productType: {
+                old: oldProductType || 'cider',
+                new: input.productType,
+              },
+            },
+            changedAt: new Date(),
+            reason: `Product type changed from ${oldProductType || 'cider'} to ${input.productType}`,
           });
         }
 
@@ -4008,6 +4030,373 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to get fermentation progress",
+        });
+      }
+    }),
+
+  // Create batch from juice purchase (for purchased juice, cider, or brandy)
+  createFromJuicePurchase: createRbacProcedure("create", "batch")
+    .input(
+      z.object({
+        juicePurchaseItemId: z.string().uuid("Invalid juice purchase item ID"),
+        volumeL: z.number().positive("Volume must be positive"),
+        vesselId: z.string().uuid().optional(),
+        productType: z.enum(["cider", "perry", "brandy", "other"]).default("cider"),
+        name: z.string().optional(),
+        startDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // Get the juice purchase item
+          const [juiceItem] = await tx
+            .select({
+              id: juicePurchaseItems.id,
+              purchaseId: juicePurchaseItems.purchaseId,
+              juiceType: juicePurchaseItems.juiceType,
+              varietyName: juicePurchaseItems.varietyName,
+              volume: juicePurchaseItems.volume,
+              volumeAllocated: juicePurchaseItems.volumeAllocated,
+              brix: juicePurchaseItems.brix,
+              specificGravity: juicePurchaseItems.specificGravity,
+              pricePerLiter: juicePurchaseItems.pricePerLiter,
+              vendorId: juicePurchases.vendorId,
+              vendorName: vendors.name,
+            })
+            .from(juicePurchaseItems)
+            .leftJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
+            .leftJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
+            .where(
+              and(
+                eq(juicePurchaseItems.id, input.juicePurchaseItemId),
+                isNull(juicePurchaseItems.deletedAt)
+              )
+            )
+            .limit(1);
+
+          if (!juiceItem) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Juice purchase item not found",
+            });
+          }
+
+          // Check available volume
+          const totalVolume = parseFloat(juiceItem.volume || "0");
+          const allocated = parseFloat(juiceItem.volumeAllocated || "0");
+          const available = totalVolume - allocated;
+
+          if (input.volumeL > available) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Only ${available.toFixed(1)}L available (requested ${input.volumeL}L)`,
+            });
+          }
+
+          // Generate batch number
+          const year = new Date().getFullYear();
+          const existingCount = await tx
+            .select({ count: sql<number>`count(*)` })
+            .from(batches)
+            .where(
+              and(
+                sql`EXTRACT(YEAR FROM ${batches.startDate}) = ${year}`,
+                isNull(batches.deletedAt)
+              )
+            );
+          const batchNumber = `${year}-${String((existingCount[0]?.count || 0) + 1).padStart(3, "0")}`;
+
+          // Generate batch name
+          const batchName = input.name ||
+            `${juiceItem.juiceType || juiceItem.varietyName || "Juice"} ${batchNumber}`;
+
+          // Calculate initial SG from brix if available
+          let originalGravity: string | null = null;
+          if (juiceItem.specificGravity) {
+            originalGravity = juiceItem.specificGravity;
+          } else if (juiceItem.brix) {
+            // Convert brix to SG: SG = 1 + (brix / (258.6 - 0.8796 * brix))
+            const brix = parseFloat(juiceItem.brix);
+            const sg = 1 + (brix / (258.6 - 0.8796 * brix));
+            originalGravity = sg.toFixed(4);
+          }
+
+          // Calculate material cost
+          const materialCost = juiceItem.pricePerLiter
+            ? (input.volumeL * parseFloat(juiceItem.pricePerLiter)).toFixed(2)
+            : "0";
+
+          // Create the batch
+          const [newBatch] = await tx
+            .insert(batches)
+            .values({
+              name: batchName,
+              batchNumber,
+              vesselId: input.vesselId || null,
+              originJuicePurchaseItemId: input.juicePurchaseItemId,
+              initialVolume: input.volumeL.toString(),
+              initialVolumeUnit: "L",
+              initialVolumeLiters: input.volumeL.toString(),
+              currentVolume: input.volumeL.toString(),
+              currentVolumeUnit: "L",
+              currentVolumeLiters: input.volumeL.toString(),
+              productType: input.productType,
+              status: input.productType === "brandy" ? "aging" : "fermentation",
+              startDate: input.startDate || new Date(),
+              originalGravity,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning();
+
+          // Create batch composition record for COGS tracking
+          await tx.insert(batchCompositions).values({
+            batchId: newBatch.id,
+            sourceType: "juice_purchase",
+            juicePurchaseItemId: input.juicePurchaseItemId,
+            vendorId: juiceItem.vendorId!,
+            juiceVolume: input.volumeL.toString(),
+            juiceVolumeUnit: "L",
+            materialCost,
+            avgBrix: juiceItem.brix || null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+
+          // Update the juice purchase item's allocated volume
+          await tx
+            .update(juicePurchaseItems)
+            .set({
+              volumeAllocated: (allocated + input.volumeL).toString(),
+              updatedAt: new Date(),
+            })
+            .where(eq(juicePurchaseItems.id, input.juicePurchaseItemId));
+
+          return {
+            success: true,
+            batch: newBatch,
+            message: `Batch "${batchName}" created from juice purchase`,
+          };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error creating batch from juice purchase:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create batch from juice purchase",
+        });
+      }
+    }),
+
+  // Create fruit wine batch (whole fruit maceration)
+  createFruitWineBatch: createRbacProcedure("create", "batch")
+    .input(
+      z.object({
+        fruitPurchaseItemId: z.string().uuid("Invalid fruit purchase item ID"),
+        fruitWeightKg: z.number().positive("Fruit weight must be positive"),
+        vesselId: z.string().uuid("Vessel is required for fruit wine"),
+        waterAddedL: z.number().min(0).default(0),
+        sugarAddedKg: z.number().min(0).default(0),
+        estimatedVolumeL: z.number().positive().optional(),
+        name: z.string().optional(),
+        startDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // Get the fruit purchase item with variety info
+          const [fruitItem] = await tx
+            .select({
+              id: basefruitPurchaseItems.id,
+              purchaseId: basefruitPurchaseItems.purchaseId,
+              quantityKg: basefruitPurchaseItems.quantityKg,
+              quantity: basefruitPurchaseItems.quantity,
+              unit: basefruitPurchaseItems.unit,
+              isDepleted: basefruitPurchaseItems.isDepleted,
+              pricePerUnit: basefruitPurchaseItems.pricePerUnit,
+              totalCost: basefruitPurchaseItems.totalCost,
+              varietyId: basefruitPurchaseItems.fruitVarietyId,
+              varietyName: baseFruitVarieties.name,
+              fruitType: baseFruitVarieties.fruitType,
+              vendorId: basefruitPurchases.vendorId,
+              vendorName: vendors.name,
+            })
+            .from(basefruitPurchaseItems)
+            .leftJoin(basefruitPurchases, eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id))
+            .leftJoin(baseFruitVarieties, eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id))
+            .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
+            .where(
+              and(
+                eq(basefruitPurchaseItems.id, input.fruitPurchaseItemId),
+                isNull(basefruitPurchaseItems.deletedAt)
+              )
+            )
+            .limit(1);
+
+          if (!fruitItem) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Fruit purchase item not found",
+            });
+          }
+
+          if (fruitItem.isDepleted) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "This fruit inventory has been depleted",
+            });
+          }
+
+          // Check available quantity
+          const availableKg = parseFloat(fruitItem.quantityKg || "0");
+          if (input.fruitWeightKg > availableKg) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Only ${availableKg.toFixed(1)}kg available (requested ${input.fruitWeightKg}kg)`,
+            });
+          }
+
+          // Verify vessel exists
+          const [vessel] = await tx
+            .select()
+            .from(vessels)
+            .where(eq(vessels.id, input.vesselId))
+            .limit(1);
+
+          if (!vessel) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Vessel not found",
+            });
+          }
+
+          // Generate batch number
+          const year = new Date().getFullYear();
+          const existingCount = await tx
+            .select({ count: sql<number>`count(*)` })
+            .from(batches)
+            .where(
+              and(
+                sql`EXTRACT(YEAR FROM ${batches.startDate}) = ${year}`,
+                isNull(batches.deletedAt)
+              )
+            );
+          const batchNumber = `${year}-${String((existingCount[0]?.count || 0) + 1).padStart(3, "0")}`;
+
+          // Generate batch name
+          const fruitName = fruitItem.varietyName || fruitItem.fruitType || "Fruit";
+          const batchName = input.name || `${fruitName} Wine ${batchNumber}`;
+
+          // Estimate volume: fruit + water (fruit contributes ~60-70% of its weight as juice)
+          const estimatedJuiceFromFruit = input.fruitWeightKg * 0.65; // ~65% juice yield
+          const estimatedVolumeL = input.estimatedVolumeL ||
+            (estimatedJuiceFromFruit + input.waterAddedL);
+
+          // Calculate material cost (proportional to weight used)
+          const totalCost = parseFloat(fruitItem.totalCost || "0");
+          const totalKg = parseFloat(fruitItem.quantityKg || "1");
+          const materialCost = ((input.fruitWeightKg / totalKg) * totalCost).toFixed(2);
+
+          // Create the batch
+          const [newBatch] = await tx
+            .insert(batches)
+            .values({
+              name: batchName,
+              batchNumber,
+              vesselId: input.vesselId,
+              initialVolume: estimatedVolumeL.toString(),
+              initialVolumeUnit: "L",
+              initialVolumeLiters: estimatedVolumeL.toString(),
+              currentVolume: estimatedVolumeL.toString(),
+              currentVolumeUnit: "L",
+              currentVolumeLiters: estimatedVolumeL.toString(),
+              productType: "other", // Fruit wine
+              status: "fermentation",
+              startDate: input.startDate || new Date(),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .returning();
+
+          // Create batch composition record for COGS tracking
+          await tx.insert(batchCompositions).values({
+            batchId: newBatch.id,
+            sourceType: "base_fruit",
+            purchaseItemId: input.fruitPurchaseItemId,
+            varietyId: fruitItem.varietyId,
+            vendorId: fruitItem.vendorId!,
+            inputWeightKg: input.fruitWeightKg.toString(),
+            juiceVolume: estimatedVolumeL.toString(),
+            juiceVolumeUnit: "L",
+            materialCost,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+
+          // Record water and sugar additions as notes or additives
+          if (input.waterAddedL > 0 || input.sugarAddedKg > 0 || input.notes) {
+            const additionNotes: string[] = [];
+            if (input.waterAddedL > 0) {
+              additionNotes.push(`Water added: ${input.waterAddedL}L`);
+            }
+            if (input.sugarAddedKg > 0) {
+              additionNotes.push(`Sugar added: ${input.sugarAddedKg}kg`);
+            }
+            if (input.notes) {
+              additionNotes.push(input.notes);
+            }
+
+            // Add as batch additive record for traceability
+            if (input.sugarAddedKg > 0) {
+              await tx.insert(batchAdditives).values({
+                batchId: newBatch.id,
+                vesselId: input.vesselId,
+                additiveType: "sugar",
+                additiveName: "Sugar (initial)",
+                amount: input.sugarAddedKg.toString(),
+                unit: "kg",
+                addedAt: input.startDate || new Date(),
+                notes: "Added at batch creation",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            }
+          }
+
+          // Update fruit inventory - reduce available quantity
+          const remainingKg = availableKg - input.fruitWeightKg;
+          await tx
+            .update(basefruitPurchaseItems)
+            .set({
+              quantityKg: remainingKg.toString(),
+              isDepleted: remainingKg <= 0,
+              depletedAt: remainingKg <= 0 ? new Date() : null,
+              updatedAt: new Date(),
+            })
+            .where(eq(basefruitPurchaseItems.id, input.fruitPurchaseItemId));
+
+          return {
+            success: true,
+            batch: newBatch,
+            message: `Fruit wine batch "${batchName}" created`,
+            details: {
+              fruitUsedKg: input.fruitWeightKg,
+              waterAddedL: input.waterAddedL,
+              sugarAddedKg: input.sugarAddedKg,
+              estimatedVolumeL,
+            },
+          };
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error creating fruit wine batch:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create fruit wine batch",
         });
       }
     }),

@@ -64,9 +64,11 @@ export function SendToDistilleryDialog({
   const utils = trpc.useUtils();
 
   // Fetch available batches (cider/perry only, in fermentation or aging)
+  // Use high limit to ensure we get all batches (default is 50)
   const { data: batchesData } = trpc.batch.list.useQuery({
     sortBy: "startDate",
     sortOrder: "desc",
+    limit: 200,
   });
 
   // Fetch previously used distilleries for auto-complete

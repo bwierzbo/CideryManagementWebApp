@@ -50,6 +50,7 @@ import {
   Trash2,
   RefreshCw,
   BarChart3,
+  Wine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -73,6 +74,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PriceHistoryModal } from "./PriceHistoryModal";
+import { StartFruitWineBatchDialog } from "./StartFruitWineBatchDialog";
 
 // Type for basefruit purchase item from API
 interface BaseFruitPurchaseItem {
@@ -128,6 +130,7 @@ export function BaseFruitTable({
     varietyId: string;
     varietyName: string;
   } | null>(null);
+  const [fruitWineItem, setFruitWineItem] = useState<BaseFruitPurchaseItem | null>(null);
   const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
 
   // Sorting state using the reusable hook
@@ -662,6 +665,16 @@ export function BaseFruitTable({
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
+                                setFruitWineItem(item);
+                              }}
+                            >
+                              <Wine className="mr-2 h-4 w-4 text-purple-600" />
+                              Start Fruit Wine
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleItemClick(item);
                               }}
                             >
@@ -767,6 +780,25 @@ export function BaseFruitTable({
         varietyId={priceHistoryItem?.varietyId || ""}
         varietyName={priceHistoryItem?.varietyName || ""}
       />
+
+      {/* Start Fruit Wine Batch Dialog */}
+      {fruitWineItem && (
+        <StartFruitWineBatchDialog
+          open={!!fruitWineItem}
+          onClose={() => setFruitWineItem(null)}
+          fruitPurchaseItem={{
+            id: fruitWineItem.id,
+            varietyName: fruitWineItem.varietyName,
+            vendorName: fruitWineItem.vendorName,
+            availableKg: toKg(fruitWineItem.originalQuantity, normalizeUnit(fruitWineItem.originalUnit)),
+            originalUnit: fruitWineItem.originalUnit,
+          }}
+          onSuccess={() => {
+            refetch();
+            setFruitWineItem(null);
+          }}
+        />
+      )}
     </div>
   );
 }

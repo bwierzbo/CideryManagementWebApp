@@ -59,10 +59,11 @@ export function CreateFortifiedBlendDialog({
 
   const utils = trpc.useUtils();
 
-  // Fetch available batches
+  // Fetch available batches (use high limit to get all)
   const { data: batchesData } = trpc.batch.list.useQuery({
     sortBy: "startDate",
     sortOrder: "desc",
+    limit: 200,
   });
 
   // Fetch available vessels

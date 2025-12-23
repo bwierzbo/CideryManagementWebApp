@@ -7,7 +7,7 @@ import {
   vessels,
   users,
 } from "db";
-import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import {
   calculateProofGallons,
@@ -351,6 +351,160 @@ export const distillationRouter = router({
         distillationRecord: record,
         brandyBatch,
         proofGallonsReceived,
+      };
+    }),
+
+  /**
+   * Receive brandy from multiple cider batches combined into one brandy batch
+   * This handles the case where a distillery combines multiple cider batches into a single distillation run
+   */
+  receiveMultipleBrandy: createRbacProcedure("create", "batch")
+    .input(
+      z.object({
+        distillationRecordIds: z.array(z.string().uuid()).min(1),
+        receivedVolume: z.number().positive(),
+        receivedVolumeUnit: z.enum(["L", "gal"]).default("L"),
+        receivedAbv: z.number().min(0).max(100),
+        receivedAt: z.union([z.date(), z.string().transform((val) => new Date(val))]),
+        tibInboundNumber: z.string().optional(),
+        destinationVesselId: z.string().uuid().optional(),
+        notes: z.string().optional(),
+        brandyBatchName: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Get all distillation records
+      const records = await db
+        .select()
+        .from(distillationRecords)
+        .where(and(
+          inArray(distillationRecords.id, input.distillationRecordIds),
+          isNull(distillationRecords.deletedAt)
+        ));
+
+      if (records.length !== input.distillationRecordIds.length) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: `Some distillation records not found. Expected ${input.distillationRecordIds.length}, found ${records.length}`,
+        });
+      }
+
+      // Verify all records are in 'sent' status
+      const notSentRecords = records.filter((r) => r.status !== "sent");
+      if (notSentRecords.length > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Some records are not in 'sent' status: ${notSentRecords.map((r) => r.sourceBatchId).join(", ")}`,
+        });
+      }
+
+      // Get source batches for naming
+      const sourceBatchIds = records.map((r) => r.sourceBatchId);
+      const sourceBatches = await db
+        .select()
+        .from(batches)
+        .where(inArray(batches.id, sourceBatchIds));
+
+      // Calculate totals from source records
+      const totalSourceVolumeLiters = records.reduce((sum, r) => {
+        return sum + parseFloat(r.sourceVolumeLiters || "0");
+      }, 0);
+
+      const totalProofGallonsSent = records.reduce((sum, r) => {
+        return sum + parseFloat(r.proofGallonsSent || "0");
+      }, 0);
+
+      // Convert received volume to liters
+      const receivedVolumeLiters = input.receivedVolumeUnit === "gal"
+        ? input.receivedVolume * LITERS_PER_GALLON
+        : input.receivedVolume;
+
+      // Calculate proof gallons received
+      const proofGallonsReceived = calculateProofGallons(receivedVolumeLiters, input.receivedAbv);
+
+      // Verify destination vessel if provided
+      if (input.destinationVesselId) {
+        const [vessel] = await db
+          .select()
+          .from(vessels)
+          .where(and(eq(vessels.id, input.destinationVesselId), isNull(vessels.deletedAt)))
+          .limit(1);
+
+        if (!vessel) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Destination vessel not found",
+          });
+        }
+      }
+
+      // Generate batch name for brandy
+      const sourceNames = sourceBatches.map((b) => b.customName || b.batchNumber).slice(0, 3);
+      const batchName = input.brandyBatchName ||
+        `Brandy-Combined-${sourceNames.join("-")}-${new Date().getFullYear()}`;
+
+      // Generate unique batch number
+      const batchNumber = `BR-${Date.now().toString(36).toUpperCase()}`;
+
+      // Create brandy batch
+      const [brandyBatch] = await db
+        .insert(batches)
+        .values({
+          vesselId: input.destinationVesselId || null,
+          name: batchName,
+          batchNumber: batchNumber,
+          initialVolume: String(input.receivedVolume),
+          initialVolumeUnit: input.receivedVolumeUnit,
+          initialVolumeLiters: String(receivedVolumeLiters),
+          currentVolume: String(input.receivedVolume),
+          currentVolumeUnit: input.receivedVolumeUnit,
+          currentVolumeLiters: String(receivedVolumeLiters),
+          status: "aging",
+          productType: "brandy",
+          actualAbv: String(input.receivedAbv),
+          startDate: input.receivedAt,
+        })
+        .returning();
+
+      // Update all distillation records to reference the same brandy batch
+      // Distribute the received volume proportionally across records for tracking
+      for (const record of records) {
+        const recordSourceVolume = parseFloat(record.sourceVolumeLiters || "0");
+        const proportion = totalSourceVolumeLiters > 0 ? recordSourceVolume / totalSourceVolumeLiters : 1 / records.length;
+
+        const recordReceivedVolumeLiters = receivedVolumeLiters * proportion;
+        const recordReceivedVolume = input.receivedVolumeUnit === "gal"
+          ? recordReceivedVolumeLiters / LITERS_PER_GALLON
+          : recordReceivedVolumeLiters;
+        const recordProofGallons = proofGallonsReceived * proportion;
+
+        const combinedNotes = [record.notes, input.notes].filter(Boolean).join("\n");
+
+        await db
+          .update(distillationRecords)
+          .set({
+            resultBatchId: brandyBatch.id,
+            receivedVolume: String(recordReceivedVolume),
+            receivedVolumeUnit: input.receivedVolumeUnit,
+            receivedVolumeLiters: String(recordReceivedVolumeLiters),
+            receivedAbv: String(input.receivedAbv),
+            receivedAt: input.receivedAt,
+            receivedBy: ctx.user.id,
+            tibInboundNumber: input.tibInboundNumber || null,
+            proofGallonsReceived: String(recordProofGallons),
+            status: "received",
+            notes: combinedNotes || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(distillationRecords.id, record.id));
+      }
+
+      return {
+        brandyBatch,
+        proofGallonsReceived,
+        recordsUpdated: records.length,
+        totalSourceVolumeLiters,
+        totalProofGallonsSent,
       };
     }),
 

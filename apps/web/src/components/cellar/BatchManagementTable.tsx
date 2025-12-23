@@ -41,6 +41,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Eye,
@@ -57,6 +60,7 @@ import {
   History,
   Truck,
   Wine,
+  Tag,
 } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 import { BatchHistoryModal } from "./BatchHistoryModal";
@@ -64,6 +68,7 @@ import { AddBatchMeasurementForm } from "./AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "./AddBatchAdditiveForm";
 import { SendToDistilleryDialog } from "./SendToDistilleryDialog";
 import { CreateFortifiedBlendDialog } from "./CreateFortifiedBlendDialog";
+import { CreatePommeauBlendDialog } from "./CreatePommeauBlendDialog";
 import { toast } from "@/hooks/use-toast";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 
@@ -105,6 +110,11 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [showFortifiedBlend, setShowFortifiedBlend] = useState(false);
   const [fortifiedBlendBatchId, setFortifiedBlendBatchId] = useState<string | null>(null);
   const [fortifiedBlendBatchType, setFortifiedBlendBatchType] = useState<"cider" | "perry" | "brandy">("cider");
+
+  // Create pommeau blend dialog state
+  const [showPommeauBlend, setShowPommeauBlend] = useState(false);
+  const [pommeauCiderBatchId, setPommeauCiderBatchId] = useState<string | null>(null);
+  const [pommeauBrandyBatchId, setPommeauBrandyBatchId] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -243,6 +253,25 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     setFortifiedBlendBatchId(batchId);
     setFortifiedBlendBatchType(productType === "brandy" ? "brandy" : productType === "perry" ? "perry" : "cider");
     setShowFortifiedBlend(true);
+  };
+
+  const handleCreatePommeauBlend = (batchId: string, productType: string | null) => {
+    // If brandy batch, preselect as brandy source; otherwise preselect as cider source
+    if (productType === "brandy") {
+      setPommeauBrandyBatchId(batchId);
+      setPommeauCiderBatchId(null);
+    } else {
+      setPommeauCiderBatchId(batchId);
+      setPommeauBrandyBatchId(null);
+    }
+    setShowPommeauBlend(true);
+  };
+
+  const handleChangeProductType = (batchId: string, newType: "cider" | "perry" | "brandy" | "pommeau" | "other") => {
+    updateMutation.mutate({
+      batchId,
+      productType: newType,
+    });
   };
 
   if (isLoading) {
@@ -549,6 +578,44 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                               <Droplets className="w-4 h-4 mr-2" />
                               Add Additive
                             </DropdownMenuItem>
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger>
+                                <Tag className="w-4 h-4 mr-2" />
+                                Change Type
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                <DropdownMenuItem
+                                  onClick={() => handleChangeProductType(batch.id, "cider")}
+                                  disabled={batch.productType === "cider" || !batch.productType}
+                                >
+                                  Cider
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleChangeProductType(batch.id, "perry")}
+                                  disabled={batch.productType === "perry"}
+                                >
+                                  Perry
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleChangeProductType(batch.id, "brandy")}
+                                  disabled={batch.productType === "brandy"}
+                                >
+                                  Brandy
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleChangeProductType(batch.id, "pommeau")}
+                                  disabled={batch.productType === "pommeau"}
+                                >
+                                  Fortified
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleChangeProductType(batch.id, "other")}
+                                  disabled={batch.productType === "other"}
+                                >
+                                  Other
+                                </DropdownMenuItem>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
                             {/* Context-aware actions based on product type */}
                             {(batch.productType === "cider" || batch.productType === "perry" || !batch.productType) && (
                               <>
@@ -565,6 +632,12 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                                   <Wine className="w-4 h-4 mr-2" />
                                   Create Fortified Blend
                                 </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleCreatePommeauBlend(batch.id, batch.productType)}
+                                >
+                                  <Beaker className="w-4 h-4 mr-2" />
+                                  Create Pommeau Blend
+                                </DropdownMenuItem>
                               </>
                             )}
                             {batch.productType === "brandy" && (
@@ -575,6 +648,12 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                                 >
                                   <Wine className="w-4 h-4 mr-2" />
                                   Create Fortified Blend
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleCreatePommeauBlend(batch.id, batch.productType)}
+                                >
+                                  <Beaker className="w-4 h-4 mr-2" />
+                                  Create Pommeau Blend
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -792,6 +871,20 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
         }}
         preselectedBatchId={fortifiedBlendBatchId || undefined}
         preselectedBatchType={fortifiedBlendBatchType}
+      />
+
+      {/* Create Pommeau Blend Dialog */}
+      <CreatePommeauBlendDialog
+        open={showPommeauBlend}
+        onOpenChange={(open) => {
+          setShowPommeauBlend(open);
+          if (!open) {
+            setPommeauCiderBatchId(null);
+            setPommeauBrandyBatchId(null);
+          }
+        }}
+        preselectedCiderBatchId={pommeauCiderBatchId || undefined}
+        preselectedBrandyBatchId={pommeauBrandyBatchId || undefined}
       />
     </>
   );

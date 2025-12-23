@@ -27,6 +27,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 interface CreatePommeauBlendDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  preselectedCiderBatchId?: string;
+  preselectedBrandyBatchId?: string;
 }
 
 const LITERS_PER_GALLON = 3.785411784;
@@ -53,6 +55,8 @@ function calculateBlendAbv(
 export function CreatePommeauBlendDialog({
   open,
   onOpenChange,
+  preselectedCiderBatchId,
+  preselectedBrandyBatchId,
 }: CreatePommeauBlendDialogProps) {
   // Initialize with current date in local timezone
   const now = new Date();
@@ -60,35 +64,73 @@ export function CreatePommeauBlendDialog({
     .toISOString()
     .slice(0, 16);
 
-  // Juice source
-  const [juiceVolume, setJuiceVolume] = useState("");
-  const [juiceVolumeUnit, setJuiceVolumeUnit] = useState<"L" | "gal">("L");
-  const [juiceAbv, setJuiceAbv] = useState("0"); // Fresh juice is 0% ABV
+  // Juice/Cider source - now selected from inventory
+  const [ciderBatchId, setCiderBatchId] = useState(preselectedCiderBatchId || "");
+  const [ciderVolume, setCiderVolume] = useState("");
+  const [ciderVolumeUnit, setCiderVolumeUnit] = useState<"L" | "gal">("L");
+  const [deductFromCider, setDeductFromCider] = useState(true);
 
   // Brandy source
-  const [brandyBatchId, setBrandyBatchId] = useState("");
+  const [brandyBatchId, setBrandyBatchId] = useState(preselectedBrandyBatchId || "");
   const [brandyVolume, setBrandyVolume] = useState("");
   const [brandyVolumeUnit, setBrandyVolumeUnit] = useState<"L" | "gal">("L");
+  const [deductFromBrandy, setDeductFromBrandy] = useState(true);
 
   // Pommeau batch
   const [pommeauName, setPommeauName] = useState("");
   const [destinationVesselId, setDestinationVesselId] = useState("");
   const [blendDate, setBlendDate] = useState(localISOTime);
   const [notes, setNotes] = useState("");
-  const [deductFromBrandy, setDeductFromBrandy] = useState(true);
+
+  // Update preselected values when props change
+  React.useEffect(() => {
+    if (preselectedCiderBatchId) {
+      setCiderBatchId(preselectedCiderBatchId);
+    }
+  }, [preselectedCiderBatchId]);
+
+  React.useEffect(() => {
+    if (preselectedBrandyBatchId) {
+      setBrandyBatchId(preselectedBrandyBatchId);
+    }
+  }, [preselectedBrandyBatchId]);
 
   const utils = trpc.useUtils();
 
-  // Fetch batches - we'll filter for brandy locally
-  // Since productType isn't in the list query, we use status="aging" as a proxy
+  // Fetch all batches with volume for juice/cider selection
+  // This includes fermentation batches (fresh juice/partial cider) and aging batches
+  const { data: allBatchesData } = trpc.batch.list.useQuery({
+    sortBy: "startDate",
+    sortOrder: "desc",
+    limit: 200,
+  });
+
+  // Filter to batches with volume available - these are potential juice/cider sources
+  // Fresh juice will have 0% ABV, partially fermented cider will have some ABV
+  const ciderBatches =
+    allBatchesData?.batches?.filter(
+      (batch) =>
+        parseFloat(batch.currentVolume || "0") > 0 &&
+        (batch.productType === "cider" || batch.productType === "perry" || !batch.productType)
+    ) || [];
+
+  // Get selected cider/juice batch details
+  const selectedCider = ciderBatches.find((b) => b.id === ciderBatchId);
+
+  // Get the ABV for the selected cider (0 for fresh juice, actual ABV for fermented)
+  const selectedCiderAbv = selectedCider
+    ? parseFloat(selectedCider.actualAbv || selectedCider.estimatedAbv || "0")
+    : 0;
+
+  // Fetch batches for brandy - aging batches with high ABV
   const { data: batchesData } = trpc.batch.list.useQuery({
     status: "aging",
     sortBy: "startDate",
     sortOrder: "desc",
+    limit: 200,
   });
 
-  // Filter to batches with volume (ideally brandy, but we can't filter by productType in list)
-  // The user will need to select the correct brandy batch
+  // Filter to batches with volume (ideally brandy with high ABV)
   const brandyBatches =
     batchesData?.batches?.filter(
       (batch) => parseFloat(batch.currentVolume || "0") > 0
@@ -106,10 +148,10 @@ export function CreatePommeauBlendDialog({
 
   // Calculate preview of resulting blend
   const blendPreview = useMemo(() => {
-    const juiceVolLiters =
-      juiceVolumeUnit === "gal"
-        ? parseFloat(juiceVolume || "0") * LITERS_PER_GALLON
-        : parseFloat(juiceVolume || "0");
+    const ciderVolLiters =
+      ciderVolumeUnit === "gal"
+        ? parseFloat(ciderVolume || "0") * LITERS_PER_GALLON
+        : parseFloat(ciderVolume || "0");
 
     const brandyVolLiters =
       brandyVolumeUnit === "gal"
@@ -120,21 +162,22 @@ export function CreatePommeauBlendDialog({
       ? parseFloat(selectedBrandy.actualAbv)
       : 60; // Default assumption
 
-    const totalVolume = juiceVolLiters + brandyVolLiters;
+    const totalVolume = ciderVolLiters + brandyVolLiters;
 
     const resultingAbv = calculateBlendAbv([
-      { volumeLiters: juiceVolLiters, abv: parseFloat(juiceAbv) || 0 },
+      { volumeLiters: ciderVolLiters, abv: selectedCiderAbv },
       { volumeLiters: brandyVolLiters, abv: brandyAbv },
     ]);
 
     return {
-      juiceVolLiters,
+      ciderVolLiters,
+      ciderAbv: selectedCiderAbv,
       brandyVolLiters,
       brandyAbv,
       totalVolume,
       resultingAbv,
     };
-  }, [juiceVolume, juiceVolumeUnit, brandyVolume, brandyVolumeUnit, selectedBrandy, juiceAbv]);
+  }, [ciderVolume, ciderVolumeUnit, brandyVolume, brandyVolumeUnit, selectedBrandy, selectedCiderAbv]);
 
   // Create pommeau mutation
   const createPommeau = trpc.distillation.createPommeau.useMutation({
@@ -158,10 +201,11 @@ export function CreatePommeauBlendDialog({
   });
 
   const resetForm = () => {
-    setJuiceVolume("");
-    setJuiceVolumeUnit("L");
-    setJuiceAbv("0");
-    setBrandyBatchId("");
+    setCiderBatchId(preselectedCiderBatchId || "");
+    setCiderVolume("");
+    setCiderVolumeUnit("L");
+    setDeductFromCider(true);
+    setBrandyBatchId(preselectedBrandyBatchId || "");
     setBrandyVolume("");
     setBrandyVolumeUnit("L");
     setPommeauName("");
@@ -174,10 +218,19 @@ export function CreatePommeauBlendDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!juiceVolume || parseFloat(juiceVolume) <= 0) {
+    if (!ciderBatchId) {
       toast({
         title: "Error",
-        description: "Please enter a valid juice volume",
+        description: "Please select a juice or cider batch",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!ciderVolume || parseFloat(ciderVolume) <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid juice/cider volume",
         variant: "destructive",
       });
       return;
@@ -203,8 +256,10 @@ export function CreatePommeauBlendDialog({
 
     createPommeau.mutate({
       name: pommeauName || undefined,
-      juiceVolumeLiters: blendPreview.juiceVolLiters,
-      juiceAbv: parseFloat(juiceAbv) || 0,
+      ciderBatchId,
+      juiceVolumeLiters: blendPreview.ciderVolLiters,
+      juiceAbv: selectedCiderAbv,
+      deductFromCider,
       brandyBatchId,
       brandyVolumeLiters: blendPreview.brandyVolLiters,
       destinationVesselId: destinationVesselId && destinationVesselId !== "__none__" ? destinationVesselId : undefined,
@@ -233,28 +288,72 @@ export function CreatePommeauBlendDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Juice Source */}
+          {/* Juice/Cider Source */}
           <div className="space-y-4">
-            <h4 className="font-medium text-sm">Fresh Juice</h4>
-            <div className="grid grid-cols-3 gap-4">
+            <h4 className="font-medium text-sm">Juice or Cider Source</h4>
+            <div className="space-y-2">
+              <Label htmlFor="ciderBatch">Source Batch *</Label>
+              <Select value={ciderBatchId} onValueChange={setCiderBatchId}>
+                <SelectTrigger id="ciderBatch">
+                  <SelectValue placeholder="Select a juice or cider batch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ciderBatches.length === 0 ? (
+                    <div className="py-2 px-2 text-sm text-muted-foreground">
+                      No batches with volume available
+                    </div>
+                  ) : (
+                    ciderBatches.map((batch) => {
+                      const abv = parseFloat(batch.actualAbv || batch.estimatedAbv || "0");
+                      const abvLabel = abv === 0 ? "Fresh juice" : `${abv.toFixed(1)}% ABV`;
+                      return (
+                        <SelectItem key={batch.id} value={batch.id}>
+                          {batch.name} ({parseFloat(batch.currentVolume || "0").toFixed(1)}L, {abvLabel})
+                        </SelectItem>
+                      );
+                    })
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Select fresh juice (0% ABV) or partially fermented cider
+              </p>
+            </div>
+
+            {selectedCider && (
+              <div className="rounded-lg border bg-blue-50 dark:bg-blue-950/30 p-3 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-muted-foreground">Available:</span>{" "}
+                    {parseFloat(selectedCider.currentVolume || "0").toFixed(1)}L
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">ABV:</span>{" "}
+                    {selectedCiderAbv === 0 ? "0% (Fresh juice)" : `${selectedCiderAbv.toFixed(1)}%`}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="juiceVolume">Juice Volume *</Label>
+                <Label htmlFor="ciderVolume">Volume to Use *</Label>
                 <Input
-                  id="juiceVolume"
+                  id="ciderVolume"
                   type="number"
                   step="0.1"
                   placeholder="75"
-                  value={juiceVolume}
-                  onChange={(e) => setJuiceVolume(e.target.value)}
+                  value={ciderVolume}
+                  onChange={(e) => setCiderVolume(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="juiceVolumeUnit">Unit</Label>
+                <Label htmlFor="ciderVolumeUnit">Unit</Label>
                 <Select
-                  value={juiceVolumeUnit}
-                  onValueChange={(v) => setJuiceVolumeUnit(v as "L" | "gal")}
+                  value={ciderVolumeUnit}
+                  onValueChange={(v) => setCiderVolumeUnit(v as "L" | "gal")}
                 >
-                  <SelectTrigger id="juiceVolumeUnit">
+                  <SelectTrigger id="ciderVolumeUnit">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -263,18 +362,18 @@ export function CreatePommeauBlendDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="juiceAbv">Juice ABV (%)</Label>
-                <Input
-                  id="juiceAbv"
-                  type="number"
-                  step="0.1"
-                  placeholder="0"
-                  value={juiceAbv}
-                  onChange={(e) => setJuiceAbv(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">Usually 0% (fresh juice)</p>
-              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="deductFromCider"
+                checked={deductFromCider}
+                onChange={(e) => setDeductFromCider(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="deductFromCider" className="font-normal">
+                Deduct volume from source batch
+              </Label>
             </div>
           </div>
 
@@ -346,7 +445,7 @@ export function CreatePommeauBlendDialog({
           </div>
 
           {/* Blend Preview */}
-          {(parseFloat(juiceVolume || "0") > 0 || parseFloat(brandyVolume || "0") > 0) && (
+          {(parseFloat(ciderVolume || "0") > 0 || parseFloat(brandyVolume || "0") > 0) && (
             <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Info className="h-4 w-4" />
@@ -354,8 +453,10 @@ export function CreatePommeauBlendDialog({
               </div>
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Juice:</span>{" "}
-                  {blendPreview.juiceVolLiters.toFixed(1)}L @ {juiceAbv || "0"}%
+                  <span className="text-muted-foreground">
+                    {blendPreview.ciderAbv === 0 ? "Juice:" : "Cider:"}
+                  </span>{" "}
+                  {blendPreview.ciderVolLiters.toFixed(1)}L @ {blendPreview.ciderAbv.toFixed(1)}%
                 </div>
                 <div>
                   <span className="text-muted-foreground">Brandy:</span>{" "}
