@@ -246,21 +246,21 @@ function TankForm({
         capacity: displayCapacity,
         maxCapacity: displayMaxCapacity,
         capacityUnit: vessel.capacityUnit as any,
-        material: vessel.material as any,
-        jacketed: vessel.jacketed as any,
-        isPressureVessel: vessel.isPressureVessel as any,
+        material: vessel.material || undefined,
+        jacketed: vessel.jacketed || undefined,
+        isPressureVessel: vessel.isPressureVessel || undefined,
         location: vessel.location || undefined,
         notes: vessel.notes || undefined,
-        // Barrel-specific fields
+        // Barrel-specific fields - convert empty strings to undefined
         isBarrel: vessel.isBarrel || false,
-        barrelWoodType: vessel.barrelWoodType as any,
-        barrelOriginContents: vessel.barrelOriginContents as any,
+        barrelWoodType: vessel.barrelWoodType || undefined,
+        barrelOriginContents: vessel.barrelOriginContents || undefined,
         barrelOriginNotes: vessel.barrelOriginNotes || undefined,
-        barrelToastLevel: vessel.barrelToastLevel as any,
+        barrelToastLevel: vessel.barrelToastLevel || undefined,
         barrelYearAcquired: vessel.barrelYearAcquired || undefined,
         barrelAgeYears: vessel.barrelAgeYears || undefined,
         barrelCost: vessel.barrelCost ? parseFloat(vessel.barrelCost) : undefined,
-        barrelFlavorLevel: vessel.barrelFlavorLevel as any,
+        barrelFlavorLevel: vessel.barrelFlavorLevel || undefined,
       });
     }
   }, [vesselQuery.data, reset]);
@@ -2032,12 +2032,12 @@ function VesselMap() {
                       />
                       {maxCapacity && maxCapacity > capacity && (
                         <span className="text-xs text-gray-500" title="Max capacity (including headspace)">
-                          (max <VolumeDisplay value={maxCapacity} unit={capacityUnit as VolumeUnit} showUnit={true} className="inline" />)
+                          ({Math.round(maxCapacity)})
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3 relative">
+                  <div className="w-full bg-gray-200 rounded-full h-3 relative overflow-hidden">
                     {/* Working capacity marker when overfilled */}
                     {maxCapacity && maxCapacity > capacity && fillPercentage > 100 && (
                       <div
@@ -2048,13 +2048,11 @@ function VesselMap() {
                     )}
                     <div
                       className={`h-3 rounded-full transition-all ${
-                        fillPercentage > 100
-                          ? "bg-red-500"
-                          : fillPercentage > 90
-                            ? "bg-yellow-500"
-                            : fillPercentage > 75
-                              ? "bg-yellow-400"
-                              : "bg-blue-500"
+                        fillPercentage > 90 && fillPercentage <= 100
+                          ? "bg-yellow-500"
+                          : fillPercentage > 75
+                            ? "bg-yellow-400"
+                            : "bg-blue-500"
                       }`}
                       style={{
                         width: `${Math.min(
@@ -2062,18 +2060,21 @@ function VesselMap() {
                             ? (currentVolume / maxCapacity) * 100
                             : fillPercentage,
                           100
-                        )}%`
+                        )}%`,
+                        ...(fillPercentage > 100 && {
+                          background: `repeating-linear-gradient(
+                            45deg,
+                            rgb(59, 130, 246),
+                            rgb(59, 130, 246) 4px,
+                            rgb(96, 165, 250) 4px,
+                            rgb(96, 165, 250) 8px
+                          )`
+                        })
                       }}
                     />
                   </div>
                   <div className="text-right text-xs text-gray-500 mt-1">
-                    {fillPercentage > 100 ? (
-                      <span className="text-orange-600 font-medium">
-                        {fillPercentage.toFixed(1)}% of working capacity (overfill)
-                      </span>
-                    ) : (
-                      `${fillPercentage.toFixed(1)}% full`
-                    )}
+                    {fillPercentage.toFixed(1)}% full
                   </div>
                 </div>
 
