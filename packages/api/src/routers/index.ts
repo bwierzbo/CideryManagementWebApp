@@ -64,6 +64,7 @@ import {
   batchFilterOperations,
   batchAdditives,
   distillationRecords,
+  barrelUsageHistory,
 } from "db";
 import {
   eq,
@@ -2608,13 +2609,54 @@ export const appRouter = router({
 
   // Vessel management
   vessel: router({
-    list: createRbacProcedure("list", "vessel").query(async () => {
+    list: createRbacProcedure("list", "vessel")
+      .input(
+        z.object({
+          material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
+          isBarrel: z.boolean().optional(),
+          status: z.enum(["available", "cleaning", "maintenance"]).optional(),
+          sortBy: z.enum(["name", "capacity", "material", "status"]).default("name"),
+          sortOrder: z.enum(["asc", "desc"]).default("asc"),
+          includeRetired: z.boolean().default(false), // Include retired barrels
+        }).optional()
+      )
+      .query(async ({ input = {} }) => {
       try {
+        // Build WHERE conditions
+        const conditions = [isNull(vessels.deletedAt)];
+
+        if (input.material) {
+          conditions.push(eq(vessels.material, input.material));
+        }
+
+        if (input.isBarrel !== undefined) {
+          conditions.push(eq(vessels.isBarrel, input.isBarrel));
+        }
+
+        if (input.status) {
+          conditions.push(eq(vessels.status, input.status));
+        }
+
+        // Exclude retired barrels unless explicitly included
+        if (!input.includeRetired) {
+          conditions.push(isNull(vessels.barrelRetiredAt));
+        }
+
+        // Build ORDER BY
+        const sortColumn = {
+          name: vessels.name,
+          capacity: sql`CAST(${vessels.capacity} AS DECIMAL)`,
+          material: vessels.material,
+          status: vessels.status,
+        }[input.sortBy || "name"];
+
+        const orderBy = input.sortOrder === "desc" ? desc(sortColumn) : asc(sortColumn);
+
         const vesselList = await db
           .select()
           .from(vessels)
-          .where(isNull(vessels.deletedAt))
-          .orderBy(vessels.name);
+          .where(and(...conditions))
+          .orderBy(orderBy);
 
         return {
           vessels: vesselList,
@@ -2709,11 +2751,21 @@ export const appRouter = router({
           name: z.string().optional(),
           capacityL: z.number().positive("Capacity must be positive"),
           capacityUnit: z.enum(["L", "gal"]).default("L"),
-          material: z.enum(["stainless_steel", "plastic", "oak", "aluminum"]).optional(),
+          material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
           isPressureVessel: z.enum(["yes", "no"]).optional(),
           location: z.string().optional(),
           notes: z.string().optional(),
+          // Barrel program fields
+          isBarrel: z.boolean().optional(),
+          barrelWoodType: z.enum(["french_oak", "american_oak", "hungarian_oak", "chestnut", "other"]).optional(),
+          barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "rum", "sherry", "port", "new_oak", "neutral", "other"]).optional(),
+          barrelOriginNotes: z.string().optional(),
+          barrelToastLevel: z.enum(["light", "medium", "medium_plus", "heavy", "char"]).optional(),
+          barrelYearAcquired: z.number().int().min(1900).max(2100).optional(),
+          barrelAgeYears: z.number().int().min(0).max(100).optional(),
+          barrelCost: z.number().min(0).optional(),
+          barrelFlavorLevel: z.enum(["high", "medium", "low", "neutral"]).optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
@@ -2755,6 +2807,17 @@ export const appRouter = router({
               isPressureVessel: input.isPressureVessel,
               location: input.location,
               notes: input.notes,
+              // Barrel program fields
+              isBarrel: input.isBarrel || false,
+              barrelWoodType: input.barrelWoodType,
+              barrelOriginContents: input.barrelOriginContents,
+              barrelOriginNotes: input.barrelOriginNotes,
+              barrelToastLevel: input.barrelToastLevel,
+              barrelYearAcquired: input.barrelYearAcquired,
+              barrelAgeYears: input.barrelAgeYears,
+              barrelCost: input.barrelCost?.toString(),
+              barrelFlavorLevel: input.barrelFlavorLevel || (input.isBarrel ? "high" : undefined),
+              barrelUseCount: input.isBarrel ? 0 : undefined,
               createdAt: new Date(),
               updatedAt: new Date(),
             })
@@ -2793,7 +2856,7 @@ export const appRouter = router({
             .positive("Capacity must be positive")
             .optional(),
           capacityUnit: z.enum(["L", "gal"]).optional(),
-          material: z.enum(["stainless_steel", "plastic", "oak", "aluminum"]).optional(),
+          material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
           isPressureVessel: z.enum(["yes", "no"]).optional(),
           status: z
@@ -2807,6 +2870,17 @@ export const appRouter = router({
             .optional(),
           location: z.string().optional(),
           notes: z.string().optional(),
+          // Barrel program fields
+          isBarrel: z.boolean().optional(),
+          barrelWoodType: z.enum(["french_oak", "american_oak", "hungarian_oak", "chestnut", "other"]).nullish(),
+          barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "rum", "sherry", "port", "new_oak", "neutral", "other"]).nullish(),
+          barrelOriginNotes: z.string().nullish(),
+          barrelToastLevel: z.enum(["light", "medium", "medium_plus", "heavy", "char"]).nullish(),
+          barrelYearAcquired: z.number().int().min(1900).max(2100).nullish(),
+          barrelAgeYears: z.number().int().min(0).max(100).nullish(),
+          barrelCost: z.number().min(0).nullish(),
+          barrelFlavorLevel: z.enum(["high", "medium", "low", "neutral"]).nullish(),
+          barrelLastPreparedAt: z.date().or(z.string().transform((val) => new Date(val))).nullish(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
@@ -2845,6 +2919,18 @@ export const appRouter = router({
           if (input.location !== undefined)
             updateData.location = input.location;
           if (input.notes !== undefined) updateData.notes = input.notes;
+
+          // Barrel program fields
+          if (input.isBarrel !== undefined) updateData.isBarrel = input.isBarrel;
+          if (input.barrelWoodType !== undefined) updateData.barrelWoodType = input.barrelWoodType;
+          if (input.barrelOriginContents !== undefined) updateData.barrelOriginContents = input.barrelOriginContents;
+          if (input.barrelOriginNotes !== undefined) updateData.barrelOriginNotes = input.barrelOriginNotes;
+          if (input.barrelToastLevel !== undefined) updateData.barrelToastLevel = input.barrelToastLevel;
+          if (input.barrelYearAcquired !== undefined) updateData.barrelYearAcquired = input.barrelYearAcquired;
+          if (input.barrelAgeYears !== undefined) updateData.barrelAgeYears = input.barrelAgeYears;
+          if (input.barrelCost !== undefined) updateData.barrelCost = input.barrelCost?.toString();
+          if (input.barrelFlavorLevel !== undefined) updateData.barrelFlavorLevel = input.barrelFlavorLevel;
+          if (input.barrelLastPreparedAt !== undefined) updateData.barrelLastPreparedAt = input.barrelLastPreparedAt;
 
           const updatedVessel = await db
             .update(vessels)
@@ -4261,6 +4347,57 @@ export const appRouter = router({
               })
               .returning();
 
+            // Track barrel usage if source or destination is a barrel
+            const batchIdForBarrelTracking = transferredBatch?.id || sourceBatch[0].id;
+
+            // If destination is a barrel, record usage start
+            if (destVessel[0].isBarrel) {
+              await tx.insert(barrelUsageHistory).values({
+                vesselId: input.toVesselId,
+                batchId: batchIdForBarrelTracking,
+                startedAt: input.transferDate || new Date(),
+                flavorLevelAtStart: destVessel[0].barrelFlavorLevel || "high",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              });
+            }
+
+            // If source was a barrel and batch is fully leaving, end usage and increment use count
+            if (sourceVessel[0].isBarrel && remainingVolumeL <= MIN_WORKING_VOLUME_L) {
+              // Find the active usage record for this barrel/batch
+              const activeUsage = await tx
+                .select()
+                .from(barrelUsageHistory)
+                .where(
+                  and(
+                    eq(barrelUsageHistory.vesselId, input.fromVesselId),
+                    eq(barrelUsageHistory.batchId, sourceBatch[0].id),
+                    isNull(barrelUsageHistory.endedAt),
+                  ),
+                )
+                .limit(1);
+
+              if (activeUsage.length > 0) {
+                // End the usage
+                await tx
+                  .update(barrelUsageHistory)
+                  .set({
+                    endedAt: new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(barrelUsageHistory.id, activeUsage[0].id));
+              }
+
+              // Increment barrel use count
+              await tx
+                .update(vessels)
+                .set({
+                  barrelUseCount: (sourceVessel[0].barrelUseCount || 0) + 1,
+                  updatedAt: new Date(),
+                })
+                .where(eq(vessels.id, input.fromVesselId));
+            }
+
             const message = isBlending
               ? `Successfully blended ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} into ${destVessel[0].name || "Unknown"}. ${blendNote}${remainingVolumeL > 0 ? ` Remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`
               : `Successfully transferred ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`;
@@ -5016,6 +5153,175 @@ export const appRouter = router({
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Failed to clean tank",
+          });
+        }
+      }),
+
+    // Get barrel usage history
+    getBarrelHistory: createRbacProcedure("read", "vessel")
+      .input(z.object({ vesselId: z.string().uuid() }))
+      .query(async ({ input }) => {
+        try {
+          const history = await db
+            .select({
+              id: barrelUsageHistory.id,
+              vesselId: barrelUsageHistory.vesselId,
+              batchId: barrelUsageHistory.batchId,
+              batchName: batches.name,
+              batchCustomName: batches.customName,
+              startedAt: barrelUsageHistory.startedAt,
+              endedAt: barrelUsageHistory.endedAt,
+              durationDays: barrelUsageHistory.durationDays,
+              flavorLevelAtStart: barrelUsageHistory.flavorLevelAtStart,
+              tastingNotes: barrelUsageHistory.tastingNotes,
+            })
+            .from(barrelUsageHistory)
+            .leftJoin(batches, eq(barrelUsageHistory.batchId, batches.id))
+            .where(eq(barrelUsageHistory.vesselId, input.vesselId))
+            .orderBy(desc(barrelUsageHistory.startedAt));
+
+          return { history };
+        } catch (error) {
+          console.error("Error getting barrel history:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to get barrel history",
+          });
+        }
+      }),
+
+    // Record barrel usage (when batch enters barrel)
+    recordBarrelUsage: createRbacProcedure("update", "vessel")
+      .input(
+        z.object({
+          vesselId: z.string().uuid(),
+          batchId: z.string().uuid(),
+          startedAt: z.date().or(z.string().transform((val) => new Date(val))),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          // Get barrel's current flavor level
+          const barrel = await db
+            .select({ flavorLevel: vessels.barrelFlavorLevel })
+            .from(vessels)
+            .where(eq(vessels.id, input.vesselId))
+            .limit(1);
+
+          const usage = await db
+            .insert(barrelUsageHistory)
+            .values({
+              vesselId: input.vesselId,
+              batchId: input.batchId,
+              startedAt: input.startedAt,
+              flavorLevelAtStart: barrel[0]?.flavorLevel || "high",
+            })
+            .returning();
+
+          return { success: true, usage: usage[0] };
+        } catch (error) {
+          console.error("Error recording barrel usage:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to record barrel usage",
+          });
+        }
+      }),
+
+    // End barrel usage (when batch exits barrel)
+    endBarrelUsage: createRbacProcedure("update", "vessel")
+      .input(
+        z.object({
+          usageId: z.string().uuid(),
+          endedAt: z.date().or(z.string().transform((val) => new Date(val))),
+          tastingNotes: z.string().optional(),
+          incrementUseCount: z.boolean().default(true),
+        })
+      )
+      .mutation(async ({ input }) => {
+        try {
+          // Get the usage record to find vessel
+          const existingUsage = await db
+            .select()
+            .from(barrelUsageHistory)
+            .where(eq(barrelUsageHistory.id, input.usageId))
+            .limit(1);
+
+          if (!existingUsage.length) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Barrel usage record not found",
+            });
+          }
+
+          // Update usage record
+          const updated = await db
+            .update(barrelUsageHistory)
+            .set({
+              endedAt: input.endedAt,
+              tastingNotes: input.tastingNotes,
+              updatedAt: new Date(),
+            })
+            .where(eq(barrelUsageHistory.id, input.usageId))
+            .returning();
+
+          // Increment barrel use count if requested
+          if (input.incrementUseCount) {
+            await db
+              .update(vessels)
+              .set({
+                barrelUseCount: sql`COALESCE(${vessels.barrelUseCount}, 0) + 1`,
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, existingUsage[0].vesselId));
+          }
+
+          return { success: true, usage: updated[0] };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          console.error("Error ending barrel usage:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to end barrel usage",
+          });
+        }
+      }),
+
+    // Retire a barrel
+    retireBarrel: createRbacProcedure("update", "vessel")
+      .input(
+        z.object({
+          vesselId: z.string().uuid(),
+          reason: z.string().min(1, "Reason is required"),
+        })
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const retired = await db
+            .update(vessels)
+            .set({
+              barrelRetiredAt: new Date(),
+              barrelRetiredReason: input.reason,
+              status: "maintenance",
+              updatedAt: new Date(),
+            })
+            .where(eq(vessels.id, input.vesselId))
+            .returning();
+
+          await publishUpdateEvent(
+            "vessels",
+            input.vesselId,
+            {},
+            { barrelRetiredAt: new Date(), barrelRetiredReason: input.reason },
+            ctx.session?.user?.id || "system",
+          );
+
+          return { success: true, vessel: retired[0] };
+        } catch (error) {
+          console.error("Error retiring barrel:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to retire barrel",
           });
         }
       }),

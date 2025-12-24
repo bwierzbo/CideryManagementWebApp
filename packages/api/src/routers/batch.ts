@@ -53,9 +53,10 @@ const listBatchesSchema = z.object({
   search: z.string().optional(),
   limit: z.number().int().positive().max(200).default(50),
   offset: z.number().int().min(0).default(0),
-  sortBy: z.enum(["name", "startDate", "status"]).default("startDate"),
+  sortBy: z.enum(["name", "startDate", "status", "productType", "vesselName", "currentVolume", "customName"]).default("startDate"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
   includeDeleted: z.boolean().default(false),
+  includeArchived: z.boolean().default(false), // Include archived batches in results
 });
 
 const addMeasurementSchema = z.object({
@@ -361,6 +362,11 @@ export const batchRouter = router({
           conditions.push(isNull(batches.deletedAt));
         }
 
+        // Only exclude archived batches if includeArchived is false
+        if (!input.includeArchived) {
+          conditions.push(eq(batches.isArchived, false));
+        }
+
         if (input.status) {
           conditions.push(eq(batches.status, input.status));
         }
@@ -385,8 +391,12 @@ export const batchRouter = router({
         // Build ORDER BY clause
         const sortColumn = {
           name: batches.name,
+          customName: batches.customName,
           startDate: sql`COALESCE(${pressRuns.dateCompleted}, ${batches.startDate})`,
           status: batches.status,
+          productType: batches.productType,
+          vesselName: vessels.name,
+          currentVolume: sql`CAST(${batches.currentVolume} AS DECIMAL)`,
         }[input.sortBy || "startDate"];
 
         const orderBy =
@@ -421,6 +431,9 @@ export const batchRouter = router({
             createdAt: batches.createdAt,
             updatedAt: batches.updatedAt,
             deletedAt: batches.deletedAt,
+            isArchived: batches.isArchived,
+            archivedAt: batches.archivedAt,
+            archivedReason: batches.archivedReason,
           })
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
@@ -3160,13 +3173,16 @@ export const batchRouter = router({
               .where(eq(batches.id, destBatch.id))
               .returning();
 
-            // Mark source batch as completed (not deleted - preserve history)
+            // Mark source batch as completed and archived (not deleted - preserve history)
             await tx
               .update(batches)
               .set({
                 vesselId: null, // Remove vessel assignment
                 status: "completed",
                 currentVolume: "0",
+                isArchived: true,
+                archivedAt: new Date(),
+                archivedReason: 'Auto-archived: Batch fully transferred',
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, input.batchId));
@@ -3304,13 +3320,16 @@ export const batchRouter = router({
                 .where(eq(batches.id, destBatch.id))
                 .returning();
 
-              // Mark source batch as completed (not deleted - preserve history)
+              // Mark source batch as completed and archived (not deleted - preserve history)
               await tx
                 .update(batches)
                 .set({
                   vesselId: null,
                   status: "completed",
                   currentVolume: "0",
+                  isArchived: true,
+                  archivedAt: new Date(),
+                  archivedReason: 'Auto-archived: Batch fully transferred',
                   updatedAt: new Date(),
                 })
                 .where(eq(batches.id, input.batchId));

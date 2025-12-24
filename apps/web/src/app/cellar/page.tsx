@@ -72,6 +72,8 @@ import {
   Package,
   Search,
   History,
+  ArrowUpDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   litersToGallons,
@@ -94,6 +96,7 @@ import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { KegsManagement } from "@/components/packaging/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 import { VesselHistoryModal } from "@/components/cellar/VesselHistoryModal";
+import { BarrelHistoryModal } from "@/components/cellar/BarrelHistoryModal";
 import { BatchManagementTable } from "@/components/cellar/BatchManagementTable";
 
 // Form schemas
@@ -154,11 +157,21 @@ const tankSchema = z.object({
   name: z.string().optional(),
   capacity: z.number().positive("Capacity must be positive"),
   capacityUnit: z.enum(["L", "gal"]),
-  material: z.enum(["stainless_steel", "plastic", "oak", "aluminum"]).optional(),
+  material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
   jacketed: z.enum(["yes", "no"]).optional(),
   isPressureVessel: z.enum(["yes", "no"]).optional(),
   location: z.string().optional(),
   notes: z.string().optional(),
+  // Barrel-specific fields
+  isBarrel: z.boolean().optional(),
+  barrelWoodType: z.enum(["french_oak", "american_oak", "hungarian_oak", "chestnut", "other"]).optional(),
+  barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "rum", "sherry", "port", "new_oak", "neutral", "other"]).optional(),
+  barrelOriginNotes: z.string().optional(),
+  barrelToastLevel: z.enum(["light", "medium", "medium_plus", "heavy", "char"]).optional(),
+  barrelYearAcquired: z.number().optional(),
+  barrelAgeYears: z.number().optional(),
+  barrelCost: z.number().optional(),
+  barrelFlavorLevel: z.enum(["high", "medium", "low", "neutral"]).optional(),
 });
 
 type MeasurementForm = z.infer<typeof measurementSchema>;
@@ -231,11 +244,33 @@ function TankForm({
         isPressureVessel: vessel.isPressureVessel as any,
         location: vessel.location || undefined,
         notes: vessel.notes || undefined,
+        // Barrel-specific fields
+        isBarrel: vessel.isBarrel || false,
+        barrelWoodType: vessel.barrelWoodType as any,
+        barrelOriginContents: vessel.barrelOriginContents as any,
+        barrelOriginNotes: vessel.barrelOriginNotes || undefined,
+        barrelToastLevel: vessel.barrelToastLevel as any,
+        barrelYearAcquired: vessel.barrelYearAcquired || undefined,
+        barrelAgeYears: vessel.barrelAgeYears || undefined,
+        barrelCost: vessel.barrelCost ? parseFloat(vessel.barrelCost) : undefined,
+        barrelFlavorLevel: vessel.barrelFlavorLevel as any,
       });
     }
   }, [vesselQuery.data, reset]);
 
   const watchedCapacityUnit = watch("capacityUnit");
+  const watchedMaterial = watch("material");
+  const watchedIsBarrel = watch("isBarrel");
+
+  // Auto-set isBarrel when material is wood
+  React.useEffect(() => {
+    if (watchedMaterial === "wood" && !watchedIsBarrel) {
+      setValue("isBarrel", true);
+    }
+  }, [watchedMaterial, watchedIsBarrel, setValue]);
+
+  // Show barrel fields if material is wood or isBarrel is checked
+  const showBarrelFields = watchedMaterial === "wood" || watchedIsBarrel;
 
   const onSubmit = (data: TankForm) => {
     // Convert capacity to liters for storage (always stored in liters in DB)
@@ -249,6 +284,18 @@ function TankForm({
     const submitData = {
       ...data,
       capacityL,
+      // Include barrel fields if this is a barrel
+      ...(data.isBarrel && {
+        isBarrel: data.isBarrel,
+        barrelWoodType: data.barrelWoodType,
+        barrelOriginContents: data.barrelOriginContents,
+        barrelOriginNotes: data.barrelOriginNotes,
+        barrelToastLevel: data.barrelToastLevel,
+        barrelYearAcquired: data.barrelYearAcquired,
+        barrelAgeYears: data.barrelAgeYears,
+        barrelCost: data.barrelCost,
+        barrelFlavorLevel: data.barrelFlavorLevel || "high",
+      }),
     };
 
     if (vesselId) {
@@ -305,8 +352,7 @@ function TankForm({
             <SelectContent>
               <SelectItem value="stainless_steel">Stainless Steel</SelectItem>
               <SelectItem value="plastic">Plastic</SelectItem>
-              <SelectItem value="oak">Oak</SelectItem>
-              <SelectItem value="aluminum">Aluminum</SelectItem>
+              <SelectItem value="wood">Wood</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -362,6 +408,139 @@ function TankForm({
           {...register("notes")}
         />
       </div>
+
+      {/* Barrel-specific fields */}
+      {showBarrelFields && (
+        <div className="border-t pt-4 mt-4 space-y-4">
+          <h3 className="font-medium text-lg">Barrel Details</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="barrelWoodType">Wood Type</Label>
+              <Select
+                value={watch("barrelWoodType")}
+                onValueChange={(value) => setValue("barrelWoodType", value as any)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select wood type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="french_oak">French Oak</SelectItem>
+                  <SelectItem value="american_oak">American Oak</SelectItem>
+                  <SelectItem value="hungarian_oak">Hungarian Oak</SelectItem>
+                  <SelectItem value="chestnut">Chestnut</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="barrelToastLevel">Toast Level</Label>
+              <Select
+                value={watch("barrelToastLevel")}
+                onValueChange={(value) => setValue("barrelToastLevel", value as any)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select toast level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="medium_plus">Medium+</SelectItem>
+                  <SelectItem value="heavy">Heavy</SelectItem>
+                  <SelectItem value="char">Char</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="barrelOriginContents">Previous Contents</Label>
+              <Select
+                value={watch("barrelOriginContents")}
+                onValueChange={(value) => setValue("barrelOriginContents", value as any)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="What was in barrel before?" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="bourbon">Bourbon</SelectItem>
+                  <SelectItem value="rye">Rye Whiskey</SelectItem>
+                  <SelectItem value="wine_red">Red Wine</SelectItem>
+                  <SelectItem value="wine_white">White Wine</SelectItem>
+                  <SelectItem value="brandy">Brandy</SelectItem>
+                  <SelectItem value="rum">Rum</SelectItem>
+                  <SelectItem value="sherry">Sherry</SelectItem>
+                  <SelectItem value="port">Port</SelectItem>
+                  <SelectItem value="new_oak">New Oak (never used)</SelectItem>
+                  <SelectItem value="neutral">Neutral (no flavor)</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="barrelOriginNotes">Origin Notes</Label>
+              <Input
+                id="barrelOriginNotes"
+                placeholder="e.g., 4-year Buffalo Trace"
+                {...register("barrelOriginNotes")}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="barrelYearAcquired">Year Acquired</Label>
+              <Input
+                id="barrelYearAcquired"
+                type="number"
+                placeholder={new Date().getFullYear().toString()}
+                {...register("barrelYearAcquired", { valueAsNumber: true })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="barrelAgeYears">Age When Acquired (years)</Label>
+              <Input
+                id="barrelAgeYears"
+                type="number"
+                placeholder="0"
+                {...register("barrelAgeYears", { valueAsNumber: true })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="barrelCost">Cost ($)</Label>
+              <Input
+                id="barrelCost"
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                {...register("barrelCost", { valueAsNumber: true })}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="barrelFlavorLevel">Current Flavor Level</Label>
+            <Select
+              value={watch("barrelFlavorLevel") || "high"}
+              onValueChange={(value) => setValue("barrelFlavorLevel", value as any)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select flavor contribution level" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="high">High - Strong oak/spirit character</SelectItem>
+                <SelectItem value="medium">Medium - Moderate flavor contribution</SelectItem>
+                <SelectItem value="low">Low - Subtle flavors remaining</SelectItem>
+                <SelectItem value="neutral">Neutral - No significant flavor</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              New barrels start at High. Flavor level decreases with each use.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="flex justify-end space-x-2">
         <Button type="button" variant="outline" onClick={onClose}>
@@ -930,6 +1109,10 @@ function VesselMap() {
   const [showVesselHistory, setShowVesselHistory] = useState(false);
   const [selectedVesselForHistory, setSelectedVesselForHistory] = useState<string | null>(null);
 
+  // Barrel history modal state
+  const [showBarrelHistory, setShowBarrelHistory] = useState(false);
+  const [selectedBarrelForHistory, setSelectedBarrelForHistory] = useState<string | null>(null);
+
   // Unified packaging modal state
   const [showPackagingModal, setShowPackagingModal] = useState(false);
   const [selectedVesselForPackaging, setSelectedVesselForPackaging] = useState<{
@@ -1009,7 +1192,16 @@ function VesselMap() {
     setSelectedVesselForRacking(null);
   }, []);
 
-  const vesselListQuery = trpc.vessel.list.useQuery();
+  // Vessel filter and sort state
+  const [vesselMaterialFilter, setVesselMaterialFilter] = useState<string>("all");
+  const [vesselSortBy, setVesselSortBy] = useState<"name" | "capacity" | "material">("name");
+  const [vesselSortOrder, setVesselSortOrder] = useState<"asc" | "desc">("asc");
+
+  const vesselListQuery = trpc.vessel.list.useQuery({
+    material: vesselMaterialFilter === "all" ? undefined : vesselMaterialFilter as any,
+    sortBy: vesselSortBy,
+    sortOrder: vesselSortOrder,
+  });
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
 
@@ -1477,23 +1669,24 @@ function VesselMap() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Beaker className="w-5 h-5 text-blue-600" />
-              Vessel Map
-            </CardTitle>
-            <CardDescription>
-              Overview of all fermentation and storage vessels
-            </CardDescription>
-          </div>
-          <Dialog open={showAddTank} onOpenChange={setShowAddTank}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Tank
-              </Button>
-            </DialogTrigger>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Beaker className="w-5 h-5 text-blue-600" />
+                Vessel Map
+              </CardTitle>
+              <CardDescription>
+                Overview of all fermentation and storage vessels
+              </CardDescription>
+            </div>
+            <Dialog open={showAddTank} onOpenChange={setShowAddTank}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Tank
+                </Button>
+              </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Add New Tank</DialogTitle>
@@ -1504,6 +1697,64 @@ function VesselMap() {
               <TankForm onClose={() => setShowAddTank(false)} />
             </DialogContent>
           </Dialog>
+          </div>
+
+          {/* Filter and Sort Controls */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
+              <Select
+                value={vesselMaterialFilter}
+                onValueChange={setVesselMaterialFilter}
+              >
+                <SelectTrigger className="w-[140px] h-8">
+                  <SelectValue placeholder="Filter by material" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Materials</SelectItem>
+                  <SelectItem value="stainless_steel">Stainless Steel</SelectItem>
+                  <SelectItem value="plastic">Plastic</SelectItem>
+                  <SelectItem value="wood">Wood</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+              <Select
+                value={vesselSortBy}
+                onValueChange={(value) => setVesselSortBy(value as "name" | "capacity" | "material")}
+              >
+                <SelectTrigger className="w-[120px] h-8">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="capacity">Capacity</SelectItem>
+                  <SelectItem value="material">Material</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => setVesselSortOrder(vesselSortOrder === "asc" ? "desc" : "asc")}
+              >
+                {vesselSortOrder === "asc" ? "A→Z" : "Z→A"}
+              </Button>
+            </div>
+
+            {vesselMaterialFilter !== "all" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 text-muted-foreground"
+                onClick={() => setVesselMaterialFilter("all")}
+              >
+                Clear filter
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -1547,11 +1798,21 @@ function VesselMap() {
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-base sm:text-lg truncate">
-                      {vessel.name || "Unnamed Vessel"}
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-base sm:text-lg truncate">
+                        {vessel.name || "Unnamed Vessel"}
+                      </h3>
+                      {vessel.isBarrel && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 rounded">
+                          <Wine className="w-3 h-3 mr-0.5" />
+                          {vessel.barrelFlavorLevel?.charAt(0).toUpperCase() || "H"}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs sm:text-sm text-gray-600 truncate">
-                      {vessel.location || "No location"}
+                      {vessel.isBarrel && vessel.barrelOriginContents
+                        ? `Ex-${vessel.barrelOriginContents.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())} • ${vessel.location || "No location"}`
+                        : vessel.location || "No location"}
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -1893,6 +2154,18 @@ function VesselMap() {
                         View Tank History
                       </DropdownMenuItem>
 
+                      {vessel.isBarrel && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedBarrelForHistory(vessel.id);
+                            setShowBarrelHistory(true);
+                          }}
+                        >
+                          <Wine className="w-3 h-3 mr-2" />
+                          View Barrel History
+                        </DropdownMenuItem>
+                      )}
+
                       <DropdownMenuSeparator />
 
                       <DropdownMenuItem
@@ -2048,6 +2321,18 @@ function VesselMap() {
             onClose={() => {
               setShowVesselHistory(false);
               setSelectedVesselForHistory(null);
+            }}
+          />
+        )}
+
+        {/* Barrel History Modal */}
+        {selectedBarrelForHistory && (
+          <BarrelHistoryModal
+            vesselId={selectedBarrelForHistory}
+            open={showBarrelHistory}
+            onClose={() => {
+              setShowBarrelHistory(false);
+              setSelectedBarrelForHistory(null);
             }}
           />
         )}

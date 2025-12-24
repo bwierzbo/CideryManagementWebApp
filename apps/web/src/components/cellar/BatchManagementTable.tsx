@@ -61,6 +61,10 @@ import {
   Truck,
   Wine,
   Tag,
+  Archive,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 import { BatchHistoryModal } from "./BatchHistoryModal";
@@ -86,6 +90,9 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [productTypeFilter, setProductTypeFilter] = useState<string>("all");
   const [unassignedFilter, setUnassignedFilter] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [sortBy, setSortBy] = useState<"name" | "startDate" | "status" | "productType" | "vesselName" | "currentVolume" | "customName">("startDate");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showMeasurementForm, setShowMeasurementForm] = useState(false);
@@ -124,8 +131,9 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     status: statusFilter !== "all" ? (statusFilter as any) : undefined,
     productType: productTypeFilter !== "all" ? (productTypeFilter as any) : undefined,
     unassigned: unassignedFilter || undefined,
-    sortBy: "startDate",
-    sortOrder: "desc",
+    includeArchived: showArchived,
+    sortBy,
+    sortOrder,
   });
 
   // Delete mutation
@@ -249,6 +257,28 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     setShowSendToDistillery(true);
   };
 
+  // Handle column header click for sorting
+  const handleSort = (column: typeof sortBy) => {
+    if (sortBy === column) {
+      // Toggle sort order if same column
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      // Set new column with default desc order
+      setSortBy(column);
+      setSortOrder("desc");
+    }
+  };
+
+  // Sort indicator component
+  const SortIndicator = ({ column }: { column: typeof sortBy }) => {
+    if (sortBy !== column) {
+      return <ArrowUpDown className="w-4 h-4 ml-1 text-gray-400" />;
+    }
+    return sortOrder === "asc"
+      ? <ArrowUp className="w-4 h-4 ml-1 text-blue-600" />
+      : <ArrowDown className="w-4 h-4 ml-1 text-blue-600" />;
+  };
+
   const handleCreateFortifiedBlend = (batchId: string, productType: string | null) => {
     setFortifiedBlendBatchId(batchId);
     setFortifiedBlendBatchType(productType === "brandy" ? "brandy" : productType === "perry" ? "perry" : "cider");
@@ -368,6 +398,16 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
               />
               <span className="text-sm text-muted-foreground whitespace-nowrap">Unassigned only</span>
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Archive className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Show Archived</span>
+            </label>
           </div>
 
           {/* Batch Table */}
@@ -375,18 +415,74 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Batch ID</TableHead>
-                  <TableHead>Batch Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Vessel</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Start Date</TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("name")}
+                  >
+                    <div className="flex items-center">
+                      Batch ID
+                      <SortIndicator column="name" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("customName")}
+                  >
+                    <div className="flex items-center">
+                      Batch Name
+                      <SortIndicator column="customName" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("productType")}
+                  >
+                    <div className="flex items-center">
+                      Type
+                      <SortIndicator column="productType" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("vesselName")}
+                  >
+                    <div className="flex items-center">
+                      Vessel
+                      <SortIndicator column="vesselName" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("status")}
+                  >
+                    <div className="flex items-center">
+                      Status
+                      <SortIndicator column="status" />
+                    </div>
+                  </TableHead>
+                  <TableHead
+                    className="cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("startDate")}
+                  >
+                    <div className="flex items-center">
+                      Start Date
+                      <SortIndicator column="startDate" />
+                    </div>
+                  </TableHead>
                   <TableHead className="text-center">
                     Specific Gravity
                   </TableHead>
                   <TableHead className="text-center">ABV</TableHead>
                   <TableHead className="text-center">pH</TableHead>
-                  <TableHead className="text-right">Volume</TableHead>
+                  <TableHead
+                    className="text-right cursor-pointer hover:bg-muted/50 select-none"
+                    onClick={() => handleSort("currentVolume")}
+                  >
+                    <div className="flex items-center justify-end">
+                      Volume
+                      <SortIndicator column="currentVolume" />
+                    </div>
+                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -489,9 +585,17 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge className={getStatusColor(batch.status)}>
-                          {batch.status}
-                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <Badge className={getStatusColor(batch.status)}>
+                            {batch.status}
+                          </Badge>
+                          {batch.isArchived && (
+                            <Badge variant="secondary" className="bg-gray-200 text-gray-600">
+                              <Archive className="w-3 h-3 mr-1" />
+                              Archived
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {formatDate(batch.startDate)}

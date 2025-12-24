@@ -39,8 +39,7 @@ export const filterTypeEnum = pgEnum("filter_type", [
 export const vesselMaterialEnum = pgEnum("vessel_material", [
   "stainless_steel",
   "plastic",
-  "oak",
-  "aluminum",
+  "wood",
 ]);
 export const vesselJacketedEnum = pgEnum("vessel_jacketed", ["yes", "no"]);
 export const vesselPressureEnum = pgEnum("vessel_pressure", ["yes", "no"]);
@@ -114,6 +113,41 @@ export const packagingItemTypeEnum = pgEnum("packaging_item_type", [
   "Closures",
   "Secondary Packaging",
   "Tertiary Packaging",
+]);
+
+// Barrel program enums
+export const barrelWoodTypeEnum = pgEnum("barrel_wood_type", [
+  "french_oak",
+  "american_oak",
+  "hungarian_oak",
+  "chestnut",
+  "other",
+]);
+export const barrelOriginContentsEnum = pgEnum("barrel_origin_contents", [
+  "bourbon",
+  "rye",
+  "wine_red",
+  "wine_white",
+  "brandy",
+  "rum",
+  "sherry",
+  "port",
+  "new_oak",
+  "neutral",
+  "other",
+]);
+export const barrelToastLevelEnum = pgEnum("barrel_toast_level", [
+  "light",
+  "medium",
+  "medium_plus",
+  "heavy",
+  "char",
+]);
+export const barrelFlavorLevelEnum = pgEnum("barrel_flavor_level", [
+  "high",
+  "medium",
+  "low",
+  "neutral",
 ]);
 
 // Core Tables
@@ -527,7 +561,25 @@ export const vessels = pgTable("vessels", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
-});
+
+  // Barrel program fields (only populated for barrels)
+  isBarrel: boolean("is_barrel").default(false),
+  barrelWoodType: barrelWoodTypeEnum("barrel_wood_type"),
+  barrelOriginContents: barrelOriginContentsEnum("barrel_origin_contents"),
+  barrelOriginNotes: text("barrel_origin_notes"), // e.g., "4-year Buffalo Trace"
+  barrelToastLevel: barrelToastLevelEnum("barrel_toast_level"),
+  barrelYearAcquired: integer("barrel_year_acquired"),
+  barrelAgeYears: integer("barrel_age_years"), // How old barrel was when acquired
+  barrelCost: decimal("barrel_cost", { precision: 10, scale: 2 }),
+  barrelFlavorLevel: barrelFlavorLevelEnum("barrel_flavor_level").default("high"),
+  barrelUseCount: integer("barrel_use_count").default(0),
+  barrelLastPreparedAt: timestamp("barrel_last_prepared_at", { withTimezone: true }),
+  barrelRetiredAt: timestamp("barrel_retired_at", { withTimezone: true }),
+  barrelRetiredReason: text("barrel_retired_reason"),
+}, (table) => ({
+  materialIdx: index("vessels_material_idx").on(table.material),
+  isBarrelIdx: index("vessels_is_barrel_idx").on(table.isBarrel),
+}));
 
 export const batches = pgTable(
   "batches",
@@ -577,6 +629,10 @@ export const batches = pgTable(
     // Transfer loss tracking (juice lost during transfer from press run to vessel)
     transferLossL: decimal("transfer_loss_l", { precision: 10, scale: 3 }),
     transferLossNotes: text("transfer_loss_notes"),
+    // Archive tracking - archived batches are hidden but preserved for history
+    isArchived: boolean("is_archived").notNull().default(false),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedReason: text("archived_reason"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),
@@ -593,6 +649,7 @@ export const batches = pgTable(
     volumeLitersIdx: index("idx_batches_volume_liters")
       .on(table.currentVolumeLiters)
       .where(sql`${table.deletedAt} IS NULL`),
+    isArchivedIdx: index("batches_is_archived_idx").on(table.isArchived),
   }),
 );
 
@@ -1072,6 +1129,31 @@ export const vesselCleaningOperations = pgTable(
   }),
 );
 
+// Barrel usage history - tracks each batch that uses a barrel
+export const barrelUsageHistory = pgTable(
+  "barrel_usage_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vesselId: uuid("vessel_id")
+      .notNull()
+      .references(() => vessels.id),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    durationDays: integer("duration_days"), // Calculated by trigger
+    flavorLevelAtStart: barrelFlavorLevelEnum("flavor_level_at_start"),
+    tastingNotes: text("tasting_notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    vesselIdx: index("barrel_usage_vessel_idx").on(table.vesselId),
+    batchIdx: index("barrel_usage_batch_idx").on(table.batchId),
+  }),
+);
+
 // Batch merge history for tracking when batches are combined
 export const batchMergeHistory = pgTable(
   "batch_merge_history",
@@ -1393,7 +1475,22 @@ export const packagingPurchaseItemsRelations = relations(
 export const vesselsRelations = relations(vessels, ({ many }) => ({
   batches: many(batches),
   cleaningOperations: many(vesselCleaningOperations),
+  barrelUsageHistory: many(barrelUsageHistory),
 }));
+
+export const barrelUsageHistoryRelations = relations(
+  barrelUsageHistory,
+  ({ one }) => ({
+    vessel: one(vessels, {
+      fields: [barrelUsageHistory.vesselId],
+      references: [vessels.id],
+    }),
+    batch: one(batches, {
+      fields: [barrelUsageHistory.batchId],
+      references: [batches.id],
+    }),
+  }),
+);
 
 export const vesselCleaningOperationsRelations = relations(
   vesselCleaningOperations,
