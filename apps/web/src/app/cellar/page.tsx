@@ -156,7 +156,7 @@ const transferSchema = z.object({
 const tankSchema = z.object({
   name: z.string().optional(),
   capacity: z.number().positive("Capacity must be positive"),
-  maxCapacity: z.number().positive("Max capacity must be positive").optional(),
+  maxCapacity: z.number().min(0.001, "Max capacity must be positive").optional(),
   capacityUnit: z.enum(["L", "gal"]),
   material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
   jacketed: z.enum(["yes", "no"]).optional(),
