@@ -156,6 +156,7 @@ const transferSchema = z.object({
 const tankSchema = z.object({
   name: z.string().optional(),
   capacity: z.number().positive("Capacity must be positive"),
+  maxCapacity: z.number().positive("Max capacity must be positive").optional(),
   capacityUnit: z.enum(["L", "gal"]),
   material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
   jacketed: z.enum(["yes", "no"]).optional(),
@@ -228,16 +229,22 @@ function TankForm({
     if (vesselQuery.data?.vessel) {
       const vessel = vesselQuery.data.vessel;
       const storedCapacityL = parseFloat(vessel.capacity);
+      const storedMaxCapacityL = vessel.maxCapacity ? parseFloat(vessel.maxCapacity) : undefined;
 
       // Convert from liters to display unit with smart rounding
       let displayCapacity = storedCapacityL;
+      let displayMaxCapacity = storedMaxCapacityL;
       if (vessel.capacityUnit === "gal") {
         displayCapacity = convertVolume(storedCapacityL, "L", "gal");
+        if (displayMaxCapacity) {
+          displayMaxCapacity = convertVolume(storedMaxCapacityL!, "L", "gal");
+        }
       }
 
       reset({
         name: vessel.name || undefined,
         capacity: displayCapacity,
+        maxCapacity: displayMaxCapacity,
         capacityUnit: vessel.capacityUnit as any,
         material: vessel.material as any,
         jacketed: vessel.jacketed as any,
@@ -280,10 +287,14 @@ function TankForm({
       data.capacityUnit as "L" | "gal",
       "L"
     );
+    const maxCapacityL = data.maxCapacity
+      ? convertVolume(data.maxCapacity, data.capacityUnit as "L" | "gal", "L")
+      : undefined;
 
     const submitData = {
       ...data,
       capacityL,
+      maxCapacityL,
       // Include barrel fields if this is a barrel
       ...(data.isBarrel && {
         isBarrel: data.isBarrel,
@@ -321,22 +332,38 @@ function TankForm({
         </div>
       </div>
 
-      <div>
-        <Label htmlFor="capacity">Size</Label>
-        <VolumeInput
-          id="capacity"
-          value={watch("capacity")}
-          unit={watchedCapacityUnit as VolumeUnitType}
-          onValueChange={(value) => setValue("capacity", value || 0)}
-          onUnitChange={(unit) => setValue("capacityUnit", unit as "L" | "gal")}
-          placeholder="Enter capacity"
-          required
-        />
-        {errors.capacity && (
-          <p className="text-sm text-red-600 mt-1">
-            {errors.capacity.message}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="capacity">Working Capacity</Label>
+          <VolumeInput
+            id="capacity"
+            value={watch("capacity")}
+            unit={watchedCapacityUnit as VolumeUnitType}
+            onValueChange={(value) => setValue("capacity", value || 0)}
+            onUnitChange={(unit) => setValue("capacityUnit", unit as "L" | "gal")}
+            placeholder="Normal fill level"
+            required
+          />
+          {errors.capacity && (
+            <p className="text-sm text-red-600 mt-1">
+              {errors.capacity.message}
+            </p>
+          )}
+        </div>
+        <div>
+          <Label htmlFor="maxCapacity">Max Capacity (optional)</Label>
+          <VolumeInput
+            id="maxCapacity"
+            value={watch("maxCapacity")}
+            unit={watchedCapacityUnit as VolumeUnitType}
+            onValueChange={(value) => setValue("maxCapacity", value || undefined)}
+            onUnitChange={(unit) => setValue("capacityUnit", unit as "L" | "gal")}
+            placeholder="Including headspace"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            For overfill situations
           </p>
-        )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -749,11 +776,21 @@ function TankTransferForm({
   // Check if destination has liquid based on actual volume, not status
   const destHasLiquid = destCurrentVolume > 0;
 
+  // Get destination capacity and max capacity (in liters for comparison)
+  const destCapacityL = destVessel?.capacity ? parseFloat(destVessel.capacity) : 0;
+  const destMaxCapacityL = destVessel?.maxCapacity ? parseFloat(destVessel.maxCapacity) : destCapacityL;
+
   const watchedVolumeL = watch("volumeL") || 0;
   const watchedLoss = (watch("loss") as number | undefined) || 0;
 
   // Calculate remaining volume with epsilon tolerance
   const transferInLiters = watchedVolumeL ? toLiters(watchedVolumeL, displayUnit) : 0;
+
+  // Check if transfer would overfill destination
+  const destCurrentVolumeL = convertVolume(destCurrentVolume, destCapacityUnit, "L");
+  const destFinalVolumeL = destCurrentVolumeL + transferInLiters;
+  const wouldExceedWorkingCapacity = destCapacityL > 0 && destFinalVolumeL > destCapacityL;
+  const wouldExceedMaxCapacity = destMaxCapacityL > 0 && destFinalVolumeL > destMaxCapacityL;
   const lossInLiters = toLiters(watchedLoss, displayUnit);
   const totalUsedLiters = transferInLiters + lossInLiters;
   const isVolumeValid = totalUsedLiters <= currentVolumeL + EPSILON_L;
@@ -930,6 +967,18 @@ function TankTransferForm({
           <p className="text-sm text-orange-600 mt-1 flex items-center gap-1">
             <AlertTriangle className="h-4 w-4" />
             This tank contains liquid. Transferring will blend the contents.
+          </p>
+        )}
+        {wouldExceedMaxCapacity && (
+          <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
+            <AlertTriangle className="h-4 w-4" />
+            Transfer would exceed max capacity! Final volume would be {formatVolume(destFinalVolumeL, "L")} but max is {formatVolume(destMaxCapacityL, "L")}.
+          </p>
+        )}
+        {wouldExceedWorkingCapacity && !wouldExceedMaxCapacity && (
+          <p className="text-sm text-yellow-600 mt-1 flex items-center gap-1">
+            <AlertTriangle className="h-4 w-4" />
+            Transfer will exceed working capacity (overfill). Final volume: {formatVolume(destFinalVolumeL, "L")} / Working: {formatVolume(destCapacityL, "L")} / Max: {formatVolume(destMaxCapacityL, "L")}
           </p>
         )}
       </div>
@@ -1772,6 +1821,12 @@ function VesselMap() {
             const capacityInLiters = parseFloat(vessel.capacity);
             const capacity = convertVolume(capacityInLiters, "L", capacityUnit as VolumeUnit);
 
+            // Max capacity (for overfill) - convert to display unit
+            const maxCapacityInLiters = vessel.maxCapacity ? parseFloat(vessel.maxCapacity) : null;
+            const maxCapacity = maxCapacityInLiters
+              ? convertVolume(maxCapacityInLiters, "L", capacityUnit as VolumeUnit)
+              : null;
+
             // Get current volume and convert to vessel's capacity unit
             let currentVolume = 0;
             if (liquidMapVessel?.currentVolume) {
@@ -1975,22 +2030,50 @@ function VesselMap() {
                         unit={capacityUnit as VolumeUnit}
                         showUnit={true}
                       />
+                      {maxCapacity && maxCapacity > capacity && (
+                        <span className="text-xs text-gray-500" title="Max capacity (including headspace)">
+                          (max <VolumeDisplay value={maxCapacity} unit={capacityUnit as VolumeUnit} showUnit={true} className="inline" />)
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div className="w-full bg-gray-200 rounded-full h-3 relative">
+                    {/* Working capacity marker when overfilled */}
+                    {maxCapacity && maxCapacity > capacity && fillPercentage > 100 && (
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-gray-400 z-10"
+                        style={{ left: `${(capacity / maxCapacity) * 100}%` }}
+                        title="Working capacity"
+                      />
+                    )}
                     <div
                       className={`h-3 rounded-full transition-all ${
-                        fillPercentage > 90
+                        fillPercentage > 100
                           ? "bg-red-500"
-                          : fillPercentage > 75
+                          : fillPercentage > 90
                             ? "bg-yellow-500"
-                            : "bg-blue-500"
+                            : fillPercentage > 75
+                              ? "bg-yellow-400"
+                              : "bg-blue-500"
                       }`}
-                      style={{ width: `${Math.min(fillPercentage, 100)}%` }}
+                      style={{
+                        width: `${Math.min(
+                          maxCapacity && fillPercentage > 100
+                            ? (currentVolume / maxCapacity) * 100
+                            : fillPercentage,
+                          100
+                        )}%`
+                      }}
                     />
                   </div>
                   <div className="text-right text-xs text-gray-500 mt-1">
-                    {fillPercentage.toFixed(1)}% full
+                    {fillPercentage > 100 ? (
+                      <span className="text-orange-600 font-medium">
+                        {fillPercentage.toFixed(1)}% of working capacity (overfill)
+                      </span>
+                    ) : (
+                      `${fillPercentage.toFixed(1)}% full`
+                    )}
                   </div>
                 </div>
 

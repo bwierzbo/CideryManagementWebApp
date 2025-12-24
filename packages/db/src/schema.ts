@@ -542,6 +542,7 @@ export const vessels = pgTable("vessels", {
   name: text("name"),
   // TODO: type field removed - vessels now identified by capabilities and properties
   capacity: decimal("capacity", { precision: 10, scale: 3 }).notNull(),
+  maxCapacity: decimal("max_capacity", { precision: 10, scale: 3 }), // Maximum capacity including headspace (for overfill)
   capacityUnit: unitEnum("capacity_unit").notNull().default("L"),
   capacityLiters: decimal("capacity_liters", {
     precision: 10,

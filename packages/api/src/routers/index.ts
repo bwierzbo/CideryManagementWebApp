@@ -2750,6 +2750,7 @@ export const appRouter = router({
         z.object({
           name: z.string().optional(),
           capacityL: z.number().positive("Capacity must be positive"),
+          maxCapacityL: z.number().positive("Max capacity must be positive").optional(),
           capacityUnit: z.enum(["L", "gal"]).default("L"),
           material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
@@ -2795,12 +2796,14 @@ export const appRouter = router({
 
           // capacityL is already in liters from the frontend, just round it
           const capacityInLiters = roundToDecimals(input.capacityL, 3);
+          const maxCapacityInLiters = input.maxCapacityL ? roundToDecimals(input.maxCapacityL, 3) : null;
 
           const newVessel = await db
             .insert(vessels)
             .values({
               name: finalName,
               capacity: capacityInLiters.toString(),
+              maxCapacity: maxCapacityInLiters?.toString() || null,
               capacityUnit: input.capacityUnit || "L",
               material: input.material,
               jacketed: input.jacketed,
@@ -2855,6 +2858,10 @@ export const appRouter = router({
             .number()
             .positive("Capacity must be positive")
             .optional(),
+          maxCapacityL: z
+            .number()
+            .positive("Max capacity must be positive")
+            .nullish(),
           capacityUnit: z.enum(["L", "gal"]).optional(),
           material: z.enum(["stainless_steel", "plastic", "wood"]).optional(),
           jacketed: z.enum(["yes", "no"]).optional(),
@@ -2908,6 +2915,9 @@ export const appRouter = router({
             updateData.capacityUnit = input.capacityUnit;
           } else if (input.capacityUnit !== undefined) {
             updateData.capacityUnit = input.capacityUnit;
+          }
+          if (input.maxCapacityL !== undefined) {
+            updateData.maxCapacity = input.maxCapacityL ? roundToDecimals(input.maxCapacityL, 3).toString() : null;
           }
           if (input.material !== undefined)
             updateData.material = input.material;
