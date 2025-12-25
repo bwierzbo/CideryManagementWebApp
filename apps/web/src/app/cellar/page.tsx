@@ -769,10 +769,14 @@ function TankTransferForm({
       (vessel) => vessel.id !== fromVesselId && vessel.status === "available",
     ) || [];
 
-  // Filter vessels based on search query
-  const filteredVessels = availableVessels.filter((vessel) =>
-    vessel.name?.toLowerCase().includes(vesselSearchQuery.toLowerCase())
-  );
+  // Filter vessels based on search query with natural sort
+  const filteredVessels = availableVessels
+    .filter((vessel) =>
+      vessel.name?.toLowerCase().includes(vesselSearchQuery.toLowerCase())
+    )
+    .sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' })
+    );
 
   // Check if destination vessel has liquid (is fermenting)
   const watchedToVesselId = watch("toVesselId");
@@ -1332,7 +1336,14 @@ function VesselMap() {
     },
   });
 
-  const vessels = vesselListQuery.data?.vessels || [];
+  // Natural sort function for proper numeric ordering (1, 2, 10 instead of 1, 10, 2)
+  const naturalSort = (a: string, b: string) => {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  };
+
+  const vessels = [...(vesselListQuery.data?.vessels || [])].sort((a, b) =>
+    naturalSort(a.name || '', b.name || '')
+  );
 
   // Get color based on batch status if batch exists, otherwise vessel status
   const getStatusColor = (vesselStatus: string, batchStatus?: string | null) => {
