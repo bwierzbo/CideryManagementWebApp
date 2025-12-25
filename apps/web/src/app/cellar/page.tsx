@@ -276,6 +276,17 @@ function TankForm({
     }
   }, [watchedMaterial, watchedIsBarrel, setValue]);
 
+  // Reset jacketed and pressure vessel when material is not stainless steel
+  React.useEffect(() => {
+    if (watchedMaterial === "plastic" || watchedMaterial === "wood") {
+      setValue("jacketed", "no");
+      setValue("isPressureVessel", "no");
+    }
+  }, [watchedMaterial, setValue]);
+
+  // Only stainless steel can be jacketed or pressure vessel
+  const canBeJacketedOrPressure = watchedMaterial === "stainless_steel";
+
   // Show barrel fields if material is wood or isBarrel is checked
   const showBarrelFields = watchedMaterial === "wood" || watchedIsBarrel;
 
@@ -384,12 +395,15 @@ function TankForm({
           </Select>
         </div>
         <div>
-          <Label htmlFor="jacketed">Jacketed</Label>
+          <Label htmlFor="jacketed" className={!canBeJacketedOrPressure ? "text-muted-foreground" : ""}>
+            Jacketed {!canBeJacketedOrPressure && <span className="text-xs">(SS only)</span>}
+          </Label>
           <Select
             value={watch("jacketed")}
             onValueChange={(value) => setValue("jacketed", value as any)}
+            disabled={!canBeJacketedOrPressure}
           >
-            <SelectTrigger>
+            <SelectTrigger disabled={!canBeJacketedOrPressure}>
               <SelectValue placeholder="Select jacketed option" />
             </SelectTrigger>
             <SelectContent>
@@ -402,12 +416,15 @@ function TankForm({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="isPressureVessel">Pressure Vessel</Label>
+          <Label htmlFor="isPressureVessel" className={!canBeJacketedOrPressure ? "text-muted-foreground" : ""}>
+            Pressure Vessel {!canBeJacketedOrPressure && <span className="text-xs">(SS only)</span>}
+          </Label>
           <Select
             value={watch("isPressureVessel")}
             onValueChange={(value) => setValue("isPressureVessel", value as any)}
+            disabled={!canBeJacketedOrPressure}
           >
-            <SelectTrigger>
+            <SelectTrigger disabled={!canBeJacketedOrPressure}>
               <SelectValue placeholder="Select pressure vessel option" />
             </SelectTrigger>
             <SelectContent>
