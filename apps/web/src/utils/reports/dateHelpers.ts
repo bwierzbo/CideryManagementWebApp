@@ -4,6 +4,10 @@
 import { formatDate, formatDateForInput as centralizedFormatDateForInput } from "@/utils/date-format";
 
 export type DateRangePreset =
+  | "yesterday"
+  | "last-week"
+  | "last-30-days"
+  | "last-90-days"
   | "this-month"
   | "last-month"
   | "q1"
@@ -43,6 +47,87 @@ export function getQuarterDates(quarter: 1 | 2 | 3 | 4, year: number): DateRange
     startDate: quarterStarts[quarter],
     endDate: quarterEnds[quarter],
     label: `Q${quarter} ${year}`,
+  };
+}
+
+/**
+ * Get yesterday's date range
+ */
+export function getYesterdayDates(): DateRange {
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0, 0);
+  const endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59, 999);
+
+  return {
+    startDate,
+    endDate,
+    label: "Yesterday",
+  };
+}
+
+/**
+ * Get last week's date range (Monday to Sunday of the previous week)
+ */
+export function getLastWeekDates(): DateRange {
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+
+  // Calculate the most recent Sunday (end of last week)
+  const lastSunday = new Date(now);
+  lastSunday.setDate(now.getDate() - dayOfWeek);
+
+  // Calculate the Monday before that (start of last week)
+  const lastMonday = new Date(lastSunday);
+  lastMonday.setDate(lastSunday.getDate() - 6);
+
+  const startDate = new Date(lastMonday.getFullYear(), lastMonday.getMonth(), lastMonday.getDate(), 0, 0, 0, 0);
+  const endDate = new Date(lastSunday.getFullYear(), lastSunday.getMonth(), lastSunday.getDate(), 23, 59, 59, 999);
+
+  return {
+    startDate,
+    endDate,
+    label: "Last Week",
+  };
+}
+
+/**
+ * Get the last 30 days date range
+ */
+export function getLast30DaysDates(): DateRange {
+  const now = new Date();
+  const startDate = new Date(now);
+  startDate.setDate(startDate.getDate() - 30);
+  startDate.setHours(0, 0, 0, 0);
+
+  const endDate = new Date(now);
+  endDate.setHours(23, 59, 59, 999);
+
+  return {
+    startDate,
+    endDate,
+    label: "Last 30 Days",
+  };
+}
+
+/**
+ * Get the last 90 days date range
+ */
+export function getLast90DaysDates(): DateRange {
+  const now = new Date();
+  const startDate = new Date(now);
+  startDate.setDate(startDate.getDate() - 90);
+  startDate.setHours(0, 0, 0, 0);
+
+  const endDate = new Date(now);
+  endDate.setHours(23, 59, 59, 999);
+
+  return {
+    startDate,
+    endDate,
+    label: "Last 90 Days",
   };
 }
 
@@ -128,6 +213,18 @@ export function getDateRangeFromPreset(preset: DateRangePreset): DateRange | nul
   const currentYear = now.getFullYear();
 
   switch (preset) {
+    case "yesterday":
+      return getYesterdayDates();
+
+    case "last-week":
+      return getLastWeekDates();
+
+    case "last-30-days":
+      return getLast30DaysDates();
+
+    case "last-90-days":
+      return getLast90DaysDates();
+
     case "this-month":
       return getThisMonthDates();
 

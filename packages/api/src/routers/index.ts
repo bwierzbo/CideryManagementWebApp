@@ -25,6 +25,8 @@ import { baseFruitPurchasesRouter } from "./baseFruitPurchases";
 import { juicePurchasesRouter } from "./juicePurchases";
 import { packagingPurchasesRouter } from "./packagingPurchases";
 import { additiveVarietiesRouter } from "./additiveVarieties";
+import { barrelOriginTypesRouter } from "./barrelOriginTypes";
+import { barrelContentsHistoryRouter } from "./barrelContentsHistory";
 import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
 import { packagingRouter } from "./packaging";
@@ -33,6 +35,7 @@ import { dashboardRouter } from "./dashboard";
 import { squareRouter } from "./square";
 import { settingsRouter } from "./settings";
 import { distillationRouter } from "./distillation";
+import { productionReportsRouter } from "./productionReports";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import {
   db,
@@ -2760,7 +2763,7 @@ export const appRouter = router({
           // Barrel program fields
           isBarrel: z.boolean().optional(),
           barrelWoodType: z.enum(["french_oak", "american_oak", "hungarian_oak", "chestnut", "other"]).optional(),
-          barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "calvados", "rum", "sherry", "port", "new_oak", "neutral", "other"]).optional(),
+          barrelOriginContents: z.string().optional(), // Now dynamically loaded from barrel_origin_types table
           barrelOriginNotes: z.string().optional(),
           barrelToastLevel: z.enum(["light", "medium", "medium_plus", "heavy", "char"]).optional(),
           barrelYearAcquired: z.number().int().min(1900).max(2100).optional(),
@@ -2880,7 +2883,7 @@ export const appRouter = router({
           // Barrel program fields
           isBarrel: z.boolean().optional(),
           barrelWoodType: z.enum(["french_oak", "american_oak", "hungarian_oak", "chestnut", "other"]).nullish(),
-          barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "calvados", "rum", "sherry", "port", "new_oak", "neutral", "other"]).nullish(),
+          barrelOriginContents: z.string().nullish(), // Now dynamically loaded from barrel_origin_types table
           barrelOriginNotes: z.string().nullish(),
           barrelToastLevel: z.enum(["light", "medium", "medium_plus", "heavy", "char"]).nullish(),
           barrelYearAcquired: z.number().int().min(1900).max(2100).nullish(),
@@ -5533,6 +5536,7 @@ export const appRouter = router({
   // TTB compliance reporting
   ttb: ttbRouter,
   sales: salesRouter,
+  productionReports: productionReportsRouter,
 
   // Audit logging and reporting
   audit: auditRouter,
@@ -5548,6 +5552,8 @@ export const appRouter = router({
 
   // Variety management
   additiveVarieties: additiveVarietiesRouter,
+  barrelOriginTypes: barrelOriginTypesRouter,
+  barrelContentsHistory: barrelContentsHistoryRouter,
   juiceVarieties: juiceVarietiesRouter,
   packagingVarieties: packagingVarietiesRouter,
 

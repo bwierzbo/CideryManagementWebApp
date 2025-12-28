@@ -8,7 +8,7 @@ import {
   vendors,
   baseFruitVarieties,
 } from "db";
-import { eq, and, gte, lte, desc, isNull } from "drizzle-orm";
+import { eq, and, gte, lte, desc, isNull, sql } from "drizzle-orm";
 // TODO: Re-enable PDF service when server-compatible solution is available
 // import { PdfService } from "../services/pdf/PdfService";
 // import {
@@ -32,6 +32,13 @@ const dateRangeReportInput = z.object({
 });
 
 const vendorAppleReportInput = z.object({
+  startDate: z.date().or(z.string().transform((str) => new Date(str))),
+  endDate: z.date().or(z.string().transform((str) => new Date(str))),
+  vendorId: z.string().uuid().optional(),
+  varietyId: z.string().uuid().optional(),
+});
+
+const vendorPerformanceInput = z.object({
   startDate: z.date().or(z.string().transform((str) => new Date(str))),
   endDate: z.date().or(z.string().transform((str) => new Date(str))),
 });
@@ -229,6 +236,14 @@ export const reportsRouter = router({
               lte(basefruitPurchases.purchaseDate, input.endDate),
               isNull(basefruitPurchases.deletedAt),
               isNull(basefruitPurchaseItems.deletedAt),
+              // Optional vendor filter
+              input.vendorId
+                ? eq(basefruitPurchases.vendorId, input.vendorId)
+                : undefined,
+              // Optional variety filter
+              input.varietyId
+                ? eq(basefruitPurchaseItems.fruitVarietyId, input.varietyId)
+                : undefined,
             ),
           )
           .orderBy(desc(basefruitPurchases.purchaseDate));
@@ -351,6 +366,93 @@ export const reportsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to generate vendor apple purchase report",
+        });
+      }
+    }),
+
+  // Get vendor performance metrics
+  getVendorPerformance: createRbacProcedure("read", "purchase")
+    .input(vendorPerformanceInput)
+    .query(async ({ input }) => {
+      try {
+        // Get aggregated vendor performance data
+        const performanceData = await db
+          .select({
+            vendorId: vendors.id,
+            vendorName: vendors.name,
+            orderCount: sql<number>`COUNT(DISTINCT ${basefruitPurchases.id})::int`,
+            totalValue: sql<number>`COALESCE(SUM(${basefruitPurchaseItems.totalCost}), 0)::float`,
+            totalWeightKg: sql<number>`COALESCE(SUM(${basefruitPurchaseItems.quantityKg}), 0)::float`,
+            lastOrderDate: sql<Date | null>`MAX(${basefruitPurchases.purchaseDate})`,
+          })
+          .from(vendors)
+          .leftJoin(
+            basefruitPurchases,
+            and(
+              eq(basefruitPurchases.vendorId, vendors.id),
+              gte(basefruitPurchases.purchaseDate, input.startDate),
+              lte(basefruitPurchases.purchaseDate, input.endDate),
+              isNull(basefruitPurchases.deletedAt)
+            )
+          )
+          .leftJoin(
+            basefruitPurchaseItems,
+            and(
+              eq(basefruitPurchaseItems.purchaseId, basefruitPurchases.id),
+              isNull(basefruitPurchaseItems.deletedAt)
+            )
+          )
+          .groupBy(vendors.id, vendors.name)
+          .orderBy(desc(sql`COALESCE(SUM(${basefruitPurchaseItems.totalCost}), 0)`));
+
+        // Calculate summary metrics
+        let totalOrders = 0;
+        let totalValue = 0;
+        let totalWeightKg = 0;
+        let vendorsWithOrders = 0;
+
+        const vendorsList = performanceData.map((vendor) => {
+          const orderCount = Number(vendor.orderCount) || 0;
+          const value = Number(vendor.totalValue) || 0;
+          const weightKg = Number(vendor.totalWeightKg) || 0;
+          const avgOrderValue = orderCount > 0 ? value / orderCount : 0;
+          const avgWeightPerOrder = orderCount > 0 ? weightKg / orderCount : 0;
+
+          totalOrders += orderCount;
+          totalValue += value;
+          totalWeightKg += weightKg;
+          if (orderCount > 0) vendorsWithOrders++;
+
+          return {
+            vendorId: vendor.vendorId,
+            vendorName: vendor.vendorName,
+            orderCount,
+            totalValue: value,
+            totalWeightKg: weightKg,
+            avgOrderValue,
+            avgWeightPerOrder,
+            lastOrderDate: vendor.lastOrderDate,
+          };
+        });
+
+        // Only return vendors with orders
+        const activeVendors = vendorsList.filter((v) => v.orderCount > 0);
+
+        return {
+          summary: {
+            totalVendors: activeVendors.length,
+            totalOrders,
+            totalValue,
+            totalWeightKg,
+            avgOrderValue: totalOrders > 0 ? totalValue / totalOrders : 0,
+          },
+          vendors: activeVendors,
+        };
+      } catch (error) {
+        console.error("Error getting vendor performance:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to get vendor performance data",
         });
       }
     }),

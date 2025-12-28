@@ -88,6 +88,10 @@ export function DateRangePicker({
   }, []); // Only run on mount
 
   const presetButtons: Array<{ value: DateRangePreset; label: string }> = [
+    { value: "yesterday", label: "Yesterday" },
+    { value: "last-week", label: "Last Week" },
+    { value: "last-30-days", label: "Last 30 Days" },
+    { value: "last-90-days", label: "Last 90 Days" },
     { value: "this-month", label: "This Month" },
     { value: "last-month", label: "Last Month" },
     { value: "q1", label: "Q1" },
@@ -97,7 +101,7 @@ export function DateRangePicker({
     { value: "this-year", label: "This Year" },
     { value: "last-year", label: "Last Year" },
     { value: "lifetime", label: "Lifetime" },
-    { value: "custom", label: "Custom Range" },
+    { value: "custom", label: "Custom" },
   ];
 
   return (

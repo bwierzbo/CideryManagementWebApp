@@ -41,6 +41,14 @@ import { formatDate } from "@/utils/date-format";
 import { DateRangePicker } from "@/components/reports/DateRangePicker";
 import { downloadVendorApplePDF } from "@/utils/pdf/vendorAppleReport";
 import { formatDateRangeFilename } from "@/utils/reports/dateHelpers";
+import {
+  exportYieldAnalysisCSV,
+  exportFermentationCSV,
+  exportProductionSummaryCSV,
+  exportVendorPerformanceCSV,
+  exportApplePurchasesCSV,
+  exportCOGSAnalysisCSV,
+} from "@/utils/csv";
 
 // Helper function to download blob as file
 const downloadBlob = (blob: Blob, filename: string) => {
@@ -85,6 +93,22 @@ export default function ReportsPage() {
     useState<string>("");
   const [applePurchasesWeightUnit, setApplePurchasesWeightUnit] =
     useState<"kg" | "lbs">("kg");
+  const [applePurchasesVendorFilter, setApplePurchasesVendorFilter] =
+    useState<string>("all");
+  const [applePurchasesVarietyFilter, setApplePurchasesVarietyFilter] =
+    useState<string>("all");
+
+  // Production Reports state
+  const [productionStartDate, setProductionStartDate] = useState<Date>(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1) // Start of month
+  );
+  const [productionEndDate, setProductionEndDate] = useState<Date>(new Date());
+
+  // Vendor Performance state
+  const [vendorStartDate, setVendorStartDate] = useState<Date>(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1) // Start of month
+  );
+  const [vendorEndDate, setVendorEndDate] = useState<Date>(new Date());
 
   // Weight conversion helper
   const convertWeight = (kg: number, targetUnit: "kg" | "lbs"): number => {
@@ -97,12 +121,13 @@ export default function ReportsPage() {
   // Get data using existing tRPC endpoints
   const { data: batches, isLoading: batchesLoading } =
     trpc.batch.list.useQuery();
-  const { data: vendors, isLoading: vendorsLoading } =
-    trpc.vendor.list.useQuery();
   const { data: purchases } = trpc.purchase.list.useQuery({});
 
   // Get vendors for PDF filtering
   const { data: reportVendors } = trpc.pdfReports.getVendors.useQuery();
+
+  // Get apple varieties for filtering
+  const { data: reportVarieties } = trpc.pdfReports.getAppleVarieties.useQuery();
 
   // Apple Purchases Report data
   const {
@@ -113,11 +138,39 @@ export default function ReportsPage() {
     {
       startDate: applePurchasesStartDate,
       endDate: applePurchasesEndDate,
+      vendorId: applePurchasesVendorFilter !== "all" ? applePurchasesVendorFilter : undefined,
+      varietyId: applePurchasesVarietyFilter !== "all" ? applePurchasesVarietyFilter : undefined,
     },
     {
       enabled: !!applePurchasesStartDate && !!applePurchasesEndDate,
     },
   );
+
+  // Production Reports data
+  const { data: yieldAnalysis, isLoading: yieldLoading } =
+    trpc.productionReports.getYieldAnalysis.useQuery({
+      startDate: productionStartDate,
+      endDate: productionEndDate,
+    });
+
+  const { data: fermentationMetrics, isLoading: fermentationLoading } =
+    trpc.productionReports.getFermentationMetrics.useQuery({
+      startDate: productionStartDate,
+      endDate: productionEndDate,
+    });
+
+  const { data: productionSummary, isLoading: productionSummaryLoading } =
+    trpc.productionReports.getProductionSummary.useQuery({
+      startDate: productionStartDate,
+      endDate: productionEndDate,
+    });
+
+  // Vendor Performance data
+  const { data: vendorPerformanceData, isLoading: vendorPerformanceLoading } =
+    trpc.pdfReports.getVendorPerformance.useQuery({
+      startDate: vendorStartDate,
+      endDate: vendorEndDate,
+    });
 
   // TODO: PDF generation mutations - Temporarily disabled
   /* const generateDateRangeReport =
@@ -196,19 +249,6 @@ export default function ReportsPage() {
       laborCost,
       totalCost,
       costPerBottle,
-    };
-  });
-
-  // Calculate vendor performance - simplified for demo
-  const vendorList = vendors?.vendors || [];
-  const vendorPerformance = vendorList.map((vendor) => {
-    // Simplified vendor metrics for demo
-    return {
-      name: vendor.name,
-      totalOrders: Math.floor(Math.random() * 10) + 1,
-      totalValue: Math.floor(Math.random() * 5000) + 1000,
-      avgOrderValue: Math.floor(Math.random() * 1000) + 200,
-      lastOrder: vendor.updatedAt || null,
     };
   });
 
@@ -445,11 +485,22 @@ export default function ReportsPage() {
 
               {/* COGS Breakdown Table */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Cost of Goods Sold Breakdown</CardTitle>
-                  <CardDescription>
-                    Detailed cost analysis by batch
-                  </CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Cost of Goods Sold Breakdown</CardTitle>
+                    <CardDescription>
+                      Detailed cost analysis by batch
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportCOGSAnalysisCSV(cogsData)}
+                    disabled={cogsData.length === 0}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
                 </CardHeader>
                 <CardContent>
                   {batchesLoading ? (
@@ -526,45 +577,427 @@ export default function ReportsPage() {
           {/* Production Reports Tab */}
           <TabsContent value="production">
             <div className="space-y-6">
+              {/* Date Range Picker */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Production Efficiency</CardTitle>
-                  <CardDescription>
-                    Yield analysis and production metrics
-                  </CardDescription>
+                <CardContent className="pt-6">
+                  <DateRangePicker
+                    onDateRangeChange={(startDate, endDate) => {
+                      setProductionStartDate(startDate);
+                      setProductionEndDate(endDate);
+                    }}
+                    defaultPreset="this-month"
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Yield Analysis */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Yield Analysis</CardTitle>
+                    <CardDescription>
+                      Press run data: fruit weight → juice volume conversion
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      yieldAnalysis &&
+                      exportYieldAnalysisCSV(yieldAnalysis, {
+                        startDate: productionStartDate,
+                        endDate: productionEndDate,
+                      })
+                    }
+                    disabled={!yieldAnalysis}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-900">
-                        {batchList.length}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Active Batches
-                      </div>
+                  {yieldLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="text-gray-500">Loading yield data...</div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-900">
-                        {batchList.length * 50}
+                  ) : yieldAnalysis ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div className="text-center p-4 bg-amber-50 rounded-lg">
+                          <div className="text-2xl font-bold text-amber-700">
+                            {yieldAnalysis.summary.pressRunCount}
+                          </div>
+                          <div className="text-sm text-amber-600">
+                            Press Runs
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                          <div className="text-2xl font-bold text-green-700">
+                            {yieldAnalysis.summary.totalFruitKg.toLocaleString("en-US", {
+                              maximumFractionDigits: 1,
+                            })} kg
+                          </div>
+                          <div className="text-sm text-green-600">
+                            Total Fruit
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-blue-50 rounded-lg">
+                          <div className="text-2xl font-bold text-blue-700">
+                            {yieldAnalysis.summary.totalJuiceL.toLocaleString("en-US", {
+                              maximumFractionDigits: 1,
+                            })} L
+                          </div>
+                          <div className="text-sm text-blue-600">
+                            Total Juice
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-purple-50 rounded-lg">
+                          <div className="text-2xl font-bold text-purple-700">
+                            {yieldAnalysis.summary.avgExtractionRate.toFixed(1)}%
+                          </div>
+                          <div className="text-sm text-purple-600">
+                            Avg Extraction Rate
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-500">Total Gallons</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-900">
-                        85%
-                      </div>
-                      <div className="text-sm text-gray-500">Avg Yield</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-900">45</div>
-                      <div className="text-sm text-gray-500">Avg Days</div>
-                    </div>
-                  </div>
 
-                  <p className="text-gray-600 text-center">
-                    Detailed production analytics will be displayed here once
-                    more data is available.
-                  </p>
+                      {/* Variety Breakdown */}
+                      {yieldAnalysis.byVariety.length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="font-medium text-gray-900 mb-3">By Variety</h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-gray-50">
+                                  <th className="py-2 px-4 text-left font-medium">Variety</th>
+                                  <th className="py-2 px-4 text-right font-medium">Fruit (kg)</th>
+                                  <th className="py-2 px-4 text-right font-medium">Juice (L)</th>
+                                  <th className="py-2 px-4 text-right font-medium">Extraction Rate</th>
+                                  <th className="py-2 px-4 text-right font-medium">Loads</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {yieldAnalysis.byVariety.map((variety) => (
+                                  <tr key={variety.varietyId} className="border-b hover:bg-gray-50">
+                                    <td className="py-2 px-4">{variety.varietyName}</td>
+                                    <td className="py-2 px-4 text-right">
+                                      {variety.fruitKg.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                                    </td>
+                                    <td className="py-2 px-4 text-right">
+                                      {variety.juiceL.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                                    </td>
+                                    <td className="py-2 px-4 text-right">
+                                      {variety.extractionRate.toFixed(1)}%
+                                    </td>
+                                    <td className="py-2 px-4 text-right">{variety.loadCount}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Press Runs List */}
+                      {yieldAnalysis.pressRuns.length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="font-medium text-gray-900 mb-3">Press Runs</h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-gray-50">
+                                  <th className="py-2 px-4 text-left font-medium">Run Name</th>
+                                  <th className="py-2 px-4 text-left font-medium">Date</th>
+                                  <th className="py-2 px-4 text-right font-medium">Fruit (kg)</th>
+                                  <th className="py-2 px-4 text-right font-medium">Juice (L)</th>
+                                  <th className="py-2 px-4 text-right font-medium">Extraction</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {yieldAnalysis.pressRuns.map((run) => (
+                                  <tr key={run.id} className="border-b hover:bg-gray-50">
+                                    <td className="py-2 px-4">{run.name}</td>
+                                    <td className="py-2 px-4">{run.date ? formatDate(new Date(run.date)) : "N/A"}</td>
+                                    <td className="py-2 px-4 text-right">
+                                      {run.fruitKg.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                                    </td>
+                                    <td className="py-2 px-4 text-right">
+                                      {run.juiceL.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                                    </td>
+                                    <td className="py-2 px-4 text-right">{run.extractionRate.toFixed(1)}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {yieldAnalysis.pressRuns.length === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          No press runs found for the selected date range.
+                        </p>
+                      )}
+                    </>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              {/* Fermentation Metrics */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Fermentation Metrics</CardTitle>
+                    <CardDescription>
+                      Batch SG progression, time to terminal, completion rates
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      fermentationMetrics &&
+                      exportFermentationCSV(fermentationMetrics, {
+                        startDate: productionStartDate,
+                        endDate: productionEndDate,
+                      })
+                    }
+                    disabled={!fermentationMetrics}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {fermentationLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="text-gray-500">Loading fermentation data...</div>
+                    </div>
+                  ) : fermentationMetrics ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                        <div className="text-center p-4 bg-amber-50 rounded-lg">
+                          <div className="text-2xl font-bold text-amber-700">
+                            {fermentationMetrics.summary.batchesStarted}
+                          </div>
+                          <div className="text-sm text-amber-600">
+                            Batches Started
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                          <div className="text-2xl font-bold text-green-700">
+                            {fermentationMetrics.summary.batchesCompleted}
+                          </div>
+                          <div className="text-sm text-green-600">
+                            Completed
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-blue-50 rounded-lg">
+                          <div className="text-2xl font-bold text-blue-700">
+                            {fermentationMetrics.summary.avgDaysToTerminal ?? "N/A"}
+                          </div>
+                          <div className="text-sm text-blue-600">
+                            Avg Days to Terminal
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-purple-50 rounded-lg">
+                          <div className="text-2xl font-bold text-purple-700">
+                            {fermentationMetrics.summary.avgOriginalGravity?.toFixed(3) ?? "N/A"}
+                          </div>
+                          <div className="text-sm text-purple-600">
+                            Avg OG
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-pink-50 rounded-lg">
+                          <div className="text-2xl font-bold text-pink-700">
+                            {fermentationMetrics.summary.avgFinalGravity?.toFixed(3) ?? "N/A"}
+                          </div>
+                          <div className="text-sm text-pink-600">
+                            Avg FG
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Stage Distribution */}
+                      <div className="mt-6">
+                        <h4 className="font-medium text-gray-900 mb-3">Stage Distribution</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {Object.entries(fermentationMetrics.stageDistribution).map(([stage, count]) => (
+                            count > 0 && (
+                              <Badge key={stage} variant="secondary" className="text-sm">
+                                {stage.replace(/_/g, " ")}: {count}
+                              </Badge>
+                            )
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Batch Details */}
+                      {fermentationMetrics.batches.length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="font-medium text-gray-900 mb-3">Batch Details</h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-gray-50">
+                                  <th className="py-2 px-4 text-left font-medium">Batch</th>
+                                  <th className="py-2 px-4 text-left font-medium">Start</th>
+                                  <th className="py-2 px-4 text-right font-medium">OG</th>
+                                  <th className="py-2 px-4 text-right font-medium">Current SG</th>
+                                  <th className="py-2 px-4 text-center font-medium">Stage</th>
+                                  <th className="py-2 px-4 text-right font-medium">Days</th>
+                                  <th className="py-2 px-4 text-right font-medium">Volume (L)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {fermentationMetrics.batches.map((batch) => (
+                                  <tr key={batch.id} className="border-b hover:bg-gray-50">
+                                    <td className="py-2 px-4">{batch.batchName}</td>
+                                    <td className="py-2 px-4">{formatDate(new Date(batch.startDate))}</td>
+                                    <td className="py-2 px-4 text-right">
+                                      {batch.originalGravity?.toFixed(3) ?? "N/A"}
+                                    </td>
+                                    <td className="py-2 px-4 text-right">
+                                      {batch.currentGravity?.toFixed(3) ?? "N/A"}
+                                    </td>
+                                    <td className="py-2 px-4 text-center">
+                                      <Badge variant="outline" className="text-xs">
+                                        {batch.fermentationStage.replace(/_/g, " ")}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2 px-4 text-right">{batch.daysActive}</td>
+                                    <td className="py-2 px-4 text-right">
+                                      {batch.volumeL.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {fermentationMetrics.batches.length === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          No batches found for the selected date range.
+                        </p>
+                      )}
+                    </>
+                  ) : null}
+                </CardContent>
+              </Card>
+
+              {/* Production Summary */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Production Summary</CardTitle>
+                    <CardDescription>
+                      Batches created, volumes, by product type and status
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      productionSummary &&
+                      exportProductionSummaryCSV(productionSummary, {
+                        startDate: productionStartDate,
+                        endDate: productionEndDate,
+                      })
+                    }
+                    disabled={!productionSummary}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {productionSummaryLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="text-gray-500">Loading production summary...</div>
+                    </div>
+                  ) : productionSummary ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        <div className="text-center p-4 bg-amber-50 rounded-lg">
+                          <div className="text-2xl font-bold text-amber-700">
+                            {productionSummary.summary.batchesCreated}
+                          </div>
+                          <div className="text-sm text-amber-600">
+                            Batches Created
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                          <div className="text-2xl font-bold text-green-700">
+                            {productionSummary.summary.totalInitialVolumeL.toLocaleString("en-US", {
+                              maximumFractionDigits: 1,
+                            })} L
+                          </div>
+                          <div className="text-sm text-green-600">
+                            Initial Volume
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-blue-50 rounded-lg">
+                          <div className="text-2xl font-bold text-blue-700">
+                            {productionSummary.summary.totalCurrentVolumeL.toLocaleString("en-US", {
+                              maximumFractionDigits: 1,
+                            })} L
+                          </div>
+                          <div className="text-sm text-blue-600">
+                            Current Volume
+                          </div>
+                        </div>
+                        <div className="text-center p-4 bg-red-50 rounded-lg">
+                          <div className="text-2xl font-bold text-red-700">
+                            {productionSummary.summary.volumeLossL.toLocaleString("en-US", {
+                              maximumFractionDigits: 1,
+                            })} L
+                          </div>
+                          <div className="text-sm text-red-600">
+                            Volume Loss
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* By Product Type */}
+                      {productionSummary.byProductType.length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="font-medium text-gray-900 mb-3">By Product Type</h4>
+                          <div className="flex flex-wrap gap-4">
+                            {productionSummary.byProductType.map((item) => (
+                              <div key={item.productType} className="p-3 bg-gray-50 rounded-lg">
+                                <div className="font-medium capitalize">{item.productType}</div>
+                                <div className="text-sm text-gray-600">
+                                  {item.count} batches • {item.volumeL.toLocaleString("en-US", { maximumFractionDigits: 0 })} L
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* By Status */}
+                      {productionSummary.byStatus.length > 0 && (
+                        <div className="mt-6">
+                          <h4 className="font-medium text-gray-900 mb-3">By Status</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {productionSummary.byStatus.map((item) => (
+                              <Badge key={item.status} variant="secondary" className="text-sm">
+                                {item.status}: {item.count}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {productionSummary.summary.batchesCreated === 0 && (
+                        <p className="text-gray-500 text-center py-4">
+                          No batches found for the selected date range.
+                        </p>
+                      )}
+                    </>
+                  ) : null}
                 </CardContent>
               </Card>
             </div>
@@ -573,32 +1006,115 @@ export default function ReportsPage() {
           {/* Vendor Performance Tab */}
           <TabsContent value="vendors">
             <div className="space-y-6">
+              {/* Date Range Picker */}
               <Card>
-                <CardHeader>
-                  <CardTitle>Vendor Performance Analysis</CardTitle>
-                  <CardDescription>
-                    Cost analysis and vendor reliability metrics
-                  </CardDescription>
+                <CardContent className="pt-6">
+                  <DateRangePicker
+                    onDateRangeChange={(startDate, endDate) => {
+                      setVendorStartDate(startDate);
+                      setVendorEndDate(endDate);
+                    }}
+                    defaultPreset="this-month"
+                  />
+                </CardContent>
+              </Card>
+
+              {/* Summary Cards */}
+              {vendorPerformanceData && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-amber-700">
+                          {vendorPerformanceData.summary.totalVendors}
+                        </div>
+                        <div className="text-sm text-amber-600">Active Vendors</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-700">
+                          {vendorPerformanceData.summary.totalOrders}
+                        </div>
+                        <div className="text-sm text-green-600">Total Orders</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-700">
+                          ${vendorPerformanceData.summary.totalValue.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </div>
+                        <div className="text-sm text-blue-600">Total Value</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-700">
+                          ${vendorPerformanceData.summary.avgOrderValue.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </div>
+                        <div className="text-sm text-purple-600">Avg Order Value</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Vendor Performance Table */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle>Vendor Performance Analysis</CardTitle>
+                    <CardDescription>
+                      Cost analysis and vendor reliability metrics
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      vendorPerformanceData &&
+                      exportVendorPerformanceCSV(vendorPerformanceData, {
+                        startDate: vendorStartDate,
+                        endDate: vendorEndDate,
+                      })
+                    }
+                    disabled={!vendorPerformanceData}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export CSV
+                  </Button>
                 </CardHeader>
                 <CardContent>
-                  {vendorsLoading ? (
+                  {vendorPerformanceLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <div className="text-gray-500">
                         Loading vendor data...
                       </div>
                     </div>
-                  ) : vendorPerformance.length === 0 ? (
+                  ) : !vendorPerformanceData || vendorPerformanceData.vendors.length === 0 ? (
                     <div className="text-center py-8">
                       <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                       <p className="text-gray-600">
-                        No vendor data available yet
+                        No vendor purchases found for the selected date range
                       </p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead>
-                          <tr className="border-b">
+                          <tr className="border-b bg-gray-50">
                             <th className="text-left py-3 px-4 font-medium text-gray-900">
                               Vendor
                             </th>
@@ -609,46 +1125,55 @@ export default function ReportsPage() {
                               Total Value
                             </th>
                             <th className="text-right py-3 px-4 font-medium text-gray-900">
+                              Total Weight (kg)
+                            </th>
+                            <th className="text-right py-3 px-4 font-medium text-gray-900">
                               Avg Order
                             </th>
                             <th className="text-left py-3 px-4 font-medium text-gray-900">
                               Last Order
                             </th>
-                            <th className="text-left py-3 px-4 font-medium text-gray-900">
-                              Rating
-                            </th>
                           </tr>
                         </thead>
                         <tbody>
-                          {vendorPerformance.map((vendor, index) => (
+                          {vendorPerformanceData.vendors.map((vendor) => (
                             <tr
-                              key={index}
+                              key={vendor.vendorId}
                               className="border-b hover:bg-gray-50"
                             >
                               <td className="py-3 px-4 font-medium text-gray-900">
-                                {vendor.name}
+                                {vendor.vendorName}
                               </td>
                               <td className="py-3 px-4 text-right">
-                                {vendor.totalOrders}
+                                {vendor.orderCount}
                               </td>
                               <td className="py-3 px-4 text-right">
-                                ${vendor.totalValue.toFixed(2)}
+                                ${vendor.totalValue.toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </td>
                               <td className="py-3 px-4 text-right">
-                                ${vendor.avgOrderValue.toFixed(2)}
+                                {vendor.totalWeightKg.toLocaleString("en-US", {
+                                  minimumFractionDigits: 1,
+                                  maximumFractionDigits: 1,
+                                })}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                ${vendor.avgOrderValue.toLocaleString("en-US", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
                               </td>
                               <td className="py-3 px-4">
-                                {vendor.lastOrder ? (
+                                {vendor.lastOrderDate ? (
                                   <div className="flex items-center text-sm text-gray-500">
                                     <Calendar className="w-4 h-4 mr-1" />
-                                    {formatDate(new Date(vendor.lastOrder))}
+                                    {formatDate(new Date(vendor.lastOrderDate))}
                                   </div>
                                 ) : (
                                   "No orders"
                                 )}
-                              </td>
-                              <td className="py-3 px-4">
-                                <Badge variant="outline">Excellent</Badge>
                               </td>
                             </tr>
                           ))}
@@ -686,6 +1211,49 @@ export default function ReportsPage() {
                       }}
                       defaultPreset="this-month"
                     />
+
+                    {/* Vendor and Variety Filters */}
+                    <div className="flex flex-wrap gap-4">
+                      <div className="w-48">
+                        <Label htmlFor="apples-vendor-filter">Vendor</Label>
+                        <Select
+                          value={applePurchasesVendorFilter}
+                          onValueChange={setApplePurchasesVendorFilter}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="All Vendors" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Vendors</SelectItem>
+                            {reportVendors?.vendors.map((vendor) => (
+                              <SelectItem key={vendor.id} value={vendor.id}>
+                                {vendor.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="w-48">
+                        <Label htmlFor="apples-variety-filter">Variety</Label>
+                        <Select
+                          value={applePurchasesVarietyFilter}
+                          onValueChange={setApplePurchasesVarietyFilter}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="All Varieties" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Varieties</SelectItem>
+                            {reportVarieties?.varieties.map((variety) => (
+                              <SelectItem key={variety.id} value={variety.id}>
+                                {variety.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
 
                     {/* Unit Toggle */}
                     <div className="flex items-center gap-2">
@@ -756,6 +1324,26 @@ export default function ReportsPage() {
                       >
                         <Download className="w-4 h-4 mr-2" />
                         Download PDF
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          if (applePurchasesData) {
+                            exportApplePurchasesCSV(
+                              applePurchasesData,
+                              {
+                                startDate: applePurchasesStartDate,
+                                endDate: applePurchasesEndDate,
+                              },
+                              applePurchasesWeightUnit
+                            );
+                          }
+                        }}
+                        disabled={!applePurchasesData || applePurchasesLoading}
+                        variant="outline"
+                        className="flex items-center"
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download CSV
                       </Button>
                       <Button
                         onClick={() => refetchApplePurchases()}
