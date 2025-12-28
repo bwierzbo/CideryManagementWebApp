@@ -166,7 +166,7 @@ const tankSchema = z.object({
   // Barrel-specific fields
   isBarrel: z.boolean().optional(),
   barrelWoodType: z.enum(["french_oak", "american_oak", "hungarian_oak", "chestnut", "other"]).optional(),
-  barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "rum", "sherry", "port", "new_oak", "neutral", "other"]).optional(),
+  barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "calvados", "rum", "sherry", "port", "new_oak", "neutral", "other"]).optional(),
   barrelOriginNotes: z.string().optional(),
   barrelToastLevel: z.enum(["light", "medium", "medium_plus", "heavy", "char"]).optional(),
   barrelYearAcquired: z.number().optional(),
@@ -513,6 +513,7 @@ function TankForm({
                   <SelectItem value="wine_red">Red Wine</SelectItem>
                   <SelectItem value="wine_white">White Wine</SelectItem>
                   <SelectItem value="brandy">Brandy</SelectItem>
+                  <SelectItem value="calvados">Calvados</SelectItem>
                   <SelectItem value="rum">Rum</SelectItem>
                   <SelectItem value="sherry">Sherry</SelectItem>
                   <SelectItem value="port">Port</SelectItem>

@@ -129,6 +129,7 @@ export const barrelOriginContentsEnum = pgEnum("barrel_origin_contents", [
   "wine_red",
   "wine_white",
   "brandy",
+  "calvados",
   "rum",
   "sherry",
   "port",
