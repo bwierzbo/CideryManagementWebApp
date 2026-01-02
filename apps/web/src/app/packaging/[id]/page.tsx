@@ -454,8 +454,8 @@ export default function PackagingDetailPage() {
               </Card>
             )}
 
-            {/* Batch Activity Timeline */}
-            <BatchActivityHistory batchId={runData.batchId} />
+            {/* Batch Activity Timeline - filtered to only show this bottle run's packaging events */}
+            <BatchActivityHistory batchId={runData.batchId} bottleRunId={runId} />
 
             {/* Production Information */}
             <Card>

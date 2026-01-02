@@ -8,6 +8,7 @@ import { trpc } from "../utils/trpc";
 import { ToastProvider } from "../components/ui/toast-provider";
 import { performanceMonitor } from "../lib/performance-monitor";
 import { IdleTimeoutProvider } from "../components/providers/idle-timeout-provider";
+import { FontSizeProvider } from "../components/providers/font-size-provider";
 import { TimezoneProvider } from "../contexts/TimezoneContext";
 import { SettingsProvider } from "../contexts/SettingsContext";
 
@@ -106,15 +107,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
       <IdleTimeoutProvider>
-        <trpc.Provider client={trpcClient} queryClient={queryClient}>
-          <QueryClientProvider client={queryClient}>
-            <SettingsProvider>
-              <TimezoneProvider>
-                <ToastProvider>{children}</ToastProvider>
-              </TimezoneProvider>
-            </SettingsProvider>
-          </QueryClientProvider>
-        </trpc.Provider>
+        <FontSizeProvider>
+          <trpc.Provider client={trpcClient} queryClient={queryClient}>
+            <QueryClientProvider client={queryClient}>
+              <SettingsProvider>
+                <TimezoneProvider>
+                  <ToastProvider>{children}</ToastProvider>
+                </TimezoneProvider>
+              </SettingsProvider>
+            </QueryClientProvider>
+          </trpc.Provider>
+        </FontSizeProvider>
       </IdleTimeoutProvider>
     </SessionProvider>
   );

@@ -254,6 +254,26 @@ export const additiveVarieties = pgTable(
   }),
 );
 
+// Barrel Origin Types - user-configurable barrel previous contents
+export const barrelOriginTypes = pgTable(
+  "barrel_origin_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(), // Display name (e.g., "Bourbon", "Calvados")
+    slug: text("slug").notNull(), // URL-safe identifier (e.g., "bourbon", "calvados")
+    description: text("description"), // Optional description
+    sortOrder: integer("sort_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    isSystem: boolean("is_system").notNull().default(false), // True for default options, prevents deletion
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    slugUniqueIdx: uniqueIndex("barrel_origin_types_slug_unique_idx").on(table.slug),
+    sortOrderIdx: index("barrel_origin_types_sort_order_idx").on(table.sortOrder),
+  }),
+);
+
 export const vendorAdditiveVarieties = pgTable(
   "vendor_additive_varieties",
   {
@@ -567,7 +587,7 @@ export const vessels = pgTable("vessels", {
   // Barrel program fields (only populated for barrels)
   isBarrel: boolean("is_barrel").default(false),
   barrelWoodType: barrelWoodTypeEnum("barrel_wood_type"),
-  barrelOriginContents: barrelOriginContentsEnum("barrel_origin_contents"),
+  barrelOriginContents: text("barrel_origin_contents"), // Changed to text to allow user-defined values
   barrelOriginNotes: text("barrel_origin_notes"), // e.g., "4-year Buffalo Trace"
   barrelToastLevel: barrelToastLevelEnum("barrel_toast_level"),
   barrelYearAcquired: integer("barrel_year_acquired"),
@@ -1156,6 +1176,40 @@ export const barrelUsageHistory = pgTable(
   }),
 );
 
+// Barrel contents history - tracks everything that has been in a barrel (pre-purchase and batches)
+export const barrelContentsHistory = pgTable(
+  "barrel_contents_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vesselId: uuid("vessel_id")
+      .notNull()
+      .references(() => vessels.id, { onDelete: "cascade" }),
+    // What was in the barrel
+    contentsType: text("contents_type").notNull(), // e.g., 'rye_whiskey', 'bourbon', 'cider', 'perry', 'brandy'
+    contentsDescription: text("contents_description"), // e.g., "Caudil Distillery 4-year Rye"
+    // Time period
+    startedAt: date("started_at").notNull(),
+    endedAt: date("ended_at"),
+    // Source of this entry
+    source: text("source").notNull().default("manual"), // 'pre_purchase', 'batch', 'manual'
+    batchId: uuid("batch_id").references(() => batches.id, { onDelete: "set null" }), // Optional - linked when source is 'batch'
+    // Flavor tracking
+    tastingNotes: text("tasting_notes"), // Notes about what this contents contributed
+    flavorImpact: text("flavor_impact"), // How it affected the barrel's character
+    // Ordering for display
+    sortOrder: integer("sort_order").notNull().default(0),
+    // Metadata
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (table) => ({
+    vesselIdx: index("barrel_contents_history_vessel_idx").on(table.vesselId),
+    batchIdx: index("barrel_contents_history_batch_idx").on(table.batchId),
+    startedAtIdx: index("barrel_contents_history_started_at_idx").on(table.startedAt),
+  }),
+);
+
 // Batch merge history for tracking when batches are combined
 export const batchMergeHistory = pgTable(
   "batch_merge_history",
@@ -1478,6 +1532,7 @@ export const vesselsRelations = relations(vessels, ({ many }) => ({
   batches: many(batches),
   cleaningOperations: many(vesselCleaningOperations),
   barrelUsageHistory: many(barrelUsageHistory),
+  barrelContentsHistory: many(barrelContentsHistory),
 }));
 
 export const barrelUsageHistoryRelations = relations(
@@ -1490,6 +1545,24 @@ export const barrelUsageHistoryRelations = relations(
     batch: one(batches, {
       fields: [barrelUsageHistory.batchId],
       references: [batches.id],
+    }),
+  }),
+);
+
+export const barrelContentsHistoryRelations = relations(
+  barrelContentsHistory,
+  ({ one }) => ({
+    vessel: one(vessels, {
+      fields: [barrelContentsHistory.vesselId],
+      references: [vessels.id],
+    }),
+    batch: one(batches, {
+      fields: [barrelContentsHistory.batchId],
+      references: [batches.id],
+    }),
+    createdByUser: one(users, {
+      fields: [barrelContentsHistory.createdBy],
+      references: [users.id],
     }),
   }),
 );

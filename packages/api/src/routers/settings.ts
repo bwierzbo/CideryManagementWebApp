@@ -94,9 +94,12 @@ export const settingsRouter = router({
         organizationId: DEFAULT_ORG_ID,
         name: "My Cidery",
         address: null,
+        email: null,
         phone: null,
         website: null,
         logo: null,
+        ubiNumber: null,
+        einNumber: null,
         ttbPermitNumber: null,
         stateLicenseNumber: null,
         fruitSource: ["purchase_fruit"],
@@ -156,9 +159,14 @@ export const settingsRouter = router({
         // Organization Profile
         name: z.string().min(1).optional(),
         address: z.string().nullable().optional(),
+        email: z.string().email().nullable().optional(),
         phone: z.string().nullable().optional(),
         website: z.string().nullable().optional(),
         logo: z.string().nullable().optional(),
+
+        // Business Identification Numbers
+        ubiNumber: z.string().nullable().optional(),
+        einNumber: z.string().nullable().optional(),
         ttbPermitNumber: z.string().nullable().optional(),
         stateLicenseNumber: z.string().nullable().optional(),
 

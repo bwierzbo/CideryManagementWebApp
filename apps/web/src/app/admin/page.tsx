@@ -80,6 +80,12 @@ import {
   Package,
   Lock,
   Loader2,
+  Upload,
+  Globe,
+  Phone,
+  MapPin,
+  FileText,
+  Hash,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { api } from "@/server/client";
@@ -89,6 +95,7 @@ import { z } from "zod";
 import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { SquareIntegration } from "@/components/admin/SquareIntegration";
+import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
 
@@ -863,6 +870,433 @@ function SettingsSectionHeader({
   );
 }
 
+function BusinessProfile() {
+  const { settings, isLoading, refetch } = useSettings();
+  const { toast } = useToast();
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const [formData, setFormData] = useState({
+    name: "",
+    address: "",
+    email: "",
+    phone: "",
+    website: "",
+    logo: "",
+    ubiNumber: "",
+    einNumber: "",
+    ttbPermitNumber: "",
+    stateLicenseNumber: "",
+  });
+
+  // Update form when settings load
+  React.useEffect(() => {
+    if (!isLoading && settings) {
+      setFormData({
+        name: settings.name || "",
+        address: settings.address || "",
+        email: settings.email || "",
+        phone: settings.phone || "",
+        website: settings.website || "",
+        logo: settings.logo || "",
+        ubiNumber: settings.ubiNumber || "",
+        einNumber: settings.einNumber || "",
+        ttbPermitNumber: settings.ttbPermitNumber || "",
+        stateLicenseNumber: settings.stateLicenseNumber || "",
+      });
+      setLogoPreview(settings.logo || null);
+    }
+  }, [isLoading, settings]);
+
+  const updateSettingsMutation = trpc.settings.updateOrganizationSettings.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Profile Updated",
+        description: "Your business profile has been saved.",
+      });
+      refetch();
+      setIsEditing(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Invalid File",
+        description: "Please select an image file (PNG, JPG, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (max 500KB for base64 storage)
+    if (file.size > 500 * 1024) {
+      toast({
+        title: "File Too Large",
+        description: "Logo must be less than 500KB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setLogoPreview(dataUrl);
+      setFormData(prev => ({ ...prev, logo: dataUrl }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoPreview(null);
+    setFormData(prev => ({ ...prev, logo: "" }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await updateSettingsMutation.mutateAsync({
+        name: formData.name || undefined,
+        address: formData.address || null,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        website: formData.website || null,
+        logo: formData.logo || null,
+        ubiNumber: formData.ubiNumber || null,
+        einNumber: formData.einNumber || null,
+        ttbPermitNumber: formData.ttbPermitNumber || null,
+        stateLicenseNumber: formData.stateLicenseNumber || null,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    // Reset form to saved settings
+    setFormData({
+      name: settings.name || "",
+      address: settings.address || "",
+      email: settings.email || "",
+      phone: settings.phone || "",
+      website: settings.website || "",
+      logo: settings.logo || "",
+      ubiNumber: settings.ubiNumber || "",
+      einNumber: settings.einNumber || "",
+      ttbPermitNumber: settings.ttbPermitNumber || "",
+      stateLicenseNumber: settings.stateLicenseNumber || "",
+    });
+    setLogoPreview(settings.logo || null);
+    setIsEditing(false);
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="flex items-center justify-center">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <SettingsSectionHeader
+            title="Business Profile"
+            description="Your cidery information for invoices and receipts"
+            icon={Building2}
+            implemented={true}
+          />
+          {!isEditing && (
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
+              <Edit className="w-4 h-4 mr-2" />
+              Edit
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Logo Section */}
+        <div className="flex items-start gap-6 p-4 border rounded-lg bg-gray-50">
+          <div className="flex-shrink-0">
+            {logoPreview ? (
+              <div className="relative">
+                <img
+                  src={logoPreview}
+                  alt="Cidery Logo"
+                  className="w-24 h-24 object-contain rounded-lg border bg-white"
+                />
+                {isEditing && (
+                  <button
+                    onClick={handleRemoveLogo}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                    title="Remove logo"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="w-24 h-24 flex items-center justify-center border-2 border-dashed rounded-lg bg-white text-gray-400">
+                <Building2 className="w-8 h-8" />
+              </div>
+            )}
+          </div>
+          <div className="flex-1">
+            <h4 className="font-medium">Company Logo</h4>
+            <p className="text-sm text-gray-600 mt-1">
+              Used on invoices, receipts, and other documents
+            </p>
+            {isEditing && (
+              <div className="mt-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  {logoPreview ? "Change Logo" : "Upload Logo"}
+                </Button>
+                <p className="text-xs text-gray-500 mt-2">PNG, JPG up to 500KB. Recommended: 200x200px</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Business Information */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Business Name */}
+          <div className="space-y-2">
+            <Label htmlFor="businessName" className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-purple-600" />
+              Business Name
+            </Label>
+            {isEditing ? (
+              <Input
+                id="businessName"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Your Cidery Name"
+              />
+            ) : (
+              <p className="text-sm py-2">{formData.name || "—"}</p>
+            )}
+          </div>
+
+          {/* Email */}
+          <div className="space-y-2">
+            <Label htmlFor="email" className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-purple-600" />
+              Email Address
+            </Label>
+            {isEditing ? (
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="info@yourcidery.com"
+              />
+            ) : (
+              <p className="text-sm py-2">{formData.email || "—"}</p>
+            )}
+          </div>
+
+          {/* Phone */}
+          <div className="space-y-2">
+            <Label htmlFor="phone" className="flex items-center gap-2">
+              <Phone className="w-4 h-4 text-purple-600" />
+              Phone Number
+            </Label>
+            {isEditing ? (
+              <Input
+                id="phone"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="(555) 123-4567"
+              />
+            ) : (
+              <p className="text-sm py-2">{formData.phone || "—"}</p>
+            )}
+          </div>
+
+          {/* Website */}
+          <div className="space-y-2">
+            <Label htmlFor="website" className="flex items-center gap-2">
+              <Globe className="w-4 h-4 text-purple-600" />
+              Website
+            </Label>
+            {isEditing ? (
+              <Input
+                id="website"
+                value={formData.website}
+                onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                placeholder="https://www.yourcidery.com"
+              />
+            ) : (
+              <p className="text-sm py-2">{formData.website || "—"}</p>
+            )}
+          </div>
+
+          {/* Address - Full Width */}
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="address" className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-purple-600" />
+              Business Address
+            </Label>
+            {isEditing ? (
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="123 Orchard Lane, Ciderville, WA 98000"
+              />
+            ) : (
+              <p className="text-sm py-2">{formData.address || "—"}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Business Identification Numbers */}
+        <div className="pt-4 border-t">
+          <h4 className="font-medium text-gray-900 mb-4 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-purple-600" />
+            Business Identification Numbers
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* UBI Number */}
+            <div className="space-y-2">
+              <Label htmlFor="ubiNumber" className="flex items-center gap-2">
+                <Hash className="w-4 h-4 text-gray-500" />
+                UBI Number
+                <span className="text-xs text-gray-400">(WA State)</span>
+              </Label>
+              {isEditing ? (
+                <Input
+                  id="ubiNumber"
+                  value={formData.ubiNumber}
+                  onChange={(e) => setFormData({ ...formData, ubiNumber: e.target.value })}
+                  placeholder="000-000-000"
+                />
+              ) : (
+                <p className="text-sm py-2 font-mono">{formData.ubiNumber || "—"}</p>
+              )}
+            </div>
+
+            {/* EIN Number */}
+            <div className="space-y-2">
+              <Label htmlFor="einNumber" className="flex items-center gap-2">
+                <Hash className="w-4 h-4 text-gray-500" />
+                EIN Number
+                <span className="text-xs text-gray-400">(Federal)</span>
+              </Label>
+              {isEditing ? (
+                <Input
+                  id="einNumber"
+                  value={formData.einNumber}
+                  onChange={(e) => setFormData({ ...formData, einNumber: e.target.value })}
+                  placeholder="00-0000000"
+                />
+              ) : (
+                <p className="text-sm py-2 font-mono">{formData.einNumber || "—"}</p>
+              )}
+            </div>
+
+            {/* TTB Permit Number */}
+            <div className="space-y-2">
+              <Label htmlFor="ttbPermitNumber" className="flex items-center gap-2">
+                <Hash className="w-4 h-4 text-gray-500" />
+                TTB Permit Number
+              </Label>
+              {isEditing ? (
+                <Input
+                  id="ttbPermitNumber"
+                  value={formData.ttbPermitNumber}
+                  onChange={(e) => setFormData({ ...formData, ttbPermitNumber: e.target.value })}
+                  placeholder="CID-XX-00000"
+                />
+              ) : (
+                <p className="text-sm py-2 font-mono">{formData.ttbPermitNumber || "—"}</p>
+              )}
+            </div>
+
+            {/* State License Number */}
+            <div className="space-y-2">
+              <Label htmlFor="stateLicenseNumber" className="flex items-center gap-2">
+                <Hash className="w-4 h-4 text-gray-500" />
+                State License Number
+              </Label>
+              {isEditing ? (
+                <Input
+                  id="stateLicenseNumber"
+                  value={formData.stateLicenseNumber}
+                  onChange={(e) => setFormData({ ...formData, stateLicenseNumber: e.target.value })}
+                  placeholder="L000000"
+                />
+              ) : (
+                <p className="text-sm py-2 font-mono">{formData.stateLicenseNumber || "—"}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        {isEditing && (
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving} className="bg-purple-600 hover:bg-purple-700">
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Profile
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function SystemSettings() {
   const { data: currentTimezone } = trpc.settings.getTimezone.useQuery();
   const updateTimezoneMutation = trpc.settings.updateTimezone.useMutation();
@@ -978,6 +1412,9 @@ function SystemSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Business Profile - First Section */}
+      <BusinessProfile />
+
       {/* Timezone Settings */}
       <Card>
         <CardHeader>
@@ -1453,7 +1890,12 @@ export default function AdminPage() {
         {/* Tab Content */}
         <div className="space-y-8">
           {activeTab === "users" && <UserManagement />}
-          {activeTab === "reference" && <ReferenceValues />}
+          {activeTab === "reference" && (
+            <>
+              <ReferenceValues />
+              <BarrelOriginTypesManagement />
+            </>
+          )}
           {activeTab === "settings" && <SystemSettings />}
           {activeTab === "square" && <SquareIntegration />}
         </div>

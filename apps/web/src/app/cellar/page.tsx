@@ -97,6 +97,7 @@ import { KegsManagement } from "@/components/packaging/kegs/KegsManagement";
 import { VolumeDisplay, VolumeInput, VolumeUnit as VolumeUnitType } from "@/components/ui/volume-input";
 import { VesselHistoryModal } from "@/components/cellar/VesselHistoryModal";
 import { BarrelHistoryModal } from "@/components/cellar/BarrelHistoryModal";
+import { BarrelContentsHistory } from "@/components/cellar/BarrelContentsHistory";
 import { BatchManagementTable } from "@/components/cellar/BatchManagementTable";
 
 // Form schemas
@@ -166,7 +167,7 @@ const tankSchema = z.object({
   // Barrel-specific fields
   isBarrel: z.boolean().optional(),
   barrelWoodType: z.enum(["french_oak", "american_oak", "hungarian_oak", "chestnut", "other"]).optional(),
-  barrelOriginContents: z.enum(["bourbon", "rye", "wine_red", "wine_white", "brandy", "calvados", "rum", "sherry", "port", "new_oak", "neutral", "other"]).optional(),
+  barrelOriginContents: z.string().optional(), // Now dynamically loaded from barrel_origin_types table
   barrelOriginNotes: z.string().optional(),
   barrelToastLevel: z.enum(["light", "medium", "medium_plus", "heavy", "char"]).optional(),
   barrelYearAcquired: z.number().optional(),
@@ -205,6 +206,9 @@ function TankForm({
     { id: vesselId! },
     { enabled: !!vesselId },
   );
+
+  // Fetch barrel origin types for dropdown
+  const barrelOriginTypesQuery = trpc.barrelOriginTypes.list.useQuery();
 
   const createMutation = trpc.vessel.create.useMutation({
     onSuccess: () => {
@@ -508,18 +512,11 @@ function TankForm({
                   <SelectValue placeholder="What was in barrel before?" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="bourbon">Bourbon</SelectItem>
-                  <SelectItem value="rye">Rye Whiskey</SelectItem>
-                  <SelectItem value="wine_red">Red Wine</SelectItem>
-                  <SelectItem value="wine_white">White Wine</SelectItem>
-                  <SelectItem value="brandy">Brandy</SelectItem>
-                  <SelectItem value="calvados">Calvados</SelectItem>
-                  <SelectItem value="rum">Rum</SelectItem>
-                  <SelectItem value="sherry">Sherry</SelectItem>
-                  <SelectItem value="port">Port</SelectItem>
-                  <SelectItem value="new_oak">New Oak (never used)</SelectItem>
-                  <SelectItem value="neutral">Neutral (no flavor)</SelectItem>
-                  <SelectItem value="other">Other</SelectItem>
+                  {barrelOriginTypesQuery.data?.types.map((type) => (
+                    <SelectItem key={type.id} value={type.slug}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -603,6 +600,28 @@ function TankForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+// Wrapper component that only shows barrel contents history if the vessel is a barrel
+function EditVesselBarrelHistory({ vesselId }: { vesselId: string }) {
+  const vesselQuery = trpc.vessel.getById.useQuery(
+    { id: vesselId },
+    { enabled: !!vesselId }
+  );
+
+  // Only show for barrels
+  if (!vesselQuery.data?.vessel?.isBarrel) {
+    return null;
+  }
+
+  return (
+    <div className="mt-6 border-t pt-6">
+      <BarrelContentsHistory
+        vesselId={vesselId}
+        vesselName={vesselQuery.data.vessel.name || undefined}
+      />
+    </div>
   );
 }
 
@@ -2607,7 +2626,7 @@ function VesselMap() {
           open={!!editingVesselId}
           onOpenChange={(open) => !open && setEditingVesselId(null)}
         >
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Tank</DialogTitle>
               <DialogDescription>
@@ -2615,10 +2634,13 @@ function VesselMap() {
               </DialogDescription>
             </DialogHeader>
             {editingVesselId && (
-              <TankForm
-                vesselId={editingVesselId}
-                onClose={() => setEditingVesselId(null)}
-              />
+              <>
+                <TankForm
+                  vesselId={editingVesselId}
+                  onClose={() => setEditingVesselId(null)}
+                />
+                <EditVesselBarrelHistory vesselId={editingVesselId} />
+              </>
             )}
           </DialogContent>
         </Dialog>

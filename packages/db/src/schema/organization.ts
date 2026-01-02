@@ -81,9 +81,14 @@ export const organizationSettings = pgTable(
     // ==========================================
     name: text("name").notNull(),
     address: text("address"),
+    email: text("email"),
     phone: text("phone"),
     website: text("website"),
     logo: text("logo"),
+
+    // Business Identification Numbers
+    ubiNumber: text("ubi_number"), // Washington State Unified Business Identifier
+    einNumber: text("ein_number"), // Federal Employer Identification Number
     ttbPermitNumber: text("ttb_permit_number"),
     stateLicenseNumber: text("state_license_number"),
 

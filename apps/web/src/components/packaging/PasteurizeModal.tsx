@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -16,24 +16,55 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { Flame, Info, Loader2, Clock, Thermometer, Droplet, AlertTriangle } from "lucide-react";
+import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { DateWarning } from "@/components/ui/DateWarning";
+import { Flame, Info, Loader2, Clock, Thermometer, Droplet, AlertTriangle, Snowflake, Wind, Waves } from "lucide-react";
 import {
   calculatePU,
-  calculatePasteurizationPlan,
+  calculateEnhancedPasteurization,
+  calculateRequiredHoldTime,
   classifyProduct,
   validatePasteurization,
-  BOTTLE_PROFILE_750ML_GLASS,
+  getBottleProfileOptions,
+  BOTTLE_PROFILES,
+  type CooldownMethod,
+  type EnhancedPasteurizationResult,
 } from "lib";
 
 const pasteurizeSchema = z.object({
   pasteurizedAt: z.string(),
+  bottleTypeId: z.string(),
+  startingTempC: z.number().min(-5, "Temperature too low").max(40, "Temperature too high"),
   temperatureCelsius: z.number().min(0, "Temperature must be positive").max(100, "Temperature must be at most 100°C"),
-  timeMinutes: z.number().positive("Time must be positive").max(120, "Time must be at most 120 minutes"),
+  timeMinutes: z.number().min(0, "Time cannot be negative").max(120, "Time must be at most 120 minutes"),
+  cooldownMethod: z.enum(["air", "water_bath", "ice_bath"]),
   bottlesLost: z.number().int().min(0, "Must be 0 or more").optional(),
   notes: z.string().optional(),
 });
+
+// Starting temperature presets
+const STARTING_TEMP_PRESETS = [
+  { label: "Refrigerator (4°C)", value: 4 },
+  { label: "Cellar (12°C)", value: 12 },
+  { label: "Room Temp (20°C)", value: 20 },
+  { label: "Custom", value: -999 }, // Sentinel for custom input
+];
+
+// Cooldown method options
+const COOLDOWN_OPTIONS: { value: CooldownMethod; label: string; icon: React.ReactNode; description: string }[] = [
+  { value: "air", label: "Air Cool", icon: <Wind className="w-4 h-4" />, description: "Natural cooling at room temperature (~22°C)" },
+  { value: "water_bath", label: "Water Bath", icon: <Waves className="w-4 h-4" />, description: "Cool water bath (~18°C)" },
+  { value: "ice_bath", label: "Ice Bath", icon: <Snowflake className="w-4 h-4" />, description: "Ice water for rapid cooling (~2°C)" },
+];
 
 type PasteurizeForm = z.infer<typeof pasteurizeSchema>;
 
@@ -58,6 +89,17 @@ export function PasteurizeModal({
 }: PasteurizeModalProps) {
   const utils = trpc.useUtils();
 
+  // State for custom starting temperature input
+  const [useCustomStartTemp, setUseCustomStartTemp] = useState(false);
+  const [showTempCurve, setShowTempCurve] = useState(false);
+  const [dateWarning, setDateWarning] = useState<string | null>(null);
+
+  // Date validation
+  const { validateDate } = useBatchDateValidation(batchId);
+
+  // Get bottle profile options
+  const bottleOptions = useMemo(() => getBottleProfileOptions(), []);
+
   // Fetch batch composition data for product classification
   const { data: batchData, isLoading: isBatchLoading } = trpc.packaging.getBatchPasteurizationData.useQuery(
     { batchId },
@@ -70,18 +112,34 @@ export function PasteurizeModal({
     formState: { errors },
     watch,
     reset,
+    setValue,
   } = useForm<PasteurizeForm>({
     resolver: zodResolver(pasteurizeSchema),
     defaultValues: {
       pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      bottleTypeId: "750ml_glass",
+      startingTempC: 20, // Room temperature default
       temperatureCelsius: 65, // Hot-start bath temperature
-      timeMinutes: 8, // Default based on typical 750ml glass profile
+      timeMinutes: 0, // Default to 0, user enters actual hold time
+      cooldownMethod: "air",
       bottlesLost: 0,
     },
   });
 
+  const bottleTypeId = watch("bottleTypeId");
+  const startingTempC = watch("startingTempC");
   const temperatureCelsius = watch("temperatureCelsius");
   const timeMinutes = watch("timeMinutes");
+  const cooldownMethod = watch("cooldownMethod");
+  const pasteurizedAt = watch("pasteurizedAt");
+
+  // Validate date when it changes
+  useEffect(() => {
+    if (pasteurizedAt) {
+      const result = validateDate(pasteurizedAt);
+      setDateWarning(result.warning);
+    }
+  }, [pasteurizedAt, validateDate]);
 
   // Product classification based on batch data
   const productClassification = useMemo(() => {
@@ -89,42 +147,199 @@ export function PasteurizeModal({
     return classifyProduct(batchData.finalGravity, batchData.hasFruitAddition);
   }, [batchData]);
 
-  // Calculate PU using Craft Metrics formula
-  const calculatedPU = useMemo(() => {
-    if (!temperatureCelsius || !timeMinutes) return 0;
-    return calculatePU(temperatureCelsius, timeMinutes);
-  }, [temperatureCelsius, timeMinutes]);
+  // Enhanced pasteurization calculation with dynamic ramp modeling
+  // Normalize timeMinutes - treat any invalid value as 0.1 (use 0.1 instead of 0 to prevent calculation issues)
+  // This handles: 0, "0", "", null, undefined, NaN, or any other edge cases from form input
+  const normalizedTimeMinutes = useMemo(() => {
+    let value = 0;
 
-  // Generate pasteurization plan
-  const plan = useMemo(() => {
-    if (!productClassification) return null;
-    const targetPU = productClassification.targetPU_min;
-    return calculatePasteurizationPlan('750ml_glass', targetPU, 65);
-  }, [productClassification]);
+    // If it's already a valid number, use it
+    if (typeof timeMinutes === 'number' && !isNaN(timeMinutes)) {
+      value = timeMinutes;
+    }
+    // If it's a string, try to parse it
+    else if (typeof timeMinutes === 'string') {
+      const parsed = parseFloat(timeMinutes);
+      if (!isNaN(parsed)) {
+        value = parsed;
+      }
+    }
+
+    // Use 0.1 instead of 0 to prevent calculation from failing
+    // This is effectively 0 for practical purposes but keeps the math working
+    return value <= 0 ? 0.1 : value;
+  }, [timeMinutes]);
+
+  const enhancedResult = useMemo((): EnhancedPasteurizationResult | null => {
+    const validStartTemp = typeof startingTempC === 'number' && !isNaN(startingTempC);
+    const validBathTemp = typeof temperatureCelsius === 'number' && !isNaN(temperatureCelsius);
+
+    if (!bottleTypeId || !validStartTemp || !validBathTemp || !cooldownMethod) {
+      return null;
+    }
+    try {
+      return calculateEnhancedPasteurization({
+        bottleTypeId,
+        productStartingTempC: startingTempC,
+        bathTempC: temperatureCelsius,
+        holdTimeMinutes: normalizedTimeMinutes,
+        cooldownMethod: cooldownMethod as CooldownMethod,
+      });
+    } catch (e) {
+      console.error("Pasteurization calculation error:", e);
+      return null;
+    }
+  }, [bottleTypeId, startingTempC, temperatureCelsius, normalizedTimeMinutes, cooldownMethod]);
+
+  // Calculate recommended hold time to meet target PUs
+  const recommendedHoldTime = useMemo(() => {
+    if (!productClassification || !bottleTypeId) return null;
+    try {
+      return calculateRequiredHoldTime(
+        productClassification.targetPU_min,
+        bottleTypeId,
+        startingTempC || 20,
+        temperatureCelsius || 65,
+        (cooldownMethod as CooldownMethod) || "air"
+      );
+    } catch {
+      return null;
+    }
+  }, [productClassification, bottleTypeId, startingTempC, temperatureCelsius, cooldownMethod]);
 
   // Validate pasteurization against product requirements
   const validation = useMemo(() => {
-    if (!productClassification || calculatedPU === 0) return null;
-    return validatePasteurization(calculatedPU, productClassification);
-  }, [calculatedPU, productClassification]);
+    if (!productClassification || !enhancedResult) return null;
+    return validatePasteurization(enhancedResult.totals.total_pu, productClassification);
+  }, [enhancedResult, productClassification]);
+
+  // Track if we've set the recommended time for this modal session
+  const [hasSetRecommendedTime, setHasSetRecommendedTime] = useState(false);
 
   // Reset form when modal opens
   useEffect(() => {
-    if (open && plan) {
+    if (open) {
       reset({
         pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+        bottleTypeId: "750ml_glass",
+        startingTempC: 20,
         temperatureCelsius: 65,
-        timeMinutes: Math.ceil(plan.total_bath_time_min),
+        timeMinutes: 0, // Will be updated once recommendedHoldTime is calculated
+        cooldownMethod: "air",
         bottlesLost: 0,
       });
+      setUseCustomStartTemp(false);
+      setShowTempCurve(false);
+      setHasSetRecommendedTime(false);
     }
-  }, [open, plan, reset]);
+  }, [open, reset]);
+
+  // Set timeMinutes to recommended value once it's calculated (only once per modal open)
+  useEffect(() => {
+    if (open && recommendedHoldTime && !hasSetRecommendedTime) {
+      const recommendedTime = Math.max(0, Math.ceil(recommendedHoldTime.holdTimeMinutes));
+      setValue("timeMinutes", recommendedTime);
+      setHasSetRecommendedTime(true);
+    }
+  }, [open, recommendedHoldTime, hasSetRecommendedTime, setValue]);
+
+  // Calculate PUs at minimal hold time (0.1 min) to see ramp contribution
+  const minimalHoldResult = useMemo(() => {
+    const validStartTemp = typeof startingTempC === 'number' && !isNaN(startingTempC);
+    const validBathTemp = typeof temperatureCelsius === 'number' && !isNaN(temperatureCelsius);
+
+    if (!bottleTypeId || !validStartTemp || !validBathTemp || !cooldownMethod) {
+      return null;
+    }
+    try {
+      return calculateEnhancedPasteurization({
+        bottleTypeId,
+        productStartingTempC: startingTempC,
+        bathTempC: temperatureCelsius,
+        holdTimeMinutes: 0.1, // Use 0.1 instead of 0
+        cooldownMethod: cooldownMethod as CooldownMethod,
+      });
+    } catch {
+      return null;
+    }
+  }, [bottleTypeId, startingTempC, temperatureCelsius, cooldownMethod]);
+
+  // Calculate the optimal temperature for minimum PUs with minimal hold time
+  // This uses binary search to find the exact temperature that achieves target minimum PUs
+  const optimalMinPUTemp = useMemo(() => {
+    if (!productClassification || !bottleTypeId) return null;
+
+    const targetMin = productClassification.targetPU_min;
+    const currentStartTemp = startingTempC || 20;
+    const currentCooldown = (cooldownMethod as CooldownMethod) || "air";
+
+    // Binary search for temperature that gives exactly target minimum PUs with 0.1 min hold
+    let lowTemp = 55; // Minimum effective pasteurization temp
+    let highTemp = 85; // Maximum reasonable bath temp
+    let bestTemp: number | null = null;
+    let bestPU = 0;
+
+    for (let i = 0; i < 25; i++) { // 25 iterations for good precision
+      const midTemp = (lowTemp + highTemp) / 2;
+      try {
+        const result = calculateEnhancedPasteurization({
+          bottleTypeId,
+          productStartingTempC: currentStartTemp,
+          bathTempC: midTemp,
+          holdTimeMinutes: 0.1,
+          cooldownMethod: currentCooldown,
+        });
+
+        const pu = result.totals.total_pu;
+
+        if (pu < targetMin) {
+          // Need higher temperature
+          lowTemp = midTemp;
+        } else {
+          // This temperature works, but maybe we can go lower
+          highTemp = midTemp;
+          bestTemp = midTemp;
+          bestPU = pu;
+        }
+      } catch {
+        // If calculation fails, try higher temp
+        lowTemp = midTemp;
+      }
+    }
+
+    // If we couldn't find a valid temperature, return null
+    if (bestTemp === null) return null;
+
+    // Round to nearest 0.5°C
+    const roundedTemp = Math.round(bestTemp * 2) / 2;
+
+    // Calculate actual PU at this rounded temperature
+    try {
+      const verifyResult = calculateEnhancedPasteurization({
+        bottleTypeId,
+        productStartingTempC: currentStartTemp,
+        bathTempC: roundedTemp,
+        holdTimeMinutes: 0.1,
+        cooldownMethod: currentCooldown,
+      });
+      bestPU = verifyResult.totals.total_pu;
+    } catch {
+      // Use the last known good PU
+    }
+
+    return {
+      temperature: roundedTemp,
+      estimatedPU: Math.round(bestPU * 10) / 10,
+      isCurrentTemp: Math.abs(roundedTemp - (temperatureCelsius || 65)) < 0.5,
+    };
+  }, [productClassification, bottleTypeId, startingTempC, temperatureCelsius, cooldownMethod]);
 
   const pasteurizeMutation = trpc.packaging.pasteurize.useMutation({
     onSuccess: () => {
+      const totalPU = enhancedResult?.totals.total_pu || 0;
       toast({
         title: "Batch Pasteurized",
-        description: `Successfully recorded pasteurization for ${bottleRunName} with ${calculatedPU.toFixed(2)} PU`,
+        description: `Successfully recorded pasteurization for ${bottleRunName} with ${totalPU.toFixed(1)} PU`,
       });
       utils.packaging.list.invalidate();
       onSuccess();
@@ -140,17 +355,29 @@ export function PasteurizeModal({
   });
 
   const onSubmit = (data: PasteurizeForm) => {
-    const pu = calculatePU(data.temperatureCelsius, data.timeMinutes);
+    // Use enhanced calculation for total PU
+    const totalPU = enhancedResult?.totals.total_pu || calculatePU(data.temperatureCelsius, data.timeMinutes);
     const pasteurizedAt = new Date(data.pasteurizedAt);
+
+    // Build notes with enhanced details
+    const enhancedNotes = [
+      data.notes,
+      `Bottle Type: ${BOTTLE_PROFILES[data.bottleTypeId]?.name || data.bottleTypeId}`,
+      `Starting Temp: ${data.startingTempC}°C`,
+      `Cooldown Method: ${data.cooldownMethod.replace("_", " ")}`,
+      enhancedResult ? `Heatup: ${enhancedResult.phases.heatup.pu} PU (${enhancedResult.phases.heatup.duration_min} min)` : null,
+      enhancedResult ? `Hold: ${enhancedResult.phases.hold.pu} PU (${enhancedResult.phases.hold.duration_min} min)` : null,
+      enhancedResult ? `Cooldown: ${enhancedResult.phases.cooldown.pu} PU (${enhancedResult.phases.cooldown.duration_min} min)` : null,
+    ].filter(Boolean).join(" | ");
 
     pasteurizeMutation.mutate({
       runId: bottleRunId,
       pasteurizedAt: pasteurizedAt,
       temperatureCelsius: data.temperatureCelsius,
       timeMinutes: data.timeMinutes,
-      pasteurizationUnits: pu,
+      pasteurizationUnits: totalPU,
       bottlesLost: data.bottlesLost,
-      notes: data.notes,
+      notes: enhancedNotes,
     });
   };
 
@@ -222,54 +449,248 @@ export function PasteurizeModal({
               </div>
             )}
 
-            {/* Bottle Profile & Planning */}
-            {plan && (
+            {/* Bottle Type & Setup */}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-4 h-4 text-gray-600" />
+                <span className="font-semibold text-gray-900">Bottle & Temperature Setup</span>
+              </div>
+
+              {/* Bottle Type Selection */}
+              <div className="space-y-2">
+                <Label>Bottle Type</Label>
+                <Select
+                  value={bottleTypeId}
+                  onValueChange={(value) => setValue("bottleTypeId", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select bottle type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bottleOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Starting Temperature */}
+              <div className="space-y-2">
+                <Label>Product Starting Temperature</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {STARTING_TEMP_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.value}
+                      type="button"
+                      size="sm"
+                      variant={
+                        preset.value === -999
+                          ? useCustomStartTemp ? "default" : "outline"
+                          : startingTempC === preset.value && !useCustomStartTemp ? "default" : "outline"
+                      }
+                      onClick={() => {
+                        if (preset.value === -999) {
+                          setUseCustomStartTemp(true);
+                        } else {
+                          setUseCustomStartTemp(false);
+                          setValue("startingTempC", preset.value);
+                        }
+                      }}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+                {useCustomStartTemp && (
+                  <Input
+                    type="number"
+                    step="0.5"
+                    {...register("startingTempC", { valueAsNumber: true })}
+                    placeholder="Enter temperature (°C)"
+                    className="mt-2"
+                  />
+                )}
+              </div>
+
+              {/* Cooldown Method */}
+              <div className="space-y-2">
+                <Label>Cooldown Method</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {COOLDOWN_OPTIONS.map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      size="sm"
+                      variant={cooldownMethod === option.value ? "default" : "outline"}
+                      className="flex flex-col items-center h-auto py-2"
+                      onClick={() => setValue("cooldownMethod", option.value)}
+                    >
+                      {option.icon}
+                      <span className="text-xs mt-1">{option.label}</span>
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500">
+                  {COOLDOWN_OPTIONS.find(o => o.value === cooldownMethod)?.description}
+                </p>
+              </div>
+            </div>
+
+            {/* Enhanced Pasteurization Plan */}
+            {enhancedResult && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Info className="w-4 h-4 text-gray-600" />
-                  <span className="font-semibold text-gray-900">Pasteurization Plan (750mL Glass)</span>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-orange-500" />
+                    <span className="font-semibold text-gray-900">Calculated PU Breakdown</span>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowTempCurve(!showTempCurve)}
+                  >
+                    {showTempCurve ? "Hide" : "Show"} Temp Curve
+                  </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-gray-500" />
-                    <div>
-                      <div className="text-gray-600">Time to 60°C:</div>
-                      <div className="font-semibold text-gray-900">{plan.time_to_reach_hold_min} min</div>
-                    </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="text-center p-2 bg-orange-50 rounded-lg">
+                    <div className="text-xs text-gray-600 mb-1">Heatup</div>
+                    <div className="font-bold text-orange-600">{enhancedResult.phases.heatup.pu} PU</div>
+                    <div className="text-xs text-gray-500">{enhancedResult.phases.heatup.duration_min} min</div>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <Thermometer className="w-3.5 h-3.5 text-gray-500" />
-                    <div>
-                      <div className="text-gray-600">Hold Time @ 65°C:</div>
-                      <div className="font-semibold text-gray-900">{plan.time_at_hold_min.toFixed(1)} min</div>
-                    </div>
+                  <div className="text-center p-2 bg-red-50 rounded-lg">
+                    <div className="text-xs text-gray-600 mb-1">Hold @ {temperatureCelsius}°C</div>
+                    <div className="font-bold text-red-600">{enhancedResult.phases.hold.pu} PU</div>
+                    <div className="text-xs text-gray-500">{enhancedResult.phases.hold.duration_min} min</div>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-gray-500" />
-                    <div>
-                      <div className="text-gray-600">Total Bath Time:</div>
-                      <div className="font-semibold text-gray-900">{Math.ceil(plan.total_bath_time_min)} min</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Flame className="w-3.5 h-3.5 text-gray-500" />
-                    <div>
-                      <div className="text-gray-600">Expected PU:</div>
-                      <div className="font-semibold text-gray-900">{plan.PU_breakdown.total.toFixed(1)} PU</div>
-                    </div>
+                  <div className="text-center p-2 bg-blue-50 rounded-lg">
+                    <div className="text-xs text-gray-600 mb-1">Cooldown</div>
+                    <div className="font-bold text-blue-600">{enhancedResult.phases.cooldown.pu} PU</div>
+                    <div className="text-xs text-gray-500">{enhancedResult.phases.cooldown.duration_min} min</div>
                   </div>
                 </div>
 
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <div className="text-xs text-gray-600">
-                    <span className="font-semibold">PU Breakdown:</span> Heat-up: {plan.PU_breakdown.heatup} •
-                    Hold: {plan.PU_breakdown.hold.toFixed(1)} • Cool-down: {plan.PU_breakdown.cooldown}
-                  </div>
+                <div className="mt-3 pt-3 border-t border-gray-200 flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Total Process Time:</span>
+                  <span className="font-bold text-gray-900">{enhancedResult.totals.total_time_min} min</span>
                 </div>
+
+                {/* Temperature Curve Visualization */}
+                {showTempCurve && enhancedResult.temperatureProfile.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <div className="text-sm font-medium text-gray-700 mb-2">Temperature & PU Curve</div>
+                    <div className="h-40 bg-white rounded border p-2">
+                      <svg viewBox="0 0 400 120" className="w-full h-full">
+                        {/* Grid lines */}
+                        <line x1="40" y1="10" x2="40" y2="100" stroke="#e5e7eb" strokeWidth="1" />
+                        <line x1="40" y1="100" x2="390" y2="100" stroke="#e5e7eb" strokeWidth="1" />
+                        <line x1="40" y1="55" x2="390" y2="55" stroke="#e5e7eb" strokeWidth="1" strokeDasharray="4" />
+
+                        {/* Y-axis labels */}
+                        <text x="35" y="15" fontSize="8" textAnchor="end" fill="#6b7280">{temperatureCelsius}°C</text>
+                        <text x="35" y="58" fontSize="8" textAnchor="end" fill="#6b7280">60°C</text>
+                        <text x="35" y="105" fontSize="8" textAnchor="end" fill="#6b7280">{startingTempC}°C</text>
+
+                        {/* Temperature curve */}
+                        <path
+                          d={enhancedResult.temperatureProfile.map((point, i) => {
+                            const maxTime = enhancedResult.totals.total_time_min;
+                            const x = 40 + (point.time_min / maxTime) * 350;
+                            const tempRange = temperatureCelsius - startingTempC;
+                            const y = 100 - ((point.core_temp_C - startingTempC) / tempRange) * 90;
+                            return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                          }).join(' ')}
+                          fill="none"
+                          stroke="#f97316"
+                          strokeWidth="2"
+                        />
+
+                        {/* Phase labels */}
+                        <text x="80" y="115" fontSize="7" fill="#9ca3af">Heatup</text>
+                        <text x="200" y="115" fontSize="7" fill="#9ca3af">Hold</text>
+                        <text x="330" y="115" fontSize="7" fill="#9ca3af">Cooldown</text>
+                      </svg>
+                    </div>
+                    <div className="flex justify-center gap-4 mt-2 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <span className="w-3 h-0.5 bg-orange-500"></span> Temperature
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Warnings */}
+                {enhancedResult.warnings.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    {enhancedResult.warnings.map((warning, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs text-amber-700">
+                        <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                        <span>{warning}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Recommended hold time */}
+                {recommendedHoldTime && productClassification && recommendedHoldTime.holdTimeMinutes > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Recommended hold time for {productClassification.targetPU_min} PU:</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setValue("timeMinutes", Math.ceil(recommendedHoldTime.holdTimeMinutes))}
+                      >
+                        Use {Math.ceil(recommendedHoldTime.holdTimeMinutes)} min
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Optimal temperature for minimum PUs */}
+                {optimalMinPUTemp && productClassification && (
+                  <div className="mt-3 pt-3 border-t border-gray-200 bg-emerald-50 -mx-4 px-4 py-2 rounded-b-lg">
+                    <div className="flex items-start gap-2 mb-2">
+                      <Thermometer className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-emerald-900">
+                          Optimal Temperature for Minimum PUs
+                        </p>
+                        <p className="text-xs text-emerald-700 mt-1">
+                          {optimalMinPUTemp.temperature}°C with minimal hold time achieves ~{optimalMinPUTemp.estimatedPU} PU
+                          {" "}(target: {productClassification.targetPU_min} PU minimum)
+                        </p>
+                      </div>
+                    </div>
+                    {!optimalMinPUTemp.isCurrentTemp && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-emerald-700">Apply optimal settings:</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                          onClick={() => {
+                            setValue("temperatureCelsius", optimalMinPUTemp.temperature);
+                            setValue("timeMinutes", 0);
+                          }}
+                        >
+                          Use {optimalMinPUTemp.temperature}°C &amp; 0 min
+                        </Button>
+                      </div>
+                    )}
+                    {optimalMinPUTemp.isCurrentTemp && (
+                      <p className="text-xs text-emerald-600 italic">
+                        ✓ Current temperature is already optimal for minimum PUs
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -300,6 +721,7 @@ export function PasteurizeModal({
                   type="datetime-local"
                   {...register("pasteurizedAt")}
                 />
+                <DateWarning warning={dateWarning} />
                 {errors.pasteurizedAt && (
                   <p className="text-sm text-red-500">{errors.pasteurizedAt.message}</p>
                 )}
@@ -323,18 +745,25 @@ export function PasteurizeModal({
                 )}
               </div>
 
-              {/* Time */}
+              {/* Hold Time */}
               <div className="space-y-2">
                 <Label htmlFor="timeMinutes">
-                  Total Bath Time (minutes) <span className="text-red-500">*</span>
+                  Hold Time (minutes) <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="timeMinutes"
-                  type="text"
-                  inputMode="decimal"
-                  pattern="^\d*\.?\d+$"
-                  {...register("timeMinutes", { valueAsNumber: true })}
-                  placeholder={plan ? Math.ceil(plan.total_bath_time_min).toString() : "8"}
+                  type="number"
+                  min="0"
+                  max="120"
+                  step="0.5"
+                  {...register("timeMinutes", {
+                    setValueAs: (v) => {
+                      if (v === "" || v === null || v === undefined) return 0;
+                      const num = parseFloat(v);
+                      return isNaN(num) ? 0 : num;
+                    }
+                  })}
+                  placeholder="0"
                 />
                 {errors.timeMinutes && (
                   <p className="text-sm text-red-500">{errors.timeMinutes.message}</p>
@@ -362,28 +791,35 @@ export function PasteurizeModal({
             </div>
 
             {/* Calculated PU & Validation */}
-            {validation && (() => {
-              const colors = getValidationColors();
+            {enhancedResult && (() => {
+              const colors = validation ? getValidationColors() : { bg: "bg-gray-50", border: "border-gray-200", text: "text-gray-700", textBold: "text-gray-900" };
+              const totalPU = enhancedResult.totals.total_pu;
               return (
                 <div className={`${colors.bg} border ${colors.border} rounded-lg p-4`}>
                   <div className="flex items-center justify-between mb-2">
                     <span className={`text-sm font-medium ${colors.text}`}>
-                      Achieved Pasteurization Units:
+                      Total Pasteurization Units:
                     </span>
                     <span className={`text-2xl font-bold ${colors.textBold}`}>
-                      {calculatedPU.toFixed(2)} PU
+                      {totalPU.toFixed(1)} PU
                     </span>
                   </div>
 
-                  <div className="flex items-start gap-2 mt-3">
-                    {validation.status === 'optimal' && <span className="text-xl">✓</span>}
-                    {validation.status === 'acceptable' && <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
-                    {validation.status === 'insufficient' && <span className="text-xl">✗</span>}
-                    <p className={`text-sm ${colors.text}`}>{validation.message}</p>
-                  </div>
+                  {validation && (
+                    <div className="flex items-start gap-2 mt-3">
+                      {validation.status === 'optimal' && <span className="text-xl">✓</span>}
+                      {validation.status === 'acceptable' && <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
+                      {validation.status === 'insufficient' && <span className="text-xl">✗</span>}
+                      <p className={`text-sm ${colors.text}`}>{validation.message}</p>
+                    </div>
+                  )}
 
                   <div className={`text-xs ${colors.text} mt-3 pt-3 border-t ${colors.border}`}>
-                    Formula: PU = {timeMinutes} × 10^(({temperatureCelsius} - 60) / 7) = {calculatedPU.toFixed(2)}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>Heatup: {enhancedResult.phases.heatup.pu} PU</div>
+                      <div>Hold: {enhancedResult.phases.hold.pu} PU</div>
+                      <div>Cooldown: {enhancedResult.phases.cooldown.pu} PU</div>
+                    </div>
                   </div>
                 </div>
               );
@@ -396,16 +832,17 @@ export function PasteurizeModal({
                 <span className="font-semibold text-amber-900">Standard Operating Procedure</span>
               </div>
               <ol className="text-sm text-amber-800 space-y-1 list-decimal list-inside">
-                <li>Preheat water bath to 65°C</li>
-                <li>Load bottles gently (room temp 20-22°C)</li>
+                <li>Preheat water bath to {temperatureCelsius}°C</li>
+                <li>Load bottles from {startingTempC}°C storage</li>
                 <li>Insert probe bottle to monitor core temperature</li>
-                <li>Begin timing when probe reaches 60°C (~6 min)</li>
-                <li>Hold for recommended time ({plan ? Math.ceil(plan.time_at_hold_min) : '2-3'} min at 65°C)</li>
-                <li>Remove and cool gradually</li>
+                <li>Begin timing when probe reaches 60°C (~{enhancedResult?.phases.heatup.duration_min || 6} min)</li>
+                <li>Hold for {timeMinutes} min at {temperatureCelsius}°C</li>
+                <li>Remove and {cooldownMethod === 'ice_bath' ? 'ice bath cool' : cooldownMethod === 'water_bath' ? 'water bath cool' : 'air cool'}</li>
               </ol>
               <p className="text-xs text-amber-700 mt-2">
-                Expected total: {plan ? Math.ceil(plan.total_bath_time_min) : '8'} min •
-                Target PU: {productClassification?.targetPU_min || 30}
+                Expected total: {enhancedResult?.totals.total_time_min || '8'} min •
+                Target PU: {productClassification?.targetPU_min || 30} •
+                Cooldown adds ~{enhancedResult?.phases.cooldown.pu || 20} PU
               </p>
             </div>
 
@@ -438,8 +875,10 @@ export function PasteurizeModal({
                 className="flex-1 bg-orange-600 hover:bg-orange-700"
                 disabled={
                   pasteurizeMutation.isPending ||
-                  !temperatureCelsius ||
-                  !timeMinutes
+                  temperatureCelsius === undefined ||
+                  temperatureCelsius === null ||
+                  timeMinutes === undefined ||
+                  timeMinutes === null
                 }
               >
                 {pasteurizeMutation.isPending ? (

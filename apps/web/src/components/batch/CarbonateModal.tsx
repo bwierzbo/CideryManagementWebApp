@@ -27,6 +27,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { trpc } from "@/utils/trpc";
 import { formatDate } from "@/utils/date-format";
 import { toast } from "@/hooks/use-toast";
+import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { DateWarning } from "@/components/ui/DateWarning";
 import {
   Gauge,
   Thermometer,
@@ -120,6 +122,10 @@ export function CarbonateModal({
   const utils = trpc.useUtils();
   const [carbonationMethod, setCarbonationMethod] = React.useState<"forced" | "bottle_conditioning">("forced");
   const [lastEditedField, setLastEditedField] = React.useState<"co2" | "sugar">("co2");
+  const [dateWarning, setDateWarning] = React.useState<string | null>(null);
+
+  // Date validation
+  const { validateDate } = useBatchDateValidation(batch.id);
 
   // Query for available sweetener additives (for bottle conditioning)
   const { data: sweetenerInventory, isLoading: isLoadingInventory } =
@@ -156,6 +162,7 @@ export function CarbonateModal({
   });
 
   const watchedMethod = watch("carbonationMethod");
+  const startedAt = watch("startedAt" as any);
   const startingTemperature = watch("startingTemperature" as any);
   const targetCo2Volumes = watch("targetCo2Volumes");
   const pressureApplied = watch("pressureApplied" as any);
@@ -171,6 +178,14 @@ export function CarbonateModal({
       setCarbonationMethod(watchedMethod as "forced" | "bottle_conditioning");
     }
   }, [watchedMethod]);
+
+  // Validate date when it changes
+  useEffect(() => {
+    if (startedAt) {
+      const result = validateDate(startedAt);
+      setDateWarning(result.warning);
+    }
+  }, [startedAt, validateDate]);
 
   // Convert volume to liters for calculations
   const volumeInLiters = useMemo(() => {
@@ -504,6 +519,7 @@ export function CarbonateModal({
                 })}
                 defaultValue={new Date().toISOString().slice(0, 16)}
               />
+              <DateWarning warning={dateWarning} />
               {(errors as any).startedAt && (
                 <p className="text-sm text-destructive mt-1">
                   {(errors as any).startedAt.message}

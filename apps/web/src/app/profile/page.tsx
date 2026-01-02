@@ -29,13 +29,18 @@ import {
   EyeOff,
   Save,
   Lock,
+  Type,
 } from "lucide-react";
+import { useFontSize, getFontSizeLabel, type FontSize } from "@/hooks/useFontSize";
 import { api } from "@/server/client";
 import { formatDate, formatDateTime } from "@/utils/date-format";
 
 export default function ProfilePage() {
   const { data: session, update } = useSession();
   const router = useRouter();
+
+  // Font size preference
+  const { fontSize, setFontSize, isLoaded: fontSizeLoaded } = useFontSize();
 
   // Profile state
   const [name, setName] = useState("");
@@ -171,8 +176,9 @@ export default function ProfilePage() {
         </div>
 
         <Tabs defaultValue="profile" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="preferences">Preferences</TabsTrigger>
             <TabsTrigger value="security">Security</TabsTrigger>
           </TabsList>
 
@@ -274,6 +280,67 @@ export default function ProfilePage() {
                     </div>
                   </form>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="preferences">
+            <Card>
+              <CardHeader>
+                <CardTitle>Display Preferences</CardTitle>
+                <CardDescription>
+                  Customize how the application looks and feels
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Font Size Preference */}
+                <div className="space-y-3">
+                  <div className="flex items-center">
+                    <Type className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <Label className="text-base font-medium">Font Size</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Adjust the text size across the application
+                  </p>
+                  <div className="flex gap-2">
+                    {(["small", "medium", "large"] as FontSize[]).map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => setFontSize(size)}
+                        className={`
+                          flex-1 px-4 py-3 rounded-lg border-2 transition-all duration-200
+                          ${fontSize === size
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border hover:border-primary/50 hover:bg-muted/50"
+                          }
+                        `}
+                      >
+                        <div className="text-center">
+                          <div
+                            className={`font-semibold ${
+                              size === "small" ? "text-sm" : size === "large" ? "text-lg" : "text-base"
+                            }`}
+                          >
+                            {getFontSizeLabel(size)}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {size === "small" ? "14px" : size === "large" ? "18px" : "16px"}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div className="p-4 rounded-lg bg-muted/30 border border-border/50">
+                  <div className="text-sm font-medium text-muted-foreground mb-2">
+                    Preview
+                  </div>
+                  <p className="text-foreground">
+                    This is how text will appear throughout the application with your current font size setting.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

@@ -623,6 +623,7 @@ export const packagingRouter = router({
             voidedBy: bottleRuns.voidedBy,
             pasteurizedAt: bottleRuns.pasteurizedAt,
             labeledAt: bottleRuns.labeledAt,
+            unitsLabeled: bottleRuns.unitsLabeled,
             createdBy: bottleRuns.createdBy,
             createdAt: bottleRuns.createdAt,
             updatedAt: bottleRuns.updatedAt,
@@ -1257,7 +1258,7 @@ export const packagingRouter = router({
   markComplete: createRbacProcedure("update", "package")
     .input(z.object({
       runId: z.string().uuid(),
-      completedAt: z.date().optional(),
+      completedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
     }))
     .mutation(async ({ input }) => {
       try {
@@ -1383,7 +1384,7 @@ export const packagingRouter = router({
         runId: z.string().uuid(),
         pasteurizedAt: z.union([z.date(), z.string().transform((val) => new Date(val))]).optional(),
         temperatureCelsius: z.number().min(0).max(100),
-        timeMinutes: z.number().positive().max(120),
+        timeMinutes: z.number().min(0).max(120),
         pasteurizationUnits: z.number().positive(),
         bottlesLost: z.number().int().min(0).optional(),
         notes: z.string().optional(),
@@ -1391,6 +1392,30 @@ export const packagingRouter = router({
     )
     .mutation(async ({ input }) => {
       try {
+        // Check if bottle run exists and is not already pasteurized
+        const [existingRun] = await db
+          .select({
+            id: bottleRuns.id,
+            pasteurizedAt: bottleRuns.pasteurizedAt,
+          })
+          .from(bottleRuns)
+          .where(eq(bottleRuns.id, input.runId))
+          .limit(1);
+
+        if (!existingRun) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Bottle run not found",
+          });
+        }
+
+        if (existingRun.pasteurizedAt) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Bottle run is already pasteurized. Edit the pasteurization date instead of creating a new one.",
+          });
+        }
+
         const pasteurizedAt = input.pasteurizedAt || new Date();
         const lossNote = input.bottlesLost ? ` (${input.bottlesLost} bottles lost)` : '';
 
@@ -1410,15 +1435,9 @@ export const packagingRouter = router({
           .where(eq(bottleRuns.id, input.runId))
           .returning();
 
-        if (!updated) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Bottle run not found",
-          });
-        }
-
         return updated;
       } catch (error) {
+        if (error instanceof TRPCError) throw error;
         console.error("Error pasteurizing bottle run:", error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -1480,7 +1499,8 @@ export const packagingRouter = router({
       z.object({
         bottleRunId: z.string().uuid(),
         packagingItemId: z.string().uuid(),
-        quantity: z.number().int().positive(),
+        quantity: z.number().int().positive(), // Number of labels to use from inventory
+        unitsToLabel: z.number().int().positive().optional(), // Number of bottles being labeled (for partial labeling)
         labeledAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
       }),
     )
@@ -1519,7 +1539,7 @@ export const packagingRouter = router({
             })
             .where(eq(packagingPurchaseItems.id, input.packagingItemId));
 
-          // Get bottle run to check if labeledAt is already set
+          // Get bottle run to check current state
           const [bottleRun] = await tx
             .select()
             .from(bottleRuns)
@@ -1542,17 +1562,29 @@ export const packagingRouter = router({
             createdBy: ctx.session.user.id,
           });
 
-          // Update labeledAt timestamp only if not already set (first label application)
+          // Calculate new unitsLabeled count
+          const currentUnitsLabeled = bottleRun.unitsLabeled || 0;
+          const unitsBeingLabeled = input.unitsToLabel || input.quantity; // Default to label quantity if not specified
+          const newUnitsLabeled = Math.min(
+            currentUnitsLabeled + unitsBeingLabeled,
+            bottleRun.unitsProduced // Cap at total units produced
+          );
+
+          // Build update object
+          const updateData: Record<string, unknown> = {
+            unitsLabeled: newUnitsLabeled,
+            updatedAt: new Date(),
+          };
+
+          // Set labeledAt timestamp only if not already set (first label application)
           if (!bottleRun.labeledAt) {
-            const labeledAt = input.labeledAt || new Date();
-            await tx
-              .update(bottleRuns)
-              .set({
-                labeledAt: labeledAt,
-                updatedAt: new Date(),
-              })
-              .where(eq(bottleRuns.id, input.bottleRunId));
+            updateData.labeledAt = input.labeledAt || new Date();
           }
+
+          await tx
+            .update(bottleRuns)
+            .set(updateData)
+            .where(eq(bottleRuns.id, input.bottleRunId));
 
           // Calculate remaining labels after this usage
           const labelsRemaining = available - input.quantity;
@@ -1561,6 +1593,8 @@ export const packagingRouter = router({
             success: true,
             labelsRemaining,
             labelName: packagingItem.size || "Label",
+            unitsLabeled: newUnitsLabeled,
+            unitsRemaining: bottleRun.unitsProduced - newUnitsLabeled,
           };
         });
       } catch (error) {

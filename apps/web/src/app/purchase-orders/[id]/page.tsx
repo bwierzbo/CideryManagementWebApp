@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { EditBaseFruitItemModal } from "@/components/inventory/EditBaseFruitItemModal";
@@ -27,6 +27,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   Calendar,
   Building2,
@@ -39,16 +47,21 @@ import {
   Boxes,
   Eye,
   Edit,
+  Printer,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/utils/date-format";
+import { PurchaseReceipt, type PurchaseReceiptData } from "@/components/documents";
+import { downloadPDF, printElement } from "@/lib/print-utils";
 
 export default function PurchaseOrderDetailPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
   const [isExporting, setIsExporting] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   // Edit modal state
   const [editBaseFruitItem, setEditBaseFruitItem] = useState<any | null>(null);
@@ -78,16 +91,61 @@ export default function PurchaseOrderDetailPage() {
   };
 
   const handleExportPdf = async () => {
+    if (!receiptRef.current) return;
     setIsExporting(true);
     try {
-      // TODO: Implement PDF export functionality
-      console.log("Exporting PDF for purchase order:", params.id);
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate export
+      const vendorName = purchaseData?.purchase?.vendorId
+        ? `vendor-${purchaseData.purchase.vendorId.slice(0, 8)}`
+        : "receipt";
+      const filename = `receipt-${id}-${vendorName}.pdf`;
+      await downloadPDF(receiptRef.current, filename);
     } catch (error) {
       console.error("Error exporting PDF:", error);
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const handlePrint = () => {
+    if (!receiptRef.current) return;
+    printElement(receiptRef.current);
+  };
+
+  const handleOpenReceiptModal = () => {
+    setShowReceiptModal(true);
+  };
+
+  // Fetch vendor info if we have a vendorId
+  const vendorId = purchaseData?.purchase?.vendorId;
+  const { data: vendorData } = trpc.vendor.getById.useQuery(
+    { id: vendorId! },
+    { enabled: !!vendorId }
+  );
+
+  // Transform purchase data for receipt component
+  const getReceiptData = (): PurchaseReceiptData | null => {
+    if (!purchaseData) return null;
+
+    const items = (purchaseData.items || []).map((item: any) => ({
+      id: item.id || crypto.randomUUID(),
+      varietyName: item.fruitVarietyName || item.varietyName || item.additiveName || item.juiceName || item.packagingName,
+      fruitVarietyName: item.fruitVarietyName,
+      quantity: item.quantity || item.volumeL || 0,
+      unit: item.unit || (item.volumeL ? "L" : "lb"),
+      notes: item.notes,
+      totalCost: item.totalCost,
+      pricePerUnit: item.pricePerUnit || item.pricePerLiter,
+    }));
+
+    return {
+      id: purchaseData.purchase.id || id,
+      purchaseDate: purchaseData.purchase.purchaseDate,
+      vendorName: vendorData?.name || `Vendor ${purchaseData.purchase.vendorId?.slice(0, 8) || "Unknown"}`,
+      vendorId: purchaseData.purchase.vendorId,
+      totalCost: purchaseData.purchase.totalCost,
+      notes: purchaseData.purchase.notes,
+      items,
+    };
   };
 
   const formatDateDisplay = (dateString: string) => {
@@ -267,12 +325,12 @@ export default function PurchaseOrderDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleExportPdf}
-                disabled={isExporting}
+                onClick={handleOpenReceiptModal}
+                disabled={!purchaseData}
                 className="flex items-center gap-2"
               >
-                <Download className="w-4 h-4" />
-                {isExporting ? "Exporting..." : "Export PDF"}
+                <FileText className="w-4 h-4" />
+                Generate Receipt
               </Button>
             </div>
           </div>
@@ -512,6 +570,54 @@ export default function PurchaseOrderDetailPage() {
           item={editPackagingItem}
           onSuccess={() => refetch()}
         />
+
+        {/* Receipt Preview Modal */}
+        <Dialog open={showReceiptModal} onOpenChange={setShowReceiptModal}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Receipt Preview</DialogTitle>
+              <DialogDescription>
+                Preview the receipt before printing or downloading as PDF
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Receipt Content */}
+            <div className="border rounded-lg overflow-hidden bg-white">
+              {getReceiptData() && (
+                <PurchaseReceipt
+                  ref={receiptRef}
+                  purchase={getReceiptData()!}
+                  materialType={materialType || "basefruit"}
+                />
+              )}
+            </div>
+
+            <DialogFooter className="flex gap-2 sm:gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowReceiptModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handlePrint}
+                className="flex items-center gap-2"
+              >
+                <Printer className="w-4 h-4" />
+                Print
+              </Button>
+              <Button
+                onClick={handleExportPdf}
+                disabled={isExporting}
+                className="flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                {isExporting ? "Generating..." : "Download PDF"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

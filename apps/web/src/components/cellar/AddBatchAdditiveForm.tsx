@@ -15,6 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
+import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { DateWarning } from "@/components/ui/DateWarning";
 import { Loader2, Search, Package, AlertTriangle, Calculator } from "lucide-react";
 import {
   Command,
@@ -78,7 +80,11 @@ export function AddBatchAdditiveForm({
     const now = new Date();
     return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
   });
+  const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [dosageRate, setDosageRate] = useState("");
+
+  // Date validation
+  const { validateDate } = useBatchDateValidation(batchId);
 
   // Fetch batch history to get measurements with volume
   const { data: batchHistory } = trpc.batch.getHistory.useQuery(
@@ -509,9 +515,14 @@ export function AddBatchAdditiveForm({
           id="addedDate"
           type="datetime-local"
           value={addedDate}
-          onChange={(e) => setAddedDate(e.target.value)}
+          onChange={(e) => {
+            setAddedDate(e.target.value);
+            const result = validateDate(e.target.value);
+            setDateWarning(result.warning);
+          }}
           required
         />
+        <DateWarning warning={dateWarning} />
       </div>
 
       <div className="space-y-2">

@@ -34,6 +34,7 @@ import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check, Plus, X } fro
 import { cn } from "@/lib/utils";
 
 const labelSchema = z.object({
+  unitsToLabel: z.number().int().positive("Units to label must be positive"),
   labels: z.array(z.object({
     packagingItemId: z.string().min(1, "Please select a label"),
     quantity: z.number().int().positive("Quantity must be positive"),
@@ -49,6 +50,7 @@ interface LabelModalProps {
   bottleRunId: string;
   bottleRunName: string;
   unitsProduced: number;
+  unitsLabeled?: number; // Current number of labeled units (for partial labeling)
   onSuccess: () => void;
 }
 
@@ -58,11 +60,21 @@ export function LabelModal({
   bottleRunId,
   bottleRunName,
   unitsProduced,
+  unitsLabeled: initialUnitsLabeled = 0,
   onSuccess,
 }: LabelModalProps) {
   const utils = trpc.useUtils();
   const [comboboxOpen, setComboboxOpen] = useState<{[key: number]: boolean}>({});
   const [appliedLabels, setAppliedLabels] = useState<Array<{name: string, quantity: number}>>([]);
+
+  // Fetch fresh bottle run data when modal opens to get current unitsLabeled
+  const { data: bottleRunData } = trpc.packaging.get.useQuery(bottleRunId, {
+    enabled: open && !!bottleRunId,
+  });
+
+  // Use fresh data if available, otherwise fall back to prop
+  const currentUnitsLabeled = bottleRunData?.unitsLabeled ?? initialUnitsLabeled;
+  const remainingUnits = unitsProduced - currentUnitsLabeled;
 
   const {
     register,
@@ -75,7 +87,8 @@ export function LabelModal({
   } = useForm<LabelForm>({
     resolver: zodResolver(labelSchema),
     defaultValues: {
-      labels: [{ packagingItemId: "", quantity: unitsProduced }],
+      unitsToLabel: remainingUnits,
+      labels: [{ packagingItemId: "", quantity: remainingUnits }],
       labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
     },
   });
@@ -86,6 +99,7 @@ export function LabelModal({
   });
 
   const labelsData = watch("labels");
+  const unitsToLabelValue = watch("unitsToLabel");
 
   // Get packaging items (labels) - filter by Secondary Packaging item type
   const { data: packagingItems, isLoading: isLoadingItems, refetch: refetchPackagingItems } =
@@ -98,13 +112,14 @@ export function LabelModal({
   useEffect(() => {
     if (open) {
       reset({
-        labels: [{ packagingItemId: "", quantity: unitsProduced }],
+        unitsToLabel: remainingUnits,
+        labels: [{ packagingItemId: "", quantity: remainingUnits }],
         labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       });
       setAppliedLabels([]);
       setComboboxOpen({});
     }
-  }, [open, reset, unitsProduced]);
+  }, [open, reset, remainingUnits]);
 
   const labelMutation = trpc.packaging.addLabel.useMutation();
 
@@ -122,6 +137,7 @@ export function LabelModal({
           bottleRunId,
           packagingItemId: label.packagingItemId,
           quantity: label.quantity,
+          unitsToLabel: data.unitsToLabel,
           labeledAt: labeledAt,
         });
 
@@ -136,13 +152,7 @@ export function LabelModal({
 
       toast({
         title: "Labels Applied",
-        description: `Successfully applied ${appliedLabelsList.length} label type(s)`,
-      });
-
-      // Reset form for next batch of labels
-      reset({
-        labels: [{ packagingItemId: "", quantity: unitsProduced }],
-        labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+        description: `Successfully labeled ${data.unitsToLabel} units with ${appliedLabelsList.length} label type(s)`,
       });
 
       // Refresh inventory and bottle data
@@ -150,6 +160,9 @@ export function LabelModal({
       utils.packaging.get.invalidate(bottleRunId);
       refetchPackagingItems();
       onSuccess();
+
+      // Close modal after successful labeling
+      onClose();
 
     } catch (error: any) {
       toast({
@@ -195,13 +208,51 @@ export function LabelModal({
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Packaging Run Info */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Bottles Produced:</span>
+              <span className="text-gray-600">Total Produced:</span>
               <span className="font-semibold text-blue-900">
                 {unitsProduced.toLocaleString()} units
               </span>
             </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Already Labeled:</span>
+              <span className="font-semibold text-blue-900">
+                {currentUnitsLabeled.toLocaleString()} units
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm border-t border-blue-200 pt-2">
+              <span className="text-gray-600">Remaining to Label:</span>
+              <span className="font-semibold text-green-700">
+                {remainingUnits.toLocaleString()} units
+              </span>
+            </div>
+          </div>
+
+          {/* Units to Label */}
+          <div className="space-y-2">
+            <Label htmlFor="unitsToLabel">
+              Units to Label <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="unitsToLabel"
+              type="text"
+              inputMode="numeric"
+              pattern="^\d+$"
+              {...register("unitsToLabel", { valueAsNumber: true })}
+              placeholder="Enter number of bottles to label"
+            />
+            {errors.unitsToLabel && (
+              <p className="text-sm text-red-500">{errors.unitsToLabel.message}</p>
+            )}
+            {unitsToLabelValue > remainingUnits && (
+              <div className="flex items-start gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>
+                  Only {remainingUnits} bottles remaining. Adjust quantity or label all remaining.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Loading/Empty State */}
@@ -359,7 +410,7 @@ export function LabelModal({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => append({ packagingItemId: "", quantity: unitsProduced })}
+                  onClick={() => append({ packagingItemId: "", quantity: unitsToLabelValue || remainingUnits })}
                   className="w-full"
                 >
                   <Plus className="h-4 w-4 mr-2" />

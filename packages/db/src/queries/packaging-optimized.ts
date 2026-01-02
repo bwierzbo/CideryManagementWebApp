@@ -67,6 +67,10 @@ export interface BottleRunListItem {
   // Processing status fields
   pasteurizedAt?: Date | null;
   labeledAt?: Date | null;
+  unitsLabeled?: number | null;
+  // Carbonation fields
+  carbonationLevel?: string | null;
+  carbonationCo2Volumes?: number | null;
 }
 
 export interface KegFillListItem {
@@ -95,6 +99,9 @@ export interface KegFillListItem {
   kegId: string;
   kegNumber: string | null;
   remainingVolumeL: number | null;
+  // Carbonation fields (null for kegs)
+  carbonationLevel?: string | null;
+  carbonationCo2Volumes?: number | null;
 }
 
 // Union type for unified packaging runs

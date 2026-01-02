@@ -23,6 +23,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { DateWarning } from "@/components/ui/DateWarning";
 import { Filter, AlertTriangle } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
@@ -61,6 +63,10 @@ export function FilterModal({
   const [showLossWarning, setShowLossWarning] = useState(false);
   const [calculatedLoss, setCalculatedLoss] = useState(0);
   const [lossPercentage, setLossPercentage] = useState(0);
+  const [dateWarning, setDateWarning] = useState<string | null>(null);
+
+  // Date validation
+  const { validateDate } = useBatchDateValidation(batchId);
 
   const {
     register,
@@ -191,9 +197,15 @@ export function FilterModal({
             <Input
               type="datetime-local"
               value={filteredAt ? new Date(filteredAt.getTime() - filteredAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
-              onChange={(e) => setValue("filteredAt", new Date(e.target.value))}
+              onChange={(e) => {
+                const dateValue = new Date(e.target.value);
+                setValue("filteredAt", dateValue);
+                const result = validateDate(dateValue);
+                setDateWarning(result.warning);
+              }}
               className="w-full mt-1"
             />
+            <DateWarning warning={dateWarning} />
             {errors.filteredAt && (
               <p className="text-sm text-red-600 mt-1">
                 {errors.filteredAt.message}

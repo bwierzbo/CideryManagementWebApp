@@ -94,14 +94,13 @@ export const carbonationRouter = router({
         });
       }
 
-      // Check if batch already has active carbonation
+      // Check if batch already has any carbonation operation (active or completed)
       const [existingCarbonation] = await db
         .select()
         .from(batchCarbonationOperations)
         .where(
           and(
             eq(batchCarbonationOperations.batchId, input.batchId),
-            isNull(batchCarbonationOperations.completedAt),
             isNull(batchCarbonationOperations.deletedAt)
           )
         )
@@ -110,7 +109,7 @@ export const carbonationRouter = router({
       if (existingCarbonation) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "Batch already has an active carbonation operation",
+          message: "Batch already has a carbonation operation. Edit the existing one instead of creating a new one.",
         });
       }
 
@@ -511,6 +510,25 @@ export const carbonationRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Batch not found",
+        });
+      }
+
+      // Check if batch already has any carbonation operation
+      const [existingCarbonation] = await db
+        .select()
+        .from(batchCarbonationOperations)
+        .where(
+          and(
+            eq(batchCarbonationOperations.batchId, input.batchId),
+            isNull(batchCarbonationOperations.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (existingCarbonation) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Batch already has a carbonation operation. Edit the existing one instead of creating a new one.",
         });
       }
 

@@ -23,6 +23,13 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Package,
   MoreVertical,
   Send,
@@ -52,8 +59,9 @@ export function FinishedGoodsTable({
   const { toast } = useToast();
   const router = useRouter();
 
-  // Search and pagination state
+  // Search, filter, and pagination state
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "in_stock" | "depleted">("in_stock");
   const [currentPage, setCurrentPage] = useState(0);
 
   // Modal state
@@ -70,7 +78,7 @@ export function FinishedGoodsTable({
     limit: itemsPerPage,
     offset: currentPage * itemsPerPage,
     search: searchTerm,
-    status: "in_stock",
+    status: statusFilter,
   });
 
   const utils = trpc.useContext();
@@ -198,22 +206,40 @@ export function FinishedGoodsTable({
 
   return (
     <div className={className}>
-      {/* Header with Search */}
+      {/* Header with Search and Filter */}
       <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="flex-1 max-w-md">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              type="text"
-              placeholder="Search cider names..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(0);
-              }}
-              className="pl-10"
-            />
+        <div className="flex items-center gap-3 flex-1">
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search cider names..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(0);
+                }}
+                className="pl-10"
+              />
+            </div>
           </div>
+          <Select
+            value={statusFilter}
+            onValueChange={(value: "all" | "in_stock" | "depleted") => {
+              setStatusFilter(value);
+              setCurrentPage(0);
+            }}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Filter status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Items</SelectItem>
+              <SelectItem value="in_stock">In Stock</SelectItem>
+              <SelectItem value="depleted">Depleted</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div className="text-sm text-gray-600">
           {pagination && (

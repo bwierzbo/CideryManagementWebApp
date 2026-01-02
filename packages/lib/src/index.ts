@@ -22,6 +22,9 @@ export * from "./apples";
 // Re-export cellar operation constants (client-safe)
 export * from "./constants/cellar";
 
+// Re-export date validation utilities (client-safe)
+export * from "./validation/dateValidation";
+
 // Re-export naming utilities (client-safe - no crypto)
 export * from "./naming/batchName";
 

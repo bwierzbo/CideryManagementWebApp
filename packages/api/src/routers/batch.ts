@@ -348,6 +348,82 @@ export const batchRouter = router({
     }),
 
   /**
+   * Get date validation context for a batch
+   * Returns the earliest valid date for activities on this batch
+   */
+  getDateValidationContext: createRbacProcedure("read", "batch")
+    .input(z.string().uuid("Invalid batch ID"))
+    .query(async ({ input: batchId }) => {
+      try {
+        // Import validation utilities
+        const { extractDateFromBatchName, calculateEarliestValidDate } = await import("lib");
+
+        // Get batch details
+        const [batch] = await db
+          .select({
+            id: batches.id,
+            name: batches.name,
+            startDate: batches.startDate,
+            createdAt: batches.createdAt,
+          })
+          .from(batches)
+          .where(and(eq(batches.id, batchId), isNull(batches.deletedAt)))
+          .limit(1);
+
+        if (!batch) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Batch not found",
+          });
+        }
+
+        // Check if batch was created via transfer (child batch)
+        const [transfer] = await db
+          .select({
+            transferredAt: batchTransfers.transferredAt,
+          })
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.destinationBatchId, batchId),
+              isNull(batchTransfers.deletedAt)
+            )
+          )
+          .limit(1);
+
+        const batchStartDate = batch.startDate;
+        const batchCreatedAt = batch.createdAt;
+        const transferDate = transfer?.transferredAt || null;
+        const batchNameDate = extractDateFromBatchName(batch.name);
+
+        // Calculate earliest valid date
+        const earliestValidDate = calculateEarliestValidDate(
+          batchStartDate,
+          batchCreatedAt,
+          transferDate,
+          batchNameDate
+        );
+
+        return {
+          batchId: batch.id,
+          batchName: batch.name,
+          batchStartDate,
+          batchCreatedAt,
+          transferDate,
+          batchNameDate,
+          earliestValidDate,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error getting date validation context:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to get date validation context",
+        });
+      }
+    }),
+
+  /**
    * List all batches with filtering and pagination
    */
   list: createRbacProcedure("list", "batch")
@@ -1710,8 +1786,8 @@ export const batchRouter = router({
         }
 
         // Find ancestor batches using recursive CTE
-        // This traces the lineage of "Remaining" batches back to their origins
-        // Each ancestor includes the split timestamp (when this batch was created from it)
+        // This traces the lineage back to the original batch through transfers
+        // Checks both remaining_batch_id (for splits) and destination_batch_id (for transfers)
         const ancestorChainResult = await db.execute<{
           batch_id: string;
           batch_name: string;
@@ -1719,7 +1795,7 @@ export const batchRouter = router({
           depth: number;
         }>(sql`
           WITH RECURSIVE ancestors AS (
-            -- Base case: find the transfer that created this batch
+            -- Base case: find transfers that created this batch (via remaining_batch_id or destination_batch_id)
             SELECT
               bt.source_batch_id as batch_id,
               b.name as batch_name,
@@ -1727,7 +1803,8 @@ export const batchRouter = router({
               1 as depth
             FROM batch_transfers bt
             JOIN batches b ON b.id = bt.source_batch_id
-            WHERE bt.remaining_batch_id = ${input.batchId}
+            WHERE (bt.remaining_batch_id = ${input.batchId} OR bt.destination_batch_id = ${input.batchId})
+              AND bt.source_batch_id != ${input.batchId}
               AND bt.deleted_at IS NULL
 
             UNION ALL
@@ -1740,10 +1817,12 @@ export const batchRouter = router({
               a.depth + 1
             FROM batch_transfers bt
             JOIN batches b ON b.id = bt.source_batch_id
-            JOIN ancestors a ON bt.remaining_batch_id = a.batch_id
-            WHERE bt.deleted_at IS NULL
+            JOIN ancestors a ON (bt.remaining_batch_id = a.batch_id OR bt.destination_batch_id = a.batch_id)
+            WHERE bt.source_batch_id != a.batch_id
+              AND bt.deleted_at IS NULL
+              AND a.depth < 10
           )
-          SELECT * FROM ancestors ORDER BY depth DESC
+          SELECT DISTINCT ON (batch_id) * FROM ancestors ORDER BY batch_id, depth DESC
         `);
 
         // Convert to array with proper typing
@@ -2116,11 +2195,40 @@ export const batchRouter = router({
           originDescription = `${juiceLabel}${vendorLabel}`;
         }
 
+        // If this batch has ancestors (was created via transfer), use the oldest ancestor's start date
+        // Otherwise use this batch's creation date (which is actually startDate per the query alias)
+        let creationTimestamp = batch[0].createdAt;
+        let creationDescription = `Batch created from ${originDescription}`;
+
+        if (ancestorChain.length > 0) {
+          // Find the oldest ancestor (highest depth)
+          const oldestAncestor = ancestorChain.reduce((oldest, current) =>
+            current.depth > oldest.depth ? current : oldest
+          , ancestorChain[0]);
+
+          // Query the oldest ancestor's start date
+          const [oldestAncestorBatch] = await db
+            .select({
+              startDate: batches.startDate,
+              createdAt: batches.createdAt,
+            })
+            .from(batches)
+            .where(eq(batches.id, oldestAncestor.batch_id))
+            .limit(1);
+
+          if (oldestAncestorBatch) {
+            creationTimestamp = oldestAncestorBatch.startDate || oldestAncestorBatch.createdAt;
+          }
+
+          // Update description to mention the parent batch
+          creationDescription = `Batch lineage started from ${originDescription}`;
+        }
+
         activities.push({
           id: `creation-${batch[0].id}`,
           type: "creation",
-          timestamp: batch[0].createdAt,
-          description: `Batch created from ${originDescription}`,
+          timestamp: creationTimestamp,
+          description: creationDescription,
           details:
             batch[0].initialVolume || creationVessel
               ? {
@@ -2210,8 +2318,22 @@ export const batchRouter = router({
         });
 
         // Process transfers (filter by split timestamp for ancestors)
+        // Only include transfers where:
+        // 1. This batch is directly involved (source or destination), OR
+        // 2. Both source AND destination are in the ancestor chain (not sibling batches)
         transfers.forEach((t) => {
-          // Determine which batch ID to use for filtering (source for same-batch moves, otherwise the relevant one)
+          const thisIsSource = t.sourceBatchId === input.batchId;
+          const thisIsDestination = t.destinationBatchId === input.batchId;
+          const sourceIsAncestor = allBatchIds.includes(t.sourceBatchId) && t.sourceBatchId !== input.batchId;
+          const destIsAncestor = allBatchIds.includes(t.destinationBatchId) && t.destinationBatchId !== input.batchId;
+
+          // Skip transfers from ancestors to non-ancestors (siblings)
+          // These are transfers from parent batch to sibling child batches
+          if (sourceIsAncestor && !destIsAncestor && !thisIsDestination) {
+            return; // Skip sibling transfers
+          }
+
+          // Determine which batch ID to use for filtering
           const relevantBatchId = t.sourceBatchId === t.destinationBatchId
             ? t.sourceBatchId
             : (allBatchIds.includes(t.sourceBatchId) ? t.sourceBatchId : t.destinationBatchId);
@@ -2241,7 +2363,7 @@ export const batchRouter = router({
           } else {
             // Traditional transfer: different batches involved
             // For inherited transfers, check if this batch was the source
-            const isSource = t.sourceBatchId === input.batchId || allBatchIds.includes(t.sourceBatchId);
+            const isSource = thisIsSource || sourceIsAncestor;
             activities.push({
               id: `transfer-${t.id}`,
               type: "transfer",
@@ -2307,8 +2429,9 @@ export const batchRouter = router({
 
         // Process carbonation operations (filter by split timestamp for ancestors)
         carbonationOps.forEach((c) => {
-          // Single carbonation event - use completed date if available, otherwise started date
-          const timestamp = c.completedAt || c.startedAt;
+          // Use startedAt for timeline position - carbonation logically happens before bottling
+          // Even if completedAt is later, the carbonation process started at startedAt
+          const timestamp = c.startedAt;
           if (!shouldIncludeAncestorActivity(c.batchId, timestamp)) return;
 
           const isCompleted = !!c.completedAt;

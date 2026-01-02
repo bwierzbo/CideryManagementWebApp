@@ -171,9 +171,14 @@ export const bottleRuns = pgTable(
     pasteurizationLoss: integer("pasteurization_loss"),
 
     /**
-     * When labels were physically applied to bottles
+     * When labels were first applied to bottles
      */
     labeledAt: timestamp("labeled_at"),
+    /**
+     * Number of units that have been labeled (for partial labeling support)
+     * When unitsLabeled < unitsProduced, more labels can be applied
+     */
+    unitsLabeled: integer("units_labeled").default(0),
 
     // Labor and overhead tracking for COGS
     /**

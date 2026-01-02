@@ -2,50 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   CRAFT HERITAGE DESIGN SYSTEM
+   A warm, artisanal aesthetic for cidery management
+   ============================================ */
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    /* Core Brand Colors - Amber/Honey tones of cider */
+    --background: 42 33% 97%;
+    --foreground: 25 30% 12%;
+
+    /* Cards - Warm parchment */
+    --card: 45 40% 99%;
+    --card-foreground: 25 30% 12%;
+
+    /* Popovers */
+    --popover: 45 40% 99%;
+    --popover-foreground: 25 30% 12%;
+
+    /* Primary - Rich Amber/Honey */
+    --primary: 38 70% 45%;
+    --primary-foreground: 45 40% 99%;
+
+    /* Secondary - Warm Stone */
+    --secondary: 35 20% 92%;
+    --secondary-foreground: 25 30% 20%;
+
+    /* Muted - Soft Linen */
+    --muted: 38 25% 94%;
+    --muted-foreground: 25 15% 45%;
+
+    /* Accent - Deep Copper */
+    --accent: 25 60% 45%;
+    --accent-foreground: 45 40% 99%;
+
+    /* Destructive - Warm Red */
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders - Warm taupe */
+    --border: 35 20% 88%;
+    --input: 35 20% 88%;
+    --ring: 38 70% 45%;
+
+    /* Radius - Slightly softer */
+    --radius: 0.625rem;
+
+    /* Extended Palette */
+    --copper: 25 60% 45%;
+    --oak: 25 35% 25%;
+    --orchard: 140 35% 35%;
+    --barrel: 25 40% 18%;
+    --cream: 45 40% 96%;
+    --parchment: 42 35% 93%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 94.1%;
+    /* Dark mode - Cellar at night */
+    --background: 25 25% 8%;
+    --foreground: 40 20% 92%;
+
+    --card: 25 20% 12%;
+    --card-foreground: 40 20% 92%;
+
+    --popover: 25 20% 12%;
+    --popover-foreground: 40 20% 92%;
+
+    --primary: 38 65% 50%;
+    --primary-foreground: 25 25% 8%;
+
+    --secondary: 25 15% 18%;
+    --secondary-foreground: 40 20% 88%;
+
+    --muted: 25 15% 18%;
+    --muted-foreground: 35 15% 55%;
+
+    --accent: 30 55% 50%;
+    --accent-foreground: 25 25% 8%;
+
+    --destructive: 0 55% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 25 15% 20%;
+    --input: 25 15% 20%;
+    --ring: 38 65% 50%;
+
+    --copper: 30 55% 50%;
+    --oak: 30 25% 45%;
+    --orchard: 140 30% 40%;
+    --barrel: 25 30% 35%;
+    --cream: 25 15% 15%;
+    --parchment: 25 12% 18%;
   }
 }
 
@@ -53,7 +101,387 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  html {
+    scroll-behavior: smooth;
   }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "kern" 1, "liga" 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Enhanced Typography */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+    text-wrap: balance;
+  }
+
+  h1 { @apply text-4xl font-bold; }
+  h2 { @apply text-3xl font-semibold; }
+  h3 { @apply text-2xl font-semibold; }
+  h4 { @apply text-xl font-medium; }
+
+  /* Links */
+  a:not([class]) {
+    @apply text-primary hover:text-accent transition-colors duration-200;
+    text-decoration-skip-ink: auto;
+  }
+}
+
+@layer components {
+  /* Craft Heritage Card Styles */
+  .craft-card {
+    @apply relative bg-card rounded-xl border border-border/60;
+    box-shadow:
+      0 1px 2px rgba(139, 90, 43, 0.04),
+      0 4px 12px rgba(139, 90, 43, 0.06);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .craft-card:hover {
+    box-shadow:
+      0 2px 4px rgba(139, 90, 43, 0.06),
+      0 8px 24px rgba(139, 90, 43, 0.1);
+    transform: translateY(-2px);
+  }
+
+  /* Vessel/Tank cards with subtle gradient */
+  .vessel-card {
+    @apply craft-card overflow-hidden;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--card)) 0%,
+      hsl(var(--parchment)) 100%
+    );
+  }
+
+  /* Status indicators */
+  .status-fermenting {
+    @apply bg-amber-100 text-amber-800 border-amber-200;
+    animation: pulse-glow 3s ease-in-out infinite;
+  }
+
+  .status-aging {
+    @apply bg-orange-100 text-orange-800 border-orange-200;
+  }
+
+  .status-ready {
+    @apply bg-emerald-100 text-emerald-800 border-emerald-200;
+  }
+
+  .status-empty {
+    @apply bg-stone-100 text-stone-600 border-stone-200;
+  }
+
+  /* Navigation pill style */
+  .nav-pill {
+    @apply relative px-4 py-2.5 rounded-lg font-medium text-sm transition-all duration-200;
+    @apply text-muted-foreground hover:text-foreground hover:bg-secondary/80;
+  }
+
+  .nav-pill.active {
+    @apply text-primary bg-primary/10;
+  }
+
+  .nav-pill.active::after {
+    content: '';
+    @apply absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-0.5 bg-primary rounded-full;
+  }
+
+  /* Warm gradient backgrounds */
+  .gradient-warm {
+    background: linear-gradient(
+      135deg,
+      hsl(42 35% 96%) 0%,
+      hsl(38 30% 94%) 50%,
+      hsl(35 25% 92%) 100%
+    );
+  }
+
+  /* Barrel texture overlay */
+  .texture-grain {
+    position: relative;
+  }
+
+  .texture-grain::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.015;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* Copper accent line */
+  .copper-accent {
+    @apply relative;
+  }
+
+  .copper-accent::before {
+    content: '';
+    @apply absolute left-0 top-0 bottom-0 w-1 rounded-l-lg;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--copper)) 0%,
+      hsl(var(--primary)) 50%,
+      hsl(var(--copper)) 100%
+    );
+  }
+
+  /* Badge variants */
+  .badge-amber {
+    @apply bg-amber-100 text-amber-800 border-amber-200/50;
+  }
+
+  .badge-copper {
+    @apply bg-orange-100 text-orange-800 border-orange-200/50;
+  }
+
+  .badge-oak {
+    @apply bg-stone-100 text-stone-800 border-stone-200/50;
+  }
+
+  .badge-orchard {
+    @apply bg-emerald-100 text-emerald-800 border-emerald-200/50;
+  }
+
+  /* Button enhancements */
+  .btn-craft {
+    @apply relative overflow-hidden font-medium transition-all duration-300;
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+    @apply shadow-sm hover:shadow-md;
+  }
+
+  .btn-craft::after {
+    content: '';
+    @apply absolute inset-0 opacity-0 transition-opacity duration-300;
+    background: linear-gradient(
+      135deg,
+      transparent 0%,
+      rgba(255,255,255,0.1) 50%,
+      transparent 100%
+    );
+  }
+
+  .btn-craft:hover::after {
+    @apply opacity-100;
+  }
+
+  /* Table enhancements */
+  .craft-table {
+    @apply w-full;
+  }
+
+  .craft-table thead {
+    @apply bg-muted/50;
+  }
+
+  .craft-table th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+
+  .craft-table tbody tr {
+    @apply border-b border-border/50 transition-colors duration-150;
+  }
+
+  .craft-table tbody tr:hover {
+    @apply bg-muted/30;
+  }
+
+  .craft-table td {
+    @apply px-4 py-3.5 text-sm;
+  }
+
+  /* Input enhancements */
+  .input-craft {
+    @apply transition-all duration-200;
+    @apply border-border/60 bg-background;
+    @apply focus:border-primary focus:ring-2 focus:ring-primary/20;
+  }
+
+  /* Stat cards */
+  .stat-card {
+    @apply craft-card p-5;
+  }
+
+  .stat-card .stat-value {
+    @apply text-3xl font-bold text-foreground tracking-tight;
+  }
+
+  .stat-card .stat-label {
+    @apply text-sm font-medium text-muted-foreground mt-1;
+  }
+
+  .stat-card .stat-icon {
+    @apply w-10 h-10 rounded-lg flex items-center justify-center;
+    @apply bg-primary/10 text-primary;
+  }
+
+  /* Page header */
+  .page-header {
+    @apply mb-8;
+  }
+
+  .page-header h1 {
+    @apply text-3xl font-bold text-foreground;
+  }
+
+  .page-header p {
+    @apply text-muted-foreground mt-1.5;
+  }
+
+  /* Sidebar navigation */
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium;
+    @apply text-muted-foreground transition-all duration-200;
+    @apply hover:text-foreground hover:bg-muted/60;
+  }
+
+  .sidebar-link.active {
+    @apply text-primary bg-primary/10;
+  }
+
+  .sidebar-link .icon {
+    @apply w-5 h-5 flex-shrink-0;
+  }
+
+  /* Modal/Dialog styling */
+  .dialog-craft {
+    @apply bg-card border border-border/60 shadow-2xl;
+    @apply rounded-2xl;
+  }
+}
+
+@layer utilities {
+  /* Text gradient */
+  .text-gradient-warm {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--primary)) 0%,
+      hsl(var(--copper)) 100%
+    );
+  }
+
+  /* Scrollbar styling */
+  .scrollbar-craft {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-craft::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-craft::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-craft::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+
+  .scrollbar-craft::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.3);
+  }
+
+  /* Focus ring */
+  .focus-craft {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 focus:ring-offset-background;
+  }
+
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.4s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+}
+
+/* Keyframe Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(217, 119, 6, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.15);
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .craft-card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+  }
+}
+
+/* ============================================
+   FONT SIZE SCALING
+   User preference for small/medium/large text
+   ============================================ */
+
+/* Small text scale - 87.5% (14px base) */
+html.text-scale-small {
+  font-size: 87.5%;
+}
+
+/* Medium text scale - 100% (16px base, default) */
+html.text-scale-medium {
+  font-size: 100%;
+}
+
+/* Large text scale - 112.5% (18px base) */
+html.text-scale-large {
+  font-size: 112.5%;
 }

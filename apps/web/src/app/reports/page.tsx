@@ -566,6 +566,30 @@ export default function ReportsPage() {
                             </tr>
                           ))}
                         </tbody>
+                        {cogsData.length > 0 && (
+                          <tfoot>
+                            <tr className="border-t-2 bg-gray-100 font-semibold">
+                              <td className="py-3 px-4">
+                                Total ({cogsData.length} batches)
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                ${cogsData.reduce((sum, b) => sum + b.fruitCost, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                ${cogsData.reduce((sum, b) => sum + b.packagingCost, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                ${cogsData.reduce((sum, b) => sum + b.laborCost, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                ${cogsData.reduce((sum, b) => sum + b.totalCost, 0).toFixed(2)}
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                ${(cogsData.reduce((sum, b) => sum + b.costPerBottle, 0) / cogsData.length).toFixed(2)} avg
+                              </td>
+                            </tr>
+                          </tfoot>
+                        )}
                       </table>
                     </div>
                   )}
@@ -693,6 +717,25 @@ export default function ReportsPage() {
                                   </tr>
                                 ))}
                               </tbody>
+                              <tfoot>
+                                <tr className="border-t-2 bg-gray-100 font-semibold">
+                                  <td className="py-2 px-4">
+                                    Total ({yieldAnalysis.byVariety.length} varieties)
+                                  </td>
+                                  <td className="py-2 px-4 text-right">
+                                    {yieldAnalysis.summary.totalFruitKg.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                                  </td>
+                                  <td className="py-2 px-4 text-right">
+                                    {yieldAnalysis.summary.totalJuiceL.toLocaleString("en-US", { maximumFractionDigits: 1 })}
+                                  </td>
+                                  <td className="py-2 px-4 text-right">
+                                    {yieldAnalysis.summary.avgExtractionRate.toFixed(1)}% avg
+                                  </td>
+                                  <td className="py-2 px-4 text-right">
+                                    {yieldAnalysis.byVariety.reduce((sum, v) => sum + v.loadCount, 0)}
+                                  </td>
+                                </tr>
+                              </tfoot>
                             </table>
                           </div>
                         </div>
@@ -1178,6 +1221,35 @@ export default function ReportsPage() {
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 bg-gray-100 font-semibold">
+                            <td className="py-3 px-4">
+                              Total ({vendorPerformanceData.summary.totalVendors} vendors)
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {vendorPerformanceData.summary.totalOrders}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              ${vendorPerformanceData.summary.totalValue.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              {vendorPerformanceData.summary.totalWeightKg.toLocaleString("en-US", {
+                                minimumFractionDigits: 1,
+                                maximumFractionDigits: 1,
+                              })}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              ${vendorPerformanceData.summary.avgOrderValue.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })} avg
+                            </td>
+                            <td className="py-3 px-4">—</td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   )}
@@ -1418,6 +1490,82 @@ export default function ReportsPage() {
                       </div>
                     )}
 
+                    {/* Vendor Summary Table */}
+                    {applePurchasesData &&
+                      !applePurchasesLoading &&
+                      applePurchasesData.vendors.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">Vendor Summary</CardTitle>
+                            <CardDescription>
+                              Total purchases by vendor
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b bg-gray-50">
+                                    <th className="py-2 px-4 text-left font-medium">Vendor</th>
+                                    <th className="py-2 px-4 text-right font-medium">Purchases</th>
+                                    <th className="py-2 px-4 text-right font-medium">
+                                      Weight ({applePurchasesWeightUnit})
+                                    </th>
+                                    <th className="py-2 px-4 text-right font-medium">Total Cost</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {applePurchasesData.vendors.map((vendor) => (
+                                    <tr key={vendor.vendorId} className="border-b hover:bg-gray-50">
+                                      <td className="py-2 px-4 font-medium">{vendor.vendorName}</td>
+                                      <td className="py-2 px-4 text-right">{vendor.items.length}</td>
+                                      <td className="py-2 px-4 text-right">
+                                        {convertWeight(
+                                          vendor.totalWeightKg,
+                                          applePurchasesWeightUnit,
+                                        ).toLocaleString("en-US", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}
+                                      </td>
+                                      <td className="py-2 px-4 text-right">
+                                        ${vendor.totalCost.toLocaleString("en-US", {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t-2 bg-gray-100 font-semibold">
+                                    <td className="py-2 px-4">Total</td>
+                                    <td className="py-2 px-4 text-right">
+                                      {applePurchasesData.vendors.reduce((sum, v) => sum + v.items.length, 0)}
+                                    </td>
+                                    <td className="py-2 px-4 text-right">
+                                      {convertWeight(
+                                        applePurchasesData.grandTotalWeightKg,
+                                        applePurchasesWeightUnit,
+                                      ).toLocaleString("en-US", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                    <td className="py-2 px-4 text-right">
+                                      ${applePurchasesData.grandTotalCost.toLocaleString("en-US", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
                     {/* Vendor Details */}
                     {applePurchasesData &&
                       !applePurchasesLoading &&
@@ -1515,6 +1663,29 @@ export default function ReportsPage() {
                                         </tr>
                                       ))}
                                     </tbody>
+                                    <tfoot>
+                                      <tr className="border-t-2 bg-gray-100 font-semibold">
+                                        <td className="py-2 px-4" colSpan={4}>
+                                          Total ({vendor.items.length} items)
+                                        </td>
+                                        <td className="py-2 px-4 text-right">
+                                          {convertWeight(
+                                            vendor.totalWeightKg,
+                                            applePurchasesWeightUnit,
+                                          ).toLocaleString("en-US", {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </td>
+                                        <td className="py-2 px-4 text-right">—</td>
+                                        <td className="py-2 px-4 text-right">
+                                          ${vendor.totalCost.toLocaleString("en-US", {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </td>
+                                      </tr>
+                                    </tfoot>
                                   </table>
                                 </div>
                               </CardContent>

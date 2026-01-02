@@ -27,9 +27,14 @@ export interface OrganizationSettings {
   // Organization Profile
   name: string;
   address: string | null;
+  email: string | null;
   phone: string | null;
   website: string | null;
   logo: string | null;
+
+  // Business Identification Numbers
+  ubiNumber: string | null; // Washington State Unified Business Identifier
+  einNumber: string | null; // Federal Employer Identification Number
   ttbPermitNumber: string | null;
   stateLicenseNumber: string | null;
 
@@ -98,9 +103,12 @@ interface SettingsContextValue {
 const defaultSettings: OrganizationSettings = {
   name: "My Cidery",
   address: null,
+  email: null,
   phone: null,
   website: null,
   logo: null,
+  ubiNumber: null,
+  einNumber: null,
   ttbPermitNumber: null,
   stateLicenseNumber: null,
   fruitSource: ["purchase_fruit"],
@@ -167,9 +175,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return {
       name: data.name,
       address: data.address,
+      email: (data as any).email ?? null,
       phone: data.phone,
       website: data.website,
       logo: data.logo,
+      ubiNumber: (data as any).ubiNumber ?? null,
+      einNumber: (data as any).einNumber ?? null,
       ttbPermitNumber: data.ttbPermitNumber,
       stateLicenseNumber: data.stateLicenseNumber,
       fruitSource: data.fruitSource,

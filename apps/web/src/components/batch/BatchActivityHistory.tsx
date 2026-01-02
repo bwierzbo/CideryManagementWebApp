@@ -49,6 +49,8 @@ import { MeasurementChart } from "@/components/batch/MeasurementChart";
 
 interface BatchActivityHistoryProps {
   batchId: string;
+  /** Optional: When provided, only show this bottle run's packaging events (hide sibling bottle runs and keg fills) */
+  bottleRunId?: string;
 }
 
 const activityIcons = {
@@ -79,7 +81,7 @@ const activityColors = {
   label: "bg-green-500/10 text-green-700 border-green-500/20",
 };
 
-export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
+export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHistoryProps) {
   const [isReversed, setIsReversed] = useState(false);
   const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
   const [editingMeasurement, setEditingMeasurement] = useState<any>(null);
@@ -144,8 +146,37 @@ export function BatchActivityHistory({ batchId }: BatchActivityHistoryProps) {
     );
   }
 
-  const activities = data?.activities || [];
+  const allActivities = data?.activities || [];
   const batch = data?.batch;
+
+  // Filter activities when viewing a specific bottle run:
+  // - Keep all non-packaging events (measurements, additives, transfers, carbonation, etc.)
+  // - For packaging events, only show those belonging to THIS bottle run
+  // - Exclude: keg fills (id starts with "keg-fill-"), other bottle runs, sibling pasteurize/label events
+  const activities = bottleRunId
+    ? allActivities.filter((activity: any) => {
+        const activityId = activity.id as string;
+
+        // Always exclude keg fills when viewing a bottle run
+        if (activityId.startsWith("keg-fill-")) {
+          return false;
+        }
+
+        // For bottle run events (bottling, pasteurize, label), only keep those for THIS bottle run
+        if (activityId.startsWith("bottling-")) {
+          return activityId === `bottling-${bottleRunId}`;
+        }
+        if (activityId.startsWith("pasteurize-")) {
+          return activityId === `pasteurize-${bottleRunId}`;
+        }
+        if (activityId.startsWith("label-")) {
+          return activityId === `label-${bottleRunId}`;
+        }
+
+        // Keep all other events (creation, measurements, additives, transfers, carbonation, etc.)
+        return true;
+      })
+    : allActivities;
 
   // Apply sorting based on toggle state
   const sortedActivities = isReversed ? [...activities].reverse() : activities;

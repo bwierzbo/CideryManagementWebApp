@@ -14,6 +14,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/hooks/use-toast";
+import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { DateWarning } from "@/components/ui/DateWarning";
 import { Loader2 } from "lucide-react";
 
 interface AddBatchMeasurementFormProps {
@@ -36,7 +38,11 @@ export function AddBatchMeasurementForm({
     .slice(0, 16); // Format: YYYY-MM-DDTHH:mm
 
   const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime);
+  const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [measurementMethod, setMeasurementMethod] = useState<MeasurementMethod>("hydrometer");
+
+  // Date validation
+  const { validateDate } = useBatchDateValidation(batchId);
   const [specificGravity, setSpecificGravity] = useState("");
   const [abv, setAbv] = useState("");
   const [ph, setPh] = useState("");
@@ -99,9 +105,14 @@ export function AddBatchMeasurementForm({
             id="measurementDateTime"
             type="datetime-local"
             value={measurementDateTime}
-            onChange={(e) => setMeasurementDateTime(e.target.value)}
+            onChange={(e) => {
+              setMeasurementDateTime(e.target.value);
+              const result = validateDate(e.target.value);
+              setDateWarning(result.warning);
+            }}
             className="w-full"
           />
+          <DateWarning warning={dateWarning} />
         </div>
 
         <div className="space-y-2">

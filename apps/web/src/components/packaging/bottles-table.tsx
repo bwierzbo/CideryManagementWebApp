@@ -36,6 +36,7 @@ import {
   Beer,
   Wine,
   Send,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -61,11 +62,13 @@ interface PackagingRun {
   volumeTakenL: number;
   lossL: number;
   lossPercentage: number;
+  unitsLabeled?: number;
   status: "completed" | "voided" | "filled" | "distributed" | "returned" | null;
   createdAt: string;
   // QA fields
   abvAtPackaging?: number | undefined;
   carbonationLevel?: "still" | "petillant" | "sparkling" | null;
+  carbonationCo2Volumes?: number | undefined;
   fillCheck?: "pass" | "fail" | "not_tested" | null;
   fillVarianceML?: number | undefined;
   testMethod?: string | null;
@@ -482,6 +485,7 @@ export function BottlesTable({
         "Status",
         "ABV at Packaging",
         "Carbonation Level",
+        "CO2 Volumes",
         "Fill Check",
         "Fill Variance (mL)",
         "Test Method",
@@ -504,6 +508,7 @@ export function BottlesTable({
         item.status || "pending",
         item.abvAtPackaging?.toFixed(2) || "",
         item.carbonationLevel || "",
+        item.carbonationCo2Volumes?.toFixed(2) || "",
         item.fillCheck || "",
         item.fillVarianceML?.toFixed(1) || "",
         item.testMethod || "",
@@ -683,8 +688,18 @@ export function BottlesTable({
                           {item.vessel.name ||
                             `Vessel ${item.vesselId.slice(0, 8)}`}
                         </div>
-                        {(item.pasteurizedAt || item.labeledAt) && (
+                        {(item.pasteurizedAt || item.labeledAt || item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
                           <div className="flex gap-1 mt-1.5 flex-wrap">
+                            {(item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
+                              <Badge className="text-xs bg-cyan-100 text-cyan-700 hover:bg-cyan-200 gap-1 px-1.5 py-0">
+                                <Sparkles className="h-3 w-3" />
+                                <span>
+                                  {item.carbonationCo2Volumes
+                                    ? `${item.carbonationCo2Volumes.toFixed(1)} vol`
+                                    : item.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
+                                </span>
+                              </Badge>
+                            )}
                             {item.pasteurizedAt && (
                               <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 gap-1 px-1.5 py-0">
                                 <Flame className="h-3 w-3" />
@@ -692,9 +707,18 @@ export function BottlesTable({
                               </Badge>
                             )}
                             {item.labeledAt && (
-                              <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 gap-1 px-1.5 py-0">
+                              <Badge className={cn(
+                                "text-xs gap-1 px-1.5 py-0",
+                                (item.unitsLabeled ?? 0) >= item.unitsProduced
+                                  ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                  : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                              )}>
                                 <Tag className="h-3 w-3" />
-                                <span>Labeled</span>
+                                <span>
+                                  {(item.unitsLabeled ?? 0) >= item.unitsProduced
+                                    ? "Labeled"
+                                    : `Labeled ${item.unitsLabeled ?? 0}/${item.unitsProduced}`}
+                                </span>
                               </Badge>
                             )}
                           </div>
@@ -810,13 +834,17 @@ export function BottlesTable({
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={(e) => handleLabel(item, e)}
-                                  disabled={!!item.labeledAt}
+                                  disabled={(item.unitsLabeled ?? 0) >= item.unitsProduced}
                                   className={cn(
-                                    item.labeledAt && "opacity-50 cursor-not-allowed"
+                                    (item.unitsLabeled ?? 0) >= item.unitsProduced && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Tag className="mr-2 h-4 w-4" />
-                                  {item.labeledAt ? "Already Labeled" : "Label"}
+                                  {(item.unitsLabeled ?? 0) >= item.unitsProduced
+                                    ? "Fully Labeled"
+                                    : (item.unitsLabeled ?? 0) > 0
+                                    ? `Label (${item.unitsLabeled}/${item.unitsProduced})`
+                                    : "Label"}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -1000,8 +1028,18 @@ export function BottlesTable({
                             {item.vessel.name ||
                               `Vessel ${item.vesselId.slice(0, 8)}`}
                           </div>
-                          {(item.pasteurizedAt || item.labeledAt) && (
+                          {(item.pasteurizedAt || item.labeledAt || item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
                             <div className="flex gap-1 mt-1">
+                              {(item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
+                                <Badge className="text-xs bg-cyan-100 text-cyan-700 hover:bg-cyan-200 gap-1 px-1.5 py-0">
+                                  <Sparkles className="h-3 w-3" />
+                                  <span>
+                                    {item.carbonationCo2Volumes
+                                      ? `${item.carbonationCo2Volumes.toFixed(1)} vol`
+                                      : item.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
+                                  </span>
+                                </Badge>
+                              )}
                               {item.pasteurizedAt && (
                                 <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 gap-1 px-1.5 py-0">
                                   <Flame className="h-3 w-3" />
@@ -1009,9 +1047,18 @@ export function BottlesTable({
                                 </Badge>
                               )}
                               {item.labeledAt && (
-                                <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 gap-1 px-1.5 py-0">
+                                <Badge className={cn(
+                                  "text-xs gap-1 px-1.5 py-0",
+                                  (item.unitsLabeled ?? 0) >= item.unitsProduced
+                                    ? "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                    : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                )}>
                                   <Tag className="h-3 w-3" />
-                                  <span>Labeled</span>
+                                  <span>
+                                    {(item.unitsLabeled ?? 0) >= item.unitsProduced
+                                      ? "Labeled"
+                                      : `Labeled ${item.unitsLabeled ?? 0}/${item.unitsProduced}`}
+                                  </span>
                                 </Badge>
                               )}
                             </div>
@@ -1127,13 +1174,17 @@ export function BottlesTable({
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={(e) => handleLabel(item, e)}
-                                  disabled={!!item.labeledAt}
+                                  disabled={(item.unitsLabeled ?? 0) >= item.unitsProduced}
                                   className={cn(
-                                    item.labeledAt && "opacity-50 cursor-not-allowed"
+                                    (item.unitsLabeled ?? 0) >= item.unitsProduced && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Tag className="mr-2 h-4 w-4" />
-                                  {item.labeledAt ? "Already Labeled" : "Label"}
+                                  {(item.unitsLabeled ?? 0) >= item.unitsProduced
+                                    ? "Fully Labeled"
+                                    : (item.unitsLabeled ?? 0) > 0
+                                    ? `Label (${item.unitsLabeled}/${item.unitsProduced})`
+                                    : "Label"}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
@@ -1210,6 +1261,7 @@ export function BottlesTable({
             `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
           }
           unitsProduced={selectedBottleRun.unitsProduced}
+          unitsLabeled={selectedBottleRun.unitsLabeled}
           onSuccess={handleLabelSuccess}
         />
       )}
@@ -1242,6 +1294,7 @@ export function BottlesTable({
             selectedBottleRun.batch.name ||
             `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
           }
+          unitsProduced={selectedBottleRun.unitsProduced}
           onSuccess={handleMarkCompleteSuccess}
         />
       )}

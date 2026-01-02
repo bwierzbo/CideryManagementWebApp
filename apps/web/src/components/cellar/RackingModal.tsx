@@ -24,6 +24,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { DateWarning } from "@/components/ui/DateWarning";
 import { FlaskConical, AlertTriangle, Loader2, Info, Search } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
@@ -62,6 +64,10 @@ export function RackingModal({
   const utils = trpc.useUtils();
   const [remainingVolume, setRemainingVolume] = useState(0);
   const [isFullRack, setIsFullRack] = useState(false);
+  const [dateWarning, setDateWarning] = useState<string | null>(null);
+
+  // Date validation
+  const { validateDate } = useBatchDateValidation(batchId);
   const [selectedVesselHasBatch, setSelectedVesselHasBatch] = useState(false);
   const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<string | null>(null);
   const [vesselSearchQuery, setVesselSearchQuery] = useState("");
@@ -249,10 +255,13 @@ export function RackingModal({
                 const dateValue = new Date(e.target.value);
                 if (!isNaN(dateValue.getTime())) {
                   setValue("rackedAt", dateValue);
+                  const result = validateDate(dateValue);
+                  setDateWarning(result.warning);
                 }
               }}
               className="w-full"
             />
+            <DateWarning warning={dateWarning} />
             {errors.rackedAt && (
               <p className="text-sm text-red-500">{errors.rackedAt.message}</p>
             )}

@@ -11,6 +11,7 @@ import {
   users,
   kegFills,
   kegs,
+  batchCarbonationOperations,
 } from "..";
 import {
   eq,
@@ -113,6 +114,9 @@ export async function getUnifiedPackagingRuns(
         abvAtPackaging: bottleRuns.abvAtPackaging,
         pasteurizedAt: bottleRuns.pasteurizedAt,
         labeledAt: bottleRuns.labeledAt,
+        unitsLabeled: bottleRuns.unitsLabeled,
+        carbonationLevel: bottleRuns.carbonationLevel,
+        carbonationCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
         batchName: batches.name,
         batchCustomName: batches.customName,
         vesselName: vessels.name,
@@ -124,6 +128,10 @@ export async function getUnifiedPackagingRuns(
       .leftJoin(
         sql`users AS qa_tech`,
         sql`qa_tech.id = ${bottleRuns.qaTechnicianId}`,
+      )
+      .leftJoin(
+        batchCarbonationOperations,
+        eq(bottleRuns.sourceCarbonationOperationId, batchCarbonationOperations.id),
       );
 
     // Add batch search filter
@@ -174,6 +182,11 @@ export async function getUnifiedPackagingRuns(
       qaTechnicianName: item.qaTechnicianName,
       pasteurizedAt: item.pasteurizedAt,
       labeledAt: item.labeledAt,
+      unitsLabeled: item.unitsLabeled,
+      carbonationLevel: item.carbonationLevel,
+      carbonationCo2Volumes: item.carbonationCo2Volumes
+        ? parseFloat(item.carbonationCo2Volumes.toString())
+        : null,
     }));
 
     // Get count (use same conditions as main query)
@@ -308,6 +321,8 @@ export async function getUnifiedPackagingRuns(
       remainingVolumeL: item.remainingVolume
         ? parseFloat(item.remainingVolume.toString())
         : null,
+      carbonationLevel: null,
+      carbonationCo2Volumes: null,
     }));
 
     // Get count (use same conditions as main query)
