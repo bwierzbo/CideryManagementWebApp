@@ -108,6 +108,7 @@ interface PressRunCompletionFormProps {
     id: string;
     vendorName: string;
     totalAppleWeightKg: number;
+    createdAt?: Date | string;
     loads: Array<{
       id: string;
       appleVarietyName: string;
@@ -137,10 +138,15 @@ export function PressRunCompletionForm({
   const availableVessels =
     vesselsData?.vessels?.filter((vessel) => vessel.isAvailable) || [];
 
+  // Use press run creation date as default, fall back to today if not available
+  const defaultCompletionDate = pressRun?.createdAt
+    ? formatDateForInput(new Date(pressRun.createdAt))
+    : formatDateForInput(new Date());
+
   const form = useForm<PressRunCompletionForm>({
     resolver: zodResolver(pressRunCompletionSchema),
     defaultValues: {
-      completionDate: formatDateForInput(new Date()), // Today's date in YYYY-MM-DD format
+      completionDate: defaultCompletionDate, // Press run creation date (when pressing actually happened)
       juiceVolumeUnit: "L",
       assignments: [{ toVesselId: "", volumeL: 0, transferLossL: 0, transferLossNotes: "" }],
       laborHours: 0,
@@ -277,7 +283,7 @@ export function PressRunCompletionForm({
                 Press Run Details
               </CardTitle>
               <CardDescription>
-                Set the completion date (name will be auto-generated)
+                Defaults to press run creation date. Adjust if pressing occurred on a different day.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

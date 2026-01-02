@@ -279,6 +279,7 @@ export function PressRunCompletion({
             totalAppleWeightKg: parseFloat(
               pressRunData.pressRun.totalAppleWeightKg || "0",
             ),
+            createdAt: pressRunData.pressRun.createdAt,
             loads:
               pressRunData.loads?.map((load) => ({
                 id: load.id,
