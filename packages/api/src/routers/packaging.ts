@@ -730,33 +730,93 @@ export const packagingRouter = router({
           .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
           .where(eq(batchCompositions.batchId, run.batchId));
 
-        // Get batch measurements (last 20 for better ABV estimation from SG range)
-        const measurements = await db
-          .select({
-            measurementDate: batchMeasurements.measurementDate,
-            specificGravity: batchMeasurements.specificGravity,
-            abv: batchMeasurements.abv,
-            ph: batchMeasurements.ph,
-            totalAcidity: batchMeasurements.totalAcidity,
-            temperature: batchMeasurements.temperature,
-          })
-          .from(batchMeasurements)
-          .where(eq(batchMeasurements.batchId, run.batchId))
-          .orderBy(desc(batchMeasurements.measurementDate))
-          .limit(20);
+        // Get batch measurements from this batch AND all parent batches in the chain
+        // Uses recursive CTE to traverse batch_transfers to find parent batches
+        const measurements = await db.execute(sql`
+          WITH RECURSIVE batch_chain AS (
+            -- Start with the current batch
+            SELECT id, name FROM batches WHERE id = ${run.batchId}
+            UNION ALL
+            -- Recursively find parent batches via transfers
+            SELECT b.id, b.name
+            FROM batches b
+            JOIN batch_transfers bt ON bt.source_batch_id = b.id
+            JOIN batch_chain bc ON bt.destination_batch_id = bc.id
+            WHERE b.deleted_at IS NULL
+          )
+          SELECT
+            bm.measurement_date,
+            bm.specific_gravity,
+            bm.abv,
+            bm.ph,
+            bm.total_acidity,
+            bm.temperature,
+            bm.is_estimated,
+            bm.estimate_source,
+            bm.measurement_method,
+            bm.notes as measurement_notes,
+            bc.name as source_batch_name
+          FROM batch_chain bc
+          JOIN batch_measurements bm ON bm.batch_id = bc.id
+          WHERE bm.deleted_at IS NULL
+          ORDER BY bm.measurement_date DESC
+          LIMIT 20
+        `) as { rows: Array<{
+          measurement_date: Date;
+          specific_gravity: string | null;
+          abv: string | null;
+          ph: string | null;
+          total_acidity: string | null;
+          temperature: string | null;
+          is_estimated: boolean | null;
+          estimate_source: string | null;
+          measurement_method: string | null;
+          measurement_notes: string | null;
+          source_batch_name: string | null;
+        }> };
 
-        // Get batch additives (last 5)
-        const additives = await db
-          .select({
-            additiveName: batchAdditives.additiveName,
-            amount: batchAdditives.amount,
-            unit: batchAdditives.unit,
-            addedAt: batchAdditives.addedAt,
-          })
-          .from(batchAdditives)
-          .where(eq(batchAdditives.batchId, run.batchId))
-          .orderBy(desc(batchAdditives.addedAt))
-          .limit(5);
+        // Get batch additives from this batch AND all parent batches
+        const additivesResult = await db.execute(sql`
+          WITH RECURSIVE batch_chain AS (
+            SELECT id, name FROM batches WHERE id = ${run.batchId}
+            UNION ALL
+            SELECT b.id, b.name
+            FROM batches b
+            JOIN batch_transfers bt ON bt.source_batch_id = b.id
+            JOIN batch_chain bc ON bt.destination_batch_id = bc.id
+            WHERE b.deleted_at IS NULL
+          )
+          SELECT
+            ba.additive_name,
+            ba.amount,
+            ba.unit,
+            ba.added_at,
+            ba.notes as additive_notes,
+            ba.total_cost,
+            bc.name as source_batch_name
+          FROM batch_chain bc
+          JOIN batch_additives ba ON ba.batch_id = bc.id
+          WHERE ba.deleted_at IS NULL
+          ORDER BY ba.added_at DESC
+          LIMIT 20
+        `) as { rows: Array<{
+          additive_name: string;
+          amount: string | null;
+          unit: string | null;
+          added_at: Date;
+          additive_notes: string | null;
+          total_cost: string | null;
+          source_batch_name: string | null;
+        }> };
+        const additives = additivesResult.rows.map(a => ({
+          additiveName: a.additive_name,
+          amount: a.amount,
+          unit: a.unit,
+          addedAt: a.added_at,
+          notes: a.additive_notes,
+          totalCost: a.total_cost ? parseFloat(a.total_cost) : null,
+          sourceBatchName: a.source_batch_name,
+        }));
 
         // Get additive varieties for label impact and allergen info
         const additiveNames = additives.map(a => a.additiveName);
@@ -814,6 +874,56 @@ export const packagingRouter = router({
           .orderBy(desc(batchTransfers.transferredAt))
           .limit(5);
 
+        // Compile all notes from the batch chain (measurements, additives, transfers, carbonation, batch notes)
+        const compiledNotesResult = await db.execute(sql`
+          WITH RECURSIVE batch_chain AS (
+            SELECT id, name, notes as batch_notes, start_date FROM batches WHERE id = ${run.batchId}
+            UNION ALL
+            SELECT b.id, b.name, b.notes, b.start_date
+            FROM batches b
+            JOIN batch_transfers bt ON bt.source_batch_id = b.id
+            JOIN batch_chain bc ON bt.destination_batch_id = bc.id
+            WHERE b.deleted_at IS NULL
+          )
+          SELECT * FROM (
+            -- Batch notes
+            SELECT 'batch' as note_type, bc.name as source, bc.batch_notes as note, bc.start_date as note_date
+            FROM batch_chain bc
+            WHERE bc.batch_notes IS NOT NULL AND bc.batch_notes != ''
+            UNION ALL
+            -- Measurement notes
+            SELECT 'measurement' as note_type, bc.name as source, bm.notes as note, bm.measurement_date as note_date
+            FROM batch_chain bc
+            JOIN batch_measurements bm ON bm.batch_id = bc.id
+            WHERE bm.notes IS NOT NULL AND bm.notes != '' AND bm.deleted_at IS NULL
+            UNION ALL
+            -- Additive notes
+            SELECT 'additive' as note_type, bc.name as source, ba.notes as note, ba.added_at as note_date
+            FROM batch_chain bc
+            JOIN batch_additives ba ON ba.batch_id = bc.id
+            WHERE ba.notes IS NOT NULL AND ba.notes != '' AND ba.deleted_at IS NULL
+            UNION ALL
+            -- Transfer notes
+            SELECT 'transfer' as note_type, bc.name as source, bt.notes as note, bt.transferred_at as note_date
+            FROM batch_chain bc
+            JOIN batch_transfers bt ON bt.source_batch_id = bc.id
+            WHERE bt.notes IS NOT NULL AND bt.notes != '' AND bt.deleted_at IS NULL
+            UNION ALL
+            -- Carbonation notes
+            SELECT 'carbonation' as note_type, bc.name as source, bco.notes as note, bco.completed_at as note_date
+            FROM batch_chain bc
+            JOIN batch_carbonation_operations bco ON bco.batch_id = bc.id
+            WHERE bco.notes IS NOT NULL AND bco.notes != '' AND bco.deleted_at IS NULL
+          ) all_notes
+          ORDER BY note_date ASC
+        `) as { rows: Array<{
+          note_type: string;
+          source: string;
+          note: string;
+          note_date: Date;
+        }> };
+        const compiledNotes = compiledNotesResult.rows;
+
         return {
           ...run,
           batch: {
@@ -852,19 +962,27 @@ export const packagingRouter = router({
               });
             })(),
             history: {
-              measurements: measurements.map((m) => ({
-                measurementDate: m.measurementDate,
-                specificGravity: m.specificGravity ? parseFloat(m.specificGravity.toString()) : null,
+              measurements: measurements.rows.map((m) => ({
+                measurementDate: m.measurement_date,
+                specificGravity: m.specific_gravity ? parseFloat(m.specific_gravity.toString()) : null,
                 abv: m.abv ? parseFloat(m.abv.toString()) : null,
                 ph: m.ph ? parseFloat(m.ph.toString()) : null,
-                totalAcidity: m.totalAcidity ? parseFloat(m.totalAcidity.toString()) : null,
+                totalAcidity: m.total_acidity ? parseFloat(m.total_acidity.toString()) : null,
                 temperature: m.temperature ? parseFloat(m.temperature.toString()) : null,
+                isEstimated: m.is_estimated ?? false,
+                estimateSource: m.estimate_source,
+                measurementMethod: m.measurement_method,
+                notes: m.measurement_notes,
+                sourceBatchName: m.source_batch_name,
               })),
               additives: enrichedAdditives.map((a) => ({
                 additiveName: a.additiveName,
                 amount: a.amount ? parseFloat(a.amount.toString()) : 0,
                 unit: a.unit,
                 addedAt: a.addedAt,
+                notes: a.notes,
+                totalCost: a.totalCost,
+                sourceBatchName: a.sourceBatchName,
                 labelImpact: a.labelImpact,
                 labelImpactNotes: a.labelImpactNotes,
                 allergensVegan: a.allergensVegan,
@@ -879,6 +997,12 @@ export const packagingRouter = router({
                 transferredAt: t.transferredAt,
               })),
             },
+            compiledNotes: compiledNotes.map((n) => ({
+              type: n.note_type,
+              source: n.source,
+              note: n.note,
+              date: n.note_date,
+            })),
           },
           vessel: {
             id: run.vesselId,

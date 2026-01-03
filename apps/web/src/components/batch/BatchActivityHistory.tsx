@@ -756,10 +756,26 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                   </Badge>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Current Volume:</span>
-                  <span className="ml-2 font-medium">
-                    {batch.currentVolume}L
-                  </span>
+                  {batch.initialVolume && batch.currentVolume !== undefined && batch.currentVolume !== null ? (
+                    <>
+                      <span className="text-muted-foreground">Volume:</span>
+                      <span className="ml-2 font-medium">
+                        {parseFloat(String(batch.initialVolume)).toFixed(1)}L → {parseFloat(String(batch.currentVolume)).toFixed(1)}L
+                      </span>
+                      {parseFloat(String(batch.initialVolume)) > 0 && (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({((parseFloat(String(batch.currentVolume)) / parseFloat(String(batch.initialVolume))) * 100).toFixed(0)}% remaining)
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">Current Volume:</span>
+                      <span className="ml-2 font-medium">
+                        {batch.currentVolume !== null ? `${parseFloat(String(batch.currentVolume)).toFixed(1)}L` : 'N/A'}
+                      </span>
+                    </>
+                  )}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Total Events:</span>

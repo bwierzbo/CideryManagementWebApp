@@ -60,12 +60,20 @@ export interface PackagingRunPDFData {
         specificGravity: number | string | null;
         temperature: number | string | null;
         totalAcidity: number | string | null;
+        isEstimated?: boolean;
+        estimateSource?: string | null;
+        measurementMethod?: string | null;
+        notes?: string | null;
+        sourceBatchName?: string | null;
       }>;
       additives?: Array<{
         additiveName: string;
         amount: number;
-        unit: string;
+        unit: string | null;
         addedAt: Date | string;
+        notes?: string | null;
+        totalCost?: number | null;
+        sourceBatchName?: string | null;
         labelImpact?: boolean;
         labelImpactNotes?: string | null;
         allergensVegan?: boolean;

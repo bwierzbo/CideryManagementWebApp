@@ -28,6 +28,11 @@ interface Measurement {
   totalAcidity: number | null;
   temperature: number | null;
   measurementDate: Date | string;
+  isEstimated?: boolean;
+  estimateSource?: string | null;
+  measurementMethod?: string | null;
+  notes?: string | null;
+  sourceBatchName?: string | null;
 }
 
 interface Additive {
@@ -168,7 +173,19 @@ export function LabelComplianceCard({
       <CardContent className="space-y-4">
         {/* Latest Measurements */}
         <div>
-          <p className="text-sm font-medium mb-2">Latest Measurements</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-medium">Latest Measurements</p>
+            {latestMeasurement?.measurementDate && (
+              <p className="text-xs text-gray-500">
+                {new Date(latestMeasurement.measurementDate).toLocaleDateString()}
+                {latestMeasurement.measurementMethod && (
+                  <span className="ml-1">
+                    ({latestMeasurement.measurementMethod})
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3 bg-white rounded-lg border">
             <div>
               <p className="text-xs text-gray-500">ABV</p>
@@ -176,7 +193,12 @@ export function LabelComplianceCard({
                 {latestAbv !== null ? `${latestAbv.toFixed(2)}%` : "Not measured"}
               </p>
               {abvIsEstimated && (
-                <p className="text-xs text-gray-500 mt-0.5">Estimated from SG</p>
+                <p className="text-xs text-amber-600 mt-0.5">Est. from SG</p>
+              )}
+              {latestMeasurement?.isEstimated && !abvIsEstimated && (
+                <p className="text-xs text-amber-600 mt-0.5">
+                  Est. {latestMeasurement.estimateSource && `(${latestMeasurement.estimateSource})`}
+                </p>
               )}
             </div>
             <div>
@@ -184,12 +206,18 @@ export function LabelComplianceCard({
               <p className="font-semibold text-lg">
                 {latestPH !== null ? latestPH.toFixed(2) : "Not measured"}
               </p>
+              {measurementWithPH?.isEstimated && (
+                <p className="text-xs text-amber-600 mt-0.5">Est.</p>
+              )}
             </div>
             <div>
               <p className="text-xs text-gray-500">SG</p>
               <p className="font-semibold text-lg">
                 {latestSG !== null ? latestSG.toFixed(3) : "Not measured"}
               </p>
+              {latestMeasurement?.isEstimated && (
+                <p className="text-xs text-amber-600 mt-0.5">Est.</p>
+              )}
             </div>
             <div
               onClick={carbonationValue !== null ? toggleCarbonationUnit : undefined}
@@ -208,6 +236,11 @@ export function LabelComplianceCard({
               </p>
             </div>
           </div>
+          {latestMeasurement?.sourceBatchName && latestMeasurement.sourceBatchName !== measurements[0]?.sourceBatchName && (
+            <p className="text-xs text-gray-500 mt-1">
+              From: {latestMeasurement.sourceBatchName}
+            </p>
+          )}
         </div>
 
         {showLabelCharacteristics && (

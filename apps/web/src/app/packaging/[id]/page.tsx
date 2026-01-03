@@ -645,19 +645,47 @@ export default function PackagingDetailPage() {
               </CardContent>
             </Card>
 
-            {/* Production Notes */}
-            {runData.productionNotes && (
+            {/* Production Notes - includes bottle run notes and compiled batch history notes */}
+            {(runData.productionNotes || (runData.batch.compiledNotes && runData.batch.compiledNotes.length > 0)) && (
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-base md:text-lg">
                     <FileText className="w-4 h-4 md:w-5 md:h-5" />
                     Production Notes
                   </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    Notes from packaging and batch history
+                  </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm md:text-base whitespace-pre-wrap">
-                    {runData.productionNotes}
-                  </p>
+                <CardContent className="space-y-4">
+                  {/* Bottle run production notes */}
+                  {runData.productionNotes && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">Packaging Notes</p>
+                      <p className="text-sm md:text-base whitespace-pre-wrap">
+                        {runData.productionNotes}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Compiled batch history notes */}
+                  {runData.batch.compiledNotes && runData.batch.compiledNotes.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 mb-2">Batch History Notes</p>
+                      <div className="space-y-2">
+                        {runData.batch.compiledNotes.map((note: any, idx: number) => (
+                          <div key={idx} className="text-sm border-l-2 border-gray-200 pl-3 py-1">
+                            <div className="flex items-center gap-2 text-xs text-gray-500 mb-0.5">
+                              <span className="capitalize font-medium">{note.type}</span>
+                              <span>•</span>
+                              <span>{new Date(note.date).toLocaleDateString()}</span>
+                            </div>
+                            <p className="text-gray-700 whitespace-pre-wrap">{note.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
