@@ -40,6 +40,8 @@ const labelSchema = z.object({
     quantity: z.number().int().positive("Quantity must be positive"),
   })).min(1, "At least one label is required"),
   labeledAt: z.string().min(1, "Please select a date"),
+  // Labor tracking (optional)
+  laborHours: z.number().min(0).optional(),
 });
 
 type LabelForm = z.infer<typeof labelSchema>;
@@ -90,6 +92,7 @@ export function LabelModal({
       unitsToLabel: remainingUnits,
       labels: [{ packagingItemId: "", quantity: remainingUnits }],
       labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      laborHours: undefined,
     },
   });
 
@@ -115,6 +118,7 @@ export function LabelModal({
         unitsToLabel: remainingUnits,
         labels: [{ packagingItemId: "", quantity: remainingUnits }],
         labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+        laborHours: undefined,
       });
       setAppliedLabels([]);
       setComboboxOpen({});
@@ -132,13 +136,16 @@ export function LabelModal({
 
     try {
       // Apply each label sequentially
-      for (const label of data.labels) {
+      for (let i = 0; i < data.labels.length; i++) {
+        const label = data.labels[i];
         const result = await labelMutation.mutateAsync({
           bottleRunId,
           packagingItemId: label.packagingItemId,
           quantity: label.quantity,
           unitsToLabel: data.unitsToLabel,
           labeledAt: labeledAt,
+          // Only pass labor hours on the first label application
+          ...(i === 0 && data.laborHours !== undefined && { laborHours: data.laborHours }),
         });
 
         appliedLabelsList.push({
@@ -433,6 +440,22 @@ export function LabelModal({
             {errors.labeledAt && (
               <p className="text-sm text-red-500">{errors.labeledAt.message}</p>
             )}
+          </div>
+
+          {/* Labor Hours */}
+          <div className="space-y-2">
+            <Label htmlFor="laborHours">
+              Labor Hours <span className="text-gray-400">(optional)</span>
+            </Label>
+            <Input
+              id="laborHours"
+              type="number"
+              step="0.25"
+              min="0"
+              placeholder="e.g., 1.5"
+              {...register("laborHours", { valueAsNumber: true })}
+            />
+            <p className="text-xs text-gray-500">Hours spent on labeling for COGS</p>
           </div>
 
           {/* Actions */}

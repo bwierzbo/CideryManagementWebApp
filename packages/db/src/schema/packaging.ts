@@ -182,9 +182,17 @@ export const bottleRuns = pgTable(
 
     // Labor and overhead tracking for COGS
     /**
-     * Actual labor hours spent on this packaging run
+     * Labor hours spent on bottling/filling
      */
     laborHours: decimal("labor_hours", { precision: 6, scale: 2 }),
+    /**
+     * Labor hours spent on pasteurization
+     */
+    pasteurizationLaborHours: decimal("pasteurization_labor_hours", { precision: 6, scale: 2 }),
+    /**
+     * Labor hours spent on labeling
+     */
+    labelingLaborHours: decimal("labeling_labor_hours", { precision: 6, scale: 2 }),
     /**
      * Labor cost per hour at time of packaging
      */

@@ -42,6 +42,9 @@ const bottleFormSchema = z.object({
   packagedAt: z.string().min(1, "Date/time is required"),
   notes: z.string().optional(),
   materials: z.array(packagingMaterialSchema).min(1, "Please select at least one packaging material"),
+  // Labor tracking (optional)
+  laborHours: z.number().min(0).optional(),
+  laborCostPerHour: z.number().min(0).optional(),
 });
 
 type BottleFormData = z.infer<typeof bottleFormSchema>;
@@ -115,6 +118,8 @@ export function BottleModal({
       packagedAt: new Date().toISOString().slice(0, 16), // Current date/time in local format
       notes: "",
       materials: [],
+      laborHours: undefined,
+      laborCostPerHour: undefined,
     },
   });
 
@@ -300,6 +305,9 @@ export function BottleModal({
         notes: data.notes,
         materials: data.materials,
         ...(kegFillId && { kegFillId }), // Include kegFillId if bottling from keg
+        // Labor tracking
+        laborHours: data.laborHours,
+        laborCostPerHour: data.laborCostPerHour,
       });
 
       // Invalidate relevant queries to refresh data
@@ -643,6 +651,46 @@ export function BottleModal({
                 {errors.packagedAt.message}
               </p>
             )}
+          </div>
+
+          {/* Labor Tracking (optional) */}
+          <div className="border rounded-lg p-4 bg-gray-50">
+            <Label className="text-sm md:text-base font-medium mb-3 block">
+              Labor Tracking (optional)
+            </Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="laborHours" className="text-xs text-gray-600">
+                  Labor Hours
+                </Label>
+                <Input
+                  id="laborHours"
+                  type="number"
+                  step="0.25"
+                  min="0"
+                  placeholder="e.g., 2.5"
+                  className="h-10 text-base"
+                  {...register("laborHours", { valueAsNumber: true })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="laborCostPerHour" className="text-xs text-gray-600">
+                  Cost per Hour ($)
+                </Label>
+                <Input
+                  id="laborCostPerHour"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="e.g., 25.00"
+                  className="h-10 text-base"
+                  {...register("laborCostPerHour", { valueAsNumber: true })}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Enter labor hours and hourly rate for COGS calculation
+            </p>
           </div>
 
           {/* Notes */}

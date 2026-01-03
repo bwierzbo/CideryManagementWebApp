@@ -49,6 +49,8 @@ const pasteurizeSchema = z.object({
   cooldownMethod: z.enum(["air", "water_bath", "ice_bath"]),
   bottlesLost: z.number().int().min(0, "Must be 0 or more").optional(),
   notes: z.string().optional(),
+  // Labor tracking (optional)
+  laborHours: z.number().min(0).optional(),
 });
 
 // Starting temperature presets
@@ -123,6 +125,7 @@ export function PasteurizeModal({
       timeMinutes: 0, // Default to 0, user enters actual hold time
       cooldownMethod: "air",
       bottlesLost: 0,
+      laborHours: undefined,
     },
   });
 
@@ -378,6 +381,7 @@ export function PasteurizeModal({
       pasteurizationUnits: totalPU,
       bottlesLost: data.bottlesLost,
       notes: enhancedNotes,
+      laborHours: data.laborHours,
     });
   };
 
@@ -844,6 +848,22 @@ export function PasteurizeModal({
                 Target PU: {productClassification?.targetPU_min || 30} •
                 Cooldown adds ~{enhancedResult?.phases.cooldown.pu || 20} PU
               </p>
+            </div>
+
+            {/* Labor Hours */}
+            <div className="space-y-2">
+              <Label htmlFor="laborHours">
+                Labor Hours <span className="text-gray-400">(optional)</span>
+              </Label>
+              <Input
+                id="laborHours"
+                type="number"
+                step="0.25"
+                min="0"
+                placeholder="e.g., 1.5"
+                {...register("laborHours", { valueAsNumber: true })}
+              />
+              <p className="text-xs text-gray-500">Hours spent on pasteurization for COGS</p>
             </div>
 
             {/* Notes */}

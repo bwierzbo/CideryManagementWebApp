@@ -68,6 +68,9 @@ const createFromCellarSchema = z.object({
   materials: z.array(packagingMaterialSchema).optional(),
   // Optional keg fill ID when bottling from a filled keg
   kegFillId: z.string().uuid().optional(),
+  // Labor tracking for COGS
+  laborHours: z.number().min(0).optional(),
+  laborCostPerHour: z.number().min(0).optional(),
 });
 
 const listPackagingRunsSchema = z.object({
@@ -382,6 +385,9 @@ export const packagingRouter = router({
             sourceCarbonationOperationId: latestCarbonation?.id ?? null,
             // Link to keg fill if bottling from keg (for activity history tracking)
             kegFillId: input.kegFillId ?? null,
+            // Labor tracking for COGS
+            laborHours: input.laborHours?.toString() ?? null,
+            laborCostPerHour: input.laborCostPerHour?.toString() ?? null,
             // Don't set status - let it default to null (active)
             createdBy: ctx.session.user.id,
           };
@@ -1512,6 +1518,8 @@ export const packagingRouter = router({
         pasteurizationUnits: z.number().positive(),
         bottlesLost: z.number().int().min(0).optional(),
         notes: z.string().optional(),
+        // Labor tracking
+        laborHours: z.number().min(0).optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -1551,6 +1559,7 @@ export const packagingRouter = router({
             pasteurizationUnits: input.pasteurizationUnits.toString(),
             pasteurizedAt: pasteurizedAt,
             pasteurizationLoss: input.bottlesLost || null,
+            pasteurizationLaborHours: input.laborHours?.toString() ?? null,
             productionNotes: input.notes
               ? `${input.notes}\n\nPasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`
               : `Pasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`,
@@ -1579,6 +1588,8 @@ export const packagingRouter = router({
         runId: z.string().uuid(),
         labeledAt: z.date().optional(),
         notes: z.string().optional(),
+        // Labor tracking
+        laborHours: z.number().min(0).optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -1589,6 +1600,7 @@ export const packagingRouter = router({
           .update(bottleRuns)
           .set({
             labeledAt: labeledAt,
+            labelingLaborHours: input.laborHours?.toString() ?? null,
             productionNotes: input.notes
               ? `${input.notes}\n\nLabeled at ${labeledAt.toISOString()}`
               : `Labeled at ${labeledAt.toISOString()}`,
@@ -1626,6 +1638,8 @@ export const packagingRouter = router({
         quantity: z.number().int().positive(), // Number of labels to use from inventory
         unitsToLabel: z.number().int().positive().optional(), // Number of bottles being labeled (for partial labeling)
         labeledAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        // Labor tracking (optional) - only set on first label application
+        laborHours: z.number().min(0).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1703,6 +1717,11 @@ export const packagingRouter = router({
           // Set labeledAt timestamp only if not already set (first label application)
           if (!bottleRun.labeledAt) {
             updateData.labeledAt = input.labeledAt || new Date();
+          }
+
+          // Set labor hours if provided (for COGS calculation)
+          if (input.laborHours !== undefined && input.laborHours !== null) {
+            updateData.labelingLaborHours = input.laborHours.toString();
           }
 
           await tx
@@ -1981,8 +2000,12 @@ export const packagingRouter = router({
         }, 0);
 
         // Labor and overhead from bottle run
-        const laborCost = (parseFloat(bottleRun.laborHours?.toString() || "0") *
-                          parseFloat(bottleRun.laborCostPerHour?.toString() || "0"));
+        const laborCostPerHour = parseFloat(bottleRun.laborCostPerHour?.toString() || "0");
+        const bottlingLaborHours = parseFloat(bottleRun.laborHours?.toString() || "0");
+        const pasteurizationLaborHours = parseFloat(bottleRun.pasteurizationLaborHours?.toString() || "0");
+        const labelingLaborHours = parseFloat(bottleRun.labelingLaborHours?.toString() || "0");
+        const totalLaborHours = bottlingLaborHours + pasteurizationLaborHours + labelingLaborHours;
+        const laborCost = totalLaborHours * laborCostPerHour;
         const overheadCost = parseFloat(bottleRun.overheadCostAllocated?.toString() || "0");
 
         const totalCogs = appleCosts + additiveCosts + packagingCosts + laborCost + overheadCost;
