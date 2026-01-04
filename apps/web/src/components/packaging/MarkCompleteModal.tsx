@@ -18,7 +18,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
-import { CheckCircle, Loader2, AlertTriangle, Minus, Tag, Flame, Beaker, Wine, Package, FileText, Sparkles } from "lucide-react";
+import { CheckCircle, Loader2, AlertTriangle, Minus, Tag, Flame, Beaker, Wine, Package, FileText, Sparkles, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const markCompleteSchema = z.object({
@@ -212,11 +212,57 @@ export function MarkCompleteModal({
       ? bottleRunData.carbonationLevel.charAt(0).toUpperCase() + bottleRunData.carbonationLevel.slice(1)
       : null;
 
+  // Date sequence validation
+  const dateSequenceIssues: string[] = [];
+  const packagedAt = bottleRunData?.packagedAt ? new Date(bottleRunData.packagedAt) : null;
+  const pasteurizedAt = bottleRunData?.pasteurizedAt ? new Date(bottleRunData.pasteurizedAt) : null;
+  const labeledAt = bottleRunData?.labeledAt ? new Date(bottleRunData.labeledAt) : null;
+  const completionDate = completedAt ? new Date(completedAt) : null;
+  const batchStartDate = bottleRunData?.batch?.startDate
+    ? new Date(bottleRunData.batch.startDate)
+    : null;
+
+  // Helper to format date for display
+  const formatDateShort = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  // Check: Bottling should be after batch start
+  if (batchStartDate && packagedAt && packagedAt < batchStartDate) {
+    dateSequenceIssues.push(`Bottling (${formatDateShort(packagedAt)}) is before batch start (${formatDateShort(batchStartDate)})`);
+  }
+
+  // Check: Pasteurization should be after bottling
+  if (packagedAt && pasteurizedAt && pasteurizedAt < packagedAt) {
+    dateSequenceIssues.push(`Pasteurization (${formatDateShort(pasteurizedAt)}) is before bottling (${formatDateShort(packagedAt)})`);
+  }
+
+  // Check: Labeling should be after bottling
+  if (packagedAt && labeledAt && labeledAt < packagedAt) {
+    dateSequenceIssues.push(`Labeling (${formatDateShort(labeledAt)}) is before bottling (${formatDateShort(packagedAt)})`);
+  }
+
+  // Check: Completion should be after bottling
+  if (packagedAt && completionDate && completionDate < packagedAt) {
+    dateSequenceIssues.push(`Completion (${formatDateShort(completionDate)}) is before bottling (${formatDateShort(packagedAt)})`);
+  }
+
+  // Check: Completion should be after pasteurization (if done)
+  if (pasteurizedAt && completionDate && completionDate < pasteurizedAt) {
+    dateSequenceIssues.push(`Completion (${formatDateShort(completionDate)}) is before pasteurization (${formatDateShort(pasteurizedAt)})`);
+  }
+
+  // Check: Completion should be after labeling (if done)
+  if (labeledAt && completionDate && completionDate < labeledAt) {
+    dateSequenceIssues.push(`Completion (${formatDateShort(completionDate)}) is before labeling (${formatDateShort(labeledAt)})`);
+  }
+
+  const hasDateSequenceIssues = dateSequenceIssues.length > 0;
+
   // Count warnings (items that should be completed before marking complete)
   const warningCount = [
     !isFullyLabeled,
     !hasQACheck,
     !hasABV,
+    hasDateSequenceIssues,
   ].filter(Boolean).length;
 
   return (
@@ -315,6 +361,17 @@ export function MarkCompleteModal({
                 label="Production Notes"
                 status={hasNotes ? "complete" : "optional"}
                 detail={hasNotes ? "Notes recorded" : "No notes (optional)"}
+              />
+
+              {/* Date Sequence - Important */}
+              <ChecklistItem
+                icon={Calendar}
+                label="Date Sequence"
+                status={hasDateSequenceIssues ? "warning" : "complete"}
+                detail={hasDateSequenceIssues
+                  ? dateSequenceIssues[0] + (dateSequenceIssues.length > 1 ? ` (+${dateSequenceIssues.length - 1} more)` : "")
+                  : "All dates in correct order"
+                }
               />
             </div>
           )}
