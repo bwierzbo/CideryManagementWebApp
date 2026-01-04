@@ -350,11 +350,26 @@ export const batchRouter = router({
   /**
    * Get date validation context for a batch
    * Returns the earliest valid date for activities on this batch
+   * Optionally includes packaging context if bottleRunId is provided
    */
   getDateValidationContext: createRbacProcedure("read", "batch")
-    .input(z.string().uuid("Invalid batch ID"))
-    .query(async ({ input: batchId }) => {
+    .input(
+      z.union([
+        // Support simple batchId string for backward compatibility
+        z.string().uuid("Invalid batch ID"),
+        // Support object with optional bottleRunId for packaging phase validation
+        z.object({
+          batchId: z.string().uuid("Invalid batch ID"),
+          bottleRunId: z.string().uuid("Invalid bottle run ID").optional(),
+        }),
+      ])
+    )
+    .query(async ({ input }) => {
       try {
+        // Normalize input to always have batchId
+        const batchId = typeof input === "string" ? input : input.batchId;
+        const bottleRunId = typeof input === "string" ? undefined : input.bottleRunId;
+
         // Import validation utilities
         const { extractDateFromBatchName, calculateEarliestValidDate } = await import("lib");
 
@@ -404,7 +419,8 @@ export const batchRouter = router({
           batchNameDate
         );
 
-        return {
+        // Base response
+        const baseResponse = {
           batchId: batch.id,
           batchName: batch.name,
           batchStartDate,
@@ -413,6 +429,32 @@ export const batchRouter = router({
           batchNameDate,
           earliestValidDate,
         };
+
+        // If bottleRunId provided, fetch packaging context for phase validation
+        if (bottleRunId) {
+          const [bottleRun] = await db
+            .select({
+              packagedAt: bottleRuns.packagedAt,
+              pasteurizedAt: bottleRuns.pasteurizedAt,
+              labeledAt: bottleRuns.labeledAt,
+            })
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, bottleRunId))
+            .limit(1);
+
+          return {
+            ...baseResponse,
+            packagingContext: bottleRun
+              ? {
+                  packagedAt: bottleRun.packagedAt,
+                  pasteurizedAt: bottleRun.pasteurizedAt,
+                  labeledAt: bottleRun.labeledAt,
+                }
+              : null,
+          };
+        }
+
+        return baseResponse;
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error getting date validation context:", error);

@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/command";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { DateWarning } from "@/components/ui/DateWarning";
 import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -68,10 +70,18 @@ export function LabelModal({
   const utils = trpc.useUtils();
   const [comboboxOpen, setComboboxOpen] = useState<{[key: number]: boolean}>({});
   const [appliedLabels, setAppliedLabels] = useState<Array<{name: string, quantity: number}>>([]);
+  const [dateWarning, setDateWarning] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
 
   // Fetch fresh bottle run data when modal opens to get current unitsLabeled
   const { data: bottleRunData } = trpc.packaging.get.useQuery(bottleRunId, {
     enabled: open && !!bottleRunId,
+  });
+
+  // Date validation with phase-specific checks
+  const { validateDate } = useBatchDateValidation(bottleRunData?.batchId, {
+    bottleRunId,
+    phase: "labeling",
   });
 
   // Use fresh data if available, otherwise fall back to prop
@@ -103,6 +113,16 @@ export function LabelModal({
 
   const labelsData = watch("labels");
   const unitsToLabelValue = watch("unitsToLabel");
+  const labeledAt = watch("labeledAt");
+
+  // Validate date when it changes
+  useEffect(() => {
+    if (labeledAt) {
+      const result = validateDate(labeledAt);
+      setDateWarning(result.warning);
+      setDateError(result.error ?? null);
+    }
+  }, [labeledAt, validateDate]);
 
   // Get packaging items (labels) - filter by Secondary Packaging item type
   const { data: packagingItems, isLoading: isLoadingItems, refetch: refetchPackagingItems } =
@@ -437,6 +457,7 @@ export function LabelModal({
               type="datetime-local"
               {...register("labeledAt")}
             />
+            <DateWarning warning={dateWarning} error={dateError} />
             {errors.labeledAt && (
               <p className="text-sm text-red-500">{errors.labeledAt.message}</p>
             )}
@@ -463,7 +484,7 @@ export function LabelModal({
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting || isLoadingItems}
+              disabled={isSubmitting || isLoadingItems || !!dateError}
             >
               {isSubmitting ? (
                 <>

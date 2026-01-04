@@ -95,9 +95,13 @@ export function PasteurizeModal({
   const [useCustomStartTemp, setUseCustomStartTemp] = useState(false);
   const [showTempCurve, setShowTempCurve] = useState(false);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
 
-  // Date validation
-  const { validateDate } = useBatchDateValidation(batchId);
+  // Date validation with phase-specific checks
+  const { validateDate } = useBatchDateValidation(batchId, {
+    bottleRunId,
+    phase: "pasteurization",
+  });
 
   // Get bottle profile options
   const bottleOptions = useMemo(() => getBottleProfileOptions(), []);
@@ -141,6 +145,7 @@ export function PasteurizeModal({
     if (pasteurizedAt) {
       const result = validateDate(pasteurizedAt);
       setDateWarning(result.warning);
+      setDateError(result.error ?? null);
     }
   }, [pasteurizedAt, validateDate]);
 
@@ -725,7 +730,7 @@ export function PasteurizeModal({
                   type="datetime-local"
                   {...register("pasteurizedAt")}
                 />
-                <DateWarning warning={dateWarning} />
+                <DateWarning warning={dateWarning} error={dateError} />
                 {errors.pasteurizedAt && (
                   <p className="text-sm text-red-500">{errors.pasteurizedAt.message}</p>
                 )}
@@ -898,7 +903,8 @@ export function PasteurizeModal({
                   temperatureCelsius === undefined ||
                   temperatureCelsius === null ||
                   timeMinutes === undefined ||
-                  timeMinutes === null
+                  timeMinutes === null ||
+                  !!dateError
                 }
               >
                 {pasteurizeMutation.isPending ? (

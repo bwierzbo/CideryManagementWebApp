@@ -109,6 +109,7 @@ export function MarkCompleteModal({
 }: MarkCompleteModalProps) {
   const utils = trpc.useUtils();
   const [dateWarning, setDateWarning] = React.useState<string | null>(null);
+  const [dateError, setDateError] = React.useState<string | null>(null);
 
   // Fetch bottle run data for checklist
   const { data: bottleRunData, isLoading: isLoadingData } = trpc.packaging.get.useQuery(
@@ -116,8 +117,11 @@ export function MarkCompleteModal({
     { enabled: open && !!bottleRunId }
   );
 
-  // Date validation - use batchId from bottleRunData
-  const { validateDate } = useBatchDateValidation(bottleRunData?.batchId);
+  // Date validation with phase-specific checks for completion
+  const { validateDate } = useBatchDateValidation(bottleRunData?.batchId, {
+    bottleRunId,
+    phase: "completion",
+  });
 
   const {
     register,
@@ -142,6 +146,7 @@ export function MarkCompleteModal({
         completedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
       });
       setDateWarning(null);
+      setDateError(null);
     }
   }, [open, reset]);
 
@@ -150,6 +155,7 @@ export function MarkCompleteModal({
     if (completedAt) {
       const result = validateDate(completedAt);
       setDateWarning(result.warning);
+      setDateError(result.error ?? null);
     }
   }, [completedAt, validateDate]);
 
@@ -325,7 +331,7 @@ export function MarkCompleteModal({
               type="datetime-local"
               {...register("completedAt")}
             />
-            <DateWarning warning={dateWarning} />
+            <DateWarning warning={dateWarning} error={dateError} />
             {errors.completedAt && (
               <p className="text-sm text-red-500">{errors.completedAt.message}</p>
             )}
@@ -355,7 +361,7 @@ export function MarkCompleteModal({
             <Button
               type="submit"
               className="flex-1 bg-green-600 hover:bg-green-700"
-              disabled={markCompleteMutation.isPending || isLoadingData}
+              disabled={markCompleteMutation.isPending || isLoadingData || !!dateError}
             >
               {markCompleteMutation.isPending ? (
                 <>

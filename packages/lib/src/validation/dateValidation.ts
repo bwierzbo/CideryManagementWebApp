@@ -3,7 +3,207 @@
  *
  * Validates that activity dates don't predate when the batch was created
  * or when it was transferred from a parent batch.
+ *
+ * Also provides:
+ * - Date input constraints (year range, future date limits)
+ * - Production phase sequence validation
  */
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const MIN_YEAR = 2015;
+const MAX_YEAR = 2099;
+const MAX_FUTURE_DAYS = 365;
+
+// =============================================================================
+// Date Constraint Validation
+// =============================================================================
+
+export interface DateConstraintResult {
+  isValid: boolean;
+  error: string | null;
+}
+
+/**
+ * Validate date against basic constraints:
+ * - Year must be between MIN_YEAR and MAX_YEAR
+ * - Cannot be more than MAX_FUTURE_DAYS in the future
+ */
+export function validateDateConstraints(date: Date | string): DateConstraintResult {
+  const d = typeof date === "string" ? new Date(date) : date;
+
+  if (isNaN(d.getTime())) {
+    return { isValid: false, error: "Invalid date format" };
+  }
+
+  const year = d.getFullYear();
+  if (year < MIN_YEAR || year > MAX_YEAR) {
+    return {
+      isValid: false,
+      error: `Year must be between ${MIN_YEAR} and ${MAX_YEAR}`,
+    };
+  }
+
+  const maxFutureDate = new Date();
+  maxFutureDate.setDate(maxFutureDate.getDate() + MAX_FUTURE_DAYS);
+  if (d > maxFutureDate) {
+    return {
+      isValid: false,
+      error: "Date cannot be more than 1 year in the future",
+    };
+  }
+
+  return { isValid: true, error: null };
+}
+
+// =============================================================================
+// Production Phase Sequence Validation
+// =============================================================================
+
+export type ValidationPhase =
+  | "measurement"
+  | "additive"
+  | "racking"
+  | "filtering"
+  | "carbonation"
+  | "bottling"
+  | "pasteurization"
+  | "labeling"
+  | "completion";
+
+export interface PackagingContext {
+  packagedAt: Date | null;
+  pasteurizedAt: Date | null;
+  labeledAt: Date | null;
+}
+
+export interface PhaseValidationResult {
+  isValid: boolean;
+  warning: string | null;
+}
+
+/**
+ * Format a date for display in validation messages
+ */
+function formatDateForMessage(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/**
+ * Validate that activity date respects production phase sequence
+ *
+ * Rules:
+ * - Pasteurization must be after bottling
+ * - Labeling must be after bottling
+ * - Completion must be after bottling, pasteurization (if done), and labeling (if done)
+ */
+export function validatePhaseSequence(
+  activityDate: Date | string,
+  phase: ValidationPhase,
+  packagingContext: PackagingContext
+): PhaseValidationResult {
+  const date = typeof activityDate === "string" ? new Date(activityDate) : activityDate;
+
+  if (isNaN(date.getTime())) {
+    return { isValid: true, warning: null };
+  }
+
+  const { packagedAt, pasteurizedAt, labeledAt } = packagingContext;
+
+  // Normalize to start of day for comparison
+  const activityDateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  switch (phase) {
+    case "pasteurization":
+      if (packagedAt) {
+        const packagedDateOnly = new Date(
+          packagedAt.getFullYear(),
+          packagedAt.getMonth(),
+          packagedAt.getDate()
+        );
+        if (activityDateOnly < packagedDateOnly) {
+          return {
+            isValid: false,
+            warning: `Pasteurization date is before bottling date (${formatDateForMessage(packagedAt)}). Pasteurization must occur after bottling.`,
+          };
+        }
+      }
+      break;
+
+    case "labeling":
+      if (packagedAt) {
+        const packagedDateOnly = new Date(
+          packagedAt.getFullYear(),
+          packagedAt.getMonth(),
+          packagedAt.getDate()
+        );
+        if (activityDateOnly < packagedDateOnly) {
+          return {
+            isValid: false,
+            warning: `Labeling date is before bottling date (${formatDateForMessage(packagedAt)}). Labels are typically applied after bottling.`,
+          };
+        }
+      }
+      break;
+
+    case "completion":
+      // Must be after bottling
+      if (packagedAt) {
+        const packagedDateOnly = new Date(
+          packagedAt.getFullYear(),
+          packagedAt.getMonth(),
+          packagedAt.getDate()
+        );
+        if (activityDateOnly < packagedDateOnly) {
+          return {
+            isValid: false,
+            warning: `Completion date is before bottling date (${formatDateForMessage(packagedAt)}).`,
+          };
+        }
+      }
+      // Must be after pasteurization if done
+      if (pasteurizedAt) {
+        const pasteurizedDateOnly = new Date(
+          pasteurizedAt.getFullYear(),
+          pasteurizedAt.getMonth(),
+          pasteurizedAt.getDate()
+        );
+        if (activityDateOnly < pasteurizedDateOnly) {
+          return {
+            isValid: false,
+            warning: `Completion date is before pasteurization date (${formatDateForMessage(pasteurizedAt)}).`,
+          };
+        }
+      }
+      // Must be after labeling if done
+      if (labeledAt) {
+        const labeledDateOnly = new Date(
+          labeledAt.getFullYear(),
+          labeledAt.getMonth(),
+          labeledAt.getDate()
+        );
+        if (activityDateOnly < labeledDateOnly) {
+          return {
+            isValid: false,
+            warning: `Completion date is before labeling date (${formatDateForMessage(labeledAt)}).`,
+          };
+        }
+      }
+      break;
+  }
+
+  return { isValid: true, warning: null };
+}
+
+// =============================================================================
+// Batch Date Validation Context
+// =============================================================================
 
 export interface DateValidationContext {
   batchId: string;
