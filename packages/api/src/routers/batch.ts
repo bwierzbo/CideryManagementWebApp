@@ -1766,7 +1766,8 @@ export const batchRouter = router({
   getActivityHistory: createRbacProcedure("read", "batch")
     .input(
       batchIdSchema.extend({
-        limit: z.number().min(1).max(100).default(20),
+        // limit is optional - when omitted, returns all activities
+        limit: z.number().min(1).max(1000).optional(),
         offset: z.number().min(0).default(0),
       }),
     )
@@ -2664,21 +2665,21 @@ export const batchRouter = router({
           return dateA - dateB; // Oldest first (chronological order)
         });
 
-        // Apply pagination
+        // Apply pagination (if limit is specified)
         const totalActivities = activities.length;
-        const paginatedActivities = activities.slice(
-          input.offset,
-          input.offset + input.limit,
-        );
+        const limit = input.limit;
+        const paginatedActivities = limit
+          ? activities.slice(input.offset, input.offset + limit)
+          : activities.slice(input.offset);
 
         return {
           batch: batch[0],
           activities: paginatedActivities,
           pagination: {
             total: totalActivities,
-            limit: input.limit,
+            limit: limit ?? totalActivities,
             offset: input.offset,
-            hasMore: input.offset + input.limit < totalActivities,
+            hasMore: limit ? input.offset + limit < totalActivities : false,
           },
         };
       } catch (error) {

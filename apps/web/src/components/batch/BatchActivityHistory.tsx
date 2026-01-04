@@ -93,12 +93,13 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
     label: string;
   } | null>(null);
 
-  // When viewing from a packaging detail page (bottleRunId provided), fetch more activities
-  // to ensure packaging events (bottling, pasteurize, label) are included even if there are
-  // many earlier activities (measurements, additives, etc.)
+  // When viewing from a packaging detail page (bottleRunId provided), fetch ALL activities
+  // to ensure packaging events (bottling, pasteurize, label) are always included.
+  // For general batch pages, use pagination with limit of 50.
   const { data, isLoading, error, refetch } = trpc.batch.getActivityHistory.useQuery({
     batchId,
-    limit: bottleRunId ? 100 : 20,
+    // Omit limit to fetch all activities when viewing packaging details
+    ...(bottleRunId ? {} : { limit: 50 }),
   });
 
   const toggleActivity = (activityId: string) => {
