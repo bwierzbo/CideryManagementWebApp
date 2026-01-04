@@ -880,23 +880,18 @@ export const packagingRouter = router({
           .orderBy(desc(batchTransfers.transferredAt))
           .limit(5);
 
-        // Compile all notes from the batch chain (measurements, additives, transfers, carbonation, batch notes)
+        // Compile all notes from the batch chain (measurements, additives, transfers, carbonation)
         const compiledNotesResult = await db.execute(sql`
           WITH RECURSIVE batch_chain AS (
-            SELECT id, name, notes as batch_notes, start_date FROM batches WHERE id = ${run.batchId}
+            SELECT id, name, start_date FROM batches WHERE id = ${run.batchId}
             UNION ALL
-            SELECT b.id, b.name, b.notes, b.start_date
+            SELECT b.id, b.name, b.start_date
             FROM batches b
             JOIN batch_transfers bt ON bt.source_batch_id = b.id
             JOIN batch_chain bc ON bt.destination_batch_id = bc.id
             WHERE b.deleted_at IS NULL
           )
           SELECT * FROM (
-            -- Batch notes
-            SELECT 'batch' as note_type, bc.name as source, bc.batch_notes as note, bc.start_date as note_date
-            FROM batch_chain bc
-            WHERE bc.batch_notes IS NOT NULL AND bc.batch_notes != ''
-            UNION ALL
             -- Measurement notes
             SELECT 'measurement' as note_type, bc.name as source, bm.notes as note, bm.measurement_date as note_date
             FROM batch_chain bc
