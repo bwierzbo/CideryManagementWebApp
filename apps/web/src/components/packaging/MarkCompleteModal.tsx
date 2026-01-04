@@ -185,7 +185,17 @@ export function MarkCompleteModal({
   const isFullyLabeled = unitsLabeled >= unitsProduced;
   const isPasteurized = !!bottleRunData?.pasteurizedAt;
   const hasQACheck = !!bottleRunData?.fillCheck && bottleRunData.fillCheck !== "not_tested";
-  const hasABV = !!bottleRunData?.abvAtPackaging;
+
+  // ABV - check explicit packaging ABV first, then fall back to batch measurements
+  const explicitABV = bottleRunData?.abvAtPackaging;
+  const batchABV = bottleRunData?.batch?.history?.measurements
+    ?.filter((m: any) => m.abv !== null && m.abv !== undefined)
+    ?.sort((a: any, b: any) => new Date(b.measurementDate).getTime() - new Date(a.measurementDate).getTime())
+    ?.[0]?.abv;
+  const hasABV = !!explicitABV || !!batchABV;
+  const abvValue = explicitABV ?? batchABV;
+  const abvIsFromBatch = !explicitABV && !!batchABV;
+
   const hasInventory = (bottleRunData?.inventory?.length ?? 0) > 0;
   const hasNotes = !!bottleRunData?.productionNotes;
   // Check for carbonation - either CO2 volumes from operation or carbonation level enum
@@ -269,7 +279,7 @@ export function MarkCompleteModal({
                 label="ABV at Packaging"
                 status={hasABV ? "complete" : "warning"}
                 detail={hasABV
-                  ? `${parseFloat(bottleRunData?.abvAtPackaging?.toString() || "0").toFixed(1)}%`
+                  ? `${parseFloat(abvValue?.toString() || "0").toFixed(1)}%${abvIsFromBatch ? " (from batch)" : ""}`
                   : "Not recorded"
                 }
               />

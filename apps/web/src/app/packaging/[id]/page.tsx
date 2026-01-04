@@ -576,7 +576,16 @@ export default function PackagingDetailPage() {
                     <p className="font-medium text-sm md:text-base">
                       {runData.abvAtPackaging !== undefined
                         ? `${runData.abvAtPackaging.toFixed(2)}%`
-                        : "Not measured"}
+                        : (() => {
+                            // Fall back to most recent ABV from batch measurements
+                            const latestAbv = runData.batch.history?.measurements
+                              ?.filter((m: any) => m.abv !== null && m.abv !== undefined)
+                              ?.sort((a: any, b: any) => new Date(b.measurementDate).getTime() - new Date(a.measurementDate).getTime())
+                              ?.[0]?.abv;
+                            return latestAbv !== undefined && latestAbv !== null
+                              ? <span className="text-gray-600">{Number(latestAbv).toFixed(2)}% <span className="text-xs text-gray-400">(from batch)</span></span>
+                              : "Not measured";
+                          })()}
                     </p>
                   </div>
                   <div>
