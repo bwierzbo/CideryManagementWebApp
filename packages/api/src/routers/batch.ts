@@ -1834,6 +1834,7 @@ export const batchRouter = router({
           batch_id: string;
           batch_name: string;
           split_timestamp: Date;
+          start_date: Date | null;
           depth: number;
         }>(sql`
           WITH RECURSIVE ancestors AS (
@@ -1842,6 +1843,7 @@ export const batchRouter = router({
               bt.source_batch_id as batch_id,
               b.name as batch_name,
               bt.transferred_at as split_timestamp,
+              b.start_date as start_date,
               1 as depth
             FROM batch_transfers bt
             JOIN batches b ON b.id = bt.source_batch_id
@@ -1856,6 +1858,7 @@ export const batchRouter = router({
               bt.source_batch_id,
               b.name,
               bt.transferred_at,
+              b.start_date,
               a.depth + 1
             FROM batch_transfers bt
             JOIN batches b ON b.id = bt.source_batch_id
@@ -1872,6 +1875,7 @@ export const batchRouter = router({
           batch_id: string;
           batch_name: string;
           split_timestamp: Date;
+          start_date: Date | null;
           depth: number;
         }>;
 
@@ -2243,23 +2247,37 @@ export const batchRouter = router({
         let creationDescription = `Batch created from ${originDescription}`;
 
         if (ancestorChain.length > 0) {
-          // Find the oldest ancestor (highest depth)
-          const oldestAncestor = ancestorChain.reduce((oldest, current) =>
-            current.depth > oldest.depth ? current : oldest
-          , ancestorChain[0]);
+          // Find the ancestor with the earliest start_date (true origin of lineage)
+          // This is more accurate than highest depth, especially for blended batches
+          const ancestorsWithDates = ancestorChain.filter(a => a.start_date !== null);
 
-          // Query the oldest ancestor's start date
-          const [oldestAncestorBatch] = await db
-            .select({
-              startDate: batches.startDate,
-              createdAt: batches.createdAt,
-            })
-            .from(batches)
-            .where(eq(batches.id, oldestAncestor.batch_id))
-            .limit(1);
+          if (ancestorsWithDates.length > 0) {
+            const earliestAncestor = ancestorsWithDates.reduce((earliest, current) => {
+              const earliestDate = new Date(earliest.start_date!).getTime();
+              const currentDate = new Date(current.start_date!).getTime();
+              return currentDate < earliestDate ? current : earliest;
+            }, ancestorsWithDates[0]);
 
-          if (oldestAncestorBatch) {
-            creationTimestamp = oldestAncestorBatch.startDate || oldestAncestorBatch.createdAt;
+            creationTimestamp = earliestAncestor.start_date!;
+          } else {
+            // Fallback to highest depth if no start_dates available
+            const oldestAncestor = ancestorChain.reduce((oldest, current) =>
+              current.depth > oldest.depth ? current : oldest
+            , ancestorChain[0]);
+
+            // Query the oldest ancestor's start date
+            const [oldestAncestorBatch] = await db
+              .select({
+                startDate: batches.startDate,
+                createdAt: batches.createdAt,
+              })
+              .from(batches)
+              .where(eq(batches.id, oldestAncestor.batch_id))
+              .limit(1);
+
+            if (oldestAncestorBatch) {
+              creationTimestamp = oldestAncestorBatch.startDate || oldestAncestorBatch.createdAt;
+            }
           }
 
           // Update description to mention the parent batch
