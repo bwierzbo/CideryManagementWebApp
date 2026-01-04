@@ -151,8 +151,16 @@ export default function PackagingDetailPage() {
     }
   };
 
-  // Get carbonation level display
-  const getCarbonationDisplay = (level: string | null) => {
+  // Get carbonation display - prefer CO2 volumes from carbonation operation, fall back to level enum
+  const getCarbonationDisplay = (co2Volumes: string | number | null | undefined, level: string | null) => {
+    // If we have CO2 volumes from a carbonation operation, show that
+    if (co2Volumes !== null && co2Volumes !== undefined) {
+      const volumes = parseFloat(String(co2Volumes));
+      if (!isNaN(volumes)) {
+        return `${volumes.toFixed(2)} CO₂ volumes`;
+      }
+    }
+    // Fall back to carbonation level enum
     switch (level) {
       case "still":
         return "Still (no carbonation)";
@@ -574,10 +582,10 @@ export default function PackagingDetailPage() {
                   <div>
                     <p className="text-xs md:text-sm text-gray-500 flex items-center gap-1.5">
                       <Droplets className="w-3.5 h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-                      <span className="truncate">Carbonation Level</span>
+                      <span className="truncate">Carbonation</span>
                     </p>
                     <p className="font-medium text-sm md:text-base break-words">
-                      {getCarbonationDisplay(runData.carbonationLevel)}
+                      {getCarbonationDisplay(runData.carbonationCo2Volumes, runData.carbonationLevel)}
                     </p>
                   </div>
                 </div>
