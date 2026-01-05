@@ -27,7 +27,8 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
-import { Flame, Info, Loader2, Clock, Thermometer, Droplet, AlertTriangle, Snowflake, Wind, Waves } from "lucide-react";
+import { Flame, Info, Loader2, Thermometer, Droplet, AlertTriangle, Snowflake, Wind, Waves } from "lucide-react";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 import {
   calculatePU,
   calculateEnhancedPasteurization,
@@ -96,6 +97,7 @@ export function PasteurizeModal({
   const [showTempCurve, setShowTempCurve] = useState(false);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   // Date validation with phase-specific checks
   const { validateDate } = useBatchDateValidation(batchId, {
@@ -239,6 +241,7 @@ export function PasteurizeModal({
       setUseCustomStartTemp(false);
       setShowTempCurve(false);
       setHasSetRecommendedTime(false);
+      setLaborAssignments([]);
     }
   }, [open, reset]);
 
@@ -386,7 +389,7 @@ export function PasteurizeModal({
       pasteurizationUnits: totalPU,
       bottlesLost: data.bottlesLost,
       notes: enhancedNotes,
-      laborHours: data.laborHours,
+      laborAssignments: toApiLaborAssignments(laborAssignments),
     });
   };
 
@@ -855,21 +858,12 @@ export function PasteurizeModal({
               </p>
             </div>
 
-            {/* Labor Hours */}
-            <div className="space-y-2">
-              <Label htmlFor="laborHours">
-                Labor Hours <span className="text-gray-400">(optional)</span>
-              </Label>
-              <Input
-                id="laborHours"
-                type="number"
-                step="0.25"
-                min="0"
-                placeholder="e.g., 1.5"
-                {...register("laborHours", { valueAsNumber: true })}
-              />
-              <p className="text-xs text-gray-500">Hours spent on pasteurization for COGS</p>
-            </div>
+            {/* Labor Tracking */}
+            <WorkerLaborInput
+              value={laborAssignments}
+              onChange={setLaborAssignments}
+              activityLabel="this pasteurization"
+            />
 
             {/* Notes */}
             <div className="space-y-2">

@@ -27,6 +27,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { Card } from "@/components/ui/card";
 import { PackageTypeSelector } from "./UnifiedPackagingModal";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 // Form validation schema
 const packagingMaterialSchema = z.object({
@@ -84,6 +85,7 @@ export function BottleModal({
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
   const [currentQuantity, setCurrentQuantity] = useState<number>(1);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   // tRPC queries for different packaging types
   const primaryPackagingQuery = trpc.packagingPurchases.listInventory.useQuery({
@@ -285,6 +287,7 @@ export function BottleModal({
       setSelectedMaterials([]);
       setCurrentMaterialId("");
       setCurrentQuantity(1);
+      setLaborAssignments([]);
     }
   }, [open, reset]);
 
@@ -305,9 +308,8 @@ export function BottleModal({
         notes: data.notes,
         materials: data.materials,
         ...(kegFillId && { kegFillId }), // Include kegFillId if bottling from keg
-        // Labor tracking
-        laborHours: data.laborHours,
-        laborCostPerHour: data.laborCostPerHour,
+        // Labor tracking - using worker-based assignments
+        laborAssignments: toApiLaborAssignments(laborAssignments),
       });
 
       // Invalidate relevant queries to refresh data
@@ -654,44 +656,11 @@ export function BottleModal({
           </div>
 
           {/* Labor Tracking (optional) */}
-          <div className="border rounded-lg p-4 bg-gray-50">
-            <Label className="text-sm md:text-base font-medium mb-3 block">
-              Labor Tracking (optional)
-            </Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="laborHours" className="text-xs text-gray-600">
-                  Labor Hours
-                </Label>
-                <Input
-                  id="laborHours"
-                  type="number"
-                  step="0.25"
-                  min="0"
-                  placeholder="e.g., 2.5"
-                  className="h-10 text-base"
-                  {...register("laborHours", { valueAsNumber: true })}
-                />
-              </div>
-              <div>
-                <Label htmlFor="laborCostPerHour" className="text-xs text-gray-600">
-                  Cost per Hour ($)
-                </Label>
-                <Input
-                  id="laborCostPerHour"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="e.g., 25.00"
-                  className="h-10 text-base"
-                  {...register("laborCostPerHour", { valueAsNumber: true })}
-                />
-              </div>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              Enter labor hours and hourly rate for COGS calculation
-            </p>
-          </div>
+          <WorkerLaborInput
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this packaging run"
+          />
 
           {/* Notes */}
           <div>

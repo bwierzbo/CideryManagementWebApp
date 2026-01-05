@@ -27,6 +27,7 @@ import { packagingPurchasesRouter } from "./packagingPurchases";
 import { additiveVarietiesRouter } from "./additiveVarieties";
 import { barrelOriginTypesRouter } from "./barrelOriginTypes";
 import { barrelContentsHistoryRouter } from "./barrelContentsHistory";
+import { workersRouter } from "./workers";
 import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
 import { packagingRouter } from "./packaging";
@@ -5556,6 +5557,9 @@ export const appRouter = router({
   barrelContentsHistory: barrelContentsHistoryRouter,
   juiceVarieties: juiceVarietiesRouter,
   packagingVarieties: packagingVarietiesRouter,
+
+  // Worker management (labor tracking)
+  workers: workersRouter,
 
   // Dashboard
   dashboard: dashboardRouter,

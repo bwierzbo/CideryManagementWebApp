@@ -81,6 +81,18 @@ export const distillationRecordStatusEnum = pgEnum("distillation_record_status",
   "cancelled",  // Record cancelled
 ]);
 
+// Activity types for labor tracking
+export const activityLaborTypeEnum = pgEnum("activity_labor_type", [
+  "press_run",
+  "bottle_run",
+  "pasteurization",
+  "labeling",
+  "keg_fill",
+  "racking",
+  "filtering",
+  "cleaning",
+]);
+
 // Fruit variety characteristic enums
 export const ciderCategoryEnum = pgEnum("cider_category_enum", [
   "sweet",
@@ -271,6 +283,73 @@ export const barrelOriginTypes = pgTable(
   (table) => ({
     slugUniqueIdx: uniqueIndex("barrel_origin_types_slug_unique_idx").on(table.slug),
     sortOrderIdx: index("barrel_origin_types_sort_order_idx").on(table.sortOrder),
+  }),
+);
+
+// Workers - Store worker profiles with individual hourly rates
+export const workers = pgTable(
+  "workers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    // Individual hourly rate (default $20/hr)
+    hourlyRate: decimal("hourly_rate", { precision: 10, scale: 2 })
+      .notNull()
+      .default("20.00"),
+    // Contact info (optional)
+    email: text("email"),
+    phone: text("phone"),
+    // Reference data pattern fields
+    isActive: boolean("is_active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    notes: text("notes"),
+    // Audit fields
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    nameIdx: index("workers_name_idx").on(table.name),
+    isActiveIdx: index("workers_is_active_idx").on(table.isActive),
+    sortOrderIdx: index("workers_sort_order_idx").on(table.sortOrder),
+  }),
+);
+
+// Activity Labor Assignments - Link workers to activities with hours worked
+// Polymorphic design: single table works for all activity types
+export const activityLaborAssignments = pgTable(
+  "activity_labor_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Polymorphic activity reference
+    activityType: activityLaborTypeEnum("activity_type").notNull(),
+    // Activity IDs (only one populated based on activityType)
+    pressRunId: uuid("press_run_id"),
+    bottleRunId: uuid("bottle_run_id"),
+    kegFillId: uuid("keg_fill_id"),
+    // Worker assignment
+    workerId: uuid("worker_id")
+      .notNull()
+      .references(() => workers.id),
+    // Hours worked by this specific worker
+    hoursWorked: decimal("hours_worked", { precision: 6, scale: 2 }).notNull(),
+    // Snapshot of hourly rate at time of assignment (for accurate COGS)
+    hourlyRateSnapshot: decimal("hourly_rate_snapshot", { precision: 10, scale: 2 }).notNull(),
+    // Computed labor cost (hoursWorked * hourlyRateSnapshot)
+    laborCost: decimal("labor_cost", { precision: 10, scale: 2 }).notNull(),
+    // Optional notes for this worker's contribution
+    notes: text("notes"),
+    // Audit fields
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    createdBy: uuid("created_by").references(() => users.id),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    workerIdx: index("activity_labor_assignments_worker_idx").on(table.workerId),
+    pressRunIdx: index("activity_labor_assignments_press_run_idx").on(table.pressRunId),
+    bottleRunIdx: index("activity_labor_assignments_bottle_run_idx").on(table.bottleRunId),
+    kegFillIdx: index("activity_labor_assignments_keg_fill_idx").on(table.kegFillId),
+    activityTypeIdx: index("activity_labor_assignments_activity_type_idx").on(table.activityType),
   }),
 );
 
@@ -1827,6 +1906,30 @@ export const batchTransfersRelations = relations(batchTransfers, ({ one }) => ({
     references: [users.id],
   }),
 }));
+
+// Workers relations
+export const workersRelations = relations(workers, ({ many }) => ({
+  laborAssignments: many(activityLaborAssignments),
+}));
+
+// Activity Labor Assignments relations
+export const activityLaborAssignmentsRelations = relations(
+  activityLaborAssignments,
+  ({ one }) => ({
+    worker: one(workers, {
+      fields: [activityLaborAssignments.workerId],
+      references: [workers.id],
+    }),
+    pressRun: one(pressRuns, {
+      fields: [activityLaborAssignments.pressRunId],
+      references: [pressRuns.id],
+    }),
+    createdByUser: one(users, {
+      fields: [activityLaborAssignments.createdBy],
+      references: [users.id],
+    }),
+  }),
+);
 
 // Backward compatibility exports
 export const appleVarieties = baseFruitVarieties;

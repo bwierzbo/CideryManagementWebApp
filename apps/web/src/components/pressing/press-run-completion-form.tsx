@@ -60,6 +60,7 @@ import {
 import { gallonsToLiters, litersToGallons, formatUnitConversion } from "lib";
 import { trpc } from "@/utils/trpc";
 import { formatDate, formatDateForInput } from "@/utils/date-format";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 // Assignment schema for vessel assignments
 const assignmentSchema = z.object({
@@ -129,6 +130,7 @@ export function PressRunCompletionForm({
 }: PressRunCompletionFormProps) {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [submissionData, setSubmissionData] = useState<any>(null);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   // Fetch vessels with batch information
   const { data: vesselsData, isLoading: vesselsLoading } =
@@ -200,7 +202,8 @@ export function PressRunCompletionForm({
       completionDate,
       totalJuiceVolume: data.totalJuiceVolume,
       assignments: data.assignments,
-      laborHours: data.laborHours,
+      laborHours: data.laborHours, // Deprecated, kept for backward compatibility
+      laborAssignments: toApiLaborAssignments(laborAssignments), // New worker-based labor tracking
       notes: data.notes,
     };
 
@@ -850,62 +853,16 @@ export function PressRunCompletionForm({
                   (Optional)
                 </span>
               </CardTitle>
+              <CardDescription>
+                Select workers and their hours to track labor costs
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="laborHours"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Labor Hours</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.25"
-                          min="0"
-                          max="24"
-                          placeholder="0.00"
-                          value={field.value || ""}
-                          onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Hours worked on this press run
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="workerCount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Worker Count</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="20"
-                          placeholder="1"
-                          value={field.value || ""}
-                          onChange={(e) =>
-                            field.onChange(parseInt(e.target.value) || 1)
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Number of workers involved
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+            <CardContent>
+              <WorkerLaborInput
+                value={laborAssignments}
+                onChange={setLaborAssignments}
+                activityLabel="this press run"
+              />
             </CardContent>
           </Card>
 
@@ -1004,10 +961,11 @@ export function PressRunCompletionForm({
                     <strong>Extraction Rate:</strong>{" "}
                     {yieldPercentage.toFixed(1)}%
                   </p>
-                  {watchedValues.laborHours && (
+                  {laborAssignments.length > 0 && (
                     <p>
-                      <strong>Labor:</strong> {watchedValues.laborHours}h with{" "}
-                      {watchedValues.workerCount} worker(s)
+                      <strong>Labor:</strong>{" "}
+                      {laborAssignments.reduce((sum, a) => sum + a.hoursWorked, 0).toFixed(2)}h with{" "}
+                      {laborAssignments.length} worker{laborAssignments.length !== 1 ? "s" : ""} (${laborAssignments.reduce((sum, a) => sum + a.laborCost, 0).toFixed(2)})
                     </p>
                   )}
                 </div>

@@ -34,6 +34,7 @@ import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 const labelSchema = z.object({
   unitsToLabel: z.number().int().positive("Units to label must be positive"),
@@ -72,6 +73,7 @@ export function LabelModal({
   const [appliedLabels, setAppliedLabels] = useState<Array<{name: string, quantity: number}>>([]);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   // Fetch fresh bottle run data when modal opens to get current unitsLabeled
   const { data: bottleRunData } = trpc.packaging.get.useQuery(bottleRunId, {
@@ -142,6 +144,7 @@ export function LabelModal({
       });
       setAppliedLabels([]);
       setComboboxOpen({});
+      setLaborAssignments([]);
     }
   }, [open, reset, remainingUnits]);
 
@@ -164,8 +167,8 @@ export function LabelModal({
           quantity: label.quantity,
           unitsToLabel: data.unitsToLabel,
           labeledAt: labeledAt,
-          // Only pass labor hours on the first label application
-          ...(i === 0 && data.laborHours !== undefined && { laborHours: data.laborHours }),
+          // Only pass labor assignments on the first label application
+          ...(i === 0 && laborAssignments.length > 0 && { laborAssignments: toApiLaborAssignments(laborAssignments) }),
         });
 
         appliedLabelsList.push({
@@ -463,21 +466,12 @@ export function LabelModal({
             )}
           </div>
 
-          {/* Labor Hours */}
-          <div className="space-y-2">
-            <Label htmlFor="laborHours">
-              Labor Hours <span className="text-gray-400">(optional)</span>
-            </Label>
-            <Input
-              id="laborHours"
-              type="number"
-              step="0.25"
-              min="0"
-              placeholder="e.g., 1.5"
-              {...register("laborHours", { valueAsNumber: true })}
-            />
-            <p className="text-xs text-gray-500">Hours spent on labeling for COGS</p>
-          </div>
+          {/* Labor Tracking */}
+          <WorkerLaborInput
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this labeling"
+          />
 
           {/* Actions */}
           <div className="flex flex-col gap-2 pt-4">

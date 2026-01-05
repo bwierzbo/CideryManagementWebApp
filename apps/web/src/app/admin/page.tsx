@@ -95,6 +95,8 @@ import { z } from "zod";
 import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { SquareIntegration } from "@/components/admin/SquareIntegration";
+import { WorkersManagement } from "@/components/admin/WorkersManagement";
+import { OverheadSettings } from "@/components/admin/OverheadSettings";
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
@@ -1824,6 +1826,9 @@ function SystemSettings() {
         </CardContent>
       </Card>
 
+      {/* Overhead Cost Allocation - IMPLEMENTED */}
+      <OverheadSettings />
+
       {/* Save Button */}
       <div className="flex justify-end">
         <Button
@@ -1893,6 +1898,7 @@ export default function AdminPage() {
           {activeTab === "reference" && (
             <>
               <ReferenceValues />
+              <WorkersManagement />
               <BarrelOriginTypesManagement />
             </>
           )}

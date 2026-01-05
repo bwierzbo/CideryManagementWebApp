@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
-import { db, systemSettings, organizations, organizationSettings } from "db";
-import { eq } from "drizzle-orm";
+import { db, systemSettings, organizations, organizationSettings, bottleRuns } from "db";
+import { eq, and, gte, lt, sql } from "drizzle-orm";
 
 /**
  * Settings Router
@@ -141,6 +141,18 @@ export const settingsRouter = router({
         phDecimalPlaces: 1,
         sgTemperatureCorrectionEnabled: true,
         hydrometerCalibrationTempC: "15.56",
+        // Overhead settings defaults
+        overheadTrackingEnabled: false,
+        overheadAnnualRent: null,
+        overheadAnnualUtilities: null,
+        overheadAnnualInsurance: null,
+        overheadAnnualEquipment: null,
+        overheadAnnualLicenses: null,
+        overheadAnnualOther: null,
+        overheadAnnualBudget: null,
+        overheadExpectedAnnualGallons: null,
+        overheadRatePerGallon: null,
+        overheadBudgetYear: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -224,6 +236,19 @@ export const settingsRouter = router({
         // Measurement Corrections
         sgTemperatureCorrectionEnabled: z.boolean().optional(),
         hydrometerCalibrationTempC: z.string().optional(),
+
+        // Overhead Cost Allocation
+        overheadTrackingEnabled: z.boolean().optional(),
+        overheadAnnualRent: z.string().nullable().optional(),
+        overheadAnnualUtilities: z.string().nullable().optional(),
+        overheadAnnualInsurance: z.string().nullable().optional(),
+        overheadAnnualEquipment: z.string().nullable().optional(),
+        overheadAnnualLicenses: z.string().nullable().optional(),
+        overheadAnnualOther: z.string().nullable().optional(),
+        overheadAnnualBudget: z.string().nullable().optional(),
+        overheadExpectedAnnualGallons: z.string().nullable().optional(),
+        overheadRatePerGallon: z.string().nullable().optional(),
+        overheadBudgetYear: z.number().int().nullable().optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -247,6 +272,155 @@ export const settingsRouter = router({
         .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID));
 
       return { success: true };
+    }),
+
+  /**
+   * Get overhead rate for COGS calculations
+   * Returns the rate per gallon if overhead tracking is enabled
+   */
+  getOverheadRate: protectedProcedure.query(async () => {
+    const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
+    const settings = await db
+      .select({
+        overheadTrackingEnabled: organizationSettings.overheadTrackingEnabled,
+        overheadRatePerGallon: organizationSettings.overheadRatePerGallon,
+      })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+      .limit(1);
+
+    if (!settings[0] || !settings[0].overheadTrackingEnabled) {
+      return { enabled: false, ratePerGallon: null };
+    }
+
+    return {
+      enabled: true,
+      ratePerGallon: settings[0].overheadRatePerGallon
+        ? parseFloat(settings[0].overheadRatePerGallon)
+        : null,
+    };
+  }),
+
+  /**
+   * Get year-end overhead summary
+   * Compares budgeted overhead to actual allocated based on production volume
+   */
+  getOverheadYearEndSummary: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2020).max(2100),
+      }),
+    )
+    .query(async ({ input }) => {
+      const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
+      // Get overhead settings
+      const settings = await db
+        .select()
+        .from(organizationSettings)
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+        .limit(1);
+
+      if (!settings[0]) {
+        return {
+          hasData: false,
+          message: "No organization settings found",
+        };
+      }
+
+      const {
+        overheadTrackingEnabled,
+        overheadAnnualBudget,
+        overheadExpectedAnnualGallons,
+        overheadRatePerGallon,
+        overheadBudgetYear,
+      } = settings[0];
+
+      if (!overheadTrackingEnabled) {
+        return {
+          hasData: false,
+          message: "Overhead tracking is not enabled",
+        };
+      }
+
+      if (!overheadAnnualBudget || !overheadRatePerGallon) {
+        return {
+          hasData: false,
+          message: "Overhead budget or rate not configured",
+        };
+      }
+
+      // Calculate date range for the requested year
+      const startDate = new Date(`${input.year}-01-01T00:00:00Z`);
+      const endDate = new Date(`${input.year + 1}-01-01T00:00:00Z`);
+
+      // Get total production volume for the year from bottle runs
+      // Sum up the volumeTakenLiters from all completed bottle runs
+      const productionResult = await db
+        .select({
+          totalVolumeL: sql<number>`COALESCE(SUM(${bottleRuns.volumeTakenLiters}), 0)`,
+          runCount: sql<number>`COUNT(*)`,
+        })
+        .from(bottleRuns)
+        .where(
+          and(
+            gte(bottleRuns.createdAt, startDate),
+            lt(bottleRuns.createdAt, endDate),
+            eq(bottleRuns.status, "completed"),
+          ),
+        );
+
+      const totalVolumeL = Number(productionResult[0]?.totalVolumeL || 0);
+      const runCount = Number(productionResult[0]?.runCount || 0);
+
+      // Convert liters to gallons (1 gallon = 3.78541 liters)
+      const totalVolumeGallons = totalVolumeL / 3.78541;
+
+      const budget = parseFloat(overheadAnnualBudget);
+      const rate = parseFloat(overheadRatePerGallon);
+      const expectedGallons = overheadExpectedAnnualGallons
+        ? parseFloat(overheadExpectedAnnualGallons)
+        : 0;
+
+      // Calculate allocated overhead based on actual production
+      const allocatedOverhead = totalVolumeGallons * rate;
+
+      // Calculate variance
+      const variance = budget - allocatedOverhead;
+      const variancePercent = budget > 0 ? (variance / budget) * 100 : 0;
+
+      // Suggest new rate for next year based on actual production
+      const suggestedRate =
+        totalVolumeGallons > 0 ? budget / totalVolumeGallons : rate;
+
+      return {
+        hasData: true,
+        year: input.year,
+        budgetYear: overheadBudgetYear,
+        budget: {
+          annualBudget: budget,
+          expectedGallons: expectedGallons,
+          ratePerGallon: rate,
+        },
+        actual: {
+          totalVolumeGallons: Math.round(totalVolumeGallons * 100) / 100,
+          packagingRunCount: runCount,
+          allocatedOverhead: Math.round(allocatedOverhead * 100) / 100,
+        },
+        analysis: {
+          variance: Math.round(variance * 100) / 100,
+          variancePercent: Math.round(variancePercent * 100) / 100,
+          isUnderAllocated: variance > 0,
+          suggestedRateForNextYear: Math.round(suggestedRate * 10000) / 10000,
+          recommendation:
+            variance > 0
+              ? `Under-allocated by $${Math.abs(variance).toFixed(2)}. Consider increasing rate to $${suggestedRate.toFixed(4)}/gal for ${input.year + 1}.`
+              : variance < 0
+                ? `Over-allocated by $${Math.abs(variance).toFixed(2)}. Consider decreasing rate to $${suggestedRate.toFixed(4)}/gal for ${input.year + 1}.`
+                : "Overhead allocation matches budget perfectly.",
+        },
+      };
     }),
 });
 

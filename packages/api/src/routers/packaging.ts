@@ -32,6 +32,9 @@ import {
   basefruitPurchaseItems,
   basefruitPurchases,
   additivePurchaseItems,
+  workers,
+  activityLaborAssignments,
+  organizationSettings,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -55,6 +58,12 @@ const packagingMaterialSchema = z.object({
   materialType: z.string(), // e.g., "Primary Packaging", "Caps", "Labels"
 });
 
+// Labor assignment schema for worker-based labor tracking
+const laborAssignmentSchema = z.object({
+  workerId: z.string().uuid(),
+  hoursWorked: z.number().positive(),
+});
+
 const createFromCellarSchema = z.object({
   batchId: z.string().uuid(),
   vesselId: z.string().uuid(),
@@ -68,9 +77,8 @@ const createFromCellarSchema = z.object({
   materials: z.array(packagingMaterialSchema).optional(),
   // Optional keg fill ID when bottling from a filled keg
   kegFillId: z.string().uuid().optional(),
-  // Labor tracking for COGS
-  laborHours: z.number().min(0).optional(),
-  laborCostPerHour: z.number().min(0).optional(),
+  // Worker-based labor tracking for COGS
+  laborAssignments: z.array(laborAssignmentSchema).optional(),
 });
 
 const listPackagingRunsSchema = z.object({
@@ -367,6 +375,26 @@ export const packagingRouter = router({
             .orderBy(desc(batchCarbonationOperations.completedAt))
             .limit(1);
 
+          // Get overhead rate from organization settings
+          const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+          const [orgSettings] = await tx
+            .select({
+              overheadTrackingEnabled: organizationSettings.overheadTrackingEnabled,
+              overheadRatePerGallon: organizationSettings.overheadRatePerGallon,
+            })
+            .from(organizationSettings)
+            .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+            .limit(1);
+
+          // Calculate overhead cost if tracking is enabled
+          // Convert liters to gallons: 1 gallon = 3.78541 liters
+          let overheadCostAllocated: number | null = null;
+          if (orgSettings?.overheadTrackingEnabled && orgSettings.overheadRatePerGallon) {
+            const volumeGallons = input.volumeTakenL / 3.78541;
+            const ratePerGallon = parseFloat(orgSettings.overheadRatePerGallon);
+            overheadCostAllocated = Math.round(volumeGallons * ratePerGallon * 100) / 100;
+          }
+
           const packagingRunData: any = {
             batchId: input.batchId,
             vesselId: input.vesselId,
@@ -385,11 +413,10 @@ export const packagingRouter = router({
             sourceCarbonationOperationId: latestCarbonation?.id ?? null,
             // Link to keg fill if bottling from keg (for activity history tracking)
             kegFillId: input.kegFillId ?? null,
-            // Labor tracking for COGS
-            laborHours: input.laborHours?.toString() ?? null,
-            laborCostPerHour: input.laborCostPerHour?.toString() ?? null,
             // Don't set status - let it default to null (active)
             createdBy: ctx.session.user.id,
+            // Overhead cost allocation based on volume
+            overheadCostAllocated: overheadCostAllocated?.toString() ?? null,
           };
 
           if (input.notes) {
@@ -557,6 +584,31 @@ export const packagingRouter = router({
                 WHERE id = ${material.packagingPurchaseItemId}
                 AND (quantity - quantity_used) >= ${material.quantityUsed}
               `);
+            }
+          }
+
+          // 7.5. Save labor assignments if provided
+          if (input.laborAssignments && input.laborAssignments.length > 0) {
+            for (const assignment of input.laborAssignments) {
+              // Get worker's current hourly rate
+              const [worker] = await tx
+                .select({ hourlyRate: workers.hourlyRate })
+                .from(workers)
+                .where(eq(workers.id, assignment.workerId))
+                .limit(1);
+
+              const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+              const laborCost = assignment.hoursWorked * hourlyRate;
+
+              await tx.insert(activityLaborAssignments).values({
+                activityType: "bottle_run",
+                bottleRunId: packagingRun.id,
+                workerId: assignment.workerId,
+                hoursWorked: assignment.hoursWorked.toString(),
+                hourlyRateSnapshot: hourlyRate.toString(),
+                laborCost: laborCost.toString(),
+                createdBy: ctx.session.user.id,
+              });
             }
           }
 
@@ -1513,57 +1565,83 @@ export const packagingRouter = router({
         pasteurizationUnits: z.number().positive(),
         bottlesLost: z.number().int().min(0).optional(),
         notes: z.string().optional(),
-        // Labor tracking
-        laborHours: z.number().min(0).optional(),
+        // Worker-based labor tracking
+        laborAssignments: z.array(laborAssignmentSchema).optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        // Check if bottle run exists and is not already pasteurized
-        const [existingRun] = await db
-          .select({
-            id: bottleRuns.id,
-            pasteurizedAt: bottleRuns.pasteurizedAt,
-          })
-          .from(bottleRuns)
-          .where(eq(bottleRuns.id, input.runId))
-          .limit(1);
+        return await db.transaction(async (tx) => {
+          // Check if bottle run exists and is not already pasteurized
+          const [existingRun] = await tx
+            .select({
+              id: bottleRuns.id,
+              pasteurizedAt: bottleRuns.pasteurizedAt,
+            })
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, input.runId))
+            .limit(1);
 
-        if (!existingRun) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Bottle run not found",
-          });
-        }
+          if (!existingRun) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Bottle run not found",
+            });
+          }
 
-        if (existingRun.pasteurizedAt) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: "Bottle run is already pasteurized. Edit the pasteurization date instead of creating a new one.",
-          });
-        }
+          if (existingRun.pasteurizedAt) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "Bottle run is already pasteurized. Edit the pasteurization date instead of creating a new one.",
+            });
+          }
 
-        const pasteurizedAt = input.pasteurizedAt || new Date();
-        const lossNote = input.bottlesLost ? ` (${input.bottlesLost} bottles lost)` : '';
+          const pasteurizedAt = input.pasteurizedAt || new Date();
+          const lossNote = input.bottlesLost ? ` (${input.bottlesLost} bottles lost)` : '';
 
-        const [updated] = await db
-          .update(bottleRuns)
-          .set({
-            pasteurizationTemperatureCelsius: input.temperatureCelsius.toString(),
-            pasteurizationTimeMinutes: input.timeMinutes.toString(),
-            pasteurizationUnits: input.pasteurizationUnits.toString(),
-            pasteurizedAt: pasteurizedAt,
-            pasteurizationLoss: input.bottlesLost || null,
-            pasteurizationLaborHours: input.laborHours?.toString() ?? null,
-            productionNotes: input.notes
-              ? `${input.notes}\n\nPasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`
-              : `Pasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`,
-            updatedAt: new Date(),
-          })
-          .where(eq(bottleRuns.id, input.runId))
-          .returning();
+          const [updated] = await tx
+            .update(bottleRuns)
+            .set({
+              pasteurizationTemperatureCelsius: input.temperatureCelsius.toString(),
+              pasteurizationTimeMinutes: input.timeMinutes.toString(),
+              pasteurizationUnits: input.pasteurizationUnits.toString(),
+              pasteurizedAt: pasteurizedAt,
+              pasteurizationLoss: input.bottlesLost || null,
+              productionNotes: input.notes
+                ? `${input.notes}\n\nPasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`
+                : `Pasteurized at ${pasteurizedAt.toISOString()} (${input.temperatureCelsius}°C for ${input.timeMinutes} min, ${input.pasteurizationUnits} PU)${lossNote}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(bottleRuns.id, input.runId))
+            .returning();
 
-        return updated;
+          // Save labor assignments if provided
+          if (input.laborAssignments && input.laborAssignments.length > 0) {
+            for (const assignment of input.laborAssignments) {
+              // Get worker's current hourly rate
+              const [worker] = await tx
+                .select({ hourlyRate: workers.hourlyRate })
+                .from(workers)
+                .where(eq(workers.id, assignment.workerId))
+                .limit(1);
+
+              const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+              const laborCost = assignment.hoursWorked * hourlyRate;
+
+              await tx.insert(activityLaborAssignments).values({
+                activityType: "pasteurization",
+                bottleRunId: input.runId,
+                workerId: assignment.workerId,
+                hoursWorked: assignment.hoursWorked.toString(),
+                hourlyRateSnapshot: hourlyRate.toString(),
+                laborCost: laborCost.toString(),
+                createdBy: ctx.session?.user?.id,
+              });
+            }
+          }
+
+          return updated;
+        });
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error pasteurizing bottle run:", error);
@@ -1583,35 +1661,61 @@ export const packagingRouter = router({
         runId: z.string().uuid(),
         labeledAt: z.date().optional(),
         notes: z.string().optional(),
-        // Labor tracking
-        laborHours: z.number().min(0).optional(),
+        // Worker-based labor tracking
+        laborAssignments: z.array(laborAssignmentSchema).optional(),
       }),
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
-        const labeledAt = input.labeledAt || new Date();
+        return await db.transaction(async (tx) => {
+          const labeledAt = input.labeledAt || new Date();
 
-        const [updated] = await db
-          .update(bottleRuns)
-          .set({
-            labeledAt: labeledAt,
-            labelingLaborHours: input.laborHours?.toString() ?? null,
-            productionNotes: input.notes
-              ? `${input.notes}\n\nLabeled at ${labeledAt.toISOString()}`
-              : `Labeled at ${labeledAt.toISOString()}`,
-            updatedAt: new Date(),
-          })
-          .where(eq(bottleRuns.id, input.runId))
-          .returning();
+          const [updated] = await tx
+            .update(bottleRuns)
+            .set({
+              labeledAt: labeledAt,
+              productionNotes: input.notes
+                ? `${input.notes}\n\nLabeled at ${labeledAt.toISOString()}`
+                : `Labeled at ${labeledAt.toISOString()}`,
+              updatedAt: new Date(),
+            })
+            .where(eq(bottleRuns.id, input.runId))
+            .returning();
 
-        if (!updated) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: "Bottle run not found",
-          });
-        }
+          if (!updated) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Bottle run not found",
+            });
+          }
 
-        return updated;
+          // Save labor assignments if provided
+          if (input.laborAssignments && input.laborAssignments.length > 0) {
+            for (const assignment of input.laborAssignments) {
+              // Get worker's current hourly rate
+              const [worker] = await tx
+                .select({ hourlyRate: workers.hourlyRate })
+                .from(workers)
+                .where(eq(workers.id, assignment.workerId))
+                .limit(1);
+
+              const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+              const laborCost = assignment.hoursWorked * hourlyRate;
+
+              await tx.insert(activityLaborAssignments).values({
+                activityType: "labeling",
+                bottleRunId: input.runId,
+                workerId: assignment.workerId,
+                hoursWorked: assignment.hoursWorked.toString(),
+                hourlyRateSnapshot: hourlyRate.toString(),
+                laborCost: laborCost.toString(),
+                createdBy: ctx.session?.user?.id,
+              });
+            }
+          }
+
+          return updated;
+        });
       } catch (error) {
         console.error("Error labeling bottle run:", error);
         throw new TRPCError({
@@ -1633,8 +1737,8 @@ export const packagingRouter = router({
         quantity: z.number().int().positive(), // Number of labels to use from inventory
         unitsToLabel: z.number().int().positive().optional(), // Number of bottles being labeled (for partial labeling)
         labeledAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
-        // Labor tracking (optional) - only set on first label application
-        laborHours: z.number().min(0).optional(),
+        // Worker-based labor tracking (optional) - only set on first label application
+        laborAssignments: z.array(laborAssignmentSchema).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -1714,15 +1818,35 @@ export const packagingRouter = router({
             updateData.labeledAt = input.labeledAt || new Date();
           }
 
-          // Set labor hours if provided (for COGS calculation)
-          if (input.laborHours !== undefined && input.laborHours !== null) {
-            updateData.labelingLaborHours = input.laborHours.toString();
-          }
-
           await tx
             .update(bottleRuns)
             .set(updateData)
             .where(eq(bottleRuns.id, input.bottleRunId));
+
+          // Save labor assignments if provided (only on first label application)
+          if (input.laborAssignments && input.laborAssignments.length > 0) {
+            for (const assignment of input.laborAssignments) {
+              // Get worker's current hourly rate
+              const [worker] = await tx
+                .select({ hourlyRate: workers.hourlyRate })
+                .from(workers)
+                .where(eq(workers.id, assignment.workerId))
+                .limit(1);
+
+              const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+              const laborCost = assignment.hoursWorked * hourlyRate;
+
+              await tx.insert(activityLaborAssignments).values({
+                activityType: "labeling",
+                bottleRunId: input.bottleRunId,
+                workerId: assignment.workerId,
+                hoursWorked: assignment.hoursWorked.toString(),
+                hourlyRateSnapshot: hourlyRate.toString(),
+                laborCost: laborCost.toString(),
+                createdBy: ctx.session.user.id,
+              });
+            }
+          }
 
           // Calculate remaining labels after this usage
           const labelsRemaining = available - input.quantity;

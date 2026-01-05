@@ -261,6 +261,75 @@ export const organizationSettings = pgTable(
       .default("15.56"),
 
     // ==========================================
+    // Overhead Cost Allocation
+    // ==========================================
+    /**
+     * Whether overhead tracking is enabled for COGS calculations
+     */
+    overheadTrackingEnabled: boolean("overhead_tracking_enabled")
+      .notNull()
+      .default(false),
+
+    /**
+     * Annual overhead budget breakdown (for transparency in calculations)
+     * These are optional - user can also just enter the total directly
+     */
+    overheadAnnualRent: decimal("overhead_annual_rent", {
+      precision: 12,
+      scale: 2,
+    }),
+    overheadAnnualUtilities: decimal("overhead_annual_utilities", {
+      precision: 12,
+      scale: 2,
+    }),
+    overheadAnnualInsurance: decimal("overhead_annual_insurance", {
+      precision: 12,
+      scale: 2,
+    }),
+    overheadAnnualEquipment: decimal("overhead_annual_equipment", {
+      precision: 12,
+      scale: 2,
+    }),
+    overheadAnnualLicenses: decimal("overhead_annual_licenses", {
+      precision: 12,
+      scale: 2,
+    }),
+    overheadAnnualOther: decimal("overhead_annual_other", {
+      precision: 12,
+      scale: 2,
+    }),
+
+    /**
+     * Total annual overhead budget (sum of breakdown or direct entry)
+     */
+    overheadAnnualBudget: decimal("overhead_annual_budget", {
+      precision: 12,
+      scale: 2,
+    }),
+
+    /**
+     * Expected annual production in gallons (for calculating rate)
+     */
+    overheadExpectedAnnualGallons: decimal("overhead_expected_annual_gallons", {
+      precision: 10,
+      scale: 2,
+    }),
+
+    /**
+     * Calculated overhead rate per gallon (budget / expected gallons)
+     * Stored for quick access in COGS calculations
+     */
+    overheadRatePerGallon: decimal("overhead_rate_per_gallon", {
+      precision: 10,
+      scale: 4,
+    }),
+
+    /**
+     * Budget year for overhead calculations (e.g., 2025)
+     */
+    overheadBudgetYear: integer("overhead_budget_year"),
+
+    // ==========================================
     // Timestamps
     // ==========================================
     createdAt: timestamp("created_at").notNull().defaultNow(),
