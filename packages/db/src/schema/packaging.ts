@@ -673,6 +673,10 @@ export const kegFills = pgTable(
     overheadCostAllocated: decimal("overhead_cost_allocated", { precision: 10, scale: 2 }),
     retailPrice: decimal("retail_price", { precision: 10, scale: 2 }),
 
+    // Labor tracking
+    laborHours: decimal("labor_hours", { precision: 6, scale: 2 }),
+    laborCostPerHour: decimal("labor_cost_per_hour", { precision: 10, scale: 2 }),
+
     // Audit fields
     createdBy: uuid("created_by")
       .notNull()
