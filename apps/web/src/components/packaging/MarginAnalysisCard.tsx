@@ -21,12 +21,12 @@ interface MarginData {
 }
 
 interface InventoryData {
-  totalUnitsProduced: number;
-  currentRemaining: number;
-  unitsDepleted: number;
-  inventoryValueRemaining: number;
-  revenueIfSold: number;
-  potentialProfit: number;
+  totalUnitsProduced?: number;
+  currentRemaining?: number;
+  unitsDepleted?: number;
+  inventoryValueRemaining?: number;
+  revenueIfSold?: number;
+  potentialProfit?: number;
 }
 
 interface MarginAnalysisCardProps {
@@ -204,13 +204,13 @@ export function MarginAnalysisCard({
                 <div>
                   <p className="text-sm font-medium">Inventory Status</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {inventory.currentRemaining.toLocaleString()} in stock
-                    {inventory.unitsDepleted > 0 && ` (${inventory.unitsDepleted.toLocaleString()} depleted)`}
+                    {(inventory.currentRemaining ?? 0).toLocaleString()} in stock
+                    {(inventory.unitsDepleted ?? 0) > 0 && ` (${(inventory.unitsDepleted ?? 0).toLocaleString()} depleted)`}
                   </p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold">
-                    {inventory.totalUnitsProduced.toLocaleString()}
+                    {(inventory.totalUnitsProduced ?? 0).toLocaleString()}
                   </p>
                   <p className="text-xs text-gray-500">Total produced</p>
                 </div>
@@ -227,7 +227,7 @@ export function MarginAnalysisCard({
                   </p>
                 </div>
                 <p className="text-lg font-bold text-blue-900">
-                  {formatCurrency(inventory.inventoryValueRemaining)}
+                  {formatCurrency(inventory.inventoryValueRemaining ?? 0)}
                 </p>
               </div>
 
@@ -238,11 +238,11 @@ export function MarginAnalysisCard({
                     Potential Revenue
                   </p>
                   <p className="text-xs text-green-700 mt-1">
-                    If all {inventory.currentRemaining.toLocaleString()} units sell at ${margins?.retailPrice.toFixed(2)}
+                    If all {(inventory.currentRemaining ?? 0).toLocaleString()} units sell at ${margins?.retailPrice?.toFixed(2) ?? '0.00'}
                   </p>
                 </div>
                 <p className="text-lg font-bold text-green-900">
-                  {formatCurrency(inventory.revenueIfSold)}
+                  {formatCurrency(inventory.revenueIfSold ?? 0)}
                 </p>
               </div>
 
@@ -257,7 +257,7 @@ export function MarginAnalysisCard({
                   </p>
                 </div>
                 <p className="text-lg font-bold text-purple-900">
-                  {formatCurrency(inventory.potentialProfit)}
+                  {formatCurrency(inventory.potentialProfit ?? 0)}
                 </p>
               </div>
             </div>
