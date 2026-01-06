@@ -793,14 +793,17 @@ export const packagingRouter = router({
         const measurements = await db.execute(sql`
           WITH RECURSIVE batch_chain AS (
             -- Start with the current batch
-            SELECT id, name FROM batches WHERE id = ${run.batchId}
+            SELECT id, name, 1 as depth FROM batches WHERE id = ${run.batchId}
             UNION ALL
             -- Recursively find parent batches via transfers
-            SELECT b.id, b.name
+            -- Exclude self-referencing transfers and limit depth to prevent infinite loops
+            SELECT b.id, b.name, bc.depth + 1
             FROM batches b
             JOIN batch_transfers bt ON bt.source_batch_id = b.id
             JOIN batch_chain bc ON bt.destination_batch_id = bc.id
             WHERE b.deleted_at IS NULL
+              AND bt.source_batch_id != bt.destination_batch_id
+              AND bc.depth < 10
           )
           SELECT
             bm.measurement_date,
@@ -836,13 +839,15 @@ export const packagingRouter = router({
         // Get batch additives from this batch AND all parent batches
         const additivesResult = await db.execute(sql`
           WITH RECURSIVE batch_chain AS (
-            SELECT id, name FROM batches WHERE id = ${run.batchId}
+            SELECT id, name, 1 as depth FROM batches WHERE id = ${run.batchId}
             UNION ALL
-            SELECT b.id, b.name
+            SELECT b.id, b.name, bc.depth + 1
             FROM batches b
             JOIN batch_transfers bt ON bt.source_batch_id = b.id
             JOIN batch_chain bc ON bt.destination_batch_id = bc.id
             WHERE b.deleted_at IS NULL
+              AND bt.source_batch_id != bt.destination_batch_id
+              AND bc.depth < 10
           )
           SELECT
             ba.additive_name,
@@ -935,13 +940,15 @@ export const packagingRouter = router({
         // Compile all notes from the batch chain (measurements, additives, transfers, carbonation)
         const compiledNotesResult = await db.execute(sql`
           WITH RECURSIVE batch_chain AS (
-            SELECT id, name, start_date FROM batches WHERE id = ${run.batchId}
+            SELECT id, name, start_date, 1 as depth FROM batches WHERE id = ${run.batchId}
             UNION ALL
-            SELECT b.id, b.name, b.start_date
+            SELECT b.id, b.name, b.start_date, bc.depth + 1
             FROM batches b
             JOIN batch_transfers bt ON bt.source_batch_id = b.id
             JOIN batch_chain bc ON bt.destination_batch_id = bc.id
             WHERE b.deleted_at IS NULL
+              AND bt.source_batch_id != bt.destination_batch_id
+              AND bc.depth < 10
           )
           SELECT * FROM (
             -- Measurement notes
