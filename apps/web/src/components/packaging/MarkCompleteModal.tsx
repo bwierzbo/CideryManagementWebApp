@@ -23,7 +23,12 @@ import { CheckCircle, Loader2, AlertTriangle, Minus, Tag, Flame, Beaker, Wine, P
 import { cn } from "@/lib/utils";
 
 const markCompleteSchema = z.object({
-  completedAt: z.string().min(1, "Please select a date and time"),
+  completedAt: z.string()
+    .min(1, "Please select a date and time")
+    .refine((val) => {
+      const year = parseInt(val.substring(0, 4), 10);
+      return year >= 1900 && year <= 2099;
+    }, "Year must be between 1900 and 2099"),
 });
 
 type MarkCompleteForm = z.infer<typeof markCompleteSchema>;
@@ -410,6 +415,7 @@ export function MarkCompleteModal({
             <Input
               id="completedAt"
               type="datetime-local"
+              max="2099-12-31T23:59"
               {...register("completedAt")}
             />
             <DateWarning warning={dateWarning} error={dateError} />
