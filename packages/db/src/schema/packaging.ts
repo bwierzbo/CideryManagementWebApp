@@ -201,6 +201,10 @@ export const bottleRuns = pgTable(
      * Overhead cost allocated to this packaging run
      */
     overheadCostAllocated: decimal("overhead_cost_allocated", { precision: 10, scale: 2 }),
+    /**
+     * Retail price per unit (bottle/can)
+     */
+    retailPrice: decimal("retail_price", { precision: 10, scale: 2 }),
 
     // Metadata
     productName: text("product_name"),
@@ -664,6 +668,10 @@ export const kegFills = pgTable(
     voidReason: text("void_reason"),
     voidedAt: timestamp("voided_at"),
     voidedBy: uuid("voided_by"),
+
+    // Cost tracking
+    overheadCostAllocated: decimal("overhead_cost_allocated", { precision: 10, scale: 2 }),
+    retailPrice: decimal("retail_price", { precision: 10, scale: 2 }),
 
     // Audit fields
     createdBy: uuid("created_by")
