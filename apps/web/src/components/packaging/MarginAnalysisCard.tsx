@@ -23,7 +23,7 @@ interface MarginData {
 interface InventoryData {
   totalUnitsProduced: number;
   currentRemaining: number;
-  unitsSold: number;
+  unitsDepleted: number;
   inventoryValueRemaining: number;
   revenueIfSold: number;
   potentialProfit: number;
@@ -202,9 +202,10 @@ export function MarginAnalysisCard({
               {/* Units Summary */}
               <div className="flex items-center justify-between p-3 border rounded-lg">
                 <div>
-                  <p className="text-sm font-medium">Units Status</p>
+                  <p className="text-sm font-medium">Inventory Status</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {inventory.unitsSold.toLocaleString()} sold, {inventory.currentRemaining.toLocaleString()} remaining
+                    {inventory.currentRemaining.toLocaleString()} in stock
+                    {inventory.unitsDepleted > 0 && ` (${inventory.unitsDepleted.toLocaleString()} depleted)`}
                   </p>
                 </div>
                 <div className="text-right">
@@ -219,10 +220,10 @@ export function MarginAnalysisCard({
               <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <div>
                   <p className="text-sm font-medium text-blue-900">
-                    Inventory Value (Remaining)
+                    Inventory Value (at Cost)
                   </p>
                   <p className="text-xs text-blue-700 mt-1">
-                    Cost value of unsold units
+                    COGS of units in stock
                   </p>
                 </div>
                 <p className="text-lg font-bold text-blue-900">
@@ -237,7 +238,7 @@ export function MarginAnalysisCard({
                     Potential Revenue
                   </p>
                   <p className="text-xs text-green-700 mt-1">
-                    If all remaining units sold
+                    If all {inventory.currentRemaining.toLocaleString()} units sell at ${margins?.retailPrice.toFixed(2)}
                   </p>
                 </div>
                 <p className="text-lg font-bold text-green-900">
@@ -249,10 +250,10 @@ export function MarginAnalysisCard({
               <div className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-lg">
                 <div>
                   <p className="text-sm font-medium text-purple-900">
-                    Potential Profit
+                    Potential Gross Profit
                   </p>
                   <p className="text-xs text-purple-700 mt-1">
-                    From remaining inventory
+                    Revenue − COGS for stock
                   </p>
                 </div>
                 <p className="text-lg font-bold text-purple-900">

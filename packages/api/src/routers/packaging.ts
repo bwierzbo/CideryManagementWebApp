@@ -2151,7 +2151,10 @@ export const packagingRouter = router({
         const overallYield = totalAppleKg > 0 ? volumeTakenL / totalAppleKg : 0;
 
         // 12. Calculate margins if retail price is set
-        const retailPrice = inventory[0] ? parseFloat(inventory[0].retailPrice?.toString() || "0") : 0;
+        // Use inventory retail price first, fallback to bottle_run retail price
+        const inventoryRetailPrice = inventory[0] ? parseFloat(inventory[0].retailPrice?.toString() || "0") : 0;
+        const bottleRunRetailPrice = parseFloat(bottleRun.retailPrice?.toString() || "0");
+        const retailPrice = inventoryRetailPrice > 0 ? inventoryRetailPrice : bottleRunRetailPrice;
         const margins = retailPrice > 0 ? {
           retailPrice,
           costPerBottle,
@@ -2274,12 +2277,36 @@ export const packagingRouter = router({
           },
           inventory: {
             totalUnitsProduced: bottleRun.unitsProduced,
-            currentRemaining: inventory[0]?.currentQuantity || 0,
-            unitsSold: bottleRun.unitsProduced - (inventory[0]?.currentQuantity || 0),
-            inventoryValueRemaining: (inventory[0]?.currentQuantity || 0) * costPerBottle,
-            revenueIfSold: retailPrice > 0 ? (inventory[0]?.currentQuantity || 0) * retailPrice : 0,
-            potentialProfit: retailPrice > 0 ?
-              (inventory[0]?.currentQuantity || 0) * (retailPrice - costPerBottle) : 0,
+            // Use unitsProduced as default if currentQuantity was never set (null)
+            // Only use currentQuantity if it's explicitly set (including 0)
+            currentRemaining: inventory[0]?.currentQuantity !== null && inventory[0]?.currentQuantity !== undefined
+              ? inventory[0].currentQuantity
+              : bottleRun.unitsProduced,
+            // Only show depleted count if currentQuantity is explicitly tracked
+            unitsDepleted: inventory[0]?.currentQuantity !== null && inventory[0]?.currentQuantity !== undefined
+              ? bottleRun.unitsProduced - inventory[0].currentQuantity
+              : 0,
+            // Calculate values based on actual remaining inventory
+            inventoryValueRemaining: (() => {
+              const remaining = inventory[0]?.currentQuantity !== null && inventory[0]?.currentQuantity !== undefined
+                ? inventory[0].currentQuantity
+                : bottleRun.unitsProduced;
+              return remaining * costPerBottle;
+            })(),
+            revenueIfSold: (() => {
+              if (retailPrice <= 0) return 0;
+              const remaining = inventory[0]?.currentQuantity !== null && inventory[0]?.currentQuantity !== undefined
+                ? inventory[0].currentQuantity
+                : bottleRun.unitsProduced;
+              return remaining * retailPrice;
+            })(),
+            potentialProfit: (() => {
+              if (retailPrice <= 0) return 0;
+              const remaining = inventory[0]?.currentQuantity !== null && inventory[0]?.currentQuantity !== undefined
+                ? inventory[0].currentQuantity
+                : bottleRun.unitsProduced;
+              return remaining * (retailPrice - costPerBottle);
+            })(),
           },
           margins,
         };
