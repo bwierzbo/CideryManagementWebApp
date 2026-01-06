@@ -512,11 +512,10 @@ export function InventoryTable({
                           <Package className="w-12 h-12 mx-auto text-gray-400" />
                           <div>
                             <h3 className="font-semibold text-gray-900 mb-1">
-                              No finished inventory yet
+                              No inventory items found
                             </h3>
                             <p className="text-sm text-gray-600 mb-4">
-                              Bottled cider from completed bottle runs will appear
-                              here
+                              Purchase raw materials (fruit, additives, juice, packaging) to see them here
                             </p>
                           </div>
                         </div>
