@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
+import { calculateAbv } from "lib";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { CheckCircle, Loader2, AlertTriangle, Minus, Tag, Flame, Beaker, Wine, Package, FileText, Sparkles, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -192,15 +193,38 @@ export function MarkCompleteModal({
   const isPasteurized = !!bottleRunData?.pasteurizedAt;
   const hasQACheck = !!bottleRunData?.fillCheck && bottleRunData.fillCheck !== "not_tested";
 
-  // ABV - check explicit packaging ABV first, then fall back to batch measurements
+  // ABV - check explicit packaging ABV first, then batch measurements, then calculate from SG
   const explicitABV = bottleRunData?.abvAtPackaging;
   const batchABV = bottleRunData?.batch?.history?.measurements
     ?.filter((m: any) => m.abv !== null && m.abv !== undefined)
     ?.sort((a: any, b: any) => new Date(b.measurementDate).getTime() - new Date(a.measurementDate).getTime())
     ?.[0]?.abv;
-  const hasABV = !!explicitABV || !!batchABV;
-  const abvValue = explicitABV ?? batchABV;
+
+  // Calculate ABV from SG if no explicit ABV is available
+  let calculatedABV: number | null = null;
+  if (!explicitABV && !batchABV) {
+    const measurements = bottleRunData?.batch?.history?.measurements ?? [];
+    const sgValues = measurements
+      .filter((m: any) => m.specificGravity !== null && m.specificGravity !== undefined)
+      .map((m: any) => typeof m.specificGravity === 'number' ? m.specificGravity : parseFloat(m.specificGravity));
+
+    if (sgValues.length >= 2) {
+      const og = Math.max(...sgValues);
+      const fg = Math.min(...sgValues);
+      if (og > fg) {
+        try {
+          calculatedABV = calculateAbv(og, fg);
+        } catch (error) {
+          // Calculation failed, leave as null
+        }
+      }
+    }
+  }
+
+  const hasABV = !!explicitABV || !!batchABV || !!calculatedABV;
+  const abvValue = explicitABV ?? batchABV ?? calculatedABV;
   const abvIsFromBatch = !explicitABV && !!batchABV;
+  const abvIsEstimated = !explicitABV && !batchABV && !!calculatedABV;
 
   const hasInventory = (bottleRunData?.inventory?.length ?? 0) > 0;
   const hasNotes = !!bottleRunData?.productionNotes;
@@ -331,7 +355,7 @@ export function MarkCompleteModal({
                 label="ABV at Packaging"
                 status={hasABV ? "complete" : "warning"}
                 detail={hasABV
-                  ? `${parseFloat(abvValue?.toString() || "0").toFixed(1)}%${abvIsFromBatch ? " (from batch)" : ""}`
+                  ? `${parseFloat(abvValue?.toString() || "0").toFixed(1)}%${abvIsFromBatch ? " (from batch)" : abvIsEstimated ? " (est. from SG)" : ""}`
                   : "Not recorded"
                 }
               />
