@@ -3481,9 +3481,14 @@ export const appRouter = router({
               });
             }
 
-            const currentVolumeL = parseFloat(
+            // Get current volume and convert to liters if needed
+            let currentVolumeL = parseFloat(
               sourceBatch[0].currentVolume?.toString() || "0",
             );
+            // Convert gallons to liters if batch volume is stored in gallons
+            if (sourceBatch[0].currentVolumeUnit === "gal") {
+              currentVolumeL = currentVolumeL * 3.78541;
+            }
             const transferVolumeL = input.volumeL + (input.loss || 0);
 
             // Allow small tolerance (0.1L) for rounding errors from unit conversions
