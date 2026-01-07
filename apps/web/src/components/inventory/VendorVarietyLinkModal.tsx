@@ -588,6 +588,17 @@ function AddVarietyModal({
 
   const attachVariety = getAttachMutation();
 
+  // Create variety mutation for juice varieties
+  const createJuiceVariety = trpc.juiceVarieties.create.useMutation({
+    onSuccess: (data) => {
+      console.log("Successfully created juice variety:", data.name);
+    },
+    onError: (error: any) => {
+      console.error("Failed to create juice variety:", error.message);
+      alert(`Failed to create juice variety: ${error.message}`);
+    },
+  });
+
   // Get varieties array based on response structure and filter out already-linked varieties
   const linkedVarietyIds = linkedVarieties.map((v: any) =>
     varietyConfig.type === "baseFruit" ? v.id : v.varietyId || v.variety?.id
@@ -683,13 +694,32 @@ function AddVarietyModal({
         } catch (error) {
           // Error already handled by mutation
         }
+      } else if (varietyConfig.type === "juice") {
+        // For juice varieties, create the variety first, then link it
+        try {
+          const newVariety = await createJuiceVariety.mutateAsync({
+            name: searchQuery.trim(),
+          });
+          // Now link the newly created variety to the vendor
+          await attachVariety.mutateAsync({
+            vendorId: vendor.id,
+            varietyId: newVariety.id,
+            notes: notes.trim() || undefined,
+          });
+          onSuccess();
+          setSearchQuery("");
+          setSelectedVarieties([]);
+          setIsCreatingNew(false);
+          setNotes("");
+        } catch (error) {
+          // Error already handled by mutations
+        }
       } else {
-        // For non-base fruit varieties, we need to create the variety first
-        // This would require additional API endpoints for creating varieties
-        // For now, we'll show an error message
+        // For other non-base fruit varieties (additive, packaging), not yet implemented
         console.error(
-          "Creating new varieties for non-base fruit types not yet implemented",
+          "Creating new varieties for this type not yet implemented",
         );
+        alert("Creating new varieties for this type is not yet supported. Please add the variety first in the variety management section.");
       }
     }
   };
@@ -775,8 +805,8 @@ function AddVarietyModal({
               </div>
             )}
 
-            {/* Create New Option - Only for base fruit varieties */}
-            {canCreateNew && varietyConfig.type === "baseFruit" && (
+            {/* Create New Option - For base fruit and juice varieties */}
+            {canCreateNew && (varietyConfig.type === "baseFruit" || varietyConfig.type === "juice") && (
               <div className="space-y-1">
                 <Label className="text-sm text-gray-600">Or create new:</Label>
                 <div
@@ -838,8 +868,8 @@ function AddVarietyModal({
 
         {/* Link/Create Button */}
         {(selectedVarieties.length > 0 || isCreatingNew) && (
-          <Button onClick={handleAttach} disabled={attachVariety.isPending}>
-            {attachVariety.isPending
+          <Button onClick={handleAttach} disabled={attachVariety.isPending || createJuiceVariety.isPending}>
+            {attachVariety.isPending || createJuiceVariety.isPending
               ? "Processing..."
               : selectedVarieties.length > 0
                 ? `Link ${selectedVarieties.length} ${selectedVarieties.length === 1 ? "Variety" : "Varieties"}`
