@@ -34,7 +34,6 @@ import {
   Calendar,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
-import { formatDateForInput } from "@/utils/date-format";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -87,9 +86,7 @@ export function AdditivesTransactionForm({
   isSubmitting = false,
 }: AdditivesTransactionFormProps) {
   const { data: session } = useSession();
-  const [purchaseDate, setPurchaseDate] = useState<string>(
-    formatDateForInput(new Date()),
-  );
+  const [purchaseDate, setPurchaseDate] = useState<string>("");
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
   const [vendorSearchQuery, setVendorSearchQuery] = useState<string>("");
@@ -365,7 +362,7 @@ export function AdditivesTransactionForm({
           isValid: true,
         },
       ]);
-      setPurchaseDate(formatDateForInput(new Date()));
+      setPurchaseDate("");
       setSelectedVendorId("");
       setVendorSearchQuery("");
     } catch (error) {
@@ -544,17 +541,45 @@ export function AdditivesTransactionForm({
               {/* Purchase Date */}
               <div>
                 <Label htmlFor="purchaseDate">Purchase Date</Label>
-                <div className="relative">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <div className="relative max-w-xs">
                   <Input
-                    id="purchaseDate"
+                    id="purchaseDateDisplay"
                     type="text"
                     inputMode="numeric"
-                    placeholder="YYYY-MM-DD"
-                    value={purchaseDate}
-                    onChange={(e) => handlePurchaseDateChange(e.target.value)}
-                    className="pl-10 h-12 max-w-xs"
+                    placeholder="MM/DD/YYYY"
+                    value={purchaseDate ? (() => {
+                      const d = new Date(purchaseDate + 'T12:00:00');
+                      if (isNaN(d.getTime())) return '';
+                      return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
+                    })() : ''}
+                    onChange={(e) => {
+                      const input = e.target.value.replace(/[^\d/]/g, '');
+                      // Auto-format with slashes
+                      let formatted = input;
+                      if (input.length === 2 && !input.includes('/')) {
+                        formatted = input + '/';
+                      } else if (input.length === 5 && input.split('/').length === 2) {
+                        formatted = input + '/';
+                      }
+                      if (formatted.length > 10) formatted = formatted.slice(0, 10);
+
+                      // Parse complete date
+                      const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                      if (match) {
+                        const [, month, day, year] = match;
+                        const dateStr = `${year}-${month}-${day}`;
+                        handlePurchaseDateChange(dateStr);
+                      }
+                    }}
+                    className="h-12 pr-10"
                   />
+                  <input
+                    type="date"
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    value={purchaseDate || ''}
+                    onChange={(e) => handlePurchaseDateChange(e.target.value)}
+                  />
+                  <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                 </div>
                 {errors.purchaseDate && (
                   <p className="text-sm text-red-600 mt-1">
