@@ -178,7 +178,7 @@ export const additivePurchasesRouter = router({
               storageRequirements: z.string().optional(),
               pricePerUnit: z
                 .number()
-                .positive("Price per unit must be positive")
+                .nonnegative("Price per unit cannot be negative")
                 .optional(),
               notes: z.string().optional(),
             }),

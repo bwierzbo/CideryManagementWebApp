@@ -170,7 +170,7 @@ export const baseFruitPurchasesRouter = router({
               unit: z.enum(["kg", "lb", "L", "gal", "bushel"]),
               pricePerUnit: z
                 .number()
-                .positive("Price per unit must be positive")
+                .nonnegative("Price per unit cannot be negative")
                 .optional(),
               notes: z.string().optional(),
             }),

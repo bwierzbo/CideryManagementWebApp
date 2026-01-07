@@ -81,11 +81,11 @@ export const packagingPurchasesRouter = router({
               quantity: z.number().int().positive("Quantity must be positive"),
               pricePerUnit: z
                 .number()
-                .positive("Price per unit must be positive")
+                .nonnegative("Price per unit cannot be negative")
                 .optional(),
               totalCost: z
                 .number()
-                .positive("Total cost must be positive")
+                .nonnegative("Total cost cannot be negative")
                 .optional(),
               notes: z.string().optional(),
             }),
