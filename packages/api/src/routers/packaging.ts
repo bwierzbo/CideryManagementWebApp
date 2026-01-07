@@ -634,9 +634,11 @@ export const packagingRouter = router({
       } catch (error) {
         if (error instanceof TRPCError) throw error;
         console.error("Error creating packaging run:", error);
+        // Include actual error message for debugging
+        const errorMessage = error instanceof Error ? error.message : String(error);
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
-          message: "Failed to create packaging run",
+          message: `Failed to create packaging run: ${errorMessage}`,
         });
       }
     }),
