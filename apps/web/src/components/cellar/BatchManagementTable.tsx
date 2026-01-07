@@ -65,6 +65,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Container,
 } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 import { BatchHistoryModal } from "./BatchHistoryModal";
@@ -73,6 +74,7 @@ import { AddBatchAdditiveForm } from "./AddBatchAdditiveForm";
 import { SendToDistilleryDialog } from "./SendToDistilleryDialog";
 import { CreateFortifiedBlendDialog } from "./CreateFortifiedBlendDialog";
 import { CreatePommeauBlendDialog } from "./CreatePommeauBlendDialog";
+import { AssignToVesselDialog } from "./AssignToVesselDialog";
 import { toast } from "@/hooks/use-toast";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 
@@ -122,6 +124,10 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [showPommeauBlend, setShowPommeauBlend] = useState(false);
   const [pommeauCiderBatchId, setPommeauCiderBatchId] = useState<string | null>(null);
   const [pommeauBrandyBatchId, setPommeauBrandyBatchId] = useState<string | null>(null);
+
+  // Assign to vessel dialog state
+  const [showAssignVessel, setShowAssignVessel] = useState(false);
+  const [assignVesselBatch, setAssignVesselBatch] = useState<{ id: string; name: string } | null>(null);
 
   const utils = trpc.useUtils();
 
@@ -255,6 +261,14 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const handleSendToDistillery = (batchId: string) => {
     setSendToDistilleryBatchId(batchId);
     setShowSendToDistillery(true);
+  };
+
+  const handleAssignToVessel = (batch: { id: string; name: string; customName?: string | null }) => {
+    setAssignVesselBatch({
+      id: batch.id,
+      name: batch.customName || batch.name,
+    });
+    setShowAssignVessel(true);
   };
 
   // Handle column header click for sorting
@@ -669,6 +683,15 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                               <History className="w-4 h-4 mr-2" />
                               View History
                             </DropdownMenuItem>
+                            {/* Assign to Vessel - only for unassigned batches */}
+                            {!batch.vesselName && (
+                              <DropdownMenuItem
+                                onClick={() => handleAssignToVessel(batch)}
+                              >
+                                <Container className="w-4 h-4 mr-2" />
+                                Assign to Vessel
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleAddMeasurement(batch.id)}
@@ -990,6 +1013,19 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
         preselectedCiderBatchId={pommeauCiderBatchId || undefined}
         preselectedBrandyBatchId={pommeauBrandyBatchId || undefined}
       />
+
+      {/* Assign to Vessel Dialog */}
+      {assignVesselBatch && (
+        <AssignToVesselDialog
+          open={showAssignVessel}
+          onOpenChange={(open) => {
+            setShowAssignVessel(open);
+            if (!open) setAssignVesselBatch(null);
+          }}
+          batchId={assignVesselBatch.id}
+          batchName={assignVesselBatch.name}
+        />
+      )}
     </>
   );
 }

@@ -163,6 +163,7 @@ const updateBatchSchema = z.object({
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
   productType: z.enum(["cider", "perry", "brandy", "pommeau", "other"]).optional(),
   customName: z.string().optional(),
+  vesselId: z.string().uuid("Invalid vessel ID").optional().nullable(),
   startDate: z
     .date()
     .or(z.string().transform((val) => new Date(val)))
@@ -1730,6 +1731,7 @@ export const batchRouter = router({
         if (input.productType) updateData.productType = input.productType;
         if (input.customName !== undefined)
           updateData.customName = input.customName;
+        if (input.vesselId !== undefined) updateData.vesselId = input.vesselId;
         if (input.startDate) updateData.startDate = input.startDate;
         if (input.endDate) updateData.endDate = input.endDate;
 
