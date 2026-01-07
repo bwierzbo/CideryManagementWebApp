@@ -3508,8 +3508,9 @@ export const appRouter = router({
 
             // Check if this is a full transfer, partial transfer, or residual (< MIN_WORKING_VOLUME_L)
             let transferredBatch = null;
-            if (remainingVolumeL > MIN_WORKING_VOLUME_L) {
-              // Partial transfer - create transferred batch in destination vessel, keep source in source
+            if (remainingVolumeL > MIN_WORKING_VOLUME_L && !isBlending) {
+              // Partial transfer to EMPTY vessel - create transferred batch in destination vessel, keep source in source
+              // Note: If blending (destination has batch), we skip new batch creation and use the blending logic below
               const transferDate = input.transferDate || new Date();
               // Use current timestamp with milliseconds for unique suffix (not transferDate, to ensure uniqueness)
               const uniqueSuffix = Date.now().toString(36); // Base36 timestamp for compact unique ID
@@ -3860,18 +3861,40 @@ export const appRouter = router({
                 .where(eq(batches.id, destBatch[0].id))
                 .returning();
 
-              // Mark source batch as blended (soft delete with status update)
-              await tx
-                .update(batches)
-                .set({
-                  status: "completed",
-                  currentVolume: "0",
-                  currentVolumeUnit: "L",
-                  vesselId: null,
-                  deletedAt: new Date(),
-                  updatedAt: new Date(),
-                })
-                .where(eq(batches.id, sourceBatch[0].id));
+              // Handle source batch based on remaining volume
+              if (remainingVolumeL > MIN_WORKING_VOLUME_L) {
+                // Partial transfer while blending - just reduce source batch volume, keep it active
+                await tx
+                  .update(batches)
+                  .set({
+                    currentVolume: remainingVolumeL.toString(),
+                    currentVolumeUnit: "L",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(batches.id, sourceBatch[0].id));
+              } else {
+                // Full transfer or residual - mark source batch as completed (soft delete)
+                await tx
+                  .update(batches)
+                  .set({
+                    status: "completed",
+                    currentVolume: "0",
+                    currentVolumeUnit: "L",
+                    vesselId: null,
+                    deletedAt: new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(batches.id, sourceBatch[0].id));
+
+                // Set source vessel to cleaning since batch is fully transferred
+                await tx
+                  .update(vessels)
+                  .set({
+                    status: "cleaning",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(vessels.id, input.fromVesselId));
+              }
 
               // Copy composition from source batch to destination batch (for blend traceability)
               const sourceComposition = await tx
