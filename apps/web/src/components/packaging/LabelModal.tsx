@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -116,6 +116,14 @@ export function LabelModal({
   const labelsData = watch("labels");
   const unitsToLabelValue = watch("unitsToLabel");
   const labeledAt = watch("labeledAt");
+
+  // Calculate total labels selected
+  const totalLabelsSelected = useMemo(() => {
+    return labelsData?.reduce((sum, label) => sum + (label.quantity || 0), 0) || 0;
+  }, [labelsData]);
+
+  // Check if there's a mismatch between units to label and labels available
+  const labelQuantityMismatch = unitsToLabelValue > 0 && totalLabelsSelected > 0 && unitsToLabelValue > totalLabelsSelected;
 
   // Validate date when it changes
   useEffect(() => {
@@ -280,6 +288,15 @@ export function LabelModal({
                 <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <span>
                   Only {remainingUnits} bottles remaining. Adjust quantity or label all remaining.
+                </span>
+              </div>
+            )}
+            {labelQuantityMismatch && (
+              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <span>
+                  You only have {totalLabelsSelected.toLocaleString()} labels selected but are trying to label {unitsToLabelValue.toLocaleString()} bottles.
+                  Either reduce "Units to Label" to {totalLabelsSelected.toLocaleString()} or add more labels.
                 </span>
               </div>
             )}
@@ -478,7 +495,7 @@ export function LabelModal({
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting || isLoadingItems || !!dateError}
+              disabled={isSubmitting || isLoadingItems || !!dateError || labelQuantityMismatch}
             >
               {isSubmitting ? (
                 <>
