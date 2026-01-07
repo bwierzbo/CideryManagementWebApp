@@ -728,6 +728,16 @@ function TankTransferForm({
     },
   });
 
+  const transferDate = watch("transferDate");
+
+  // Helper to format date for datetime-local input
+  const formatDateForInput = (date: Date | undefined): string => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return formatDateTimeForInput(new Date()); // Fallback to current time
+    }
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
@@ -903,8 +913,13 @@ function TankTransferForm({
         <Input
           id="transferDate"
           type="datetime-local"
-          {...register("transferDate")}
-          defaultValue={formatDateTimeForInput(new Date())}
+          value={formatDateForInput(transferDate as Date | undefined)}
+          onChange={(e) => {
+            const dateValue = new Date(e.target.value);
+            if (!isNaN(dateValue.getTime())) {
+              setValue("transferDate", dateValue);
+            }
+          }}
           className="w-full"
         />
         {errors.transferDate && (
