@@ -473,12 +473,13 @@ export const baseFruitPurchasesRouter = router({
         if (updates.harvestDate !== undefined) updateData.harvestDate = updates.harvestDate instanceof Date ? updates.harvestDate.toISOString().split('T')[0] : updates.harvestDate;
         if (updates.notes !== undefined) updateData.notes = updates.notes;
 
-        // Calculate total cost if quantity or price changed
-        if (updates.quantity !== undefined || updates.pricePerUnit !== undefined) {
+        // Recalculate derived fields if quantity, unit, or price changed
+        if (updates.quantity !== undefined || updates.unit !== undefined || updates.pricePerUnit !== undefined) {
           // Get current values if not provided
           const currentItem = await db
             .select({
               quantity: basefruitPurchaseItems.quantity,
+              unit: basefruitPurchaseItems.unit,
               pricePerUnit: basefruitPurchaseItems.pricePerUnit
             })
             .from(basefruitPurchaseItems)
@@ -486,8 +487,21 @@ export const baseFruitPurchasesRouter = router({
             .limit(1);
 
           const qty = updates.quantity ?? parseFloat(currentItem[0].quantity);
+          const unit = updates.unit ?? currentItem[0].unit;
           const price = updates.pricePerUnit ?? parseFloat(currentItem[0].pricePerUnit || "0");
+
+          // Recalculate totalCost
           updateData.totalCost = (qty * price).toFixed(2);
+
+          // Recalculate quantityKg based on unit
+          let quantityKg = qty;
+          if (unit === "lb") {
+            quantityKg = qty * 0.453592; // lb to kg
+          } else if (unit === "bushel") {
+            quantityKg = qty * 19.05; // bushel to kg (42 lbs)
+          }
+          // kg, L, gal stay as-is
+          updateData.quantityKg = quantityKg.toFixed(3);
         }
 
         // Update the item
