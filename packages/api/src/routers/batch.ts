@@ -1007,6 +1007,21 @@ export const batchRouter = router({
         let totalCost: number | undefined;
         let purchaseItemUnit: string | null = null;
 
+        // Unit conversion factors
+        const toGrams: Record<string, number> = {
+          'g': 1,
+          'kg': 1000,
+          'lb': 453.592,
+          'lbs': 453.592,
+          'oz': 28.3495,
+        };
+        const toMl: Record<string, number> = {
+          'ml': 1,
+          'mL': 1,
+          'L': 1000,
+          'gal': 3785.41,
+        };
+
         if (input.additivePurchaseItemId) {
           // Fetch cost and unit from purchase item
           const [purchaseItem] = await db
@@ -1021,7 +1036,32 @@ export const batchRouter = router({
           if (purchaseItem) {
             purchaseItemUnit = purchaseItem.unit;
             if (!costPerUnit && purchaseItem.pricePerUnit) {
-              costPerUnit = parseFloat(purchaseItem.pricePerUnit.toString());
+              const purchasePricePerUnit = parseFloat(purchaseItem.pricePerUnit.toString());
+
+              // Convert cost per unit if usage unit differs from purchase unit
+              // e.g., $30/lb should become ~$0.066/g when using grams
+              const usageUnit = input.unit.replace('/L', ''); // Handle "g/L" -> "g"
+
+              if (usageUnit !== purchaseItemUnit) {
+                // Check if both are weight units
+                if (toGrams[usageUnit] && toGrams[purchaseItemUnit]) {
+                  // Convert: price per purchase unit -> price per usage unit
+                  // e.g., $30/lb * (453.592g/lb) / (1g/g) = $30 * 453.592 / 1 per gram...
+                  // Wait, that's wrong. We need: $30/lb / (453.592g/lb) = $0.066/g
+                  // Formula: pricePerPurchaseUnit / (toGrams[purchaseUnit] / toGrams[usageUnit])
+                  costPerUnit = purchasePricePerUnit * (toGrams[usageUnit] / toGrams[purchaseItemUnit]);
+                }
+                // Check if both are volume units
+                else if (toMl[usageUnit] && toMl[purchaseItemUnit]) {
+                  costPerUnit = purchasePricePerUnit * (toMl[usageUnit] / toMl[purchaseItemUnit]);
+                }
+                else {
+                  // Units are incompatible, use raw price
+                  costPerUnit = purchasePricePerUnit;
+                }
+              } else {
+                costPerUnit = purchasePricePerUnit;
+              }
             }
           }
         }
