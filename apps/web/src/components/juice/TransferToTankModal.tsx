@@ -81,6 +81,14 @@ export function TransferToTankModal({
   const volumeUnit = watch("volumeUnit");
   const transferDate = watch("transferDate");
 
+  // Helper to safely format date for datetime-local input
+  const formatDateForInput = (date: Date | undefined): string => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return '';
+    }
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
   // Get vessels and liquid map
   const vesselsQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
@@ -192,8 +200,13 @@ export function TransferToTankModal({
             </Label>
             <Input
               type="datetime-local"
-              value={transferDate ? new Date(transferDate.getTime() - transferDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
-              onChange={(e) => setValue("transferDate", new Date(e.target.value))}
+              value={formatDateForInput(transferDate)}
+              onChange={(e) => {
+                const dateValue = new Date(e.target.value);
+                if (!isNaN(dateValue.getTime())) {
+                  setValue("transferDate", dateValue);
+                }
+              }}
               className="w-full mt-1"
             />
             {errors.transferDate && (

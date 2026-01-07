@@ -108,6 +108,14 @@ export function RackingModal({
   const destinationVesselId = watch("destinationVesselId");
   const rackedAt = watch("rackedAt");
 
+  // Helper to safely format date for datetime-local input
+  const formatDateForInput = (date: Date | undefined): string => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return '';
+    }
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
   // Check if selected vessel has a batch (for merge warning)
   useEffect(() => {
     if (destinationVesselId && vesselsData) {
@@ -250,7 +258,7 @@ export function RackingModal({
             </Label>
             <Input
               type="datetime-local"
-              value={rackedAt ? new Date(rackedAt.getTime() - rackedAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+              value={formatDateForInput(rackedAt)}
               onChange={(e) => {
                 const dateValue = new Date(e.target.value);
                 if (!isNaN(dateValue.getTime())) {

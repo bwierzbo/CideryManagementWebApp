@@ -100,6 +100,14 @@ export function StartFruitWineBatchDialog({
   const sugarAddedKg = watch("sugarAddedKg");
   const startDate = watch("startDate");
 
+  // Helper to safely format date for datetime-local input
+  const formatDateForInput = (date: Date | undefined): string => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return '';
+    }
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
   // Get vessels
   const vesselsQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
@@ -214,8 +222,13 @@ export function StartFruitWineBatchDialog({
             </Label>
             <Input
               type="datetime-local"
-              value={startDate ? new Date(startDate.getTime() - startDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
-              onChange={(e) => setValue("startDate", new Date(e.target.value))}
+              value={formatDateForInput(startDate)}
+              onChange={(e) => {
+                const dateValue = new Date(e.target.value);
+                if (!isNaN(dateValue.getTime())) {
+                  setValue("startDate", dateValue);
+                }
+              }}
               className="w-full mt-1"
             />
           </div>

@@ -92,6 +92,14 @@ export function FilterModal({
   const volumeAfterUnit = watch("volumeAfterUnit");
   const filteredAt = watch("filteredAt");
 
+  // Helper to safely format date for datetime-local input
+  const formatDateForInput = (date: Date | undefined): string => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+      return '';
+    }
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
   // Calculate loss whenever volumes change
   useEffect(() => {
     if (volumeBefore && volumeAfter) {
@@ -196,12 +204,15 @@ export function FilterModal({
             </Label>
             <Input
               type="datetime-local"
-              value={filteredAt ? new Date(filteredAt.getTime() - filteredAt.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
+              value={formatDateForInput(filteredAt)}
               onChange={(e) => {
                 const dateValue = new Date(e.target.value);
-                setValue("filteredAt", dateValue);
-                const result = validateDate(dateValue);
-                setDateWarning(result.warning);
+                // Only update if we have a valid date
+                if (!isNaN(dateValue.getTime())) {
+                  setValue("filteredAt", dateValue);
+                  const result = validateDate(dateValue);
+                  setDateWarning(result.warning);
+                }
               }}
               className="w-full mt-1"
             />

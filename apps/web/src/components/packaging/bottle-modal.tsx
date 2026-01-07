@@ -296,20 +296,38 @@ export function BottleModal({
       return; // Prevent submission with negative loss
     }
 
+    // Validate packagedAt is a valid date
+    const packagedAtDate = new Date(data.packagedAt);
+    if (!data.packagedAt || isNaN(packagedAtDate.getTime())) {
+      toast({
+        title: "Invalid Date",
+        description: "Please enter a valid date and time",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Filter out any invalid labor assignments (safety check)
+    const validLaborAssignments = laborAssignments.filter(
+      (a) => a.workerId && a.hoursWorked > 0
+    );
+
     setIsSubmitting(true);
     try {
       const result = await createPackagingRunMutation.mutateAsync({
         batchId,
         vesselId,
-        packagedAt: new Date(data.packagedAt),
+        packagedAt: packagedAtDate,
         packageSizeMl: data.packageSizeMl,
         unitsProduced: data.unitsProduced,
         volumeTakenL: data.volumeTakenL,
         notes: data.notes,
         materials: data.materials,
         ...(kegFillId && { kegFillId }), // Include kegFillId if bottling from keg
-        // Labor tracking - using worker-based assignments
-        laborAssignments: toApiLaborAssignments(laborAssignments),
+        // Labor tracking - using worker-based assignments (only include if there are valid assignments)
+        ...(validLaborAssignments.length > 0 && {
+          laborAssignments: toApiLaborAssignments(validLaborAssignments),
+        }),
       });
 
       // Invalidate relevant queries to refresh data
