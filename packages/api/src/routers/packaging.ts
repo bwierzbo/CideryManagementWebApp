@@ -274,7 +274,7 @@ export const packagingRouter = router({
             });
           }
 
-          const vessel = vesselData[0];
+          vessel = vesselData[0];
 
           // Get batch data including status
           const batchData = await tx
