@@ -187,6 +187,25 @@ export function CarbonateModal({
     }
   }, [startedAt, validateDate]);
 
+  // Reset form with current date when modal opens
+  useEffect(() => {
+    if (open) {
+      reset({
+        carbonationMethod: "forced",
+        startedAt: new Date(),
+        startingVolume: batch.currentVolume,
+        startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
+        startingTemperature: 4,
+        targetCo2Volumes: 2.5,
+        carbonationProcess: "headspace",
+        pressureApplied: 0,
+        residualCo2Volumes: 0,
+        sugarPerLiter: undefined,
+      } as any);
+      setDateWarning(null);
+    }
+  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit]);
+
   // Convert volume to liters for calculations
   const volumeInLiters = useMemo(() => {
     if (startingVolumeUnit === "gal") {

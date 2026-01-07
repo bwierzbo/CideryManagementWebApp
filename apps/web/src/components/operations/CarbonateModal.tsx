@@ -133,6 +133,23 @@ export function CarbonateModal({
     }
   }, [calculationMode, calculatedCO2FromPSI, form]);
 
+  // Reset form with current date when modal opens
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        startedAt: new Date(),
+        carbonationProcess: 'headspace',
+        targetCo2Volumes: 2.5,
+        startingTemperature: 4,
+        pressureApplied: 18,
+        startingVolume: batch.currentVolume || 100,
+        startingVolumeUnit: 'L',
+        gasType: 'CO2',
+        notes: '',
+      });
+    }
+  }, [open, form, batch.currentVolume]);
+
   const startCarbonation = trpc.carbonation.start.useMutation({
     onSuccess: () => {
       onSuccess?.();
