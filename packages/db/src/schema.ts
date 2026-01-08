@@ -734,6 +734,8 @@ export const batches = pgTable(
     isArchived: boolean("is_archived").notNull().default(false),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedReason: text("archived_reason"),
+    // User attribution
+    createdBy: uuid("created_by").references(() => users.id),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),
@@ -751,6 +753,7 @@ export const batches = pgTable(
       .on(table.currentVolumeLiters)
       .where(sql`${table.deletedAt} IS NULL`),
     isArchivedIdx: index("batches_is_archived_idx").on(table.isArchived),
+    createdByIdx: index("batches_created_by_idx").on(table.createdBy),
   }),
 );
 

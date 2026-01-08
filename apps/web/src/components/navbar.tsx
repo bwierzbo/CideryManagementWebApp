@@ -23,6 +23,7 @@ import {
   Users,
   Activity,
   Apple,
+  History,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import {
@@ -95,6 +96,12 @@ export function Navbar() {
       href: "/activity-register",
       icon: Activity,
       description: "Activity Register",
+    },
+    {
+      name: "Audit",
+      href: "/audit-trail",
+      icon: History,
+      description: "Audit Trail",
     },
     {
       name: "Recipes",

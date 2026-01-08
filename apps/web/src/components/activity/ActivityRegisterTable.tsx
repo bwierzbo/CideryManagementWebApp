@@ -33,12 +33,18 @@ import {
   Loader2,
   Calendar,
   ArrowUpDown,
+  Pencil,
+  Trash2,
+  Plus,
+  User,
+  Bot,
 } from "lucide-react";
 import { formatDateTime } from "@/utils/date-format";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type ActivityCategory = "all" | "purchases" | "pressing" | "cellar" | "packaging" | "vessels";
+type OperationType = "all" | "creates" | "updates" | "deletes";
 
 const CATEGORY_OPTIONS: { value: ActivityCategory; label: string }[] = [
   { value: "all", label: "All Activities" },
@@ -47,6 +53,13 @@ const CATEGORY_OPTIONS: { value: ActivityCategory; label: string }[] = [
   { value: "cellar", label: "Cellar Operations" },
   { value: "packaging", label: "Packaging" },
   { value: "vessels", label: "Vessel Operations" },
+];
+
+const OPERATION_OPTIONS: { value: OperationType; label: string }[] = [
+  { value: "all", label: "All Operations" },
+  { value: "creates", label: "Creates Only" },
+  { value: "updates", label: "Updates Only" },
+  { value: "deletes", label: "Deletes Only" },
 ];
 
 const ACTIVITY_TYPE_CONFIG: Record<
@@ -63,6 +76,16 @@ const ACTIVITY_TYPE_CONFIG: Record<
   bottle_run: { icon: Package, color: "bg-rose-100 text-rose-800", label: "Bottle Run" },
   keg_fill: { icon: Package, color: "bg-orange-100 text-orange-800", label: "Keg Fill" },
   cleaning: { icon: Droplets, color: "bg-gray-100 text-gray-800", label: "Cleaning" },
+  distillation_sent: { icon: Wine, color: "bg-violet-100 text-violet-800", label: "Sent to Distillery" },
+  distillation_received: { icon: Wine, color: "bg-fuchsia-100 text-fuchsia-800", label: "Brandy Received" },
+  audit_update: { icon: Pencil, color: "bg-yellow-100 text-yellow-800", label: "Update" },
+  audit_delete: { icon: Trash2, color: "bg-red-100 text-red-800", label: "Delete" },
+};
+
+const OPERATION_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
+  create: { icon: Plus, color: "text-green-600", label: "Created" },
+  update: { icon: Pencil, color: "text-yellow-600", label: "Updated" },
+  delete: { icon: Trash2, color: "text-red-600", label: "Deleted" },
 };
 
 const CATEGORY_CONFIG: Record<ActivityCategory, { color: string; label: string }> = {
@@ -78,6 +101,7 @@ export function ActivityRegisterTable() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(50);
   const [category, setCategory] = useState<ActivityCategory>("all");
+  const [operationType, setOperationType] = useState<OperationType>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -86,6 +110,7 @@ export function ActivityRegisterTable() {
     limit: pageSize,
     offset: page * pageSize,
     category,
+    operationType,
     startDate: startDate ? new Date(startDate) : undefined,
     endDate: endDate ? new Date(endDate) : undefined,
     sortOrder,
@@ -98,6 +123,7 @@ export function ActivityRegisterTable() {
 
   const resetFilters = () => {
     setCategory("all");
+    setOperationType("all");
     setStartDate("");
     setEndDate("");
     setPage(0);
@@ -144,6 +170,31 @@ export function ActivityRegisterTable() {
               </SelectTrigger>
               <SelectContent>
                 {CATEGORY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Operation Type Filter */}
+          <div className="flex-1 min-w-[150px]">
+            <Label htmlFor="operationType" className="text-sm font-medium mb-2 block">
+              Operation
+            </Label>
+            <Select
+              value={operationType}
+              onValueChange={(value) => {
+                setOperationType(value as OperationType);
+                setPage(0);
+              }}
+            >
+              <SelectTrigger id="operationType">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {OPERATION_OPTIONS.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label}
                   </SelectItem>
@@ -219,6 +270,7 @@ export function ActivityRegisterTable() {
                     </TableHead>
                     <TableHead>Activity Type</TableHead>
                     <TableHead>Category</TableHead>
+                    <TableHead>Performed By</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Details</TableHead>
                   </TableRow>
@@ -231,12 +283,19 @@ export function ActivityRegisterTable() {
                       label: activity.type,
                     };
                     const categoryConfig = CATEGORY_CONFIG[activity.category as ActivityCategory];
+                    const operationConfig = OPERATION_CONFIG[activity.operation] || OPERATION_CONFIG.create;
                     const Icon = activityConfig.icon;
+                    const OperationIcon = operationConfig.icon;
+                    const isClaudeAssistant = activity.performed_by_name === "Claude Assistant";
+                    const performedByName = activity.performed_by_name || "System";
 
                     return (
                       <TableRow key={activity.id}>
                         <TableCell className="whitespace-nowrap">
-                          {formatDateTime(activity.activity_date)}
+                          <div className="flex items-center gap-2">
+                            <OperationIcon className={`w-3 h-3 ${operationConfig.color}`} />
+                            {formatDateTime(activity.activity_date)}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge className={activityConfig.color} variant="secondary">
@@ -248,6 +307,18 @@ export function ActivityRegisterTable() {
                           <Badge className={categoryConfig.color} variant="secondary">
                             {categoryConfig.label}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            {isClaudeAssistant ? (
+                              <Bot className="w-4 h-4 text-purple-500" />
+                            ) : (
+                              <User className="w-4 h-4 text-gray-400" />
+                            )}
+                            <span className={isClaudeAssistant ? "text-purple-600 font-medium" : "text-gray-600"}>
+                              {performedByName}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="font-medium">
                           {activity.vendor_name}
@@ -363,6 +434,13 @@ function formatActivityDetails(activity: any): string {
       return `Keg ${metadata.kegNumber}: ${metadata.volumeTaken ? Number(metadata.volumeTaken).toFixed(1) : "-"} ${metadata.volumeUnit || "L"}`;
     case "cleaning":
       return metadata.notes || "-";
+    case "distillation_sent":
+      return `${metadata.sourceVolume ? Number(metadata.sourceVolume).toFixed(1) : "-"} ${metadata.sourceVolumeUnit || "L"} → ${metadata.distilleryName}`;
+    case "distillation_received":
+      return `${metadata.receivedVolume ? Number(metadata.receivedVolume).toFixed(1) : "-"} ${metadata.receivedVolumeUnit || "L"} @ ${metadata.receivedAbv ? Number(metadata.receivedAbv).toFixed(1) + "%" : "-"} ABV`;
+    case "audit_update":
+    case "audit_delete":
+      return metadata.reason || `${metadata.tableName} record ${metadata.recordId?.substring(0, 8)}...`;
     default:
       return "-";
   }
