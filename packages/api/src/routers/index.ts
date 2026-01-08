@@ -55,6 +55,7 @@ import {
   batchCompositions,
   batchMeasurements,
   batchTransfers,
+  batchMergeHistory,
   vessels,
   vesselCleaningOperations,
   baseFruitVarieties,
@@ -2798,17 +2799,29 @@ export const appRouter = router({
             finalName = `Tank ${nextNumber}`;
           }
 
-          // capacityL is already in liters from the frontend, just round it
+          // capacityL is already in liters from the frontend
           const capacityInLiters = roundToDecimals(input.capacityL, 3);
           const maxCapacityInLiters = input.maxCapacityL ? roundToDecimals(input.maxCapacityL, 3) : null;
+
+          // Convert back to display unit for the capacity column
+          // capacity column stores the value in the user's chosen unit
+          // capacityLiters column stores the normalized liters value
+          const displayUnit = input.capacityUnit || "L";
+          const capacityInDisplayUnit = displayUnit === "gal"
+            ? roundToDecimals(convertVolume(capacityInLiters, "L", "gal"), 3)
+            : capacityInLiters;
+          const maxCapacityInDisplayUnit = maxCapacityInLiters && displayUnit === "gal"
+            ? roundToDecimals(convertVolume(maxCapacityInLiters, "L", "gal"), 3)
+            : maxCapacityInLiters;
 
           const newVessel = await db
             .insert(vessels)
             .values({
               name: finalName,
-              capacity: capacityInLiters.toString(),
-              maxCapacity: maxCapacityInLiters?.toString() || null,
-              capacityUnit: input.capacityUnit || "L",
+              capacity: capacityInDisplayUnit.toString(),
+              maxCapacity: maxCapacityInDisplayUnit?.toString() || null,
+              capacityUnit: displayUnit,
+              capacityLiters: capacityInLiters.toString(),
               material: input.material,
               jacketed: input.jacketed,
               isPressureVessel: input.isPressureVessel,
@@ -2913,15 +2926,26 @@ export const appRouter = router({
 
           if (input.name !== undefined) updateData.name = input.name;
           if (input.capacityL !== undefined && input.capacityUnit !== undefined) {
-            // capacityL is already in liters from the frontend, just round it
+            // capacityL is already in liters from the frontend
             const capacityInLiters = roundToDecimals(input.capacityL, 3);
-            updateData.capacity = capacityInLiters.toString();
+            // Convert back to display unit for the capacity column
+            const capacityInDisplayUnit = input.capacityUnit === "gal"
+              ? roundToDecimals(convertVolume(capacityInLiters, "L", "gal"), 3)
+              : capacityInLiters;
+            updateData.capacity = capacityInDisplayUnit.toString();
             updateData.capacityUnit = input.capacityUnit;
+            updateData.capacityLiters = capacityInLiters.toString();
           } else if (input.capacityUnit !== undefined) {
             updateData.capacityUnit = input.capacityUnit;
           }
           if (input.maxCapacityL !== undefined) {
-            updateData.maxCapacity = input.maxCapacityL ? roundToDecimals(input.maxCapacityL, 3).toString() : null;
+            // Also convert maxCapacity back to display unit
+            const maxCapacityInLiters = input.maxCapacityL ? roundToDecimals(input.maxCapacityL, 3) : null;
+            const displayUnit = input.capacityUnit || existing[0].capacityUnit || "L";
+            const maxCapacityInDisplayUnit = maxCapacityInLiters && displayUnit === "gal"
+              ? roundToDecimals(convertVolume(maxCapacityInLiters, "L", "gal"), 3)
+              : maxCapacityInLiters;
+            updateData.maxCapacity = maxCapacityInDisplayUnit?.toString() || null;
           }
           if (input.material !== undefined)
             updateData.material = input.material;
@@ -3197,6 +3221,7 @@ export const appRouter = router({
                 specificGravityIsEstimated: m.specificGravity !== null ? m.isEstimated : null,
                 abv: m.abv,
                 abvDate: m.abv !== null ? m.measurementDate : null,
+                abvIsEstimated: m.abv !== null ? m.isEstimated : null,
                 ph: m.ph,
                 phDate: m.ph !== null ? m.measurementDate : null,
                 phIsEstimated: m.ph !== null ? m.isEstimated : null,
@@ -3217,6 +3242,7 @@ export const appRouter = router({
               if (existing.abv === null && m.abv !== null) {
                 existing.abv = m.abv;
                 existing.abvDate = m.measurementDate;
+                existing.abvIsEstimated = m.isEstimated;
               }
               if (existing.ph === null && m.ph !== null) {
                 existing.ph = m.ph;
@@ -3452,12 +3478,14 @@ export const appRouter = router({
               : 0;
 
             // Check if destination vessel has enough capacity for the combined volume
+            // Use maxCapacity (headspace) if available, otherwise fall back to regular capacity
             const destCapacityL = parseFloat(destVessel[0].capacity?.toString() || "0");
+            const destMaxCapacityL = parseFloat(destVessel[0].maxCapacity?.toString() || "0") || destCapacityL;
             const totalVolumeAfterTransfer = destCurrentVolumeL + input.volumeL;
-            if (totalVolumeAfterTransfer > destCapacityL) {
+            if (totalVolumeAfterTransfer > destMaxCapacityL) {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Transfer volume (${input.volumeL}L) plus existing volume (${destCurrentVolumeL}L) exceeds destination vessel capacity (${destCapacityL}${destVessel[0].capacityUnit || 'L'})`,
+                message: `Transfer volume (${input.volumeL}L) plus existing volume (${destCurrentVolumeL}L) exceeds destination vessel max capacity (${destMaxCapacityL}${destVessel[0].capacityUnit || 'L'})`,
               });
             }
 
@@ -3850,14 +3878,86 @@ export const appRouter = router({
               // BLENDING SCENARIO: Combine source batch into destination batch
               const newVolumeL = destCurrentVolumeL + input.volumeL;
 
-              // Update destination batch with combined volume
+              // === POMMEAU DETECTION ===
+              // Check if this is a brandy + cider/juice blend (creates Pommeau)
+              const sourceProductType = sourceBatch[0].productType || "cider";
+              const destProductType = destBatch[0].productType || "cider";
+              const isBrandyToCider = sourceProductType === "brandy" && (destProductType === "cider" || destProductType === "perry");
+              const isCiderToBrandy = (sourceProductType === "cider" || sourceProductType === "perry") && destProductType === "brandy";
+              const isPommeauBlend = isBrandyToCider || isCiderToBrandy;
+
+              let newProductType = destProductType;
+              let newEstimatedAbv: string | null = null;
+
+              if (isPommeauBlend) {
+                // Determine which is brandy and which is cider/juice
+                const brandyBatch = isBrandyToCider ? sourceBatch[0] : destBatch[0];
+                const ciderBatch = isBrandyToCider ? destBatch[0] : sourceBatch[0];
+                const brandyVolumeL = isBrandyToCider ? input.volumeL : destCurrentVolumeL;
+                const ciderVolumeL = isBrandyToCider ? destCurrentVolumeL : input.volumeL;
+
+                // Get ABV values (brandy typically 40-70%, cider 0-15%)
+                const brandyAbv = parseFloat(brandyBatch.actualAbv || brandyBatch.estimatedAbv || "60");
+                const ciderAbv = parseFloat(ciderBatch.actualAbv || ciderBatch.estimatedAbv || "0");
+
+                // Calculate blended ABV using weighted average
+                const totalAlcohol = (brandyVolumeL * brandyAbv) + (ciderVolumeL * ciderAbv);
+                const blendedAbv = totalAlcohol / newVolumeL;
+
+                // Set product type to pommeau and calculate ABV
+                newProductType = "pommeau";
+                newEstimatedAbv = blendedAbv.toFixed(2);
+
+                // Create batch_merge_history entry to track the spirit addition
+                await tx.insert(batchMergeHistory).values({
+                  targetBatchId: destBatch[0].id,
+                  sourceBatchId: sourceBatch[0].id,
+                  sourceType: "batch",
+                  volumeAdded: input.volumeL.toString(),
+                  volumeAddedUnit: "L",
+                  targetVolumeBefore: destCurrentVolumeL.toString(),
+                  targetVolumeBeforeUnit: "L",
+                  targetVolumeAfter: newVolumeL.toString(),
+                  targetVolumeAfterUnit: "L",
+                  sourceAbv: (isBrandyToCider ? brandyAbv : ciderAbv).toString(),
+                  resultingAbv: newEstimatedAbv,
+                  compositionSnapshot: {
+                    brandy: {
+                      batchId: brandyBatch.id,
+                      name: brandyBatch.name,
+                      volume: brandyVolumeL,
+                      abv: brandyAbv,
+                    },
+                    cider: {
+                      batchId: ciderBatch.id,
+                      name: ciderBatch.name,
+                      volume: ciderVolumeL,
+                      abv: ciderAbv,
+                    },
+                    resultingAbv: parseFloat(newEstimatedAbv),
+                  },
+                  notes: `Pommeau blend created via transfer: ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% + ${ciderVolumeL.toFixed(1)}L ${sourceProductType === "perry" || destProductType === "perry" ? "perry" : "cider"} @ ${ciderAbv}%`,
+                  mergedAt: input.transferDate || new Date(),
+                });
+
+                blendNote = `🍎🥃 Pommeau blend created! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${ciderVolumeL.toFixed(1)}L ${sourceProductType === "perry" || destProductType === "perry" ? "perry" : "cider"} @ ${ciderAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`;
+              }
+
+              // Update destination batch with combined volume (and product type/ABV if Pommeau)
+              const updateData: Record<string, unknown> = {
+                currentVolume: newVolumeL.toString(),
+                currentVolumeUnit: "L",
+                updatedAt: new Date(),
+              };
+
+              if (isPommeauBlend) {
+                updateData.productType = newProductType;
+                updateData.estimatedAbv = newEstimatedAbv;
+              }
+
               updatedBatch = await tx
                 .update(batches)
-                .set({
-                  currentVolume: newVolumeL.toString(),
-                  currentVolumeUnit: "L",
-                  updatedAt: new Date(),
-                })
+                .set(updateData)
                 .where(eq(batches.id, destBatch[0].id))
                 .returning();
 
@@ -4016,7 +4116,147 @@ export const appRouter = router({
                 }
               }
 
-              blendNote = `Blended ${input.volumeL}L from batch ${sourceBatch[0].name || sourceBatch[0].batchNumber} into existing batch ${destBatch[0].name || destBatch[0].batchNumber}. Total volume: ${newVolumeL}L`;
+              // === BLEND MEASUREMENT CALCULATION ===
+              // Calculate estimated measurements for the blended batch based on source contributions
+              const sourceMeasurement = await tx
+                .select()
+                .from(batchMeasurements)
+                .where(
+                  and(
+                    eq(batchMeasurements.batchId, sourceBatch[0].id),
+                    isNull(batchMeasurements.deletedAt),
+                  ),
+                )
+                .orderBy(desc(batchMeasurements.measurementDate))
+                .limit(1);
+
+              const destMeasurement = await tx
+                .select()
+                .from(batchMeasurements)
+                .where(
+                  and(
+                    eq(batchMeasurements.batchId, destBatch[0].id),
+                    isNull(batchMeasurements.deletedAt),
+                  ),
+                )
+                .orderBy(desc(batchMeasurements.measurementDate))
+                .limit(1);
+
+              // Only create estimated measurement if at least one source has measurements
+              // or if this is a Pommeau blend (we can estimate from ABV)
+              if (sourceMeasurement.length > 0 || destMeasurement.length > 0 || isPommeauBlend) {
+                const sourceVolumeL = input.volumeL;
+                const destVolumeForCalc = destCurrentVolumeL;
+
+                // Get source values (use defaults for missing data)
+                let sourceSG = sourceMeasurement[0]?.specificGravity
+                  ? parseFloat(sourceMeasurement[0].specificGravity)
+                  : null;
+                const sourcePH = sourceMeasurement[0]?.ph
+                  ? parseFloat(sourceMeasurement[0].ph)
+                  : null;
+                const sourceABV = sourceBatch[0].actualAbv
+                  ? parseFloat(sourceBatch[0].actualAbv)
+                  : sourceBatch[0].estimatedAbv
+                    ? parseFloat(sourceBatch[0].estimatedAbv)
+                    : 0;
+
+                // Get destination values
+                let destSG = destMeasurement[0]?.specificGravity
+                  ? parseFloat(destMeasurement[0].specificGravity)
+                  : null;
+                const destPH = destMeasurement[0]?.ph
+                  ? parseFloat(destMeasurement[0].ph)
+                  : null;
+                const destABV = destBatch[0].actualAbv
+                  ? parseFloat(destBatch[0].actualAbv)
+                  : destBatch[0].estimatedAbv
+                    ? parseFloat(destBatch[0].estimatedAbv)
+                    : 0;
+
+                // For Pommeau/spirit blends, estimate SG from ABV if not available
+                // (Spirits have lower SG due to alcohol density ~0.79 g/mL)
+                if (isPommeauBlend) {
+                  if (sourceSG === null && sourceABV > 20) {
+                    // Estimate SG for spirit: water=1.0, pure alcohol=0.79
+                    sourceSG = 1.0 - (sourceABV / 100) * 0.21;
+                  }
+                  if (destSG === null && destABV > 20) {
+                    destSG = 1.0 - (destABV / 100) * 0.21;
+                  }
+                }
+
+                // Calculate weighted averages
+                let blendedSG: number | null = null;
+                let blendedPH: number | null = null;
+                let blendedABV: number | null = null;
+
+                // SG calculation (if both have values or we estimated them)
+                if (sourceSG !== null && destSG !== null) {
+                  blendedSG = ((sourceVolumeL * sourceSG) + (destVolumeForCalc * destSG)) / newVolumeL;
+                } else if (sourceSG !== null && destVolumeForCalc === 0) {
+                  blendedSG = sourceSG;
+                } else if (destSG !== null && sourceVolumeL === 0) {
+                  blendedSG = destSG;
+                }
+
+                // pH calculation
+                if (sourcePH !== null && destPH !== null) {
+                  blendedPH = ((sourceVolumeL * sourcePH) + (destVolumeForCalc * destPH)) / newVolumeL;
+                } else if (sourcePH !== null && destVolumeForCalc === 0) {
+                  blendedPH = sourcePH;
+                } else if (destPH !== null && sourceVolumeL === 0) {
+                  blendedPH = destPH;
+                } else if (sourcePH !== null) {
+                  blendedPH = sourcePH; // Use source if dest has no pH
+                } else if (destPH !== null) {
+                  blendedPH = destPH; // Use dest if source has no pH
+                }
+
+                // ABV calculation
+                blendedABV = ((sourceVolumeL * sourceABV) + (destVolumeForCalc * destABV)) / newVolumeL;
+
+                // Build estimate source description
+                const estimateComponents: string[] = [];
+                if (sourceVolumeL > 0) {
+                  estimateComponents.push(
+                    `${sourceVolumeL.toFixed(1)}L from ${sourceBatch[0].name || sourceBatch[0].batchNumber}` +
+                    (sourceABV > 0 ? ` @${sourceABV.toFixed(1)}% ABV` : "") +
+                    (sourceSG !== null ? ` (SG ${sourceSG.toFixed(4)})` : "")
+                  );
+                }
+                if (destVolumeForCalc > 0) {
+                  estimateComponents.push(
+                    `${destVolumeForCalc.toFixed(1)}L from ${destBatch[0].name || destBatch[0].batchNumber}` +
+                    (destABV > 0 ? ` @${destABV.toFixed(1)}% ABV` : "") +
+                    (destSG !== null ? ` (SG ${destSG.toFixed(4)})` : "")
+                  );
+                }
+
+                // Create estimated measurement
+                await tx.insert(batchMeasurements).values({
+                  batchId: destBatch[0].id,
+                  measurementDate: input.transferDate || new Date(),
+                  specificGravity: blendedSG !== null ? blendedSG.toFixed(4) : null,
+                  ph: blendedPH !== null ? blendedPH.toFixed(2) : null,
+                  abv: blendedABV !== null ? blendedABV.toFixed(2) : null,
+                  volume: newVolumeL.toString(),
+                  volumeUnit: "L",
+                  volumeLiters: newVolumeL.toString(),
+                  isEstimated: true,
+                  estimateSource: `Volume-weighted blend: ${estimateComponents.join(" + ")}`,
+                  notes: isPommeauBlend
+                    ? "Estimated from Pommeau blend components. For accurate ABV, use ebulliometer or lab analysis."
+                    : "Estimated from blend components based on volume-weighted averages.",
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                });
+              }
+
+              // Only set generic blend note if not already set by Pommeau detection
+              if (!blendNote) {
+                blendNote = `Blended ${input.volumeL}L from batch ${sourceBatch[0].name || sourceBatch[0].batchNumber} into existing batch ${destBatch[0].name || destBatch[0].batchNumber}. Total volume: ${newVolumeL}L`;
+              }
 
               // Audit logging for blend
               await publishUpdateEvent(
