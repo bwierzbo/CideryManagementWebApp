@@ -26,7 +26,7 @@ import {
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, desc, asc, sql, or, like, inArray } from "drizzle-orm";
+import { eq, and, isNull, desc, asc, sql, or, like, inArray, aliasedTable } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
 import {
@@ -826,6 +826,33 @@ export const batchRouter = router({
           )
           .orderBy(asc(batchMergeHistory.mergedAt));
 
+        // Get batch-sourced composition (for brandy/transfers from other batches)
+        const sourceBatchAlias = aliasedTable(batches, "source_batch");
+        const batchSourcedComposition = await db
+          .select({
+            id: batchMergeHistory.id,
+            sourceBatchId: batchMergeHistory.sourceBatchId,
+            sourceBatchName: sourceBatchAlias.name,
+            sourceBatchCustomName: sourceBatchAlias.customName,
+            volumeAdded: batchMergeHistory.volumeAdded,
+            volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
+            sourceAbv: batchMergeHistory.sourceAbv,
+            resultingAbv: batchMergeHistory.resultingAbv,
+            notes: batchMergeHistory.notes,
+            mergedAt: batchMergeHistory.mergedAt,
+            sourceType: batchMergeHistory.sourceType,
+          })
+          .from(batchMergeHistory)
+          .innerJoin(sourceBatchAlias, eq(batchMergeHistory.sourceBatchId, sourceBatchAlias.id))
+          .where(
+            and(
+              eq(batchMergeHistory.targetBatchId, input.batchId),
+              eq(batchMergeHistory.sourceType, "batch_transfer"),
+              isNull(batchMergeHistory.deletedAt),
+            ),
+          )
+          .orderBy(asc(batchMergeHistory.mergedAt));
+
         return {
           batch,
           origin: originDetails,
@@ -837,6 +864,19 @@ export const batchRouter = router({
             volumeAdded: parseFloat(m.volumeAdded),
             volumeAddedUnit: m.volumeAddedUnit,
             mergedAt: m.mergedAt,
+          })),
+          // Batch-sourced composition (e.g., brandy from distillation)
+          batchSourcedComposition: batchSourcedComposition.map((b) => ({
+            id: b.id,
+            sourceBatchId: b.sourceBatchId,
+            sourceBatchName: b.sourceBatchCustomName || b.sourceBatchName || "Unknown Batch",
+            volumeAdded: parseFloat(b.volumeAdded),
+            volumeAddedUnit: b.volumeAddedUnit,
+            sourceAbv: b.sourceAbv ? parseFloat(b.sourceAbv) : undefined,
+            resultingAbv: b.resultingAbv ? parseFloat(b.resultingAbv) : undefined,
+            notes: b.notes,
+            mergedAt: b.mergedAt,
+            sourceType: b.sourceType,
           })),
           composition: composition.map((item) => ({
             vendorName: item.vendorName || "Unknown Vendor",
@@ -2742,10 +2782,14 @@ export const batchRouter = router({
     .input(batchIdSchema)
     .query(async ({ input }) => {
       try {
+        // Define alias for source batch join
+        const sourceBatch = aliasedTable(batches, "source_batch");
+
         const mergeHistory = await db
           .select({
             id: batchMergeHistory.id,
             sourcePressRunId: batchMergeHistory.sourcePressRunId,
+            sourceBatchId: batchMergeHistory.sourceBatchId,
             sourceType: batchMergeHistory.sourceType,
             volumeAdded: batchMergeHistory.volumeAdded,
             volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
@@ -2754,14 +2798,22 @@ export const batchRouter = router({
             targetVolumeAfter: batchMergeHistory.targetVolumeAfter,
             targetVolumeAfterUnit: batchMergeHistory.targetVolumeAfterUnit,
             compositionSnapshot: batchMergeHistory.compositionSnapshot,
+            sourceAbv: batchMergeHistory.sourceAbv,
+            resultingAbv: batchMergeHistory.resultingAbv,
             notes: batchMergeHistory.notes,
             mergedAt: batchMergeHistory.mergedAt,
             pressRunName: pressRuns.pressRunName,
+            sourceBatchName: sourceBatch.name,
+            sourceBatchCustomName: sourceBatch.customName,
           })
           .from(batchMergeHistory)
           .leftJoin(
             pressRuns,
             eq(batchMergeHistory.sourcePressRunId, pressRuns.id),
+          )
+          .leftJoin(
+            sourceBatch,
+            eq(batchMergeHistory.sourceBatchId, sourceBatch.id),
           )
           .where(
             and(

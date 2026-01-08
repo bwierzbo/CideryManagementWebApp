@@ -191,7 +191,7 @@ export function BatchHistoryModal({
       return <div className="text-center py-8">No data available</div>;
     }
 
-    const { batch, origin, contributingPressRuns, composition, measurements, additives } = data;
+    const { batch, origin, contributingPressRuns, batchSourcedComposition, composition, measurements, additives } = data;
 
     return (
       <Tabs defaultValue="overview" className="w-full">
@@ -416,81 +416,146 @@ export function BatchHistoryModal({
           </TabsContent>
 
           <TabsContent value="composition" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Grape className="w-5 h-5" />
-                  Batch Composition
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Vendor</TableHead>
-                      <TableHead>Variety</TableHead>
-                      <TableHead className="text-right">Weight</TableHead>
-                      <TableHead className="text-right">Volume (L)</TableHead>
-                      <TableHead className="text-right">Percentage</TableHead>
-                      <TableHead className="text-right">pH</TableHead>
-                      <TableHead className="text-right">SG</TableHead>
-                      <TableHead>Notes</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {composition.map((item, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          {item.sourceType === "juice_purchase" ? (
-                            <Badge variant="outline" className="bg-blue-50">
-                              🧃 Juice
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="bg-green-50">
-                              🍎 Fruit
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>{item.vendorName}</TableCell>
-                        <TableCell>{item.varietyName}</TableCell>
-                        <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase" ? (
-                            "—"
-                          ) : (
-                            <WeightDisplay
-                              weightKg={item.inputWeightKg}
-                              originalUnit="lb"
-                              displayUnit={weightDisplayUnit}
-                              onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
-                            />
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.juiceVolume.toFixed(1)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {(item.fractionOfBatch * 100).toFixed(1)}%
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase" && (item as any).ph
-                            ? Number((item as any).ph).toFixed(2)
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.sourceType === "juice_purchase" && (item as any).specificGravity
-                            ? Number((item as any).specificGravity).toFixed(3)
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="max-w-xs truncate" title={(item as any).notes || ""}>
-                          {(item as any).notes || "—"}
-                        </TableCell>
+            {/* Batch-Sourced Composition (e.g., Brandy from distillation) */}
+            {batchSourcedComposition && batchSourcedComposition.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FlaskConical className="w-5 h-5" />
+                    Batch Source
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Source Batch</TableHead>
+                        <TableHead className="text-right">Volume</TableHead>
+                        <TableHead className="text-right">ABV %</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Notes</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {batchSourcedComposition.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            <Badge variant="outline" className="bg-amber-50">
+                              🥃 Batch Transfer
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{item.sourceBatchName}</TableCell>
+                          <TableCell className="text-right">
+                            {item.volumeAdded.toFixed(1)} {item.volumeAddedUnit || 'L'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.sourceAbv ? `${item.sourceAbv.toFixed(1)}%` : "—"}
+                          </TableCell>
+                          <TableCell>
+                            {item.mergedAt ? formatDate(item.mergedAt) : "—"}
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate" title={item.notes || ""}>
+                            {item.notes || "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Standard Composition (fruit/juice) */}
+            {composition.length > 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Grape className="w-5 h-5" />
+                    {batchSourcedComposition && batchSourcedComposition.length > 0 ? "Additional Composition" : "Batch Composition"}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Vendor</TableHead>
+                        <TableHead>Variety</TableHead>
+                        <TableHead className="text-right">Weight</TableHead>
+                        <TableHead className="text-right">Volume (L)</TableHead>
+                        <TableHead className="text-right">Percentage</TableHead>
+                        <TableHead className="text-right">pH</TableHead>
+                        <TableHead className="text-right">SG</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {composition.map((item, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            {item.sourceType === "juice_purchase" ? (
+                              <Badge variant="outline" className="bg-blue-50">
+                                🧃 Juice
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-green-50">
+                                🍎 Fruit
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>{item.vendorName}</TableCell>
+                          <TableCell>{item.varietyName}</TableCell>
+                          <TableCell className="text-right">
+                            {item.sourceType === "juice_purchase" ? (
+                              "—"
+                            ) : (
+                              <WeightDisplay
+                                weightKg={item.inputWeightKg}
+                                originalUnit="lb"
+                                displayUnit={weightDisplayUnit}
+                                onToggle={(newUnit) => setWeightDisplayUnit(newUnit)}
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.juiceVolume.toFixed(1)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {(item.fractionOfBatch * 100).toFixed(1)}%
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.sourceType === "juice_purchase" && (item as any).ph
+                              ? Number((item as any).ph).toFixed(2)
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.sourceType === "juice_purchase" && (item as any).specificGravity
+                              ? Number((item as any).specificGravity).toFixed(3)
+                              : "—"}
+                          </TableCell>
+                          <TableCell className="max-w-xs truncate" title={(item as any).notes || ""}>
+                            {(item as any).notes || "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            ) : !batchSourcedComposition || batchSourcedComposition.length === 0 ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Grape className="w-5 h-5" />
+                    Batch Composition
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-center text-gray-500 py-4">No composition data available</p>
+                </CardContent>
+              </Card>
+            ) : null}
           </TabsContent>
 
           <TabsContent value="measurements" className="space-y-4">
