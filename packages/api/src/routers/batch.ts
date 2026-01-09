@@ -2075,7 +2075,8 @@ export const batchRouter = router({
           });
         }
 
-        // Check if this batch has blend sources (other batches merged in via batch_transfer)
+        // Check if this batch has blend sources (other batches merged in)
+        // sourceType can be "batch_transfer" or "batch" depending on how the merge was created
         const blendSources = await db
           .select({
             id: batchMergeHistory.id,
@@ -2088,7 +2089,10 @@ export const batchRouter = router({
           .where(
             and(
               eq(batchMergeHistory.targetBatchId, input.batchId),
-              eq(batchMergeHistory.sourceType, "batch_transfer"),
+              or(
+                eq(batchMergeHistory.sourceType, "batch_transfer"),
+                eq(batchMergeHistory.sourceType, "batch"),
+              ),
               isNull(batchMergeHistory.deletedAt),
             ),
           );
@@ -2630,7 +2634,9 @@ export const batchRouter = router({
 
           let sourceDescription = "another batch";
           let sourceBatchInfo: { id: string; name: string } | null = null;
-          const isExpandable = m.sourceType === "batch_transfer" && m.sourceBatchId;
+          // Check for batch-to-batch merges (sourceType can be "batch_transfer" or "batch")
+          const isBatchMerge = (m.sourceType === "batch_transfer" || m.sourceType === "batch") && m.sourceBatchId;
+          const isExpandable = isBatchMerge;
 
           if (m.sourceType === "press_run" && m.pressRunName) {
             sourceDescription = `Press Run ${m.pressRunName}`;
@@ -2638,11 +2644,11 @@ export const batchRouter = router({
             const juiceLabel = m.juiceType || m.juiceVarietyName || "Purchased Juice";
             const vendorLabel = m.juiceVendorName ? ` from ${m.juiceVendorName}` : "";
             sourceDescription = `${juiceLabel}${vendorLabel}`;
-          } else if (m.sourceType === "batch_transfer" && m.sourceBatchId && m.sourceBatchName) {
+          } else if (isBatchMerge && m.sourceBatchName) {
             // For batch-to-batch blends, use the source batch name
             sourceDescription = m.sourceBatchCustomName || m.sourceBatchName;
             sourceBatchInfo = {
-              id: m.sourceBatchId,
+              id: m.sourceBatchId!,
               name: m.sourceBatchCustomName || m.sourceBatchName,
             };
           }
