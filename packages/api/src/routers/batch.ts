@@ -162,6 +162,7 @@ const updateBatchSchema = z.object({
   batchNumber: z.string().optional(),
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
   productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
+  fermentationStage: z.enum(["not_started", "not_applicable", "early", "mid", "approaching_dry", "terminal", "unknown"]).optional(),
   customName: z.string().optional(),
   vesselId: z.string().uuid("Invalid vessel ID").optional().nullable(),
   startDate: z
@@ -530,6 +531,7 @@ export const batchRouter = router({
             customName: batches.customName,
             status: batches.status,
             productType: batches.productType,
+            fermentationStage: batches.fermentationStage,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
             vesselCapacity: vessels.capacity,
@@ -926,9 +928,14 @@ export const batchRouter = router({
     .input(addMeasurementSchema)
     .mutation(async ({ input }) => {
       try {
-        // Verify batch exists and get current OG
+        // Verify batch exists and get current OG, fermentation stage
         const batchData = await db
-          .select({ id: batches.id, originalGravity: batches.originalGravity })
+          .select({
+            id: batches.id,
+            originalGravity: batches.originalGravity,
+            fermentationStage: batches.fermentationStage,
+            productType: batches.productType,
+          })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
           .limit(1);
@@ -1011,12 +1018,47 @@ export const batchRouter = router({
           }
         }
 
+        // Check if SG drop triggers fermentation start
+        // Threshold: SG drops 0.005+ below OG indicates fermentation has started
+        let fermentationStarted = false;
+        const canStartFermentation = batchData[0].fermentationStage === "not_started" &&
+          batchData[0].productType !== "brandy" &&
+          batchData[0].productType !== "pommeau";
+
+        if (canStartFermentation && correctedSg && batchData[0].originalGravity) {
+          const og = parseFloat(batchData[0].originalGravity);
+          const currentSg = correctedSg;
+          const sgDrop = og - currentSg;
+
+          // If SG has dropped by at least 0.005, fermentation has started
+          if (sgDrop >= 0.005) {
+            await db
+              .update(batches)
+              .set({
+                fermentationStage: "early",
+                fermentationStageUpdatedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
+            fermentationStarted = true;
+          }
+        }
+
+        let message = "Measurement added successfully";
+        if (ogAutoSet && fermentationStarted) {
+          message = "Measurement added. OG auto-set and fermentation detected!";
+        } else if (ogAutoSet) {
+          message = "Measurement added. OG auto-set from this measurement.";
+        } else if (fermentationStarted) {
+          message = "Measurement added. Fermentation detected!";
+        }
+
         return {
           success: true,
           measurement: newMeasurement[0],
-          message: ogAutoSet
-            ? "Measurement added successfully. Original Gravity auto-set from this measurement."
-            : "Measurement added successfully",
+          ogAutoSet,
+          fermentationStarted,
+          message,
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -1035,12 +1077,14 @@ export const batchRouter = router({
     .input(addAdditiveSchema)
     .mutation(async ({ input }) => {
       try {
-        // Verify batch exists and get vessel ID, original gravity
+        // Verify batch exists and get vessel ID, original gravity, fermentation stage
         const batchData = await db
           .select({
             id: batches.id,
             vesselId: batches.vesselId,
             originalGravity: batches.originalGravity,
+            fermentationStage: batches.fermentationStage,
+            productType: batches.productType,
           })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
@@ -1287,11 +1331,33 @@ export const batchRouter = router({
           }
         }
 
+        // Check if yeast was added and update fermentation stage if not_started
+        let fermentationStarted = false;
+        const isYeast = input.additiveName.toLowerCase().includes('yeast');
+        const canStartFermentation = batchData[0].fermentationStage === "not_started" &&
+          batchData[0].productType !== "brandy" &&
+          batchData[0].productType !== "pommeau";
+
+        if (isYeast && canStartFermentation) {
+          await db
+            .update(batches)
+            .set({
+              fermentationStage: "early",
+              fermentationStageUpdatedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+          fermentationStarted = true;
+        }
+
         return {
           success: true,
           additive: newAdditive[0],
           estimatedMeasurement,
-          message: estimatedMeasurement
+          fermentationStarted,
+          message: fermentationStarted
+            ? "Additive added - fermentation started"
+            : estimatedMeasurement
             ? "Additive added successfully with estimated SG/ABV"
             : "Additive added successfully",
         };
@@ -1786,6 +1852,10 @@ export const batchRouter = router({
         if (input.batchNumber) updateData.batchNumber = input.batchNumber;
         if (input.status) updateData.status = input.status;
         if (input.productType) updateData.productType = input.productType;
+        if (input.fermentationStage) {
+          updateData.fermentationStage = input.fermentationStage;
+          updateData.fermentationStageUpdatedAt = new Date();
+        }
         if (input.customName !== undefined)
           updateData.customName = input.customName;
         if (input.vesselId !== undefined) updateData.vesselId = input.vesselId;
@@ -1795,6 +1865,7 @@ export const batchRouter = router({
         // Capture old values for audit log
         const oldStatus = existingBatch[0].status;
         const oldProductType = existingBatch[0].productType;
+        const oldFermentationStage = existingBatch[0].fermentationStage;
 
         // Update batch
         const updatedBatch = await db
@@ -1843,10 +1914,33 @@ export const batchRouter = router({
           });
         }
 
+        // Create audit log if fermentationStage changed
+        if (input.fermentationStage && input.fermentationStage !== oldFermentationStage) {
+          await db.insert(auditLogs).values({
+            tableName: 'batches',
+            recordId: input.batchId,
+            operation: 'update',
+            oldData: { fermentationStage: oldFermentationStage },
+            newData: { fermentationStage: input.fermentationStage },
+            diffData: {
+              fermentationStage: {
+                old: oldFermentationStage || 'unknown',
+                new: input.fermentationStage,
+              },
+            },
+            changedAt: new Date(),
+            reason: input.fermentationStage === 'early'
+              ? 'Fermentation started'
+              : `Fermentation stage changed to ${input.fermentationStage}`,
+          });
+        }
+
         return {
           success: true,
           batch: updatedBatch[0],
-          message: "Batch updated successfully",
+          message: input.fermentationStage === 'early' && oldFermentationStage === 'not_started'
+            ? "Batch updated - fermentation started"
+            : "Batch updated successfully",
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -3944,6 +4038,8 @@ export const batchRouter = router({
                 currentVolume: transferVolumeL.toString(),
                 currentVolumeUnit: "L",
                 status: "fermentation",
+                fermentationStage: "not_started", // Juice batch awaiting fermentation
+                fermentationStageUpdatedAt: new Date(),
                 startDate: input.transferDate,
                 originJuicePurchaseItemId: input.juicePurchaseItemId,
                 createdAt: new Date(),
@@ -4442,6 +4538,16 @@ export const batchRouter = router({
             ? (input.volumeL * parseFloat(juiceItem.pricePerLiter)).toFixed(2)
             : "0";
 
+          // Determine fermentation stage based on product type
+          // juice/cider/perry: not_started (awaiting fermentation)
+          // brandy/pommeau: not_applicable (don't ferment)
+          // other: unknown
+          const fermentationStage = ["brandy", "pommeau"].includes(input.productType)
+            ? "not_applicable"
+            : ["juice", "cider", "perry"].includes(input.productType)
+            ? "not_started"
+            : "unknown";
+
           // Create the batch
           const [newBatch] = await tx
             .insert(batches)
@@ -4458,6 +4564,8 @@ export const batchRouter = router({
               currentVolumeLiters: input.volumeL.toString(),
               productType: input.productType,
               status: input.productType === "brandy" ? "aging" : "fermentation",
+              fermentationStage,
+              fermentationStageUpdatedAt: new Date(),
               startDate: input.startDate || new Date(),
               originalGravity,
               createdAt: new Date(),
@@ -4630,6 +4738,8 @@ export const batchRouter = router({
               currentVolumeLiters: estimatedVolumeL.toString(),
               productType: "other", // Fruit wine
               status: "fermentation",
+              fermentationStage: "not_started", // Fruit wine awaiting fermentation
+              fermentationStageUpdatedAt: new Date(),
               startDate: input.startDate || new Date(),
               createdAt: new Date(),
               updatedAt: new Date(),

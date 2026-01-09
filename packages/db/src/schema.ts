@@ -726,7 +726,10 @@ export const batches = pgTable(
     estimatedAbv: decimal("estimated_abv", { precision: 4, scale: 2 }),
     actualAbv: decimal("actual_abv", { precision: 4, scale: 2 }),
     // Fermentation stage tracking (SG-based)
-    fermentationStage: text("fermentation_stage").$type<"early" | "mid" | "approaching_dry" | "terminal" | "unknown">().default("unknown"),
+    // not_started: juice/cider/perry awaiting fermentation
+    // not_applicable: brandy/pommeau/spirits (no fermentation)
+    // early/mid/approaching_dry/terminal: active fermentation stages
+    fermentationStage: text("fermentation_stage").$type<"not_started" | "not_applicable" | "early" | "mid" | "approaching_dry" | "terminal" | "unknown">().default("unknown"),
     fermentationStageUpdatedAt: timestamp("fermentation_stage_updated_at", { withTimezone: true }),
     // Transfer loss tracking (juice lost during transfer from press run to vessel)
     transferLossL: decimal("transfer_loss_l", { precision: 10, scale: 3 }),

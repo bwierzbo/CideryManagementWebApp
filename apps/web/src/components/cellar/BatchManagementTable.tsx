@@ -66,6 +66,7 @@ import {
   ArrowUp,
   ArrowDown,
   Container,
+  Sprout,
 } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 import { BatchHistoryModal } from "./BatchHistoryModal";
@@ -603,6 +604,16 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                           <Badge className={getStatusColor(batch.status)}>
                             {batch.status}
                           </Badge>
+                          {batch.fermentationStage === "not_started" && (
+                            <Badge
+                              variant="outline"
+                              className="bg-orange-50 text-orange-700 border-orange-200"
+                              title="Awaiting fermentation - add yeast to start"
+                            >
+                              <Sprout className="w-3 h-3 mr-1" />
+                              Awaiting
+                            </Badge>
+                          )}
                           {batch.isArchived && (
                             <Badge variant="secondary" className="bg-gray-200 text-gray-600">
                               <Archive className="w-3 h-3 mr-1" />
