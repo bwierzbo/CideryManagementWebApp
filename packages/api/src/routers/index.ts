@@ -78,6 +78,7 @@ import {
   asc,
   sql,
   isNull,
+  isNotNull,
   ne,
   or,
   aliasedTable,
@@ -5416,6 +5417,43 @@ export const appRouter = router({
             updatedAt: new Date(),
           });
 
+          // Clear vesselId from any completed/deleted batches that still reference this vessel
+          // This prevents old batch history from appearing in the vessel's activity view
+          const clearedBatches = await db
+            .update(batches)
+            .set({
+              vesselId: null,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(batches.vesselId, vesselId),
+                or(
+                  eq(batches.status, "completed"),
+                  isNotNull(batches.deletedAt),
+                ),
+              ),
+            )
+            .returning({ id: batches.id, name: batches.name });
+
+          if (clearedBatches.length > 0) {
+            console.log(
+              `Cleaned ${clearedBatches.length} stale batch associations from vessel ${vessel[0].name || vesselId}`,
+            );
+
+            // Audit log the batch cleanup for each affected batch
+            for (const batch of clearedBatches) {
+              await publishUpdateEvent(
+                "batches",
+                batch.id,
+                { vesselId },
+                { vesselId: null },
+                ctx.session?.user?.id,
+                `Batch association cleared during vessel cleaning: ${vessel[0].name || vesselId}`,
+              );
+            }
+          }
+
           // Update vessel status to available
           await db
             .update(vessels)
@@ -5425,9 +5463,19 @@ export const appRouter = router({
             })
             .where(eq(vessels.id, vesselId));
 
+          // Audit log the vessel cleaning
+          await publishUpdateEvent(
+            "vessels",
+            vesselId,
+            { status: vessel[0].status },
+            { status: "available", cleanedAt, cleanedBy: ctx.session?.user?.id },
+            ctx.session?.user?.id,
+            `Vessel cleaned and marked as available${clearedBatches.length > 0 ? ` (cleared ${clearedBatches.length} stale batch associations)` : ""}`,
+          );
+
           return {
             success: true,
-            message: `Tank ${vessel[0].name || "Unknown"} cleaned and marked as available`,
+            message: `Tank ${vessel[0].name || "Unknown"} cleaned and marked as available${clearedBatches.length > 0 ? ` (cleared ${clearedBatches.length} stale batch associations)` : ""}`,
           };
         } catch (error) {
           if (error instanceof TRPCError) throw error;
