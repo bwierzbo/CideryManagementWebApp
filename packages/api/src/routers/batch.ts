@@ -969,6 +969,32 @@ export const batchRouter = router({
           correctedSg = correctSgForTemperature(input.specificGravity, input.temperature, calibrationTempC);
         }
 
+        // Check for duplicate measurement (same batch, date, SG, and pH)
+        const existingMeasurement = await db
+          .select({ id: batchMeasurements.id })
+          .from(batchMeasurements)
+          .where(
+            and(
+              eq(batchMeasurements.batchId, input.batchId),
+              sql`DATE(${batchMeasurements.measurementDate}) = DATE(${input.measurementDate})`,
+              input.specificGravity
+                ? eq(batchMeasurements.specificGravity, correctedSg?.toString() ?? "")
+                : isNull(batchMeasurements.specificGravity),
+              input.ph
+                ? eq(batchMeasurements.ph, input.ph.toString())
+                : isNull(batchMeasurements.ph),
+              isNull(batchMeasurements.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (existingMeasurement.length > 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Duplicate measurement: A measurement with the same SG (${input.specificGravity ?? "N/A"}) and pH (${input.ph ?? "N/A"}) was already recorded on this date`,
+          });
+        }
+
         // Create measurement
         const newMeasurement = await db
           .insert(batchMeasurements)
@@ -1170,6 +1196,30 @@ export const batchRouter = router({
 
         if (costPerUnit !== undefined) {
           totalCost = input.amount * costPerUnit;
+        }
+
+        // Check for duplicate additive (same vessel, name, amount, unit, and date)
+        const addedAtDate = input.addedAt || new Date();
+        const existingAdditive = await db
+          .select({ id: batchAdditives.id })
+          .from(batchAdditives)
+          .where(
+            and(
+              eq(batchAdditives.vesselId, batchData[0].vesselId),
+              eq(batchAdditives.additiveName, input.additiveName),
+              eq(batchAdditives.amount, input.amount.toString()),
+              eq(batchAdditives.unit, input.unit),
+              sql`DATE(${batchAdditives.addedAt}) = DATE(${addedAtDate})`,
+              isNull(batchAdditives.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (existingAdditive.length > 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Duplicate additive: ${input.additiveName} (${input.amount} ${input.unit}) was already added on this date`,
+          });
         }
 
         // Create additive record
@@ -3087,6 +3137,7 @@ export const batchRouter = router({
               actualAbv: batches.actualAbv,
               originPressRunId: batches.originPressRunId,
               originJuicePurchaseItemId: batches.originJuicePurchaseItemId,
+              fermentationStage: batches.fermentationStage,
             })
             .from(batches)
             .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
@@ -3140,6 +3191,8 @@ export const batchRouter = router({
               currentVolume: batches.currentVolume,
               currentVolumeUnit: batches.currentVolumeUnit,
               status: batches.status,
+              fermentationStage: batches.fermentationStage,
+              productType: batches.productType,
             })
             .from(batches)
             .where(
@@ -3241,7 +3294,13 @@ export const batchRouter = router({
 
             // SAFETY CHECK: If destination has a batch, MERGE instead of creating child batch
             const destCheckForPartial = await tx
-              .select({ id: batches.id, name: batches.name, currentVolume: batches.currentVolume })
+              .select({
+                id: batches.id,
+                name: batches.name,
+                currentVolume: batches.currentVolume,
+                fermentationStage: batches.fermentationStage,
+                productType: batches.productType,
+              })
               .from(batches)
               .where(
                 and(
@@ -3293,6 +3352,33 @@ export const batchRouter = router({
                 mergedBy: ctx.session?.user?.id,
                 createdAt: new Date(),
               });
+
+              // Propagate fermentation stage from source to destination if source is actively fermenting
+              // and destination is not_started or unknown (prevents yeast inheritance being missed)
+              const fermentingStages = ['early', 'mid', 'approaching_dry', 'terminal'];
+              const sourceFermentationStage = batch[0].fermentationStage;
+              const destFermentationStage = destBatch.fermentationStage;
+              const destProductType = destBatch.productType;
+
+              // Only propagate if:
+              // 1. Source batch has a fermenting stage
+              // 2. Destination batch is not_started or unknown
+              // 3. Destination is not brandy/pommeau (which don't ferment)
+              if (
+                sourceFermentationStage &&
+                fermentingStages.includes(sourceFermentationStage) &&
+                (destFermentationStage === 'not_started' || destFermentationStage === 'unknown') &&
+                destProductType !== 'brandy' &&
+                destProductType !== 'pommeau'
+              ) {
+                await tx
+                  .update(batches)
+                  .set({
+                    fermentationStage: sourceFermentationStage,
+                    fermentationStageUpdatedAt: new Date(),
+                  })
+                  .where(eq(batches.id, destBatch.id));
+              }
 
               // Calculate and create estimated blended measurements for partial rack merge
               const [srcMeasurement] = await tx
@@ -3592,6 +3678,33 @@ export const batchRouter = router({
               createdAt: new Date(),
             });
 
+            // Propagate fermentation stage from source to destination if source is actively fermenting
+            // and destination is not_started or unknown (prevents yeast inheritance being missed)
+            const fermentingStages = ['early', 'mid', 'approaching_dry', 'terminal'];
+            const sourceFermentationStage = batch[0].fermentationStage;
+            const destFermentationStage = destBatch.fermentationStage;
+            const destProductType = destBatch.productType;
+
+            // Only propagate if:
+            // 1. Source batch has a fermenting stage
+            // 2. Destination batch is not_started or unknown
+            // 3. Destination is not brandy/pommeau (which don't ferment)
+            if (
+              sourceFermentationStage &&
+              fermentingStages.includes(sourceFermentationStage) &&
+              (destFermentationStage === 'not_started' || destFermentationStage === 'unknown') &&
+              destProductType !== 'brandy' &&
+              destProductType !== 'pommeau'
+            ) {
+              await tx
+                .update(batches)
+                .set({
+                  fermentationStage: sourceFermentationStage,
+                  fermentationStageUpdatedAt: new Date(),
+                })
+                .where(eq(batches.id, destBatch.id));
+            }
+
             // Calculate and create estimated blended measurements
             const [sourceMeasurement] = await tx
               .select()
@@ -3682,7 +3795,13 @@ export const batchRouter = router({
             // 5c. MOVE: Transfer batch to new empty vessel
             // SAFETY CHECK: Re-verify destination is actually empty to prevent data loss
             const destSafetyCheck = await tx
-              .select({ id: batches.id, name: batches.name, currentVolume: batches.currentVolume })
+              .select({
+                id: batches.id,
+                name: batches.name,
+                currentVolume: batches.currentVolume,
+                fermentationStage: batches.fermentationStage,
+                productType: batches.productType,
+              })
               .from(batches)
               .where(
                 and(
@@ -3738,6 +3857,29 @@ export const batchRouter = router({
                 mergedBy: ctx.session?.user?.id,
                 createdAt: new Date(),
               });
+
+              // Propagate fermentation stage from source to destination if source is actively fermenting
+              // and destination is not_started or unknown (prevents yeast inheritance being missed)
+              const fermentingStagesSafety = ['early', 'mid', 'approaching_dry', 'terminal'];
+              const sourceFermentationStageSafety = batch[0].fermentationStage;
+              const destFermentationStageSafety = destBatch.fermentationStage;
+              const destProductTypeSafety = destBatch.productType;
+
+              if (
+                sourceFermentationStageSafety &&
+                fermentingStagesSafety.includes(sourceFermentationStageSafety) &&
+                (destFermentationStageSafety === 'not_started' || destFermentationStageSafety === 'unknown') &&
+                destProductTypeSafety !== 'brandy' &&
+                destProductTypeSafety !== 'pommeau'
+              ) {
+                await tx
+                  .update(batches)
+                  .set({
+                    fermentationStage: sourceFermentationStageSafety,
+                    fermentationStageUpdatedAt: new Date(),
+                  })
+                  .where(eq(batches.id, destBatch.id));
+              }
 
               // Calculate and create estimated blended measurements (safety check path)
               const [sourceMeasurementSafety] = await tx

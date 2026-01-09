@@ -83,6 +83,7 @@ import {
   or,
   aliasedTable,
   inArray,
+  gt,
 } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertVolume, roundToDecimals } from "lib/src/utils/volumeConversion";
@@ -3827,14 +3828,27 @@ export const appRouter = router({
                 })
                 .where(eq(batches.id, sourceBatch[0].id));
 
-              // Set vessel to cleaning
-              await tx
-                .update(vessels)
-                .set({
-                  status: "cleaning",
-                  updatedAt: new Date(),
-                })
-                .where(eq(vessels.id, input.fromVesselId));
+              // Set vessel to cleaning (only if no subsequent cleaning exists)
+              // This prevents backdated transfers from overwriting current vessel state
+              const transferDate = input.transferDate || new Date();
+              const subsequentCleaning = await tx
+                .select({ id: vesselCleaningOperations.id })
+                .from(vesselCleaningOperations)
+                .where(and(
+                  eq(vesselCleaningOperations.vesselId, input.fromVesselId),
+                  gt(vesselCleaningOperations.cleanedAt, transferDate)
+                ))
+                .limit(1);
+
+              if (subsequentCleaning.length === 0) {
+                await tx
+                  .update(vessels)
+                  .set({
+                    status: "cleaning",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(vessels.id, input.fromVesselId));
+              }
 
               // Audit logging for auto-empty
               await publishUpdateEvent(
@@ -3853,13 +3867,26 @@ export const appRouter = router({
               );
             } else {
               // Exact full transfer (remainingVolumeL = 0) - source vessel needs cleaning
-              await tx
-                .update(vessels)
-                .set({
-                  status: "cleaning",
-                  updatedAt: new Date(),
-                })
-                .where(eq(vessels.id, input.fromVesselId));
+              // Only set to cleaning if no subsequent cleaning exists (prevents backdated transfers from overwriting)
+              const exactTransferDate = input.transferDate || new Date();
+              const exactTransferSubsequentCleaning = await tx
+                .select({ id: vesselCleaningOperations.id })
+                .from(vesselCleaningOperations)
+                .where(and(
+                  eq(vesselCleaningOperations.vesselId, input.fromVesselId),
+                  gt(vesselCleaningOperations.cleanedAt, exactTransferDate)
+                ))
+                .limit(1);
+
+              if (exactTransferSubsequentCleaning.length === 0) {
+                await tx
+                  .update(vessels)
+                  .set({
+                    status: "cleaning",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(vessels.id, input.fromVesselId));
+              }
             }
 
             let updatedBatch;
@@ -4013,13 +4040,26 @@ export const appRouter = router({
                   .where(eq(batches.id, sourceBatch[0].id));
 
                 // Set source vessel to cleaning since batch is fully transferred
-                await tx
-                  .update(vessels)
-                  .set({
-                    status: "cleaning",
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(vessels.id, input.fromVesselId));
+                // Only set to cleaning if no subsequent cleaning exists (prevents backdated transfers from overwriting)
+                const blendTransferDate = input.transferDate || new Date();
+                const blendSubsequentCleaning = await tx
+                  .select({ id: vesselCleaningOperations.id })
+                  .from(vesselCleaningOperations)
+                  .where(and(
+                    eq(vesselCleaningOperations.vesselId, input.fromVesselId),
+                    gt(vesselCleaningOperations.cleanedAt, blendTransferDate)
+                  ))
+                  .limit(1);
+
+                if (blendSubsequentCleaning.length === 0) {
+                  await tx
+                    .update(vessels)
+                    .set({
+                      status: "cleaning",
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(vessels.id, input.fromVesselId));
+                }
               }
 
               // Copy composition from source batch to destination batch (for blend traceability)
