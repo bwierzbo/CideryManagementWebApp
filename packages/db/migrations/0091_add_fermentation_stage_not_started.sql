@@ -33,9 +33,10 @@ WHERE b.product_type IN ('cider', 'perry')
       AND bm.specific_gravity < b.original_gravity - 0.005
   )
   AND NOT EXISTS (
-    -- Check if yeast was ever added to this batch
+    -- Check if yeast/fermentation organism was ever added to this batch
+    -- NOTE: Check additive_type, not additive_name, since yeast strains are named 'AB-1', 'EC-1118', etc.
     SELECT 1 FROM batch_additives ba
     WHERE ba.batch_id = b.id
-      AND LOWER(ba.additive_name) LIKE '%yeast%'
+      AND ba.additive_type = 'Fermentation Organisms'
       AND ba.deleted_at IS NULL
   );

@@ -1331,14 +1331,14 @@ export const batchRouter = router({
           }
         }
 
-        // Check if yeast was added and update fermentation stage if not_started
+        // Check if yeast/fermentation organism was added and update fermentation stage if not_started
         let fermentationStarted = false;
-        const isYeast = input.additiveName.toLowerCase().includes('yeast');
+        const isFermentationOrganism = input.additiveType === 'Fermentation Organisms';
         const canStartFermentation = batchData[0].fermentationStage === "not_started" &&
           batchData[0].productType !== "brandy" &&
           batchData[0].productType !== "pommeau";
 
-        if (isYeast && canStartFermentation) {
+        if (isFermentationOrganism && canStartFermentation) {
           await db
             .update(batches)
             .set({
