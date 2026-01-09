@@ -26,7 +26,7 @@ import {
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, desc, asc, sql, or, like, inArray, aliasedTable } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, inArray, aliasedTable } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
 import {
@@ -47,7 +47,7 @@ const batchIdSchema = z.object({
 
 const listBatchesSchema = z.object({
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
-  productType: z.enum(["cider", "perry", "brandy", "pommeau", "other"]).optional(),
+  productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
   vesselId: z.string().uuid().optional(),
   unassigned: z.boolean().optional(), // Filter for batches without a vessel
   search: z.string().optional(),
@@ -161,7 +161,7 @@ const updateBatchSchema = z.object({
   name: z.string().optional(),
   batchNumber: z.string().optional(),
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
-  productType: z.enum(["cider", "perry", "brandy", "pommeau", "other"]).optional(),
+  productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
   customName: z.string().optional(),
   vesselId: z.string().uuid("Invalid vessel ID").optional().nullable(),
   startDate: z
@@ -981,17 +981,34 @@ export const batchRouter = router({
           })
           .returning();
 
-        // Auto-set Original Gravity if batch doesn't have one and this measurement has SG
+        // Auto-set or update Original Gravity from first SG measurement
+        // The first actual measurement is more accurate than OG estimated from brix
         let ogAutoSet = false;
-        if (!batchData[0].originalGravity && correctedSg) {
-          await db
-            .update(batches)
-            .set({
-              originalGravity: correctedSg.toString(),
-              updatedAt: new Date(),
-            })
-            .where(eq(batches.id, input.batchId));
-          ogAutoSet = true;
+        if (correctedSg) {
+          // Check if this is the first SG measurement for this batch
+          const existingMeasurements = await db
+            .select({ id: batchMeasurements.id })
+            .from(batchMeasurements)
+            .where(and(
+              eq(batchMeasurements.batchId, input.batchId),
+              isNotNull(batchMeasurements.specificGravity)
+            ))
+            .limit(2);
+
+          // If this is the first SG measurement (only the one we just created exists)
+          // OR if batch has no OG, update the OG
+          const isFirstSgMeasurement = existingMeasurements.length === 1;
+
+          if (!batchData[0].originalGravity || isFirstSgMeasurement) {
+            await db
+              .update(batches)
+              .set({
+                originalGravity: correctedSg.toString(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
+            ogAutoSet = true;
+          }
         }
 
         return {
@@ -4338,7 +4355,7 @@ export const batchRouter = router({
         juicePurchaseItemId: z.string().uuid("Invalid juice purchase item ID"),
         volumeL: z.number().positive("Volume must be positive"),
         vesselId: z.string().uuid().optional(),
-        productType: z.enum(["cider", "perry", "brandy", "other"]).default("cider"),
+        productType: z.enum(["juice", "cider", "perry", "brandy", "other"]).default("juice"),
         name: z.string().optional(),
         startDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         notes: z.string().optional(),
