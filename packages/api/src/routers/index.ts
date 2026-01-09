@@ -3558,6 +3558,7 @@ export const appRouter = router({
                   currentVolume: input.volumeL.toString(),
                   currentVolumeUnit: "L",
                   status: sourceBatch[0].status || "fermentation",
+                  productType: sourceBatch[0].productType, // Inherit parent's product type
                   originPressRunId: sourceBatch[0].originPressRunId,
                   originJuicePurchaseItemId: sourceBatch[0].originJuicePurchaseItemId,
                   originalGravity: sourceBatch[0].originalGravity,
@@ -3881,33 +3882,42 @@ export const appRouter = router({
 
               // === POMMEAU DETECTION ===
               // Check if this is a brandy + cider/juice blend (creates Pommeau)
+              // OR if brandy is being added to an existing pommeau
               const sourceProductType = sourceBatch[0].productType || "cider";
               const destProductType = destBatch[0].productType || "cider";
               const isBrandyToCider = sourceProductType === "brandy" && (destProductType === "cider" || destProductType === "perry");
               const isCiderToBrandy = (sourceProductType === "cider" || sourceProductType === "perry") && destProductType === "brandy";
-              const isPommeauBlend = isBrandyToCider || isCiderToBrandy;
+              const isBrandyToPommeau = sourceProductType === "brandy" && destProductType === "pommeau";
+              const isPommeauBlend = isBrandyToCider || isCiderToBrandy || isBrandyToPommeau;
 
               let newProductType = destProductType;
               let newEstimatedAbv: string | null = null;
 
               if (isPommeauBlend) {
-                // Determine which is brandy and which is cider/juice
-                const brandyBatch = isBrandyToCider ? sourceBatch[0] : destBatch[0];
-                const ciderBatch = isBrandyToCider ? destBatch[0] : sourceBatch[0];
-                const brandyVolumeL = isBrandyToCider ? input.volumeL : destCurrentVolumeL;
-                const ciderVolumeL = isBrandyToCider ? destCurrentVolumeL : input.volumeL;
+                // For brandy + cider/perry: determine which is which
+                // For brandy + pommeau: source is brandy, dest is existing pommeau
+                const brandyBatch = (isBrandyToCider || isBrandyToPommeau) ? sourceBatch[0] : destBatch[0];
+                const otherBatch = (isBrandyToCider || isBrandyToPommeau) ? destBatch[0] : sourceBatch[0];
+                const brandyVolumeL = (isBrandyToCider || isBrandyToPommeau) ? input.volumeL : destCurrentVolumeL;
+                const otherVolumeL = (isBrandyToCider || isBrandyToPommeau) ? destCurrentVolumeL : input.volumeL;
 
-                // Get ABV values (brandy typically 40-70%, cider 0-15%)
+                // Get ABV values
+                // Brandy typically 40-70%, defaults to 60% if not set
+                // Cider typically 0-15%, pommeau typically 15-22%
                 const brandyAbv = parseFloat(brandyBatch.actualAbv || brandyBatch.estimatedAbv || "60");
-                const ciderAbv = parseFloat(ciderBatch.actualAbv || ciderBatch.estimatedAbv || "0");
+                const otherAbv = parseFloat(otherBatch.actualAbv || otherBatch.estimatedAbv || "0");
 
                 // Calculate blended ABV using weighted average
-                const totalAlcohol = (brandyVolumeL * brandyAbv) + (ciderVolumeL * ciderAbv);
+                const totalAlcohol = (brandyVolumeL * brandyAbv) + (otherVolumeL * otherAbv);
                 const blendedAbv = totalAlcohol / newVolumeL;
 
                 // Set product type to pommeau and calculate ABV
                 newProductType = "pommeau";
                 newEstimatedAbv = blendedAbv.toFixed(2);
+
+                // Determine the label for the non-brandy component
+                const otherLabel = isBrandyToPommeau ? "pommeau" :
+                  (sourceProductType === "perry" || destProductType === "perry" ? "perry" : "cider");
 
                 // Create batch_merge_history entry to track the spirit addition
                 await tx.insert(batchMergeHistory).values({
@@ -3920,7 +3930,7 @@ export const appRouter = router({
                   targetVolumeBeforeUnit: "L",
                   targetVolumeAfter: newVolumeL.toString(),
                   targetVolumeAfterUnit: "L",
-                  sourceAbv: (isBrandyToCider ? brandyAbv : ciderAbv).toString(),
+                  sourceAbv: brandyAbv.toString(),
                   resultingAbv: newEstimatedAbv,
                   compositionSnapshot: {
                     brandy: {
@@ -3929,19 +3939,23 @@ export const appRouter = router({
                       volume: brandyVolumeL,
                       abv: brandyAbv,
                     },
-                    cider: {
-                      batchId: ciderBatch.id,
-                      name: ciderBatch.name,
-                      volume: ciderVolumeL,
-                      abv: ciderAbv,
+                    [otherLabel]: {
+                      batchId: otherBatch.id,
+                      name: otherBatch.name,
+                      volume: otherVolumeL,
+                      abv: otherAbv,
                     },
                     resultingAbv: parseFloat(newEstimatedAbv),
                   },
-                  notes: `Pommeau blend created via transfer: ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% + ${ciderVolumeL.toFixed(1)}L ${sourceProductType === "perry" || destProductType === "perry" ? "perry" : "cider"} @ ${ciderAbv}%`,
+                  notes: isBrandyToPommeau
+                    ? `Brandy added to pommeau: ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% + ${otherVolumeL.toFixed(1)}L pommeau @ ${otherAbv}% = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}%`
+                    : `Pommeau blend created via transfer: ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% + ${otherVolumeL.toFixed(1)}L ${otherLabel} @ ${otherAbv}%`,
                   mergedAt: input.transferDate || new Date(),
                 });
 
-                blendNote = `🍎🥃 Pommeau blend created! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${ciderVolumeL.toFixed(1)}L ${sourceProductType === "perry" || destProductType === "perry" ? "perry" : "cider"} @ ${ciderAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`;
+                blendNote = isBrandyToPommeau
+                  ? `🍎🥃 Brandy added to pommeau! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${otherVolumeL.toFixed(1)}L pommeau @ ${otherAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`
+                  : `🍎🥃 Pommeau blend created! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${otherVolumeL.toFixed(1)}L ${otherLabel} @ ${otherAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`;
               }
 
               // Update destination batch with combined volume (and product type/ABV if Pommeau)
@@ -4307,6 +4321,7 @@ export const appRouter = router({
                     currentVolume: input.volumeL.toString(),
                     currentVolumeUnit: "L",
                     status: sourceBatch[0].status || "fermentation",
+                    productType: sourceBatch[0].productType, // Inherit parent's product type
                     originPressRunId: sourceBatch[0].originPressRunId,
                     originJuicePurchaseItemId: sourceBatch[0].originJuicePurchaseItemId,
                     originalGravity: sourceBatch[0].originalGravity,
