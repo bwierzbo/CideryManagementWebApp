@@ -7,6 +7,7 @@ import {
   vessels,
   users,
   batchMergeHistory,
+  batchMeasurements,
 } from "db";
 import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -775,6 +776,8 @@ export const distillationRouter = router({
       let ciderBatch = null;
       let ciderAbv = input.juiceAbv;
       let currentCiderVolume = 0;
+      let ciderSg: number | null = null;
+      let ciderPh: number | null = null;
 
       if (input.ciderBatchId) {
         const [batch] = await db
@@ -794,6 +797,31 @@ export const distillationRouter = router({
         ciderAbv = batch.actualAbv ? parseFloat(batch.actualAbv) :
                    batch.estimatedAbv ? parseFloat(batch.estimatedAbv) : input.juiceAbv;
         currentCiderVolume = batch.currentVolumeLiters ? parseFloat(batch.currentVolumeLiters) : 0;
+
+        // Get cider's latest SG and pH from measurements
+        const ciderMeasurements = await db
+          .select({
+            specificGravity: batchMeasurements.specificGravity,
+            ph: batchMeasurements.ph,
+          })
+          .from(batchMeasurements)
+          .where(and(
+            eq(batchMeasurements.batchId, input.ciderBatchId),
+            isNull(batchMeasurements.deletedAt)
+          ))
+          .orderBy(desc(batchMeasurements.measurementDate))
+          .limit(10);
+
+        // Get most recent non-null values
+        for (const m of ciderMeasurements) {
+          if (ciderSg === null && m.specificGravity) {
+            ciderSg = parseFloat(m.specificGravity);
+          }
+          if (ciderPh === null && m.ph) {
+            ciderPh = parseFloat(m.ph);
+          }
+          if (ciderSg !== null && ciderPh !== null) break;
+        }
 
         // Check cider has enough volume
         if (input.deductFromCider && input.juiceVolumeLiters > currentCiderVolume) {
@@ -860,6 +888,26 @@ export const distillationRouter = router({
         }
       }
 
+      // Calculate blended SG and pH for the pommeau
+      // Brandy SG is estimated from ABV: pure ethanol SG ~0.789, water SG ~1.0
+      // Approximation: SG ≈ 1 - (ABV/100 * 0.21) for spirits
+      const brandySg = 1 - (brandyAbv / 100 * 0.21);
+
+      // Calculate weighted average SG if we have cider SG
+      let blendedSg: number | null = null;
+      if (ciderSg !== null) {
+        blendedSg = (ciderSg * input.juiceVolumeLiters + brandySg * input.brandyVolumeLiters) / totalVolume;
+      }
+
+      // Calculate weighted average pH if we have cider pH
+      // Note: pH doesn't blend linearly (it's logarithmic), but for practical purposes
+      // we use weighted average since brandy is essentially neutral (pH ~6-7)
+      const brandyPh = 6.5; // Brandy is relatively neutral
+      let blendedPh: number | null = null;
+      if (ciderPh !== null) {
+        blendedPh = (ciderPh * input.juiceVolumeLiters + brandyPh * input.brandyVolumeLiters) / totalVolume;
+      }
+
       // Create pommeau batch
       // Note: batches table doesn't have a notes field, so blend info is stored in the batch name/customName
 
@@ -880,10 +928,23 @@ export const distillationRouter = router({
           productType: "pommeau",
           fermentationStage: "not_applicable", // Pommeau doesn't ferment
           fermentationStageUpdatedAt: new Date(),
-          actualAbv: String(resultingAbv),
+          estimatedAbv: String(resultingAbv), // Use estimatedAbv since it's calculated, not measured
           startDate: input.blendDate,
         })
         .returning();
+
+      // Create initial measurement with blended SG and pH
+      if (blendedSg !== null || blendedPh !== null) {
+        await db.insert(batchMeasurements).values({
+          batchId: pommeauBatch.id,
+          measurementDate: input.blendDate,
+          specificGravity: blendedSg !== null ? String(blendedSg.toFixed(4)) : null,
+          ph: blendedPh !== null ? String(blendedPh.toFixed(2)) : null,
+          isEstimated: true,
+          estimateSource: "blend_calculation",
+          notes: `Estimated from blend components. Cider: ${input.juiceVolumeLiters}L${ciderSg ? ` (SG ${ciderSg.toFixed(4)})` : ""}${ciderPh ? ` (pH ${ciderPh.toFixed(2)})` : ""}, Brandy: ${input.brandyVolumeLiters}L (${brandyAbv}% ABV, est. SG ${brandySg.toFixed(2)}). For accurate ABV, use ebulliometer or lab analysis.`,
+        });
+      }
 
       // Create batch_merge_history entry to track the brandy addition
       await db.insert(batchMergeHistory).values({
