@@ -3121,6 +3121,8 @@ export const appRouter = router({
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
             batchCustomName: batches.customName,
+            // Fermentation tracking
+            fermentationStage: batches.fermentationStage,
             // ABV tracking
             originalGravity: batches.originalGravity,
             finalGravity: batches.finalGravity,

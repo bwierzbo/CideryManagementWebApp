@@ -74,6 +74,7 @@ import {
   History,
   ArrowUpDown,
   SlidersHorizontal,
+  Sprout,
 } from "lucide-react";
 import {
   litersToGallons,
@@ -232,18 +233,9 @@ function TankForm({
   React.useEffect(() => {
     if (vesselQuery.data?.vessel) {
       const vessel = vesselQuery.data.vessel;
-      const storedCapacityL = parseFloat(vessel.capacity);
-      const storedMaxCapacityL = vessel.maxCapacity ? parseFloat(vessel.maxCapacity) : undefined;
-
-      // Convert from liters to display unit with smart rounding
-      let displayCapacity = storedCapacityL;
-      let displayMaxCapacity = storedMaxCapacityL;
-      if (vessel.capacityUnit === "gal") {
-        displayCapacity = convertVolume(storedCapacityL, "L", "gal");
-        if (displayMaxCapacity) {
-          displayMaxCapacity = convertVolume(storedMaxCapacityL!, "L", "gal");
-        }
-      }
+      // Capacity is stored in the display unit (vessel.capacityUnit), no conversion needed
+      const displayCapacity = parseFloat(vessel.capacity);
+      const displayMaxCapacity = vessel.maxCapacity ? parseFloat(vessel.maxCapacity) : undefined;
 
       reset({
         name: vessel.name || undefined,
@@ -978,10 +970,9 @@ function TankTransferForm({
                     (v) => v.vesselId === vessel.id,
                   );
 
-                  // Capacity is stored in liters, convert to display unit
-                  const capacityInLiters = parseFloat(vessel.capacity);
+                  // Capacity is stored in the display unit (vessel.capacityUnit)
                   const capacityUnit = vessel.capacityUnit as VolumeUnit;
-                  const capacity = convertVolume(capacityInLiters, "L", capacityUnit);
+                  const capacity = parseFloat(vessel.capacity);
 
                   // Current volume - convert to vessel's capacity unit
                   let vesselCurrentVolume = 0;
@@ -1381,18 +1372,18 @@ function VesselMap() {
   );
 
   // Get color based on batch status if batch exists, otherwise vessel status
-  const getStatusColor = (vesselStatus: string, batchStatus?: string | null) => {
+  const getStatusColor = (vesselStatus: string, batchStatus?: string | null, fermentationStage?: string | null) => {
     // If vessel has a batch, color based on batch status
     if (batchStatus) {
+      // Check if batch is awaiting fermentation (needs attention)
+      if (fermentationStage === "not_started") {
+        return "border-orange-300 bg-orange-50";
+      }
       switch (batchStatus) {
         case "fermentation":
           return "border-purple-300 bg-purple-50";
         case "aging":
           return "border-blue-300 bg-blue-50";
-        case "conditioning":
-          return "border-indigo-300 bg-indigo-50";
-        case "completed":
-          return "border-gray-300 bg-gray-50";
         case "discarded":
           return "border-gray-400 bg-gray-100";
         default:
@@ -1413,18 +1404,18 @@ function VesselMap() {
     }
   };
 
-  const getStatusIcon = (vesselStatus: string, batchStatus?: string | null) => {
+  const getStatusIcon = (vesselStatus: string, batchStatus?: string | null, fermentationStage?: string | null) => {
     // If vessel has a batch, icon based on batch status
     if (batchStatus) {
+      // Check if batch is awaiting fermentation (needs attention)
+      if (fermentationStage === "not_started") {
+        return <Sprout className="w-4 h-4 text-orange-600" />;
+      }
       switch (batchStatus) {
         case "fermentation":
           return <Beaker className="w-4 h-4 text-purple-600" />;
         case "aging":
           return <Clock className="w-4 h-4 text-blue-600" />;
-        case "conditioning":
-          return <Waves className="w-4 h-4 text-indigo-600" />;
-        case "completed":
-          return <CheckCircle className="w-4 h-4 text-gray-600" />;
         case "discarded":
           return <AlertTriangle className="w-4 h-4 text-gray-600" />;
         default:
@@ -1880,15 +1871,11 @@ function VesselMap() {
             const capacityUnit =
               vessel.capacityUnit || liquidMapVessel?.vesselCapacityUnit || "L";
 
-            // Vessel capacity is always stored in liters in DB, convert to display unit
-            const capacityInLiters = parseFloat(vessel.capacity);
-            const capacity = convertVolume(capacityInLiters, "L", capacityUnit as VolumeUnit);
+            // Vessel capacity is stored in the display unit (vessel.capacityUnit)
+            const capacity = parseFloat(vessel.capacity);
 
-            // Max capacity (for overfill) - convert to display unit
-            const maxCapacityInLiters = vessel.maxCapacity ? parseFloat(vessel.maxCapacity) : null;
-            const maxCapacity = maxCapacityInLiters
-              ? convertVolume(maxCapacityInLiters, "L", capacityUnit as VolumeUnit)
-              : null;
+            // Max capacity (for overfill) - also stored in display unit
+            const maxCapacity = vessel.maxCapacity ? parseFloat(vessel.maxCapacity) : null;
 
             // Get current volume and convert to vessel's capacity unit
             let currentVolume = 0;
@@ -1912,7 +1899,7 @@ function VesselMap() {
             return (
               <div
                 key={vessel.id}
-                className={`border-2 rounded-lg p-3 sm:p-4 transition-all hover:shadow-md ${getStatusColor(vessel.status, liquidMapVessel?.batchStatus)}`}
+                className={`border-2 rounded-lg p-3 sm:p-4 transition-all hover:shadow-md ${getStatusColor(vessel.status, liquidMapVessel?.batchStatus, liquidMapVessel?.fermentationStage)}`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 min-w-0">
@@ -1934,7 +1921,7 @@ function VesselMap() {
                     </p>
                   </div>
                   <div className="flex items-center space-x-2">
-                    {getStatusIcon(vessel.status, liquidMapVessel?.batchStatus)}
+                    {getStatusIcon(vessel.status, liquidMapVessel?.batchStatus, liquidMapVessel?.fermentationStage)}
                   </div>
                 </div>
 
@@ -2000,9 +1987,22 @@ function VesselMap() {
                           const estDisplay = estimatedAbv !== null ? `${estimatedAbv.toFixed(1)}%` : "--";
                           const potDisplay = potentialAbv !== null && potentialAbv > 0 ? `${potentialAbv.toFixed(1)}%` : "--";
 
+                          // Determine if ABV is from measurement (and if estimated) or calculated
+                          const abvIsFromMeasurement = measurement?.abv != null;
+                          const abvIsEstimated = abvIsFromMeasurement ? measurement?.abvIsEstimated : true; // Calculated values are always estimates
+
                           return (
                             <div className="flex justify-between">
-                              <span className="text-gray-600" title="Estimated ABV / Potential ABV (if ferments to 1.000)">ABV:</span>
+                              <span className="text-gray-600" title="Estimated ABV / Potential ABV (if ferments to 1.000)">
+                                ABV
+                                {estimatedAbv !== null && (
+                                  abvIsEstimated === true ? (
+                                    <span className="text-orange-500 text-[10px] ml-0.5" title="Estimated">(E)</span>
+                                  ) : (
+                                    <span className="text-green-600 text-[10px] ml-0.5" title="Measured">(M)</span>
+                                  )
+                                )}:
+                              </span>
                               <span className="font-medium">
                                 <span title="Current estimated ABV">{estDisplay}</span>
                                 <span className="text-gray-400 mx-0.5">/</span>
