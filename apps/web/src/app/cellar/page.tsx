@@ -1960,6 +1960,31 @@ function VesselMap() {
                           const measurement = liquidMapVessel.latestMeasurement;
                           const og = liquidMapVessel.originalGravity;
                           const ASSUMED_FG = 1.000;
+                          const isNonFermenting = liquidMapVessel.fermentationStage === "not_applicable";
+                          const batchActualAbv = liquidMapVessel.actualAbv;
+                          const batchEstimatedAbv = liquidMapVessel.estimatedAbv;
+
+                          // For non-fermenting products (pommeau, brandy), use batch ABV directly
+                          if (isNonFermenting) {
+                            const abv = batchActualAbv || batchEstimatedAbv;
+                            const abvDisplay = abv ? `${parseFloat(String(abv)).toFixed(1)}%` : "--";
+                            const isMeasured = batchActualAbv != null;
+                            return (
+                              <div className="flex justify-between">
+                                <span className="text-gray-600" title="Actual ABV">
+                                  ABV
+                                  {abv && (
+                                    isMeasured ? (
+                                      <span className="text-green-600 text-[10px] ml-0.5" title="Measured">(M)</span>
+                                    ) : (
+                                      <span className="text-orange-500 text-[10px] ml-0.5" title="Estimated">(E)</span>
+                                    )
+                                  )}:
+                                </span>
+                                <span className="font-medium">{abvDisplay}</span>
+                              </div>
+                            );
+                          }
 
                           // Calculate potential ABV (if OG exists)
                           let potentialAbv: number | null = null;
