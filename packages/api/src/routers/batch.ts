@@ -40,6 +40,52 @@ import {
 } from "lib";
 import { correctSgForTemperature } from "lib/src/calc/sg-correction";
 
+/**
+ * Recalculates composition fractions for a batch based on juice volumes.
+ * Call this after adding/modifying compositions to ensure fractions sum to 100%.
+ * @param tx - Database transaction
+ * @param batchId - ID of the batch to recalculate
+ */
+async function recalculateCompositionFractions(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  batchId: string
+): Promise<void> {
+  // Get all compositions for this batch
+  const compositions = await tx
+    .select({
+      id: batchCompositions.id,
+      juiceVolume: batchCompositions.juiceVolume,
+    })
+    .from(batchCompositions)
+    .where(and(eq(batchCompositions.batchId, batchId), isNull(batchCompositions.deletedAt)));
+
+  if (compositions.length === 0) return;
+
+  // Calculate total juice volume
+  let totalVolume = 0;
+  for (const comp of compositions) {
+    if (comp.juiceVolume) {
+      totalVolume += parseFloat(comp.juiceVolume);
+    }
+  }
+
+  if (totalVolume === 0) return;
+
+  // Update each composition's fraction
+  for (const comp of compositions) {
+    const volume = comp.juiceVolume ? parseFloat(comp.juiceVolume) : 0;
+    const newFraction = volume / totalVolume;
+
+    await tx
+      .update(batchCompositions)
+      .set({
+        fractionOfBatch: newFraction.toFixed(6),
+        updatedAt: new Date(),
+      })
+      .where(eq(batchCompositions.id, comp.id));
+  }
+}
+
 // Input validation schemas
 const batchIdSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
@@ -3549,6 +3595,9 @@ export const batchRouter = router({
                 });
               }
 
+              // Recalculate fractions for all compositions on destination batch
+              await recalculateCompositionFractions(tx, destBatch.id);
+
               resultMessage = `Partial rack merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L), ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`;
             } else {
               // No batch in destination - proceed with normal partial rack (create child batch)
@@ -3874,6 +3923,9 @@ export const batchRouter = router({
               });
             }
 
+            // Recalculate fractions for all compositions on destination batch
+            await recalculateCompositionFractions(tx, destBatch.id);
+
             resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
           } else {
             // 5c. MOVE: Transfer batch to new empty vessel
@@ -4049,6 +4101,9 @@ export const batchRouter = router({
                   updatedAt: new Date(),
                 });
               }
+
+              // Recalculate fractions for all compositions on destination batch
+              await recalculateCompositionFractions(tx, destBatch.id);
 
               resultMessage = `Batch racked and merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L)`;
             } else {
@@ -4374,6 +4429,9 @@ export const batchRouter = router({
             });
 
             console.log("✅ Batch composition created for merged juice purchase");
+
+            // Recalculate fractions for all compositions on the batch
+            await recalculateCompositionFractions(tx, batchId);
 
             // Create measurements from merged juice purchase if pH or SG exist
             if (juice.ph || juice.specificGravity) {
