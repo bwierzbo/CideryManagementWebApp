@@ -2954,20 +2954,28 @@ export const batchRouter = router({
           }
         });
 
-        // In lineage mode for blended batches, filter out inherited measurements/additives
-        // unless showSourceHistory is enabled
+        // In lineage mode for blended batches, filter out inherited activities that are
+        // redundant or not relevant to this batch's story (unless showSourceHistory is enabled)
         if (input.displayMode === "lineage" && isBlendedBatch && !input.showSourceHistory) {
           activities = activities.filter((activity) => {
             // Always include non-inherited activities (direct activities on this batch)
             if (!activity.inherited) return true;
 
-            // Always include origin events (creation, merge) - these show lineage
-            if (["creation", "merge"].includes(activity.type)) return true;
+            // Always include origin events (creation) - these show lineage
+            if (activity.type === "creation") return true;
+
+            // Exclude inherited merge events - the direct merge events already show blend sources
+            // Showing both creates redundancy (merge on this batch + merge on source batch)
+            if (activity.type === "merge") return false;
+
+            // Exclude inherited transfers - these are redundant with merge events
+            // (the transfer INTO this batch is the same event as the merge)
+            if (activity.type === "transfer") return false;
 
             // Exclude inherited measurements and additives (source batch details)
             if (["measurement", "additive"].includes(activity.type)) return false;
 
-            // Include everything else (transfers, rack, filter, packaging, etc.)
+            // Include everything else (rack, filter, packaging, etc.)
             return true;
           });
         }
