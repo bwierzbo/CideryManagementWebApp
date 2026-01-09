@@ -65,10 +65,11 @@ export const pressRunStatusEnum = pgEnum("press_run_status", [
 ]);
 export const fruitTypeEnum = pgEnum("fruit_type", ["apple", "pear", "plum"]);
 
-// Product type for batches (cider, perry, brandy, pommeau)
+// Product type for batches (juice, cider, perry, brandy, pommeau)
 export const productTypeEnum = pgEnum("product_type", [
-  "cider",    // Standard cider
-  "perry",    // Pear cider
+  "juice",    // Unfermented juice (0% ABV)
+  "cider",    // Standard cider (fermented)
+  "perry",    // Pear cider (fermented)
   "brandy",   // Distilled spirit
   "pommeau",  // Juice + brandy blend
   "other",

@@ -3885,8 +3885,8 @@ export const appRouter = router({
               // OR if brandy is being added to an existing pommeau
               const sourceProductType = sourceBatch[0].productType || "cider";
               const destProductType = destBatch[0].productType || "cider";
-              const isBrandyToCider = sourceProductType === "brandy" && (destProductType === "cider" || destProductType === "perry");
-              const isCiderToBrandy = (sourceProductType === "cider" || sourceProductType === "perry") && destProductType === "brandy";
+              const isBrandyToCider = sourceProductType === "brandy" && (destProductType === "cider" || destProductType === "perry" || destProductType === "juice");
+              const isCiderToBrandy = (sourceProductType === "cider" || sourceProductType === "perry" || sourceProductType === "juice") && destProductType === "brandy";
               const isBrandyToPommeau = sourceProductType === "brandy" && destProductType === "pommeau";
               const isPommeauBlend = isBrandyToCider || isCiderToBrandy || isBrandyToPommeau;
 
@@ -3904,8 +3904,16 @@ export const appRouter = router({
                 // Get ABV values
                 // Brandy typically 40-70%, defaults to 60% if not set
                 // Cider typically 0-15%, pommeau typically 15-22%
+                // Juice and unfermented batches are 0% ABV
                 const brandyAbv = parseFloat(brandyBatch.actualAbv || brandyBatch.estimatedAbv || "60");
-                const otherAbv = parseFloat(otherBatch.actualAbv || otherBatch.estimatedAbv || "0");
+
+                // For non-brandy component: juice is always 0% ABV
+                // Unfermented batches (no finalGravity) should also be treated as 0% for blending
+                const isJuice = otherBatch.productType === "juice";
+                const isUnfermented = !otherBatch.finalGravity;
+                const otherAbv = (isJuice || isUnfermented)
+                  ? 0
+                  : parseFloat(otherBatch.actualAbv || otherBatch.estimatedAbv || "0");
 
                 // Calculate blended ABV using weighted average
                 const totalAlcohol = (brandyVolumeL * brandyAbv) + (otherVolumeL * otherAbv);
@@ -3917,7 +3925,8 @@ export const appRouter = router({
 
                 // Determine the label for the non-brandy component
                 const otherLabel = isBrandyToPommeau ? "pommeau" :
-                  (sourceProductType === "perry" || destProductType === "perry" ? "perry" : "cider");
+                  (sourceProductType === "juice" || destProductType === "juice") ? "juice" :
+                  (sourceProductType === "perry" || destProductType === "perry") ? "perry" : "cider";
 
                 // Create batch_merge_history entry to track the spirit addition
                 await tx.insert(batchMergeHistory).values({
