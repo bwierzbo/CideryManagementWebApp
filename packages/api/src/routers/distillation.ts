@@ -899,13 +899,15 @@ export const distillationRouter = router({
         blendedSg = (ciderSg * input.juiceVolumeLiters + brandySg * input.brandyVolumeLiters) / totalVolume;
       }
 
-      // Calculate weighted average pH if we have cider pH
-      // Note: pH doesn't blend linearly (it's logarithmic), but for practical purposes
-      // we use weighted average since brandy is essentially neutral (pH ~6-7)
+      // Calculate blended pH using logarithmic blending (pH is logarithmic scale)
+      // pH = -log10[H+], so we must blend H+ concentrations, not pH values directly
       const brandyPh = 6.5; // Brandy is relatively neutral
       let blendedPh: number | null = null;
       if (ciderPh !== null) {
-        blendedPh = (ciderPh * input.juiceVolumeLiters + brandyPh * input.brandyVolumeLiters) / totalVolume;
+        const ciderH = Math.pow(10, -ciderPh);
+        const brandyH = Math.pow(10, -brandyPh);
+        const blendedH = (ciderH * input.juiceVolumeLiters + brandyH * input.brandyVolumeLiters) / totalVolume;
+        blendedPh = -Math.log10(blendedH);
       }
 
       // Create pommeau batch
