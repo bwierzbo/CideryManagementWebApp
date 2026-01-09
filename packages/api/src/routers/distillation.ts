@@ -6,6 +6,7 @@ import {
   batches,
   vessels,
   users,
+  batchMergeHistory,
 } from "db";
 import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -837,11 +838,11 @@ export const distillationRouter = router({
         input.brandyVolumeLiters * brandyAbv;
       const resultingAbv = Math.round((totalAlcohol / totalVolume) * 100) / 100;
 
-      // Generate batch name and number
-      const batchName =
-        input.name ||
-        `Pommeau-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
-      const batchNumber = `PM-${Date.now().toString(36).toUpperCase()}`;
+      // Generate batch name and number using BR- format (same as brandy/transfer-created pommeau)
+      const timestamp = Date.now().toString(36).toUpperCase();
+      const shortCode = timestamp.slice(-8);
+      const batchNumber = `BR-${shortCode}-Tmk${timestamp.slice(-5).toLowerCase()}`;
+      const batchName = input.name || `Batch #${batchNumber}`;
 
       // Verify destination vessel if provided
       if (input.destinationVesselId) {
@@ -877,10 +878,49 @@ export const distillationRouter = router({
           currentVolumeLiters: String(totalVolume),
           status: "aging",
           productType: "pommeau",
+          fermentationStage: "not_applicable", // Pommeau doesn't ferment
+          fermentationStageUpdatedAt: new Date(),
           actualAbv: String(resultingAbv),
           startDate: input.blendDate,
         })
         .returning();
+
+      // Create batch_merge_history entry to track the brandy addition
+      await db.insert(batchMergeHistory).values({
+        targetBatchId: pommeauBatch.id,
+        sourceBatchId: input.brandyBatchId,
+        sourceType: "batch",
+        volumeAdded: String(input.brandyVolumeLiters),
+        volumeAddedUnit: "L",
+        targetVolumeBefore: String(input.juiceVolumeLiters),
+        targetVolumeBeforeUnit: "L",
+        targetVolumeAfter: String(totalVolume),
+        targetVolumeAfterUnit: "L",
+        sourceAbv: String(brandyAbv),
+        resultingAbv: String(resultingAbv),
+        compositionSnapshot: {
+          brandy: {
+            batchId: input.brandyBatchId,
+            name: brandyBatch.name,
+            volume: input.brandyVolumeLiters,
+            abv: brandyAbv,
+          },
+          cider: input.ciderBatchId
+            ? {
+                batchId: input.ciderBatchId,
+                name: ciderBatch?.name,
+                volume: input.juiceVolumeLiters,
+                abv: ciderAbv,
+              }
+            : {
+                source: "manual",
+                volume: input.juiceVolumeLiters,
+                abv: ciderAbv,
+              },
+        },
+        notes: input.notes || "Pommeau blend created",
+        mergedAt: input.blendDate,
+      });
 
       // Deduct from brandy batch if requested
       if (input.deductFromBrandy) {
