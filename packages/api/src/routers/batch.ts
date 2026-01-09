@@ -2012,6 +2012,10 @@ export const batchRouter = router({
         // limit is optional - when omitted, returns all activities
         limit: z.number().min(1).max(1000).optional(),
         offset: z.number().min(0).default(0),
+        // Display mode: 'lineage' hides inherited measurements/additives for blended batches
+        displayMode: z.enum(["lineage", "full"]).default("lineage"),
+        // When true, show source batch history even in lineage mode
+        showSourceHistory: z.boolean().default(false),
       }),
     )
     .query(async ({ input }) => {
@@ -2070,6 +2074,26 @@ export const batchRouter = router({
             message: "Batch not found",
           });
         }
+
+        // Check if this batch has blend sources (other batches merged in via batch_transfer)
+        const blendSources = await db
+          .select({
+            id: batchMergeHistory.id,
+            sourceBatchId: batchMergeHistory.sourceBatchId,
+            volumeAdded: batchMergeHistory.volumeAdded,
+            volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
+            mergedAt: batchMergeHistory.mergedAt,
+          })
+          .from(batchMergeHistory)
+          .where(
+            and(
+              eq(batchMergeHistory.targetBatchId, input.batchId),
+              eq(batchMergeHistory.sourceType, "batch_transfer"),
+              isNull(batchMergeHistory.deletedAt),
+            ),
+          );
+
+        const isBlendedBatch = blendSources.length > 0;
 
         // Find ancestor batches using recursive CTE
         // This traces the lineage back to the original batch through transfers
@@ -2229,6 +2253,10 @@ export const batchRouter = router({
               juiceType: juicePurchaseItems.juiceType,
               juiceVarietyName: juicePurchaseItems.varietyName,
               juiceVendorName: sql<string>`merge_juice_vendor.name`.as("juiceVendorName"),
+              // Source batch info for batch-to-batch blends
+              sourceBatchId: batchMergeHistory.sourceBatchId,
+              sourceBatchName: sql<string>`merge_source_batch.name`.as("sourceBatchName"),
+              sourceBatchCustomName: sql<string>`merge_source_batch.custom_name`.as("sourceBatchCustomName"),
             })
             .from(batchMergeHistory)
             .leftJoin(
@@ -2246,6 +2274,10 @@ export const batchRouter = router({
             .leftJoin(
               sql`vendors AS merge_juice_vendor`,
               sql`merge_juice_vendor.id = ${juicePurchases.vendorId}`,
+            )
+            .leftJoin(
+              sql`batches AS merge_source_batch`,
+              sql`merge_source_batch.id = ${batchMergeHistory.sourceBatchId}`,
             )
             .where(
               and(
@@ -2454,7 +2486,7 @@ export const batchRouter = router({
             .orderBy(asc(auditLogs.changedAt)),
         ]);
 
-        const activities: any[] = [];
+        let activities: any[] = [];
 
         // Helper function to check if an activity from an ancestor should be included
         // Activities are only included if they occurred before the batch was split off
@@ -2597,12 +2629,22 @@ export const batchRouter = router({
           if (!shouldIncludeAncestorActivity(m.targetBatchId, m.mergedAt)) return;
 
           let sourceDescription = "another batch";
+          let sourceBatchInfo: { id: string; name: string } | null = null;
+          const isExpandable = m.sourceType === "batch_transfer" && m.sourceBatchId;
+
           if (m.sourceType === "press_run" && m.pressRunName) {
             sourceDescription = `Press Run ${m.pressRunName}`;
           } else if (m.sourceType === "juice_purchase") {
             const juiceLabel = m.juiceType || m.juiceVarietyName || "Purchased Juice";
             const vendorLabel = m.juiceVendorName ? ` from ${m.juiceVendorName}` : "";
             sourceDescription = `${juiceLabel}${vendorLabel}`;
+          } else if (m.sourceType === "batch_transfer" && m.sourceBatchId && m.sourceBatchName) {
+            // For batch-to-batch blends, use the source batch name
+            sourceDescription = m.sourceBatchCustomName || m.sourceBatchName;
+            sourceBatchInfo = {
+              id: m.sourceBatchId,
+              name: m.sourceBatchCustomName || m.sourceBatchName,
+            };
           }
 
           const inheritedInfo = getInheritedInfo(m.targetBatchId);
@@ -2610,12 +2652,17 @@ export const batchRouter = router({
             id: `merge-${m.id}`,
             type: "merge",
             timestamp: m.mergedAt,
-            description: `Merged with juice from ${sourceDescription}`,
+            description: isExpandable
+              ? `Blended with ${sourceDescription}`
+              : `Merged with juice from ${sourceDescription}`,
             details: {
               volumeAdded: `${m.volumeAdded}${m.volumeAddedUnit || 'L'}`,
               volumeChange: `${m.targetVolumeBefore}${m.targetVolumeBeforeUnit || 'L'} → ${m.targetVolumeAfter}${m.targetVolumeAfterUnit || 'L'}`,
               notes: m.notes || null,
             },
+            // Source batch info for expandable UI (batch-to-batch blends only)
+            sourceBatch: sourceBatchInfo,
+            isExpandable,
             metadata: { id: m.id, mergedAt: m.mergedAt },
             ...inheritedInfo,
           });
@@ -2901,6 +2948,24 @@ export const batchRouter = router({
           }
         });
 
+        // In lineage mode for blended batches, filter out inherited measurements/additives
+        // unless showSourceHistory is enabled
+        if (input.displayMode === "lineage" && isBlendedBatch && !input.showSourceHistory) {
+          activities = activities.filter((activity) => {
+            // Always include non-inherited activities (direct activities on this batch)
+            if (!activity.inherited) return true;
+
+            // Always include origin events (creation, merge) - these show lineage
+            if (["creation", "merge"].includes(activity.type)) return true;
+
+            // Exclude inherited measurements and additives (source batch details)
+            if (["measurement", "additive"].includes(activity.type)) return false;
+
+            // Include everything else (transfers, rack, filter, packaging, etc.)
+            return true;
+          });
+        }
+
         // Sort all activities by timestamp - true chronological order (oldest to newest)
         activities.sort((a, b) => {
           const dateA = new Date(a.timestamp).getTime();
@@ -2923,6 +2988,11 @@ export const batchRouter = router({
             limit: limit ?? totalActivities,
             offset: input.offset,
             hasMore: limit ? input.offset + limit < totalActivities : false,
+          },
+          // Blend metadata for UI
+          blendInfo: {
+            isBlended: isBlendedBatch,
+            sourceBatchCount: blendSources.length,
           },
         };
       } catch (error) {

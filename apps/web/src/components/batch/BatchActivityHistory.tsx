@@ -92,12 +92,16 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
     currentDate: Date | string;
     label: string;
   } | null>(null);
+  // For blended batches: toggle to show/hide source batch history
+  const [showSourceHistory, setShowSourceHistory] = useState(false);
 
   // When viewing from a packaging detail page (bottleRunId provided), fetch ALL activities
   // to ensure packaging events (bottling, pasteurize, label) are always included.
   // For general batch pages, use pagination with limit of 50.
   const { data, isLoading, error, refetch } = trpc.batch.getActivityHistory.useQuery({
     batchId,
+    displayMode: "lineage",
+    showSourceHistory,
     // Omit limit to fetch all activities when viewing packaging details
     ...(bottleRunId ? {} : { limit: 50 }),
   });
@@ -224,6 +228,25 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
         </div>
       </CardHeader>
       <CardContent>
+        {/* Blend banner for blended batches */}
+        {data?.blendInfo?.isBlended && (
+          <div className="flex items-center gap-3 mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <Droplets className="h-5 w-5 text-orange-600 shrink-0" />
+            <span className="text-sm font-medium text-orange-700">
+              Blended from {data.blendInfo.sourceBatchCount} source batch{data.blendInfo.sourceBatchCount > 1 ? "es" : ""}
+            </span>
+            <label className="ml-auto flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showSourceHistory}
+                onChange={(e) => setShowSourceHistory(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              <span className="text-gray-600">Show source batch history</span>
+            </label>
+          </div>
+        )}
+
         <Tabs defaultValue="timeline" className="w-full">
           <div className="flex items-center justify-between mb-4">
             <TabsList>
@@ -322,8 +345,8 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                         <p className="font-medium text-sm">
                           {activity.description}
                           {activity.inherited && activity.inheritedFrom && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              (from {activity.inheritedFrom})
+                            <span className="text-xs text-muted-foreground ml-2 italic">
+                              via {activity.inheritedFrom}
                             </span>
                           )}
                         </p>
@@ -349,6 +372,30 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                               {activity.details.volumeChange && (
                                 <div className="text-sm text-muted-foreground">
                                   Volume: {activity.details.volumeChange}
+                                </div>
+                              )}
+                              {/* Expandable source batch section for batch-to-batch blends */}
+                              {activity.isExpandable && activity.sourceBatch && (
+                                <div className="mt-2 ml-2 pl-3 border-l-2 border-orange-200">
+                                  <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                    <div>
+                                      <span className="font-medium text-sm">{activity.sourceBatch.name}</span>
+                                      <span className="text-muted-foreground ml-2 text-xs">
+                                        {activity.details.volumeAdded}
+                                      </span>
+                                    </div>
+                                    <Button
+                                      variant="link"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.open(`/batch/${activity.sourceBatch.id}`, "_blank");
+                                      }}
+                                      className="text-orange-600 hover:text-orange-700"
+                                    >
+                                      View History
+                                    </Button>
+                                  </div>
                                 </div>
                               )}
                               {activity.details.direction && (
