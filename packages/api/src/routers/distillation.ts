@@ -8,6 +8,7 @@ import {
   users,
   batchMergeHistory,
   batchMeasurements,
+  barrelContentsHistory,
 } from "db";
 import { eq, and, isNull, desc, sql, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -349,6 +350,23 @@ export const distillationRouter = router({
         })
         .where(eq(distillationRecords.id, input.distillationRecordId));
 
+      // Record barrel contents history if destination is a barrel
+      if (vessel && vessel.isBarrel) {
+        const receivedDate = input.receivedAt instanceof Date
+          ? input.receivedAt.toISOString().split("T")[0]
+          : new Date(input.receivedAt).toISOString().split("T")[0];
+
+        await db.insert(barrelContentsHistory).values({
+          vesselId: input.destinationVesselId!,
+          contentsType: "brandy",
+          contentsDescription: batchName,
+          startedAt: receivedDate,
+          source: "batch",
+          batchId: brandyBatch.id,
+          createdBy: ctx.user.id,
+        });
+      }
+
       return {
         distillationRecord: record,
         brandyBatch,
@@ -425,6 +443,7 @@ export const distillationRouter = router({
       const proofGallonsReceived = calculateProofGallons(receivedVolumeLiters, input.receivedAbv);
 
       // Verify destination vessel if provided
+      let destinationVessel = null;
       if (input.destinationVesselId) {
         const [vessel] = await db
           .select()
@@ -438,6 +457,7 @@ export const distillationRouter = router({
             message: "Destination vessel not found",
           });
         }
+        destinationVessel = vessel;
       }
 
       // Generate batch name for brandy
@@ -499,6 +519,23 @@ export const distillationRouter = router({
             updatedAt: new Date(),
           })
           .where(eq(distillationRecords.id, record.id));
+      }
+
+      // Record barrel contents history if destination is a barrel
+      if (destinationVessel && destinationVessel.isBarrel) {
+        const receivedDate = input.receivedAt instanceof Date
+          ? input.receivedAt.toISOString().split("T")[0]
+          : new Date(input.receivedAt).toISOString().split("T")[0];
+
+        await db.insert(barrelContentsHistory).values({
+          vesselId: input.destinationVesselId!,
+          contentsType: "brandy",
+          contentsDescription: batchName,
+          startedAt: receivedDate,
+          source: "batch",
+          batchId: brandyBatch.id,
+          createdBy: ctx.user.id,
+        });
       }
 
       return {
