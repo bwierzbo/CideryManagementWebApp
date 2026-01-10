@@ -46,7 +46,7 @@ const baseFruitEditSchema = z.object({
 
 // Schema for additive items
 const additiveEditSchema = z.object({
-  quantity: z.number().int().min(0, "Quantity must be positive"),
+  quantity: z.number().min(0, "Quantity must be positive"), // Allow decimals for fractional units (e.g., 2.5 lb yeast)
   unit: z.enum(["g", "kg", "lb", "L", "mL"]),
   unitCost: z.number().min(0, "Unit cost must be positive").optional(),
   totalCost: z.number().min(0, "Total cost must be positive").optional(),
@@ -117,7 +117,8 @@ export function InventoryEditDialog({
           }
         : materialType === "additive"
           ? {
-              quantity: item?.currentBottleCount || undefined,
+              // Use actual quantity from metadata (total purchased), not currentBottleCount (remaining)
+              quantity: metadata.quantity ? parseFloat(metadata.quantity) : (item?.currentBottleCount || undefined),
               unit: metadata.unit || "g",
               unitCost:
                 parseFloat(metadata.unitCost) ||
@@ -373,17 +374,17 @@ export function InventoryEditDialog({
                 name="quantity"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Quantity</FormLabel>
+                    <FormLabel>Total Purchased</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
-                        step="1"
+                        step="0.001"
                         placeholder="0"
                         {...field}
                         onChange={(e) =>
                           field.onChange(
                             e.target.value
-                              ? parseInt(e.target.value)
+                              ? parseFloat(e.target.value)
                               : undefined,
                           )
                         }
