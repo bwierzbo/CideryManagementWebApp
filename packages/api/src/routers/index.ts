@@ -4618,17 +4618,30 @@ export const appRouter = router({
                   });
                 }
 
-                // Complete source batch
-                await tx
-                  .update(batches)
-                  .set({
-                    currentVolume: "0",
-                    status: "completed",
-                    vesselId: null,
-                    endDate: new Date(),
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(batches.id, sourceBatch[0].id));
+                // Handle source batch based on remaining volume
+                if (remainingVolumeL > MIN_WORKING_VOLUME_L) {
+                  // Partial transfer - keep source batch in its vessel with reduced volume
+                  await tx
+                    .update(batches)
+                    .set({
+                      currentVolume: remainingVolumeL.toString(),
+                      currentVolumeUnit: "L",
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(batches.id, sourceBatch[0].id));
+                } else {
+                  // Full transfer or residual - complete source batch
+                  await tx
+                    .update(batches)
+                    .set({
+                      currentVolume: "0",
+                      status: "completed",
+                      vesselId: null,
+                      endDate: new Date(),
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(batches.id, sourceBatch[0].id));
+                }
 
                 updatedBatch = [transferredBatch];
               } else {
