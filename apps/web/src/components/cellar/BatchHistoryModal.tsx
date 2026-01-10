@@ -602,12 +602,12 @@ export function BatchHistoryModal({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
-                      <TableHead className="text-right">SG</TableHead>
+                      <TableHead className="text-right">Raw SG</TableHead>
+                      <TableHead className="text-right">Corrected SG</TableHead>
                       <TableHead className="text-right">ABV %</TableHead>
                       <TableHead className="text-right">pH</TableHead>
                       <TableHead className="text-right">TA (g/L)</TableHead>
                       <TableHead className="text-right">Temp (°C)</TableHead>
-                      <TableHead className="text-right">Volume (L)</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -628,6 +628,16 @@ export function BatchHistoryModal({
                             {formatDate(m.measurementDate)}
                           </TableCell>
                           <TableCell className="text-right">
+                            {m.rawReading ? (
+                              <span>
+                                {Number(m.rawReading).toFixed(3)}
+                                <span className="ml-1 text-xs text-muted-foreground">
+                                  ({m.measurementMethod === "hydrometer" ? "H" : m.measurementMethod === "refractometer" ? "R" : "-"})
+                                </span>
+                              </span>
+                            ) : "-"}
+                          </TableCell>
+                          <TableCell className="text-right">
                             {m.specificGravity?.toFixed(3) || "-"}
                           </TableCell>
                           <TableCell className="text-right">
@@ -641,9 +651,6 @@ export function BatchHistoryModal({
                           </TableCell>
                           <TableCell className="text-right">
                             {m.temperature?.toFixed(1) || "-"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {m.volume?.toFixed(1) || "-"}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center gap-1 justify-end">
