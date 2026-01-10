@@ -535,9 +535,9 @@ export const additivePurchaseItems = pgTable("additive_purchase_items", {
   purchaseId: uuid("purchase_id")
     .notNull()
     .references(() => additivePurchases.id),
-  additiveVarietyId: uuid("additive_variety_id").references(
-    () => additiveVarieties.id,
-  ),
+  additiveVarietyId: uuid("additive_variety_id")
+    .notNull()
+    .references(() => additiveVarieties.id),
   additiveType: text("additive_type"),
   brandManufacturer: text("brand_manufacturer"),
   productName: text("product_name"),
