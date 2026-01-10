@@ -98,6 +98,7 @@ import { SquareIntegration } from "@/components/admin/SquareIntegration";
 import { WorkersManagement } from "@/components/admin/WorkersManagement";
 import { OverheadSettings } from "@/components/admin/OverheadSettings";
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
+import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
 
@@ -1851,7 +1852,7 @@ function SystemSettings() {
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    "users" | "reference" | "settings" | "square"
+    "users" | "reference" | "settings" | "calibration" | "square"
   >("users");
 
   return (
@@ -1872,6 +1873,7 @@ export default function AdminPage() {
             { key: "users", label: "User Management", icon: Users },
             { key: "reference", label: "Reference Data", icon: Database },
             { key: "settings", label: "System Settings", icon: Settings },
+            { key: "calibration", label: "Calibration", icon: Ruler },
             { key: "square", label: "Square Integration", icon: CreditCard },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -1903,6 +1905,7 @@ export default function AdminPage() {
             </>
           )}
           {activeTab === "settings" && <SystemSettings />}
+          {activeTab === "calibration" && <CalibrationSettings />}
           {activeTab === "square" && <SquareIntegration />}
         </div>
       </main>

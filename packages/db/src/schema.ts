@@ -853,6 +853,18 @@ export const batchMeasurements = pgTable("batch_measurements", {
   estimateSource: text("estimate_source"), // Description of how estimate was calculated (e.g., "Merge from Batch #X", "Volume-weighted blend")
   // Measurement method tracking for terminal confirmation
   measurementMethod: text("measurement_method").$type<"hydrometer" | "refractometer" | "calculated">().default("hydrometer"),
+  // SG Calibration fields
+  rawReading: decimal("raw_reading", { precision: 5, scale: 4 }), // Original instrument reading before corrections
+  calibrationId: uuid("calibration_id").references(() => instrumentCalibrations.id), // Calibration used for correction
+  correctionsApplied: jsonb("corrections_applied").$type<{
+    temp?: number;
+    alcohol?: number;
+    baseline?: number;
+  }>(), // Details of corrections applied
+  originalGravityAtMeasurement: decimal("original_gravity_at_measurement", {
+    precision: 5,
+    scale: 3,
+  }), // OG used for refractometer alcohol correction
   notes: text("notes"),
   takenBy: text("taken_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1293,6 +1305,103 @@ export const barrelContentsHistory = pgTable(
     vesselIdx: index("barrel_contents_history_vessel_idx").on(table.vesselId),
     batchIdx: index("barrel_contents_history_batch_idx").on(table.batchId),
     startedAtIdx: index("barrel_contents_history_started_at_idx").on(table.startedAt),
+  }),
+);
+
+// Instrument calibrations for SG measurement correction
+export const instrumentCalibrations = pgTable(
+  "instrument_calibrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name"),
+
+    // Hydrometer settings
+    hydrometerCalibrationTempC: decimal("hydrometer_calibration_temp_c", {
+      precision: 4,
+      scale: 1,
+    }).default("20.0"),
+
+    // Refractometer calibration
+    refractometerBaselineOffset: decimal("refractometer_baseline_offset", {
+      precision: 6,
+      scale: 4,
+    }).default("0"),
+    correctionFormula: text("correction_formula").default("linear"),
+    linearCoefficients: jsonb("linear_coefficients").$type<{
+      a: number;
+      b: number;
+      c: number;
+    }>(),
+
+    // Calibration metadata
+    calibrationDate: timestamp("calibration_date", {
+      withTimezone: true,
+    }).defaultNow(),
+    readingsCount: integer("readings_count"),
+    rSquared: decimal("r_squared", { precision: 5, scale: 4 }),
+    maxError: decimal("max_error", { precision: 6, scale: 4 }),
+    avgError: decimal("avg_error", { precision: 6, scale: 4 }),
+    isActive: boolean("is_active").default(false),
+    notes: text("notes"),
+
+    // Audit fields
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => ({
+    isActiveIdx: index("instrument_calibrations_is_active_idx").on(
+      table.isActive,
+    ),
+  }),
+);
+
+// Individual calibration readings for building regression model
+export const calibrationReadings = pgTable(
+  "calibration_readings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    calibrationId: uuid("calibration_id")
+      .notNull()
+      .references(() => instrumentCalibrations.id, { onDelete: "cascade" }),
+
+    // Input readings
+    originalGravity: decimal("original_gravity", {
+      precision: 5,
+      scale: 3,
+    }).notNull(),
+    refractometerReading: decimal("refractometer_reading", {
+      precision: 5,
+      scale: 3,
+    }).notNull(),
+    hydrometerReading: decimal("hydrometer_reading", {
+      precision: 5,
+      scale: 3,
+    }).notNull(),
+    temperatureC: decimal("temperature_c", { precision: 4, scale: 1 }).notNull(),
+    isFreshJuice: boolean("is_fresh_juice").default(false),
+
+    // Calculated fields (filled after calibration calculation)
+    hydrometerCorrected: decimal("hydrometer_corrected", {
+      precision: 5,
+      scale: 3,
+    }),
+    predictedSg: decimal("predicted_sg", { precision: 5, scale: 3 }),
+    error: decimal("error", { precision: 6, scale: 4 }),
+
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    calibrationIdIdx: index("calibration_readings_calibration_id_idx").on(
+      table.calibrationId,
+    ),
   }),
 );
 
@@ -1799,6 +1908,29 @@ export const batchMeasurementsRelations = relations(
     batch: one(batches, {
       fields: [batchMeasurements.batchId],
       references: [batches.id],
+    }),
+    calibration: one(instrumentCalibrations, {
+      fields: [batchMeasurements.calibrationId],
+      references: [instrumentCalibrations.id],
+    }),
+  }),
+);
+
+// Instrument Calibration Relations
+export const instrumentCalibrationsRelations = relations(
+  instrumentCalibrations,
+  ({ many }) => ({
+    readings: many(calibrationReadings),
+    measurements: many(batchMeasurements),
+  }),
+);
+
+export const calibrationReadingsRelations = relations(
+  calibrationReadings,
+  ({ one }) => ({
+    calibration: one(instrumentCalibrations, {
+      fields: [calibrationReadings.calibrationId],
+      references: [instrumentCalibrations.id],
     }),
   }),
 );

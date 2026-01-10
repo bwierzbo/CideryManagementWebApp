@@ -27,6 +27,7 @@ import { packagingPurchasesRouter } from "./packagingPurchases";
 import { additiveVarietiesRouter } from "./additiveVarieties";
 import { barrelOriginTypesRouter } from "./barrelOriginTypes";
 import { barrelContentsHistoryRouter } from "./barrelContentsHistory";
+import { calibrationRouter } from "./calibration";
 import { workersRouter } from "./workers";
 import { juiceVarietiesRouter } from "./juiceVarieties";
 import { packagingVarietiesRouter } from "./packagingVarieties";
@@ -5937,6 +5938,7 @@ export const appRouter = router({
   additiveVarieties: additiveVarietiesRouter,
   barrelOriginTypes: barrelOriginTypesRouter,
   barrelContentsHistory: barrelContentsHistoryRouter,
+  calibration: calibrationRouter,
   juiceVarieties: juiceVarietiesRouter,
   packagingVarieties: packagingVarietiesRouter,
 

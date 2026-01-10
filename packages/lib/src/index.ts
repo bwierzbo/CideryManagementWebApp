@@ -12,6 +12,8 @@ export * from "./calc/yield";
 export * from "./calc/cogs";
 export * from "./calc/financial";
 export * from "./calc/fermentation";
+export * from "./calc/sg-correction";
+export * from "./calc/sg-calibration";
 export * from "./calculations/sugar";
 export * from "./calculations/pasteurization";
 export * from "./calculations/ttb";
