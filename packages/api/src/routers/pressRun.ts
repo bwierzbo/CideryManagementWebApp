@@ -616,6 +616,7 @@ export const pressRunRouter = router({
                   juiceVolume: juiceVolumeL.toString(),
                   juiceVolumeUnit: "L",
                   materialCost: materialCost.toString(),
+                  abv: "0", // Fresh juice has 0% ABV
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 });
@@ -1295,6 +1296,7 @@ export const pressRunRouter = router({
               juiceVolumeUnit: "L" as const,
               fractionOfBatch: fraction.toString(),
               materialCost: materialCost.toString(),
+              abv: "0", // Fresh juice has 0% ABV
             });
           }
 
@@ -1996,6 +1998,7 @@ export const pressRunRouter = router({
                     fractionOfBatch: batchFraction.toString(),
                     materialCost: materialCost.toString(),
                     avgBrix: avgBrix ? avgBrix.toString() : null,
+                    abv: "0", // Fresh juice has 0% ABV
                   });
 
                   // Publish batch composition audit event
@@ -2046,6 +2049,7 @@ export const pressRunRouter = router({
                   fractionOfBatch: fraction.toString(),
                   materialCost: materialCost.toString(),
                   avgBrix: avgBrix ? avgBrix.toString() : null,
+                  abv: "0", // Fresh juice has 0% ABV
                 });
 
                 // Publish batch composition audit event

@@ -802,6 +802,8 @@ export const batchCompositions = pgTable(
     }).notNull(),
     avgBrix: decimal("avg_brix", { precision: 5, scale: 2 }),
     estSugarKg: decimal("est_sugar_kg", { precision: 12, scale: 3 }),
+    // ABV of this component at time of addition (for blended ABV calculation)
+    abv: decimal("abv", { precision: 5, scale: 2 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),
@@ -822,10 +824,11 @@ export const batchCompositions = pgTable(
       "batch_compositions_batch_juice_item_unique_idx",
     ).on(table.batchId, table.juicePurchaseItemId),
     // CHECK constraints for data integrity
-    sourceTypeCheck: sql`CHECK (source_type IN ('base_fruit', 'juice_purchase'))`,
+    sourceTypeCheck: sql`CHECK (source_type IN ('base_fruit', 'juice_purchase', 'brandy'))`,
     sourceCheck: sql`CHECK (
       (source_type = 'base_fruit' AND purchase_item_id IS NOT NULL AND juice_purchase_item_id IS NULL) OR
-      (source_type = 'juice_purchase' AND juice_purchase_item_id IS NOT NULL AND purchase_item_id IS NULL)
+      (source_type = 'juice_purchase' AND juice_purchase_item_id IS NOT NULL AND purchase_item_id IS NULL) OR
+      (source_type = 'brandy')
     )`,
     inputWeightKgPositive: sql`CHECK (input_weight_kg IS NULL OR input_weight_kg >= 0)`,
     juiceVolumePositive: sql`CHECK (juice_volume >= 0)`,

@@ -1064,34 +1064,18 @@ export const batchRouter = router({
           })
           .returning();
 
-        // Auto-set or update Original Gravity from first SG measurement
-        // The first actual measurement is more accurate than OG estimated from brix
+        // Auto-set Original Gravity only if batch doesn't have one
+        // Don't overwrite existing OG from pressing - that's the true OG for ABV calculation
         let ogAutoSet = false;
-        if (correctedSg) {
-          // Check if this is the first SG measurement for this batch
-          const existingMeasurements = await db
-            .select({ id: batchMeasurements.id })
-            .from(batchMeasurements)
-            .where(and(
-              eq(batchMeasurements.batchId, input.batchId),
-              isNotNull(batchMeasurements.specificGravity)
-            ))
-            .limit(2);
-
-          // If this is the first SG measurement (only the one we just created exists)
-          // OR if batch has no OG, update the OG
-          const isFirstSgMeasurement = existingMeasurements.length === 1;
-
-          if (!batchData[0].originalGravity || isFirstSgMeasurement) {
-            await db
-              .update(batches)
-              .set({
-                originalGravity: correctedSg.toString(),
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, input.batchId));
-            ogAutoSet = true;
-          }
+        if (correctedSg && !batchData[0].originalGravity) {
+          await db
+            .update(batches)
+            .set({
+              originalGravity: correctedSg.toString(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+          ogAutoSet = true;
         }
 
         // Check if SG drop triggers fermentation start
@@ -3597,6 +3581,7 @@ export const batchRouter = router({
                   materialCost: scaledMaterialCost,
                   avgBrix: comp.avgBrix,
                   estSugarKg: scaledEstSugar,
+                  abv: comp.abv, // Preserve ABV from source
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 });
@@ -3678,6 +3663,7 @@ export const batchRouter = router({
                   estSugarKg: comp.estSugarKg
                     ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
                     : undefined,
+                  abv: comp.abv, // Preserve ABV from source
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 });
@@ -3925,6 +3911,7 @@ export const batchRouter = router({
                 materialCost: comp.materialCost,
                 avgBrix: comp.avgBrix,
                 estSugarKg: comp.estSugarKg,
+                abv: comp.abv, // Preserve ABV from source
                 createdAt: new Date(),
                 updatedAt: new Date(),
               });
@@ -4104,6 +4091,7 @@ export const batchRouter = router({
                   materialCost: comp.materialCost,
                   avgBrix: comp.avgBrix,
                   estSugarKg: comp.estSugarKg,
+                  abv: comp.abv, // Preserve ABV from source
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 });
@@ -4357,6 +4345,7 @@ export const batchRouter = router({
               fractionOfBatch: "1.0", // New batch, so this juice is 100% of the batch
               materialCost: juice.totalCost?.toString() || "0",
               avgBrix: juice.brix?.toString(),
+              abv: "0", // Fresh juice has 0% ABV
               createdAt: new Date(),
               updatedAt: new Date(),
             });
@@ -4431,6 +4420,7 @@ export const batchRouter = router({
               fractionOfBatch: fractionOfBatch.toString(),
               materialCost: juice.totalCost?.toString() || "0",
               avgBrix: juice.brix?.toString(),
+              abv: "0", // Fresh juice has 0% ABV
               createdAt: new Date(),
               updatedAt: new Date(),
             });
@@ -4874,6 +4864,7 @@ export const batchRouter = router({
             juiceVolumeUnit: "L",
             materialCost,
             avgBrix: juiceItem.brix || null,
+            abv: "0", // Fresh juice has 0% ABV
             createdAt: new Date(),
             updatedAt: new Date(),
           });
@@ -5048,6 +5039,7 @@ export const batchRouter = router({
             juiceVolume: estimatedVolumeL.toString(),
             juiceVolumeUnit: "L",
             materialCost,
+            abv: "0", // Fresh juice has 0% ABV
             createdAt: new Date(),
             updatedAt: new Date(),
           });

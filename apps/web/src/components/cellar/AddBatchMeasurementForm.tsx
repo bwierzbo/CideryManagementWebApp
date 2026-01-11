@@ -108,27 +108,17 @@ export function AddBatchMeasurementForm({
       return;
     }
 
-    // Use corrected SG if available, otherwise use raw reading
-    const finalSG = correctionPreview?.correctedSG ?? (rawReading ? parseFloat(rawReading) : undefined);
-
+    // Send RAW reading to API - API handles temperature correction
+    // The preview is for display only, not for submission
     const measurementData: any = {
       batchId,
       measurementDate: new Date(measurementDateTime).toISOString(),
       measurementMethod,
     };
 
-    // Set specific gravity - use corrected value
-    if (finalSG) {
-      measurementData.specificGravity = finalSG;
-    }
-
-    // Store raw reading and calibration info if we have corrections
-    if (rawReading && correctionPreview) {
-      measurementData.rawReading = parseFloat(rawReading);
-      measurementData.correctionsApplied = correctionPreview.corrections;
-      if (originalGravity) {
-        measurementData.originalGravityAtMeasurement = parseFloat(originalGravity);
-      }
+    // Send raw reading as specificGravity - API will apply correction
+    if (rawReading) {
+      measurementData.specificGravity = parseFloat(rawReading);
     }
 
     if (abv) measurementData.abv = parseFloat(abv);

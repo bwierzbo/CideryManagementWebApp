@@ -3614,6 +3614,7 @@ export const appRouter = router({
                     estSugarKg: comp.estSugarKg
                       ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
                       : undefined,
+                    abv: comp.abv, // Preserve ABV from source
                     createdAt: new Date(),
                     updatedAt: new Date(),
                   });
@@ -4154,6 +4155,7 @@ export const appRouter = router({
                       materialCost: transferredMaterialCost.toString(),
                       avgBrix: comp.avgBrix,
                       estSugarKg: transferredEstSugarKg > 0 ? transferredEstSugarKg.toString() : undefined,
+                      abv: comp.abv, // Preserve ABV from source
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     });
@@ -4429,6 +4431,7 @@ export const appRouter = router({
                       estSugarKg: comp.estSugarKg
                         ? (parseFloat(comp.estSugarKg) * volumeRatio).toString()
                         : undefined,
+                      abv: comp.abv, // Preserve ABV from source
                       createdAt: new Date(),
                       updatedAt: new Date(),
                     });
