@@ -3478,19 +3478,40 @@ export const appRouter = router({
 
             // Check if destination vessel has an active batch (blend scenario)
             const isBlending = destBatch.length > 0;
-            const destCurrentVolumeL = isBlending
-              ? parseFloat(destBatch[0].currentVolume?.toString() || "0")
-              : 0;
+            // Convert destination batch volume to liters if needed
+            let destCurrentVolumeL = 0;
+            if (isBlending) {
+              const destBatchVolume = parseFloat(destBatch[0].currentVolume?.toString() || "0");
+              const destBatchUnit = (destBatch[0].currentVolumeUnit || "L") as "L" | "gal";
+              destCurrentVolumeL = destBatchUnit === "gal"
+                ? convertVolume(destBatchVolume, "gal", "L")
+                : destBatchVolume;
+            }
 
             // Check if destination vessel has enough capacity for the combined volume
             // Use maxCapacity (headspace) if available, otherwise fall back to regular capacity
-            const destCapacityL = parseFloat(destVessel[0].capacity?.toString() || "0");
-            const destMaxCapacityL = parseFloat(destVessel[0].maxCapacity?.toString() || "0") || destCapacityL;
+            // Convert capacity to liters based on vessel's capacity unit
+            const destCapacityUnit = (destVessel[0].capacityUnit || "L") as "L" | "gal";
+            const destCapacityRaw = parseFloat(destVessel[0].capacity?.toString() || "0");
+            const destCapacityL = destCapacityUnit === "gal"
+              ? convertVolume(destCapacityRaw, "gal", "L")
+              : destCapacityRaw;
+            const destMaxCapacityRaw = parseFloat(destVessel[0].maxCapacity?.toString() || "0");
+            const destMaxCapacityL = destMaxCapacityRaw > 0
+              ? (destCapacityUnit === "gal" ? convertVolume(destMaxCapacityRaw, "gal", "L") : destMaxCapacityRaw)
+              : destCapacityL;
             const totalVolumeAfterTransfer = destCurrentVolumeL + input.volumeL;
             if (totalVolumeAfterTransfer > destMaxCapacityL) {
+              // Show error with values in vessel's native unit for clarity
+              const totalInUnit = destCapacityUnit === "gal"
+                ? convertVolume(totalVolumeAfterTransfer, "L", "gal").toFixed(1)
+                : totalVolumeAfterTransfer.toFixed(1);
+              const maxInUnit = destCapacityUnit === "gal"
+                ? (destMaxCapacityRaw > 0 ? destMaxCapacityRaw : destCapacityRaw).toFixed(1)
+                : destMaxCapacityL.toFixed(1);
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Transfer volume (${input.volumeL}L) plus existing volume (${destCurrentVolumeL}L) exceeds destination vessel max capacity (${destMaxCapacityL}${destVessel[0].capacityUnit || 'L'})`,
+                message: `Transfer would exceed max capacity! Final volume would be ${totalInUnit} ${destCapacityUnit} but max is ${maxInUnit} ${destCapacityUnit}`,
               });
             }
 

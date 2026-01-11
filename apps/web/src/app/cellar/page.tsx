@@ -819,9 +819,15 @@ function TankTransferForm({
   // Check if destination has liquid based on actual volume, not status
   const destHasLiquid = destCurrentVolume > 0;
 
-  // Get destination capacity and max capacity (in liters for comparison)
-  const destCapacityL = destVessel?.capacity ? parseFloat(destVessel.capacity) : 0;
-  const destMaxCapacityL = destVessel?.maxCapacity ? parseFloat(destVessel.maxCapacity) : destCapacityL;
+  // Get destination capacity and max capacity (convert to liters for comparison)
+  const destCapacityRaw = destVessel?.capacity ? parseFloat(destVessel.capacity) : 0;
+  const destCapacityL = destCapacityUnit === "gal"
+    ? convertVolume(destCapacityRaw, "gal", "L")
+    : destCapacityRaw;
+  const destMaxCapacityRaw = destVessel?.maxCapacity ? parseFloat(destVessel.maxCapacity) : destCapacityRaw;
+  const destMaxCapacityL = destCapacityUnit === "gal"
+    ? convertVolume(destMaxCapacityRaw, "gal", "L")
+    : destMaxCapacityRaw;
 
   const watchedVolumeL = watch("volumeL") || 0;
   const watchedLoss = (watch("loss") as number | undefined) || 0;
@@ -996,7 +1002,7 @@ function TankTransferForm({
                         capacity)
                         {hasLiquid && (
                           <span className="text-xs text-orange-600 font-medium">
-                            • Contains {formatVolume(vesselCurrentVolume, capacityUnit)}
+                            • Contains {vesselCurrentVolume.toFixed(1)} {capacityUnit}
                           </span>
                         )}
                       </span>
@@ -1019,13 +1025,13 @@ function TankTransferForm({
         {wouldExceedMaxCapacity && (
           <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
             <AlertTriangle className="h-4 w-4" />
-            Transfer would exceed max capacity! Final volume would be {formatVolume(destFinalVolumeL, "L")} but max is {formatVolume(destMaxCapacityL, "L")}.
+            Transfer would exceed max capacity! Final volume would be {formatVolume(convertVolume(destFinalVolumeL, "L", destCapacityUnit), destCapacityUnit)} but max is {formatVolume(destMaxCapacityRaw, destCapacityUnit)}.
           </p>
         )}
         {wouldExceedWorkingCapacity && !wouldExceedMaxCapacity && (
           <p className="text-sm text-yellow-600 mt-1 flex items-center gap-1">
             <AlertTriangle className="h-4 w-4" />
-            Transfer will exceed working capacity (overfill). Final volume: {formatVolume(destFinalVolumeL, "L")} / Working: {formatVolume(destCapacityL, "L")} / Max: {formatVolume(destMaxCapacityL, "L")}
+            Transfer will exceed working capacity (overfill). Final volume: {formatVolume(convertVolume(destFinalVolumeL, "L", destCapacityUnit), destCapacityUnit)} / Working: {formatVolume(destCapacityRaw, destCapacityUnit)} / Max: {formatVolume(destMaxCapacityRaw, destCapacityUnit)}
           </p>
         )}
       </div>
@@ -1510,7 +1516,12 @@ function VesselMap() {
       return;
     }
 
-    const currentVolumeL = parseFloat(liquidMapVessel.currentVolume || "0");
+    // Convert current volume to liters based on its stored unit
+    const rawVolume = parseFloat(liquidMapVessel.currentVolume || "0");
+    const volumeUnit = (liquidMapVessel.currentVolumeUnit || "L") as VolumeUnit;
+    const currentVolumeL = volumeUnit === "gal"
+      ? convertVolume(rawVolume, "gal", "L")
+      : rawVolume;
     const capacityUnit = vessel.capacityUnit || "L";
 
     setSelectedVesselForRacking({
