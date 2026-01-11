@@ -197,6 +197,7 @@ const filterBatchSchema = z.object({
   volumeAfterUnit: z.enum(['L', 'gal']).default('L'),
   filteredAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   filteredBy: z.string().optional(),
+  notes: z.string().optional(),
 }).refine((data) => data.volumeAfter < data.volumeBefore, {
   message: "Volume after filtering must be less than volume before",
   path: ["volumeAfter"],
@@ -3206,6 +3207,7 @@ export const batchRouter = router({
             volumeLoss: volumeLossL.toFixed(3),
             filteredAt: input.filteredAt || new Date(),
             filteredBy: input.filteredBy,
+            notes: input.notes,
           })
           .returning();
 
@@ -3247,6 +3249,7 @@ export const batchRouter = router({
         volumeToRack: z.number().positive("Volume to rack must be positive"),
         loss: z.number().min(0, "Loss cannot be negative").optional(),
         rackedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        notes: z.string().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -3408,6 +3411,7 @@ export const batchRouter = router({
               volumeLossUnit: 'L',
               rackedAt: input.rackedAt || new Date(),
               rackedBy: ctx.session?.user?.id,
+              notes: input.notes,
             })
             .returning();
 

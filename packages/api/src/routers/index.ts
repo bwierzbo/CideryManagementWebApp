@@ -3807,8 +3807,10 @@ export const appRouter = router({
               );
 
               remainingBatch = null; // No longer using "remaining" batch pattern
-            } else if (remainingVolumeL > 0) {
+            } else if (remainingVolumeL > 0 && remainingVolumeL <= MIN_WORKING_VOLUME_L) {
               // Residual volume < MIN_WORKING_VOLUME_L - auto-empty as waste
+              // Note: When isBlending=true and remainingVolumeL > MIN_WORKING_VOLUME_L,
+              // we skip this block and let the blending logic handle the source batch at lines 4019-4028
               console.log(
                 `Auto-emptying ${remainingVolumeL.toFixed(3)}L residual from vessel ${input.fromVesselId} (below ${MIN_WORKING_VOLUME_L}L threshold)`,
               );

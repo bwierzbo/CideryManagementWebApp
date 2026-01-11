@@ -1154,6 +1154,7 @@ export const batchFilterOperations = pgTable(
     // Metadata
     filteredBy: text("filtered_by"),
     filteredAt: timestamp("filtered_at").notNull().defaultNow(),
+    notes: text("notes"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),
@@ -1206,6 +1207,7 @@ export const batchRackingOperations = pgTable(
     // Metadata
     rackedBy: uuid("racked_by").references(() => users.id),
     rackedAt: timestamp("racked_at").notNull().defaultNow(),
+    notes: text("notes"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
     deletedAt: timestamp("deleted_at"),

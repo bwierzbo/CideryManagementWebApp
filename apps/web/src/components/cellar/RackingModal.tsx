@@ -36,6 +36,7 @@ const rackingSchema = z.object({
   volumeToRack: z.number().positive("Volume to rack must be positive"),
   loss: z.number().min(0, "Loss cannot be negative").optional(),
   rackedAt: z.date(),
+  notes: z.string().optional(),
 });
 
 type RackingForm = z.infer<typeof rackingSchema>;
@@ -100,6 +101,7 @@ export function RackingModal({
       rackedAt: new Date(),
       volumeToRack: undefined,
       loss: 0,
+      notes: "",
     },
   });
 
@@ -211,6 +213,7 @@ export function RackingModal({
       volumeToRack: volumeToRackL,
       loss: lossL,
       rackedAt: data.rackedAt,
+      notes: data.notes,
     });
   };
 
@@ -420,6 +423,17 @@ export function RackingModal({
             {errors.loss && (
               <p className="text-sm text-red-500">{errors.loss.message}</p>
             )}
+          </div>
+
+          {/* Notes (Optional) */}
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              {...register("notes")}
+              placeholder="Optional notes about this racking operation..."
+              className="resize-none"
+              rows={3}
+            />
           </div>
 
           {/* Remaining Volume & Rack Type Display */}

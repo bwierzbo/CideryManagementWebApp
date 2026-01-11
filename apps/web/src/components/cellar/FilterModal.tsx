@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
@@ -38,6 +39,7 @@ const filterSchema = z.object({
   volumeAfter: z.number().positive("Volume must be positive"),
   volumeAfterUnit: z.enum(["L", "gal"]),
   filteredAt: z.date(),
+  notes: z.string().optional(),
 });
 
 type FilterForm = z.infer<typeof filterSchema>;
@@ -82,6 +84,7 @@ export function FilterModal({
       volumeAfterUnit: "L",
       volumeBefore: currentVolumeL,
       filteredAt: new Date(),
+      notes: "",
     },
   });
 
@@ -181,6 +184,7 @@ export function FilterModal({
       volumeAfterUnit: data.volumeAfterUnit,
       filteredAt: data.filteredAt,
       filteredBy: undefined, // Could be populated from user session
+      notes: data.notes,
     });
   };
 
@@ -283,6 +287,17 @@ export function FilterModal({
                 {errors.volumeAfter.message}
               </p>
             )}
+          </div>
+
+          {/* Notes (Optional) */}
+          <div>
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              {...register("notes")}
+              placeholder="Optional notes about this filtering operation..."
+              className="mt-1 resize-none"
+              rows={3}
+            />
           </div>
 
           {/* Loss Display */}
