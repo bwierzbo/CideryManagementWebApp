@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useCallback, lazy, Suspense, useEffect } from "react";
+import { useState, useCallback, lazy, Suspense, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Plus, Download, X, Loader2, Beaker } from "lucide-react";
+import { Plus, Download, X, Loader2, Beaker, Send, RotateCcw } from "lucide-react";
 import { performanceMonitor } from "@/lib/performance-monitor";
 import { PackagingFiltersSkeleton, PackagingTableRowSkeleton } from "./loading";
+import { BulkDistributeKegsModal } from "@/components/packaging/kegs/BulkDistributeKegsModal";
+import { BulkReturnKegsModal } from "@/components/packaging/kegs/BulkReturnKegsModal";
 
 // Lazy load heavy components
 const BottlesTable = lazy(() =>
@@ -45,6 +47,8 @@ export default function PackagingPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
+  const [bulkDistributeOpen, setBulkDistributeOpen] = useState(false);
+  const [bulkReturnOpen, setBulkReturnOpen] = useState(false);
   const [tableData, setTableData] = useState<{
     items: any[];
     count: number;
@@ -141,6 +145,46 @@ export default function PackagingPage() {
   }, [selectedItems, tableData]);
 
   const handleClearSelection = useCallback(() => {
+    setSelectedItems([]);
+    setShowBulkActions(false);
+  }, []);
+
+  // Get selected kegs data for bulk modals
+  const selectedKegs = useMemo(() => {
+    if (activeTab !== "kegs" || selectedItems.length === 0) return [];
+    return tableData.items
+      .filter((item: any) => selectedItems.includes(item.id))
+      .map((item: any) => ({
+        id: item.id,
+        kegNumber: item.kegNumber,
+        status: item.status,
+        distributedAt: item.distributedAt,
+        distributionLocation: item.distributionLocation,
+      }));
+  }, [activeTab, selectedItems, tableData.items]);
+
+  // Determine which bulk actions are available based on selected kegs
+  const bulkActionAvailability = useMemo(() => {
+    if (selectedKegs.length === 0) {
+      return { canDistribute: false, canReturn: false };
+    }
+    const hasFilledKegs = selectedKegs.some((k) => k.status === "filled");
+    const hasDistributedKegs = selectedKegs.some((k) => k.status === "distributed");
+    return {
+      canDistribute: hasFilledKegs,
+      canReturn: hasDistributedKegs,
+    };
+  }, [selectedKegs]);
+
+  const handleBulkDistribute = useCallback(() => {
+    setBulkDistributeOpen(true);
+  }, []);
+
+  const handleBulkReturn = useCallback(() => {
+    setBulkReturnOpen(true);
+  }, []);
+
+  const handleBulkActionSuccess = useCallback(() => {
     setSelectedItems([]);
     setShowBulkActions(false);
   }, []);
@@ -310,13 +354,37 @@ export default function PackagingPage() {
                       </span>
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                    {bulkActionAvailability.canDistribute && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBulkDistribute}
+                        className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 h-9"
+                      >
+                        <Send className="w-3.5 h-3.5 mr-2" />
+                        <span className="hidden sm:inline">Distribute</span>
+                        <span className="sm:hidden">Dist</span>
+                      </Button>
+                    )}
+                    {bulkActionAvailability.canReturn && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBulkReturn}
+                        className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 h-9"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-2" />
+                        <span className="hidden sm:inline">Return</span>
+                        <span className="sm:hidden">Ret</span>
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleBulkExport}
                       disabled={isExporting}
-                      className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 flex-1 sm:flex-initial h-9"
+                      className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 h-9"
                     >
                       {isExporting ? (
                         <>
@@ -327,10 +395,8 @@ export default function PackagingPage() {
                       ) : (
                         <>
                           <Download className="w-3.5 h-3.5 mr-2" />
-                          <span className="hidden sm:inline">
-                            Export Selected
-                          </span>
-                          <span className="sm:hidden">Export</span>
+                          <span className="hidden sm:inline">Export</span>
+                          <span className="sm:hidden">Exp</span>
                         </>
                       )}
                     </Button>
@@ -369,6 +435,20 @@ export default function PackagingPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Bulk Keg Modals */}
+      <BulkDistributeKegsModal
+        open={bulkDistributeOpen}
+        onClose={() => setBulkDistributeOpen(false)}
+        selectedKegs={selectedKegs}
+        onSuccess={handleBulkActionSuccess}
+      />
+      <BulkReturnKegsModal
+        open={bulkReturnOpen}
+        onClose={() => setBulkReturnOpen(false)}
+        selectedKegs={selectedKegs}
+        onSuccess={handleBulkActionSuccess}
+      />
     </div>
   );
 }

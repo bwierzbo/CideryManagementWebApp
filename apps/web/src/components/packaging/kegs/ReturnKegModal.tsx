@@ -14,9 +14,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, MapPin, Calendar, Loader2 } from "lucide-react";
+import { formatDate } from "@/utils/date-format";
 
 const returnKegSchema = z.object({
   returnedAt: z.date(),
@@ -29,6 +31,7 @@ interface ReturnKegModalProps {
   onClose: () => void;
   kegFillId: string;
   kegNumber: string;
+  onSuccess?: () => void;
 }
 
 export function ReturnKegModal({
@@ -36,8 +39,15 @@ export function ReturnKegModal({
   onClose,
   kegFillId,
   kegNumber,
+  onSuccess,
 }: ReturnKegModalProps) {
   const utils = trpc.useUtils();
+
+  // Fetch keg fill details to show distribution info
+  const { data: kegFillDetails, isLoading: isLoadingDetails } =
+    trpc.packaging.kegs.getKegFillDetails.useQuery(kegFillId, {
+      enabled: open && !!kegFillId,
+    });
 
   const {
     handleSubmit,
@@ -84,6 +94,7 @@ export function ReturnKegModal({
         description: `${kegNumber} has been marked as returned and is now available.`,
       });
       utils.packaging.kegs.listKegs.invalidate();
+      onSuccess?.();
       onClose();
       reset();
     },
@@ -117,6 +128,36 @@ export function ReturnKegModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          {/* Distribution Information */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+            <h4 className="text-sm font-medium text-blue-900">Distribution Details</h4>
+            {isLoadingDetails ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            ) : kegFillDetails ? (
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <Calendar className="w-4 h-4 text-blue-600" />
+                  <span className="font-medium">Distributed:</span>
+                  <span>
+                    {kegFillDetails.distributedAt
+                      ? formatDate(kegFillDetails.distributedAt.toString())
+                      : "Unknown"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-blue-800">
+                  <MapPin className="w-4 h-4 text-blue-600" />
+                  <span className="font-medium">Location:</span>
+                  <span>{kegFillDetails.distributionLocation || "Not specified"}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-blue-700">Distribution details not available</p>
+            )}
+          </div>
+
           <div>
             <Label htmlFor="returnedAt">
               Return Date & Time <span className="text-red-500">*</span>

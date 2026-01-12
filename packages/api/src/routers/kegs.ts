@@ -137,6 +137,25 @@ const voidKegFillSchema = z.object({
   voidReason: z.string().min(1, "Void reason is required"),
 });
 
+// Bulk operation schemas
+const bulkDistributeKegFillsSchema = z.object({
+  kegFillIds: z.array(z.string().uuid()).min(1, "Select at least one keg"),
+  distributedAt: z
+    .date()
+    .or(z.string().transform((val) => new Date(val)))
+    .default(() => new Date()),
+  distributionLocation: z.string().min(1, "Location is required"),
+  salesChannelId: z.string().uuid().optional(),
+});
+
+const bulkReturnKegFillsSchema = z.object({
+  kegFillIds: z.array(z.string().uuid()).min(1, "Select at least one keg"),
+  returnedAt: z
+    .date()
+    .or(z.string().transform((val) => new Date(val)))
+    .default(() => new Date()),
+});
+
 const listKegsSchema = z.object({
   status: z
     .enum([
@@ -1093,6 +1112,169 @@ export const kegsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to return keg",
+        });
+      }
+    }),
+
+  /**
+   * Bulk distribute multiple keg fills
+   * All kegs get the same distribution date, location, and optional sales channel
+   */
+  bulkDistributeKegFills: createRbacProcedure("update", "package")
+    .input(bulkDistributeKegFillsSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const { kegFillIds, distributedAt, distributionLocation, salesChannelId } = input;
+
+        // Get all keg fills with their current status
+        const fills = await db
+          .select({
+            id: kegFills.id,
+            status: kegFills.status,
+            kegId: kegFills.kegId,
+            kegNumber: kegs.kegNumber,
+          })
+          .from(kegFills)
+          .innerJoin(kegs, eq(kegFills.kegId, kegs.id))
+          .where(
+            and(
+              inArray(kegFills.id, kegFillIds),
+              isNull(kegFills.deletedAt)
+            )
+          );
+
+        // Separate valid (filled) from invalid kegs
+        const validFills = fills.filter((f) => f.status === "filled");
+        const invalidFills = fills.filter((f) => f.status !== "filled");
+
+        if (validFills.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "No kegs are in 'filled' status and eligible for distribution",
+          });
+        }
+
+        // Update all valid keg fills in a transaction
+        await db.transaction(async (tx) => {
+          // Update keg fills
+          await tx
+            .update(kegFills)
+            .set({
+              status: "distributed",
+              distributedAt,
+              distributionLocation,
+              salesChannelId,
+              updatedBy: ctx.user.id,
+              updatedAt: new Date(),
+            })
+            .where(inArray(kegFills.id, validFills.map((f) => f.id)));
+
+          // Update kegs
+          await tx
+            .update(kegs)
+            .set({
+              status: "distributed",
+              currentLocation: distributionLocation,
+              updatedAt: new Date(),
+            })
+            .where(inArray(kegs.id, validFills.map((f) => f.kegId)));
+        });
+
+        return {
+          success: true,
+          distributed: validFills.length,
+          skipped: invalidFills.map((f) => ({
+            kegNumber: f.kegNumber,
+            reason: `Cannot distribute: status is '${f.status}'`,
+          })),
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error bulk distributing kegs:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to distribute kegs",
+        });
+      }
+    }),
+
+  /**
+   * Bulk return multiple keg fills
+   * All kegs get the same return date
+   */
+  bulkReturnKegFills: createRbacProcedure("update", "package")
+    .input(bulkReturnKegFillsSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        const { kegFillIds, returnedAt } = input;
+
+        // Get all keg fills with their current status
+        const fills = await db
+          .select({
+            id: kegFills.id,
+            status: kegFills.status,
+            kegId: kegFills.kegId,
+            kegNumber: kegs.kegNumber,
+          })
+          .from(kegFills)
+          .innerJoin(kegs, eq(kegFills.kegId, kegs.id))
+          .where(
+            and(
+              inArray(kegFills.id, kegFillIds),
+              isNull(kegFills.deletedAt)
+            )
+          );
+
+        // Separate valid (distributed) from invalid kegs
+        const validFills = fills.filter((f) => f.status === "distributed");
+        const invalidFills = fills.filter((f) => f.status !== "distributed");
+
+        if (validFills.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "No kegs are in 'distributed' status and eligible for return",
+          });
+        }
+
+        // Update all valid keg fills in a transaction
+        await db.transaction(async (tx) => {
+          // Update keg fills - mark as returned and empty
+          await tx
+            .update(kegFills)
+            .set({
+              status: "returned",
+              returnedAt,
+              remainingVolume: "0",
+              updatedBy: ctx.user.id,
+              updatedAt: new Date(),
+            })
+            .where(inArray(kegFills.id, validFills.map((f) => f.id)));
+
+          // Update kegs to cleaning status
+          await tx
+            .update(kegs)
+            .set({
+              status: "cleaning",
+              currentLocation: "cellar",
+              updatedAt: new Date(),
+            })
+            .where(inArray(kegs.id, validFills.map((f) => f.kegId)));
+        });
+
+        return {
+          success: true,
+          returned: validFills.length,
+          skipped: invalidFills.map((f) => ({
+            kegNumber: f.kegNumber,
+            reason: `Cannot return: status is '${f.status}'`,
+          })),
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error bulk returning kegs:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to return kegs",
         });
       }
     }),

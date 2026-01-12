@@ -257,6 +257,8 @@ export async function getUnifiedPackagingRuns(
         status: kegFills.status,
         createdAt: kegFills.createdAt,
         abvAtPackaging: kegFills.abvAtPackaging,
+        distributedAt: kegFills.distributedAt,
+        distributionLocation: kegFills.distributionLocation,
         batchName: batches.name,
         batchCustomName: batches.customName,
         vesselName: vessels.name,
@@ -321,6 +323,8 @@ export async function getUnifiedPackagingRuns(
       remainingVolumeL: item.remainingVolume
         ? parseFloat(item.remainingVolume.toString())
         : null,
+      distributedAt: item.distributedAt,
+      distributionLocation: item.distributionLocation,
       carbonationLevel: null,
       carbonationCo2Volumes: null,
     }));

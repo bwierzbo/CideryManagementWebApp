@@ -27,6 +27,7 @@ import {
   MoreVertical,
   Send,
   Beer,
+  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -34,6 +35,7 @@ import { useTableSorting } from "@/hooks/useTableSorting";
 import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { DistributeKegModal } from "./DistributeKegModal";
+import { ReturnKegModal } from "./ReturnKegModal";
 
 // Type for keg fill from API
 interface KegFill {
@@ -55,6 +57,9 @@ interface KegFill {
   kegId?: string;
   kegNumber?: string | null;
   remainingVolumeL?: number | null;
+  // Distribution fields
+  distributedAt?: Date | string | null;
+  distributionLocation?: string | null;
   // Relations
   batch: {
     id: string;
@@ -113,6 +118,11 @@ export function KegsTable({
   // Modals
   const [distributeKegModalOpen, setDistributeKegModalOpen] = useState(false);
   const [selectedKegForDistribution, setSelectedKegForDistribution] = useState<{
+    kegFillId: string;
+    kegNumber: string;
+  } | null>(null);
+  const [returnKegModalOpen, setReturnKegModalOpen] = useState(false);
+  const [selectedKegForReturn, setSelectedKegForReturn] = useState<{
     kegFillId: string;
     kegNumber: string;
   } | null>(null);
@@ -274,6 +284,14 @@ export function KegsTable({
     if (item.id && item.kegNumber) {
       setSelectedKegForDistribution({ kegFillId: item.id, kegNumber: item.kegNumber });
       setDistributeKegModalOpen(true);
+    }
+  }, []);
+
+  const handleReturn = useCallback((item: KegFill, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.id && item.kegNumber) {
+      setSelectedKegForReturn({ kegFillId: item.id, kegNumber: item.kegNumber });
+      setReturnKegModalOpen(true);
     }
   }, []);
 
@@ -517,10 +535,18 @@ export function KegsTable({
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={(e) => handleDistribute(item, e)}
-                              disabled={item.status === "distributed"}
+                              disabled={item.status === "distributed" || item.status === "returned"}
                             >
                               <Send className="w-4 h-4 mr-2" />
-                              {item.status === "distributed" ? "Already Distributed" : "Distribute"}
+                              {item.status === "distributed" || item.status === "returned" ? "Already Distributed" : "Distribute"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => handleReturn(item, e)}
+                              disabled={item.status !== "distributed"}
+                              className={item.status !== "distributed" ? "text-gray-400" : ""}
+                            >
+                              <RotateCcw className="w-4 h-4 mr-2" />
+                              Return Keg
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -631,10 +657,18 @@ export function KegsTable({
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={(e) => handleDistribute(item, e)}
-                        disabled={item.status === "distributed"}
+                        disabled={item.status === "distributed" || item.status === "returned"}
                       >
                         <Send className="w-4 h-4 mr-2" />
-                        {item.status === "distributed" ? "Already Distributed" : "Distribute"}
+                        {item.status === "distributed" || item.status === "returned" ? "Already Distributed" : "Distribute"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => handleReturn(item, e)}
+                        disabled={item.status !== "distributed"}
+                        className={item.status !== "distributed" ? "text-gray-400" : ""}
+                      >
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Return Keg
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -695,6 +729,22 @@ export function KegsTable({
               title: "Success",
               description: "Keg distributed successfully",
             });
+          }}
+        />
+      )}
+
+      {/* Return Modal */}
+      {selectedKegForReturn && (
+        <ReturnKegModal
+          open={returnKegModalOpen}
+          onClose={() => {
+            setReturnKegModalOpen(false);
+            setSelectedKegForReturn(null);
+          }}
+          kegFillId={selectedKegForReturn.kegFillId}
+          kegNumber={selectedKegForReturn.kegNumber}
+          onSuccess={() => {
+            refetch();
           }}
         />
       )}

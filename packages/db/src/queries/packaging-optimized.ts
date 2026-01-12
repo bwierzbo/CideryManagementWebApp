@@ -99,6 +99,9 @@ export interface KegFillListItem {
   kegId: string;
   kegNumber: string | null;
   remainingVolumeL: number | null;
+  // Distribution fields
+  distributedAt?: Date | null;
+  distributionLocation?: string | null;
   // Carbonation fields (null for kegs)
   carbonationLevel?: string | null;
   carbonationCo2Volumes?: number | null;
