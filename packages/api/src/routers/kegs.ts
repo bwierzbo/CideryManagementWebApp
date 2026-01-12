@@ -984,12 +984,17 @@ export const kegsRouter = router({
     }),
 
   /**
-   * Mark keg fill as distributed
+   * Mark keg fill as ready to distribute (QA complete)
    */
-  distributeKegFill: createRbacProcedure("update", "package")
-    .input(distributeKegFillSchema)
+  markKegReady: createRbacProcedure("update", "package")
+    .input(z.object({
+      kegFillId: z.string().uuid(),
+      readyAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+    }))
     .mutation(async ({ input, ctx }) => {
       try {
+        const readyAt = input.readyAt || new Date();
+
         // Verify fill exists and is filled
         const [fill] = await db
           .select({ status: kegFills.status, kegId: kegFills.kegId })
@@ -1012,7 +1017,7 @@ export const kegsRouter = router({
         if (fill.status !== "filled") {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Only filled kegs can be distributed",
+            message: `Cannot mark as ready: keg is currently '${fill.status}', must be 'filled'`,
           });
         }
 
@@ -1020,13 +1025,79 @@ export const kegsRouter = router({
         await db
           .update(kegFills)
           .set({
-            status: "distributed",
-            distributedAt: input.distributedAt,
-            distributionLocation: input.distributionLocation,
-            salesChannelId: input.salesChannelId,
+            status: "ready",
+            readyAt: readyAt,
+            readyBy: ctx.user.id,
             updatedBy: ctx.user.id,
             updatedAt: new Date(),
           })
+          .where(eq(kegFills.id, input.kegFillId));
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error marking keg as ready:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to mark keg as ready",
+        });
+      }
+    }),
+
+  /**
+   * Mark keg fill as distributed
+   */
+  distributeKegFill: createRbacProcedure("update", "package")
+    .input(distributeKegFillSchema)
+    .mutation(async ({ input, ctx }) => {
+      try {
+        // Verify fill exists and is filled or ready
+        const [fill] = await db
+          .select({ status: kegFills.status, kegId: kegFills.kegId })
+          .from(kegFills)
+          .where(
+            and(
+              eq(kegFills.id, input.kegFillId),
+              isNull(kegFills.deletedAt)
+            )
+          )
+          .limit(1);
+
+        if (!fill) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Keg fill not found",
+          });
+        }
+
+        // Allow distribution from 'filled' or 'ready' status
+        if (fill.status !== "filled" && fill.status !== "ready") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Cannot distribute: keg is currently '${fill.status}', must be 'filled' or 'ready'`,
+          });
+        }
+
+        // Build update object
+        const updateData: Record<string, unknown> = {
+          status: "distributed",
+          distributedAt: input.distributedAt,
+          distributionLocation: input.distributionLocation,
+          salesChannelId: input.salesChannelId,
+          updatedBy: ctx.user.id,
+          updatedAt: new Date(),
+        };
+
+        // If skipping 'ready' status, auto-set readyAt
+        if (fill.status === "filled") {
+          updateData.readyAt = input.distributedAt;
+          updateData.readyBy = ctx.user.id;
+        }
+
+        // Update fill status
+        await db
+          .update(kegFills)
+          .set(updateData)
           .where(eq(kegFills.id, input.kegFillId));
 
         // Update keg status
@@ -1143,31 +1214,54 @@ export const kegsRouter = router({
             )
           );
 
-        // Separate valid (filled) from invalid kegs
-        const validFills = fills.filter((f) => f.status === "filled");
-        const invalidFills = fills.filter((f) => f.status !== "filled");
+        // Separate valid (filled or ready) from invalid kegs
+        const validFills = fills.filter((f) => f.status === "filled" || f.status === "ready");
+        const invalidFills = fills.filter((f) => f.status !== "filled" && f.status !== "ready");
 
         if (validFills.length === 0) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `No kegs are in 'filled' status and eligible for distribution. Current statuses: ${fills.map(f => `${f.kegNumber}: ${f.status}`).join(", ")}`,
+            message: `No kegs are in 'filled' or 'ready' status and eligible for distribution. Current statuses: ${fills.map(f => `${f.kegNumber}: ${f.status}`).join(", ")}`,
           });
         }
 
         // Update all valid keg fills in a transaction
         await db.transaction(async (tx) => {
-          // Update keg fills
-          await tx
-            .update(kegFills)
-            .set({
-              status: "distributed",
-              distributedAt,
-              distributionLocation,
-              salesChannelId,
-              updatedBy: ctx.user.id,
-              updatedAt: new Date(),
-            })
-            .where(inArray(kegFills.id, validFills.map((f) => f.id)));
+          // Update keg fills - separate those coming from 'filled' to set readyAt
+          const filledFills = validFills.filter((f) => f.status === "filled");
+          const readyFills = validFills.filter((f) => f.status === "ready");
+
+          // Update fills coming from 'filled' status (need to set readyAt)
+          if (filledFills.length > 0) {
+            await tx
+              .update(kegFills)
+              .set({
+                status: "distributed",
+                readyAt: distributedAt,
+                readyBy: ctx.user.id,
+                distributedAt,
+                distributionLocation,
+                salesChannelId,
+                updatedBy: ctx.user.id,
+                updatedAt: new Date(),
+              })
+              .where(inArray(kegFills.id, filledFills.map((f) => f.id)));
+          }
+
+          // Update fills coming from 'ready' status (readyAt already set)
+          if (readyFills.length > 0) {
+            await tx
+              .update(kegFills)
+              .set({
+                status: "distributed",
+                distributedAt,
+                distributionLocation,
+                salesChannelId,
+                updatedBy: ctx.user.id,
+                updatedAt: new Date(),
+              })
+              .where(inArray(kegFills.id, readyFills.map((f) => f.id)));
+          }
 
           // Update kegs
           await tx

@@ -28,6 +28,7 @@ import {
   Send,
   Beer,
   RotateCcw,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -36,6 +37,7 @@ import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { DistributeKegModal } from "./DistributeKegModal";
 import { ReturnKegModal } from "./ReturnKegModal";
+import { MarkReadyModal } from "../MarkReadyModal";
 
 // Type for keg fill from API
 interface KegFill {
@@ -51,7 +53,7 @@ interface KegFill {
   volumeTakenL: number;
   lossL: number;
   lossPercentage: number;
-  status: "completed" | "voided" | "filled" | "distributed" | "returned" | null;
+  status: "filled" | "ready" | "distributed" | "returned" | "voided" | null;
   createdAt: string;
   // Keg-specific fields
   kegId?: string;
@@ -89,7 +91,7 @@ interface KegsTableProps {
     packageSizeML?: number | null;
     packageType?: string | null;
     batchSearch?: string;
-    status?: "active" | "completed";
+    status?: "active" | "ready" | "distributed" | "completed";
   };
   onDataChange?: (data: {
     items: KegFill[];
@@ -123,6 +125,11 @@ export function KegsTable({
   } | null>(null);
   const [returnKegModalOpen, setReturnKegModalOpen] = useState(false);
   const [selectedKegForReturn, setSelectedKegForReturn] = useState<{
+    kegFillId: string;
+    kegNumber: string;
+  } | null>(null);
+  const [markReadyModalOpen, setMarkReadyModalOpen] = useState(false);
+  const [selectedKegForMarkReady, setSelectedKegForMarkReady] = useState<{
     kegFillId: string;
     kegNumber: string;
   } | null>(null);
@@ -295,6 +302,14 @@ export function KegsTable({
     }
   }, []);
 
+  const handleMarkReady = useCallback((item: KegFill, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.id && item.kegNumber) {
+      setSelectedKegForMarkReady({ kegFillId: item.id, kegNumber: item.kegNumber });
+      setMarkReadyModalOpen(true);
+    }
+  }, []);
+
   const handleRowClick = useCallback(
     (item: KegFill) => {
       router.push(`/keg-fills/${item.id}`);
@@ -305,7 +320,8 @@ export function KegsTable({
   // Status badge
   const getStatusBadge = (status: string | null) => {
     const statusConfig = {
-      filled: { color: "bg-blue-500", label: "Filled" },
+      filled: { color: "bg-yellow-500", label: "Filled" },
+      ready: { color: "bg-blue-500", label: "Ready" },
       distributed: { color: "bg-green-500", label: "Distributed" },
       returned: { color: "bg-purple-500", label: "Returned" },
       voided: { color: "bg-red-500", label: "Voided" },
@@ -534,8 +550,19 @@ export function KegsTable({
                               View Details
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              onClick={(e) => handleMarkReady(item, e)}
+                              disabled={item.status !== "filled"}
+                              className={item.status !== "filled" ? "text-gray-400" : "text-blue-600"}
+                            >
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              {item.status === "ready" ? "Already Ready" :
+                               item.status === "distributed" || item.status === "returned" ? "Already Distributed" :
+                               "Mark Ready"}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={(e) => handleDistribute(item, e)}
                               disabled={item.status === "distributed" || item.status === "returned"}
+                              className={item.status === "distributed" || item.status === "returned" ? "text-gray-400" : "text-green-600"}
                             >
                               <Send className="w-4 h-4 mr-2" />
                               {item.status === "distributed" || item.status === "returned" ? "Already Distributed" : "Distribute"}
@@ -656,8 +683,19 @@ export function KegsTable({
                         View Details
                       </DropdownMenuItem>
                       <DropdownMenuItem
+                        onClick={(e) => handleMarkReady(item, e)}
+                        disabled={item.status !== "filled"}
+                        className={item.status !== "filled" ? "text-gray-400" : "text-blue-600"}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        {item.status === "ready" ? "Already Ready" :
+                         item.status === "distributed" || item.status === "returned" ? "Already Distributed" :
+                         "Mark Ready"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
                         onClick={(e) => handleDistribute(item, e)}
                         disabled={item.status === "distributed" || item.status === "returned"}
+                        className={item.status === "distributed" || item.status === "returned" ? "text-gray-400" : "text-green-600"}
                       >
                         <Send className="w-4 h-4 mr-2" />
                         {item.status === "distributed" || item.status === "returned" ? "Already Distributed" : "Distribute"}
@@ -745,6 +783,27 @@ export function KegsTable({
           kegNumber={selectedKegForReturn.kegNumber}
           onSuccess={() => {
             refetch();
+          }}
+        />
+      )}
+
+      {/* Mark Ready Modal */}
+      {selectedKegForMarkReady && (
+        <MarkReadyModal
+          open={markReadyModalOpen}
+          onClose={() => {
+            setMarkReadyModalOpen(false);
+            setSelectedKegForMarkReady(null);
+          }}
+          itemId={selectedKegForMarkReady.kegFillId}
+          itemName={`Keg ${selectedKegForMarkReady.kegNumber}`}
+          itemType="keg"
+          onSuccess={() => {
+            refetch();
+            toast({
+              title: "Success",
+              description: "Keg marked as ready for distribution",
+            });
           }}
         />
       )}

@@ -33,6 +33,7 @@ import {
   Flame,
   Tag,
   CheckCircle,
+  CheckCircle2,
   Beer,
   Wine,
   Send,
@@ -46,6 +47,8 @@ import { useToast } from "@/hooks/use-toast";
 import { LabelModal } from "./LabelModal";
 import { PasteurizeModal } from "./PasteurizeModal";
 import { MarkCompleteModal } from "./MarkCompleteModal";
+import { MarkReadyModal } from "./MarkReadyModal";
+import { DistributeBottlesModal } from "./DistributeBottlesModal";
 import { DistributeKegModal } from "./kegs/DistributeKegModal";
 
 // Type for packaging run from API
@@ -63,7 +66,7 @@ interface PackagingRun {
   lossL: number;
   lossPercentage: number;
   unitsLabeled?: number;
-  status: "completed" | "voided" | "filled" | "distributed" | "returned" | null;
+  status: "active" | "ready" | "completed" | "voided" | "filled" | "distributed" | "returned" | null;
   createdAt: string;
   // QA fields
   abvAtPackaging?: number | undefined;
@@ -112,7 +115,7 @@ interface BottlesTableProps {
     dateTo?: Date | null;
     packageSizeML?: number | null;
     batchSearch?: string;
-    status?: "active" | "completed";
+    status?: "active" | "ready" | "distributed" | "completed";
   };
   onDataChange?: (data: {
     items: PackagingRun[];
@@ -174,6 +177,12 @@ export function BottlesTable({
     kegFillId: string;
     kegNumber: string;
   } | null>(null);
+
+  // Mark ready modal state (for bottles)
+  const [markReadyModalOpen, setMarkReadyModalOpen] = useState(false);
+
+  // Distribute bottles modal state
+  const [distributeBottlesModalOpen, setDistributeBottlesModalOpen] = useState(false);
 
   // Utils for cache invalidation
   const utils = trpc.useUtils();
@@ -398,6 +407,54 @@ export function BottlesTable({
     setSelectedKegForDistribution(null);
   }, []);
 
+  // Mark ready handlers (for bottles)
+  const handleMarkReady = useCallback((item: PackagingRun, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.status !== "active") {
+      toast({
+        title: "Cannot Mark Ready",
+        description: "Only active packaging runs can be marked as ready.",
+      });
+      return;
+    }
+    setSelectedBottleRun(item);
+    setMarkReadyModalOpen(true);
+  }, [toast]);
+
+  const handleMarkReadyModalClose = useCallback(() => {
+    setMarkReadyModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  const handleMarkReadySuccess = useCallback(() => {
+    setMarkReadyModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  // Distribute bottles handlers
+  const handleDistributeBottles = useCallback((item: PackagingRun, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.status !== "active" && item.status !== "ready") {
+      toast({
+        title: "Cannot Distribute",
+        description: "Only active or ready packaging runs can be distributed.",
+      });
+      return;
+    }
+    setSelectedBottleRun(item);
+    setDistributeBottlesModalOpen(true);
+  }, [toast]);
+
+  const handleDistributeBottlesModalClose = useCallback(() => {
+    setDistributeBottlesModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
+  const handleDistributeBottlesSuccess = useCallback(() => {
+    setDistributeBottlesModalOpen(false);
+    setSelectedBottleRun(null);
+  }, []);
+
   // Format package size display
   const formatPackageSize = useCallback(
     (sizeML: number, packageType: string, materialName?: string | null) => {
@@ -422,12 +479,16 @@ export function BottlesTable({
   // Get status badge color
   const getStatusColor = useCallback((status: string | null) => {
     switch (status) {
+      case "ready":
+        return "bg-blue-100 text-blue-800";
+      case "distributed":
       case "completed":
         return "bg-green-100 text-green-800";
       case "voided":
         return "bg-red-100 text-red-800";
+      case "active":
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-yellow-100 text-yellow-800";
     }
   }, []);
 
@@ -824,9 +885,9 @@ export function BottlesTable({
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={(e) => handlePasteurize(item, e)}
-                                  disabled={!!item.pasteurizedAt}
+                                  disabled={!!item.pasteurizedAt || item.status === "distributed" || item.status === "completed"}
                                   className={cn(
-                                    item.pasteurizedAt && "opacity-50 cursor-not-allowed"
+                                    (item.pasteurizedAt || item.status === "distributed" || item.status === "completed") && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Flame className="mr-2 h-4 w-4" />
@@ -834,9 +895,9 @@ export function BottlesTable({
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={(e) => handleLabel(item, e)}
-                                  disabled={(item.unitsLabeled ?? 0) >= item.unitsProduced}
+                                  disabled={(item.unitsLabeled ?? 0) >= item.unitsProduced || item.status === "distributed" || item.status === "completed"}
                                   className={cn(
-                                    (item.unitsLabeled ?? 0) >= item.unitsProduced && "opacity-50 cursor-not-allowed"
+                                    ((item.unitsLabeled ?? 0) >= item.unitsProduced || item.status === "distributed" || item.status === "completed") && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Tag className="mr-2 h-4 w-4" />
@@ -848,16 +909,30 @@ export function BottlesTable({
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={(e) => handleMarkComplete(item, e)}
-                                  disabled={item.status === "completed"}
+                                  onClick={(e) => handleMarkReady(item, e)}
+                                  disabled={item.status !== "active"}
                                   className={cn(
-                                    item.status === "completed"
+                                    item.status !== "active"
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : "text-blue-600 focus:text-blue-600"
+                                  )}
+                                >
+                                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                                  {item.status === "ready" ? "Already Ready" :
+                                   item.status === "distributed" || item.status === "completed" ? "Already Distributed" :
+                                   "Mark Ready"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => handleDistributeBottles(item, e)}
+                                  disabled={item.status === "distributed" || item.status === "completed"}
+                                  className={cn(
+                                    item.status === "distributed" || item.status === "completed"
                                       ? "opacity-50 cursor-not-allowed"
                                       : "text-green-600 focus:text-green-600"
                                   )}
                                 >
-                                  <CheckCircle className="mr-2 h-4 w-4" />
-                                  {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
+                                  <Send className="mr-2 h-4 w-4" />
+                                  {item.status === "distributed" || item.status === "completed" ? "Already Distributed" : "Distribute"}
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -1107,16 +1182,18 @@ export function BottlesTable({
                           <div
                             className={cn(
                               "w-2 h-2 rounded-full flex-shrink-0",
-                              item.status === "completed" ? "bg-green-500" :
+                              item.status === "ready" ? "bg-blue-500" :
+                              item.status === "distributed" || item.status === "completed" ? "bg-green-500" :
                               item.status === "voided" ? "bg-red-500" :
-                              "bg-gray-400"
+                              "bg-yellow-500"
                             )}
                           />
                           <span className={cn(
                             "text-xs font-medium capitalize",
-                            item.status === "completed" ? "text-green-700" :
+                            item.status === "ready" ? "text-blue-700" :
+                            item.status === "distributed" || item.status === "completed" ? "text-green-700" :
                             item.status === "voided" ? "text-red-700" :
-                            "text-gray-600"
+                            "text-yellow-700"
                           )}>
                             {item.status || "active"}
                           </span>
@@ -1164,9 +1241,9 @@ export function BottlesTable({
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={(e) => handlePasteurize(item, e)}
-                                  disabled={!!item.pasteurizedAt}
+                                  disabled={!!item.pasteurizedAt || item.status === "distributed" || item.status === "completed"}
                                   className={cn(
-                                    item.pasteurizedAt && "opacity-50 cursor-not-allowed"
+                                    (item.pasteurizedAt || item.status === "distributed" || item.status === "completed") && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Flame className="mr-2 h-4 w-4" />
@@ -1174,9 +1251,9 @@ export function BottlesTable({
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={(e) => handleLabel(item, e)}
-                                  disabled={(item.unitsLabeled ?? 0) >= item.unitsProduced}
+                                  disabled={(item.unitsLabeled ?? 0) >= item.unitsProduced || item.status === "distributed" || item.status === "completed"}
                                   className={cn(
-                                    (item.unitsLabeled ?? 0) >= item.unitsProduced && "opacity-50 cursor-not-allowed"
+                                    ((item.unitsLabeled ?? 0) >= item.unitsProduced || item.status === "distributed" || item.status === "completed") && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Tag className="mr-2 h-4 w-4" />
@@ -1188,16 +1265,30 @@ export function BottlesTable({
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={(e) => handleMarkComplete(item, e)}
-                                  disabled={item.status === "completed"}
+                                  onClick={(e) => handleMarkReady(item, e)}
+                                  disabled={item.status !== "active"}
                                   className={cn(
-                                    item.status === "completed"
+                                    item.status !== "active"
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : "text-blue-600 focus:text-blue-600"
+                                  )}
+                                >
+                                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                                  {item.status === "ready" ? "Already Ready" :
+                                   item.status === "distributed" || item.status === "completed" ? "Already Distributed" :
+                                   "Mark Ready"}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => handleDistributeBottles(item, e)}
+                                  disabled={item.status === "distributed" || item.status === "completed"}
+                                  className={cn(
+                                    item.status === "distributed" || item.status === "completed"
                                       ? "opacity-50 cursor-not-allowed"
                                       : "text-green-600 focus:text-green-600"
                                   )}
                                 >
-                                  <CheckCircle className="mr-2 h-4 w-4" />
-                                  {item.status === "completed" ? "Already Complete" : "Mark as Complete"}
+                                  <Send className="mr-2 h-4 w-4" />
+                                  {item.status === "distributed" || item.status === "completed" ? "Already Distributed" : "Distribute"}
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -1311,6 +1402,38 @@ export function BottlesTable({
             setSelectedKegForDistribution(null);
             utils.packaging.list.invalidate();
           }}
+        />
+      )}
+
+      {/* Mark Ready Modal (for bottles) */}
+      {selectedBottleRun && (
+        <MarkReadyModal
+          open={markReadyModalOpen}
+          onClose={handleMarkReadyModalClose}
+          itemId={selectedBottleRun.id}
+          itemName={
+            selectedBottleRun.batch.customName ||
+            selectedBottleRun.batch.name ||
+            `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
+          }
+          itemType="bottle"
+          onSuccess={handleMarkReadySuccess}
+        />
+      )}
+
+      {/* Distribute Bottles Modal */}
+      {selectedBottleRun && (
+        <DistributeBottlesModal
+          open={distributeBottlesModalOpen}
+          onClose={handleDistributeBottlesModalClose}
+          bottleRunId={selectedBottleRun.id}
+          bottleRunName={
+            selectedBottleRun.batch.customName ||
+            selectedBottleRun.batch.name ||
+            `Batch ${selectedBottleRun.batchId.slice(0, 8)}`
+          }
+          unitsProduced={selectedBottleRun.unitsProduced}
+          onSuccess={handleDistributeBottlesSuccess}
         />
       )}
     </div>

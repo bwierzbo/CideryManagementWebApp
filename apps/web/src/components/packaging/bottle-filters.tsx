@@ -33,7 +33,7 @@ export interface PackagingFiltersState {
   packageSizeML: number | null;
   packageType: string | null; // Filter by package type (bottle, keg, can, or null for all)
   batchSearch: string;
-  status: "active" | "completed";
+  status: "active" | "ready" | "distributed" | "completed";
 }
 
 export interface PackagingFiltersProps {
@@ -132,24 +132,46 @@ export function PackagingFilters({
         {/* Compact filter bar - Single row on desktop */}
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           {/* Status Pills */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 flex-shrink-0 overflow-x-auto">
             <button
               onClick={() => handleFilterChange("status", "active")}
               className={cn(
-                "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                "px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
                 filters.status === "active"
+                  ? "bg-yellow-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              In Progress
+            </button>
+            <button
+              onClick={() => handleFilterChange("status", "ready")}
+              className={cn(
+                "px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+                filters.status === "ready"
                   ? "bg-blue-600 text-white"
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               )}
             >
-              Active
+              Ready
+            </button>
+            <button
+              onClick={() => handleFilterChange("status", "distributed")}
+              className={cn(
+                "px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+                filters.status === "distributed"
+                  ? "bg-green-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              )}
+            >
+              Distributed
             </button>
             <button
               onClick={() => handleFilterChange("status", "completed")}
               className={cn(
-                "px-3 py-1.5 text-sm font-medium rounded-md transition-colors",
+                "px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
                 filters.status === "completed"
-                  ? "bg-blue-600 text-white"
+                  ? "bg-purple-600 text-white"
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               )}
             >

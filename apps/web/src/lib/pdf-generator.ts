@@ -34,7 +34,7 @@ export interface PackagingRunPDFData {
   qaTechnicianId?: string;
   qaNotes?: string;
   productionNotes?: string;
-  status: "active" | "completed" | "voided" | null;
+  status: "active" | "ready" | "distributed" | "completed" | "voided" | null;
   voidReason?: string;
   voidedAt?: string;
   voidedBy?: string;

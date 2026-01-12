@@ -1490,6 +1490,149 @@ export const packagingRouter = router({
     }),
 
   /**
+   * Mark a bottle run as ready to distribute (QA complete)
+   */
+  markReady: createRbacProcedure("update", "package")
+    .input(z.object({
+      runId: z.string().uuid(),
+      readyAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          const readyAt = input.readyAt || new Date();
+
+          // Get current run to validate status
+          const [run] = await tx
+            .select({ status: bottleRuns.status })
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, input.runId));
+
+          if (!run) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Bottle run not found",
+            });
+          }
+
+          if (run.status !== "active") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Cannot mark as ready: run is currently '${run.status}', must be 'active'`,
+            });
+          }
+
+          // Update bottle run status to ready
+          const [updated] = await tx
+            .update(bottleRuns)
+            .set({
+              status: "ready",
+              readyAt: readyAt,
+              readyBy: ctx.user.id,
+              updatedAt: new Date(),
+              updatedBy: ctx.user.id,
+            })
+            .where(eq(bottleRuns.id, input.runId))
+            .returning();
+
+          return updated;
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error marking bottle run as ready:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to mark bottle run as ready",
+        });
+      }
+    }),
+
+  /**
+   * Distribute a bottle run
+   */
+  distribute: createRbacProcedure("update", "package")
+    .input(z.object({
+      runId: z.string().uuid(),
+      distributedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+      distributionLocation: z.string().min(1, "Distribution location is required"),
+      salesChannelId: z.string().uuid().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          const distributedAt = input.distributedAt || new Date();
+
+          // Get current run to validate status
+          const [run] = await tx
+            .select({ status: bottleRuns.status, unitsProduced: bottleRuns.unitsProduced })
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, input.runId));
+
+          if (!run) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Bottle run not found",
+            });
+          }
+
+          // Allow distribution from 'active' or 'ready' status
+          if (run.status !== "active" && run.status !== "ready") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Cannot distribute: run is currently '${run.status}', must be 'active' or 'ready'`,
+            });
+          }
+
+          // Build update object
+          const updateData: Record<string, unknown> = {
+            status: "distributed",
+            distributedAt: distributedAt,
+            distributedBy: ctx.user.id,
+            distributionLocation: input.distributionLocation,
+            updatedAt: new Date(),
+            updatedBy: ctx.user.id,
+          };
+
+          // If skipping 'ready' status, auto-set readyAt
+          if (run.status === "active") {
+            updateData.readyAt = distributedAt;
+            updateData.readyBy = ctx.user.id;
+          }
+
+          // Add sales channel if provided
+          if (input.salesChannelId) {
+            updateData.bottleRunSalesChannelId = input.salesChannelId;
+          }
+
+          // Update bottle run status to distributed
+          const [updated] = await tx
+            .update(bottleRuns)
+            .set(updateData)
+            .where(eq(bottleRuns.id, input.runId))
+            .returning();
+
+          // Update inventory item quantity to make it appear in finished goods inventory
+          await tx
+            .update(inventoryItems)
+            .set({
+              currentQuantity: run.unitsProduced,
+              updatedAt: new Date(),
+            })
+            .where(eq(inventoryItems.bottleRunId, input.runId));
+
+          return updated;
+        });
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error distributing bottle run:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to distribute bottle run",
+        });
+      }
+    }),
+
+  /**
    * Get batch pasteurization planning data
    * Returns batch composition for product classification and PU targeting
    */

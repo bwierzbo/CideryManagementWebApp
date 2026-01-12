@@ -71,6 +71,10 @@ export interface BottleRunListItem {
   // Carbonation fields
   carbonationLevel?: string | null;
   carbonationCo2Volumes?: number | null;
+  // Distribution fields
+  readyAt?: Date | null;
+  distributedAt?: Date | null;
+  distributionLocation?: string | null;
 }
 
 export interface KegFillListItem {
@@ -100,6 +104,7 @@ export interface KegFillListItem {
   kegNumber: string | null;
   remainingVolumeL: number | null;
   // Distribution fields
+  readyAt?: Date | null;
   distributedAt?: Date | null;
   distributionLocation?: string | null;
   // Carbonation fields (null for kegs)
@@ -123,7 +128,7 @@ export interface PackagingRunFilters {
   batchSearch?: string;
   packageType?: string;
   packageSizeML?: number;
-  status?: "active" | "completed";
+  status?: "active" | "ready" | "distributed" | "completed";
   qaTechnicianId?: string;
 }
 

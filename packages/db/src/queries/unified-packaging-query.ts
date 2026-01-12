@@ -56,11 +56,19 @@ export async function getUnifiedPackagingRuns(
     // Status filter
     if (filters.status) {
       if (filters.status === "active") {
-        bottleConditions.push(
-          or(isNull(bottleRuns.status), ne(bottleRuns.status, "completed"))!,
-        );
+        // Active means 'active' status (in QA progress)
+        bottleConditions.push(eq(bottleRuns.status, "active"));
+      } else if (filters.status === "ready") {
+        // Ready to distribute
+        bottleConditions.push(eq(bottleRuns.status, "ready"));
+      } else if (filters.status === "distributed") {
+        // Distributed (for bottles, this is also complete)
+        bottleConditions.push(eq(bottleRuns.status, "distributed"));
       } else if (filters.status === "completed") {
-        bottleConditions.push(eq(bottleRuns.status, "completed"));
+        // Completed includes both 'completed' and 'distributed' (lifecycle done)
+        bottleConditions.push(
+          or(eq(bottleRuns.status, "completed"), eq(bottleRuns.status, "distributed"))!
+        );
       }
     }
 
@@ -117,6 +125,9 @@ export async function getUnifiedPackagingRuns(
         unitsLabeled: bottleRuns.unitsLabeled,
         carbonationLevel: bottleRuns.carbonationLevel,
         carbonationCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
+        readyAt: bottleRuns.readyAt,
+        distributedAt: bottleRuns.distributedAt,
+        distributionLocation: bottleRuns.distributionLocation,
         batchName: batches.name,
         batchCustomName: batches.customName,
         vesselName: vessels.name,
@@ -187,6 +198,9 @@ export async function getUnifiedPackagingRuns(
       carbonationCo2Volumes: item.carbonationCo2Volumes
         ? parseFloat(item.carbonationCo2Volumes.toString())
         : null,
+      readyAt: item.readyAt,
+      distributedAt: item.distributedAt,
+      distributionLocation: item.distributionLocation,
     }));
 
     // Get count (use same conditions as main query)
@@ -218,13 +232,14 @@ export async function getUnifiedPackagingRuns(
     // Status filter
     if (filters.status) {
       if (filters.status === "active") {
-        // For kegs, active means filled or distributed
-        kegConditions.push(
-          or(
-            eq(kegFills.status, "filled"),
-            eq(kegFills.status, "distributed")
-          )!
-        );
+        // For kegs, active means filled (in QA progress)
+        kegConditions.push(eq(kegFills.status, "filled"));
+      } else if (filters.status === "ready") {
+        // Ready to distribute
+        kegConditions.push(eq(kegFills.status, "ready"));
+      } else if (filters.status === "distributed") {
+        // Distributed (out at location)
+        kegConditions.push(eq(kegFills.status, "distributed"));
       } else if (filters.status === "completed") {
         // For kegs, completed means returned
         kegConditions.push(eq(kegFills.status, "returned"));
@@ -258,6 +273,7 @@ export async function getUnifiedPackagingRuns(
         status: kegFills.status,
         createdAt: kegFills.createdAt,
         abvAtPackaging: kegFills.abvAtPackaging,
+        readyAt: kegFills.readyAt,
         distributedAt: kegFills.distributedAt,
         distributionLocation: kegFills.distributionLocation,
         batchName: batches.name,
@@ -324,6 +340,7 @@ export async function getUnifiedPackagingRuns(
       remainingVolumeL: item.remainingVolume
         ? parseFloat(item.remainingVolume.toString())
         : null,
+      readyAt: item.readyAt,
       distributedAt: item.distributedAt,
       distributionLocation: item.distributionLocation,
       carbonationLevel: null,

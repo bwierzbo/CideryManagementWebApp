@@ -36,6 +36,8 @@ export const fillCheckEnum = pgEnum("fill_check", [
 ]);
 export const bottleRunStatusEnum = pgEnum("bottle_run_status", [
   "active",
+  "ready",
+  "distributed",
   "completed",
   "voided",
 ]);
@@ -214,6 +216,26 @@ export const bottleRuns = pgTable(
      * When the packaging run was marked as complete
      */
     completedAt: timestamp("completed_at"),
+
+    // Ready to distribute tracking
+    /**
+     * When the packaging run was marked ready to distribute (QA complete)
+     */
+    readyAt: timestamp("ready_at"),
+    readyBy: uuid("ready_by").references(() => users.id),
+
+    // Distribution tracking
+    /**
+     * When the packaging run was distributed
+     */
+    distributedAt: timestamp("distributed_at"),
+    distributedBy: uuid("distributed_by").references(() => users.id),
+    distributionLocation: text("distribution_location"),
+    /**
+     * Sales channel for TTB reporting and sales analytics
+     */
+    bottleRunSalesChannelId: uuid("bottle_run_sales_channel_id").references(() => salesChannels.id),
+
     voidReason: text("void_reason"),
     voidedAt: timestamp("voided_at"),
     voidedBy: uuid("voided_by"),
@@ -589,6 +611,7 @@ export const kegConditionEnum = pgEnum("keg_condition", [
 
 export const kegFillStatusEnum = pgEnum("keg_fill_status", [
   "filled",
+  "ready",
   "distributed",
   "returned",
   "voided",
@@ -652,8 +675,13 @@ export const kegFills = pgTable(
     ),
     sourceCarbonationOperationId: uuid("source_carbonation_operation_id"),
 
-    // Distribution tracking
+    // Ready and distribution tracking
     status: kegFillStatusEnum("status").notNull().default("filled"),
+    /**
+     * When the keg fill was marked ready to distribute (QA complete)
+     */
+    readyAt: timestamp("ready_at"),
+    readyBy: uuid("ready_by").references(() => users.id),
     distributedAt: timestamp("distributed_at"),
     distributionLocation: text("distribution_location"),
     /**
