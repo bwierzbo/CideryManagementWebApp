@@ -1150,7 +1150,7 @@ export const kegsRouter = router({
         if (validFills.length === 0) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "No kegs are in 'filled' status and eligible for distribution",
+            message: `No kegs are in 'filled' status and eligible for distribution. Current statuses: ${fills.map(f => `${f.kegNumber}: ${f.status}`).join(", ")}`,
           });
         }
 

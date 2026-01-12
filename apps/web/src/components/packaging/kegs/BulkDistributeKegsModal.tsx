@@ -70,19 +70,21 @@ export function BulkDistributeKegsModal({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
     reset,
     control,
   } = useForm<BulkDistributeForm>({
     resolver: zodResolver(bulkDistributeSchema),
     defaultValues: {
       distributedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      distributionLocation: "",
       salesChannelId: undefined,
     },
+    mode: "onChange", // Validate on change to enable/disable button properly
   });
 
   const bulkDistributeMutation = trpc.packaging.kegs.bulkDistributeKegFills.useMutation({
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       const skippedMsg = result.skipped.length > 0
         ? ` (${result.skipped.length} skipped)`
         : "";
@@ -90,9 +92,11 @@ export function BulkDistributeKegsModal({
         title: "Kegs Distributed",
         description: `${result.distributed} keg${result.distributed !== 1 ? "s" : ""} distributed successfully${skippedMsg}`,
       });
-      // Invalidate queries to refresh the table
-      utils.packaging.list.invalidate();
-      utils.packaging.kegs.listKegs.invalidate();
+      // Invalidate queries to refresh the table (await to ensure completion)
+      await Promise.all([
+        utils.packaging.list.invalidate(),
+        utils.packaging.kegs.listKegs.invalidate(),
+      ]);
       reset();
       onSuccess?.();
       onClose();
@@ -258,7 +262,7 @@ export function BulkDistributeKegsModal({
               <Button type="button" variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={bulkDistributeMutation.isPending}>
+              <Button type="submit" disabled={!isValid || bulkDistributeMutation.isPending}>
                 {bulkDistributeMutation.isPending
                   ? "Distributing..."
                   : `Distribute ${validKegs.length} Keg${validKegs.length !== 1 ? "s" : ""}`}

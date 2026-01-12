@@ -59,17 +59,18 @@ export function BulkReturnKegsModal({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isValid },
     reset,
   } = useForm<BulkReturnForm>({
     resolver: zodResolver(bulkReturnSchema),
     defaultValues: {
       returnedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
     },
+    mode: "onChange",
   });
 
   const bulkReturnMutation = trpc.packaging.kegs.bulkReturnKegFills.useMutation({
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       const skippedMsg = result.skipped.length > 0
         ? ` (${result.skipped.length} skipped)`
         : "";
@@ -77,9 +78,11 @@ export function BulkReturnKegsModal({
         title: "Kegs Returned",
         description: `${result.returned} keg${result.returned !== 1 ? "s" : ""} returned successfully${skippedMsg}`,
       });
-      // Invalidate queries to refresh the table
-      utils.packaging.list.invalidate();
-      utils.packaging.kegs.listKegs.invalidate();
+      // Invalidate queries to refresh the table (await to ensure completion)
+      await Promise.all([
+        utils.packaging.list.invalidate(),
+        utils.packaging.kegs.listKegs.invalidate(),
+      ]);
       reset();
       onSuccess?.();
       onClose();
@@ -243,7 +246,7 @@ export function BulkReturnKegsModal({
               <Button type="button" variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={bulkReturnMutation.isPending}>
+              <Button type="submit" disabled={!isValid || bulkReturnMutation.isPending}>
                 {bulkReturnMutation.isPending
                   ? "Returning..."
                   : `Return ${validKegs.length} Keg${validKegs.length !== 1 ? "s" : ""}`}

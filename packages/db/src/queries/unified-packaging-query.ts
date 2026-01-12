@@ -211,8 +211,9 @@ export async function getUnifiedPackagingRuns(
   if (shouldQueryKegs) {
     const kegConditions = [];
 
-    // Filter out voided fills
+    // Filter out voided and soft-deleted fills
     kegConditions.push(isNull(kegFills.voidedAt));
+    kegConditions.push(isNull(kegFills.deletedAt));
 
     // Status filter
     if (filters.status) {
