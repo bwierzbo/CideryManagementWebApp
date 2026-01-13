@@ -36,6 +36,7 @@ import { userRouter } from "./user";
 import { dashboardRouter } from "./dashboard";
 import { squareRouter } from "./square";
 import { settingsRouter } from "./settings";
+import { customProductTypesRouter } from "./customProductTypes";
 import { distillationRouter } from "./distillation";
 import { productionReportsRouter } from "./productionReports";
 import { MIN_WORKING_VOLUME_L } from "lib";
@@ -5992,6 +5993,9 @@ export const appRouter = router({
 
   // System Settings
   settings: settingsRouter,
+
+  // Custom Product Types
+  customProductTypes: customProductTypesRouter,
 });
 
 export type AppRouter = typeof appRouter;

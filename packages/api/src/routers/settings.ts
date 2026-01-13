@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { router, protectedProcedure, adminProcedure } from "../trpc";
-import { db, systemSettings, organizations, organizationSettings, bottleRuns } from "db";
+import {
+  db,
+  systemSettings,
+  organizations,
+  organizationSettings,
+  bottleRuns,
+  type MeasurementSchedules,
+} from "db";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
 
 /**
@@ -422,6 +429,119 @@ export const settingsRouter = router({
         },
       };
     }),
+
+  /**
+   * Update measurement schedule for a specific product type
+   * Admin only
+   */
+  updateMeasurementSchedule: adminProcedure
+    .input(
+      z.object({
+        productType: z.enum(["cider", "perry", "brandy", "pommeau", "juice"]),
+        config: z.object({
+          initialMeasurementTypes: z.array(
+            z.enum(["sg", "abv", "ph", "temperature", "sensory", "volume"])
+          ),
+          ongoingMeasurementTypes: z.array(
+            z.enum(["sg", "abv", "ph", "temperature", "sensory", "volume"])
+          ),
+          primaryMeasurement: z.enum(["sg", "abv", "sensory", "ph"]),
+          usesFermentationStages: z.boolean(),
+          defaultIntervalDays: z.number().int().min(1).nullable(),
+          alertType: z
+            .enum(["check_in_reminder", "measurement_overdue"])
+            .nullable(),
+        }),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
+      // Get current measurement schedules
+      const settings = await db
+        .select({ measurementSchedules: organizationSettings.measurementSchedules })
+        .from(organizationSettings)
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+        .limit(1);
+
+      // Merge the new config with existing schedules
+      const currentSchedules = settings[0]?.measurementSchedules || {};
+      const updatedSchedules: MeasurementSchedules = {
+        ...currentSchedules,
+        [input.productType]: input.config,
+      } as MeasurementSchedules;
+
+      // Update the settings
+      await db
+        .update(organizationSettings)
+        .set({
+          measurementSchedules: updatedSchedules,
+          updatedAt: new Date(),
+        })
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID));
+
+      return { success: true };
+    }),
+
+  /**
+   * Get measurement schedules for all product types
+   * Available to all authenticated users
+   */
+  getMeasurementSchedules: protectedProcedure.query(async () => {
+    const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
+    const settings = await db
+      .select({ measurementSchedules: organizationSettings.measurementSchedules })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+      .limit(1);
+
+    // Return the schedules or default values
+    return (
+      settings[0]?.measurementSchedules || {
+        cider: {
+          initialMeasurementTypes: ["sg", "ph", "temperature"],
+          ongoingMeasurementTypes: ["sg", "ph", "temperature"],
+          primaryMeasurement: "sg",
+          usesFermentationStages: true,
+          defaultIntervalDays: null,
+          alertType: "measurement_overdue",
+        },
+        perry: {
+          initialMeasurementTypes: ["sg", "ph", "temperature"],
+          ongoingMeasurementTypes: ["sg", "ph", "temperature"],
+          primaryMeasurement: "sg",
+          usesFermentationStages: true,
+          defaultIntervalDays: null,
+          alertType: "measurement_overdue",
+        },
+        brandy: {
+          initialMeasurementTypes: ["abv"],
+          ongoingMeasurementTypes: ["sensory", "volume"],
+          primaryMeasurement: "sensory",
+          usesFermentationStages: false,
+          defaultIntervalDays: 30,
+          alertType: "check_in_reminder",
+        },
+        pommeau: {
+          initialMeasurementTypes: ["sg", "ph"],
+          ongoingMeasurementTypes: ["sensory", "volume"],
+          primaryMeasurement: "sensory",
+          usesFermentationStages: false,
+          defaultIntervalDays: 90,
+          alertType: "check_in_reminder",
+        },
+        juice: {
+          initialMeasurementTypes: ["sg", "ph"],
+          ongoingMeasurementTypes: [],
+          primaryMeasurement: "sg",
+          usesFermentationStages: false,
+          defaultIntervalDays: null,
+          alertType: null,
+        },
+      }
+    );
+  }),
 });
 
 export type SettingsRouter = typeof settingsRouter;

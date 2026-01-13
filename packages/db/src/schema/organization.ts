@@ -13,6 +13,7 @@ import {
   timestamp,
   pgEnum,
   index,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { users } from "../schema";
@@ -330,6 +331,15 @@ export const organizationSettings = pgTable(
     overheadBudgetYear: integer("overhead_budget_year"),
 
     // ==========================================
+    // Measurement Schedules
+    // ==========================================
+    /**
+     * Product-type-specific measurement schedules
+     * Configures initial vs ongoing measurement types, intervals, and alert types
+     */
+    measurementSchedules: jsonb("measurement_schedules").$type<MeasurementSchedules>(),
+
+    // ==========================================
     // Timestamps
     // ==========================================
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -343,13 +353,52 @@ export const organizationSettings = pgTable(
 );
 
 // ============================================
+// CUSTOM PRODUCT TYPES TABLE
+// ============================================
+
+export const customProductTypes = pgTable(
+  "custom_product_types",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description"),
+    initialMeasurementTypes: text("initial_measurement_types").array().notNull().default([]),
+    ongoingMeasurementTypes: text("ongoing_measurement_types").array().notNull().default([]),
+    primaryMeasurement: text("primary_measurement").notNull().default("sg"),
+    usesFermentationStages: boolean("uses_fermentation_stages").notNull().default(false),
+    defaultIntervalDays: integer("default_interval_days"),
+    alertType: text("alert_type").$type<"check_in_reminder" | "measurement_overdue">(),
+    sortOrder: integer("sort_order").default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    organizationIdx: index("custom_product_types_org_idx").on(table.organizationId),
+    uniqueSlug: index("custom_product_types_unique_slug").on(table.organizationId, table.slug),
+  })
+);
+
+// ============================================
 // RELATIONS
 // ============================================
 
-export const organizationsRelations = relations(organizations, ({ one }) => ({
+export const organizationsRelations = relations(organizations, ({ one, many }) => ({
   settings: one(organizationSettings, {
     fields: [organizations.id],
     references: [organizationSettings.organizationId],
+  }),
+  customProductTypes: many(customProductTypes),
+}));
+
+export const customProductTypesRelations = relations(customProductTypes, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [customProductTypes.organizationId],
+    references: [organizations.id],
   }),
 }));
 
@@ -372,6 +421,9 @@ export type NewOrganization = typeof organizations.$inferInsert;
 
 export type OrganizationSettings = typeof organizationSettings.$inferSelect;
 export type NewOrganizationSettings = typeof organizationSettings.$inferInsert;
+
+export type CustomProductType = typeof customProductTypes.$inferSelect;
+export type NewCustomProductType = typeof customProductTypes.$inferInsert;
 
 // Valid values for multi-select fields (for TypeScript type safety)
 export const FRUIT_SOURCE_VALUES = [
@@ -399,3 +451,48 @@ export const CARBONATION_METHOD_VALUES = [
   "still",
 ] as const;
 export type CarbonationMethod = (typeof CARBONATION_METHOD_VALUES)[number];
+
+// ============================================
+// MEASUREMENT SCHEDULE TYPES
+// ============================================
+
+export const MEASUREMENT_TYPE_VALUES = [
+  "sg",
+  "abv",
+  "ph",
+  "temperature",
+  "sensory",
+  "volume",
+] as const;
+export type MeasurementTypeValue = (typeof MEASUREMENT_TYPE_VALUES)[number];
+
+export const ALERT_TYPE_VALUES = [
+  "check_in_reminder",
+  "measurement_overdue",
+] as const;
+export type AlertType = (typeof ALERT_TYPE_VALUES)[number];
+
+export interface MeasurementScheduleConfig {
+  initialMeasurementTypes: MeasurementTypeValue[];
+  ongoingMeasurementTypes: MeasurementTypeValue[];
+  primaryMeasurement: MeasurementTypeValue;
+  usesFermentationStages: boolean;
+  defaultIntervalDays: number | null;
+  alertType: AlertType | null;
+}
+
+export interface MeasurementSchedules {
+  cider: MeasurementScheduleConfig;
+  perry: MeasurementScheduleConfig;
+  brandy: MeasurementScheduleConfig;
+  pommeau: MeasurementScheduleConfig;
+  juice: MeasurementScheduleConfig;
+  [key: string]: MeasurementScheduleConfig; // Allow custom product types
+}
+
+export interface BatchMeasurementOverride {
+  intervalDays?: number;
+  measurementTypes?: MeasurementTypeValue[];
+  alertType?: AlertType | null;
+  notes?: string;
+}

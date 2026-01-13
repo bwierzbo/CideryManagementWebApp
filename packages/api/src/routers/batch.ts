@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, createRbacProcedure } from "../trpc";
+import { router, createRbacProcedure, protectedProcedure } from "../trpc";
 import {
   db,
   batches,
@@ -117,6 +117,7 @@ const addMeasurementSchema = z.object({
   volumeUnit: z.enum(['L', 'gal']).default('L'),
   measurementMethod: z.enum(['hydrometer', 'refractometer', 'calculated']).default('hydrometer'),
   notes: z.string().optional(),
+  sensoryNotes: z.string().optional(),
   takenBy: z.string().optional(),
 });
 
@@ -346,6 +347,7 @@ export const batchRouter = router({
             batchNumber: batches.batchNumber,
             customName: batches.customName,
             status: batches.status,
+            productType: batches.productType,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
             vesselIsPressureVessel: vessels.isPressureVessel,
@@ -376,6 +378,7 @@ export const batchRouter = router({
           batchNumber: batch.batchNumber,
           customName: batch.customName,
           status: batch.status,
+          productType: batch.productType,
           vesselId: batch.vesselId,
           vesselName: batch.vesselName,
           vesselIsPressureVessel: batch.vesselIsPressureVessel,
@@ -1060,6 +1063,7 @@ export const batchRouter = router({
             volumeUnit: input.volumeUnit,
             measurementMethod: input.measurementMethod,
             notes: input.notes,
+            sensoryNotes: input.sensoryNotes,
             takenBy: input.takenBy,
           })
           .returning();
@@ -5106,6 +5110,97 @@ export const batchRouter = router({
           message: "Failed to create fruit wine batch",
         });
       }
+    }),
+
+  /**
+   * Update measurement schedule override for a batch
+   * Allows customizing measurement frequency and types for individual batches
+   */
+  updateMeasurementScheduleOverride: createRbacProcedure("update", "batch")
+    .input(
+      z.object({
+        batchId: z.string().uuid(),
+        override: z
+          .object({
+            intervalDays: z.number().int().min(1).optional(),
+            measurementTypes: z
+              .array(z.enum(["sg", "abv", "ph", "temperature", "sensory", "volume"]))
+              .optional(),
+            alertType: z
+              .enum(["check_in_reminder", "measurement_overdue"])
+              .nullable()
+              .optional(),
+            notes: z.string().optional(),
+          })
+          .nullable(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { batchId, override } = input;
+
+      // Verify batch exists
+      const existingBatch = await db
+        .select({ id: batches.id })
+        .from(batches)
+        .where(and(eq(batches.id, batchId), isNull(batches.deletedAt)))
+        .limit(1);
+
+      if (!existingBatch.length) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Batch not found",
+        });
+      }
+
+      // Update the batch with the override (null clears the override)
+      await db
+        .update(batches)
+        .set({
+          measurementScheduleOverride: override,
+          updatedAt: new Date(),
+        })
+        .where(eq(batches.id, batchId));
+
+      return {
+        success: true,
+        message: override
+          ? "Measurement schedule override applied"
+          : "Measurement schedule override cleared (using product type defaults)",
+      };
+    }),
+
+  /**
+   * Get measurement schedule override for a batch
+   */
+  getMeasurementScheduleOverride: protectedProcedure
+    .input(
+      z.object({
+        batchId: z.string().uuid(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { batchId } = input;
+
+      const batch = await db
+        .select({
+          measurementScheduleOverride: batches.measurementScheduleOverride,
+          productType: batches.productType,
+        })
+        .from(batches)
+        .where(and(eq(batches.id, batchId), isNull(batches.deletedAt)))
+        .limit(1);
+
+      if (!batch.length) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Batch not found",
+        });
+      }
+
+      return {
+        override: batch[0].measurementScheduleOverride,
+        productType: batch[0].productType,
+      };
     }),
 });
 

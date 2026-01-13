@@ -16,6 +16,7 @@ import { relations, sql } from "drizzle-orm";
 
 // PostgreSQL Enums
 import { unitEnum } from "./schema/shared";
+import type { BatchMeasurementOverride } from "./schema/organization";
 export { unitEnum };
 export const batchStatusEnum = pgEnum("batch_status", [
   "fermentation",
@@ -738,6 +739,8 @@ export const batches = pgTable(
     isArchived: boolean("is_archived").notNull().default(false),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedReason: text("archived_reason"),
+    // Measurement schedule override (product-type defaults can be overridden per batch)
+    measurementScheduleOverride: jsonb("measurement_schedule_override").$type<BatchMeasurementOverride>(),
     // User attribution
     createdBy: uuid("created_by").references(() => users.id),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -869,6 +872,7 @@ export const batchMeasurements = pgTable("batch_measurements", {
     scale: 3,
   }), // OG used for refractometer alcohol correction
   notes: text("notes"),
+  sensoryNotes: text("sensory_notes"), // Tasting notes for sensory checks (brandy, pommeau, etc.)
   takenBy: text("taken_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

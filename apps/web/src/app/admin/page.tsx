@@ -97,6 +97,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SquareIntegration } from "@/components/admin/SquareIntegration";
 import { WorkersManagement } from "@/components/admin/WorkersManagement";
 import { OverheadSettings } from "@/components/admin/OverheadSettings";
+import { MeasurementSchedulesSettings } from "@/components/admin/MeasurementSchedulesSettings";
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -1829,6 +1830,9 @@ function SystemSettings() {
 
       {/* Overhead Cost Allocation - IMPLEMENTED */}
       <OverheadSettings />
+
+      {/* Measurement Schedules - Product-type-specific measurement schedules */}
+      <MeasurementSchedulesSettings />
 
       {/* Save Button */}
       <div className="flex justify-end">

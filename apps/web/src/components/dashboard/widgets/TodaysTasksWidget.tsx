@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ClipboardList, Beaker, AlertTriangle, Clock, CheckCircle } from "lucide-react";
+import { ClipboardList, Beaker, AlertTriangle, Clock, CheckCircle, Wine, CalendarClock } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { WidgetWrapper } from "./WidgetWrapper";
 import { WidgetProps, WidgetConfig } from "./types";
@@ -16,7 +16,7 @@ interface TaskItemProps {
   vesselName: string | null;
   daysSince: number;
   priority: "high" | "medium" | "low";
-  taskType: "measurement_needed" | "stalled_fermentation" | "confirm_terminal";
+  taskType: "measurement_needed" | "stalled_fermentation" | "confirm_terminal" | "sensory_check_due" | "check_in_due";
   percentFermented: number;
   fermentationStage: string;
   recommendedAction: string;
@@ -39,6 +39,8 @@ function getTaskTypeLabel(taskType: string): string {
     case "stalled_fermentation": return "Stalled";
     case "confirm_terminal": return "Confirm FG";
     case "measurement_needed": return "Measure";
+    case "sensory_check_due": return "Sensory";
+    case "check_in_due": return "Check In";
     default: return "Action";
   }
 }
@@ -62,10 +64,12 @@ function TaskItem({
     low: "bg-blue-100 text-blue-800 border-blue-200",
   };
 
-  const taskTypeIcons = {
+  const taskTypeIcons: Record<TaskItemProps["taskType"], React.ReactNode> = {
     stalled_fermentation: <AlertTriangle className="w-3 h-3" />,
     confirm_terminal: <CheckCircle className="w-3 h-3" />,
     measurement_needed: <Beaker className="w-3 h-3" />,
+    sensory_check_due: <Wine className="w-3 h-3" />,
+    check_in_due: <CalendarClock className="w-3 h-3" />,
   };
 
   return (
@@ -142,7 +146,7 @@ function TaskItem({
  * stalled fermentations, and other actionable items
  */
 export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps) {
-  const { data, isPending, error, refetch } = trpc.dashboard.getTasks.useQuery({
+  const { data, isPending, isFetching, error, refetch } = trpc.dashboard.getTasks.useQuery({
     limit: limit,
   });
 
@@ -167,6 +171,7 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
       error={error as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={tasks.length === 0}
       emptyState={
