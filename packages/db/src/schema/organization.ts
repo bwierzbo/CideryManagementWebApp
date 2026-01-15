@@ -355,6 +355,36 @@ export const organizationSettings = pgTable(
     ttbOpeningBalances: jsonb("ttb_opening_balances").$type<TTBOpeningBalances>(),
 
     // ==========================================
+    // Tax Reporting Preferences
+    // ==========================================
+    /**
+     * State where the cidery is licensed and files taxes
+     * Used for state-specific tax reporting
+     */
+    taxState: text("tax_state"),
+    /**
+     * TTB reporting frequency (monthly, quarterly, annual)
+     * Determined by annual tax liability:
+     * - Annual: ≤$1,000/year
+     * - Quarterly: $1,000-$50,000/year
+     * - Monthly: >$50,000/year
+     */
+    ttbReportingFrequency: text("ttb_reporting_frequency").default("quarterly"),
+    /**
+     * State tax reporting frequency (may differ from TTB)
+     * Check with your state's alcohol control board for requirements
+     */
+    stateTaxReportingFrequency: text("state_tax_reporting_frequency").default("quarterly"),
+    /**
+     * Estimated annual tax liability for TTB frequency guidance
+     * Used to provide recommendations on appropriate filing frequency
+     */
+    estimatedAnnualTaxLiability: decimal("estimated_annual_tax_liability", {
+      precision: 10,
+      scale: 2,
+    }),
+
+    // ==========================================
     // Timestamps
     // ==========================================
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -511,3 +541,14 @@ export interface BatchMeasurementOverride {
   alertType?: AlertType | null;
   notes?: string;
 }
+
+// ============================================
+// TAX REPORTING TYPES
+// ============================================
+
+export const REPORTING_FREQUENCY_VALUES = [
+  "monthly",
+  "quarterly",
+  "annual",
+] as const;
+export type ReportingFrequency = (typeof REPORTING_FREQUENCY_VALUES)[number];

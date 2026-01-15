@@ -101,6 +101,7 @@ import { MeasurementSchedulesSettings } from "@/components/admin/MeasurementSche
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
 import { TTBOpeningBalancesSettings } from "@/components/admin/TTBOpeningBalancesSettings";
+import { TaxReportingSettings } from "@/components/admin/TaxReportingSettings";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
 
@@ -1834,6 +1835,9 @@ function SystemSettings() {
 
       {/* Measurement Schedules - Product-type-specific measurement schedules */}
       <MeasurementSchedulesSettings />
+
+      {/* Tax Reporting Preferences - TTB and State frequency settings */}
+      <TaxReportingSettings />
 
       {/* TTB Opening Balances - For beginning inventory tracking */}
       <TTBOpeningBalancesSettings />

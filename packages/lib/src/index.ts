@@ -25,6 +25,9 @@ export * from "./apples";
 // Re-export cellar operation constants (client-safe)
 export * from "./constants/cellar";
 
+// Re-export US states and tax reporting constants (client-safe)
+export * from "./constants/us-states";
+
 // Re-export date validation utilities (client-safe)
 export * from "./validation/dateValidation";
 

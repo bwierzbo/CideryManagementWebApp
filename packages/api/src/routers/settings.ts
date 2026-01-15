@@ -160,6 +160,11 @@ export const settingsRouter = router({
         overheadExpectedAnnualGallons: null,
         overheadRatePerGallon: null,
         overheadBudgetYear: null,
+        // Tax reporting preferences
+        taxState: null,
+        ttbReportingFrequency: "quarterly",
+        stateTaxReportingFrequency: "quarterly",
+        estimatedAnnualTaxLiability: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -256,6 +261,12 @@ export const settingsRouter = router({
         overheadExpectedAnnualGallons: z.string().nullable().optional(),
         overheadRatePerGallon: z.string().nullable().optional(),
         overheadBudgetYear: z.number().int().nullable().optional(),
+
+        // Tax Reporting Preferences
+        taxState: z.string().nullable().optional(),
+        ttbReportingFrequency: z.enum(["monthly", "quarterly", "annual"]).optional(),
+        stateTaxReportingFrequency: z.enum(["monthly", "quarterly", "annual"]).optional(),
+        estimatedAnnualTaxLiability: z.string().nullable().optional(),
       }),
     )
     .mutation(async ({ input }) => {
@@ -542,6 +553,42 @@ export const settingsRouter = router({
       }
     );
   }),
+
+  /**
+   * Get recommended TTB reporting frequency based on estimated annual tax liability
+   * TTB Rules:
+   * - Annual: ≤$1,000/year tax liability
+   * - Quarterly: $1,000-$50,000/year
+   * - Monthly: >$50,000/year
+   */
+  getTtbFrequencyRecommendation: protectedProcedure
+    .input(
+      z.object({
+        estimatedAnnualTax: z.number().min(0),
+      })
+    )
+    .query(({ input }) => {
+      const { estimatedAnnualTax } = input;
+
+      if (estimatedAnnualTax <= 1000) {
+        return {
+          recommended: "annual" as const,
+          reason: "Annual filing is allowed for tax liability ≤$1,000/year",
+        };
+      }
+
+      if (estimatedAnnualTax <= 50000) {
+        return {
+          recommended: "quarterly" as const,
+          reason: "Quarterly filing is required for tax liability $1,000-$50,000/year",
+        };
+      }
+
+      return {
+        recommended: "monthly" as const,
+        reason: "Monthly filing is required for tax liability >$50,000/year",
+      };
+    }),
 });
 
 export type SettingsRouter = typeof settingsRouter;

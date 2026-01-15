@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/utils/date-format";
@@ -66,6 +66,25 @@ export default function TTBReportsPage() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedPeriod, setSelectedPeriod] = useState(new Date().getMonth() + 1);
   const [activeTab, setActiveTab] = useState("generate");
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Fetch organization settings to get saved reporting frequency
+  const { data: orgSettings } = trpc.settings.getOrganizationSettings.useQuery();
+
+  // Initialize period type from saved settings
+  useEffect(() => {
+    if (orgSettings?.ttbReportingFrequency && !hasInitialized) {
+      const savedFrequency = orgSettings.ttbReportingFrequency as "monthly" | "quarterly" | "annual";
+      setPeriodType(savedFrequency);
+      // Adjust the selected period based on the frequency
+      if (savedFrequency === "quarterly") {
+        setSelectedPeriod(Math.ceil((new Date().getMonth() + 1) / 3));
+      } else if (savedFrequency === "monthly") {
+        setSelectedPeriod(new Date().getMonth() + 1);
+      }
+      setHasInitialized(true);
+    }
+  }, [orgSettings, hasInitialized]);
 
   // Generate TTB Form data
   const {
