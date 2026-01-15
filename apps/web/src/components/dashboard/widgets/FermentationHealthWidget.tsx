@@ -103,8 +103,8 @@ function FermentationProgressBar({
  */
 export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
   // Use both getRecentBatches and getTasks for combined data
-  const { data: batchData, isPending: batchPending, error: batchError, refetch: refetchBatches } = trpc.dashboard.getRecentBatches.useQuery();
-  const { data: tasksData, refetch: refetchTasks } = trpc.dashboard.getTasks.useQuery({ limit: 50 });
+  const { data: batchData, isPending: batchPending, isFetching: batchFetching, error: batchError, refetch: refetchBatches } = trpc.dashboard.getRecentBatches.useQuery();
+  const { data: tasksData, isFetching: tasksFetching, refetch: refetchTasks } = trpc.dashboard.getTasks.useQuery({ limit: 50 });
 
   const handleRefresh = () => {
     refetchBatches();
@@ -155,6 +155,7 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
       error={batchError as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={batchFetching || tasksFetching}
       showRefresh
       isEmpty={batches.length === 0}
       emptyMessage="No active fermentations"

@@ -73,7 +73,7 @@ function AlertItem({ type, title, description, link, compact }: AlertItemProps) 
  */
 export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
   // Get tasks data using SG-based fermentation tracking
-  const { data: tasksData, isPending: tasksPending, refetch } = trpc.dashboard.getTasks.useQuery({
+  const { data: tasksData, isPending: tasksPending, isFetching, refetch } = trpc.dashboard.getTasks.useQuery({
     limit: 20, // Get more to properly categorize
   });
 
@@ -147,6 +147,7 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
       compact={compact}
       isLoading={isLoading}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={alerts.length === 0}
       emptyState={

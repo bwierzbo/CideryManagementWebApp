@@ -132,7 +132,7 @@ function VesselCard({ vessel, compact }: { vessel: VesselData; compact?: boolean
  * Shows visual representation of all vessels color-coded by status
  */
 export function VesselMapWidget({ compact, onRefresh }: WidgetProps) {
-  const { data, isPending, error, refetch } = trpc.vessel.liquidMap.useQuery();
+  const { data, isPending, isFetching, error, refetch } = trpc.vessel.liquidMap.useQuery();
 
   const handleRefresh = () => {
     refetch();
@@ -158,6 +158,7 @@ export function VesselMapWidget({ compact, onRefresh }: WidgetProps) {
       error={error as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={vessels.length === 0}
       emptyMessage="No vessels configured"

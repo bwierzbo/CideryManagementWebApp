@@ -38,7 +38,7 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
     };
   }, []);
 
-  const { data, isPending, error, refetch } = trpc.sales.getMargins.useQuery({
+  const { data, isPending, isFetching, error, refetch } = trpc.sales.getMargins.useQuery({
     startDate: startDateStr,
     endDate: endDateStr,
   });
@@ -67,6 +67,7 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
       error={error as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={!hasData}
       emptyMessage="No sales data for the last 30 days"

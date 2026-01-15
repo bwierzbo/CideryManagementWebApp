@@ -69,7 +69,7 @@ function ProgressRing({
  * Shows in-progress carbonation operations with progress tracking
  */
 export function ActiveCarbonationsWidget({ compact, onRefresh }: WidgetProps) {
-  const { data, isPending, error, refetch } = trpc.carbonation.listActive.useQuery();
+  const { data, isPending, isFetching, error, refetch } = trpc.carbonation.listActive.useQuery();
 
   const handleRefresh = () => {
     refetch();
@@ -89,6 +89,7 @@ export function ActiveCarbonationsWidget({ compact, onRefresh }: WidgetProps) {
       error={error as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={carbonations.length === 0}
       emptyMessage="No active carbonations"

@@ -46,7 +46,7 @@ function StatItem({ icon: Icon, label, value, subtext, color, compact }: StatIte
  * Shows batch counts by status (fermenting, conditioning, ready)
  */
 export function ProductionStatusWidget({ compact, onRefresh }: WidgetProps) {
-  const { data, isPending, error, refetch } = trpc.dashboard.getStats.useQuery();
+  const { data, isPending, isFetching, error, refetch } = trpc.dashboard.getStats.useQuery();
 
   const handleRefresh = () => {
     refetch();
@@ -62,6 +62,7 @@ export function ProductionStatusWidget({ compact, onRefresh }: WidgetProps) {
       error={error as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={!data}
       emptyState={

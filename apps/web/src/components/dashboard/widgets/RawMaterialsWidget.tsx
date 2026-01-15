@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
  */
 export function RawMaterialsWidget({ compact, onRefresh }: WidgetProps) {
   // Get vendors to show available suppliers
-  const { data: vendorsData, isPending, error, refetch } = trpc.vendor.list.useQuery({
+  const { data: vendorsData, isPending, isFetching, error, refetch } = trpc.vendor.list.useQuery({
     limit: 100,
     sortBy: "name",
     sortOrder: "asc",
@@ -38,6 +38,7 @@ export function RawMaterialsWidget({ compact, onRefresh }: WidgetProps) {
       error={error as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={false}
     >

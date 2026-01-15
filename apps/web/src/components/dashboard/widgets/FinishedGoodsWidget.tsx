@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
  */
 export function FinishedGoodsWidget({ compact, onRefresh }: WidgetProps) {
   // Get liquid map data which includes packaged inventory
-  const { data: liquidData, isPending, error, refetch } = trpc.vessel.liquidMap.useQuery();
+  const { data: liquidData, isPending, isFetching, error, refetch } = trpc.vessel.liquidMap.useQuery();
 
   const handleRefresh = () => {
     refetch();
@@ -35,6 +35,7 @@ export function FinishedGoodsWidget({ compact, onRefresh }: WidgetProps) {
       error={error as Error | null}
       onRetry={handleRefresh}
       onRefresh={handleRefresh}
+      isRefreshing={isFetching}
       showRefresh
       isEmpty={false}
     >
