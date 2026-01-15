@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { users } from "../schema";
+import type { TTBOpeningBalances } from "./ttb";
 
 // ============================================
 // ENUMS
@@ -338,6 +339,20 @@ export const organizationSettings = pgTable(
      * Configures initial vs ongoing measurement types, intervals, and alert types
      */
     measurementSchedules: jsonb("measurement_schedules").$type<MeasurementSchedules>(),
+
+    // ==========================================
+    // TTB Opening Balances
+    // ==========================================
+    /**
+     * Date when TTB opening balances were set
+     * Typically the last day of the previous reporting period before system adoption
+     */
+    ttbOpeningBalanceDate: text("ttb_opening_balance_date"), // Store as text for easier handling
+    /**
+     * TTB opening balances by tax class (wine gallons)
+     * Used for beginning inventory calculation when no prior period snapshot exists
+     */
+    ttbOpeningBalances: jsonb("ttb_opening_balances").$type<TTBOpeningBalances>(),
 
     // ==========================================
     // Timestamps

@@ -243,8 +243,169 @@ export const ttbReportingPeriodsRelations = relations(
   }),
 );
 
+/**
+ * TTB Period Snapshot Status Enum
+ */
+export const ttbSnapshotStatusEnum = pgEnum("ttb_snapshot_status", [
+  "draft",
+  "review",
+  "finalized",
+]);
+
+/**
+ * TTB Period Snapshots
+ *
+ * Stores finalized inventory data by tax class for each reporting period.
+ * Ending inventory from one period becomes beginning inventory for the next.
+ * Supports all TTB Form 5120.17 tax classes.
+ *
+ * Tax Classes:
+ * - Hard Cider: <8.5% ABV, ≤0.64g CO2/100ml, apple/pear only ($0.226/gal, -$0.056 credit)
+ * - Wine Not Over 16%: ≤16% ABV ($1.07/gal, -$0.90 credit for small producer)
+ * - Wine 16-21%: 16-21% ABV ($1.57/gal)
+ * - Wine 21-24%: 21-24% ABV ($3.15/gal)
+ * - Sparkling Wine: Naturally carbonated ($3.40/gal)
+ * - Carbonated Wine: Artificially carbonated ($3.30/gal)
+ */
+export const ttbPeriodSnapshots = pgTable(
+  "ttb_period_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Period identification
+    periodType: ttbPeriodTypeEnum("period_type").notNull(),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    year: integer("year").notNull(),
+    periodNumber: integer("period_number"), // Month (1-12) or Quarter (1-4), NULL for annual
+
+    // Bulk wines by tax class (wine gallons)
+    bulkHardCider: numeric("bulk_hard_cider", { precision: 10, scale: 3 }).notNull().default("0"),
+    bulkWineUnder16: numeric("bulk_wine_under_16", { precision: 10, scale: 3 }).notNull().default("0"),
+    bulkWine16To21: numeric("bulk_wine_16_to_21", { precision: 10, scale: 3 }).notNull().default("0"),
+    bulkWine21To24: numeric("bulk_wine_21_to_24", { precision: 10, scale: 3 }).notNull().default("0"),
+    bulkSparklingWine: numeric("bulk_sparkling_wine", { precision: 10, scale: 3 }).notNull().default("0"),
+    bulkCarbonatedWine: numeric("bulk_carbonated_wine", { precision: 10, scale: 3 }).notNull().default("0"),
+
+    // Bottled wines by tax class (wine gallons)
+    bottledHardCider: numeric("bottled_hard_cider", { precision: 10, scale: 3 }).notNull().default("0"),
+    bottledWineUnder16: numeric("bottled_wine_under_16", { precision: 10, scale: 3 }).notNull().default("0"),
+    bottledWine16To21: numeric("bottled_wine_16_to_21", { precision: 10, scale: 3 }).notNull().default("0"),
+    bottledWine21To24: numeric("bottled_wine_21_to_24", { precision: 10, scale: 3 }).notNull().default("0"),
+    bottledSparklingWine: numeric("bottled_sparkling_wine", { precision: 10, scale: 3 }).notNull().default("0"),
+    bottledCarbonatedWine: numeric("bottled_carbonated_wine", { precision: 10, scale: 3 }).notNull().default("0"),
+
+    // Spirits on hand (proof gallons)
+    spiritsAppleBrandy: numeric("spirits_apple_brandy", { precision: 10, scale: 3 }).notNull().default("0"),
+    spiritsGrape: numeric("spirits_grape", { precision: 10, scale: 3 }).notNull().default("0"),
+    spiritsOther: numeric("spirits_other", { precision: 10, scale: 3 }).notNull().default("0"),
+
+    // Production during period (wine gallons)
+    producedHardCider: numeric("produced_hard_cider", { precision: 10, scale: 3 }).notNull().default("0"),
+    producedWineUnder16: numeric("produced_wine_under_16", { precision: 10, scale: 3 }).notNull().default("0"),
+    producedWine16To21: numeric("produced_wine_16_to_21", { precision: 10, scale: 3 }).notNull().default("0"),
+
+    // Tax-paid removals by channel (wine gallons)
+    taxpaidTastingRoom: numeric("taxpaid_tasting_room", { precision: 10, scale: 3 }).notNull().default("0"),
+    taxpaidWholesale: numeric("taxpaid_wholesale", { precision: 10, scale: 3 }).notNull().default("0"),
+    taxpaidOnlineDtc: numeric("taxpaid_online_dtc", { precision: 10, scale: 3 }).notNull().default("0"),
+    taxpaidEvents: numeric("taxpaid_events", { precision: 10, scale: 3 }).notNull().default("0"),
+    taxpaidOther: numeric("taxpaid_other", { precision: 10, scale: 3 }).notNull().default("0"),
+
+    // Other removals (wine gallons)
+    removedSamples: numeric("removed_samples", { precision: 10, scale: 3 }).notNull().default("0"),
+    removedBreakage: numeric("removed_breakage", { precision: 10, scale: 3 }).notNull().default("0"),
+    removedProcessLoss: numeric("removed_process_loss", { precision: 10, scale: 3 }).notNull().default("0"),
+    removedDistilling: numeric("removed_distilling", { precision: 10, scale: 3 }).notNull().default("0"),
+
+    // Materials received
+    materialsApplesLbs: numeric("materials_apples_lbs", { precision: 12, scale: 2 }).notNull().default("0"),
+    materialsOtherFruitLbs: numeric("materials_other_fruit_lbs", { precision: 12, scale: 2 }).notNull().default("0"),
+    materialsJuiceGallons: numeric("materials_juice_gallons", { precision: 10, scale: 3 }).notNull().default("0"),
+    materialsSugarLbs: numeric("materials_sugar_lbs", { precision: 10, scale: 2 }).notNull().default("0"),
+
+    // Tax calculation
+    taxHardCider: numeric("tax_hard_cider", { precision: 10, scale: 2 }).notNull().default("0"),
+    taxWineUnder16: numeric("tax_wine_under_16", { precision: 10, scale: 2 }).notNull().default("0"),
+    taxWine16To21: numeric("tax_wine_16_to_21", { precision: 10, scale: 2 }).notNull().default("0"),
+    taxSmallProducerCredit: numeric("tax_small_producer_credit", { precision: 10, scale: 2 }).notNull().default("0"),
+    taxTotal: numeric("tax_total", { precision: 10, scale: 2 }).notNull().default("0"),
+
+    // Status and workflow
+    status: ttbSnapshotStatusEnum("status").notNull().default("draft"),
+    finalizedAt: timestamp("finalized_at"),
+    finalizedBy: uuid("finalized_by").references(() => users.id),
+
+    // Notes and audit
+    notes: text("notes"),
+    adjustments: text("adjustments"), // JSON string for manual adjustments
+
+    // Audit
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (table) => ({
+    periodEndIdx: index("ttb_period_snapshots_period_end_idx").on(table.periodEnd),
+    statusIdx: index("ttb_period_snapshots_status_idx").on(table.status),
+    yearIdx: index("ttb_period_snapshots_year_idx").on(table.year),
+    // Unique constraint - one snapshot per period
+    periodUniqueIdx: uniqueIndex("ttb_period_snapshots_unique_idx").on(
+      table.periodType,
+      table.year,
+      table.periodNumber,
+    ),
+  }),
+);
+
+// Period Snapshots Relations
+export const ttbPeriodSnapshotsRelations = relations(
+  ttbPeriodSnapshots,
+  ({ one }) => ({
+    finalizedByUser: one(users, {
+      fields: [ttbPeriodSnapshots.finalizedBy],
+      references: [users.id],
+      relationName: "ttb_snapshot_finalized_by",
+    }),
+    createdByUser: one(users, {
+      fields: [ttbPeriodSnapshots.createdBy],
+      references: [users.id],
+      relationName: "ttb_snapshot_created_by",
+    }),
+  }),
+);
+
 // Type inference helpers
 export type SalesChannel = typeof salesChannels.$inferSelect;
 export type NewSalesChannel = typeof salesChannels.$inferInsert;
 export type TTBReportingPeriod = typeof ttbReportingPeriods.$inferSelect;
 export type NewTTBReportingPeriod = typeof ttbReportingPeriods.$inferInsert;
+export type TTBPeriodSnapshot = typeof ttbPeriodSnapshots.$inferSelect;
+export type NewTTBPeriodSnapshot = typeof ttbPeriodSnapshots.$inferInsert;
+
+/**
+ * TTB Opening Balances Type
+ * Used in organization_settings.ttb_opening_balances
+ */
+export interface TTBOpeningBalances {
+  bulk: {
+    hardCider: number;
+    wineUnder16: number;
+    wine16To21: number;
+    wine21To24: number;
+    sparklingWine: number;
+    carbonatedWine: number;
+  };
+  bottled: {
+    hardCider: number;
+    wineUnder16: number;
+    wine16To21: number;
+    wine21To24: number;
+    sparklingWine: number;
+    carbonatedWine: number;
+  };
+  spirits: {
+    appleBrandy: number;
+    grapeSpirits: number;
+  };
+}

@@ -100,6 +100,7 @@ import { OverheadSettings } from "@/components/admin/OverheadSettings";
 import { MeasurementSchedulesSettings } from "@/components/admin/MeasurementSchedulesSettings";
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
+import { TTBOpeningBalancesSettings } from "@/components/admin/TTBOpeningBalancesSettings";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
 
@@ -1833,6 +1834,9 @@ function SystemSettings() {
 
       {/* Measurement Schedules - Product-type-specific measurement schedules */}
       <MeasurementSchedulesSettings />
+
+      {/* TTB Opening Balances - For beginning inventory tracking */}
+      <TTBOpeningBalancesSettings />
 
       {/* Save Button */}
       <div className="flex justify-end">

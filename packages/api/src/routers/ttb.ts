@@ -17,6 +17,8 @@ import {
   kegFills,
   salesChannels,
   ttbReportingPeriods,
+  ttbPeriodSnapshots,
+  organizationSettings,
   batchFilterOperations,
   batchRackingOperations,
   bottleRuns,
@@ -29,12 +31,14 @@ import {
   additivePurchases,
   additivePurchaseItems,
   additiveVarieties,
+  type TTBOpeningBalances,
 } from "db";
 import {
   eq,
   and,
   gte,
   lte,
+  lt,
   isNull,
   sql,
   desc,
@@ -884,6 +888,526 @@ export const ttbRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to submit TTB report",
+        });
+      }
+    }),
+
+  // ============================================
+  // TTB Opening Balances & Period Snapshots
+  // ============================================
+
+  /**
+   * Get TTB opening balances from organization settings.
+   * Used for initial system setup and beginning inventory calculation.
+   */
+  getOpeningBalances: protectedProcedure.query(async () => {
+    try {
+      const [settings] = await db
+        .select({
+          ttbOpeningBalanceDate: organizationSettings.ttbOpeningBalanceDate,
+          ttbOpeningBalances: organizationSettings.ttbOpeningBalances,
+        })
+        .from(organizationSettings)
+        .limit(1);
+
+      const defaultBalances: TTBOpeningBalances = {
+        bulk: {
+          hardCider: 0,
+          wineUnder16: 0,
+          wine16To21: 0,
+          wine21To24: 0,
+          sparklingWine: 0,
+          carbonatedWine: 0,
+        },
+        bottled: {
+          hardCider: 0,
+          wineUnder16: 0,
+          wine16To21: 0,
+          wine21To24: 0,
+          sparklingWine: 0,
+          carbonatedWine: 0,
+        },
+        spirits: {
+          appleBrandy: 0,
+          grapeSpirits: 0,
+        },
+      };
+
+      return {
+        date: settings?.ttbOpeningBalanceDate || null,
+        balances: settings?.ttbOpeningBalances || defaultBalances,
+      };
+    } catch (error) {
+      console.error("Error fetching TTB opening balances:", error);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to fetch TTB opening balances",
+      });
+    }
+  }),
+
+  /**
+   * Update TTB opening balances (admin only).
+   * Sets the starting point for TTB inventory tracking.
+   */
+  updateOpeningBalances: createRbacProcedure("update", "settings")
+    .input(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD format
+        balances: z.object({
+          bulk: z.object({
+            hardCider: z.number().min(0),
+            wineUnder16: z.number().min(0),
+            wine16To21: z.number().min(0),
+            wine21To24: z.number().min(0),
+            sparklingWine: z.number().min(0),
+            carbonatedWine: z.number().min(0),
+          }),
+          bottled: z.object({
+            hardCider: z.number().min(0),
+            wineUnder16: z.number().min(0),
+            wine16To21: z.number().min(0),
+            wine21To24: z.number().min(0),
+            sparklingWine: z.number().min(0),
+            carbonatedWine: z.number().min(0),
+          }),
+          spirits: z.object({
+            appleBrandy: z.number().min(0),
+            grapeSpirits: z.number().min(0),
+          }),
+        }),
+      })
+    )
+    .mutation(async ({ input }) => {
+      try {
+        const [updated] = await db
+          .update(organizationSettings)
+          .set({
+            ttbOpeningBalanceDate: input.date,
+            ttbOpeningBalances: input.balances,
+            updatedAt: new Date(),
+          })
+          .returning();
+
+        if (!updated) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Organization settings not found",
+          });
+        }
+
+        return { success: true };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating TTB opening balances:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update TTB opening balances",
+        });
+      }
+    }),
+
+  /**
+   * Get the most recent finalized period snapshot before a given date.
+   * Used to determine beginning inventory for a period.
+   */
+  getPreviousSnapshot: protectedProcedure
+    .input(
+      z.object({
+        beforeDate: z.string().transform((s) => new Date(s)),
+        periodType: z.enum(["monthly", "quarterly", "annual"]).optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      try {
+        const conditions = [
+          eq(ttbPeriodSnapshots.status, "finalized"),
+          lt(ttbPeriodSnapshots.periodEnd, input.beforeDate.toISOString().split("T")[0]),
+        ];
+
+        if (input.periodType) {
+          conditions.push(eq(ttbPeriodSnapshots.periodType, input.periodType));
+        }
+
+        const [snapshot] = await db
+          .select()
+          .from(ttbPeriodSnapshots)
+          .where(and(...conditions))
+          .orderBy(desc(ttbPeriodSnapshots.periodEnd))
+          .limit(1);
+
+        return snapshot || null;
+      } catch (error) {
+        console.error("Error fetching previous TTB snapshot:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch previous TTB snapshot",
+        });
+      }
+    }),
+
+  /**
+   * List period snapshots for a year.
+   */
+  listPeriodSnapshots: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2020).max(2100),
+        periodType: z.enum(["monthly", "quarterly", "annual"]).optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      try {
+        const conditions = [eq(ttbPeriodSnapshots.year, input.year)];
+
+        if (input.periodType) {
+          conditions.push(eq(ttbPeriodSnapshots.periodType, input.periodType));
+        }
+
+        const snapshots = await db
+          .select()
+          .from(ttbPeriodSnapshots)
+          .where(and(...conditions))
+          .orderBy(asc(ttbPeriodSnapshots.periodStart));
+
+        return snapshots;
+      } catch (error) {
+        console.error("Error listing TTB period snapshots:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to list TTB period snapshots",
+        });
+      }
+    }),
+
+  /**
+   * Create or update a period snapshot.
+   * Used to save TTB report data for a specific period.
+   */
+  savePeriodSnapshot: createRbacProcedure("create", "report")
+    .input(
+      z.object({
+        periodType: z.enum(["monthly", "quarterly", "annual"]),
+        year: z.number().int().min(2020).max(2100),
+        periodNumber: z.number().int().min(1).max(12).optional(),
+        periodStart: z.string(),
+        periodEnd: z.string(),
+        data: z.object({
+          // Bulk wines by tax class
+          bulkHardCider: z.number().default(0),
+          bulkWineUnder16: z.number().default(0),
+          bulkWine16To21: z.number().default(0),
+          bulkWine21To24: z.number().default(0),
+          bulkSparklingWine: z.number().default(0),
+          bulkCarbonatedWine: z.number().default(0),
+          // Bottled wines by tax class
+          bottledHardCider: z.number().default(0),
+          bottledWineUnder16: z.number().default(0),
+          bottledWine16To21: z.number().default(0),
+          bottledWine21To24: z.number().default(0),
+          bottledSparklingWine: z.number().default(0),
+          bottledCarbonatedWine: z.number().default(0),
+          // Spirits
+          spiritsAppleBrandy: z.number().default(0),
+          spiritsGrape: z.number().default(0),
+          spiritsOther: z.number().default(0),
+          // Production
+          producedHardCider: z.number().default(0),
+          producedWineUnder16: z.number().default(0),
+          producedWine16To21: z.number().default(0),
+          // Tax-paid removals by channel
+          taxpaidTastingRoom: z.number().default(0),
+          taxpaidWholesale: z.number().default(0),
+          taxpaidOnlineDtc: z.number().default(0),
+          taxpaidEvents: z.number().default(0),
+          taxpaidOther: z.number().default(0),
+          // Other removals
+          removedSamples: z.number().default(0),
+          removedBreakage: z.number().default(0),
+          removedProcessLoss: z.number().default(0),
+          removedDistilling: z.number().default(0),
+          // Materials
+          materialsApplesLbs: z.number().default(0),
+          materialsOtherFruitLbs: z.number().default(0),
+          materialsJuiceGallons: z.number().default(0),
+          materialsSugarLbs: z.number().default(0),
+          // Tax calculation
+          taxHardCider: z.number().default(0),
+          taxWineUnder16: z.number().default(0),
+          taxWine16To21: z.number().default(0),
+          taxSmallProducerCredit: z.number().default(0),
+          taxTotal: z.number().default(0),
+        }),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        // Check for existing snapshot for this period
+        const existing = await db
+          .select()
+          .from(ttbPeriodSnapshots)
+          .where(
+            and(
+              eq(ttbPeriodSnapshots.periodType, input.periodType),
+              eq(ttbPeriodSnapshots.year, input.year),
+              input.periodNumber
+                ? eq(ttbPeriodSnapshots.periodNumber, input.periodNumber)
+                : isNull(ttbPeriodSnapshots.periodNumber)
+            )
+          )
+          .limit(1);
+
+        const snapshotData = {
+          periodType: input.periodType,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          year: input.year,
+          periodNumber: input.periodNumber || null,
+          // Bulk wines
+          bulkHardCider: input.data.bulkHardCider.toString(),
+          bulkWineUnder16: input.data.bulkWineUnder16.toString(),
+          bulkWine16To21: input.data.bulkWine16To21.toString(),
+          bulkWine21To24: input.data.bulkWine21To24.toString(),
+          bulkSparklingWine: input.data.bulkSparklingWine.toString(),
+          bulkCarbonatedWine: input.data.bulkCarbonatedWine.toString(),
+          // Bottled wines
+          bottledHardCider: input.data.bottledHardCider.toString(),
+          bottledWineUnder16: input.data.bottledWineUnder16.toString(),
+          bottledWine16To21: input.data.bottledWine16To21.toString(),
+          bottledWine21To24: input.data.bottledWine21To24.toString(),
+          bottledSparklingWine: input.data.bottledSparklingWine.toString(),
+          bottledCarbonatedWine: input.data.bottledCarbonatedWine.toString(),
+          // Spirits
+          spiritsAppleBrandy: input.data.spiritsAppleBrandy.toString(),
+          spiritsGrape: input.data.spiritsGrape.toString(),
+          spiritsOther: input.data.spiritsOther.toString(),
+          // Production
+          producedHardCider: input.data.producedHardCider.toString(),
+          producedWineUnder16: input.data.producedWineUnder16.toString(),
+          producedWine16To21: input.data.producedWine16To21.toString(),
+          // Tax-paid removals
+          taxpaidTastingRoom: input.data.taxpaidTastingRoom.toString(),
+          taxpaidWholesale: input.data.taxpaidWholesale.toString(),
+          taxpaidOnlineDtc: input.data.taxpaidOnlineDtc.toString(),
+          taxpaidEvents: input.data.taxpaidEvents.toString(),
+          taxpaidOther: input.data.taxpaidOther.toString(),
+          // Other removals
+          removedSamples: input.data.removedSamples.toString(),
+          removedBreakage: input.data.removedBreakage.toString(),
+          removedProcessLoss: input.data.removedProcessLoss.toString(),
+          removedDistilling: input.data.removedDistilling.toString(),
+          // Materials
+          materialsApplesLbs: input.data.materialsApplesLbs.toString(),
+          materialsOtherFruitLbs: input.data.materialsOtherFruitLbs.toString(),
+          materialsJuiceGallons: input.data.materialsJuiceGallons.toString(),
+          materialsSugarLbs: input.data.materialsSugarLbs.toString(),
+          // Tax calculation
+          taxHardCider: input.data.taxHardCider.toString(),
+          taxWineUnder16: input.data.taxWineUnder16.toString(),
+          taxWine16To21: input.data.taxWine16To21.toString(),
+          taxSmallProducerCredit: input.data.taxSmallProducerCredit.toString(),
+          taxTotal: input.data.taxTotal.toString(),
+          notes: input.notes || null,
+          updatedAt: new Date(),
+        };
+
+        if (existing[0]) {
+          // Don't allow updating finalized snapshots
+          if (existing[0].status === "finalized") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Cannot modify a finalized period snapshot",
+            });
+          }
+
+          const [updated] = await db
+            .update(ttbPeriodSnapshots)
+            .set(snapshotData)
+            .where(eq(ttbPeriodSnapshots.id, existing[0].id))
+            .returning();
+
+          return { success: true, snapshot: updated, created: false };
+        } else {
+          const [created] = await db
+            .insert(ttbPeriodSnapshots)
+            .values({
+              ...snapshotData,
+              status: "draft",
+              createdBy: ctx.user.id,
+              createdAt: new Date(),
+            })
+            .returning();
+
+          return { success: true, snapshot: created, created: true };
+        }
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error saving TTB period snapshot:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to save TTB period snapshot",
+        });
+      }
+    }),
+
+  /**
+   * Finalize a period snapshot.
+   * Once finalized, the ending inventory becomes the beginning inventory for the next period.
+   */
+  finalizePeriodSnapshot: createRbacProcedure("update", "report")
+    .input(z.string().uuid())
+    .mutation(async ({ input: snapshotId, ctx }) => {
+      try {
+        const [snapshot] = await db
+          .select()
+          .from(ttbPeriodSnapshots)
+          .where(eq(ttbPeriodSnapshots.id, snapshotId))
+          .limit(1);
+
+        if (!snapshot) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Period snapshot not found",
+          });
+        }
+
+        if (snapshot.status === "finalized") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Period snapshot is already finalized",
+          });
+        }
+
+        const [updated] = await db
+          .update(ttbPeriodSnapshots)
+          .set({
+            status: "finalized",
+            finalizedAt: new Date(),
+            finalizedBy: ctx.user.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(ttbPeriodSnapshots.id, snapshotId))
+          .returning();
+
+        return { success: true, snapshot: updated };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error finalizing TTB period snapshot:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to finalize TTB period snapshot",
+        });
+      }
+    }),
+
+  /**
+   * Get beginning inventory for a period.
+   * Checks: 1) Previous finalized snapshot, 2) Opening balances, 3) Live calculation
+   */
+  getBeginningInventory: protectedProcedure
+    .input(
+      z.object({
+        periodStart: z.string().transform((s) => new Date(s)),
+      })
+    )
+    .query(async ({ input }) => {
+      try {
+        // 1. Check for previous finalized snapshot
+        const [previousSnapshot] = await db
+          .select()
+          .from(ttbPeriodSnapshots)
+          .where(
+            and(
+              eq(ttbPeriodSnapshots.status, "finalized"),
+              lt(ttbPeriodSnapshots.periodEnd, input.periodStart.toISOString().split("T")[0])
+            )
+          )
+          .orderBy(desc(ttbPeriodSnapshots.periodEnd))
+          .limit(1);
+
+        if (previousSnapshot) {
+          // Use ending inventory from previous finalized snapshot
+          return {
+            source: "snapshot" as const,
+            snapshotId: previousSnapshot.id,
+            snapshotPeriodEnd: previousSnapshot.periodEnd,
+            bulk: {
+              hardCider: Number(previousSnapshot.bulkHardCider || 0),
+              wineUnder16: Number(previousSnapshot.bulkWineUnder16 || 0),
+              wine16To21: Number(previousSnapshot.bulkWine16To21 || 0),
+              wine21To24: Number(previousSnapshot.bulkWine21To24 || 0),
+              sparklingWine: Number(previousSnapshot.bulkSparklingWine || 0),
+              carbonatedWine: Number(previousSnapshot.bulkCarbonatedWine || 0),
+            },
+            bottled: {
+              hardCider: Number(previousSnapshot.bottledHardCider || 0),
+              wineUnder16: Number(previousSnapshot.bottledWineUnder16 || 0),
+              wine16To21: Number(previousSnapshot.bottledWine16To21 || 0),
+              wine21To24: Number(previousSnapshot.bottledWine21To24 || 0),
+              sparklingWine: Number(previousSnapshot.bottledSparklingWine || 0),
+              carbonatedWine: Number(previousSnapshot.bottledCarbonatedWine || 0),
+            },
+            spirits: {
+              appleBrandy: Number(previousSnapshot.spiritsAppleBrandy || 0),
+              grapeSpirits: Number(previousSnapshot.spiritsGrape || 0),
+            },
+          };
+        }
+
+        // 2. Check for opening balances
+        const [settings] = await db
+          .select({
+            ttbOpeningBalanceDate: organizationSettings.ttbOpeningBalanceDate,
+            ttbOpeningBalances: organizationSettings.ttbOpeningBalances,
+          })
+          .from(organizationSettings)
+          .limit(1);
+
+        if (settings?.ttbOpeningBalances && settings.ttbOpeningBalanceDate) {
+          const openingDate = new Date(settings.ttbOpeningBalanceDate);
+          // Only use opening balances if the period starts on or after the opening balance date
+          if (input.periodStart >= openingDate) {
+            const balances = settings.ttbOpeningBalances;
+            return {
+              source: "opening_balances" as const,
+              openingBalanceDate: settings.ttbOpeningBalanceDate,
+              bulk: balances.bulk,
+              bottled: balances.bottled,
+              spirits: balances.spirits,
+            };
+          }
+        }
+
+        // 3. Return zeros if no prior data
+        return {
+          source: "none" as const,
+          bulk: {
+            hardCider: 0,
+            wineUnder16: 0,
+            wine16To21: 0,
+            wine21To24: 0,
+            sparklingWine: 0,
+            carbonatedWine: 0,
+          },
+          bottled: {
+            hardCider: 0,
+            wineUnder16: 0,
+            wine16To21: 0,
+            wine21To24: 0,
+            sparklingWine: 0,
+            carbonatedWine: 0,
+          },
+          spirits: {
+            appleBrandy: 0,
+            grapeSpirits: 0,
+          },
+        };
+      } catch (error) {
+        console.error("Error getting beginning inventory:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to get beginning inventory",
         });
       }
     }),

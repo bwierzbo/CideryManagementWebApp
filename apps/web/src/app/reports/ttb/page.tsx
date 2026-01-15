@@ -34,6 +34,7 @@ import {
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { TTBFormPreview } from "@/components/reports/TTBFormPreview";
+import { TTBPeriodFinalization } from "@/components/reports/TTBPeriodFinalization";
 import { downloadTTBFormPDF, type TTBFormPDFData } from "@/utils/pdf/ttbForm512017";
 import { downloadTTBFormExcel } from "@/utils/excel/ttbForm512017";
 
@@ -375,10 +376,20 @@ export default function TTBReportsPage() {
                 </CardContent>
               </Card>
             ) : formData ? (
-              <TTBFormPreview
-                formData={formData.formData}
-                periodLabel={formData.periodLabel}
-              />
+              <>
+                <TTBFormPreview
+                  formData={formData.formData}
+                  periodLabel={formData.periodLabel}
+                />
+                <TTBPeriodFinalization
+                  periodType={periodType}
+                  year={selectedYear}
+                  periodNumber={periodType !== "annual" ? selectedPeriod : undefined}
+                  periodStart={String(formData.formData.reportingPeriod.startDate)}
+                  periodEnd={String(formData.formData.reportingPeriod.endDate)}
+                  formData={formData.formData as any}
+                />
+              </>
             ) : (
               <Card>
                 <CardContent className="py-12">
