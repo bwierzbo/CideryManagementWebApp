@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { router, protectedProcedure, createRbacProcedure } from "../trpc";
+import { router, protectedProcedure, createRbacProcedure, adminProcedure } from "../trpc";
 import { TRPCError } from "@trpc/server";
 import {
   db,
@@ -950,7 +950,7 @@ export const ttbRouter = router({
    * Update TTB opening balances (admin only).
    * Sets the starting point for TTB inventory tracking.
    */
-  updateOpeningBalances: createRbacProcedure("update", "settings")
+  updateOpeningBalances: adminProcedure
     .input(
       z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // YYYY-MM-DD format

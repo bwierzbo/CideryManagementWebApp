@@ -76,6 +76,9 @@ function TaxClassInput({
   onBottledChange: (value: number) => void;
   isEditing: boolean;
 }) {
+  // Show empty string for 0 values so users can easily type without cursor positioning
+  const formatInputValue = (val: number) => (val === 0 ? "" : val.toString());
+
   return (
     <div className="grid grid-cols-3 gap-4 items-center py-2 border-b last:border-0">
       <div className="text-sm font-medium text-gray-700">{label}</div>
@@ -85,7 +88,8 @@ function TaxClassInput({
             type="number"
             step="0.001"
             min="0"
-            value={bulkValue}
+            placeholder="0"
+            value={formatInputValue(bulkValue)}
             onChange={(e) => onBulkChange(parseFloat(e.target.value) || 0)}
             className="w-full"
           />
@@ -99,7 +103,8 @@ function TaxClassInput({
             type="number"
             step="0.001"
             min="0"
-            value={bottledValue}
+            placeholder="0"
+            value={formatInputValue(bottledValue)}
             onChange={(e) => onBottledChange(parseFloat(e.target.value) || 0)}
             className="w-full"
           />
@@ -328,8 +333,8 @@ export function TTBOpeningBalancesSettings() {
               </p>
               <p className="text-xs text-green-700 mt-0.5">
                 Opening date: {formData.date} | Total:{" "}
-                {(bulkTotal + bottledTotal).toFixed(3)} wine gallons bulk/bottled
-                {spiritsTotal > 0 && ` + ${spiritsTotal.toFixed(3)} proof gallons spirits`}
+                {(bulkTotal + bottledTotal).toFixed(1)} wine gallons bulk/bottled
+                {spiritsTotal > 0 && ` + ${spiritsTotal.toFixed(1)} proof gallons spirits`}
               </p>
             </div>
           </div>
@@ -403,8 +408,8 @@ export function TTBOpeningBalancesSettings() {
               {/* Totals */}
               <div className="grid grid-cols-3 gap-4 items-center pt-3 mt-2 border-t-2 font-semibold">
                 <div className="text-sm text-gray-900">Total</div>
-                <div className="text-sm">{bulkTotal.toFixed(3)} gal</div>
-                <div className="text-sm">{bottledTotal.toFixed(3)} gal</div>
+                <div className="text-sm">{bulkTotal.toFixed(1)} gal</div>
+                <div className="text-sm">{bottledTotal.toFixed(1)} gal</div>
               </div>
             </div>
           </div>
@@ -422,30 +427,34 @@ export function TTBOpeningBalancesSettings() {
           <div className="border rounded-lg p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {(Object.keys(SPIRITS_LABELS) as Array<keyof SpiritsBalances>).map(
-                (key) => (
-                  <div key={key} className="space-y-1">
-                    <Label className="text-sm">{SPIRITS_LABELS[key]}</Label>
-                    {isEditing ? (
-                      <Input
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        value={formData.balances.spirits[key]}
-                        onChange={(e) =>
-                          updateSpiritsValue(key, parseFloat(e.target.value) || 0)
-                        }
-                      />
-                    ) : (
-                      <p className="text-sm py-2">
-                        {formData.balances.spirits[key].toFixed(3)} proof gal
-                      </p>
-                    )}
-                  </div>
-                )
+                (key) => {
+                  const value = formData.balances.spirits[key];
+                  return (
+                    <div key={key} className="space-y-1">
+                      <Label className="text-sm">{SPIRITS_LABELS[key]}</Label>
+                      {isEditing ? (
+                        <Input
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="0"
+                          value={value === 0 ? "" : value.toString()}
+                          onChange={(e) =>
+                            updateSpiritsValue(key, parseFloat(e.target.value) || 0)
+                          }
+                        />
+                      ) : (
+                        <p className="text-sm py-2">
+                          {value.toFixed(3)} proof gal
+                        </p>
+                      )}
+                    </div>
+                  );
+                }
               )}
             </div>
             <div className="pt-3 mt-3 border-t font-semibold text-sm">
-              Total Spirits: {spiritsTotal.toFixed(3)} proof gallons
+              Total Spirits: {spiritsTotal.toFixed(1)} proof gallons
             </div>
           </div>
         </div>
