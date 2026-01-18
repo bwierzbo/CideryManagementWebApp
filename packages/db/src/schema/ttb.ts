@@ -424,7 +424,8 @@ export const ttbReconciliationSnapshots = pgTable(
 
     // Reconciliation status
     isReconciled: boolean("is_reconciled").notNull().default(false),
-    status: ttbSnapshotStatusEnum("status").notNull().default("draft"),
+    // Using text with CHECK constraint in DB (not enum) to match migration pattern
+    status: text("status").notNull().default("draft").$type<"draft" | "review" | "finalized">(),
     finalizedAt: timestamp("finalized_at"),
     finalizedBy: uuid("finalized_by").references(() => users.id),
 
