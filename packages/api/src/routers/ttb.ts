@@ -18,6 +18,7 @@ import {
   salesChannels,
   ttbReportingPeriods,
   ttbPeriodSnapshots,
+  ttbReconciliationSnapshots,
   organizationSettings,
   batchFilterOperations,
   batchRackingOperations,
@@ -2066,5 +2067,256 @@ export const ttbRouter = router({
         message: "Failed to get reconciliation summary",
       });
     }
+  }),
+
+  // ============================================
+  // RECONCILIATION SNAPSHOTS
+  // ============================================
+
+  /**
+   * Save current reconciliation state as a snapshot
+   * Takes the summary data from the frontend (which already has the calculated values)
+   */
+  saveReconciliation: protectedProcedure
+    .input(
+      z.object({
+        reconciliationDate: z.string(), // ISO date
+        name: z.string().optional(),
+        notes: z.string().optional(),
+        discrepancyExplanation: z.string().optional(),
+        // Summary data from frontend
+        summary: z.object({
+          openingBalanceDate: z.string().nullable(),
+          totals: z.object({
+            ttbBalance: z.number(),
+            currentInventory: z.number(),
+            removals: z.number(),
+            legacyBatches: z.number(),
+            difference: z.number(),
+          }),
+          breakdown: z.object({
+            bulkInventory: z.number(),
+            packagedInventory: z.number(),
+            sales: z.number(),
+            losses: z.number(),
+          }).optional(),
+          inventoryByYear: z.array(z.object({
+            year: z.number(),
+            bulkGallons: z.number(),
+            packagedGallons: z.number(),
+            totalGallons: z.number(),
+          })).optional(),
+          productionAudit: z.object({
+            totals: z.object({
+              pressRuns: z.number(),
+              juicePurchases: z.number(),
+              totalProduction: z.number(),
+            }),
+            byYear: z.array(z.object({
+              year: z.number(),
+              pressRunsGallons: z.number(),
+              juicePurchasesGallons: z.number(),
+              totalGallons: z.number(),
+            })),
+          }).optional(),
+          taxClasses: z.array(z.any()).optional(),
+        }),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { summary } = input;
+      const isReconciled = Math.abs(summary.totals.difference) < 0.5;
+
+      const [snapshot] = await db
+        .insert(ttbReconciliationSnapshots)
+        .values({
+          reconciliationDate: input.reconciliationDate,
+          name: input.name,
+
+          // TTB Reference
+          ttbBalance: summary.totals.ttbBalance.toString(),
+          ttbSourceType: "opening_balance",
+          ttbSourceDate: summary.openingBalanceDate,
+
+          // Inventory Audit
+          inventoryBulk: (summary.breakdown?.bulkInventory || 0).toString(),
+          inventoryPackaged: (summary.breakdown?.packagedInventory || 0).toString(),
+          inventoryOnHand: summary.totals.currentInventory.toString(),
+          inventoryRemovals: summary.totals.removals.toString(),
+          inventoryLegacy: summary.totals.legacyBatches.toString(),
+          inventoryAccountedFor: (
+            summary.totals.currentInventory +
+            summary.totals.removals +
+            summary.totals.legacyBatches
+          ).toString(),
+          inventoryDifference: summary.totals.difference.toString(),
+
+          // Production Audit
+          productionPressRuns: (summary.productionAudit?.totals.pressRuns || 0).toString(),
+          productionJuicePurchases: (summary.productionAudit?.totals.juicePurchases || 0).toString(),
+          productionTotal: (summary.productionAudit?.totals.totalProduction || 0).toString(),
+
+          // Breakdown data (JSON)
+          productionByYear: JSON.stringify(summary.productionAudit?.byYear || []),
+          inventoryByYear: JSON.stringify(summary.inventoryByYear || []),
+          taxClassBreakdown: JSON.stringify(summary.taxClasses || []),
+
+          // Status
+          isReconciled,
+          status: "draft",
+          notes: input.notes,
+          discrepancyExplanation: input.discrepancyExplanation,
+
+          createdBy: ctx.session?.user?.id,
+        })
+        .returning();
+
+      return snapshot;
+    }),
+
+  /**
+   * Get list of past reconciliations
+   */
+  getReconciliationHistory: protectedProcedure
+    .input(
+      z.object({
+        limit: z.number().min(1).max(100).default(20),
+        offset: z.number().min(0).default(0),
+      }).optional()
+    )
+    .query(async ({ input }) => {
+      const limit = input?.limit || 20;
+      const offset = input?.offset || 0;
+
+      const snapshots = await db
+        .select({
+          id: ttbReconciliationSnapshots.id,
+          reconciliationDate: ttbReconciliationSnapshots.reconciliationDate,
+          name: ttbReconciliationSnapshots.name,
+          ttbBalance: ttbReconciliationSnapshots.ttbBalance,
+          inventoryOnHand: ttbReconciliationSnapshots.inventoryOnHand,
+          inventoryDifference: ttbReconciliationSnapshots.inventoryDifference,
+          productionTotal: ttbReconciliationSnapshots.productionTotal,
+          isReconciled: ttbReconciliationSnapshots.isReconciled,
+          status: ttbReconciliationSnapshots.status,
+          finalizedAt: ttbReconciliationSnapshots.finalizedAt,
+          createdAt: ttbReconciliationSnapshots.createdAt,
+        })
+        .from(ttbReconciliationSnapshots)
+        .orderBy(desc(ttbReconciliationSnapshots.reconciliationDate))
+        .limit(limit)
+        .offset(offset);
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(ttbReconciliationSnapshots);
+
+      return {
+        snapshots: snapshots.map((s) => ({
+          ...s,
+          ttbBalance: parseFloat(s.ttbBalance || "0"),
+          inventoryOnHand: parseFloat(s.inventoryOnHand || "0"),
+          inventoryDifference: parseFloat(s.inventoryDifference || "0"),
+          productionTotal: parseFloat(s.productionTotal || "0"),
+        })),
+        total: Number(count),
+        hasMore: offset + limit < Number(count),
+      };
+    }),
+
+  /**
+   * Get a specific reconciliation snapshot by ID
+   */
+  getReconciliationById: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const [snapshot] = await db
+        .select()
+        .from(ttbReconciliationSnapshots)
+        .where(eq(ttbReconciliationSnapshots.id, input.id));
+
+      if (!snapshot) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Reconciliation snapshot not found",
+        });
+      }
+
+      return {
+        ...snapshot,
+        ttbBalance: parseFloat(snapshot.ttbBalance || "0"),
+        inventoryBulk: parseFloat(snapshot.inventoryBulk || "0"),
+        inventoryPackaged: parseFloat(snapshot.inventoryPackaged || "0"),
+        inventoryOnHand: parseFloat(snapshot.inventoryOnHand || "0"),
+        inventoryRemovals: parseFloat(snapshot.inventoryRemovals || "0"),
+        inventoryLegacy: parseFloat(snapshot.inventoryLegacy || "0"),
+        inventoryAccountedFor: parseFloat(snapshot.inventoryAccountedFor || "0"),
+        inventoryDifference: parseFloat(snapshot.inventoryDifference || "0"),
+        productionPressRuns: parseFloat(snapshot.productionPressRuns || "0"),
+        productionJuicePurchases: parseFloat(snapshot.productionJuicePurchases || "0"),
+        productionTotal: parseFloat(snapshot.productionTotal || "0"),
+        productionByYear: snapshot.productionByYear ? JSON.parse(snapshot.productionByYear) : [],
+        inventoryByYear: snapshot.inventoryByYear ? JSON.parse(snapshot.inventoryByYear) : [],
+        taxClassBreakdown: snapshot.taxClassBreakdown ? JSON.parse(snapshot.taxClassBreakdown) : [],
+      };
+    }),
+
+  /**
+   * Finalize a reconciliation snapshot
+   */
+  finalizeReconciliation: adminProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        notes: z.string().optional(),
+        discrepancyExplanation: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const [snapshot] = await db
+        .update(ttbReconciliationSnapshots)
+        .set({
+          status: "finalized",
+          finalizedAt: new Date(),
+          finalizedBy: ctx.session?.user?.id,
+          notes: input.notes,
+          discrepancyExplanation: input.discrepancyExplanation,
+          updatedAt: new Date(),
+        })
+        .where(eq(ttbReconciliationSnapshots.id, input.id))
+        .returning();
+
+      if (!snapshot) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Reconciliation snapshot not found",
+        });
+      }
+
+      return snapshot;
+    }),
+
+  /**
+   * Get the most recent finalized reconciliation
+   */
+  getLastReconciliation: protectedProcedure.query(async () => {
+    const [snapshot] = await db
+      .select()
+      .from(ttbReconciliationSnapshots)
+      .where(eq(ttbReconciliationSnapshots.status, "finalized"))
+      .orderBy(desc(ttbReconciliationSnapshots.finalizedAt))
+      .limit(1);
+
+    if (!snapshot) {
+      return null;
+    }
+
+    return {
+      ...snapshot,
+      ttbBalance: parseFloat(snapshot.ttbBalance || "0"),
+      inventoryOnHand: parseFloat(snapshot.inventoryOnHand || "0"),
+      inventoryDifference: parseFloat(snapshot.inventoryDifference || "0"),
+      productionTotal: parseFloat(snapshot.productionTotal || "0"),
+    };
   }),
 });

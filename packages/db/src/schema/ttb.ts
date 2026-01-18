@@ -375,6 +375,92 @@ export const ttbPeriodSnapshotsRelations = relations(
   }),
 );
 
+/**
+ * TTB Reconciliation Snapshots
+ *
+ * Stores finalized reconciliation audits comparing:
+ * 1. TTB Balance (from opening balance or previous TTB form)
+ * 2. Inventory Audit (physical inventory + removals + legacy batches)
+ * 3. Production Audit (press runs + juice purchases)
+ *
+ * Allows historical tracking and audit trail of reconciliation activities.
+ */
+export const ttbReconciliationSnapshots = pgTable(
+  "ttb_reconciliation_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Reconciliation identification
+    reconciliationDate: date("reconciliation_date").notNull(), // "As of" date
+    name: text("name"), // Optional friendly name (e.g., "Q4 2024 Physical Inventory")
+
+    // TTB Reference
+    ttbBalance: numeric("ttb_balance", { precision: 12, scale: 3 }).notNull(), // Total TTB balance (gal)
+    ttbSourceType: text("ttb_source_type").notNull(), // "opening_balance" | "previous_snapshot"
+    ttbSourceDate: date("ttb_source_date"), // Date of TTB source
+
+    // Inventory Audit (Where is it now?)
+    inventoryBulk: numeric("inventory_bulk", { precision: 12, scale: 3 }).notNull().default("0"),
+    inventoryPackaged: numeric("inventory_packaged", { precision: 12, scale: 3 }).notNull().default("0"),
+    inventoryOnHand: numeric("inventory_on_hand", { precision: 12, scale: 3 }).notNull().default("0"), // Bulk + Packaged
+    inventoryRemovals: numeric("inventory_removals", { precision: 12, scale: 3 }).notNull().default("0"),
+    inventoryLegacy: numeric("inventory_legacy", { precision: 12, scale: 3 }).notNull().default("0"),
+    inventoryAccountedFor: numeric("inventory_accounted_for", { precision: 12, scale: 3 }).notNull().default("0"), // OnHand + Removals + Legacy
+    inventoryDifference: numeric("inventory_difference", { precision: 12, scale: 3 }).notNull().default("0"), // TTB - AccountedFor
+
+    // Production Audit (Did we track all sources?)
+    productionPressRuns: numeric("production_press_runs", { precision: 12, scale: 3 }).notNull().default("0"),
+    productionJuicePurchases: numeric("production_juice_purchases", { precision: 12, scale: 3 }).notNull().default("0"),
+    productionTotal: numeric("production_total", { precision: 12, scale: 3 }).notNull().default("0"),
+
+    // Production by year breakdown (JSON)
+    productionByYear: text("production_by_year"), // JSON array of {year, pressRuns, juicePurchases, total}
+
+    // Inventory by year breakdown (JSON)
+    inventoryByYear: text("inventory_by_year"), // JSON array of {year, bulk, packaged, total}
+
+    // Tax class breakdown (JSON) - optional detailed breakdown
+    taxClassBreakdown: text("tax_class_breakdown"), // JSON for detailed per-class data
+
+    // Reconciliation status
+    isReconciled: boolean("is_reconciled").notNull().default(false),
+    status: ttbSnapshotStatusEnum("status").notNull().default("draft"),
+    finalizedAt: timestamp("finalized_at"),
+    finalizedBy: uuid("finalized_by").references(() => users.id),
+
+    // Notes for audit trail
+    notes: text("notes"),
+    discrepancyExplanation: text("discrepancy_explanation"), // If not reconciled, explain why
+
+    // Audit
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    createdBy: uuid("created_by").references(() => users.id),
+  },
+  (table) => ({
+    reconciliationDateIdx: index("ttb_reconciliation_snapshots_date_idx").on(table.reconciliationDate),
+    statusIdx: index("ttb_reconciliation_snapshots_status_idx").on(table.status),
+    createdAtIdx: index("ttb_reconciliation_snapshots_created_idx").on(table.createdAt),
+  }),
+);
+
+// Reconciliation Snapshots Relations
+export const ttbReconciliationSnapshotsRelations = relations(
+  ttbReconciliationSnapshots,
+  ({ one }) => ({
+    finalizedByUser: one(users, {
+      fields: [ttbReconciliationSnapshots.finalizedBy],
+      references: [users.id],
+      relationName: "ttb_reconciliation_finalized_by",
+    }),
+    createdByUser: one(users, {
+      fields: [ttbReconciliationSnapshots.createdBy],
+      references: [users.id],
+      relationName: "ttb_reconciliation_created_by",
+    }),
+  }),
+);
+
 // Type inference helpers
 export type SalesChannel = typeof salesChannels.$inferSelect;
 export type NewSalesChannel = typeof salesChannels.$inferInsert;
@@ -382,6 +468,8 @@ export type TTBReportingPeriod = typeof ttbReportingPeriods.$inferSelect;
 export type NewTTBReportingPeriod = typeof ttbReportingPeriods.$inferInsert;
 export type TTBPeriodSnapshot = typeof ttbPeriodSnapshots.$inferSelect;
 export type NewTTBPeriodSnapshot = typeof ttbPeriodSnapshots.$inferInsert;
+export type TTBReconciliationSnapshot = typeof ttbReconciliationSnapshots.$inferSelect;
+export type NewTTBReconciliationSnapshot = typeof ttbReconciliationSnapshots.$inferInsert;
 
 /**
  * TTB Opening Balances Type

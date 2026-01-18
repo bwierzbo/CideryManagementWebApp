@@ -19,6 +19,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Calculator,
   CheckCircle,
@@ -31,17 +41,143 @@ import {
   History,
   Factory,
   Droplets,
+  Save,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  Clock,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
+import { downloadReconciliationExcel, type ReconciliationExportData } from "@/utils/excel/ttbReconciliation";
+import { downloadReconciliationPDF } from "@/utils/pdf/ttbReconciliation";
+import { formatDate } from "@/utils/date-format";
 
 export function TTBReconciliationSummary() {
   const today = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState<string>(today);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [reconciliationName, setReconciliationName] = useState("");
+  const [reconciliationNotes, setReconciliationNotes] = useState("");
+
+  const utils = trpc.useUtils();
 
   const { data, isLoading, error } = trpc.ttb.getReconciliationSummary.useQuery({
     asOfDate: selectedDate,
   });
+
+  const { data: lastReconciliation } = trpc.ttb.getLastReconciliation.useQuery();
+
+  const saveReconciliation = trpc.ttb.saveReconciliation.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Reconciliation Saved",
+        description: `Saved reconciliation for ${selectedDate}`,
+      });
+      setSaveDialogOpen(false);
+      setReconciliationName("");
+      setReconciliationNotes("");
+      utils.ttb.getLastReconciliation.invalidate();
+      utils.ttb.getReconciliationHistory.invalidate();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error Saving Reconciliation",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveReconciliation = () => {
+    if (!data) return;
+
+    saveReconciliation.mutate({
+      reconciliationDate: selectedDate,
+      name: reconciliationName || undefined,
+      notes: reconciliationNotes || undefined,
+      summary: {
+        openingBalanceDate: data.openingBalanceDate,
+        totals: data.totals,
+        breakdown: data.breakdown,
+        inventoryByYear: data.inventoryByYear,
+        productionAudit: data.productionAudit,
+        taxClasses: data.taxClasses,
+      },
+    });
+  };
+
+  const getExportData = (): ReconciliationExportData | null => {
+    if (!data) return null;
+
+    return {
+      reconciliationDate: selectedDate,
+      name: reconciliationName || `Reconciliation ${selectedDate}`,
+      openingBalanceDate: data.openingBalanceDate,
+      ttbBalance: data.totals.ttbBalance,
+      inventoryBulk: data.breakdown?.bulkInventory || 0,
+      inventoryPackaged: data.breakdown?.packagedInventory || 0,
+      inventoryOnHand: data.totals.currentInventory,
+      inventoryRemovals: data.totals.removals,
+      inventoryLegacy: data.totals.legacyBatches,
+      inventoryAccountedFor: data.totals.currentInventory + data.totals.removals + data.totals.legacyBatches,
+      inventoryDifference: data.totals.difference,
+      productionPressRuns: data.productionAudit?.totals.pressRuns || 0,
+      productionJuicePurchases: data.productionAudit?.totals.juicePurchases || 0,
+      productionTotal: data.productionAudit?.totals.totalProduction || 0,
+      inventoryByYear: data.inventoryByYear || [],
+      productionByYear: data.productionAudit?.byYear || [],
+      taxClasses: data.taxClasses?.map((tc) => ({
+        label: tc.label,
+        ttbTotal: tc.ttbTotal,
+        currentInventory: tc.currentInventory,
+        removals: tc.removals,
+        legacyBatches: tc.legacyBatches,
+        difference: tc.difference,
+      })),
+      isReconciled: Math.abs(data.totals.difference) < 0.5,
+      notes: reconciliationNotes,
+    };
+  };
+
+  const handleExportExcel = async () => {
+    const exportData = getExportData();
+    if (!exportData) return;
+
+    try {
+      await downloadReconciliationExcel(exportData);
+      toast({
+        title: "Excel Downloaded",
+        description: `TTB-Reconciliation-${selectedDate}.xlsx`,
+      });
+    } catch (err) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to generate Excel file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExportPDF = async () => {
+    const exportData = getExportData();
+    if (!exportData) return;
+
+    try {
+      await downloadReconciliationPDF(exportData);
+      toast({
+        title: "PDF Downloaded",
+        description: `TTB-Reconciliation-${selectedDate}.pdf`,
+      });
+    } catch (err) {
+      toast({
+        title: "Export Failed",
+        description: "Failed to generate PDF file",
+        variant: "destructive",
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -153,38 +289,121 @@ export function TTBReconciliationSummary() {
             )}
           </div>
 
-          {/* Date Selection */}
-          <div className="flex items-end gap-3 p-3 bg-gray-50 rounded-lg">
-            <div className="flex-1 max-w-xs">
-              <Label htmlFor="reconciliation-date" className="text-xs text-gray-600">
-                Reconcile As Of Date
-              </Label>
-              <Input
-                id="reconciliation-date"
-                type="date"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="mt-1"
-              />
+          {/* Date Selection and Actions */}
+          <div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg">
+            <div className="flex items-end gap-3">
+              <div className="flex-1 max-w-xs">
+                <Label htmlFor="reconciliation-date" className="text-xs text-gray-600">
+                  Reconcile As Of Date
+                </Label>
+                <Input
+                  id="reconciliation-date"
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSetToTTBDate}
+                className="flex items-center gap-1"
+              >
+                <History className="w-3 h-3" />
+                TTB Date ({data.openingBalanceDate})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSetToToday}
+                className="flex items-center gap-1"
+              >
+                <Calendar className="w-3 h-3" />
+                Today
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSetToTTBDate}
-              className="flex items-center gap-1"
-            >
-              <History className="w-3 h-3" />
-              TTB Date ({data.openingBalanceDate})
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSetToToday}
-              className="flex items-center gap-1"
-            >
-              <Calendar className="w-3 h-3" />
-              Today
-            </Button>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+              <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="default" size="sm" className="flex items-center gap-1">
+                    <Save className="w-3 h-3" />
+                    Save Reconciliation
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Save Reconciliation</DialogTitle>
+                    <DialogDescription>
+                      Save this reconciliation snapshot for audit records. Date: {selectedDate}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div>
+                      <Label htmlFor="recon-name">Name (optional)</Label>
+                      <Input
+                        id="recon-name"
+                        placeholder="e.g., Q4 2024 Physical Inventory"
+                        value={reconciliationName}
+                        onChange={(e) => setReconciliationName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="recon-notes">Notes (optional)</Label>
+                      <Textarea
+                        id="recon-notes"
+                        placeholder="Any notes about this reconciliation..."
+                        value={reconciliationNotes}
+                        onChange={(e) => setReconciliationNotes(e.target.value)}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveReconciliation}
+                      disabled={saveReconciliation.isPending}
+                    >
+                      {saveReconciliation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      ) : (
+                        <Save className="w-4 h-4 mr-2" />
+                      )}
+                      Save
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Button variant="outline" size="sm" onClick={handleExportExcel} className="flex items-center gap-1">
+                <FileSpreadsheet className="w-3 h-3" />
+                Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExportPDF} className="flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                PDF
+              </Button>
+
+              {/* Last Reconciliation Info */}
+              {lastReconciliation && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <Clock className="w-3 h-3" />
+                  <span>
+                    Last saved: {formatDate(lastReconciliation.reconciliationDate)}
+                    {lastReconciliation.isReconciled ? (
+                      <CheckCircle className="w-3 h-3 inline ml-1 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="w-3 h-3 inline ml-1 text-amber-500" />
+                    )}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </CardHeader>
