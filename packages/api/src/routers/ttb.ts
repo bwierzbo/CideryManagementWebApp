@@ -1834,13 +1834,13 @@ export const ttbRouter = router({
         .orderBy(sql`EXTRACT(YEAR FROM ${pressRuns.dateCompleted})`);
 
       // Get juice purchase volumes by year (normalize to liters)
+      // Unit enum values: "kg", "lb", "L", "gal", "bushel"
       const juicePurchaseData = await db
         .select({
           year: sql<number>`EXTRACT(YEAR FROM ${juicePurchases.purchaseDate})`,
           totalLiters: sql<number>`COALESCE(SUM(
             CASE
               WHEN ${juicePurchaseItems.volumeUnit} = 'gal' THEN CAST(${juicePurchaseItems.volume} AS DECIMAL) * 3.78541
-              WHEN ${juicePurchaseItems.volumeUnit} = 'mL' THEN CAST(${juicePurchaseItems.volume} AS DECIMAL) / 1000
               ELSE CAST(${juicePurchaseItems.volume} AS DECIMAL)
             END
           ), 0)`,
