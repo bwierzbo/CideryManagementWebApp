@@ -1826,48 +1826,9 @@ export const ttbRouter = router({
 
       // ============================================
       // INVENTORY BY TAX CLASS (based on product_type)
-      // Maps product_type to TTB tax class for proper categorization
+      // For initial reconciliation, use initial_volume of verified batches
+      // For ongoing reconciliation, use current_volume
       // ============================================
-
-      // Get bulk inventory by product_type
-      const bulkByProductType = await db
-        .select({
-          productType: batches.productType,
-          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolume} AS DECIMAL)), 0)`,
-        })
-        .from(batches)
-        .where(
-          and(
-            isNull(batches.deletedAt),
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
-            sql`COALESCE(${batches.currentVolume}, 0) > 0`,
-            sql`COALESCE(${batches.isArchived}, false) = false`,
-            // Exclude legacy batches since they're tracked separately
-            sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
-          )
-        )
-        .groupBy(batches.productType);
-
-      // Get packaged inventory by product_type
-      const packagedByProductType = await db
-        .select({
-          productType: batches.productType,
-          totalML: sql<number>`COALESCE(SUM(
-            CAST(${inventoryItems.currentQuantity} AS DECIMAL) *
-            CAST(${inventoryItems.packageSizeML} AS DECIMAL)
-          ), 0)`,
-        })
-        .from(inventoryItems)
-        .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
-        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
-        .where(
-          and(
-            isNull(inventoryItems.deletedAt),
-            sql`${inventoryItems.currentQuantity} > 0`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`
-          )
-        )
-        .groupBy(batches.productType);
 
       // Map product_type to tax class key
       const productTypeToTaxClass = (productType: string | null): string => {
@@ -1890,18 +1851,81 @@ export const ttbRouter = router({
         grapeSpirits: 0,
       };
 
-      // Add bulk inventory by tax class
-      for (const row of bulkByProductType) {
-        const taxClass = productTypeToTaxClass(row.productType);
-        const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
-        inventoryByTaxClass[taxClass] += volumeGallons;
-      }
+      // For initial reconciliation (as of TTB opening date), query verified batches
+      // using initial_volume to capture historical state
+      if (isInitialReconciliation) {
+        const verifiedByProductType = await db
+          .select({
+            productType: batches.productType,
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolume} AS DECIMAL)), 0)`,
+          })
+          .from(batches)
+          .where(
+            and(
+              isNull(batches.deletedAt),
+              sql`${batches.startDate} <= ${reconciliationDate}::date`,
+              eq(batches.reconciliationStatus, "verified"),
+              sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
+            )
+          )
+          .groupBy(batches.productType);
 
-      // Add packaged inventory by tax class
-      for (const row of packagedByProductType) {
-        const taxClass = productTypeToTaxClass(row.productType);
-        const volumeGallons = Number(row.totalML || 0) / 3785.41;
-        inventoryByTaxClass[taxClass] += volumeGallons;
+        for (const row of verifiedByProductType) {
+          const taxClass = productTypeToTaxClass(row.productType);
+          const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+          inventoryByTaxClass[taxClass] += volumeGallons;
+        }
+      } else {
+        // For ongoing reconciliation, use current_volume of active batches
+        const bulkByProductType = await db
+          .select({
+            productType: batches.productType,
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolume} AS DECIMAL)), 0)`,
+          })
+          .from(batches)
+          .where(
+            and(
+              isNull(batches.deletedAt),
+              sql`${batches.startDate} <= ${reconciliationDate}::date`,
+              sql`COALESCE(${batches.currentVolume}, 0) > 0`,
+              sql`COALESCE(${batches.isArchived}, false) = false`,
+              sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
+            )
+          )
+          .groupBy(batches.productType);
+
+        for (const row of bulkByProductType) {
+          const taxClass = productTypeToTaxClass(row.productType);
+          const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+          inventoryByTaxClass[taxClass] += volumeGallons;
+        }
+
+        // Add packaged inventory by product_type
+        const packagedByProductType = await db
+          .select({
+            productType: batches.productType,
+            totalML: sql<number>`COALESCE(SUM(
+              CAST(${inventoryItems.currentQuantity} AS DECIMAL) *
+              CAST(${inventoryItems.packageSizeML} AS DECIMAL)
+            ), 0)`,
+          })
+          .from(inventoryItems)
+          .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
+          .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+          .where(
+            and(
+              isNull(inventoryItems.deletedAt),
+              sql`${inventoryItems.currentQuantity} > 0`,
+              sql`${batches.startDate} <= ${reconciliationDate}::date`
+            )
+          )
+          .groupBy(batches.productType);
+
+        for (const row of packagedByProductType) {
+          const taxClass = productTypeToTaxClass(row.productType);
+          const volumeGallons = Number(row.totalML || 0) / 3785.41;
+          inventoryByTaxClass[taxClass] += volumeGallons;
+        }
       }
 
       // ============================================
@@ -1910,51 +1934,77 @@ export const ttbRouter = router({
       // ============================================
 
       // Get bulk batch details with vessel info
-      const batchDetailData = await db
-        .select({
-          id: batches.id,
-          customName: batches.customName,
-          batchNumber: batches.batchNumber,
-          productType: batches.productType,
-          currentVolume: batches.currentVolume,
-          vesselId: batches.vesselId,
-          vesselName: vessels.name,
-        })
-        .from(batches)
-        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
-        .where(
-          and(
-            isNull(batches.deletedAt),
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
-            sql`COALESCE(${batches.currentVolume}, 0) > 0`,
-            sql`COALESCE(${batches.isArchived}, false) = false`,
-            sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
-          )
-        )
-        .orderBy(sql`CAST(${batches.currentVolume} AS DECIMAL) DESC`);
+      // For initial reconciliation, show verified batches with initial_volume
+      // For ongoing reconciliation, show active batches with current_volume
+      const batchDetailData = isInitialReconciliation
+        ? await db
+            .select({
+              id: batches.id,
+              customName: batches.customName,
+              batchNumber: batches.batchNumber,
+              productType: batches.productType,
+              volume: batches.initialVolume,
+              vesselId: batches.vesselId,
+              vesselName: vessels.name,
+            })
+            .from(batches)
+            .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+            .where(
+              and(
+                isNull(batches.deletedAt),
+                sql`${batches.startDate} <= ${reconciliationDate}::date`,
+                eq(batches.reconciliationStatus, "verified"),
+                sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
+              )
+            )
+            .orderBy(sql`CAST(${batches.initialVolume} AS DECIMAL) DESC`)
+        : await db
+            .select({
+              id: batches.id,
+              customName: batches.customName,
+              batchNumber: batches.batchNumber,
+              productType: batches.productType,
+              volume: batches.currentVolume,
+              vesselId: batches.vesselId,
+              vesselName: vessels.name,
+            })
+            .from(batches)
+            .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+            .where(
+              and(
+                isNull(batches.deletedAt),
+                sql`${batches.startDate} <= ${reconciliationDate}::date`,
+                sql`COALESCE(${batches.currentVolume}, 0) > 0`,
+                sql`COALESCE(${batches.isArchived}, false) = false`,
+                sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
+              )
+            )
+            .orderBy(sql`CAST(${batches.currentVolume} AS DECIMAL) DESC`);
 
-      // Get packaged inventory details
-      const packagedDetailData = await db
-        .select({
-          batchId: batches.id,
-          batchName: batches.customName,
-          batchNumber: batches.batchNumber,
-          productType: batches.productType,
-          lotCode: inventoryItems.lotCode,
-          packageSizeML: inventoryItems.packageSizeML,
-          currentQuantity: inventoryItems.currentQuantity,
-        })
-        .from(inventoryItems)
-        .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
-        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
-        .where(
-          and(
-            isNull(inventoryItems.deletedAt),
-            sql`${inventoryItems.currentQuantity} > 0`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`
-          )
-        )
-        .orderBy(sql`CAST(${inventoryItems.currentQuantity} AS DECIMAL) * CAST(${inventoryItems.packageSizeML} AS DECIMAL) DESC`);
+      // For ongoing reconciliation, also get packaged inventory details
+      const packagedDetailData = isInitialReconciliation
+        ? [] // No packaged inventory for initial reconciliation (before bottling)
+        : await db
+            .select({
+              batchId: batches.id,
+              batchName: batches.customName,
+              batchNumber: batches.batchNumber,
+              productType: batches.productType,
+              lotCode: inventoryItems.lotCode,
+              packageSizeML: inventoryItems.packageSizeML,
+              currentQuantity: inventoryItems.currentQuantity,
+            })
+            .from(inventoryItems)
+            .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
+            .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+            .where(
+              and(
+                isNull(inventoryItems.deletedAt),
+                sql`${inventoryItems.currentQuantity} > 0`,
+                sql`${batches.startDate} <= ${reconciliationDate}::date`
+              )
+            )
+            .orderBy(sql`CAST(${inventoryItems.currentQuantity} AS DECIMAL) * CAST(${inventoryItems.packageSizeML} AS DECIMAL) DESC`);
 
       // Group batch details by tax class
       type BatchDetail = {
@@ -1982,7 +2032,7 @@ export const ttbRouter = router({
       // Add bulk batches
       for (const batch of batchDetailData) {
         const taxClass = productTypeToTaxClass(batch.productType);
-        const volumeLiters = parseFloat(batch.currentVolume || "0");
+        const volumeLiters = parseFloat(batch.volume || "0");
         const volumeGallons = volumeLiters * 0.264172;
 
         batchDetailsByTaxClass[taxClass].push({
@@ -2182,7 +2232,7 @@ export const ttbRouter = router({
 
         // Use inventory by tax class from product_type mapping
         const currentInv = inventoryByTaxClass[key] || 0;
-        const removals = 0; // Removals not tracked by tax class yet
+        const removals = 0; // Removals not tracked by tax class
 
         const legacy = legacyByTaxClass[key] || 0;
         const accountedFor = currentInv + removals + legacy;
