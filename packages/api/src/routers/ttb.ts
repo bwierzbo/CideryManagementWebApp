@@ -11,6 +11,7 @@ import { TRPCError } from "@trpc/server";
 import {
   db,
   batches,
+  vessels,
   inventoryItems,
   inventoryDistributions,
   inventoryAdjustments,
@@ -1903,6 +1904,119 @@ export const ttbRouter = router({
         inventoryByTaxClass[taxClass] += volumeGallons;
       }
 
+      // ============================================
+      // BATCH DETAILS BY TAX CLASS
+      // Returns individual batches for reconciliation review
+      // ============================================
+
+      // Get bulk batch details with vessel info
+      const batchDetailData = await db
+        .select({
+          id: batches.id,
+          customName: batches.customName,
+          batchNumber: batches.batchNumber,
+          productType: batches.productType,
+          currentVolume: batches.currentVolume,
+          vesselId: batches.vesselId,
+          vesselName: vessels.name,
+        })
+        .from(batches)
+        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+        .where(
+          and(
+            isNull(batches.deletedAt),
+            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+            sql`COALESCE(${batches.currentVolume}, 0) > 0`,
+            sql`COALESCE(${batches.isArchived}, false) = false`,
+            sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
+          )
+        )
+        .orderBy(sql`CAST(${batches.currentVolume} AS DECIMAL) DESC`);
+
+      // Get packaged inventory details
+      const packagedDetailData = await db
+        .select({
+          batchId: batches.id,
+          batchName: batches.customName,
+          batchNumber: batches.batchNumber,
+          productType: batches.productType,
+          lotCode: inventoryItems.lotCode,
+          packageSizeML: inventoryItems.packageSizeML,
+          currentQuantity: inventoryItems.currentQuantity,
+        })
+        .from(inventoryItems)
+        .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
+        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+        .where(
+          and(
+            isNull(inventoryItems.deletedAt),
+            sql`${inventoryItems.currentQuantity} > 0`,
+            sql`${batches.startDate} <= ${reconciliationDate}::date`
+          )
+        )
+        .orderBy(sql`CAST(${inventoryItems.currentQuantity} AS DECIMAL) * CAST(${inventoryItems.packageSizeML} AS DECIMAL) DESC`);
+
+      // Group batch details by tax class
+      type BatchDetail = {
+        id: string;
+        name: string;
+        batchNumber: string;
+        vesselName: string | null;
+        volumeLiters: number;
+        volumeGallons: number;
+        type: 'bulk' | 'packaged';
+        packageInfo?: string;
+      };
+
+      const batchDetailsByTaxClass: Record<string, BatchDetail[]> = {
+        hardCider: [],
+        wineUnder16: [],
+        wine16To21: [],
+        wine21To24: [],
+        sparklingWine: [],
+        carbonatedWine: [],
+        appleBrandy: [],
+        grapeSpirits: [],
+      };
+
+      // Add bulk batches
+      for (const batch of batchDetailData) {
+        const taxClass = productTypeToTaxClass(batch.productType);
+        const volumeLiters = parseFloat(batch.currentVolume || "0");
+        const volumeGallons = volumeLiters * 0.264172;
+
+        batchDetailsByTaxClass[taxClass].push({
+          id: batch.id,
+          name: batch.customName || batch.batchNumber,
+          batchNumber: batch.batchNumber,
+          vesselName: batch.vesselName,
+          volumeLiters,
+          volumeGallons,
+          type: 'bulk',
+        });
+      }
+
+      // Add packaged inventory
+      for (const item of packagedDetailData) {
+        const taxClass = productTypeToTaxClass(item.productType);
+        const packageSize = Number(item.packageSizeML || 0);
+        const quantity = Number(item.currentQuantity || 0);
+        const volumeML = packageSize * quantity;
+        const volumeLiters = volumeML / 1000;
+        const volumeGallons = volumeML / 3785.41;
+
+        batchDetailsByTaxClass[taxClass].push({
+          id: `pkg-${item.batchId}-${item.lotCode || 'unknown'}`,
+          name: item.lotCode || item.batchName || item.batchNumber,
+          batchNumber: item.batchNumber,
+          vesselName: null,
+          volumeLiters,
+          volumeGallons,
+          type: 'packaged',
+          packageInfo: `${quantity} × ${packageSize}mL`,
+        });
+      }
+
       // Use historical inventory for the reconciliation
       const totalCurrentInventory = historicalInventoryGallons;
       const totalRemovals = 0; // Removals are already added back into historical inventory
@@ -2155,6 +2269,22 @@ export const ttbRouter = router({
           },
           byYear: productionByYear,
         },
+        // Batch details by tax class for reconciliation review
+        batchDetailsByTaxClass: Object.fromEntries(
+          Object.entries(batchDetailsByTaxClass).map(([key, batches]) => [
+            key,
+            batches.map(b => ({
+              id: b.id,
+              name: b.name,
+              batchNumber: b.batchNumber,
+              vesselName: b.vesselName,
+              volumeLiters: parseFloat(b.volumeLiters.toFixed(2)),
+              volumeGallons: parseFloat(b.volumeGallons.toFixed(2)),
+              type: b.type,
+              packageInfo: b.packageInfo,
+            })),
+          ])
+        ),
       };
     } catch (error) {
       console.error("Error getting reconciliation summary:", error);

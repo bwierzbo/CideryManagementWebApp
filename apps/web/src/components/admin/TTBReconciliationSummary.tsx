@@ -46,7 +46,16 @@ import {
   FileSpreadsheet,
   FileText,
   Clock,
+  ChevronDown,
+  ChevronRight,
+  Wine,
+  Beaker,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -54,12 +63,25 @@ import { downloadReconciliationExcel, type ReconciliationExportData } from "@/ut
 import { downloadReconciliationPDF } from "@/utils/pdf/ttbReconciliation";
 import { formatDate } from "@/utils/date-format";
 
+// Type for batch details from TTB API
+interface BatchDetail {
+  id: string;
+  name: string;
+  batchNumber: string;
+  vesselName: string | null;
+  volumeLiters: number;
+  volumeGallons: number;
+  type: 'bulk' | 'packaged';
+  packageInfo?: string;
+}
+
 export function TTBReconciliationSummary() {
   const today = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [reconciliationName, setReconciliationName] = useState("");
   const [reconciliationNotes, setReconciliationNotes] = useState("");
+  const [expandedTaxClasses, setExpandedTaxClasses] = useState<Record<string, boolean>>({});
 
   const utils = trpc.useUtils();
 
@@ -641,6 +663,115 @@ export function TTBReconciliationSummary() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Batch Details by Tax Class */}
+        {data.hasOpeningBalances && 'batchDetailsByTaxClass' in data && data.batchDetailsByTaxClass && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Beaker className="w-4 h-4" />
+              Batch Details by Tax Class
+            </h4>
+            <p className="text-xs text-gray-500 mb-3">
+              Click each tax class to see the batches and vessels contributing to the inventory total.
+            </p>
+            {data.taxClasses
+              .filter((tc) => tc.currentInventory > 0 || ((data.batchDetailsByTaxClass as Record<string, BatchDetail[]>)?.[tc.key]?.length ?? 0) > 0)
+              .map((tc) => {
+                const batchDetails = ((data.batchDetailsByTaxClass as Record<string, BatchDetail[]>)?.[tc.key] || []) as BatchDetail[];
+                const isExpanded = expandedTaxClasses[tc.key] || false;
+
+                return (
+                  <Collapsible
+                    key={tc.key}
+                    open={isExpanded}
+                    onOpenChange={(open) =>
+                      setExpandedTaxClasses((prev) => ({ ...prev, [tc.key]: open }))
+                    }
+                  >
+                    <CollapsibleTrigger asChild>
+                      <button className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                        <div className="flex items-center gap-3">
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                          )}
+                          <Wine className="w-4 h-4 text-gray-600" />
+                          <span className="font-medium text-sm">{tc.label}</span>
+                          <span className="text-xs text-gray-500">
+                            ({batchDetails.length} {batchDetails.length === 1 ? "item" : "items"})
+                          </span>
+                        </div>
+                        <span className="font-mono text-sm font-medium">
+                          {tc.currentInventory.toFixed(1)} gal
+                        </span>
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="mt-1 border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-gray-50">
+                              <TableHead className="text-xs font-medium">Batch/Item</TableHead>
+                              <TableHead className="text-xs font-medium">Vessel/Package</TableHead>
+                              <TableHead className="text-xs font-medium text-right">Volume (L)</TableHead>
+                              <TableHead className="text-xs font-medium text-right">Volume (gal)</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {batchDetails.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={4} className="text-center text-gray-500 text-sm py-4">
+                                  No batches in this category
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              batchDetails.map((batch: BatchDetail) => (
+                                <TableRow key={batch.id}>
+                                  <TableCell>
+                                    <div>
+                                      <span className="font-medium text-sm">{batch.name}</span>
+                                      <p className="text-xs text-gray-500">{batch.batchNumber}</p>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    {batch.type === "bulk" ? (
+                                      <span className="text-sm">{batch.vesselName || "—"}</span>
+                                    ) : (
+                                      <span className="text-sm text-purple-600">
+                                        {batch.packageInfo || "Packaged"}
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {batch.volumeLiters.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className="text-right font-mono text-sm">
+                                    {batch.volumeGallons.toFixed(2)}
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                            {batchDetails.length > 0 && (
+                              <TableRow className="bg-gray-50 font-medium">
+                                <TableCell colSpan={2} className="text-sm">Subtotal</TableCell>
+                                <TableCell className="text-right font-mono text-sm">
+                                  {batchDetails.reduce((sum: number, b: BatchDetail) => sum + b.volumeLiters, 0).toFixed(2)}
+                                </TableCell>
+                                <TableCell className="text-right font-mono text-sm">
+                                  {batchDetails.reduce((sum: number, b: BatchDetail) => sum + b.volumeGallons, 0).toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                );
+              })}
+          </div>
+        )}
 
         {/* Legend - Two Views */}
         <div className="space-y-3 pt-2">
