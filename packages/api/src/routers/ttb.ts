@@ -1588,46 +1588,51 @@ export const ttbRouter = router({
       const isInitialReconciliation = daysDiff <= 1;
 
       // ============================================
-      // HISTORICAL INVENTORY CALCULATION
-      // To find inventory at [reconciliationDate], we use:
-      // Inventory at Date = Initial Volume - Losses/Packaging BEFORE that date
-      // This accurately reconstructs what was on hand at any historical date
+      // INVENTORY CALCULATION using Production - Removals
+      // This is the correct TTB approach that avoids double-counting transfers
+      // Formula: Production (press runs + juice purchases) - Removals = Inventory
       // ============================================
 
-      // 2. Calculate INITIAL VOLUME of batches that existed on the reconciliation date
-      const initialVolumeData = await db
+      // 2a. PRODUCTION: Press runs completed on or before the date
+      const pressRunProduction = await db
         .select({
-          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolume} AS DECIMAL)), 0)`,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${pressRuns.totalJuiceVolumeLiters} AS DECIMAL)), 0)`,
         })
-        .from(batches)
+        .from(pressRuns)
         .where(
           and(
-            isNull(batches.deletedAt),
-            sql`${batches.startDate} <= ${reconciliationDate}::date`
+            isNull(pressRuns.deletedAt),
+            eq(pressRuns.status, "completed"),
+            sql`${pressRuns.dateCompleted}::date <= ${reconciliationDate}::date`
           )
         );
 
-      const initialVolumeGallons = Number(initialVolumeData[0]?.totalLiters || 0) * 0.264172;
+      const pressRunLiters = Number(pressRunProduction[0]?.totalLiters || 0);
 
-      // 3. Calculate volume REMOVED BEFORE the reconciliation date (reduces initial to historical)
-
-      // 3a. Packaging that happened BEFORE reconciliation date
-      const packagedBeforeData = await db
+      // 2b. PRODUCTION: Juice purchases on or before the date
+      const juicePurchaseProduction = await db
         .select({
-          totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
+          totalLiters: sql<number>`COALESCE(SUM(
+            CASE
+              WHEN ${juicePurchaseItems.volumeUnit} = 'gal' THEN CAST(${juicePurchaseItems.volume} AS DECIMAL) * 3.78541
+              ELSE CAST(${juicePurchaseItems.volume} AS DECIMAL)
+            END
+          ), 0)`,
         })
-        .from(bottleRuns)
-        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+        .from(juicePurchaseItems)
+        .innerJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
         .where(
           and(
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
-            sql`${bottleRuns.packagedAt} <= ${reconciliationDate}::date`
+            isNull(juicePurchases.deletedAt),
+            sql`${juicePurchases.purchaseDate}::date <= ${reconciliationDate}::date`
           )
         );
 
-      const packagedBeforeGallons = Number(packagedBeforeData[0]?.totalLiters || 0) * 0.264172;
+      const juicePurchaseLiters = Number(juicePurchaseProduction[0]?.totalLiters || 0);
+      const totalProductionLiters = pressRunLiters + juicePurchaseLiters;
 
-      // 3b. Racking losses BEFORE reconciliation date
+      // 3. REMOVALS: Calculate all removals from inventory
+      // 3a. Racking losses
       const rackingLossesBefore = await db
         .select({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${batchRackingOperations.volumeLoss} AS DECIMAL)), 0)`,
@@ -1644,7 +1649,7 @@ export const ttbRouter = router({
 
       const rackingLossesBeforeGallons = Number(rackingLossesBefore[0]?.totalLiters || 0) * 0.264172;
 
-      // 3c. Filter losses BEFORE reconciliation date
+      // 3b. Filter losses
       const filterLossesBefore = await db
         .select({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${batchFilterOperations.volumeLoss} AS DECIMAL)), 0)`,
@@ -1661,7 +1666,7 @@ export const ttbRouter = router({
 
       const filterLossesBeforeGallons = Number(filterLossesBefore[0]?.totalLiters || 0) * 0.264172;
 
-      // 3d. Bottling losses BEFORE reconciliation date
+      // 3c. Bottling losses
       const bottlingLossesBefore = await db
         .select({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.loss} AS DECIMAL)), 0)`,
@@ -1677,35 +1682,23 @@ export const ttbRouter = router({
 
       const bottlingLossesBeforeGallons = Number(bottlingLossesBefore[0]?.totalLiters || 0) * 0.264172;
 
-      // Total removed before reconciliation date
-      const totalRemovedBefore = packagedBeforeGallons + rackingLossesBeforeGallons +
-                                  filterLossesBeforeGallons + bottlingLossesBeforeGallons;
-
-      // Historical BULK inventory = Initial - Packaging - Losses (before date)
-      const historicalBulkGallons = initialVolumeGallons - totalRemovedBefore;
-
-      // Historical PACKAGED inventory = what was packaged before date (minus sales before date)
-      // For simplicity, we calculate packaged items that existed on that date
-      const packagedOnDateData = await db
+      // 3d. Transfer losses (from batch.transferLossL)
+      const transferLossesBefore = await db
         .select({
-          totalML: sql<number>`COALESCE(SUM(
-            CAST(${inventoryItems.currentQuantity} AS DECIMAL) *
-            CAST(${inventoryItems.packageSizeML} AS DECIMAL)
-          ), 0)`,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.transferLossL} AS DECIMAL)), 0)`,
         })
-        .from(inventoryItems)
-        .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
-        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+        .from(batches)
         .where(
           and(
-            isNull(inventoryItems.deletedAt),
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
-            sql`${bottleRuns.packagedAt} <= ${reconciliationDate}::date`
+            isNull(batches.deletedAt),
+            sql`${batches.startDate} <= ${reconciliationDate}::date`
           )
         );
 
-      // Add back sales that happened AFTER reconciliation date (to get historical packaged quantity)
-      const salesAfterData = await db
+      const transferLossesBeforeGallons = Number(transferLossesBefore[0]?.totalLiters || 0) * 0.264172;
+
+      // 3e. Distributions (sales) on or before the date
+      const distributionsBefore = await db
         .select({
           totalML: sql<number>`COALESCE(SUM(
             CAST(${inventoryDistributions.quantityDistributed} AS DECIMAL) *
@@ -1714,41 +1707,65 @@ export const ttbRouter = router({
         })
         .from(inventoryDistributions)
         .innerJoin(inventoryItems, eq(inventoryDistributions.inventoryItemId, inventoryItems.id))
-        .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
-        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
-        .where(
-          and(
-            sql`${inventoryDistributions.distributionDate} > ${reconciliationDate}::date`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
-            sql`${bottleRuns.packagedAt} <= ${reconciliationDate}::date`
-          )
-        );
+        .where(sql`${inventoryDistributions.distributionDate}::date <= ${reconciliationDate}::date`);
 
-      const packagedCurrentML = Number(packagedOnDateData[0]?.totalML || 0);
-      const salesAfterML = Number(salesAfterData[0]?.totalML || 0);
-      const historicalPackagedGallons = (packagedCurrentML + salesAfterML) / 3785.41;
+      const distributionsBeforeGallons = Number(distributionsBefore[0]?.totalML || 0) / 3785.41;
 
-      // Total historical inventory
-      const historicalInventoryGallons = historicalBulkGallons + historicalPackagedGallons;
+      // 3f. Volume packaged (converted from bulk to packaged) on or before the date
+      const packagedVolumeBefore = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
+        })
+        .from(bottleRuns)
+        .where(sql`${bottleRuns.packagedAt}::date <= ${reconciliationDate}::date`);
+
+      const packagedVolumeBeforeGallons = Number(packagedVolumeBefore[0]?.totalLiters || 0) * 0.264172;
+
+      // Calculate total losses
+      const totalLossesGallons = rackingLossesBeforeGallons + filterLossesBeforeGallons +
+        bottlingLossesBeforeGallons + transferLossesBeforeGallons;
+
+      // ============================================
+      // INVENTORY CALCULATION
+      // Production - Removals = Total Inventory (Bulk + Packaged)
+      // ============================================
+
+      // Total production in gallons
+      const totalProductionGallons = totalProductionLiters * 0.264172;
+
+      // Total removals = losses + distributions (sales leave the system)
+      const totalRemovalsGallons = totalLossesGallons + distributionsBeforeGallons;
+
+      // Total inventory = production - removals
+      const historicalInventoryGallons = totalProductionGallons - totalRemovalsGallons;
+
+      // Split into bulk and packaged:
+      // Packaged = volume packaged - distributions
+      const historicalPackagedGallons = Math.max(0, packagedVolumeBeforeGallons - distributionsBeforeGallons);
+
+      // Bulk = total inventory - packaged
+      const historicalBulkGallons = Math.max(0, historicalInventoryGallons - historicalPackagedGallons);
 
       // For display breakdown
       const bulkInventoryGallons = historicalBulkGallons;
       const packagedInventoryGallons = historicalPackagedGallons;
-      const salesGallons = 0; // Not applicable for historical view
-      const lossesGallons = rackingLossesBeforeGallons + filterLossesBeforeGallons + bottlingLossesBeforeGallons;
+      const salesGallons = distributionsBeforeGallons;
+      const lossesGallons = totalLossesGallons;
 
-      // Get inventory by year breakdown (using initial volume for historical)
+      // Get inventory by year breakdown (using current volume to avoid double-counting transfers)
       const bulkByYearData = await db
         .select({
           year: sql<number>`EXTRACT(YEAR FROM ${batches.startDate})`,
-          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolume} AS DECIMAL)), 0)`,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolume} AS DECIMAL)), 0)`,
           batchCount: sql<number>`COUNT(*)`,
         })
         .from(batches)
         .where(
           and(
             isNull(batches.deletedAt),
-            sql`${batches.startDate} <= ${reconciliationDate}::date`
+            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+            sql`COALESCE(${batches.currentVolume}, 0) > 0`, // Only count batches with remaining volume
+            sql`COALESCE(${batches.isArchived}, false) = false`
           )
         )
         .groupBy(sql`EXTRACT(YEAR FROM ${batches.startDate})`)
@@ -1805,6 +1822,86 @@ export const ttbRouter = router({
           itemCount: data.itemCount,
         }))
         .sort((a, b) => a.year - b.year);
+
+      // ============================================
+      // INVENTORY BY TAX CLASS (based on product_type)
+      // Maps product_type to TTB tax class for proper categorization
+      // ============================================
+
+      // Get bulk inventory by product_type
+      const bulkByProductType = await db
+        .select({
+          productType: batches.productType,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolume} AS DECIMAL)), 0)`,
+        })
+        .from(batches)
+        .where(
+          and(
+            isNull(batches.deletedAt),
+            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+            sql`COALESCE(${batches.currentVolume}, 0) > 0`,
+            sql`COALESCE(${batches.isArchived}, false) = false`,
+            // Exclude legacy batches since they're tracked separately
+            sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
+          )
+        )
+        .groupBy(batches.productType);
+
+      // Get packaged inventory by product_type
+      const packagedByProductType = await db
+        .select({
+          productType: batches.productType,
+          totalML: sql<number>`COALESCE(SUM(
+            CAST(${inventoryItems.currentQuantity} AS DECIMAL) *
+            CAST(${inventoryItems.packageSizeML} AS DECIMAL)
+          ), 0)`,
+        })
+        .from(inventoryItems)
+        .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
+        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+        .where(
+          and(
+            isNull(inventoryItems.deletedAt),
+            sql`${inventoryItems.currentQuantity} > 0`,
+            sql`${batches.startDate} <= ${reconciliationDate}::date`
+          )
+        )
+        .groupBy(batches.productType);
+
+      // Map product_type to tax class key
+      const productTypeToTaxClass = (productType: string | null): string => {
+        switch (productType) {
+          case 'pommeau': return 'wine16To21';
+          case 'brandy': return 'appleBrandy';
+          default: return 'hardCider';
+        }
+      };
+
+      // Build inventory by tax class
+      const inventoryByTaxClass: Record<string, number> = {
+        hardCider: 0,
+        wineUnder16: 0,
+        wine16To21: 0,
+        wine21To24: 0,
+        sparklingWine: 0,
+        carbonatedWine: 0,
+        appleBrandy: 0,
+        grapeSpirits: 0,
+      };
+
+      // Add bulk inventory by tax class
+      for (const row of bulkByProductType) {
+        const taxClass = productTypeToTaxClass(row.productType);
+        const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+        inventoryByTaxClass[taxClass] += volumeGallons;
+      }
+
+      // Add packaged inventory by tax class
+      for (const row of packagedByProductType) {
+        const taxClass = productTypeToTaxClass(row.productType);
+        const volumeGallons = Number(row.totalML || 0) / 3785.41;
+        inventoryByTaxClass[taxClass] += volumeGallons;
+      }
 
       // Use historical inventory for the reconciliation
       const totalCurrentInventory = historicalInventoryGallons;
@@ -1898,10 +1995,10 @@ export const ttbRouter = router({
         }))
         .sort((a, b) => a.year - b.year);
 
-      // Calculate total production
+      // Calculate total production for audit section
       const totalPressRunsGallons = productionByYear.reduce((sum, y) => sum + y.pressRunsGallons, 0);
       const totalJuicePurchasesGallons = productionByYear.reduce((sum, y) => sum + y.juicePurchasesGallons, 0);
-      const totalProductionGallons = totalPressRunsGallons + totalJuicePurchasesGallons;
+      const auditTotalProductionGallons = totalPressRunsGallons + totalJuicePurchasesGallons;
 
       // 4. Get legacy batches grouped by tax class
       const legacyBatchData = await db
@@ -1969,14 +2066,9 @@ export const ttbRouter = router({
         const ttbBottled = balances.bottled[key as keyof typeof balances.bottled] || 0;
         const ttbTotal = ttbBulk + ttbBottled;
 
-        // For now, all inventory/removals go to hardCider since we don't track tax class per batch
-        // This is a simplification - in reality, batches might be different tax classes
-        let currentInv = 0;
-        let removals = 0;
-        if (key === "hardCider") {
-          currentInv = totalCurrentInventory;
-          removals = totalRemovals;
-        }
+        // Use inventory by tax class from product_type mapping
+        const currentInv = inventoryByTaxClass[key] || 0;
+        const removals = 0; // Removals not tracked by tax class yet
 
         const legacy = legacyByTaxClass[key] || 0;
         const accountedFor = currentInv + removals + legacy;
@@ -2004,10 +2096,12 @@ export const ttbRouter = router({
       // Spirits tax classes
       for (const key of ["appleBrandy", "grapeSpirits"] as const) {
         const ttbTotal = balances.spirits[key] || 0;
+        const currentInv = inventoryByTaxClass[key] || 0;
         const legacy = legacyByTaxClass[key] || 0;
-        const difference = ttbTotal - legacy;
+        const accountedFor = currentInv + legacy;
+        const difference = ttbTotal - accountedFor;
 
-        if (ttbTotal > 0 || legacy > 0) {
+        if (ttbTotal > 0 || currentInv > 0 || legacy > 0) {
           taxClasses.push({
             key,
             label: taxClassLabels[key],
@@ -2015,7 +2109,7 @@ export const ttbRouter = router({
             ttbBulk: parseFloat(ttbTotal.toFixed(1)),
             ttbBottled: 0,
             ttbTotal: parseFloat(ttbTotal.toFixed(1)),
-            currentInventory: 0, // Spirits tracked separately
+            currentInventory: parseFloat(currentInv.toFixed(1)),
             removals: 0,
             legacyBatches: parseFloat(legacy.toFixed(1)),
             difference: parseFloat(difference.toFixed(1)),
@@ -2026,7 +2120,9 @@ export const ttbRouter = router({
         }
       }
 
-      const totalAccountedFor = totalCurrentInventory + totalRemovals + totalLegacy;
+      // Calculate total inventory from inventoryByTaxClass
+      const totalInventoryByTaxClass = Object.values(inventoryByTaxClass).reduce((sum, val) => sum + val, 0);
+      const totalAccountedFor = totalInventoryByTaxClass + totalRemovals + totalLegacy;
 
       return {
         hasOpeningBalances: true,
@@ -2036,7 +2132,7 @@ export const ttbRouter = router({
         taxClasses,
         totals: {
           ttbBalance: parseFloat(totalTtb.toFixed(1)),
-          currentInventory: parseFloat(totalCurrentInventory.toFixed(1)),
+          currentInventory: parseFloat(totalInventoryByTaxClass.toFixed(1)),
           removals: parseFloat(totalRemovals.toFixed(1)),
           legacyBatches: parseFloat(totalLegacy.toFixed(1)),
           difference: parseFloat((totalTtb - totalAccountedFor).toFixed(1)),
@@ -2055,7 +2151,7 @@ export const ttbRouter = router({
           totals: {
             pressRuns: parseFloat(totalPressRunsGallons.toFixed(1)),
             juicePurchases: parseFloat(totalJuicePurchasesGallons.toFixed(1)),
-            totalProduction: parseFloat(totalProductionGallons.toFixed(1)),
+            totalProduction: parseFloat(auditTotalProductionGallons.toFixed(1)),
           },
           byYear: productionByYear,
         },
