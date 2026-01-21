@@ -31,7 +31,9 @@ import {
   CheckCircle,
   AlertTriangle,
   Info,
+  Beaker,
 } from "lucide-react";
+import { trpc } from "@/utils/trpc";
 import {
   Step1Data,
   Step2Data,
@@ -56,6 +58,11 @@ const initialBatchForm: Omit<LegacyBatchInput, "productType"> = {
   volumeGallons: 0,
   taxClass: "hardCider",
   notes: "",
+  originalGravity: undefined,
+  finalGravity: undefined,
+  ph: undefined,
+  vesselId: undefined,
+  startDate: undefined,
 };
 
 export function Step3ResolveGaps({
@@ -70,6 +77,10 @@ export function Step3ResolveGaps({
 }: Step3Props) {
   const [batchForm, setBatchForm] = useState(initialBatchForm);
   const [showForm, setShowForm] = useState(false);
+
+  // Fetch available vessels
+  const { data: vesselData } = trpc.vessel.list.useQuery({});
+  const vessels = vesselData?.vessels;
 
   // Calculate remaining unreconciled amount
   const totalLegacyVolume = data.legacyBatches.reduce(
@@ -102,6 +113,11 @@ export function Step3ResolveGaps({
       taxClass: batchForm.taxClass,
       productType: selectedTaxClass?.productType || "cider",
       notes: batchForm.notes.trim(),
+      originalGravity: batchForm.originalGravity,
+      finalGravity: batchForm.finalGravity,
+      ph: batchForm.ph,
+      vesselId: batchForm.vesselId,
+      startDate: batchForm.startDate || step1Data.date, // Default to TTB date
     });
 
     setBatchForm(initialBatchForm);
@@ -220,6 +236,12 @@ export function Step3ResolveGaps({
                     <th className="px-4 py-2 text-left font-medium text-gray-700">
                       Tax Class
                     </th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">
+                      Vessel
+                    </th>
+                    <th className="px-4 py-2 text-center font-medium text-gray-700">
+                      OG / FG / pH
+                    </th>
                     <th className="px-4 py-2 text-right font-medium text-gray-700">
                       Volume
                     </th>
@@ -231,18 +253,28 @@ export function Step3ResolveGaps({
                     const taxClass = TAX_CLASS_OPTIONS.find(
                       (tc) => tc.value === batch.taxClass
                     );
+                    const vessel = vessels?.find((v) => v.id === batch.vesselId);
                     return (
                       <tr key={index} className="border-b last:border-0">
                         <td className="px-4 py-2">
                           <span className="font-medium">{batch.name}</span>
+                          {batch.startDate && (
+                            <p className="text-xs text-gray-500">{batch.startDate}</p>
+                          )}
                           {batch.notes && (
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">
                               {batch.notes}
                             </p>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-gray-600">
+                        <td className="px-4 py-2 text-gray-600 text-xs">
                           {taxClass?.label || batch.taxClass}
+                        </td>
+                        <td className="px-4 py-2 text-gray-600 text-xs">
+                          {vessel?.name || "—"}
+                        </td>
+                        <td className="px-4 py-2 text-center font-mono text-xs text-gray-600">
+                          {batch.originalGravity?.toFixed(3) || "—"} / {batch.finalGravity?.toFixed(3) || "—"} / {batch.ph?.toFixed(2) || "—"}
                         </td>
                         <td className="px-4 py-2 text-right font-mono">
                           {batch.volumeGallons.toFixed(1)} gal
@@ -263,7 +295,7 @@ export function Step3ResolveGaps({
                 </tbody>
                 <tfoot className="bg-gray-50 border-t">
                   <tr>
-                    <td colSpan={2} className="px-4 py-2 font-medium text-gray-700">
+                    <td colSpan={4} className="px-4 py-2 font-medium text-gray-700">
                       Total Legacy Volume
                     </td>
                     <td className="px-4 py-2 text-right font-mono font-semibold">
@@ -280,11 +312,15 @@ export function Step3ResolveGaps({
         {/* Add Legacy Batch Form */}
         {showForm ? (
           <div className="border rounded-lg p-4 bg-gray-50 space-y-4">
-            <h4 className="font-medium text-gray-900">Add Legacy Batch</h4>
+            <div className="flex items-center gap-2">
+              <Beaker className="w-5 h-5 text-amber-600" />
+              <h4 className="font-medium text-gray-900">Add Legacy Batch</h4>
+            </div>
 
+            {/* Basic Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Batch Name</Label>
+                <Label>Batch Name *</Label>
                 <Input
                   placeholder="e.g., Legacy Inventory - Hard Cider 2024"
                   value={batchForm.name}
@@ -295,7 +331,7 @@ export function Step3ResolveGaps({
               </div>
 
               <div className="space-y-2">
-                <Label>Tax Class</Label>
+                <Label>Tax Class *</Label>
                 <Select
                   value={batchForm.taxClass}
                   onValueChange={handleTaxClassChange}
@@ -314,7 +350,7 @@ export function Step3ResolveGaps({
               </div>
 
               <div className="space-y-2">
-                <Label>Volume (Gallons)</Label>
+                <Label>Volume (Gallons) *</Label>
                 <Input
                   type="number"
                   step="0.1"
@@ -331,18 +367,123 @@ export function Step3ResolveGaps({
               </div>
 
               <div className="space-y-2">
-                <Label>Notes (Optional)</Label>
+                <Label>Start Date</Label>
                 <Input
-                  placeholder="Additional context..."
-                  value={batchForm.notes}
+                  type="date"
+                  value={batchForm.startDate || step1Data.date}
                   onChange={(e) =>
-                    setBatchForm((prev) => ({ ...prev, notes: e.target.value }))
+                    setBatchForm((prev) => ({ ...prev, startDate: e.target.value }))
                   }
                 />
+                <p className="text-xs text-gray-500">Defaults to TTB date</p>
               </div>
             </div>
 
-            <div className="flex justify-end gap-3">
+            {/* Vessel Assignment */}
+            <div className="space-y-2">
+              <Label>Vessel (Optional)</Label>
+              <Select
+                value={batchForm.vesselId || ""}
+                onValueChange={(value) =>
+                  setBatchForm((prev) => ({
+                    ...prev,
+                    vesselId: value === "none" ? undefined : value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select vessel (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No vessel (bulk inventory)</SelectItem>
+                  {vessels?.map((vessel) => (
+                    <SelectItem key={vessel.id} value={vessel.id}>
+                      {vessel.name} ({vessel.capacity} {vessel.capacityUnit})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Measurement Data */}
+            <div className="border-t pt-4">
+              <p className="text-sm font-medium text-gray-700 mb-3">Measurement Data (Optional)</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>Original Gravity (OG)</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    min="0.990"
+                    max="1.200"
+                    placeholder="e.g., 1.050"
+                    value={batchForm.originalGravity || ""}
+                    onChange={(e) =>
+                      setBatchForm((prev) => ({
+                        ...prev,
+                        originalGravity: e.target.value ? parseFloat(e.target.value) : undefined,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Final Gravity (FG)</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    min="0.990"
+                    max="1.200"
+                    placeholder="e.g., 1.000"
+                    value={batchForm.finalGravity || ""}
+                    onChange={(e) =>
+                      setBatchForm((prev) => ({
+                        ...prev,
+                        finalGravity: e.target.value ? parseFloat(e.target.value) : undefined,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>pH</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="14"
+                    placeholder="e.g., 3.50"
+                    value={batchForm.ph || ""}
+                    onChange={(e) =>
+                      setBatchForm((prev) => ({
+                        ...prev,
+                        ph: e.target.value ? parseFloat(e.target.value) : undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              {batchForm.originalGravity && batchForm.finalGravity && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Estimated ABV: {((batchForm.originalGravity - batchForm.finalGravity) * 131.25).toFixed(1)}%
+                </p>
+              )}
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label>Notes (Optional)</Label>
+              <Textarea
+                placeholder="Additional context about this legacy batch..."
+                value={batchForm.notes}
+                onChange={(e) =>
+                  setBatchForm((prev) => ({ ...prev, notes: e.target.value }))
+                }
+                rows={2}
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2 border-t">
               <Button
                 variant="outline"
                 onClick={() => {

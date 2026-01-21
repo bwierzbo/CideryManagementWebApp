@@ -96,6 +96,12 @@ export function Step4SaveConfirm({
           taxClass: batch.taxClass as "hardCider" | "wineUnder16" | "wine16To21" | "wine21To24" | "sparklingWine" | "carbonatedWine" | "appleBrandy" | "grapeSpirits",
           asOfDate: step1Data.date,
           notes: batch.notes || undefined,
+          // Extended batch information
+          originalGravity: batch.originalGravity,
+          finalGravity: batch.finalGravity,
+          ph: batch.ph,
+          vesselId: batch.vesselId,
+          startDate: batch.startDate,
         });
       }
 

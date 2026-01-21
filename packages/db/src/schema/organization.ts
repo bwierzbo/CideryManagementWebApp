@@ -353,6 +353,16 @@ export const organizationSettings = pgTable(
      * Used for beginning inventory calculation when no prior period snapshot exists
      */
     ttbOpeningBalances: jsonb("ttb_opening_balances").$type<TTBOpeningBalances>(),
+    /**
+     * Notes explaining any reconciliation between TTB and system inventory
+     * Used to document discrepancies during initial setup
+     */
+    ttbReconciliationNotes: text("ttb_reconciliation_notes"),
+    /**
+     * Timestamp when TTB onboarding wizard was completed
+     * NULL means onboarding not yet completed
+     */
+    ttbOnboardingCompletedAt: timestamp("ttb_onboarding_completed_at", { withTimezone: true }),
 
     // ==========================================
     // Tax Reporting Preferences

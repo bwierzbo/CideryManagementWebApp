@@ -92,6 +92,9 @@ export interface OrganizationSettings {
   // Measurement Corrections
   sgTemperatureCorrectionEnabled: boolean;
   hydrometerCalibrationTempC: string;
+
+  // TTB Onboarding
+  ttbOnboardingCompletedAt: Date | null;
 }
 
 interface SettingsContextValue {
@@ -150,6 +153,7 @@ const defaultSettings: OrganizationSettings = {
   phDecimalPlaces: 1,
   sgTemperatureCorrectionEnabled: true,
   hydrometerCalibrationTempC: "15.56",
+  ttbOnboardingCompletedAt: null,
 };
 
 const SettingsContext = createContext<SettingsContextValue>({
@@ -222,6 +226,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       phDecimalPlaces: (data as any).phDecimalPlaces ?? 1,
       sgTemperatureCorrectionEnabled: (data as any).sgTemperatureCorrectionEnabled ?? true,
       hydrometerCalibrationTempC: (data as any).hydrometerCalibrationTempC ?? "15.56",
+      ttbOnboardingCompletedAt: (data as any).ttbOnboardingCompletedAt ?? null,
     };
   }, [data]);
 

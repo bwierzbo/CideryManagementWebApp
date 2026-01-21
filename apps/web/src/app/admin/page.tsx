@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Table,
   TableBody,
@@ -86,6 +88,8 @@ import {
   MapPin,
   FileText,
   Hash,
+  Info,
+  ArrowRight,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { api } from "@/server/client";
@@ -101,7 +105,9 @@ import { MeasurementSchedulesSettings } from "@/components/admin/MeasurementSche
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
 import { TTBOpeningBalancesSettings } from "@/components/admin/TTBOpeningBalancesSettings";
+import { TTBReconciliationSummary } from "@/components/admin/TTBReconciliationSummary";
 import { TaxReportingSettings } from "@/components/admin/TaxReportingSettings";
+import { LegacyInventorySection } from "@/components/admin/LegacyInventorySection";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
 
@@ -1842,6 +1848,45 @@ function SystemSettings() {
       {/* TTB Opening Balances - For beginning inventory tracking */}
       <TTBOpeningBalancesSettings />
 
+      {/* TTB Reconciliation Summary - Shows differences between TTB and system */}
+      <TTBReconciliationSummary />
+
+      {/* Legacy Inventory - For TTB reconciliation */}
+      <LegacyInventorySection />
+
+      {/* TTB Initial Setup - Re-run option */}
+      {settings?.ttbOnboardingCompletedAt && (
+        <Card>
+          <CardHeader>
+            <SettingsSectionHeader
+              title="TTB Initial Setup"
+              description="Re-run the initial setup wizard if you need to adjust your starting balances"
+              icon={FileText}
+              implemented={true}
+            />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-gray-50">
+              <div className="flex-1">
+                <h4 className="font-medium">Initial Setup Wizard</h4>
+                <p className="text-sm text-gray-600 mt-1">
+                  Completed on {formatDate(new Date(settings.ttbOnboardingCompletedAt))}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Re-running the wizard will allow you to update your TTB opening balances and legacy batches.
+                </p>
+              </div>
+              <Button variant="outline" asChild>
+                <Link href="/admin/ttb-onboarding">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Re-run Setup
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Save Button */}
       <div className="flex justify-end">
         <Button
@@ -1867,6 +1912,10 @@ export default function AdminPage() {
     "users" | "reference" | "settings" | "calibration" | "square"
   >("users");
 
+  // Check if TTB onboarding has been completed
+  const { settings, isLoading: isLoadingSettings } = useSettings();
+  const hasCompletedOnboarding = settings?.ttbOnboardingCompletedAt != null;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -1878,6 +1927,28 @@ export default function AdminPage() {
             Manage users, reference data, and system configuration.
           </p>
         </div>
+
+        {/* TTB Onboarding Banner */}
+        {!isLoadingSettings && !hasCompletedOnboarding && (
+          <Alert className="mb-6 bg-amber-50 border-amber-200">
+            <Info className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800">Initial TTB Setup Required</AlertTitle>
+            <AlertDescription className="text-amber-700">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-2">
+                <span>
+                  Set up your TTB reconciliation to start tracking inventory accurately.
+                  This wizard will help you enter your TTB opening balance and reconcile with your current inventory.
+                </span>
+                <Button asChild className="bg-amber-600 hover:bg-amber-700 whitespace-nowrap">
+                  <Link href="/admin/ttb-onboarding">
+                    Start Setup
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Link>
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Tab Navigation */}
         <div className="flex space-x-1 mb-8 bg-gray-100 p-1 rounded-lg w-fit">

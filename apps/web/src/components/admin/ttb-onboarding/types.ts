@@ -29,6 +29,12 @@ export interface LegacyBatchInput {
   taxClass: string;
   productType: string;
   notes: string;
+  // Extended batch information
+  originalGravity?: number;
+  finalGravity?: number;
+  ph?: number;
+  vesselId?: string;
+  startDate?: string; // YYYY-MM-DD format
 }
 
 export interface TaxClassReconciliation {

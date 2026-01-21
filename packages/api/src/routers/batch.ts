@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, createRbacProcedure, protectedProcedure } from "../trpc";
+import { router, createRbacProcedure, protectedProcedure, adminProcedure } from "../trpc";
 import {
   db,
   batches,
@@ -5201,6 +5201,251 @@ export const batchRouter = router({
         override: batch[0].measurementScheduleOverride,
         productType: batch[0].productType,
       };
+    }),
+
+  // ============================================
+  // LEGACY INVENTORY BATCHES
+  // ============================================
+
+  /**
+   * Create a legacy inventory batch for TTB reconciliation.
+   * These batches have no origin (no press run or juice purchase) and represent
+   * pre-system inventory that needs to be tracked for TTB compliance.
+   */
+  createLegacyBatch: adminProcedure
+    .input(
+      z.object({
+        name: z.string().min(1, "Name is required"),
+        volumeGallons: z.number().positive("Volume must be positive"),
+        productType: z.enum(["cider", "wine", "brandy", "perry"]),
+        taxClass: z.enum([
+          "hardCider",
+          "wineUnder16",
+          "wine16To21",
+          "wine21To24",
+          "sparklingWine",
+          "carbonatedWine",
+          "appleBrandy",
+          "grapeSpirits",
+        ]),
+        notes: z.string().optional(),
+        asOfDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD"),
+        // Extended batch information
+        originalGravity: z.number().min(0.990).max(1.200).optional(),
+        finalGravity: z.number().min(0.990).max(1.200).optional(),
+        ph: z.number().min(0).max(14).optional(),
+        vesselId: z.string().uuid().optional(),
+        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // Override asOfDate for batch start
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const {
+        name,
+        volumeGallons,
+        productType: inputProductType,
+        taxClass,
+        notes,
+        asOfDate,
+        originalGravity,
+        finalGravity,
+        ph,
+        vesselId,
+        startDate,
+      } = input;
+
+      // Map product type to valid schema enum values
+      // "wine" maps to "other" since wine is not in the productTypeEnum
+      const productType = inputProductType === "wine" ? "other" as const : inputProductType;
+
+      // Convert gallons to liters
+      const volumeLiters = volumeGallons * 3.78541;
+
+      // Generate a unique batch number for legacy batches
+      const year = (startDate || asOfDate).split("-")[0];
+      const timestamp = Date.now().toString(36).toUpperCase();
+      const batchNumber = `LEGACY-${year}-${timestamp}`;
+
+      // Store tax class and notes in customName field (notes field doesn't exist on batches)
+      const customNameValue = notes
+        ? `[Legacy] Tax Class: ${taxClass} | ${notes}`
+        : `[Legacy] Tax Class: ${taxClass}`;
+
+      // Calculate ABV if both gravities provided
+      let estimatedAbv: string | undefined;
+      if (originalGravity && finalGravity) {
+        const abv = (originalGravity - finalGravity) * 131.25;
+        estimatedAbv = abv.toFixed(2);
+      }
+
+      // Create the legacy batch
+      const [newBatch] = await db
+        .insert(batches)
+        .values({
+          name,
+          batchNumber,
+          customName: customNameValue,
+          initialVolume: volumeLiters.toFixed(3),
+          initialVolumeUnit: "L",
+          currentVolumeLiters: volumeLiters.toFixed(3),
+          status: "completed", // Legacy batches are already done fermenting
+          productType,
+          fermentationStage: "terminal", // Already complete
+          startDate: new Date(startDate || asOfDate),
+          // Origin tracking - these are legacy/pre-system batches
+          originPressRunId: null,
+          originJuicePurchaseItemId: null,
+          vesselId: vesselId || null, // Assign to vessel if provided
+          createdBy: ctx.session?.user?.id,
+          // Gravity tracking
+          originalGravity: originalGravity?.toFixed(3),
+          finalGravity: finalGravity?.toFixed(3),
+          estimatedAbv,
+        })
+        .returning();
+
+      // If pH provided, create an initial measurement
+      if (ph !== undefined) {
+        await db.insert(batchMeasurements).values({
+          batchId: newBatch.id,
+          measurementDate: new Date(startDate || asOfDate),
+          ph: ph.toFixed(2),
+          specificGravity: finalGravity?.toFixed(4) || originalGravity?.toFixed(4),
+          notes: "Initial measurement from legacy batch import",
+          takenBy: ctx.session?.user?.name || "Legacy Import",
+        });
+      }
+
+      return {
+        success: true,
+        batch: {
+          id: newBatch.id,
+          name: newBatch.name,
+          batchNumber: newBatch.batchNumber,
+          volumeGallons,
+          volumeLiters,
+          productType: inputProductType, // Return the original input for UI
+          taxClass,
+          asOfDate,
+          originalGravity,
+          finalGravity,
+          ph,
+          vesselId,
+          startDate,
+        },
+      };
+    }),
+
+  /**
+   * Get all legacy inventory batches.
+   * Legacy batches are identified by having no origin press run or juice purchase.
+   */
+  getLegacyBatches: protectedProcedure.query(async () => {
+    const legacyBatches = await db
+      .select({
+        id: batches.id,
+        name: batches.name,
+        batchNumber: batches.batchNumber,
+        customName: batches.customName,
+        initialVolumeLiters: batches.initialVolume,
+        currentVolumeLiters: batches.currentVolumeLiters,
+        status: batches.status,
+        productType: batches.productType,
+        startDate: batches.startDate,
+        createdAt: batches.createdAt,
+      })
+      .from(batches)
+      .where(
+        and(
+          isNull(batches.deletedAt),
+          isNull(batches.originPressRunId),
+          isNull(batches.originJuicePurchaseItemId),
+          // Legacy batches have batch numbers starting with LEGACY-
+          like(batches.batchNumber, "LEGACY-%")
+        )
+      )
+      .orderBy(desc(batches.createdAt));
+
+    return legacyBatches.map((batch) => {
+      const volumeLiters = parseFloat(batch.initialVolumeLiters || "0");
+      const volumeGallons = volumeLiters * 0.264172;
+
+      // Extract tax class from customName field
+      let taxClass = "hardCider";
+      let notes: string | null = null;
+      if (batch.customName) {
+        const taxClassMatch = batch.customName.match(/Tax Class: (\w+)/);
+        if (taxClassMatch) {
+          taxClass = taxClassMatch[1];
+        }
+        // Extract notes (everything after the pipe separator)
+        const pipeIndex = batch.customName.indexOf(" | ");
+        if (pipeIndex > -1) {
+          notes = batch.customName.slice(pipeIndex + 3);
+        }
+      }
+
+      return {
+        id: batch.id,
+        name: batch.name,
+        batchNumber: batch.batchNumber,
+        volumeGallons: parseFloat(volumeGallons.toFixed(1)),
+        volumeLiters: parseFloat(volumeLiters.toFixed(1)),
+        status: batch.status,
+        productType: batch.productType,
+        taxClass,
+        asOfDate: batch.startDate?.toISOString().split("T")[0] || null,
+        notes,
+        createdAt: batch.createdAt,
+      };
+    });
+  }),
+
+  /**
+   * Delete a legacy inventory batch.
+   * Only legacy batches (those with LEGACY- prefix) can be deleted through this endpoint.
+   */
+  deleteLegacyBatch: adminProcedure
+    .input(
+      z.object({
+        batchId: z.string().uuid(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { batchId } = input;
+
+      // Verify this is a legacy batch
+      const [batch] = await db
+        .select({
+          id: batches.id,
+          batchNumber: batches.batchNumber,
+        })
+        .from(batches)
+        .where(
+          and(
+            eq(batches.id, batchId),
+            isNull(batches.deletedAt),
+            like(batches.batchNumber, "LEGACY-%")
+          )
+        )
+        .limit(1);
+
+      if (!batch) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Legacy batch not found",
+        });
+      }
+
+      // Soft delete the batch
+      await db
+        .update(batches)
+        .set({
+          deletedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(batches.id, batchId));
+
+      return { success: true };
     }),
 });
 

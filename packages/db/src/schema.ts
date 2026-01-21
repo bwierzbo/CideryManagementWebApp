@@ -129,6 +129,14 @@ export const packagingItemTypeEnum = pgEnum("packaging_item_type", [
   "Tertiary Packaging",
 ]);
 
+// TTB Reconciliation status enum
+export const batchReconciliationStatusEnum = pgEnum("batch_reconciliation_status", [
+  "verified",   // Counted in TTB reconciliation
+  "duplicate",  // Racking duplicate, not counted
+  "excluded",   // Manually excluded from reconciliation
+  "pending",    // Needs review
+]);
+
 // Barrel program enums
 export const barrelWoodTypeEnum = pgEnum("barrel_wood_type", [
   "french_oak",
@@ -741,6 +749,15 @@ export const batches = pgTable(
     archivedReason: text("archived_reason"),
     // Measurement schedule override (product-type defaults can be overridden per batch)
     measurementScheduleOverride: jsonb("measurement_schedule_override").$type<BatchMeasurementOverride>(),
+    // TTB origin year - tax year when cider was originally produced
+    // For carryover batches (e.g., 2023 cider carried into 2024), this differs from start_date year
+    ttbOriginYear: integer("ttb_origin_year"),
+    // TTB Reconciliation tracking
+    // verified=counted, duplicate=racking duplicate not counted, excluded=manually excluded, pending=needs review
+    reconciliationStatus: batchReconciliationStatusEnum("reconciliation_status").default("pending"),
+    reconciliationNotes: text("reconciliation_notes"),
+    parentBatchId: uuid("parent_batch_id").references(() => batches.id),
+    isRackingDerivative: boolean("is_racking_derivative").default(false),
     // User attribution
     createdBy: uuid("created_by").references(() => users.id),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -761,6 +778,9 @@ export const batches = pgTable(
       .where(sql`${table.deletedAt} IS NULL`),
     isArchivedIdx: index("batches_is_archived_idx").on(table.isArchived),
     createdByIdx: index("batches_created_by_idx").on(table.createdBy),
+    ttbOriginYearIdx: index("idx_batches_ttb_origin_year").on(table.ttbOriginYear),
+    reconciliationStatusIdx: index("batches_reconciliation_status_idx").on(table.reconciliationStatus),
+    parentBatchIdx: index("batches_parent_batch_id_idx").on(table.parentBatchId),
   }),
 );
 

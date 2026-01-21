@@ -165,6 +165,8 @@ export const settingsRouter = router({
         ttbReportingFrequency: "quarterly",
         stateTaxReportingFrequency: "quarterly",
         estimatedAnnualTaxLiability: null,
+        // TTB Onboarding
+        ttbOnboardingCompletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -267,6 +269,9 @@ export const settingsRouter = router({
         ttbReportingFrequency: z.enum(["monthly", "quarterly", "annual"]).optional(),
         stateTaxReportingFrequency: z.enum(["monthly", "quarterly", "annual"]).optional(),
         estimatedAnnualTaxLiability: z.string().nullable().optional(),
+
+        // TTB Onboarding
+        ttbOnboardingCompletedAt: z.date().nullable().optional(),
       }),
     )
     .mutation(async ({ input }) => {

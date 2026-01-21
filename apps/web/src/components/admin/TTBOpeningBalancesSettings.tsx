@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   FileText,
   Edit,
@@ -22,6 +23,7 @@ import {
   Wine,
   Package,
   Droplet,
+  NotebookPen,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
@@ -149,6 +151,7 @@ export function TTBOpeningBalancesSettings() {
   const [formData, setFormData] = useState<{
     date: string;
     balances: TTBOpeningBalances;
+    reconciliationNotes: string;
   }>({
     date: "",
     balances: {
@@ -173,6 +176,7 @@ export function TTBOpeningBalancesSettings() {
         grapeSpirits: 0,
       },
     },
+    reconciliationNotes: "",
   });
 
   // Update form when data loads
@@ -181,6 +185,7 @@ export function TTBOpeningBalancesSettings() {
       setFormData({
         date: openingBalancesData.date || "",
         balances: openingBalancesData.balances as TTBOpeningBalances,
+        reconciliationNotes: openingBalancesData.reconciliationNotes || "",
       });
     }
   }, [openingBalancesData]);
@@ -200,6 +205,7 @@ export function TTBOpeningBalancesSettings() {
       await updateMutation.mutateAsync({
         date: formData.date,
         balances: formData.balances,
+        reconciliationNotes: formData.reconciliationNotes || undefined,
       });
     } finally {
       setIsSaving(false);
@@ -211,6 +217,7 @@ export function TTBOpeningBalancesSettings() {
       setFormData({
         date: openingBalancesData.date || "",
         balances: openingBalancesData.balances as TTBOpeningBalances,
+        reconciliationNotes: openingBalancesData.reconciliationNotes || "",
       });
     }
     setIsEditing(false);
@@ -456,6 +463,46 @@ export function TTBOpeningBalancesSettings() {
             <div className="pt-3 mt-3 border-t font-semibold text-sm">
               Total Spirits: {spiritsTotal.toFixed(1)} proof gallons
             </div>
+          </div>
+        </div>
+
+        {/* Reconciliation Notes */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <NotebookPen className="w-4 h-4 text-blue-600" />
+            <h4 className="font-medium text-gray-900">Reconciliation Notes</h4>
+          </div>
+
+          <div className="border rounded-lg p-4">
+            {isEditing ? (
+              <div className="space-y-2">
+                <Textarea
+                  placeholder="e.g., 37 gallons of legacy inventory from pre-system operations not traceable to 2024 press runs or juice purchases..."
+                  value={formData.reconciliationNotes}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      reconciliationNotes: e.target.value,
+                    }))
+                  }
+                  rows={3}
+                  className="resize-none"
+                />
+                <p className="text-xs text-gray-500">
+                  Document any differences between TTB reported inventory and
+                  system-tracked production. This helps explain reconciliation
+                  during audits.
+                </p>
+              </div>
+            ) : formData.reconciliationNotes ? (
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">
+                {formData.reconciliationNotes}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400 italic">
+                No reconciliation notes recorded.
+              </p>
+            )}
           </div>
         </div>
 
