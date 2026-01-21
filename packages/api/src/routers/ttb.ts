@@ -2013,6 +2013,7 @@ export const ttbRouter = router({
         id: string;
         name: string;
         batchNumber: string;
+        vesselId: string | null;
         vesselName: string | null;
         volumeLiters: number;
         volumeGallons: number;
@@ -2041,6 +2042,7 @@ export const ttbRouter = router({
           id: batch.id,
           name: batch.customName || batch.batchNumber,
           batchNumber: batch.batchNumber,
+          vesselId: batch.vesselId,
           vesselName: batch.vesselName,
           volumeLiters,
           volumeGallons,
@@ -2061,6 +2063,7 @@ export const ttbRouter = router({
           id: `pkg-${item.batchId}-${item.lotCode || 'unknown'}`,
           name: item.lotCode || item.batchName || item.batchNumber,
           batchNumber: item.batchNumber,
+          vesselId: null,
           vesselName: null,
           volumeLiters,
           volumeGallons,

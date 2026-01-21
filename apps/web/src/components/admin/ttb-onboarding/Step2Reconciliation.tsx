@@ -26,6 +26,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Scale,
   ChevronRight,
   ChevronLeft,
@@ -36,8 +43,12 @@ import {
   AlertTriangle,
   Wine,
   Beaker,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
+import { useToast } from "@/hooks/use-toast";
 import {
   Step1Data,
   Step2Data,
@@ -52,6 +63,7 @@ interface BatchDetail {
   id: string;
   name: string;
   batchNumber: string;
+  vesselId: string | null;
   vesselName: string | null;
   volumeLiters: number;
   volumeGallons: number;
@@ -76,7 +88,54 @@ export function Step2Reconciliation({
   onNext,
   onBack,
 }: Step2Props) {
+  const { toast } = useToast();
   const [expandedTaxClasses, setExpandedTaxClasses] = useState<Record<string, boolean>>({});
+  const [editingBatchId, setEditingBatchId] = useState<string | null>(null);
+  const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
+
+  const utils = trpc.useUtils();
+
+  // Fetch available vessels
+  const { data: vesselData } = trpc.vessel.list.useQuery({});
+  const vessels = vesselData?.vessels || [];
+
+  // Mutation to update batch vessel
+  const updateBatch = trpc.batch.update.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Vessel Updated",
+        description: "Batch vessel assignment has been saved.",
+      });
+      // Refresh the reconciliation data
+      utils.ttb.getReconciliationSummary.invalidate();
+      setEditingBatchId(null);
+      setSelectedVesselId(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleEditVessel = (batch: BatchDetail) => {
+    setEditingBatchId(batch.id);
+    setSelectedVesselId(batch.vesselId);
+  };
+
+  const handleSaveVessel = (batchId: string) => {
+    updateBatch.mutate({
+      batchId,
+      vesselId: selectedVesselId,
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingBatchId(null);
+    setSelectedVesselId(null);
+  };
 
   // Fetch system inventory as of the TTB date
   const { data: reconciliationData, isLoading } = trpc.ttb.getReconciliationSummary.useQuery(
@@ -455,7 +514,61 @@ export function Step2Reconciliation({
                                       </TableCell>
                                       <TableCell>
                                         {batch.type === "bulk" ? (
-                                          <span className="text-sm">{batch.vesselName || "—"}</span>
+                                          editingBatchId === batch.id ? (
+                                            <div className="flex items-center gap-1">
+                                              <Select
+                                                value={selectedVesselId || "none"}
+                                                onValueChange={(value) =>
+                                                  setSelectedVesselId(value === "none" ? null : value)
+                                                }
+                                              >
+                                                <SelectTrigger className="h-7 text-xs w-[140px]">
+                                                  <SelectValue placeholder="Select vessel" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="none">No vessel</SelectItem>
+                                                  {vessels.map((vessel) => (
+                                                    <SelectItem key={vessel.id} value={vessel.id}>
+                                                      {vessel.name}
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 w-7 p-0 text-green-600 hover:text-green-700"
+                                                onClick={() => handleSaveVessel(batch.id)}
+                                                disabled={updateBatch.isPending}
+                                              >
+                                                {updateBatch.isPending ? (
+                                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                                ) : (
+                                                  <Check className="w-3 h-3" />
+                                                )}
+                                              </Button>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-7 w-7 p-0 text-gray-400 hover:text-red-600"
+                                                onClick={handleCancelEdit}
+                                              >
+                                                <X className="w-3 h-3" />
+                                              </Button>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center gap-1 group">
+                                              <span className="text-sm">{batch.vesselName || "—"}</span>
+                                              <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600"
+                                                onClick={() => handleEditVessel(batch)}
+                                              >
+                                                <Pencil className="w-3 h-3" />
+                                              </Button>
+                                            </div>
+                                          )
                                         ) : (
                                           <span className="text-sm text-purple-600">
                                             {batch.packageInfo || "Packaged"}
