@@ -665,7 +665,7 @@ export function TTBReconciliationSummary() {
         </div>
 
         {/* Batch Details by Tax Class */}
-        {data.hasOpeningBalances && data.batchDetailsByTaxClass && Object.keys(data.batchDetailsByTaxClass).length > 0 && (
+        {data.hasOpeningBalances && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
               <Beaker className="w-4 h-4" />
@@ -675,9 +675,16 @@ export function TTBReconciliationSummary() {
               Click each tax class to see the batches and vessels contributing to the inventory total.
             </p>
             {data.taxClasses
-              .filter((tc) => tc.currentInventory > 0 || ((data.batchDetailsByTaxClass as Record<string, BatchDetail[]>)?.[tc.key]?.length ?? 0) > 0)
+              .filter((tc) => {
+                const batchDetailsForClass = data.batchDetailsByTaxClass
+                  ? (data.batchDetailsByTaxClass as Record<string, BatchDetail[]>)[tc.key] || []
+                  : [];
+                return tc.currentInventory > 0 || batchDetailsForClass.length > 0;
+              })
               .map((tc) => {
-                const batchDetails = ((data.batchDetailsByTaxClass as Record<string, BatchDetail[]>)?.[tc.key] || []) as BatchDetail[];
+                const batchDetails = data.batchDetailsByTaxClass
+                  ? ((data.batchDetailsByTaxClass as Record<string, BatchDetail[]>)[tc.key] || []) as BatchDetail[]
+                  : [];
                 const isExpanded = expandedTaxClasses[tc.key] || false;
 
                 return (
@@ -770,6 +777,16 @@ export function TTBReconciliationSummary() {
                   </Collapsible>
                 );
               })}
+            {data.taxClasses.filter((tc) => {
+              const batchDetailsForClass = data.batchDetailsByTaxClass
+                ? (data.batchDetailsByTaxClass as Record<string, BatchDetail[]>)[tc.key] || []
+                : [];
+              return tc.currentInventory > 0 || batchDetailsForClass.length > 0;
+            }).length === 0 && (
+              <p className="text-sm text-gray-500 italic py-4 text-center">
+                No batch details available for the current reconciliation.
+              </p>
+            )}
           </div>
         )}
 
