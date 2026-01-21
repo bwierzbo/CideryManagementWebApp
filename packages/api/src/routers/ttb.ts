@@ -1933,55 +1933,90 @@ export const ttbRouter = router({
       // ============================================
       // BATCH DETAILS BY TAX CLASS
       // Returns individual batches for reconciliation review
+      // Uses historical vessel assignment from racking operations
       // ============================================
 
-      // Get bulk batch details with vessel info
+      // Get bulk batch details with HISTORICAL vessel info
       // For initial reconciliation, show verified batches with initial_volume
       // For ongoing reconciliation, show active batches with current_volume
+      //
+      // Historical vessel is determined by:
+      // 1. Most recent racking operation before/on reconciliation date
+      // 2. Falls back to current vesselId if no racking history
       const batchDetailData = isInitialReconciliation
-        ? await db
-            .select({
-              id: batches.id,
-              customName: batches.customName,
-              batchNumber: batches.batchNumber,
-              productType: batches.productType,
-              volume: batches.initialVolume,
-              vesselId: batches.vesselId,
-              vesselName: vessels.name,
-            })
-            .from(batches)
-            .leftJoin(vessels, eq(batches.vesselId, vessels.id))
-            .where(
-              and(
-                isNull(batches.deletedAt),
-                sql`${batches.startDate} <= ${reconciliationDate}::date`,
-                eq(batches.reconciliationStatus, "verified"),
-                sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
-              )
-            )
-            .orderBy(sql`CAST(${batches.initialVolume} AS DECIMAL) DESC`)
-        : await db
-            .select({
-              id: batches.id,
-              customName: batches.customName,
-              batchNumber: batches.batchNumber,
-              productType: batches.productType,
-              volume: batches.currentVolume,
-              vesselId: batches.vesselId,
-              vesselName: vessels.name,
-            })
-            .from(batches)
-            .leftJoin(vessels, eq(batches.vesselId, vessels.id))
-            .where(
-              and(
-                isNull(batches.deletedAt),
-                sql`${batches.startDate} <= ${reconciliationDate}::date`,
-                sql`COALESCE(${batches.currentVolume}, 0) > 0`,
-                sql`COALESCE(${batches.isArchived}, false) = false`,
-                sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
-              )
-            )
-            .orderBy(sql`CAST(${batches.currentVolume} AS DECIMAL) DESC`);
+        ? await db.execute(sql`
+            SELECT
+              b.id,
+              b.custom_name as "customName",
+              b.batch_number as "batchNumber",
+              b.product_type as "productType",
+              b.initial_volume as volume,
+              COALESCE(
+                (SELECT bro.destination_vessel_id
+                 FROM batch_racking_operations bro
+                 WHERE bro.batch_id = b.id
+                   AND bro.deleted_at IS NULL
+                   AND bro.racked_at <= ${reconciliationDate}::date
+                 ORDER BY bro.racked_at DESC
+                 LIMIT 1),
+                b.vessel_id
+              ) as "vesselId",
+              COALESCE(
+                (SELECT v2.name
+                 FROM batch_racking_operations bro2
+                 JOIN vessels v2 ON v2.id = bro2.destination_vessel_id
+                 WHERE bro2.batch_id = b.id
+                   AND bro2.deleted_at IS NULL
+                   AND bro2.racked_at <= ${reconciliationDate}::date
+                 ORDER BY bro2.racked_at DESC
+                 LIMIT 1),
+                v.name
+              ) as "vesselName"
+            FROM batches b
+            LEFT JOIN vessels v ON v.id = b.vessel_id
+            WHERE b.deleted_at IS NULL
+              AND b.start_date <= ${reconciliationDate}::date
+              AND b.reconciliation_status = 'verified'
+              AND NOT (b.batch_number LIKE 'LEGACY-%')
+            ORDER BY CAST(b.initial_volume AS DECIMAL) DESC
+          `)
+        : await db.execute(sql`
+            SELECT
+              b.id,
+              b.custom_name as "customName",
+              b.batch_number as "batchNumber",
+              b.product_type as "productType",
+              b.current_volume as volume,
+              COALESCE(
+                (SELECT bro.destination_vessel_id
+                 FROM batch_racking_operations bro
+                 WHERE bro.batch_id = b.id
+                   AND bro.deleted_at IS NULL
+                   AND bro.racked_at <= ${reconciliationDate}::date
+                 ORDER BY bro.racked_at DESC
+                 LIMIT 1),
+                b.vessel_id
+              ) as "vesselId",
+              COALESCE(
+                (SELECT v2.name
+                 FROM batch_racking_operations bro2
+                 JOIN vessels v2 ON v2.id = bro2.destination_vessel_id
+                 WHERE bro2.batch_id = b.id
+                   AND bro2.deleted_at IS NULL
+                   AND bro2.racked_at <= ${reconciliationDate}::date
+                 ORDER BY bro2.racked_at DESC
+                 LIMIT 1),
+                v.name
+              ) as "vesselName"
+            FROM batches b
+            LEFT JOIN vessels v ON v.id = b.vessel_id
+            WHERE b.deleted_at IS NULL
+              AND b.start_date <= ${reconciliationDate}::date
+              AND COALESCE(b.current_volume, 0) > 0
+              AND COALESCE(b.is_archived, false) = false
+              AND NOT (b.batch_number LIKE 'LEGACY-%')
+            ORDER BY CAST(b.current_volume AS DECIMAL) DESC
+          `);
 
       // For ongoing reconciliation, also get packaged inventory details
       const packagedDetailData = isInitialReconciliation
@@ -2032,8 +2067,19 @@ export const ttbRouter = router({
         grapeSpirits: [],
       };
 
-      // Add bulk batches
-      for (const batch of batchDetailData) {
+      // Add bulk batches (batchDetailData is a raw SQL result with .rows array)
+      type BatchDetailRow = {
+        id: string;
+        customName: string | null;
+        batchNumber: string;
+        productType: string | null;
+        volume: string | null;
+        vesselId: string | null;
+        vesselName: string | null;
+      };
+      const batchRows = (batchDetailData as unknown as { rows: BatchDetailRow[] }).rows || [];
+
+      for (const batch of batchRows) {
         const taxClass = productTypeToTaxClass(batch.productType);
         const volumeLiters = parseFloat(batch.volume || "0");
         const volumeGallons = volumeLiters * 0.264172;
