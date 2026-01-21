@@ -1569,6 +1569,8 @@ export const ttbRouter = router({
             },
             byYear: [],
           },
+          // Include empty batchDetailsByTaxClass for consistent return type
+          batchDetailsByTaxClass: {},
         };
       }
 

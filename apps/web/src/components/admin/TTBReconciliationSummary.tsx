@@ -665,7 +665,7 @@ export function TTBReconciliationSummary() {
         </div>
 
         {/* Batch Details by Tax Class */}
-        {data.hasOpeningBalances && 'batchDetailsByTaxClass' in data && data.batchDetailsByTaxClass && (
+        {data.hasOpeningBalances && data.batchDetailsByTaxClass && Object.keys(data.batchDetailsByTaxClass).length > 0 && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
               <Beaker className="w-4 h-4" />
