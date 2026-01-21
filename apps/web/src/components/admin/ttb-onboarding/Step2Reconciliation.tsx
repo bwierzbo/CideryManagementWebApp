@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -13,13 +13,29 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Scale,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Info,
   Loader2,
   CheckCircle,
   AlertTriangle,
+  Wine,
+  Beaker,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import {
@@ -30,6 +46,18 @@ import {
   TAX_CLASS_LABELS,
   TaxClassBalances,
 } from "./types";
+
+// Type for batch details from TTB API
+interface BatchDetail {
+  id: string;
+  name: string;
+  batchNumber: string;
+  vesselName: string | null;
+  volumeLiters: number;
+  volumeGallons: number;
+  type: 'bulk' | 'packaged';
+  packageInfo?: string;
+}
 
 interface Step2Props {
   step1Data: Step1Data;
@@ -48,6 +76,8 @@ export function Step2Reconciliation({
   onNext,
   onBack,
 }: Step2Props) {
+  const [expandedTaxClasses, setExpandedTaxClasses] = useState<Record<string, boolean>>({});
+
   // Fetch system inventory as of the TTB date
   const { data: reconciliationData, isLoading } = trpc.ttb.getReconciliationSummary.useQuery(
     { asOfDate: step1Data.date },
@@ -343,6 +373,132 @@ export function Step2Reconciliation({
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+
+            {/* Batch Details by Tax Class */}
+            {reconciliationData?.batchDetailsByTaxClass && (
+              <div className="space-y-3">
+                <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                  <Beaker className="w-4 h-4" />
+                  Batch Details by Tax Class
+                </h4>
+                <p className="text-xs text-gray-500">
+                  Click each tax class to see the batches and vessels contributing to the inventory total.
+                </p>
+                {data.byTaxClass
+                  .filter((tc) => {
+                    const batchDetailsForClass = reconciliationData.batchDetailsByTaxClass
+                      ? (reconciliationData.batchDetailsByTaxClass as Record<string, BatchDetail[]>)[tc.taxClass] || []
+                      : [];
+                    return tc.systemInventory > 0 || batchDetailsForClass.length > 0;
+                  })
+                  .map((tc) => {
+                    const batchDetails = reconciliationData.batchDetailsByTaxClass
+                      ? ((reconciliationData.batchDetailsByTaxClass as Record<string, BatchDetail[]>)[tc.taxClass] || []) as BatchDetail[]
+                      : [];
+                    const isExpanded = expandedTaxClasses[tc.taxClass] || false;
+
+                    return (
+                      <Collapsible
+                        key={tc.taxClass}
+                        open={isExpanded}
+                        onOpenChange={(open) =>
+                          setExpandedTaxClasses((prev) => ({ ...prev, [tc.taxClass]: open }))
+                        }
+                      >
+                        <CollapsibleTrigger asChild>
+                          <button className="w-full flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
+                            <div className="flex items-center gap-3">
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-gray-500" />
+                              )}
+                              <Wine className="w-4 h-4 text-gray-600" />
+                              <span className="font-medium text-sm">{tc.label}</span>
+                              <span className="text-xs text-gray-500">
+                                ({batchDetails.length} {batchDetails.length === 1 ? "item" : "items"})
+                              </span>
+                            </div>
+                            <span className="font-mono text-sm font-medium">
+                              {tc.systemInventory.toFixed(1)} gal
+                            </span>
+                          </button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="mt-1 border rounded-lg overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="bg-gray-50">
+                                  <TableHead className="text-xs font-medium">Batch/Item</TableHead>
+                                  <TableHead className="text-xs font-medium">Vessel/Package</TableHead>
+                                  <TableHead className="text-xs font-medium text-right">Volume (L)</TableHead>
+                                  <TableHead className="text-xs font-medium text-right">Volume (gal)</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {batchDetails.length === 0 ? (
+                                  <TableRow>
+                                    <TableCell colSpan={4} className="text-center text-gray-500 text-sm py-4">
+                                      No batches in this category
+                                    </TableCell>
+                                  </TableRow>
+                                ) : (
+                                  batchDetails.map((batch: BatchDetail) => (
+                                    <TableRow key={batch.id}>
+                                      <TableCell>
+                                        <div>
+                                          <span className="font-medium text-sm">{batch.name}</span>
+                                          <p className="text-xs text-gray-500">{batch.batchNumber}</p>
+                                        </div>
+                                      </TableCell>
+                                      <TableCell>
+                                        {batch.type === "bulk" ? (
+                                          <span className="text-sm">{batch.vesselName || "—"}</span>
+                                        ) : (
+                                          <span className="text-sm text-purple-600">
+                                            {batch.packageInfo || "Packaged"}
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono text-sm">
+                                        {batch.volumeLiters.toFixed(2)}
+                                      </TableCell>
+                                      <TableCell className="text-right font-mono text-sm">
+                                        {batch.volumeGallons.toFixed(2)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))
+                                )}
+                                {batchDetails.length > 0 && (
+                                  <TableRow className="bg-gray-50 font-medium">
+                                    <TableCell colSpan={2} className="text-sm">Subtotal</TableCell>
+                                    <TableCell className="text-right font-mono text-sm">
+                                      {batchDetails.reduce((sum: number, b: BatchDetail) => sum + b.volumeLiters, 0).toFixed(2)}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-sm">
+                                      {batchDetails.reduce((sum: number, b: BatchDetail) => sum + b.volumeGallons, 0).toFixed(2)}
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })}
+                {data.byTaxClass.filter((tc) => {
+                  const batchDetailsForClass = reconciliationData.batchDetailsByTaxClass
+                    ? (reconciliationData.batchDetailsByTaxClass as Record<string, BatchDetail[]>)[tc.taxClass] || []
+                    : [];
+                  return tc.systemInventory > 0 || batchDetailsForClass.length > 0;
+                }).length === 0 && (
+                  <p className="text-sm text-gray-500 italic py-4 text-center">
+                    No batch details available for the current reconciliation.
+                  </p>
+                )}
               </div>
             )}
 
