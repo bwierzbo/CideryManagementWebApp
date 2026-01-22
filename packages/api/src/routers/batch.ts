@@ -5277,6 +5277,37 @@ export const batchRouter = router({
         estimatedAbv = abv.toFixed(2);
       }
 
+      // Check if a batch with this name already exists
+      const existingBatch = await db
+        .select({ id: batches.id, name: batches.name })
+        .from(batches)
+        .where(eq(batches.name, name))
+        .limit(1);
+
+      if (existingBatch.length > 0) {
+        // Batch already exists, return it without creating a duplicate
+        return {
+          success: true,
+          skipped: true,
+          message: `Batch "${name}" already exists`,
+          batch: {
+            id: existingBatch[0].id,
+            name: existingBatch[0].name,
+            batchNumber: "",
+            volumeGallons,
+            volumeLiters,
+            productType: inputProductType,
+            taxClass,
+            asOfDate,
+            originalGravity,
+            finalGravity,
+            ph,
+            vesselId,
+            startDate,
+          },
+        };
+      }
+
       // Create the legacy batch
       const [newBatch] = await db
         .insert(batches)
@@ -5399,6 +5430,694 @@ export const batchRouter = router({
       };
     });
   }),
+
+  /**
+   * Get volume trace for a batch - shows where all volume went.
+   * Used for TTB reconciliation to trace volume discrepancies.
+   */
+  getVolumeTrace: protectedProcedure
+    .input(z.object({ batchId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const { batchId } = input;
+
+      // Get batch metadata
+      const [batch] = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          customName: batches.customName,
+          batchNumber: batches.batchNumber,
+          initialVolume: batches.initialVolumeLiters,
+          currentVolume: batches.currentVolumeLiters,
+          status: batches.status,
+        })
+        .from(batches)
+        .where(eq(batches.id, batchId))
+        .limit(1);
+
+      if (!batch) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Batch not found",
+        });
+      }
+
+      // Destination batch alias for transfers
+      const destBatch = aliasedTable(batches, "destBatch");
+      const sourceVessel = aliasedTable(vessels, "sourceVessel");
+      const destVessel = aliasedTable(vessels, "destVessel");
+
+      // Query all volume flow sources
+      // 1. Transfers out (to child batches)
+      const transfersOut = await db
+        .select({
+          id: batchTransfers.id,
+          date: batchTransfers.transferredAt,
+          volumeOut: batchTransfers.volumeTransferred,
+          loss: batchTransfers.loss,
+          destinationId: batchTransfers.destinationBatchId,
+          destinationName: destBatch.customName,
+          destinationBatchNumber: destBatch.batchNumber,
+        })
+        .from(batchTransfers)
+        .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
+        .where(
+          and(
+            eq(batchTransfers.sourceBatchId, batchId),
+            // Exclude self-referencing transfers
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`
+          )
+        )
+        .orderBy(asc(batchTransfers.transferredAt));
+
+      // 1b. Transfers in (from other batches, e.g., blending)
+      const sourceBatch = aliasedTable(batches, "sourceBatch");
+      const transfersIn = await db
+        .select({
+          id: batchTransfers.id,
+          date: batchTransfers.transferredAt,
+          volumeIn: batchTransfers.volumeTransferred,
+          sourceId: batchTransfers.sourceBatchId,
+          sourceName: sourceBatch.customName,
+          sourceBatchNumber: sourceBatch.batchNumber,
+        })
+        .from(batchTransfers)
+        .leftJoin(sourceBatch, eq(batchTransfers.sourceBatchId, sourceBatch.id))
+        .where(
+          and(
+            eq(batchTransfers.destinationBatchId, batchId),
+            // Exclude self-referencing transfers
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`
+          )
+        )
+        .orderBy(asc(batchTransfers.transferredAt));
+
+      // 2. Racking operations (losses during vessel moves)
+      const rackings = await db
+        .select({
+          id: batchRackingOperations.id,
+          date: batchRackingOperations.rackedAt,
+          volumeBefore: batchRackingOperations.volumeBefore,
+          volumeAfter: batchRackingOperations.volumeAfter,
+          loss: batchRackingOperations.volumeLoss,
+          sourceVesselName: sourceVessel.name,
+          destVesselName: destVessel.name,
+          notes: batchRackingOperations.notes,
+        })
+        .from(batchRackingOperations)
+        .leftJoin(sourceVessel, eq(batchRackingOperations.sourceVesselId, sourceVessel.id))
+        .leftJoin(destVessel, eq(batchRackingOperations.destinationVesselId, destVessel.id))
+        .where(
+          and(
+            eq(batchRackingOperations.batchId, batchId),
+            isNull(batchRackingOperations.deletedAt)
+          )
+        )
+        .orderBy(asc(batchRackingOperations.rackedAt));
+
+      // 3. Filter operations (losses during filtering)
+      const filterings = await db
+        .select({
+          id: batchFilterOperations.id,
+          date: batchFilterOperations.filteredAt,
+          volumeBefore: batchFilterOperations.volumeBefore,
+          volumeAfter: batchFilterOperations.volumeAfter,
+          loss: batchFilterOperations.volumeLoss,
+          vesselName: vessels.name,
+          filterType: batchFilterOperations.filterType,
+        })
+        .from(batchFilterOperations)
+        .leftJoin(vessels, eq(batchFilterOperations.vesselId, vessels.id))
+        .where(
+          and(
+            eq(batchFilterOperations.batchId, batchId),
+            isNull(batchFilterOperations.deletedAt)
+          )
+        )
+        .orderBy(asc(batchFilterOperations.filteredAt));
+
+      // 4. Bottle runs (packaging)
+      const bottlings = await db
+        .select({
+          id: bottleRuns.id,
+          date: bottleRuns.packagedAt,
+          volumeOut: bottleRuns.volumeTakenLiters,
+          loss: bottleRuns.loss,
+          unitsProduced: bottleRuns.unitsProduced,
+          packageSizeML: bottleRuns.packageSizeML,
+        })
+        .from(bottleRuns)
+        .where(
+          and(
+            eq(bottleRuns.batchId, batchId),
+            isNull(bottleRuns.voidedAt)
+          )
+        )
+        .orderBy(asc(bottleRuns.packagedAt));
+
+      // 5. Keg fills
+      const kegFillsList = await db
+        .select({
+          id: kegFills.id,
+          date: kegFills.filledAt,
+          volumeOut: kegFills.volumeTaken,
+          loss: kegFills.loss,
+          kegNumber: kegs.kegNumber,
+        })
+        .from(kegFills)
+        .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+        .where(
+          and(
+            eq(kegFills.batchId, batchId),
+            isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt)
+          )
+        )
+        .orderBy(asc(kegFills.filledAt));
+
+      // 6. Distillation records (sent to distillery) - use raw SQL since not imported
+      const distillations = await db.execute(sql`
+        SELECT
+          id,
+          sent_at as date,
+          source_volume_liters as volume_out,
+          distillery_name
+        FROM distillation_records
+        WHERE source_batch_id = ${batchId}
+          AND deleted_at IS NULL
+        ORDER BY sent_at ASC
+      `);
+
+      // Build unified entries list
+      type VolumeEntry = {
+        id: string;
+        date: Date;
+        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation";
+        description: string;
+        volumeOut: number;
+        volumeIn: number;
+        loss: number;
+        destinationId: string | null;
+        destinationName: string | null;
+      };
+
+      const entries: VolumeEntry[] = [];
+
+      // Add transfers out
+      for (const t of transfersOut) {
+        entries.push({
+          id: t.id,
+          date: t.date,
+          type: "transfer",
+          description: `Transfer to ${t.destinationName || t.destinationBatchNumber || "batch"}`,
+          volumeOut: parseFloat(t.volumeOut || "0"),
+          volumeIn: 0,
+          loss: parseFloat(t.loss || "0"),
+          destinationId: t.destinationId,
+          destinationName: t.destinationName || t.destinationBatchNumber || null,
+        });
+      }
+
+      // Add transfers in (blending from other batches)
+      for (const t of transfersIn) {
+        entries.push({
+          id: t.id,
+          date: t.date,
+          type: "transfer_in",
+          description: `Blended from ${t.sourceName || t.sourceBatchNumber || "batch"}`,
+          volumeOut: 0,
+          volumeIn: parseFloat(t.volumeIn || "0"),
+          loss: 0,
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
+      // Add rackings (only show if there's loss or it's meaningful)
+      for (const r of rackings) {
+        const lossValue = parseFloat(r.loss || "0");
+        // Skip historical records (they don't represent actual losses)
+        if (r.notes?.includes("Historical Record")) continue;
+
+        entries.push({
+          id: r.id,
+          date: r.date,
+          type: "racking",
+          description: `${r.sourceVesselName || "?"} → ${r.destVesselName || "?"}`,
+          volumeOut: 0, // Racking doesn't transfer volume out, just moves it
+          volumeIn: 0,
+          loss: lossValue,
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
+      // Add filterings
+      for (const f of filterings) {
+        entries.push({
+          id: f.id,
+          date: f.date,
+          type: "filtering",
+          description: `${f.filterType || "Filter"} in ${f.vesselName || "vessel"}`,
+          volumeOut: 0,
+          volumeIn: 0,
+          loss: parseFloat(f.loss || "0"),
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
+      // Add bottlings
+      for (const b of bottlings) {
+        const units = b.unitsProduced || 0;
+        const size = b.packageSizeML || 0;
+        entries.push({
+          id: b.id,
+          date: b.date,
+          type: "bottling",
+          description: `${units} × ${size}ml bottles`,
+          volumeOut: parseFloat(b.volumeOut || "0"),
+          volumeIn: 0,
+          loss: parseFloat(b.loss || "0"),
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
+      // Add keg fills
+      for (const k of kegFillsList) {
+        entries.push({
+          id: k.id,
+          date: k.date,
+          type: "kegging",
+          description: `Keg ${k.kegNumber || "?"}`,
+          volumeOut: parseFloat(k.volumeOut || "0"),
+          volumeIn: 0,
+          loss: parseFloat(k.loss || "0"),
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
+      // Add distillations
+      type DistillationRow = { id: string; date: Date; volume_out: string; distillery_name: string };
+      const distillationRows = (distillations as unknown as { rows: DistillationRow[] }).rows || [];
+      for (const d of distillationRows) {
+        entries.push({
+          id: d.id,
+          date: d.date,
+          type: "distillation",
+          description: `Sent to ${d.distillery_name || "distillery"}`,
+          volumeOut: parseFloat(d.volume_out || "0"),
+          volumeIn: 0,
+          loss: 0,
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
+      // Sort all entries by date
+      entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Calculate summary
+      const initialVolume = parseFloat(batch.initialVolume || "0");
+      const currentVolume = parseFloat(batch.currentVolume || "0");
+      let totalOutflow = 0;
+      let totalInflow = 0;
+      let totalLoss = 0;
+
+      for (const entry of entries) {
+        totalOutflow += entry.volumeOut;
+        totalInflow += entry.volumeIn;
+        totalLoss += entry.loss;
+      }
+
+      // accountedVolume = initial + inflow - outflow - loss
+      const accountedVolume = initialVolume + totalInflow - totalOutflow - totalLoss;
+      const discrepancy = currentVolume - accountedVolume;
+
+      return {
+        batch: {
+          id: batch.id,
+          name: batch.name,
+          customName: batch.customName,
+          batchNumber: batch.batchNumber,
+          initialVolume,
+          currentVolume,
+          status: batch.status,
+        },
+        entries,
+        summary: {
+          initialVolume,
+          totalInflow,
+          totalOutflow,
+          totalLoss,
+          accountedVolume,
+          currentVolume,
+          discrepancy,
+        },
+      };
+    }),
+
+  /**
+   * Get batch tracing report - shows all base batches as of a date and traces where volume went.
+   * Used for TTB reconciliation to track all 2024 harvest cider.
+   */
+  getBatchTraceReport: protectedProcedure
+    .input(z.object({ asOfDate: z.string() })) // ISO date string YYYY-MM-DD
+    .query(async ({ input }) => {
+      const { asOfDate } = input;
+      const targetDate = new Date(asOfDate);
+
+      // Find all TTB-reportable batches that existed on or before the target date
+      // Include: Batches with reconciliationStatus = 'verified' (unique inventory, not duplicated)
+      // Exclude: Batches not verified, LEGACY- prefixed batches, discarded batches
+      const baseBatches = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          customName: batches.customName,
+          batchNumber: batches.batchNumber,
+          initialVolume: batches.initialVolumeLiters,
+          currentVolume: batches.currentVolumeLiters,
+          status: batches.status,
+          vesselId: batches.vesselId,
+          vesselName: vessels.name,
+          startDate: batches.startDate,
+        })
+        .from(batches)
+        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+        .where(
+          and(
+            sql`${batches.startDate} <= ${targetDate}`,
+            // Only include verified batches (unique inventory that's not double-counted)
+            eq(batches.reconciliationStatus, "verified"),
+            // Exclude LEGACY- prefixed batches (handled separately in TTB reconciliation)
+            sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`,
+            isNull(batches.deletedAt),
+            sql`${batches.status} != 'discarded'`,
+            // Exclude 0 volume batches (consumed/placeholder batches)
+            sql`CAST(${batches.initialVolumeLiters} AS NUMERIC) > 0`
+          )
+        )
+        .orderBy(asc(batches.customName), asc(batches.name));
+
+      // For each batch, get volume trace entries
+      const destBatch = aliasedTable(batches, "destBatch");
+      const sourceVessel = aliasedTable(vessels, "sourceVessel");
+      const destVessel = aliasedTable(vessels, "destVessel");
+
+      type VolumeEntry = {
+        id: string;
+        date: Date;
+        type: "transfer" | "racking" | "filtering" | "bottling" | "kegging" | "distillation";
+        description: string;
+        volumeOut: number;
+        loss: number;
+        destinationId: string | null;
+        destinationName: string | null;
+      };
+
+      type BatchWithTrace = {
+        id: string;
+        name: string;
+        customName: string | null;
+        batchNumber: string;
+        vesselName: string | null;
+        initialVolume: number;
+        currentVolume: number;
+        status: string | null;
+        entries: VolumeEntry[];
+        summary: {
+          totalOutflow: number;
+          totalLoss: number;
+          totalPackaged: number;
+          accountedVolume: number;
+          discrepancy: number;
+        };
+      };
+
+      const batchResults: BatchWithTrace[] = [];
+      let grandTotalInitial = 0;
+      let grandTotalCurrent = 0;
+      let grandTotalOutflow = 0;
+      let grandTotalLoss = 0;
+      let grandTotalPackaged = 0;
+
+      for (const batch of baseBatches) {
+        const batchId = batch.id;
+        const entries: VolumeEntry[] = [];
+
+        // 1. Transfers out
+        const transfersOut = await db
+          .select({
+            id: batchTransfers.id,
+            date: batchTransfers.transferredAt,
+            volumeOut: batchTransfers.volumeTransferred,
+            loss: batchTransfers.loss,
+            destinationId: batchTransfers.destinationBatchId,
+            destinationName: destBatch.customName,
+            destinationBatchNumber: destBatch.batchNumber,
+          })
+          .from(batchTransfers)
+          .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
+          .where(
+            and(
+              eq(batchTransfers.sourceBatchId, batchId),
+              sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`
+            )
+          );
+
+        for (const t of transfersOut) {
+          entries.push({
+            id: t.id,
+            date: t.date,
+            type: "transfer",
+            description: `→ ${t.destinationName || t.destinationBatchNumber || "batch"}`,
+            volumeOut: parseFloat(t.volumeOut || "0"),
+            loss: parseFloat(t.loss || "0"),
+            destinationId: t.destinationId,
+            destinationName: t.destinationName || t.destinationBatchNumber || null,
+          });
+        }
+
+        // 2. Racking operations (losses)
+        const rackings = await db
+          .select({
+            id: batchRackingOperations.id,
+            date: batchRackingOperations.rackedAt,
+            loss: batchRackingOperations.volumeLoss,
+            sourceVesselName: sourceVessel.name,
+            destVesselName: destVessel.name,
+            notes: batchRackingOperations.notes,
+          })
+          .from(batchRackingOperations)
+          .leftJoin(sourceVessel, eq(batchRackingOperations.sourceVesselId, sourceVessel.id))
+          .leftJoin(destVessel, eq(batchRackingOperations.destinationVesselId, destVessel.id))
+          .where(
+            and(
+              eq(batchRackingOperations.batchId, batchId),
+              isNull(batchRackingOperations.deletedAt)
+            )
+          );
+
+        for (const r of rackings) {
+          const lossValue = parseFloat(r.loss || "0");
+          if (r.notes?.includes("Historical Record")) continue;
+          if (lossValue <= 0) continue; // Only show rackings with actual loss
+
+          entries.push({
+            id: r.id,
+            date: r.date,
+            type: "racking",
+            description: `${r.sourceVesselName || "?"} → ${r.destVesselName || "?"}`,
+            volumeOut: 0,
+            loss: lossValue,
+            destinationId: null,
+            destinationName: null,
+          });
+        }
+
+        // 3. Filter operations
+        const filterings = await db
+          .select({
+            id: batchFilterOperations.id,
+            date: batchFilterOperations.filteredAt,
+            loss: batchFilterOperations.volumeLoss,
+            filterType: batchFilterOperations.filterType,
+          })
+          .from(batchFilterOperations)
+          .where(
+            and(
+              eq(batchFilterOperations.batchId, batchId),
+              isNull(batchFilterOperations.deletedAt)
+            )
+          );
+
+        for (const f of filterings) {
+          const lossValue = parseFloat(f.loss || "0");
+          if (lossValue <= 0) continue;
+
+          entries.push({
+            id: f.id,
+            date: f.date,
+            type: "filtering",
+            description: f.filterType || "Filter",
+            volumeOut: 0,
+            loss: lossValue,
+            destinationId: null,
+            destinationName: null,
+          });
+        }
+
+        // 4. Bottle runs
+        const bottlings = await db
+          .select({
+            id: bottleRuns.id,
+            date: bottleRuns.packagedAt,
+            volumeOut: bottleRuns.volumeTakenLiters,
+            loss: bottleRuns.loss,
+            unitsProduced: bottleRuns.unitsProduced,
+            packageSizeML: bottleRuns.packageSizeML,
+          })
+          .from(bottleRuns)
+          .where(
+            and(
+              eq(bottleRuns.batchId, batchId),
+              isNull(bottleRuns.voidedAt)
+            )
+          );
+
+        for (const b of bottlings) {
+          const units = b.unitsProduced || 0;
+          const size = b.packageSizeML || 0;
+          entries.push({
+            id: b.id,
+            date: b.date,
+            type: "bottling",
+            description: `${units} × ${size}ml`,
+            volumeOut: parseFloat(b.volumeOut || "0"),
+            loss: parseFloat(b.loss || "0"),
+            destinationId: null,
+            destinationName: null,
+          });
+        }
+
+        // 5. Keg fills
+        const kegFillsList = await db
+          .select({
+            id: kegFills.id,
+            date: kegFills.filledAt,
+            volumeOut: kegFills.volumeTaken,
+            loss: kegFills.loss,
+            kegNumber: kegs.kegNumber,
+          })
+          .from(kegFills)
+          .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+          .where(
+            and(
+              eq(kegFills.batchId, batchId),
+              isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt)
+            )
+          );
+
+        for (const k of kegFillsList) {
+          entries.push({
+            id: k.id,
+            date: k.date,
+            type: "kegging",
+            description: `Keg ${k.kegNumber || "?"}`,
+            volumeOut: parseFloat(k.volumeOut || "0"),
+            loss: parseFloat(k.loss || "0"),
+            destinationId: null,
+            destinationName: null,
+          });
+        }
+
+        // 6. Distillation
+        const distillations = await db.execute(sql`
+          SELECT id, sent_at as date, source_volume_liters as volume_out, distillery_name
+          FROM distillation_records
+          WHERE source_batch_id = ${batchId} AND deleted_at IS NULL
+        `);
+
+        type DistillationRow = { id: string; date: Date; volume_out: string; distillery_name: string };
+        const distillationRows = (distillations as unknown as { rows: DistillationRow[] }).rows || [];
+        for (const d of distillationRows) {
+          entries.push({
+            id: d.id,
+            date: d.date,
+            type: "distillation",
+            description: `→ ${d.distillery_name || "Distillery"}`,
+            volumeOut: parseFloat(d.volume_out || "0"),
+            loss: 0,
+            destinationId: null,
+            destinationName: null,
+          });
+        }
+
+        // Sort entries by date
+        entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        // Calculate batch summary
+        const initialVolume = parseFloat(batch.initialVolume || "0");
+        const currentVolume = parseFloat(batch.currentVolume || "0");
+        let totalOutflow = 0;
+        let totalLoss = 0;
+        let totalPackaged = 0;
+
+        for (const entry of entries) {
+          totalOutflow += entry.volumeOut;
+          totalLoss += entry.loss;
+          if (entry.type === "bottling" || entry.type === "kegging") {
+            totalPackaged += entry.volumeOut;
+          }
+        }
+
+        const accountedVolume = initialVolume - totalOutflow - totalLoss;
+        const discrepancy = currentVolume - accountedVolume;
+
+        batchResults.push({
+          id: batch.id,
+          name: batch.name,
+          customName: batch.customName,
+          batchNumber: batch.batchNumber,
+          vesselName: batch.vesselName,
+          initialVolume,
+          currentVolume,
+          status: batch.status,
+          entries,
+          summary: {
+            totalOutflow,
+            totalLoss,
+            totalPackaged,
+            accountedVolume,
+            discrepancy,
+          },
+        });
+
+        grandTotalInitial += initialVolume;
+        grandTotalCurrent += currentVolume;
+        grandTotalOutflow += totalOutflow;
+        grandTotalLoss += totalLoss;
+        grandTotalPackaged += totalPackaged;
+      }
+
+      return {
+        asOfDate,
+        summary: {
+          totalBatches: batchResults.length,
+          totalInitialVolume: grandTotalInitial,
+          totalCurrentVolume: grandTotalCurrent,
+          totalTransferred: grandTotalOutflow - grandTotalPackaged,
+          totalPackaged: grandTotalPackaged,
+          totalLosses: grandTotalLoss,
+          totalDiscrepancy: grandTotalCurrent - (grandTotalInitial - grandTotalOutflow - grandTotalLoss),
+        },
+        batches: batchResults,
+      };
+    }),
 
   /**
    * Delete a legacy inventory batch.
