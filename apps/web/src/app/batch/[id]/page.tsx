@@ -59,6 +59,7 @@ import {
   CheckCircle2,
   XCircle,
   Gauge,
+  TrendingDown,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -71,6 +72,7 @@ import { formatDate, formatDateTime, formatDateForInput } from "@/utils/date-for
 import { AddBatchMeasurementForm } from "@/components/cellar/AddBatchMeasurementForm";
 import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
+import { BatchVolumeTrace } from "@/components/batch/BatchVolumeTrace";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { CompleteCarbonationModal } from "@/components/batch/CompleteCarbonationModal";
 import { toast } from "@/hooks/use-toast";
@@ -666,6 +668,10 @@ export default function BatchDetailsPage() {
           <TabsTrigger value="measurements">Measurements</TabsTrigger>
           <TabsTrigger value="additives">Additives</TabsTrigger>
           <TabsTrigger value="transfers">Transfer History</TabsTrigger>
+          <TabsTrigger value="volume-trace">
+            <TrendingDown className="w-4 h-4 mr-2" />
+            Volume Trace
+          </TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -1323,6 +1329,11 @@ export default function BatchDetailsPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Volume Trace Tab */}
+        <TabsContent value="volume-trace">
+          <BatchVolumeTrace batchId={batchId} />
         </TabsContent>
       </Tabs>
 

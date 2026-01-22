@@ -271,7 +271,7 @@ export const settingsRouter = router({
         estimatedAnnualTaxLiability: z.string().nullable().optional(),
 
         // TTB Onboarding
-        ttbOnboardingCompletedAt: z.date().nullable().optional(),
+        ttbOnboardingCompletedAt: z.coerce.date().nullable().optional(),
       }),
     )
     .mutation(async ({ input }) => {

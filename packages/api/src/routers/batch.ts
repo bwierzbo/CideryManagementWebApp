@@ -5845,9 +5845,10 @@ export const batchRouter = router({
       type VolumeEntry = {
         id: string;
         date: Date;
-        type: "transfer" | "racking" | "filtering" | "bottling" | "kegging" | "distillation";
+        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation";
         description: string;
         volumeOut: number;
+        volumeIn: number;
         loss: number;
         destinationId: string | null;
         destinationName: string | null;
@@ -5864,6 +5865,7 @@ export const batchRouter = router({
         status: string | null;
         entries: VolumeEntry[];
         summary: {
+          totalInflow: number;
           totalOutflow: number;
           totalLoss: number;
           totalPackaged: number;
@@ -5875,6 +5877,7 @@ export const batchRouter = router({
       const batchResults: BatchWithTrace[] = [];
       let grandTotalInitial = 0;
       let grandTotalCurrent = 0;
+      let grandTotalInflow = 0;
       let grandTotalOutflow = 0;
       let grandTotalLoss = 0;
       let grandTotalPackaged = 0;
@@ -5910,9 +5913,57 @@ export const batchRouter = router({
             type: "transfer",
             description: `→ ${t.destinationName || t.destinationBatchNumber || "batch"}`,
             volumeOut: parseFloat(t.volumeOut || "0"),
+            volumeIn: 0,
             loss: parseFloat(t.loss || "0"),
             destinationId: t.destinationId,
             destinationName: t.destinationName || t.destinationBatchNumber || null,
+          });
+        }
+
+        // 1b. Transfers in (from other batches, e.g., blending)
+        const transfersInRaw = await db
+          .select({
+            id: batchTransfers.id,
+            date: batchTransfers.transferredAt,
+            volumeIn: batchTransfers.volumeTransferred,
+            sourceId: batchTransfers.sourceBatchId,
+          })
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.destinationBatchId, batchId),
+              sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+              isNull(batchTransfers.deletedAt)
+            )
+          );
+
+        // Look up source batch names
+        const transfersIn = await Promise.all(
+          transfersInRaw.map(async (t) => {
+            const sourceBatchInfo = await db
+              .select({ customName: batches.customName, batchNumber: batches.batchNumber })
+              .from(batches)
+              .where(eq(batches.id, t.sourceId))
+              .limit(1);
+            return {
+              ...t,
+              sourceName: sourceBatchInfo[0]?.customName || null,
+              sourceBatchNumber: sourceBatchInfo[0]?.batchNumber || null,
+            };
+          })
+        );
+
+        for (const t of transfersIn) {
+          entries.push({
+            id: t.id,
+            date: t.date,
+            type: "transfer_in",
+            description: `Blended from ${t.sourceName || t.sourceBatchNumber || "batch"}`,
+            volumeOut: 0,
+            volumeIn: parseFloat(t.volumeIn || "0"),
+            loss: 0,
+            destinationId: null,
+            destinationName: null,
           });
         }
 
@@ -5947,6 +5998,7 @@ export const batchRouter = router({
             type: "racking",
             description: `${r.sourceVesselName || "?"} → ${r.destVesselName || "?"}`,
             volumeOut: 0,
+            volumeIn: 0,
             loss: lossValue,
             destinationId: null,
             destinationName: null,
@@ -5979,6 +6031,7 @@ export const batchRouter = router({
             type: "filtering",
             description: f.filterType || "Filter",
             volumeOut: 0,
+            volumeIn: 0,
             loss: lossValue,
             destinationId: null,
             destinationName: null,
@@ -6012,6 +6065,7 @@ export const batchRouter = router({
             type: "bottling",
             description: `${units} × ${size}ml`,
             volumeOut: parseFloat(b.volumeOut || "0"),
+            volumeIn: 0,
             loss: parseFloat(b.loss || "0"),
             destinationId: null,
             destinationName: null,
@@ -6044,6 +6098,7 @@ export const batchRouter = router({
             type: "kegging",
             description: `Keg ${k.kegNumber || "?"}`,
             volumeOut: parseFloat(k.volumeOut || "0"),
+            volumeIn: 0,
             loss: parseFloat(k.loss || "0"),
             destinationId: null,
             destinationName: null,
@@ -6066,6 +6121,7 @@ export const batchRouter = router({
             type: "distillation",
             description: `→ ${d.distillery_name || "Distillery"}`,
             volumeOut: parseFloat(d.volume_out || "0"),
+            volumeIn: 0,
             loss: 0,
             destinationId: null,
             destinationName: null,
@@ -6079,18 +6135,21 @@ export const batchRouter = router({
         const initialVolume = parseFloat(batch.initialVolume || "0");
         const currentVolume = parseFloat(batch.currentVolume || "0");
         let totalOutflow = 0;
+        let totalInflow = 0;
         let totalLoss = 0;
         let totalPackaged = 0;
 
         for (const entry of entries) {
           totalOutflow += entry.volumeOut;
+          totalInflow += entry.volumeIn;
           totalLoss += entry.loss;
           if (entry.type === "bottling" || entry.type === "kegging") {
             totalPackaged += entry.volumeOut;
           }
         }
 
-        const accountedVolume = initialVolume - totalOutflow - totalLoss;
+        // accountedVolume = initial + inflow - outflow - loss
+        const accountedVolume = initialVolume + totalInflow - totalOutflow - totalLoss;
         const discrepancy = currentVolume - accountedVolume;
 
         batchResults.push({
@@ -6104,6 +6163,7 @@ export const batchRouter = router({
           status: batch.status,
           entries,
           summary: {
+            totalInflow,
             totalOutflow,
             totalLoss,
             totalPackaged,
@@ -6114,6 +6174,7 @@ export const batchRouter = router({
 
         grandTotalInitial += initialVolume;
         grandTotalCurrent += currentVolume;
+        grandTotalInflow += totalInflow;
         grandTotalOutflow += totalOutflow;
         grandTotalLoss += totalLoss;
         grandTotalPackaged += totalPackaged;
@@ -6125,10 +6186,12 @@ export const batchRouter = router({
           totalBatches: batchResults.length,
           totalInitialVolume: grandTotalInitial,
           totalCurrentVolume: grandTotalCurrent,
+          totalInflow: grandTotalInflow,
           totalTransferred: grandTotalOutflow - grandTotalPackaged,
           totalPackaged: grandTotalPackaged,
           totalLosses: grandTotalLoss,
-          totalDiscrepancy: grandTotalCurrent - (grandTotalInitial - grandTotalOutflow - grandTotalLoss),
+          // accountedVolume = initial + inflow - outflow - loss
+          totalDiscrepancy: grandTotalCurrent - (grandTotalInitial + grandTotalInflow - grandTotalOutflow - grandTotalLoss),
         },
         batches: batchResults,
       };

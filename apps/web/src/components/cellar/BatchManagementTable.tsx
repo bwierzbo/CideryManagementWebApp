@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { trpc } from "@/utils/trpc";
 import { Button } from "@/components/ui/button";
 import {
@@ -515,7 +516,12 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                   batches.map((batch) => (
                     <TableRow key={batch.id}>
                       <TableCell className="font-medium font-mono text-sm">
-                        {batch.name}
+                        <Link
+                          href={`/batch/${batch.id}`}
+                          className="text-blue-600 hover:underline"
+                        >
+                          {batch.name}
+                        </Link>
                       </TableCell>
                       <TableCell>
                         {editingBatch?.batchId === batch.id ? (
