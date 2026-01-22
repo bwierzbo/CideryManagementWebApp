@@ -5507,7 +5507,9 @@ export const batchRouter = router({
           and(
             eq(batchTransfers.destinationBatchId, batchId),
             // Exclude self-referencing transfers
-            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+            // Exclude deleted transfers
+            isNull(batchTransfers.deletedAt)
           )
         )
         .orderBy(asc(batchTransfers.transferredAt));
