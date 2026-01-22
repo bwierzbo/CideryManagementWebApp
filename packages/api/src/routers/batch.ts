@@ -5491,18 +5491,15 @@ export const batchRouter = router({
         .orderBy(asc(batchTransfers.transferredAt));
 
       // 1b. Transfers in (from other batches, e.g., blending)
-      const sourceBatch = aliasedTable(batches, "sourceBatch");
-      const transfersIn = await db
+      // First get the transfer records
+      const transfersInRaw = await db
         .select({
           id: batchTransfers.id,
           date: batchTransfers.transferredAt,
           volumeIn: batchTransfers.volumeTransferred,
           sourceId: batchTransfers.sourceBatchId,
-          sourceName: sourceBatch.customName,
-          sourceBatchNumber: sourceBatch.batchNumber,
         })
         .from(batchTransfers)
-        .leftJoin(sourceBatch, eq(batchTransfers.sourceBatchId, sourceBatch.id))
         .where(
           and(
             eq(batchTransfers.destinationBatchId, batchId),
@@ -5513,6 +5510,22 @@ export const batchRouter = router({
           )
         )
         .orderBy(asc(batchTransfers.transferredAt));
+
+      // Then look up source batch names
+      const transfersIn = await Promise.all(
+        transfersInRaw.map(async (t) => {
+          const sourceBatchInfo = await db
+            .select({ customName: batches.customName, batchNumber: batches.batchNumber })
+            .from(batches)
+            .where(eq(batches.id, t.sourceId))
+            .limit(1);
+          return {
+            ...t,
+            sourceName: sourceBatchInfo[0]?.customName || null,
+            sourceBatchNumber: sourceBatchInfo[0]?.batchNumber || null,
+          };
+        })
+      );
 
       // 2. Racking operations (losses during vessel moves)
       const rackings = await db
