@@ -24,6 +24,8 @@ import {
   batchFilterOperations,
   batchRackingOperations,
   bottleRuns,
+  batchTransfers,
+  distillationRecords,
   users,
   basefruitPurchases,
   basefruitPurchaseItems,
@@ -459,37 +461,206 @@ export const ttbRouter = router({
         };
 
         // ============================================
-        // Part V: Ending Inventory
+        // Part V: Ending Inventory (AS OF period end date)
         // ============================================
 
-        // Bulk inventory: Active batches with volume at end of period
-        const bulkAtEnd = await db
+        // Bulk inventory: Calculate batch volumes AS OF the period end date
+        // This uses transaction history rather than current volumes
+
+        // Get all batches that existed on or before the end date
+        const batchesAtEnd = await db
           .select({
-            totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)`,
+            id: batches.id,
+            initialVolume: batches.initialVolumeLiters,
+            startDate: batches.startDate,
+            status: batches.status,
           })
           .from(batches)
           .where(
             and(
               isNull(batches.deletedAt),
               lte(batches.startDate, endDate),
-              or(isNull(batches.endDate), gte(batches.endDate, endDate))
+              // Exclude batches that ended before the period end
+              or(isNull(batches.endDate), gte(batches.endDate, endDate)),
+              // Exclude discarded/completed batches that were finished before endDate
+              // (they would have 0 volume at endDate)
+              sql`NOT (${batches.status} = 'discarded' AND ${batches.updatedAt} <= ${endDate})`
             )
           );
 
-        const endingBulkLiters = Number(bulkAtEnd[0]?.totalLiters || 0);
+        let endingBulkLiters = 0;
 
-        // Bottled inventory at end of period
-        const bottledAtEnd = await db
+        for (const batch of batchesAtEnd) {
+          let batchVolume = Number(batch.initialVolume || 0);
+
+          // Add transfers IN on or before endDate
+          const transfersIn = await db
+            .select({
+              totalVolume: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
+            })
+            .from(batchTransfers)
+            .where(
+              and(
+                eq(batchTransfers.destinationBatchId, batch.id),
+                ne(batchTransfers.sourceBatchId, batch.id), // Exclude self-transfers
+                isNull(batchTransfers.deletedAt),
+                lte(batchTransfers.transferredAt, endDate)
+              )
+            );
+          batchVolume += Number(transfersIn[0]?.totalVolume || 0);
+
+          // Subtract transfers OUT on or before endDate
+          const transfersOut = await db
+            .select({
+              totalVolume: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
+              totalLoss: sql<number>`COALESCE(SUM(CAST(${batchTransfers.loss} AS DECIMAL)), 0)`,
+            })
+            .from(batchTransfers)
+            .where(
+              and(
+                eq(batchTransfers.sourceBatchId, batch.id),
+                ne(batchTransfers.destinationBatchId, batch.id), // Exclude self-transfers
+                isNull(batchTransfers.deletedAt),
+                lte(batchTransfers.transferredAt, endDate)
+              )
+            );
+          batchVolume -= Number(transfersOut[0]?.totalVolume || 0);
+          batchVolume -= Number(transfersOut[0]?.totalLoss || 0);
+
+          // Subtract bottlings on or before endDate
+          const bottlings = await db
+            .select({
+              totalVolume: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
+            })
+            .from(bottleRuns)
+            .where(
+              and(
+                eq(bottleRuns.batchId, batch.id),
+                isNull(bottleRuns.voidedAt),
+                lte(bottleRuns.packagedAt, endDate)
+              )
+            );
+          batchVolume -= Number(bottlings[0]?.totalVolume || 0);
+
+          // Subtract keg fills on or before endDate
+          const kegFillsData = await db
+            .select({
+              totalVolume: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
+            })
+            .from(kegFills)
+            .where(
+              and(
+                eq(kegFills.batchId, batch.id),
+                isNull(kegFills.voidedAt),
+                lte(kegFills.filledAt, endDate)
+              )
+            );
+          batchVolume -= Number(kegFillsData[0]?.totalVolume || 0);
+
+          // Subtract distillation on or before endDate
+          const distillation = await db
+            .select({
+              totalVolume: sql<number>`COALESCE(SUM(CAST(${distillationRecords.sourceVolumeLiters} AS DECIMAL)), 0)`,
+            })
+            .from(distillationRecords)
+            .where(
+              and(
+                eq(distillationRecords.sourceBatchId, batch.id),
+                isNull(distillationRecords.deletedAt),
+                lte(distillationRecords.sentAt, endDate)
+              )
+            );
+          batchVolume -= Number(distillation[0]?.totalVolume || 0);
+
+          // Subtract racking losses on or before endDate
+          const rackingLoss = await db
+            .select({
+              totalLoss: sql<number>`COALESCE(SUM(CAST(${batchRackingOperations.volumeLoss} AS DECIMAL)), 0)`,
+            })
+            .from(batchRackingOperations)
+            .where(
+              and(
+                eq(batchRackingOperations.batchId, batch.id),
+                isNull(batchRackingOperations.deletedAt),
+                lte(batchRackingOperations.rackedAt, endDate)
+              )
+            );
+          batchVolume -= Number(rackingLoss[0]?.totalLoss || 0);
+
+          // Subtract filter losses on or before endDate
+          const filterLoss = await db
+            .select({
+              totalLoss: sql<number>`COALESCE(SUM(CAST(${batchFilterOperations.volumeLoss} AS DECIMAL)), 0)`,
+            })
+            .from(batchFilterOperations)
+            .where(
+              and(
+                eq(batchFilterOperations.batchId, batch.id),
+                isNull(batchFilterOperations.deletedAt),
+                lte(batchFilterOperations.filteredAt, endDate)
+              )
+            );
+          batchVolume -= Number(filterLoss[0]?.totalLoss || 0);
+
+          // Only add positive volumes (batch had liquid at endDate)
+          if (batchVolume > 0) {
+            endingBulkLiters += batchVolume;
+          }
+        }
+
+        // Bottled inventory AS OF period end date
+        // Calculate by taking current quantity and reversing changes that happened AFTER endDate
+
+        // Get all inventory items that were created on or before endDate
+        const itemsCreatedByEndDate = await db
           .select({
-            totalML: sql<number>`COALESCE(SUM(
-              CAST(${inventoryItems.currentQuantity} AS DECIMAL) *
-              CAST(${inventoryItems.packageSizeML} AS DECIMAL)
-            ), 0)`,
+            id: inventoryItems.id,
+            packageSizeML: inventoryItems.packageSizeML,
+            currentQuantity: inventoryItems.currentQuantity,
           })
           .from(inventoryItems)
           .where(lte(inventoryItems.createdAt, endDate));
 
-        const endingBottledML = Number(bottledAtEnd[0]?.totalML || 0);
+        let endingBottledML = 0;
+
+        for (const item of itemsCreatedByEndDate) {
+          // Start with current quantity
+          let itemQuantity = Number(item.currentQuantity || 0);
+
+          // Add back distributions that happened AFTER endDate (reverse them)
+          const distributionsAfter = await db
+            .select({
+              totalQuantity: sql<number>`COALESCE(SUM(${inventoryDistributions.quantityDistributed}), 0)`,
+            })
+            .from(inventoryDistributions)
+            .where(
+              and(
+                eq(inventoryDistributions.inventoryItemId, item.id),
+                sql`${inventoryDistributions.distributionDate} > ${endDate}`
+              )
+            );
+          itemQuantity += Number(distributionsAfter[0]?.totalQuantity || 0);
+
+          // Reverse adjustments that happened AFTER endDate
+          const adjustmentsAfter = await db
+            .select({
+              totalChange: sql<number>`COALESCE(SUM(${inventoryAdjustments.quantityChange}), 0)`,
+            })
+            .from(inventoryAdjustments)
+            .where(
+              and(
+                eq(inventoryAdjustments.inventoryItemId, item.id),
+                sql`${inventoryAdjustments.adjustedAt} > ${endDate}`
+              )
+            );
+          // Reverse the adjustment (if it was -5 after endDate, add 5 back)
+          itemQuantity -= Number(adjustmentsAfter[0]?.totalChange || 0);
+
+          // Only add positive quantities
+          if (itemQuantity > 0) {
+            endingBottledML += itemQuantity * Number(item.packageSizeML || 0);
+          }
+        }
 
         const endingInventory: InventoryBreakdown = {
           bulk: roundGallons(litersToWineGallons(endingBulkLiters)),
