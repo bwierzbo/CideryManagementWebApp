@@ -1823,6 +1823,7 @@ export const ttbRouter = router({
       const pressRunLiters = Number(pressRunProduction[0]?.totalLiters || 0);
 
       // 2b. PRODUCTION: Juice purchases on or before the date
+      // Note: Must filter both purchase AND item deletedAt to exclude corrected entries
       const juicePurchaseProduction = await db
         .select({
           totalLiters: sql<number>`COALESCE(SUM(
@@ -1837,6 +1838,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(juicePurchases.deletedAt),
+            isNull(juicePurchaseItems.deletedAt),
             sql`${juicePurchases.purchaseDate}::date <= ${reconciliationDate}::date`
           )
         );
@@ -2394,6 +2396,7 @@ export const ttbRouter = router({
 
       // Get juice purchase volumes by year (normalize to liters)
       // Unit enum values: "kg", "lb", "L", "gal", "bushel"
+      // Note: Must filter both purchase AND item deletedAt to exclude corrected entries
       const juicePurchaseData = await db
         .select({
           year: sql<number>`EXTRACT(YEAR FROM ${juicePurchases.purchaseDate})`,
@@ -2408,7 +2411,12 @@ export const ttbRouter = router({
         })
         .from(juicePurchaseItems)
         .innerJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
-        .where(isNull(juicePurchases.deletedAt))
+        .where(
+          and(
+            isNull(juicePurchases.deletedAt),
+            isNull(juicePurchaseItems.deletedAt)
+          )
+        )
         .groupBy(sql`EXTRACT(YEAR FROM ${juicePurchases.purchaseDate})`)
         .orderBy(sql`EXTRACT(YEAR FROM ${juicePurchases.purchaseDate})`);
 
