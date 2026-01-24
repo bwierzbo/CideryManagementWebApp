@@ -46,6 +46,7 @@ import {
   lte,
   lt,
   isNull,
+  isNotNull,
   sql,
   desc,
   asc,
@@ -251,12 +252,30 @@ export const ttbRouter = router({
 
             const beginningBottledML = Number(bottledAtStart[0]?.totalML || 0);
 
+            // Kegs in stock before period start (filled but not yet distributed)
+            const kegsAtStart = await db
+              .select({
+                totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
+              })
+              .from(kegFills)
+              .where(
+                and(
+                  isNull(kegFills.distributedAt), // Not yet distributed
+                  isNull(kegFills.voidedAt),
+                  lte(kegFills.filledAt, dayBeforeStart)
+                )
+              );
+            const beginningKegsLiters = Number(kegsAtStart[0]?.totalLiters || 0);
+
             beginningInventory = {
               bulk: roundGallons(litersToWineGallons(beginningBulkLiters)),
-              bottled: roundGallons(mlToWineGallons(beginningBottledML)),
+              bottled: roundGallons(
+                mlToWineGallons(beginningBottledML) + litersToWineGallons(beginningKegsLiters)
+              ),
               total: roundGallons(
                 litersToWineGallons(beginningBulkLiters) +
-                  mlToWineGallons(beginningBottledML)
+                  mlToWineGallons(beginningBottledML) +
+                  litersToWineGallons(beginningKegsLiters)
               ),
             };
           }
@@ -315,7 +334,8 @@ export const ttbRouter = router({
           )
           .groupBy(salesChannels.code);
 
-        // Keg distributions
+        // Keg distributions - tax-paid when keg leaves bonded space (distributed_at is set)
+        // Note: status may be "distributed" or "returned" - both count as tax-paid since the keg left
         const kegDistributionsByChannel = await db
           .select({
             channelCode: salesChannels.code,
@@ -328,8 +348,8 @@ export const ttbRouter = router({
           )
           .where(
             and(
-              eq(kegFills.status, "distributed"),
-              isNull(kegFills.deletedAt),
+              isNotNull(kegFills.distributedAt),
+              isNull(kegFills.voidedAt),
               gte(kegFills.distributedAt, startDate),
               lte(kegFills.distributedAt, endDate)
             )
@@ -662,12 +682,31 @@ export const ttbRouter = router({
           }
         }
 
+        // Kegs in stock (filled but not yet distributed)
+        // These are packaged inventory that hasn't left the bonded space yet
+        const kegsInStock = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
+          })
+          .from(kegFills)
+          .where(
+            and(
+              isNull(kegFills.distributedAt), // Not yet distributed
+              isNull(kegFills.voidedAt),
+              lte(kegFills.filledAt, endDate) // Filled on or before end date
+            )
+          );
+        const kegsInStockLiters = Number(kegsInStock[0]?.totalLiters || 0);
+
         const endingInventory: InventoryBreakdown = {
           bulk: roundGallons(litersToWineGallons(endingBulkLiters)),
-          bottled: roundGallons(mlToWineGallons(endingBottledML)),
+          bottled: roundGallons(
+            mlToWineGallons(endingBottledML) + litersToWineGallons(kegsInStockLiters)
+          ),
           total: roundGallons(
             litersToWineGallons(endingBulkLiters) +
-              mlToWineGallons(endingBottledML)
+              mlToWineGallons(endingBottledML) +
+              litersToWineGallons(kegsInStockLiters)
           ),
         };
 
@@ -1872,7 +1911,8 @@ export const ttbRouter = router({
       const transferLossesBeforeGallons = Number(transferLossesBefore[0]?.totalLiters || 0) * 0.264172;
 
       // 3e. Distributions (sales) on or before the date
-      const distributionsBefore = await db
+      // Bottle/can distributions
+      const bottleDistributionsBefore = await db
         .select({
           totalML: sql<number>`COALESCE(SUM(
             CAST(${inventoryDistributions.quantityDistributed} AS DECIMAL) *
@@ -1883,17 +1923,53 @@ export const ttbRouter = router({
         .innerJoin(inventoryItems, eq(inventoryDistributions.inventoryItemId, inventoryItems.id))
         .where(sql`${inventoryDistributions.distributionDate}::date <= ${reconciliationDate}::date`);
 
-      const distributionsBeforeGallons = Number(distributionsBefore[0]?.totalML || 0) / 3785.41;
+      const bottleDistributionsBeforeGallons = Number(bottleDistributionsBefore[0]?.totalML || 0) / 3785.41;
+
+      // Keg distributions (when distributed_at is set, keg left bonded space)
+      const kegDistributionsBefore = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
+        })
+        .from(kegFills)
+        .where(
+          and(
+            isNotNull(kegFills.distributedAt),
+            isNull(kegFills.voidedAt),
+            sql`${kegFills.distributedAt}::date <= ${reconciliationDate}::date`
+          )
+        );
+
+      const kegDistributionsBeforeGallons = Number(kegDistributionsBefore[0]?.totalLiters || 0) * 0.264172;
+
+      const distributionsBeforeGallons = bottleDistributionsBeforeGallons + kegDistributionsBeforeGallons;
 
       // 3f. Volume packaged (converted from bulk to packaged) on or before the date
-      const packagedVolumeBefore = await db
+      // Bottles/cans packaged
+      const bottlesPackagedBefore = await db
         .select({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
         })
         .from(bottleRuns)
         .where(sql`${bottleRuns.packagedAt}::date <= ${reconciliationDate}::date`);
 
-      const packagedVolumeBeforeGallons = Number(packagedVolumeBefore[0]?.totalLiters || 0) * 0.264172;
+      const bottlesPackagedBeforeGallons = Number(bottlesPackagedBefore[0]?.totalLiters || 0) * 0.264172;
+
+      // Kegs filled
+      const kegsFilledBefore = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
+        })
+        .from(kegFills)
+        .where(
+          and(
+            isNull(kegFills.voidedAt),
+            sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
+          )
+        );
+
+      const kegsFilledBeforeGallons = Number(kegsFilledBefore[0]?.totalLiters || 0) * 0.264172;
+
+      const packagedVolumeBeforeGallons = bottlesPackagedBeforeGallons + kegsFilledBeforeGallons;
 
       // Calculate total losses
       const totalLossesGallons = rackingLossesBeforeGallons + filterLossesBeforeGallons +
