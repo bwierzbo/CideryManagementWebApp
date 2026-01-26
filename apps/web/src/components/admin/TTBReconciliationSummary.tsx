@@ -331,44 +331,72 @@ export function TTBReconciliationSummary() {
         </CardHeader>
         {lastReconciliation ? (
           <CardContent className="pt-0">
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-xs text-gray-500 mb-1">TTB Balance</div>
-                <div className="text-lg font-semibold font-mono">
-                  {lastReconciliation.inventoryOnHand != null && lastReconciliation.inventoryDifference != null
-                    ? (Number(lastReconciliation.inventoryOnHand) + Number(lastReconciliation.inventoryDifference)).toFixed(1)
-                    : "—"} gal
-                </div>
-              </div>
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-xs text-gray-500 mb-1">On Hand</div>
-                <div className="text-lg font-semibold font-mono">
-                  {lastReconciliation.inventoryOnHand != null ? Number(lastReconciliation.inventoryOnHand).toFixed(1) : "—"} gal
-                </div>
-              </div>
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-xs text-gray-500 mb-1">Removals</div>
-                <div className="text-lg font-semibold font-mono">
-                  {lastReconciliation.inventoryRemovals != null ? Number(lastReconciliation.inventoryRemovals).toFixed(1) : "—"} gal
-                </div>
-              </div>
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-xs text-gray-500 mb-1">Legacy</div>
-                <div className="text-lg font-semibold font-mono">
-                  {lastReconciliation.inventoryLegacy != null ? Number(lastReconciliation.inventoryLegacy).toFixed(1) : "—"} gal
-                </div>
-              </div>
-              <div className="p-3 bg-white rounded-lg border">
-                <div className="text-xs text-gray-500 mb-1">Variance</div>
-                <div className={cn(
-                  "text-lg font-semibold font-mono",
-                  Number(lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
-                  Number(lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
-                  Math.abs(Number(lastReconciliation.inventoryDifference ?? 0)) <= 0.5 && "text-green-600"
-                )}>
-                  {Number(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}{lastReconciliation.inventoryDifference != null ? Number(lastReconciliation.inventoryDifference).toFixed(1) : "—"} gal
-                </div>
-              </div>
+            <div className="border rounded-lg overflow-hidden bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gray-50">
+                    <TableHead className="font-semibold">Line Item</TableHead>
+                    <TableHead className="text-right font-semibold">TTB (gal)</TableHead>
+                    <TableHead className="text-right font-semibold">System (gal)</TableHead>
+                    <TableHead className="text-right font-semibold">Variance</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow>
+                    <TableCell className="font-medium">Beginning Inventory</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {lastReconciliation.ttbBalance?.toFixed(1) ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>On Hand Inventory</TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {lastReconciliation.inventoryOnHand?.toFixed(1) ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>Tax-paid Removals</TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {lastReconciliation.inventoryRemovals?.toFixed(1) ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell>Legacy (Pre-system)</TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-gray-400">—</TableCell>
+                  </TableRow>
+                  <TableRow className="bg-gray-50 font-semibold border-t-2">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {lastReconciliation.ttbBalance?.toFixed(1) ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono">
+                      {lastReconciliation.inventoryAccountedFor?.toFixed(1) ?? "—"}
+                    </TableCell>
+                    <TableCell className={cn(
+                      "text-right font-mono",
+                      (lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
+                      (lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
+                      Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && "text-green-600"
+                    )}>
+                      {(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}
+                      {lastReconciliation.inventoryDifference?.toFixed(1) ?? "—"}
+                      {Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && (
+                        <CheckCircle className="w-4 h-4 inline ml-1" />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
             </div>
           </CardContent>
         ) : (
