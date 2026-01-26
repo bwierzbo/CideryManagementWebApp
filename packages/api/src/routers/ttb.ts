@@ -3139,6 +3139,29 @@ export const ttbRouter = router({
       return null;
     }
 
+    // Parse taxClassBreakdown JSON
+    let taxClasses: Array<{
+      key: string;
+      label: string;
+      ttbTotal: number;
+      currentInventory: number;
+      removals: number;
+      legacyBatches: number;
+      difference: number;
+      isReconciled: boolean;
+    }> = [];
+
+    if (snapshot.taxClassBreakdown) {
+      try {
+        const parsed = typeof snapshot.taxClassBreakdown === 'string'
+          ? JSON.parse(snapshot.taxClassBreakdown)
+          : snapshot.taxClassBreakdown;
+        taxClasses = Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        console.error("Failed to parse taxClassBreakdown:", e);
+      }
+    }
+
     return {
       ...snapshot,
       ttbBalance: parseFloat(snapshot.ttbBalance || "0"),
@@ -3150,10 +3173,13 @@ export const ttbRouter = router({
       inventoryBulk: parseFloat(snapshot.inventoryBulk || "0"),
       inventoryPackaged: parseFloat(snapshot.inventoryPackaged || "0"),
       productionTotal: parseFloat(snapshot.productionTotal || "0"),
+      productionPressRuns: parseFloat(snapshot.productionPressRuns || "0"),
+      productionJuicePurchases: parseFloat(snapshot.productionJuicePurchases || "0"),
       openingBalanceGallons: snapshot.openingBalanceGallons ? parseFloat(snapshot.openingBalanceGallons) : null,
       calculatedEndingGallons: snapshot.calculatedEndingGallons ? parseFloat(snapshot.calculatedEndingGallons) : null,
       physicalCountGallons: snapshot.physicalCountGallons ? parseFloat(snapshot.physicalCountGallons) : null,
       varianceGallons: snapshot.varianceGallons ? parseFloat(snapshot.varianceGallons) : null,
+      taxClasses,
     };
   }),
 

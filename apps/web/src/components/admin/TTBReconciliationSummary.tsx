@@ -331,69 +331,213 @@ export function TTBReconciliationSummary() {
         </CardHeader>
         {lastReconciliation ? (
           <CardContent className="pt-0">
-            <div className="border rounded-lg overflow-hidden bg-white">
+            {/* TTB Form 5120.17 Format - Part I Summary */}
+            <div className="text-xs text-gray-500 mb-2 font-medium">
+              TTB Form 5120.17 - Part I: Summary of Wines in Bond (Gallons)
+            </div>
+            <div className="border rounded-lg overflow-hidden bg-white overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50">
-                    <TableHead className="font-semibold">Line Item</TableHead>
-                    <TableHead className="text-right font-semibold">TTB (gal)</TableHead>
-                    <TableHead className="text-right font-semibold">System (gal)</TableHead>
-                    <TableHead className="text-right font-semibold">Variance</TableHead>
+                  <TableRow className="bg-gray-100">
+                    <TableHead className="font-semibold text-xs w-[180px]">Section A - Bulk</TableHead>
+                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
+                      <>
+                        {lastReconciliation.taxClasses.map((tc: { key: string; label: string }) => (
+                          <TableHead key={tc.key} className="text-right font-semibold text-xs min-w-[90px]">
+                            {tc.label.replace(" ABV", "").replace("Hard Cider (<8.5%)", "Hard Cider").replace("Wine (<16%)", "Wine <16%").replace("Wine (16-21%)", "Wine 16-21%")}
+                          </TableHead>
+                        ))}
+                        <TableHead className="text-right font-semibold text-xs bg-gray-200 min-w-[80px]">Total</TableHead>
+                      </>
+                    ) : (
+                      <>
+                        <TableHead className="text-right font-semibold text-xs">Hard Cider</TableHead>
+                        <TableHead className="text-right font-semibold text-xs bg-gray-200">Total</TableHead>
+                      </>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {/* Line 1: On Hand Beginning */}
                   <TableRow>
-                    <TableCell className="font-medium">Beginning Inventory</TableCell>
-                    <TableCell className="text-right font-mono">
-                      {lastReconciliation.ttbBalance?.toFixed(1) ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-xs">1. On Hand Beginning</TableCell>
+                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
+                      <>
+                        {lastReconciliation.taxClasses.map((tc: { key: string; ttbTotal: number }) => (
+                          <TableCell key={tc.key} className="text-right font-mono text-xs">
+                            {tc.ttbTotal?.toFixed(1) ?? "0.0"}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.ttbBalance?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-right font-mono text-xs">
+                          {lastReconciliation.ttbBalance?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.ttbBalance?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
+
+                  {/* Line 2: Produced */}
                   <TableRow>
-                    <TableCell>On Hand Inventory</TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
-                    <TableCell className="text-right font-mono">
-                      {lastReconciliation.inventoryOnHand?.toFixed(1) ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-xs">2. Produced</TableCell>
+                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
+                      <>
+                        {lastReconciliation.taxClasses.map((tc: { key: string }) => (
+                          <TableCell key={tc.key} className="text-right font-mono text-xs text-gray-400">—</TableCell>
+                        ))}
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.productionTotal?.toFixed(1) ?? "—"}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-right font-mono text-xs text-gray-400">—</TableCell>
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.productionTotal?.toFixed(1) ?? "—"}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
+
+                  {/* Line 14: Removed Taxpaid */}
                   <TableRow>
-                    <TableCell>Tax-paid Removals</TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
-                    <TableCell className="text-right font-mono">
-                      {lastReconciliation.inventoryRemovals?.toFixed(1) ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-xs">14. Removed Taxpaid</TableCell>
+                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
+                      <>
+                        {lastReconciliation.taxClasses.map((tc: { key: string; removals: number }) => (
+                          <TableCell key={tc.key} className="text-right font-mono text-xs">
+                            {tc.removals?.toFixed(1) ?? "0.0"}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.inventoryRemovals?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-right font-mono text-xs">
+                          {lastReconciliation.inventoryRemovals?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.inventoryRemovals?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
+
+                  {/* Line 31: On Hand End */}
                   <TableRow>
-                    <TableCell>Legacy (Pre-system)</TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
-                    <TableCell className="text-right font-mono">
-                      {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-gray-400">—</TableCell>
+                    <TableCell className="text-xs">31. On Hand End</TableCell>
+                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
+                      <>
+                        {lastReconciliation.taxClasses.map((tc: { key: string; currentInventory: number }) => (
+                          <TableCell key={tc.key} className="text-right font-mono text-xs">
+                            {tc.currentInventory?.toFixed(1) ?? "0.0"}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.inventoryOnHand?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-right font-mono text-xs">
+                          {lastReconciliation.inventoryOnHand?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.inventoryOnHand?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
-                  <TableRow className="bg-gray-50 font-semibold border-t-2">
-                    <TableCell>Total</TableCell>
-                    <TableCell className="text-right font-mono">
-                      {lastReconciliation.ttbBalance?.toFixed(1) ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-mono">
-                      {lastReconciliation.inventoryAccountedFor?.toFixed(1) ?? "—"}
-                    </TableCell>
-                    <TableCell className={cn(
-                      "text-right font-mono",
-                      (lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
-                      (lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
-                      Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && "text-green-600"
-                    )}>
-                      {(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}
-                      {lastReconciliation.inventoryDifference?.toFixed(1) ?? "—"}
-                      {Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && (
-                        <CheckCircle className="w-4 h-4 inline ml-1" />
-                      )}
-                    </TableCell>
+
+                  {/* Legacy (Pre-system) */}
+                  <TableRow>
+                    <TableCell className="text-xs text-gray-600 italic">Legacy (Pre-system)</TableCell>
+                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
+                      <>
+                        {lastReconciliation.taxClasses.map((tc: { key: string; legacyBatches: number }) => (
+                          <TableCell key={tc.key} className="text-right font-mono text-xs">
+                            {tc.legacyBatches?.toFixed(1) ?? "0.0"}
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className="text-right font-mono text-xs">
+                          {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
+                          {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+
+                  {/* Variance Row */}
+                  <TableRow className="bg-gray-100 font-semibold border-t-2">
+                    <TableCell className="text-xs">Variance (TTB - System)</TableCell>
+                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
+                      <>
+                        {lastReconciliation.taxClasses.map((tc: { key: string; difference: number; isReconciled: boolean }) => (
+                          <TableCell key={tc.key} className={cn(
+                            "text-right font-mono text-xs",
+                            tc.difference > 0.5 && "text-amber-600",
+                            tc.difference < -0.5 && "text-red-600",
+                            Math.abs(tc.difference) <= 0.5 && "text-green-600"
+                          )}>
+                            {tc.difference > 0 ? "+" : ""}{tc.difference?.toFixed(1) ?? "0.0"}
+                            {tc.isReconciled && <CheckCircle className="w-3 h-3 inline ml-1" />}
+                          </TableCell>
+                        ))}
+                        <TableCell className={cn(
+                          "text-right font-mono text-xs bg-gray-200",
+                          (lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
+                          (lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
+                          Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && "text-green-600"
+                        )}>
+                          {(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}
+                          {lastReconciliation.inventoryDifference?.toFixed(1) ?? "0.0"}
+                          {Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && (
+                            <CheckCircle className="w-3 h-3 inline ml-1" />
+                          )}
+                        </TableCell>
+                      </>
+                    ) : (
+                      <>
+                        <TableCell className={cn(
+                          "text-right font-mono text-xs",
+                          (lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
+                          (lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
+                          Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && "text-green-600"
+                        )}>
+                          {(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}
+                          {lastReconciliation.inventoryDifference?.toFixed(1) ?? "0.0"}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "text-right font-mono text-xs bg-gray-200",
+                          (lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
+                          (lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
+                          Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && "text-green-600"
+                        )}>
+                          {(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}
+                          {lastReconciliation.inventoryDifference?.toFixed(1) ?? "0.0"}
+                          {Math.abs(lastReconciliation.inventoryDifference ?? 0) <= 0.5 && (
+                            <CheckCircle className="w-3 h-3 inline ml-1" />
+                          )}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 </TableBody>
               </Table>
