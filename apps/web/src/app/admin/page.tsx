@@ -105,7 +105,6 @@ import { MeasurementSchedulesSettings } from "@/components/admin/MeasurementSche
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
 import { TTBOpeningBalancesSettings } from "@/components/admin/TTBOpeningBalancesSettings";
-import { TTBReconciliationSummary } from "@/components/admin/TTBReconciliationSummary";
 import { TaxReportingSettings } from "@/components/admin/TaxReportingSettings";
 import { LegacyInventorySection } from "@/components/admin/LegacyInventorySection";
 import { useSettings } from "@/contexts/SettingsContext";
@@ -1847,9 +1846,6 @@ function SystemSettings() {
 
       {/* TTB Opening Balances - For beginning inventory tracking */}
       <TTBOpeningBalancesSettings />
-
-      {/* TTB Reconciliation Summary - Shows differences between TTB and system */}
-      <TTBReconciliationSummary />
 
       {/* Legacy Inventory - For TTB reconciliation */}
       <LegacyInventorySection />

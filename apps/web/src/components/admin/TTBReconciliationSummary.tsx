@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -20,13 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -86,12 +79,11 @@ export function TTBReconciliationSummary() {
   const today = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [pendingDate, setPendingDate] = useState<string>(today); // Separate state for input
-  const [periodStartDate, setPeriodStartDate] = useState<string>(""); // Period start (optional)
+  const [periodStartDate, setPeriodStartDate] = useState<string>(""); // Period start
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [reconciliationName, setReconciliationName] = useState("");
   const [reconciliationNotes, setReconciliationNotes] = useState("");
   const [expandedTaxClasses, setExpandedTaxClasses] = useState<Record<string, boolean>>({});
-  const [showPeriodSelector, setShowPeriodSelector] = useState(false);
 
   const utils = trpc.useUtils();
 
@@ -101,7 +93,15 @@ export function TTBReconciliationSummary() {
 
   const { data: lastReconciliation } = trpc.ttb.getLastReconciliation.useQuery();
 
-  const { data: periodSuggestions } = trpc.ttb.getReconciliationPeriodSuggestions.useQuery();
+  // Auto-populate period start date from last reconciliation (day after last reconciliation end date)
+  useEffect(() => {
+    if (lastReconciliation?.reconciliationDate && !periodStartDate) {
+      // Set start date to the day after the last reconciliation date
+      const lastDate = new Date(lastReconciliation.reconciliationDate);
+      lastDate.setDate(lastDate.getDate() + 1);
+      setPeriodStartDate(lastDate.toISOString().split("T")[0]);
+    }
+  }, [lastReconciliation?.reconciliationDate, periodStartDate]);
 
   const saveReconciliation = trpc.ttb.saveReconciliation.useMutation({
     onSuccess: () => {
@@ -135,8 +135,6 @@ export function TTBReconciliationSummary() {
       periodStartDate: periodStartDate || undefined,
       periodEndDate: selectedDate,
       previousReconciliationId: lastReconciliation?.id,
-      // Balance tracking
-      openingBalanceGallons: periodSuggestions?.suggestedOpeningBalance,
       summary: {
         openingBalanceDate: data.openingBalanceDate,
         totals: data.totals,
@@ -322,8 +320,10 @@ export function TTBReconciliationSummary() {
                 <CardDescription>
                   {data.isInitialReconciliation ? (
                     <span className="text-blue-600">Initial Reconciliation (TTB Opening Date)</span>
+                  ) : periodStartDate ? (
+                    <span>Reconciliation Period: {periodStartDate} to {selectedDate}</span>
                   ) : (
-                    <span>Ongoing Reconciliation as of {data.reconciliationDate}</span>
+                    <span>Reconciliation as of {selectedDate}</span>
                   )}
                 </CardDescription>
               </div>
@@ -343,62 +343,23 @@ export function TTBReconciliationSummary() {
 
           {/* Date Selection and Actions */}
           <div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg">
-            {/* Period Preset Selector */}
+            {/* Period Date Range */}
             <div className="flex items-end gap-3">
               <div className="flex-1 max-w-xs">
-                <Label htmlFor="period-preset" className="text-xs text-gray-600">
-                  Quick Period Selection
+                <Label htmlFor="period-start-date" className="text-xs text-gray-600">
+                  Period Start Date
                 </Label>
-                <Select
-                  value=""
-                  onValueChange={(value) => {
-                    const preset = periodSuggestions?.presets?.find(p => p.label === value);
-                    if (preset) {
-                      setPeriodStartDate(preset.startDate);
-                      setPendingDate(preset.endDate);
-                      setSelectedDate(preset.endDate);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select a period preset..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {periodSuggestions?.presets?.map((preset) => (
-                      <SelectItem key={preset.label} value={preset.label}>
-                        {preset.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  id="period-start-date"
+                  type="date"
+                  value={periodStartDate}
+                  onChange={(e) => setPeriodStartDate(e.target.value)}
+                  className="mt-1"
+                />
               </div>
-              {periodStartDate && (
-                <div className="flex items-center gap-2 text-sm text-gray-600 pb-1">
-                  <Clock className="w-4 h-4" />
-                  Period: {periodStartDate} to {selectedDate}
-                </div>
-              )}
-            </div>
-
-            {/* Date Range Inputs */}
-            <div className="flex items-end gap-3">
-              {showPeriodSelector && (
-                <div className="flex-1 max-w-xs">
-                  <Label htmlFor="period-start-date" className="text-xs text-gray-600">
-                    Period Start Date (optional)
-                  </Label>
-                  <Input
-                    id="period-start-date"
-                    type="date"
-                    value={periodStartDate}
-                    onChange={(e) => setPeriodStartDate(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-              )}
               <div className="flex-1 max-w-xs">
                 <Label htmlFor="reconciliation-date" className="text-xs text-gray-600">
-                  {showPeriodSelector ? "Period End Date" : "Reconcile As Of Date"}
+                  Period End Date
                 </Label>
                 <div className="flex gap-2 mt-1">
                   <Input
@@ -438,15 +399,6 @@ export function TTBReconciliationSummary() {
                 )}
               </div>
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowPeriodSelector(!showPeriodSelector)}
-                className="flex items-center gap-1 text-gray-600"
-              >
-                <Calendar className="w-3 h-3" />
-                {showPeriodSelector ? "Hide Period" : "Custom Period"}
-              </Button>
-              <Button
                 variant="outline"
                 size="sm"
                 onClick={handleSetToTTBDate}
@@ -465,6 +417,49 @@ export function TTBReconciliationSummary() {
                 Today
               </Button>
             </div>
+
+            {/* Last Reconciliation Reference */}
+            {lastReconciliation && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <History className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    Previous Reconciliation: {formatDate(lastReconciliation.reconciliationDate)}
+                    {lastReconciliation.name && ` - ${lastReconciliation.name}`}
+                  </span>
+                  {lastReconciliation.isReconciled ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <span className="text-blue-600">On Hand:</span>
+                    <span className="ml-1 font-mono font-medium">{lastReconciliation.inventoryOnHand != null ? Number(lastReconciliation.inventoryOnHand).toFixed(1) : "—"} gal</span>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Removals:</span>
+                    <span className="ml-1 font-mono font-medium">{lastReconciliation.inventoryRemovals != null ? Number(lastReconciliation.inventoryRemovals).toFixed(1) : "—"} gal</span>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Legacy:</span>
+                    <span className="ml-1 font-mono font-medium">{lastReconciliation.inventoryLegacy != null ? Number(lastReconciliation.inventoryLegacy).toFixed(1) : "—"} gal</span>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Difference:</span>
+                    <span className={cn(
+                      "ml-1 font-mono font-medium",
+                      Number(lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
+                      Number(lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
+                      Math.abs(Number(lastReconciliation.inventoryDifference ?? 0)) <= 0.5 && "text-green-600"
+                    )}>
+                      {Number(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}{lastReconciliation.inventoryDifference != null ? Number(lastReconciliation.inventoryDifference).toFixed(1) : "—"} gal
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
