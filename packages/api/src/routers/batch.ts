@@ -17,6 +17,7 @@ import {
   batchTransfers,
   batchFilterOperations,
   batchRackingOperations,
+  batchVolumeAdjustments,
   juicePurchaseItems,
   juicePurchases,
   auditLogs,
@@ -6268,6 +6269,261 @@ export const batchRouter = router({
         .where(eq(batches.id, batchId));
 
       return { success: true };
+    }),
+
+  // ============================================================
+  // VOLUME ADJUSTMENTS
+  // Physical inventory corrections for bulk batches
+  // ============================================================
+
+  /**
+   * Create a volume adjustment for a batch
+   * Records the adjustment and updates batch.currentVolumeLiters
+   */
+  createVolumeAdjustment: createRbacProcedure("update", "batch")
+    .input(
+      z.object({
+        batchId: z.string().uuid("Invalid batch ID"),
+        adjustmentDate: z.date().or(z.string().transform((val) => new Date(val))),
+        adjustmentType: z.enum([
+          "evaporation",
+          "measurement_error",
+          "sampling",
+          "contamination",
+          "spillage",
+          "theft",
+          "correction_up",
+          "correction_down",
+          "other",
+        ]),
+        volumeAfter: z.number().min(0, "Volume after cannot be negative"),
+        reason: z.string().min(1, "Reason is required"),
+        notes: z.string().optional(),
+        reconciliationSnapshotId: z.string().uuid().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // 1. Get the batch and verify it exists
+          const [batch] = await tx
+            .select({
+              id: batches.id,
+              name: batches.name,
+              customName: batches.customName,
+              currentVolume: batches.currentVolume,
+              currentVolumeUnit: batches.currentVolumeUnit,
+              currentVolumeLiters: batches.currentVolumeLiters,
+              vesselId: batches.vesselId,
+              status: batches.status,
+            })
+            .from(batches)
+            .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
+            .limit(1);
+
+          if (!batch) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Batch not found",
+            });
+          }
+
+          const volumeBeforeL = batch.currentVolumeLiters
+            ? parseFloat(batch.currentVolumeLiters)
+            : batch.currentVolume
+              ? parseFloat(batch.currentVolume)
+              : 0;
+
+          const volumeAfterL = input.volumeAfter;
+          const adjustmentAmount = volumeAfterL - volumeBeforeL;
+
+          // 2. Create the volume adjustment record
+          const [adjustment] = await tx
+            .insert(batchVolumeAdjustments)
+            .values({
+              batchId: input.batchId,
+              vesselId: batch.vesselId,
+              adjustmentDate: input.adjustmentDate,
+              adjustmentType: input.adjustmentType,
+              volumeBefore: volumeBeforeL.toFixed(3),
+              volumeAfter: volumeAfterL.toFixed(3),
+              adjustmentAmount: adjustmentAmount.toFixed(3),
+              reason: input.reason,
+              notes: input.notes,
+              reconciliationSnapshotId: input.reconciliationSnapshotId,
+              adjustedBy: ctx.session?.user?.id,
+            })
+            .returning();
+
+          // 3. Update the batch volume
+          await tx
+            .update(batches)
+            .set({
+              currentVolume: volumeAfterL.toFixed(3),
+              currentVolumeUnit: "L",
+              currentVolumeLiters: volumeAfterL.toFixed(3),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+
+          return {
+            adjustment,
+            batch: {
+              id: batch.id,
+              name: batch.customName || batch.name,
+              volumeBefore: volumeBeforeL,
+              volumeAfter: volumeAfterL,
+              adjustmentAmount,
+            },
+            message: `Volume adjusted from ${volumeBeforeL.toFixed(1)}L to ${volumeAfterL.toFixed(1)}L (${adjustmentAmount >= 0 ? "+" : ""}${adjustmentAmount.toFixed(1)}L)`,
+          };
+        });
+      } catch (error) {
+        console.error("Error creating volume adjustment:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create volume adjustment",
+        });
+      }
+    }),
+
+  /**
+   * List volume adjustments for a batch
+   */
+  listVolumeAdjustments: protectedProcedure
+    .input(
+      z.object({
+        batchId: z.string().uuid("Invalid batch ID"),
+        limit: z.number().int().positive().max(100).default(50),
+        offset: z.number().int().min(0).default(0),
+      })
+    )
+    .query(async ({ input }) => {
+      const adjustments = await db
+        .select({
+          id: batchVolumeAdjustments.id,
+          batchId: batchVolumeAdjustments.batchId,
+          vesselId: batchVolumeAdjustments.vesselId,
+          adjustmentDate: batchVolumeAdjustments.adjustmentDate,
+          adjustmentType: batchVolumeAdjustments.adjustmentType,
+          volumeBefore: batchVolumeAdjustments.volumeBefore,
+          volumeAfter: batchVolumeAdjustments.volumeAfter,
+          adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+          reason: batchVolumeAdjustments.reason,
+          notes: batchVolumeAdjustments.notes,
+          reconciliationSnapshotId: batchVolumeAdjustments.reconciliationSnapshotId,
+          adjustedBy: batchVolumeAdjustments.adjustedBy,
+          createdAt: batchVolumeAdjustments.createdAt,
+          vesselName: vessels.name,
+        })
+        .from(batchVolumeAdjustments)
+        .leftJoin(vessels, eq(batchVolumeAdjustments.vesselId, vessels.id))
+        .where(
+          and(
+            eq(batchVolumeAdjustments.batchId, input.batchId),
+            isNull(batchVolumeAdjustments.deletedAt)
+          )
+        )
+        .orderBy(desc(batchVolumeAdjustments.adjustmentDate))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      // Get total count
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(batchVolumeAdjustments)
+        .where(
+          and(
+            eq(batchVolumeAdjustments.batchId, input.batchId),
+            isNull(batchVolumeAdjustments.deletedAt)
+          )
+        );
+
+      return {
+        adjustments,
+        total: Number(countResult?.count || 0),
+        hasMore: input.offset + input.limit < Number(countResult?.count || 0),
+      };
+    }),
+
+  /**
+   * Delete a volume adjustment (soft delete with volume rollback)
+   */
+  deleteVolumeAdjustment: createRbacProcedure("update", "batch")
+    .input(
+      z.object({
+        adjustmentId: z.string().uuid("Invalid adjustment ID"),
+        rollbackVolume: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input }) => {
+      try {
+        return await db.transaction(async (tx) => {
+          // 1. Get the adjustment
+          const [adjustment] = await tx
+            .select({
+              id: batchVolumeAdjustments.id,
+              batchId: batchVolumeAdjustments.batchId,
+              volumeBefore: batchVolumeAdjustments.volumeBefore,
+              volumeAfter: batchVolumeAdjustments.volumeAfter,
+              adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+            })
+            .from(batchVolumeAdjustments)
+            .where(
+              and(
+                eq(batchVolumeAdjustments.id, input.adjustmentId),
+                isNull(batchVolumeAdjustments.deletedAt)
+              )
+            )
+            .limit(1);
+
+          if (!adjustment) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Volume adjustment not found",
+            });
+          }
+
+          // 2. Soft delete the adjustment
+          await tx
+            .update(batchVolumeAdjustments)
+            .set({
+              deletedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batchVolumeAdjustments.id, input.adjustmentId));
+
+          // 3. Optionally rollback the batch volume
+          if (input.rollbackVolume) {
+            const volumeBefore = parseFloat(adjustment.volumeBefore || "0");
+
+            await tx
+              .update(batches)
+              .set({
+                currentVolume: volumeBefore.toFixed(3),
+                currentVolumeUnit: "L",
+                currentVolumeLiters: volumeBefore.toFixed(3),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, adjustment.batchId));
+          }
+
+          return {
+            success: true,
+            message: input.rollbackVolume
+              ? `Volume adjustment deleted and batch volume restored to ${parseFloat(adjustment.volumeBefore || "0").toFixed(1)}L`
+              : "Volume adjustment deleted (volume not rolled back)",
+          };
+        });
+      } catch (error) {
+        console.error("Error deleting volume adjustment:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to delete volume adjustment",
+        });
+      }
     }),
 });
 

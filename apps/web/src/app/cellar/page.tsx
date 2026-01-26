@@ -75,6 +75,7 @@ import {
   ArrowUpDown,
   SlidersHorizontal,
   Sprout,
+  Scale,
 } from "lucide-react";
 import {
   litersToGallons,
@@ -92,6 +93,7 @@ import { AddBatchAdditiveForm } from "@/components/cellar/AddBatchAdditiveForm";
 import { UnifiedPackagingModal } from "@/components/packaging/UnifiedPackagingModal";
 import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
+import { VolumeAdjustmentModal } from "@/components/cellar/VolumeAdjustmentModal";
 import { CleanTankModal } from "@/components/cellar/CleanTankModal";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { KegsManagement } from "@/components/packaging/kegs/KegsManagement";
@@ -1244,6 +1246,16 @@ function VesselMap() {
     capacityUnit: "L" | "gal";
   } | null>(null);
 
+  // Volume adjustment modal state
+  const [showVolumeAdjustmentModal, setShowVolumeAdjustmentModal] = useState(false);
+  const [selectedBatchForAdjustment, setSelectedBatchForAdjustment] = useState<{
+    id: string;
+    name: string;
+    vesselId: string;
+    vesselName: string;
+    currentVolumeL: number;
+  } | null>(null);
+
   // Clean tank modal state
   const [showCleanTankModal, setShowCleanTankModal] = useState(false);
   const [selectedVesselForCleaning, setSelectedVesselForCleaning] = useState<{
@@ -1292,6 +1304,11 @@ function VesselMap() {
   const handleCloseRackingModal = useCallback(() => {
     setShowRackingModal(false);
     setSelectedVesselForRacking(null);
+  }, []);
+
+  const handleCloseVolumeAdjustmentModal = useCallback(() => {
+    setShowVolumeAdjustmentModal(false);
+    setSelectedBatchForAdjustment(null);
   }, []);
 
   // Vessel filter and sort state
@@ -1709,6 +1726,43 @@ function VesselMap() {
       currentVolumeL,
     });
     setShowFilterModal(true);
+  };
+
+  const handleVolumeAdjustment = (vesselId: string) => {
+    const vessel = vesselListQuery.data?.vessels?.find(
+      (v) => v.id === vesselId,
+    );
+    const liquidMapVessel = liquidMapQuery.data?.vessels.find(
+      (v) => v.vesselId === vesselId,
+    );
+    const batchId = liquidMapVessel?.batchId;
+
+    if (!vessel || !batchId) {
+      toast({
+        title: "Cannot Adjust Volume",
+        description: "This vessel doesn't have an active batch.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Calculate current volume
+    const currentVolumeL = liquidMapVessel?.currentVolume
+      ? parseFloat(liquidMapVessel.currentVolume.toString())
+      : liquidMapVessel?.applePressRunVolume
+        ? parseFloat(liquidMapVessel.applePressRunVolume.toString())
+        : 0;
+
+    const batchName = liquidMapVessel?.batchCustomName || liquidMapVessel?.batchNumber || "Unnamed Batch";
+
+    setSelectedBatchForAdjustment({
+      id: batchId,
+      name: batchName,
+      vesselId: vesselId,
+      vesselName: vessel.name || "Unnamed Vessel",
+      currentVolumeL,
+    });
+    setShowVolumeAdjustmentModal(true);
   };
 
   const handleCarbonate = (vesselId: string) => {
@@ -2280,6 +2334,12 @@ function VesselMap() {
                                 <Droplets className="w-3 h-3 mr-2" />
                                 Add Additive
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleVolumeAdjustment(vessel.id)}
+                              >
+                                <Scale className="w-3 h-3 mr-2" />
+                                Adjust Volume
+                              </DropdownMenuItem>
                             </>
                           )}
                           <DropdownMenuItem
@@ -2541,6 +2601,19 @@ function VesselMap() {
             vesselName={selectedVesselForFiltering.name}
             batchId={selectedVesselForFiltering.batchId}
             currentVolumeL={selectedVesselForFiltering.currentVolumeL}
+          />
+        )}
+
+        {/* Volume Adjustment Modal */}
+        {selectedBatchForAdjustment && (
+          <VolumeAdjustmentModal
+            open={showVolumeAdjustmentModal}
+            onClose={handleCloseVolumeAdjustmentModal}
+            batchId={selectedBatchForAdjustment.id}
+            batchName={selectedBatchForAdjustment.name}
+            currentVolumeL={selectedBatchForAdjustment.currentVolumeL}
+            vesselId={selectedBatchForAdjustment.vesselId}
+            vesselName={selectedBatchForAdjustment.vesselName}
           />
         )}
 

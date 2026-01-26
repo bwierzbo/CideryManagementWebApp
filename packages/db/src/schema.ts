@@ -66,6 +66,22 @@ export const pressRunStatusEnum = pgEnum("press_run_status", [
 ]);
 export const fruitTypeEnum = pgEnum("fruit_type", ["apple", "pear", "plum"]);
 
+// Batch volume adjustment types (for physical inventory corrections)
+export const batchVolumeAdjustmentTypeEnum = pgEnum(
+  "batch_volume_adjustment_type",
+  [
+    "evaporation", // Natural evaporation (angel's share)
+    "measurement_error", // Physical count differs from calculated
+    "sampling", // Volume removed for testing/QC
+    "contamination", // Loss due to contamination
+    "spillage", // Accidental spillage
+    "theft", // Suspected theft
+    "correction_up", // Undercount correction (increases volume)
+    "correction_down", // Overcount correction (decreases volume)
+    "other", // Other reason (requires notes)
+  ],
+);
+
 // Product type for batches (juice, cider, perry, brandy, pommeau)
 export const productTypeEnum = pgEnum("product_type", [
   "juice",    // Unfermented juice (0% ABV)
@@ -1253,6 +1269,65 @@ export const batchRackingOperations = pgTable(
   }),
 );
 
+// Batch volume adjustments for physical inventory corrections
+export const batchVolumeAdjustments = pgTable(
+  "batch_volume_adjustments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id, { onDelete: "cascade" }),
+    vesselId: uuid("vessel_id").references(() => vessels.id),
+    // Adjustment details
+    adjustmentDate: timestamp("adjustment_date", {
+      withTimezone: true,
+    }).notNull(),
+    adjustmentType: batchVolumeAdjustmentTypeEnum("adjustment_type").notNull(),
+    // Volume tracking (all in liters for consistency)
+    volumeBefore: decimal("volume_before", {
+      precision: 10,
+      scale: 3,
+    }).notNull(),
+    volumeAfter: decimal("volume_after", {
+      precision: 10,
+      scale: 3,
+    }).notNull(),
+    adjustmentAmount: decimal("adjustment_amount", {
+      precision: 10,
+      scale: 3,
+    }).notNull(),
+    // Reason and notes
+    reason: text("reason").notNull(),
+    notes: text("notes"),
+    // TTB reconciliation link (optional)
+    reconciliationSnapshotId: uuid("reconciliation_snapshot_id"),
+    // Audit trail
+    adjustedBy: uuid("adjusted_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => ({
+    batchIdx: index("batch_volume_adjustments_batch_idx").on(table.batchId),
+    vesselIdx: index("batch_volume_adjustments_vessel_idx").on(table.vesselId),
+    adjustmentDateIdx: index("batch_volume_adjustments_date_idx").on(
+      table.adjustmentDate,
+    ),
+    reconciliationIdx: index("batch_volume_adjustments_reconciliation_idx").on(
+      table.reconciliationSnapshotId,
+    ),
+    adjustmentTypeIdx: index("batch_volume_adjustments_type_idx").on(
+      table.adjustmentType,
+    ),
+  }),
+);
+
 // Vessel cleaning operations for tracking tank cleaning
 export const vesselCleaningOperations = pgTable(
   "vessel_cleaning_operations",
@@ -1904,6 +1979,24 @@ export const batchRackingOperationsRelations = relations(
     }),
     rackedByUser: one(users, {
       fields: [batchRackingOperations.rackedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const batchVolumeAdjustmentsRelations = relations(
+  batchVolumeAdjustments,
+  ({ one }) => ({
+    batch: one(batches, {
+      fields: [batchVolumeAdjustments.batchId],
+      references: [batches.id],
+    }),
+    vessel: one(vessels, {
+      fields: [batchVolumeAdjustments.vesselId],
+      references: [vessels.id],
+    }),
+    adjustedByUser: one(users, {
+      fields: [batchVolumeAdjustments.adjustedBy],
       references: [users.id],
     }),
   }),

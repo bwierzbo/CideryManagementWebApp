@@ -2891,6 +2891,15 @@ export const ttbRouter = router({
         name: z.string().optional(),
         notes: z.string().optional(),
         discrepancyExplanation: z.string().optional(),
+        // Period tracking (optional for backwards compatibility)
+        periodStartDate: z.string().optional(), // ISO date - start of period
+        periodEndDate: z.string().optional(), // ISO date - end of period (usually = reconciliationDate)
+        previousReconciliationId: z.string().uuid().optional(), // Link to previous reconciliation
+        // Balance tracking (optional for backwards compatibility)
+        openingBalanceGallons: z.number().optional(),
+        calculatedEndingGallons: z.number().optional(),
+        physicalCountGallons: z.number().optional(),
+        varianceGallons: z.number().optional(),
         // Summary data from frontend
         summary: z.object({
           openingBalanceDate: z.string().nullable(),
@@ -2940,9 +2949,20 @@ export const ttbRouter = router({
           reconciliationDate: input.reconciliationDate,
           name: input.name,
 
+          // Period tracking
+          periodStartDate: input.periodStartDate,
+          periodEndDate: input.periodEndDate || input.reconciliationDate,
+          previousReconciliationId: input.previousReconciliationId,
+
+          // Balance tracking
+          openingBalanceGallons: input.openingBalanceGallons?.toString(),
+          calculatedEndingGallons: input.calculatedEndingGallons?.toString(),
+          physicalCountGallons: input.physicalCountGallons?.toString(),
+          varianceGallons: input.varianceGallons?.toString(),
+
           // TTB Reference
           ttbBalance: summary.totals.ttbBalance.toString(),
-          ttbSourceType: "opening_balance",
+          ttbSourceType: input.previousReconciliationId ? "previous_snapshot" : "opening_balance",
           ttbSourceDate: summary.openingBalanceDate,
 
           // Inventory Audit
@@ -3124,6 +3144,129 @@ export const ttbRouter = router({
       inventoryOnHand: parseFloat(snapshot.inventoryOnHand || "0"),
       inventoryDifference: parseFloat(snapshot.inventoryDifference || "0"),
       productionTotal: parseFloat(snapshot.productionTotal || "0"),
+      openingBalanceGallons: snapshot.openingBalanceGallons ? parseFloat(snapshot.openingBalanceGallons) : null,
+      calculatedEndingGallons: snapshot.calculatedEndingGallons ? parseFloat(snapshot.calculatedEndingGallons) : null,
+      physicalCountGallons: snapshot.physicalCountGallons ? parseFloat(snapshot.physicalCountGallons) : null,
+      varianceGallons: snapshot.varianceGallons ? parseFloat(snapshot.varianceGallons) : null,
+    };
+  }),
+
+  /**
+   * Get suggested next reconciliation period based on last finalized reconciliation
+   * Returns period presets (This Month, Last Month, etc.) and suggested start date
+   */
+  getReconciliationPeriodSuggestions: protectedProcedure.query(async () => {
+    // Get the most recent finalized reconciliation
+    const [lastReconciliation] = await db
+      .select({
+        periodEndDate: ttbReconciliationSnapshots.periodEndDate,
+        reconciliationDate: ttbReconciliationSnapshots.reconciliationDate,
+        physicalCountGallons: ttbReconciliationSnapshots.physicalCountGallons,
+        inventoryOnHand: ttbReconciliationSnapshots.inventoryOnHand,
+      })
+      .from(ttbReconciliationSnapshots)
+      .where(eq(ttbReconciliationSnapshots.status, "finalized"))
+      .orderBy(desc(ttbReconciliationSnapshots.finalizedAt))
+      .limit(1);
+
+    // Get TTB opening balance date as fallback
+    const [settings] = await db
+      .select({
+        ttbOpeningBalanceDate: organizationSettings.ttbOpeningBalanceDate,
+      })
+      .from(organizationSettings)
+      .limit(1);
+
+    const today = new Date();
+    const todayISO = today.toISOString().split("T")[0];
+
+    // Determine the suggested start date
+    let suggestedStartDate: string;
+    let suggestedOpeningBalance: number;
+    let previousReconciliationId: string | null = null;
+    let hasLastReconciliation = false;
+
+    if (lastReconciliation?.periodEndDate || lastReconciliation?.reconciliationDate) {
+      // Use day after last reconciliation period end
+      const lastEndDate = new Date(lastReconciliation.periodEndDate || lastReconciliation.reconciliationDate);
+      lastEndDate.setDate(lastEndDate.getDate() + 1);
+      suggestedStartDate = lastEndDate.toISOString().split("T")[0];
+      suggestedOpeningBalance = lastReconciliation.physicalCountGallons
+        ? parseFloat(lastReconciliation.physicalCountGallons)
+        : parseFloat(lastReconciliation.inventoryOnHand || "0");
+      hasLastReconciliation = true;
+    } else if (settings?.ttbOpeningBalanceDate) {
+      // Use TTB opening balance date
+      suggestedStartDate = settings.ttbOpeningBalanceDate;
+      suggestedOpeningBalance = 0; // Will be calculated from opening balances
+    } else {
+      // Default to start of current year
+      suggestedStartDate = `${today.getFullYear()}-01-01`;
+      suggestedOpeningBalance = 0;
+    }
+
+    // Build period presets
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
+    // Helper to get month name
+    const monthNames = ["January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"];
+
+    // This month
+    const thisMonthStart = new Date(currentYear, currentMonth, 1);
+    const thisMonthEnd = new Date(currentYear, currentMonth + 1, 0);
+
+    // Last month
+    const lastMonthStart = new Date(currentYear, currentMonth - 1, 1);
+    const lastMonthEnd = new Date(currentYear, currentMonth, 0);
+
+    // This quarter
+    const currentQuarter = Math.floor(currentMonth / 3);
+    const thisQuarterStart = new Date(currentYear, currentQuarter * 3, 1);
+    const thisQuarterEnd = new Date(currentYear, (currentQuarter + 1) * 3, 0);
+
+    // Year to date
+    const yearStart = new Date(currentYear, 0, 1);
+
+    const presets = [
+      {
+        label: `This Month (${monthNames[currentMonth]})`,
+        startDate: thisMonthStart.toISOString().split("T")[0],
+        endDate: todayISO,
+      },
+      {
+        label: `Last Month (${monthNames[currentMonth === 0 ? 11 : currentMonth - 1]})`,
+        startDate: lastMonthStart.toISOString().split("T")[0],
+        endDate: lastMonthEnd.toISOString().split("T")[0],
+      },
+      {
+        label: `This Quarter (Q${currentQuarter + 1})`,
+        startDate: thisQuarterStart.toISOString().split("T")[0],
+        endDate: todayISO,
+      },
+      {
+        label: "Year to Date",
+        startDate: yearStart.toISOString().split("T")[0],
+        endDate: todayISO,
+      },
+    ];
+
+    // Add "Continue from Last Reconciliation" preset if applicable
+    if (hasLastReconciliation && suggestedStartDate < todayISO) {
+      presets.unshift({
+        label: `Continue from Last Reconciliation (${suggestedStartDate})`,
+        startDate: suggestedStartDate,
+        endDate: todayISO,
+      });
+    }
+
+    return {
+      suggestedStartDate,
+      suggestedOpeningBalance,
+      previousReconciliationId,
+      hasLastReconciliation,
+      presets,
     };
   }),
 });

@@ -394,6 +394,17 @@ export const ttbReconciliationSnapshots = pgTable(
     reconciliationDate: date("reconciliation_date").notNull(), // "As of" date
     name: text("name"), // Optional friendly name (e.g., "Q4 2024 Physical Inventory")
 
+    // Period tracking (for continuous reconciliation)
+    periodStartDate: date("period_start_date"), // Start of period (exclusive - day after previous period end)
+    periodEndDate: date("period_end_date"), // End of period (inclusive - typically = reconciliation_date)
+    previousReconciliationId: uuid("previous_reconciliation_id"), // Self-reference to previous snapshot
+
+    // Balance tracking
+    openingBalanceGallons: numeric("opening_balance_gallons", { precision: 12, scale: 3 }), // From previous or TTB opening
+    calculatedEndingGallons: numeric("calculated_ending_gallons", { precision: 12, scale: 3 }), // Opening + Production - Removals - Losses
+    physicalCountGallons: numeric("physical_count_gallons", { precision: 12, scale: 3 }), // Actual physical inventory
+    varianceGallons: numeric("variance_gallons", { precision: 12, scale: 3 }), // Physical - Calculated
+
     // TTB Reference
     ttbBalance: numeric("ttb_balance", { precision: 12, scale: 3 }).notNull(), // Total TTB balance (gal)
     ttbSourceType: text("ttb_source_type").notNull(), // "opening_balance" | "previous_snapshot"
@@ -442,6 +453,8 @@ export const ttbReconciliationSnapshots = pgTable(
     reconciliationDateIdx: index("ttb_reconciliation_snapshots_date_idx").on(table.reconciliationDate),
     statusIdx: index("ttb_reconciliation_snapshots_status_idx").on(table.status),
     createdAtIdx: index("ttb_reconciliation_snapshots_created_idx").on(table.createdAt),
+    periodIdx: index("ttb_reconciliation_snapshots_period_idx").on(table.periodStartDate, table.periodEndDate),
+    previousIdx: index("ttb_reconciliation_snapshots_prev_idx").on(table.previousReconciliationId),
   }),
 );
 
@@ -449,6 +462,11 @@ export const ttbReconciliationSnapshots = pgTable(
 export const ttbReconciliationSnapshotsRelations = relations(
   ttbReconciliationSnapshots,
   ({ one }) => ({
+    previousReconciliation: one(ttbReconciliationSnapshots, {
+      fields: [ttbReconciliationSnapshots.previousReconciliationId],
+      references: [ttbReconciliationSnapshots.id],
+      relationName: "ttb_reconciliation_chain",
+    }),
     finalizedByUser: one(users, {
       fields: [ttbReconciliationSnapshots.finalizedBy],
       references: [users.id],
