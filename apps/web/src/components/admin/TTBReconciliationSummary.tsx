@@ -302,164 +302,206 @@ export function TTBReconciliationSummary() {
   const hasPendingChange = pendingDate !== selectedDate;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={cn(
-                "p-2 rounded-lg",
-                isFullyReconciled
-                  ? "bg-green-100 text-green-700"
-                  : "bg-amber-100 text-amber-700"
-              )}>
-                <Calculator className="w-5 h-5" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">TTB Reconciliation Summary</CardTitle>
-                <CardDescription>
-                  {data.isInitialReconciliation ? (
-                    <span className="text-blue-600">Initial Reconciliation (TTB Opening Date)</span>
-                  ) : periodStartDate ? (
-                    <span>Reconciliation Period: {periodStartDate} to {selectedDate}</span>
-                  ) : (
-                    <span>Reconciliation as of {selectedDate}</span>
-                  )}
-                </CardDescription>
-              </div>
+    <div className="space-y-6">
+      {/* Last Reconciliation Summary - Always Visible */}
+      <Card className="border-blue-200 bg-blue-50/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-100 text-blue-700">
+              <History className="w-5 h-5" />
             </div>
-            {isFullyReconciled ? (
-              <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
-                <CheckCircle className="w-4 h-4" />
-                Fully Reconciled
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-amber-600 text-sm font-medium">
-                <AlertTriangle className="w-4 h-4" />
-                {data.totals.difference > 0 ? "+" : ""}{data.totals.difference} gal unaccounted
-              </div>
+            <div>
+              <CardTitle className="text-lg">Last Saved Reconciliation</CardTitle>
+              <CardDescription>
+                {lastReconciliation ? (
+                  <span>Completed on {formatDate(lastReconciliation.reconciliationDate)}{lastReconciliation.name && ` - ${lastReconciliation.name}`}</span>
+                ) : (
+                  <span className="text-amber-600">No reconciliation has been saved yet</span>
+                )}
+              </CardDescription>
+            </div>
+            {lastReconciliation && (
+              lastReconciliation.isReconciled ? (
+                <CheckCircle className="w-5 h-5 text-green-500 ml-auto" />
+              ) : (
+                <AlertTriangle className="w-5 h-5 text-amber-500 ml-auto" />
+              )
             )}
           </div>
-
-          {/* Date Selection and Actions */}
-          <div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg">
-            {/* Period Date Range */}
-            <div className="flex items-end gap-3">
-              <div className="flex-1 max-w-xs">
-                <Label htmlFor="period-start-date" className="text-xs text-gray-600">
-                  Period Start Date
-                </Label>
-                <Input
-                  id="period-start-date"
-                  type="date"
-                  value={periodStartDate}
-                  onChange={(e) => setPeriodStartDate(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div className="flex-1 max-w-xs">
-                <Label htmlFor="reconciliation-date" className="text-xs text-gray-600">
-                  Period End Date
-                </Label>
-                <div className="flex gap-2 mt-1">
-                  <Input
-                    id="reconciliation-date"
-                    type="date"
-                    value={pendingDate}
-                    onChange={(e) => setPendingDate(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        handleApplyDate();
-                      }
-                    }}
-                    className={cn(
-                      "flex-1",
-                      hasPendingChange && "border-blue-400 ring-1 ring-blue-200"
-                    )}
-                  />
-                  <Button
-                    variant={hasPendingChange ? "default" : "outline"}
-                    size="sm"
-                    onClick={handleApplyDate}
-                    disabled={!hasPendingChange || isLoading}
-                    className="flex items-center gap-1 px-4"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Calculator className="w-3 h-3" />
-                    )}
-                    Go
-                  </Button>
+        </CardHeader>
+        {lastReconciliation ? (
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="p-3 bg-white rounded-lg border">
+                <div className="text-xs text-gray-500 mb-1">TTB Balance</div>
+                <div className="text-lg font-semibold font-mono">
+                  {lastReconciliation.inventoryOnHand != null && lastReconciliation.inventoryDifference != null
+                    ? (Number(lastReconciliation.inventoryOnHand) + Number(lastReconciliation.inventoryDifference)).toFixed(1)
+                    : "—"} gal
                 </div>
-                {hasPendingChange && (
-                  <p className="text-xs text-blue-600 mt-1">
-                    Press Go or Enter to apply the new date
-                  </p>
-                )}
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSetToTTBDate}
-                className="flex items-center gap-1"
-              >
-                <History className="w-3 h-3" />
-                TTB Date ({data.openingBalanceDate ? formatDate(data.openingBalanceDate) : "N/A"})
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSetToToday}
-                className="flex items-center gap-1"
-              >
-                <Calendar className="w-3 h-3" />
-                Today
-              </Button>
+              <div className="p-3 bg-white rounded-lg border">
+                <div className="text-xs text-gray-500 mb-1">On Hand</div>
+                <div className="text-lg font-semibold font-mono">
+                  {lastReconciliation.inventoryOnHand != null ? Number(lastReconciliation.inventoryOnHand).toFixed(1) : "—"} gal
+                </div>
+              </div>
+              <div className="p-3 bg-white rounded-lg border">
+                <div className="text-xs text-gray-500 mb-1">Removals</div>
+                <div className="text-lg font-semibold font-mono">
+                  {lastReconciliation.inventoryRemovals != null ? Number(lastReconciliation.inventoryRemovals).toFixed(1) : "—"} gal
+                </div>
+              </div>
+              <div className="p-3 bg-white rounded-lg border">
+                <div className="text-xs text-gray-500 mb-1">Legacy</div>
+                <div className="text-lg font-semibold font-mono">
+                  {lastReconciliation.inventoryLegacy != null ? Number(lastReconciliation.inventoryLegacy).toFixed(1) : "—"} gal
+                </div>
+              </div>
+              <div className="p-3 bg-white rounded-lg border">
+                <div className="text-xs text-gray-500 mb-1">Variance</div>
+                <div className={cn(
+                  "text-lg font-semibold font-mono",
+                  Number(lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
+                  Number(lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
+                  Math.abs(Number(lastReconciliation.inventoryDifference ?? 0)) <= 0.5 && "text-green-600"
+                )}>
+                  {Number(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}{lastReconciliation.inventoryDifference != null ? Number(lastReconciliation.inventoryDifference).toFixed(1) : "—"} gal
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        ) : (
+          <CardContent className="pt-0">
+            <p className="text-sm text-gray-600">
+              Use the form below to create your first reconciliation snapshot.
+            </p>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* New Reconciliation Form */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "p-2 rounded-lg",
+                  isFullyReconciled
+                    ? "bg-green-100 text-green-700"
+                    : "bg-amber-100 text-amber-700"
+                )}>
+                  <Calculator className="w-5 h-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">New Reconciliation Period</CardTitle>
+                  <CardDescription>
+                    {periodStartDate && selectedDate ? (
+                      <span>Preview for period: {periodStartDate} to {selectedDate}</span>
+                    ) : (
+                      <span>Select a date range to preview reconciliation</span>
+                    )}
+                  </CardDescription>
+                </div>
+              </div>
+              {isFullyReconciled ? (
+                <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+                  <CheckCircle className="w-4 h-4" />
+                  Fully Reconciled
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-amber-600 text-sm font-medium">
+                  <AlertTriangle className="w-4 h-4" />
+                  {data.totals.difference > 0 ? "+" : ""}{data.totals.difference.toFixed(1)} gal unaccounted
+                </div>
+              )}
             </div>
 
-            {/* Last Reconciliation Reference */}
-            {lastReconciliation && (
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <History className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-800">
-                    Previous Reconciliation: {formatDate(lastReconciliation.reconciliationDate)}
-                    {lastReconciliation.name && ` - ${lastReconciliation.name}`}
-                  </span>
-                  {lastReconciliation.isReconciled ? (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+            {/* Date Selection */}
+            <div className="flex flex-col gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-end gap-3">
+                <div className="flex-1 max-w-xs">
+                  <Label htmlFor="period-start-date" className="text-xs text-gray-600">
+                    Period Start Date
+                  </Label>
+                  <Input
+                    id="period-start-date"
+                    type="date"
+                    value={periodStartDate}
+                    onChange={(e) => setPeriodStartDate(e.target.value)}
+                    className="mt-1"
+                  />
+                  {lastReconciliation && !periodStartDate && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Suggested: {(() => {
+                        const lastDate = new Date(lastReconciliation.reconciliationDate);
+                        lastDate.setDate(lastDate.getDate() + 1);
+                        return lastDate.toISOString().split("T")[0];
+                      })()}
+                    </p>
                   )}
                 </div>
-                <div className="grid grid-cols-4 gap-3 text-xs">
-                  <div>
-                    <span className="text-blue-600">On Hand:</span>
-                    <span className="ml-1 font-mono font-medium">{lastReconciliation.inventoryOnHand != null ? Number(lastReconciliation.inventoryOnHand).toFixed(1) : "—"} gal</span>
+                <div className="flex-1 max-w-xs">
+                  <Label htmlFor="reconciliation-date" className="text-xs text-gray-600">
+                    Period End Date
+                  </Label>
+                  <div className="flex gap-2 mt-1">
+                    <Input
+                      id="reconciliation-date"
+                      type="date"
+                      value={pendingDate}
+                      onChange={(e) => setPendingDate(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleApplyDate();
+                        }
+                      }}
+                      className={cn(
+                        "flex-1",
+                        hasPendingChange && "border-blue-400 ring-1 ring-blue-200"
+                      )}
+                    />
+                    <Button
+                      variant={hasPendingChange ? "default" : "outline"}
+                      size="sm"
+                      onClick={handleApplyDate}
+                      disabled={!hasPendingChange || isLoading}
+                      className="flex items-center gap-1 px-4"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Calculator className="w-3 h-3" />
+                      )}
+                      Go
+                    </Button>
                   </div>
-                  <div>
-                    <span className="text-blue-600">Removals:</span>
-                    <span className="ml-1 font-mono font-medium">{lastReconciliation.inventoryRemovals != null ? Number(lastReconciliation.inventoryRemovals).toFixed(1) : "—"} gal</span>
-                  </div>
-                  <div>
-                    <span className="text-blue-600">Legacy:</span>
-                    <span className="ml-1 font-mono font-medium">{lastReconciliation.inventoryLegacy != null ? Number(lastReconciliation.inventoryLegacy).toFixed(1) : "—"} gal</span>
-                  </div>
-                  <div>
-                    <span className="text-blue-600">Difference:</span>
-                    <span className={cn(
-                      "ml-1 font-mono font-medium",
-                      Number(lastReconciliation.inventoryDifference ?? 0) > 0.5 && "text-amber-600",
-                      Number(lastReconciliation.inventoryDifference ?? 0) < -0.5 && "text-red-600",
-                      Math.abs(Number(lastReconciliation.inventoryDifference ?? 0)) <= 0.5 && "text-green-600"
-                    )}>
-                      {Number(lastReconciliation.inventoryDifference ?? 0) > 0 ? "+" : ""}{lastReconciliation.inventoryDifference != null ? Number(lastReconciliation.inventoryDifference).toFixed(1) : "—"} gal
-                    </span>
-                  </div>
+                  {hasPendingChange && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Press Go or Enter to apply the new date
+                    </p>
+                  )}
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSetToTTBDate}
+                  className="flex items-center gap-1"
+                >
+                  <History className="w-3 h-3" />
+                  TTB Date ({data.openingBalanceDate ? formatDate(data.openingBalanceDate) : "N/A"})
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSetToToday}
+                  className="flex items-center gap-1"
+                >
+                  <Calendar className="w-3 h-3" />
+                  Today
+                </Button>
               </div>
-            )}
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
@@ -975,5 +1017,6 @@ export function TTBReconciliationSummary() {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
