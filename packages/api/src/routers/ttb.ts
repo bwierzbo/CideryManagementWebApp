@@ -2990,7 +2990,8 @@ export const ttbRouter = router({
 
           // Status
           isReconciled,
-          status: "draft",
+          status: "finalized",
+          finalizedAt: new Date(),
           notes: input.notes,
           discrepancyExplanation: input.discrepancyExplanation,
 
