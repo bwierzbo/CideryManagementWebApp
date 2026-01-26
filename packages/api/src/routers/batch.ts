@@ -5485,7 +5485,9 @@ export const batchRouter = router({
           and(
             eq(batchTransfers.sourceBatchId, batchId),
             // Exclude self-referencing transfers
-            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+            // Exclude deleted transfers
+            isNull(batchTransfers.deletedAt)
           )
         )
         .orderBy(asc(batchTransfers.transferredAt));
@@ -5703,17 +5705,27 @@ export const batchRouter = router({
       }
 
       // Add bottlings
+      // Data entry is inconsistent: some batches have loss included in volume_taken,
+      // others have it separate. Detect which by comparing volume_taken to product + loss.
       for (const b of bottlings) {
         const units = b.unitsProduced || 0;
         const size = b.packageSizeML || 0;
+        const productVolume = (units * size) / 1000;
+        const volumeTaken = parseFloat(b.volumeOut || "0");
+        const lossValue = parseFloat(b.loss || "0");
+
+        // If volume_taken ≈ product + loss (within 2L tolerance), loss is already included
+        const lossIncludedInVolumeTaken = Math.abs(volumeTaken - (productVolume + lossValue)) < 2;
+        const effectiveLoss = lossIncludedInVolumeTaken ? 0 : lossValue;
+
         entries.push({
           id: b.id,
           date: b.date,
           type: "bottling",
-          description: `${units} × ${size}ml bottles`,
-          volumeOut: parseFloat(b.volumeOut || "0"),
+          description: `${units} × ${size}ml`,
+          volumeOut: volumeTaken,
           volumeIn: 0,
-          loss: parseFloat(b.loss || "0"),
+          loss: effectiveLoss,
           destinationId: null,
           destinationName: null,
         });
@@ -5902,7 +5914,9 @@ export const batchRouter = router({
           .where(
             and(
               eq(batchTransfers.sourceBatchId, batchId),
-              sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`
+              sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+              // Exclude deleted transfers
+              isNull(batchTransfers.deletedAt)
             )
           );
 
@@ -6056,17 +6070,28 @@ export const batchRouter = router({
             )
           );
 
+        // Data entry is inconsistent: some batches have loss included in volume_taken,
+        // others have it separate. Detect which by comparing volume_taken to product + loss.
         for (const b of bottlings) {
           const units = b.unitsProduced || 0;
           const size = b.packageSizeML || 0;
+          const productVolume = (units * size) / 1000;
+          const volumeTaken = parseFloat(b.volumeOut || "0");
+          const lossValue = parseFloat(b.loss || "0");
+
+          // If volume_taken ≈ product + loss (within 2L tolerance), loss is already included
+          const lossIncludedInVolumeTaken =
+            Math.abs(volumeTaken - (productVolume + lossValue)) < 2;
+          const effectiveLoss = lossIncludedInVolumeTaken ? 0 : lossValue;
+
           entries.push({
             id: b.id,
             date: b.date,
             type: "bottling",
             description: `${units} × ${size}ml`,
-            volumeOut: parseFloat(b.volumeOut || "0"),
+            volumeOut: volumeTaken,
             volumeIn: 0,
-            loss: parseFloat(b.loss || "0"),
+            loss: effectiveLoss,
             destinationId: null,
             destinationName: null,
           });

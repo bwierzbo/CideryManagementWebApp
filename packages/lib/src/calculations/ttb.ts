@@ -233,6 +233,86 @@ export interface OtherRemovals {
 }
 
 /**
+ * Distillery operations tracking for cider/brandy separation
+ */
+export interface DistilleryOperations {
+  /** Cider sent to distillery (DSP) in wine gallons */
+  ciderSentToDsp: number;
+  /** Number of shipments to DSP */
+  ciderSentShipments: number;
+  /** Brandy received from DSP in wine gallons */
+  brandyReceived: number;
+  /** Number of brandy returns */
+  brandyReceivedReturns: number;
+  /** Brandy used in cider production (fortification) in wine gallons */
+  brandyUsedInCider: number;
+  /** Brandy transfer details */
+  brandyTransfers: BrandyTransfer[];
+}
+
+/**
+ * Individual brandy transfer record
+ */
+export interface BrandyTransfer {
+  /** Source brandy batch name */
+  sourceBatch: string;
+  /** Destination cider batch name */
+  destinationBatch: string;
+  /** Volume transferred in wine gallons */
+  volumeGallons: number;
+  /** Transfer date */
+  transferredAt: Date;
+}
+
+/**
+ * Cider and Brandy inventory breakdown
+ */
+export interface CiderBrandyInventory {
+  /** Cider inventory */
+  cider: {
+    bulk: number;
+    bottled: number;
+    kegs: number;
+    total: number;
+  };
+  /** Brandy inventory */
+  brandy: {
+    bulk: number;
+    total: number;
+  };
+  /** Combined total */
+  total: number;
+}
+
+/**
+ * Cider/Brandy reconciliation
+ */
+export interface CiderBrandyReconciliation {
+  /** Cider reconciliation */
+  cider: {
+    expectedEnding: number;
+    actualEnding: number;
+    discrepancy: number;
+  };
+  /** Brandy reconciliation */
+  brandy: {
+    expectedEnding: number;
+    actualEnding: number;
+    discrepancy: number;
+    /** System-reported value from current_volume_liters (may have data integrity issues) */
+    systemReported?: number;
+    /** Difference between system-reported and calculated values */
+    dataDiscrepancy?: number;
+  };
+  /** Total reconciliation */
+  total: {
+    expectedEnding: number;
+    actualEnding: number;
+    discrepancy: number;
+  };
+}
+
+/**
  * Part I Section A - Bulk Wines (lines 1-32)
  * Hard Cider column (f) values in wine gallons
  */
@@ -449,6 +529,15 @@ export interface TTBForm512017Data {
     /** Whether the books balance */
     balanced: boolean;
   };
+
+  /** Distillery operations (cider sent, brandy received) */
+  distilleryOperations?: DistilleryOperations;
+
+  /** Cider/Brandy separated inventory */
+  ciderBrandyInventory?: CiderBrandyInventory;
+
+  /** Cider/Brandy separated reconciliation */
+  ciderBrandyReconciliation?: CiderBrandyReconciliation;
 }
 
 // ============================================
