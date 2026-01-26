@@ -78,6 +78,7 @@ interface BatchDetail {
 export function TTBReconciliationSummary() {
   const today = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState<string>(today);
+  const [pendingDate, setPendingDate] = useState<string>(today); // Separate state for input
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [reconciliationName, setReconciliationName] = useState("");
   const [reconciliationNotes, setReconciliationNotes] = useState("");
@@ -261,17 +262,29 @@ export function TTBReconciliationSummary() {
 
   const isFullyReconciled = Math.abs(data.totals.difference) < 0.5;
 
+  // Handler to apply pending date (Go button)
+  const handleApplyDate = () => {
+    if (pendingDate && pendingDate !== selectedDate) {
+      setSelectedDate(pendingDate);
+    }
+  };
+
   // Handler to set date to TTB opening date for initial reconciliation
   const handleSetToTTBDate = () => {
     if (data.openingBalanceDate) {
+      setPendingDate(data.openingBalanceDate);
       setSelectedDate(data.openingBalanceDate);
     }
   };
 
   // Handler to set date to today
   const handleSetToToday = () => {
+    setPendingDate(today);
     setSelectedDate(today);
   };
+
+  // Check if pending date differs from applied date
+  const hasPendingChange = pendingDate !== selectedDate;
 
   return (
     <Card>
@@ -318,13 +331,42 @@ export function TTBReconciliationSummary() {
                 <Label htmlFor="reconciliation-date" className="text-xs text-gray-600">
                   Reconcile As Of Date
                 </Label>
-                <Input
-                  id="reconciliation-date"
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="mt-1"
-                />
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    id="reconciliation-date"
+                    type="date"
+                    value={pendingDate}
+                    onChange={(e) => setPendingDate(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleApplyDate();
+                      }
+                    }}
+                    className={cn(
+                      "flex-1",
+                      hasPendingChange && "border-blue-400 ring-1 ring-blue-200"
+                    )}
+                  />
+                  <Button
+                    variant={hasPendingChange ? "default" : "outline"}
+                    size="sm"
+                    onClick={handleApplyDate}
+                    disabled={!hasPendingChange || isLoading}
+                    className="flex items-center gap-1 px-4"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Calculator className="w-3 h-3" />
+                    )}
+                    Go
+                  </Button>
+                </div>
+                {hasPendingChange && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Press Go or Enter to apply the new date
+                  </p>
+                )}
               </div>
               <Button
                 variant="outline"
@@ -333,7 +375,7 @@ export function TTBReconciliationSummary() {
                 className="flex items-center gap-1"
               >
                 <History className="w-3 h-3" />
-                TTB Date ({data.openingBalanceDate})
+                TTB Date ({data.openingBalanceDate ? formatDate(data.openingBalanceDate) : "N/A"})
               </Button>
               <Button
                 variant="outline"
