@@ -2817,7 +2817,15 @@ export const ttbRouter = router({
 
       // Calculate total inventory from inventoryByTaxClass
       const totalInventoryByTaxClass = Object.values(inventoryByTaxClass).reduce((sum, val) => sum + val, 0);
-      const totalAccountedFor = totalInventoryByTaxClass + totalRemovals + totalLegacy;
+
+      // ============================================
+      // CORRECT TTB RECONCILIATION FORMULA
+      // TTB Calculated Ending = Opening + Production - Removals - Losses
+      // Variance = TTB Calculated - System On Hand
+      // ============================================
+      const ttbCalculatedEnding = totalTtb + auditTotalProductionGallons - salesGallons - lossesGallons;
+      const systemOnHand = bulkInventoryGallons + packagedInventoryGallons;
+      const variance = ttbCalculatedEnding - systemOnHand;
 
       return {
         hasOpeningBalances: true,
@@ -2826,11 +2834,21 @@ export const ttbRouter = router({
         isInitialReconciliation,
         taxClasses,
         totals: {
+          // TTB Flow
+          ttbOpeningBalance: parseFloat(totalTtb.toFixed(1)),
+          production: parseFloat(auditTotalProductionGallons.toFixed(1)),
+          removals: parseFloat(salesGallons.toFixed(1)),
+          losses: parseFloat(lossesGallons.toFixed(1)),
+          ttbCalculatedEnding: parseFloat(ttbCalculatedEnding.toFixed(1)),
+          // System
+          systemOnHand: parseFloat(systemOnHand.toFixed(1)),
+          // Variance
+          variance: parseFloat(variance.toFixed(1)),
+          // Legacy fields for backwards compatibility
           ttbBalance: parseFloat(totalTtb.toFixed(1)),
           currentInventory: parseFloat(totalInventoryByTaxClass.toFixed(1)),
-          removals: parseFloat(totalRemovals.toFixed(1)),
           legacyBatches: parseFloat(totalLegacy.toFixed(1)),
-          difference: parseFloat((totalTtb - totalAccountedFor).toFixed(1)),
+          difference: parseFloat(variance.toFixed(1)), // Now uses correct variance
         },
         // Additional breakdown for UI display
         breakdown: {

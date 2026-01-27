@@ -759,6 +759,108 @@ export function TTBReconciliationSummary() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+  {/* TTB Reconciliation Flow */}
+        {(() => {
+          // Extract values with type-safe fallbacks
+          const totals = data.totals as {
+            ttbOpeningBalance?: number;
+            production?: number;
+            removals?: number;
+            losses?: number;
+            ttbCalculatedEnding?: number;
+            systemOnHand?: number;
+            variance?: number;
+            ttbBalance?: number;
+            currentInventory?: number;
+            difference?: number;
+          };
+
+          const openingBalance = totals.ttbOpeningBalance ?? totals.ttbBalance ?? 0;
+          const production = totals.production ?? data.productionAudit?.totals.totalProduction ?? 0;
+          const removals = totals.removals ?? data.breakdown?.sales ?? 0;
+          const losses = totals.losses ?? data.breakdown?.losses ?? 0;
+          const bulkInventory = data.breakdown?.bulkInventory ?? 0;
+          const packagedInventory = data.breakdown?.packagedInventory ?? 0;
+          const systemOnHand = totals.systemOnHand ?? (bulkInventory + packagedInventory);
+
+          // Calculate TTB Calculated Ending if not provided
+          const ttbCalculatedEnding = totals.ttbCalculatedEnding ?? (openingBalance + production - removals - losses);
+
+          // Calculate variance: positive means TTB says we should have more than we do
+          const variance = totals.variance ?? totals.difference ?? (ttbCalculatedEnding - systemOnHand);
+
+          return (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-sm font-medium text-blue-800 mb-3 flex items-center gap-2">
+                <Calculator className="w-4 h-4" />
+                TTB Reconciliation Calculation
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Left: TTB Calculated Ending */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-blue-700 uppercase">TTB Calculated</div>
+                  <div className="space-y-1 font-mono text-sm">
+                    <div className="flex justify-between">
+                      <span>Opening Balance:</span>
+                      <span>{openingBalance.toFixed(1)} gal</span>
+                    </div>
+                    <div className="flex justify-between text-green-700">
+                      <span>+ Production:</span>
+                      <span>+{production.toFixed(1)} gal</span>
+                    </div>
+                    <div className="flex justify-between text-red-700">
+                      <span>- Tax-paid Removals:</span>
+                      <span>-{removals.toFixed(1)} gal</span>
+                    </div>
+                    <div className="flex justify-between text-red-700">
+                      <span>- Losses:</span>
+                      <span>-{losses.toFixed(1)} gal</span>
+                    </div>
+                    <div className="border-t border-blue-300 pt-1 flex justify-between font-semibold">
+                      <span>= TTB Calculated End:</span>
+                      <span>{ttbCalculatedEnding.toFixed(1)} gal</span>
+                    </div>
+                  </div>
+                </div>
+                {/* Right: System On Hand + Variance */}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-blue-700 uppercase">System Inventory</div>
+                  <div className="space-y-1 font-mono text-sm">
+                    <div className="flex justify-between">
+                      <span>Bulk (Vessels):</span>
+                      <span>{bulkInventory.toFixed(1)} gal</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Packaged:</span>
+                      <span>{packagedInventory.toFixed(1)} gal</span>
+                    </div>
+                    <div className="border-t border-blue-300 pt-1 flex justify-between font-semibold">
+                      <span>= System On Hand:</span>
+                      <span>{systemOnHand.toFixed(1)} gal</span>
+                    </div>
+                    <div className={cn(
+                      "mt-2 p-2 rounded flex justify-between font-bold",
+                      Math.abs(variance) <= 0.5 && "bg-green-100 text-green-800",
+                      variance > 0.5 && "bg-amber-100 text-amber-800",
+                      variance < -0.5 && "bg-red-100 text-red-800"
+                    )}>
+                      <span>VARIANCE:</span>
+                      <span>
+                        {variance > 0 ? "+" : ""}
+                        {variance.toFixed(1)} gal
+                        {Math.abs(variance) <= 0.5 && <CheckCircle className="w-4 h-4 inline ml-1" />}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-blue-600 mt-3">
+                Variance = TTB Calculated Ending - System On Hand. Positive = inventory missing. Negative = extra inventory.
+              </p>
+            </div>
+          );
+        })()}
+
         {/* Inventory Breakdown Cards */}
         {data.breakdown && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
