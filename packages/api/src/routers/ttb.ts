@@ -2685,7 +2685,8 @@ export const ttbRouter = router({
         );
       const brandyToPommeauGallons = Number(brandyToPommeauData[0]?.totalLiters || 0) * 0.264172;
 
-      // Pommeau Production = ALL transfers INTO pommeau batches (from cider/juice + brandy)
+      // Pommeau Production = transfers INTO pommeau batches from NON-pommeau sources
+      // Excludes pommeau-to-pommeau transfers (just moving within same tax class)
       const transfersIntoPommeauData = await db
         .select({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
@@ -2696,6 +2697,12 @@ export const ttbRouter = router({
           and(
             isNull(batchTransfers.deletedAt),
             eq(batches.productType, "pommeau"),
+            // Exclude pommeau-to-pommeau transfers
+            sql`NOT EXISTS (
+              SELECT 1 FROM batches src
+              WHERE src.id = ${batchTransfers.sourceBatchId}
+              AND src.product_type = 'pommeau'
+            )`,
             sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
