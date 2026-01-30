@@ -2162,8 +2162,9 @@ export const ttbRouter = router({
 
       const bottlingLossesBeforeGallons = Number(bottlingLossesBefore[0]?.totalLiters || 0) * 0.264172;
 
-      // 3d. Transfer losses (from batch.transferLossL) - for batches started during the period
-      const transferLossesBefore = await db
+      // 3d. Transfer losses - from two sources:
+      // 1. batch.transferLossL - for batches started during the period
+      const batchTransferLossesBefore = await db
         .select({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.transferLossL} AS DECIMAL)), 0)`,
         })
@@ -2176,7 +2177,23 @@ export const ttbRouter = router({
           )
         );
 
-      const transferLossesBeforeGallons = Number(transferLossesBefore[0]?.totalLiters || 0) * 0.264172;
+      // 2. batch_transfers.loss - losses recorded on individual transfers
+      const transferOperationLossesBefore = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.loss} AS DECIMAL)), 0)`,
+        })
+        .from(batchTransfers)
+        .where(
+          and(
+            isNull(batchTransfers.deletedAt),
+            sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
+            sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
+          )
+        );
+
+      const transferLossesBeforeGallons =
+        Number(batchTransferLossesBefore[0]?.totalLiters || 0) * 0.264172 +
+        Number(transferOperationLossesBefore[0]?.totalLiters || 0) * 0.264172;
 
       // 3e. Distillation removals (cider sent to DSP)
       const distillationsBefore = await db
