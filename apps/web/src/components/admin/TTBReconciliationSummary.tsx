@@ -458,31 +458,6 @@ export function TTBReconciliationSummary() {
                     )}
                   </TableRow>
 
-                  {/* Legacy (Pre-system) */}
-                  <TableRow>
-                    <TableCell className="text-xs text-gray-600 italic">Legacy (Pre-system)</TableCell>
-                    {lastReconciliation.taxClasses && lastReconciliation.taxClasses.length > 0 ? (
-                      <>
-                        {lastReconciliation.taxClasses.map((tc: { key: string; legacyBatches: number }) => (
-                          <TableCell key={tc.key} className="text-right font-mono text-xs">
-                            {tc.legacyBatches?.toFixed(1) ?? "0.0"}
-                          </TableCell>
-                        ))}
-                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
-                          {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "0.0"}
-                        </TableCell>
-                      </>
-                    ) : (
-                      <>
-                        <TableCell className="text-right font-mono text-xs">
-                          {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "0.0"}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs bg-gray-50 font-medium">
-                          {lastReconciliation.inventoryLegacy?.toFixed(1) ?? "0.0"}
-                        </TableCell>
-                      </>
-                    )}
-                  </TableRow>
 
                   {/* Variance Row */}
                   <TableRow className="bg-gray-100 font-semibold border-t-2">
@@ -767,6 +742,7 @@ export function TTBReconciliationSummary() {
             production?: number;
             removals?: number;
             losses?: number;
+            distillation?: number;
             ttbCalculatedEnding?: number;
             systemOnHand?: number;
             variance?: number;
@@ -779,12 +755,13 @@ export function TTBReconciliationSummary() {
           const production = totals.production ?? data.productionAudit?.totals.totalProduction ?? 0;
           const removals = totals.removals ?? data.breakdown?.sales ?? 0;
           const losses = totals.losses ?? data.breakdown?.losses ?? 0;
+          const distillation = totals.distillation ?? 0;
           const bulkInventory = data.breakdown?.bulkInventory ?? 0;
           const packagedInventory = data.breakdown?.packagedInventory ?? 0;
           const systemOnHand = totals.systemOnHand ?? (bulkInventory + packagedInventory);
 
           // Calculate TTB Calculated Ending if not provided
-          const ttbCalculatedEnding = totals.ttbCalculatedEnding ?? (openingBalance + production - removals - losses);
+          const ttbCalculatedEnding = totals.ttbCalculatedEnding ?? (openingBalance + production - removals - losses - distillation);
 
           // Calculate variance: positive means TTB says we should have more than we do
           const variance = totals.variance ?? totals.difference ?? (ttbCalculatedEnding - systemOnHand);
@@ -816,6 +793,12 @@ export function TTBReconciliationSummary() {
                       <span>- Losses:</span>
                       <span>-{losses.toFixed(1)} gal</span>
                     </div>
+                    {distillation > 0 && (
+                      <div className="flex justify-between text-red-700">
+                        <span>- Sent to DSP:</span>
+                        <span>-{distillation.toFixed(1)} gal</span>
+                      </div>
+                    )}
                     <div className="border-t border-blue-300 pt-1 flex justify-between font-semibold">
                       <span>= TTB Calculated End:</span>
                       <span>{ttbCalculatedEnding.toFixed(1)} gal</span>
@@ -1015,11 +998,15 @@ export function TTBReconciliationSummary() {
             <TableHeader>
               <TableRow className="bg-gray-50">
                 <TableHead className="font-semibold">Tax Class</TableHead>
-                <TableHead className="text-right font-semibold">TTB Balance</TableHead>
-                <TableHead className="text-right font-semibold">On Hand</TableHead>
-                <TableHead className="text-right font-semibold">Removals</TableHead>
-                <TableHead className="text-right font-semibold">Legacy</TableHead>
-                <TableHead className="text-right font-semibold">Diff</TableHead>
+                <TableHead className="text-right font-semibold">
+                  <div>TTB Ending</div>
+                  <div className="text-xs font-normal text-gray-500">({formatDate(selectedDate)})</div>
+                </TableHead>
+                <TableHead className="text-right font-semibold">
+                  <div>On Hand</div>
+                  <div className="text-xs font-normal text-gray-500">({formatDate(selectedDate)})</div>
+                </TableHead>
+                <TableHead className="text-right font-semibold">Variance</TableHead>
                 <TableHead className="w-[40px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -1029,9 +1016,9 @@ export function TTBReconciliationSummary() {
                   <TableCell>
                     <div>
                       <span className="font-medium">{tc.label}</span>
-                      {tc.ttbBulk > 0 && tc.ttbBottled > 0 && (
+                      {tc.production > 0 && (
                         <p className="text-xs text-gray-500">
-                          {tc.ttbBulk} bulk + {tc.ttbBottled} bottled
+                          +{tc.production.toFixed(1)} prod, -{tc.removals.toFixed(1)} sales
                         </p>
                       )}
                     </div>
@@ -1041,12 +1028,6 @@ export function TTBReconciliationSummary() {
                   </TableCell>
                   <TableCell className="text-right font-mono">
                     {tc.currentInventory.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {tc.removals.toFixed(1)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {tc.legacyBatches.toFixed(1)}
                   </TableCell>
                   <TableCell className={cn(
                     "text-right font-mono font-medium",
@@ -1070,16 +1051,10 @@ export function TTBReconciliationSummary() {
               <TableRow className="bg-gray-50 font-semibold">
                 <TableCell>Total</TableCell>
                 <TableCell className="text-right font-mono">
-                  {data.totals.ttbBalance.toFixed(1)} gal
+                  {data.taxClasses.reduce((sum, tc) => sum + tc.ttbTotal, 0).toFixed(1)} gal
                 </TableCell>
                 <TableCell className="text-right font-mono">
-                  {data.totals.currentInventory.toFixed(1)} gal
-                </TableCell>
-                <TableCell className="text-right font-mono">
-                  {data.totals.removals.toFixed(1)} gal
-                </TableCell>
-                <TableCell className="text-right font-mono">
-                  {data.totals.legacyBatches.toFixed(1)} gal
+                  {data.taxClasses.reduce((sum, tc) => sum + tc.currentInventory, 0).toFixed(1)} gal
                 </TableCell>
                 <TableCell className={cn(
                   "text-right font-mono",
@@ -1224,23 +1199,19 @@ export function TTBReconciliationSummary() {
         {/* Legend - Two Views */}
         <div className="space-y-3 pt-2">
           <div className="p-3 bg-gray-50 rounded-lg">
-            <p className="text-xs font-medium text-gray-700 mb-2">Inventory Audit (Where is it now?)</p>
+            <p className="text-xs font-medium text-gray-700 mb-2">Tax Class Table</p>
             <div className="flex flex-wrap gap-4 text-xs text-gray-600">
               <div className="flex items-center gap-1">
-                <span className="font-medium">TTB Balance:</span>
-                <span>Opening balance from TTB forms</span>
+                <span className="font-medium">TTB Ending:</span>
+                <span>Opening + Production - Sales - Losses</span>
               </div>
               <div className="flex items-center gap-1">
                 <span className="font-medium">On Hand:</span>
-                <span>Historical inventory on {data.reconciliationDate}</span>
+                <span>Bulk + packaged inventory on {formatDate(selectedDate)}</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="font-medium">Legacy:</span>
-                <span>Batches for untracked inventory</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="font-medium">Diff:</span>
-                <span>TTB - (OnHand + Legacy)</span>
+                <span className="font-medium">Variance:</span>
+                <span>TTB Ending - On Hand (positive = inventory missing)</span>
               </div>
             </div>
           </div>
@@ -1272,17 +1243,14 @@ export function TTBReconciliationSummary() {
             <ul className="text-amber-700 space-y-1 list-disc list-inside">
               {data.totals.difference > 0 && (
                 <li>
-                  <strong>TTB shows more than system.</strong> This could mean inventory existed before it was tracked in the system. Create Legacy Batches to account for this.
+                  <strong>TTB shows more than system.</strong> Check for unrecorded distillation, losses, or inventory not yet entered.
                 </li>
               )}
               {data.totals.difference < 0 && (
                 <li>
-                  <strong>System shows more than TTB.</strong> This could mean the TTB opening balance was underreported, or there are batch initial volumes that need correction.
+                  <strong>System shows more than TTB.</strong> Check if the TTB opening balance was underreported, or batch initial volumes need correction.
                 </li>
               )}
-              <li>
-                Use the Legacy Inventory section below to create batches for pre-system inventory.
-              </li>
               <li>
                 Document any remaining discrepancies in the Reconciliation Notes field above.
               </li>
