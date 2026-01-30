@@ -2752,6 +2752,7 @@ export const ttbRouter = router({
                  FROM batch_racking_operations bro
                  WHERE bro.batch_id = b.id
                    AND bro.deleted_at IS NULL
+                   AND bro.racked_at >= b.start_date
                    AND bro.racked_at <= ${reconciliationDate}::date
                  ORDER BY bro.racked_at DESC
                  LIMIT 1),
@@ -2763,6 +2764,7 @@ export const ttbRouter = router({
                  JOIN vessels v2 ON v2.id = bro2.destination_vessel_id
                  WHERE bro2.batch_id = b.id
                    AND bro2.deleted_at IS NULL
+                   AND bro2.racked_at >= b.start_date
                    AND bro2.racked_at <= ${reconciliationDate}::date
                  ORDER BY bro2.racked_at DESC
                  LIMIT 1),
