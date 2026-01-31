@@ -1063,10 +1063,7 @@ export function TTBReconciliationSummary() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.waterfall.byTaxClass.map((w: { taxClass: string; label: string; opening: number; production: number; transfersIn: number; transfersOut: number; losses: number; distillation: number; calculatedEnding: number; physical: number; variance: number }) => {
-                    // Find removals from taxClasses data
-                    const tcData = data.taxClasses?.find(tc => tc.key === w.taxClass);
-                    const removals = tcData?.removals || 0;
+                  {data.waterfall.byTaxClass.map((w: { taxClass: string; label: string; opening: number; production: number; transfersIn: number; transfersOut: number; losses: number; distillation: number; sales: number; calculatedEnding: number; physical: number; variance: number }) => {
                     return (
                       <TableRow key={w.taxClass}>
                         <TableCell className="font-medium text-sm whitespace-nowrap">{w.label}</TableCell>
@@ -1087,7 +1084,7 @@ export function TTBReconciliationSummary() {
                           {w.distillation > 0 ? `-${w.distillation.toFixed(1)}` : "-"}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-red-700">
-                          {removals > 0 ? `-${removals.toFixed(1)}` : "-"}
+                          {w.sales > 0 ? `-${w.sales.toFixed(1)}` : "-"}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-semibold bg-gray-50">
                           {w.calculatedEnding.toFixed(1)}
@@ -1116,7 +1113,7 @@ export function TTBReconciliationSummary() {
                     <TableCell className="text-right font-mono text-red-700">-{data.waterfall.totals.losses.toFixed(1)}</TableCell>
                     <TableCell className="text-right font-mono text-purple-700">-{data.waterfall.totals.distillation.toFixed(1)}</TableCell>
                     <TableCell className="text-right font-mono text-red-700">
-                      -{data.taxClasses?.reduce((sum, tc) => sum + tc.removals, 0).toFixed(1) || "0.0"}
+                      -{data.waterfall.totals.sales.toFixed(1)}
                     </TableCell>
                     <TableCell className="text-right font-mono font-bold bg-gray-200">{data.waterfall.totals.calculatedEnding.toFixed(1)}</TableCell>
                     <TableCell className="text-right font-mono font-bold bg-gray-200">{data.waterfall.totals.physical.toFixed(1)}</TableCell>

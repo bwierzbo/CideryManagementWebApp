@@ -2023,6 +2023,7 @@ export const ttbRouter = router({
               packaging: 0,
               losses: 0,
               distillation: 0,
+              sales: 0,
               calculatedEnding: 0,
               physical: 0,
               variance: 0,
@@ -3350,6 +3351,7 @@ export const ttbRouter = router({
         packaging: number;
         losses: number;
         distillation: number;
+        sales: number;
         calculatedEnding: number;
         physical: number;
         variance: number;
@@ -3382,11 +3384,14 @@ export const ttbRouter = router({
         const distillation = distillationByTaxClass[key] || 0;
         const physical = inventoryByTaxClass[key] || 0;
 
-        // Calculated Ending = Opening + Production + Transfers In - Transfers Out - Losses - Distillation
-        // Note: Packaging and removals (sales) are tracked separately - packaging converts bulk to packaged,
-        // removals (sales) actually remove from the system
-        const removals = removalsByTaxClass[key] || 0;
-        const calculatedEnding = opening + production + transfersIn - transfersOut - losses - distillation - removals;
+        // removalsByTaxClass already includes cross-class transfers (cider->pommeau, brandy->pommeau)
+        // so we need to subtract transfersOut to get actual sales (distributions to customers)
+        const totalRemovals = removalsByTaxClass[key] || 0;
+        const actualSales = Math.max(0, totalRemovals - transfersOut);
+
+        // Calculated Ending = Opening + Production + Transfers In - Transfers Out - Losses - Distillation - Sales
+        // Note: We use actualSales (not totalRemovals) because transfersOut is already separated
+        const calculatedEnding = opening + production + transfersIn - transfersOut - losses - distillation - actualSales;
 
         // Variance = Calculated - Physical (positive = we calculated more than we have)
         const variance = calculatedEnding - physical;
@@ -3403,6 +3408,7 @@ export const ttbRouter = router({
             packaging: parseFloat(packagingByTaxClass[key]?.toFixed(2) || "0"),
             losses: parseFloat(losses.toFixed(2)),
             distillation: parseFloat(distillation.toFixed(2)),
+            sales: parseFloat(actualSales.toFixed(2)),
             calculatedEnding: parseFloat(calculatedEnding.toFixed(2)),
             physical: parseFloat(physical.toFixed(2)),
             variance: parseFloat(variance.toFixed(2)),
@@ -3659,6 +3665,7 @@ export const ttbRouter = router({
             packaging: parseFloat(waterfallData.reduce((sum, w) => sum + w.packaging, 0).toFixed(2)),
             losses: parseFloat(waterfallData.reduce((sum, w) => sum + w.losses, 0).toFixed(2)),
             distillation: parseFloat(waterfallData.reduce((sum, w) => sum + w.distillation, 0).toFixed(2)),
+            sales: parseFloat(waterfallData.reduce((sum, w) => sum + w.sales, 0).toFixed(2)),
             calculatedEnding: parseFloat(waterfallData.reduce((sum, w) => sum + w.calculatedEnding, 0).toFixed(2)),
             physical: parseFloat(waterfallData.reduce((sum, w) => sum + w.physical, 0).toFixed(2)),
             variance: parseFloat(waterfallData.reduce((sum, w) => sum + w.variance, 0).toFixed(2)),
