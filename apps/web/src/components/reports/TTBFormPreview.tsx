@@ -19,11 +19,20 @@ import { formatDate } from "@/utils/date-format";
 import type { TTBForm512017Data } from "lib";
 
 // tRPC serializes dates as strings, so we need a serialized version of the type
-type SerializedTTBForm512017Data = Omit<TTBForm512017Data, 'reportingPeriod'> & {
+type SerializedBrandyTransfer = Omit<import("lib").BrandyTransfer, 'transferredAt'> & {
+  transferredAt: string | Date;
+};
+
+type SerializedDistilleryOperations = Omit<NonNullable<TTBForm512017Data['distilleryOperations']>, 'brandyTransfers'> & {
+  brandyTransfers: SerializedBrandyTransfer[];
+};
+
+type SerializedTTBForm512017Data = Omit<TTBForm512017Data, 'reportingPeriod' | 'distilleryOperations'> & {
   reportingPeriod: Omit<TTBForm512017Data['reportingPeriod'], 'startDate' | 'endDate'> & {
     startDate: string | Date;
     endDate: string | Date;
   };
+  distilleryOperations?: SerializedDistilleryOperations;
 };
 
 interface TTBFormPreviewProps {

@@ -62,6 +62,7 @@ import { toast } from "@/hooks/use-toast";
 import { downloadReconciliationExcel, type ReconciliationExportData } from "@/utils/excel/ttbReconciliation";
 import { downloadReconciliationPDF } from "@/utils/pdf/ttbReconciliation";
 import { formatDate } from "@/utils/date-format";
+import { BatchLifecycleAudit } from "./BatchLifecycleAudit";
 
 // Type for batch details from TTB API
 interface BatchDetail {
@@ -1259,6 +1260,37 @@ export function TTBReconciliationSummary() {
         )}
       </CardContent>
     </Card>
+
+    {/* Batch Lifecycle Audit Section */}
+    {lastReconciliation?.id && (
+      <Card className="border-orange-200">
+        <Collapsible>
+          <CollapsibleTrigger className="w-full">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="h-5 w-5 text-orange-600" />
+                  <CardTitle className="text-lg">Batch Lifecycle Audit</CardTitle>
+                </div>
+                <ChevronDown className="h-5 w-5 text-gray-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              </div>
+              <CardDescription>
+                Track batch movements, physical inventory, and reconciliation adjustments
+              </CardDescription>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              <BatchLifecycleAudit
+                reconciliationSnapshotId={lastReconciliation.id}
+                periodStartDate={periodStartDate || lastReconciliation.reconciliationDate}
+                periodEndDate={selectedDate}
+              />
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
+    )}
     </div>
   );
 }

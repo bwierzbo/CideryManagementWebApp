@@ -434,10 +434,10 @@ export function BottlesTable({
   // Distribute bottles handlers
   const handleDistributeBottles = useCallback((item: PackagingRun, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (item.status !== "active" && item.status !== "ready") {
+    if (item.status !== "active" && item.status !== "ready" && item.status !== "completed") {
       toast({
         title: "Cannot Distribute",
-        description: "Only active or ready packaging runs can be distributed.",
+        description: "Only active, ready, or completed packaging runs can be distributed.",
       });
       return;
     }
@@ -871,13 +871,13 @@ export function BottlesTable({
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={(e) => handleDistribute(item, e)}
-                                  disabled={item.status === "distributed"}
+                                  disabled={item.status === "distributed" || item.status === "completed"}
                                   className={cn(
-                                    item.status === "distributed" && "opacity-50 cursor-not-allowed"
+                                    (item.status === "distributed" || item.status === "completed") && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Send className="mr-2 h-4 w-4" />
-                                  {item.status === "distributed" ? "Already Distributed" : "Distribute"}
+                                  {item.status === "distributed" || item.status === "completed" ? "Already Distributed" : "Distribute"}
                                 </DropdownMenuItem>
                               </>
                             ) : (
@@ -1227,13 +1227,13 @@ export function BottlesTable({
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem
                                   onClick={(e) => handleDistribute(item, e)}
-                                  disabled={item.status === "distributed"}
+                                  disabled={item.status === "distributed" || item.status === "completed"}
                                   className={cn(
-                                    item.status === "distributed" && "opacity-50 cursor-not-allowed"
+                                    (item.status === "distributed" || item.status === "completed") && "opacity-50 cursor-not-allowed"
                                   )}
                                 >
                                   <Send className="mr-2 h-4 w-4" />
-                                  {item.status === "distributed" ? "Already Distributed" : "Distribute"}
+                                  {item.status === "distributed" || item.status === "completed" ? "Already Distributed" : "Distribute"}
                                 </DropdownMenuItem>
                               </>
                             ) : (

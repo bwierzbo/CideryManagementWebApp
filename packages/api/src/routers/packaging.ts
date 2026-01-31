@@ -35,6 +35,7 @@ import {
   workers,
   activityLaborAssignments,
   organizationSettings,
+  inventoryDistributions,
 } from "db";
 import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -88,7 +89,7 @@ const listPackagingRunsSchema = z.object({
   batchSearch: z.string().optional(),
   packageType: z.string().optional(),
   packageSizeML: z.number().optional(),
-  status: z.enum(["active", "completed"]).optional(),
+  status: z.enum(["active", "ready", "distributed", "completed"]).optional(),
   limit: z.number().max(100).default(50), // Cap at 100 for performance
   offset: z.number().default(0),
   // Cursor-based pagination (preferred for performance)
@@ -1575,11 +1576,11 @@ export const packagingRouter = router({
             });
           }
 
-          // Allow distribution from 'active' or 'ready' status
-          if (run.status !== "active" && run.status !== "ready") {
+          // Allow distribution from 'active', 'ready', or 'completed' status
+          if (run.status !== "active" && run.status !== "ready" && run.status !== "completed") {
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Cannot distribute: run is currently '${run.status}', must be 'active' or 'ready'`,
+              message: `Cannot distribute: run is currently '${run.status}', must be 'active', 'ready', or 'completed'`,
             });
           }
 
@@ -1611,14 +1612,37 @@ export const packagingRouter = router({
             .where(eq(bottleRuns.id, input.runId))
             .returning();
 
-          // Update inventory item quantity to make it appear in finished goods inventory
-          await tx
-            .update(inventoryItems)
-            .set({
-              currentQuantity: run.unitsProduced,
-              updatedAt: new Date(),
-            })
+          // Get all inventory items for this run and create distribution records
+          const items = await tx
+            .select()
+            .from(inventoryItems)
             .where(eq(inventoryItems.bottleRunId, input.runId));
+
+          for (const item of items) {
+            const qty = run.unitsProduced || item.currentQuantity || 0;
+            if (qty > 0) {
+              // Create distribution record for TTB tracking
+              await tx.insert(inventoryDistributions).values({
+                inventoryItemId: item.id,
+                distributionDate: distributedAt,
+                distributionLocation: input.distributionLocation,
+                salesChannelId: input.salesChannelId,
+                quantityDistributed: qty,
+                pricePerUnit: "0",
+                totalRevenue: "0",
+                distributedBy: ctx.user.id,
+              });
+
+              // Set quantity to 0 (fully distributed)
+              await tx
+                .update(inventoryItems)
+                .set({
+                  currentQuantity: 0,
+                  updatedAt: new Date(),
+                })
+                .where(eq(inventoryItems.id, item.id));
+            }
+          }
 
           return updated;
         });

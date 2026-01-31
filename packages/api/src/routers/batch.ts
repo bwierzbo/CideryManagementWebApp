@@ -3607,6 +3607,7 @@ export const batchRouter = router({
             const childBatchName = `Batch #${childBatchNumber}`; // e.g., "Batch #25-Rm5abc123"
 
             // Create child batch in destination vessel with racked volume
+            // Note: initialVolume is 0 because the volume comes from a transfer, not as initial production
             const newBatch = await tx
               .insert(batches)
               .values({
@@ -3614,7 +3615,7 @@ export const batchRouter = router({
                 name: childBatchName,
                 customName: batch[0].customName, // Inherit parent's custom name without suffix
                 batchNumber: childBatchNumber,
-                initialVolume: volumeRackedL.toString(),
+                initialVolume: "0", // Volume comes from transfer, not initial production
                 initialVolumeUnit: 'L',
                 currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',

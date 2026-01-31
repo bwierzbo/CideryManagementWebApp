@@ -43,6 +43,8 @@ export interface PackagingFiltersProps {
   className?: string;
   isExporting?: boolean;
   itemCount?: number;
+  /** "bottles" hides Completed tab; "kegs" renames it to Returned */
+  variant?: "bottles" | "kegs";
 }
 
 const defaultFilters: PackagingFiltersState = {
@@ -61,6 +63,7 @@ export function PackagingFilters({
   className,
   isExporting = false,
   itemCount = 0,
+  variant = "bottles",
 }: PackagingFiltersProps) {
   const [filters, setFilters] = useState<PackagingFiltersState>({
     ...defaultFilters,
@@ -170,12 +173,13 @@ export function PackagingFilters({
               onClick={() => handleFilterChange("status", "completed")}
               className={cn(
                 "px-2.5 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+                variant === "bottles" && "hidden",
                 filters.status === "completed"
                   ? "bg-purple-600 text-white"
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               )}
             >
-              Completed
+              {variant === "kegs" ? "Returned" : "Completed"}
             </button>
           </div>
 

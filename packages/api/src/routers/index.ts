@@ -4387,6 +4387,7 @@ export const appRouter = router({
                 const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${uniqueSuffix}`;
                 const transferredBatchName = `Batch #${transferredBatchNumber}`;
 
+                // Note: initialVolume is 0 because the volume comes from a transfer, not as initial production
                 const newTransferredBatch = await tx
                   .insert(batches)
                   .values({
@@ -4394,7 +4395,7 @@ export const appRouter = router({
                     name: transferredBatchName,
                     batchNumber: transferredBatchNumber,
                     customName: sourceBatch[0].customName,
-                    initialVolume: input.volumeL.toString(),
+                    initialVolume: "0", // Volume comes from transfer, not initial production
                     initialVolumeUnit: "L",
                     currentVolume: input.volumeL.toString(),
                     currentVolumeUnit: "L",

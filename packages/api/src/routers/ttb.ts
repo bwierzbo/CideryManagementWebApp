@@ -38,6 +38,8 @@ import {
   additiveVarieties,
   juicePurchases,
   juicePurchaseItems,
+  physicalInventoryCounts,
+  reconciliationAdjustments,
   type TTBOpeningBalances,
 } from "db";
 import {
@@ -3692,4 +3694,1196 @@ export const ttbRouter = router({
       presets,
     };
   }),
+
+  // ============================================
+  // BATCH LIFECYCLE AUDIT ENDPOINTS
+  // ============================================
+
+  /**
+   * Get chronological timeline of all events for a single batch.
+   * Includes: creation, transfers, racking, filtering, packaging, volume adjustments.
+   */
+  getBatchLifecycleTimeline: protectedProcedure
+    .input(
+      z.object({
+        batchId: z.string().uuid(),
+        startDate: z.string().optional(), // ISO date string
+        endDate: z.string().optional(), // ISO date string
+      })
+    )
+    .query(async ({ input }) => {
+      const { batchId, startDate, endDate } = input;
+
+      // Get the batch info
+      const [batch] = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          productType: batches.productType,
+          startDate: batches.startDate,
+          endDate: batches.endDate,
+          initialVolumeLiters: batches.initialVolumeLiters,
+          currentVolumeLiters: batches.currentVolumeLiters,
+          vesselId: batches.vesselId,
+          vesselName: vessels.name,
+          status: batches.status,
+        })
+        .from(batches)
+        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+        .where(eq(batches.id, batchId));
+
+      if (!batch) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Batch not found",
+        });
+      }
+
+      type TimelineEvent = {
+        id: string;
+        type: "creation" | "transfer_in" | "transfer_out" | "racking" | "filtering" | "packaging" | "volume_adjustment" | "carbonation";
+        date: Date;
+        description: string;
+        volumeChange: number | null;
+        runningVolume: number | null;
+        vesselFrom: string | null;
+        vesselTo: string | null;
+        lossLiters: number | null;
+        metadata: Record<string, unknown>;
+      };
+
+      const events: TimelineEvent[] = [];
+
+      // 1. Creation event
+      events.push({
+        id: `creation-${batch.id}`,
+        type: "creation",
+        date: batch.startDate,
+        description: `Batch created in ${batch.vesselName || "unknown vessel"}`,
+        volumeChange: parseFloat(batch.initialVolumeLiters || "0"),
+        runningVolume: parseFloat(batch.initialVolumeLiters || "0"),
+        vesselFrom: null,
+        vesselTo: batch.vesselName,
+        lossLiters: null,
+        metadata: { productType: batch.productType },
+      });
+
+      // 2. Transfers out (this batch was the source)
+      const transfersOut = await db
+        .select({
+          id: batchTransfers.id,
+          transferredAt: batchTransfers.transferredAt,
+          volumeTransferred: batchTransfers.volumeTransferred,
+          loss: batchTransfers.loss,
+          sourceVesselName: sql<string>`source_vessel.name`,
+          destVesselName: sql<string>`dest_vessel.name`,
+          destBatchName: sql<string>`dest_batch.name`,
+          notes: batchTransfers.notes,
+        })
+        .from(batchTransfers)
+        .leftJoin(sql`vessels source_vessel`, sql`source_vessel.id = ${batchTransfers.sourceVesselId}`)
+        .leftJoin(sql`vessels dest_vessel`, sql`dest_vessel.id = ${batchTransfers.destinationVesselId}`)
+        .leftJoin(sql`batches dest_batch`, sql`dest_batch.id = ${batchTransfers.destinationBatchId}`)
+        .where(eq(batchTransfers.sourceBatchId, batchId));
+
+      for (const t of transfersOut) {
+        events.push({
+          id: `transfer-out-${t.id}`,
+          type: "transfer_out",
+          date: t.transferredAt,
+          description: `Transferred to ${t.destBatchName || t.destVesselName || "unknown"}`,
+          volumeChange: -parseFloat(t.volumeTransferred || "0"),
+          runningVolume: null, // Will be calculated after sorting
+          vesselFrom: t.sourceVesselName,
+          vesselTo: t.destVesselName,
+          lossLiters: t.loss ? parseFloat(t.loss) : null,
+          metadata: { notes: t.notes },
+        });
+      }
+
+      // 3. Transfers in (this batch was the destination)
+      const transfersIn = await db
+        .select({
+          id: batchTransfers.id,
+          transferredAt: batchTransfers.transferredAt,
+          volumeTransferred: batchTransfers.volumeTransferred,
+          loss: batchTransfers.loss,
+          sourceVesselName: sql<string>`source_vessel.name`,
+          destVesselName: sql<string>`dest_vessel.name`,
+          sourceBatchName: sql<string>`source_batch.name`,
+          notes: batchTransfers.notes,
+        })
+        .from(batchTransfers)
+        .leftJoin(sql`vessels source_vessel`, sql`source_vessel.id = ${batchTransfers.sourceVesselId}`)
+        .leftJoin(sql`vessels dest_vessel`, sql`dest_vessel.id = ${batchTransfers.destinationVesselId}`)
+        .leftJoin(sql`batches source_batch`, sql`source_batch.id = ${batchTransfers.sourceBatchId}`)
+        .where(eq(batchTransfers.destinationBatchId, batchId));
+
+      for (const t of transfersIn) {
+        events.push({
+          id: `transfer-in-${t.id}`,
+          type: "transfer_in",
+          date: t.transferredAt,
+          description: `Received from ${t.sourceBatchName || t.sourceVesselName || "unknown"}`,
+          volumeChange: parseFloat(t.volumeTransferred || "0"),
+          runningVolume: null,
+          vesselFrom: t.sourceVesselName,
+          vesselTo: t.destVesselName,
+          lossLiters: t.loss ? parseFloat(t.loss) : null,
+          metadata: { notes: t.notes },
+        });
+      }
+
+      // 4. Racking operations
+      const rackings = await db
+        .select({
+          id: batchRackingOperations.id,
+          rackedAt: batchRackingOperations.rackedAt,
+          sourceVesselName: sql<string>`source_vessel.name`,
+          destVesselName: sql<string>`dest_vessel.name`,
+          volumeAfter: batchRackingOperations.volumeAfter,
+          volumeLoss: batchRackingOperations.volumeLoss,
+          notes: batchRackingOperations.notes,
+        })
+        .from(batchRackingOperations)
+        .leftJoin(sql`vessels source_vessel`, sql`source_vessel.id = ${batchRackingOperations.sourceVesselId}`)
+        .leftJoin(sql`vessels dest_vessel`, sql`dest_vessel.id = ${batchRackingOperations.destinationVesselId}`)
+        .where(eq(batchRackingOperations.batchId, batchId));
+
+      for (const r of rackings) {
+        events.push({
+          id: `racking-${r.id}`,
+          type: "racking",
+          date: r.rackedAt,
+          description: `Racked from ${r.sourceVesselName || "unknown"} to ${r.destVesselName || "unknown"}`,
+          volumeChange: r.volumeLoss ? -parseFloat(r.volumeLoss) : 0,
+          runningVolume: null,
+          vesselFrom: r.sourceVesselName,
+          vesselTo: r.destVesselName,
+          lossLiters: r.volumeLoss ? parseFloat(r.volumeLoss) : null,
+          metadata: { notes: r.notes },
+        });
+      }
+
+      // 5. Filter operations
+      const filters = await db
+        .select({
+          id: batchFilterOperations.id,
+          filteredAt: batchFilterOperations.filteredAt,
+          filterType: batchFilterOperations.filterType,
+          volumeBefore: batchFilterOperations.volumeBefore,
+          volumeAfter: batchFilterOperations.volumeAfter,
+          volumeLoss: batchFilterOperations.volumeLoss,
+          notes: batchFilterOperations.notes,
+        })
+        .from(batchFilterOperations)
+        .where(eq(batchFilterOperations.batchId, batchId));
+
+      for (const f of filters) {
+        const lossLiters = parseFloat(f.volumeLoss || "0");
+
+        events.push({
+          id: `filter-${f.id}`,
+          type: "filtering",
+          date: f.filteredAt,
+          description: `Filtered (${f.filterType || "unknown type"})`,
+          volumeChange: -lossLiters,
+          runningVolume: null,
+          vesselFrom: null,
+          vesselTo: null,
+          lossLiters: lossLiters > 0 ? lossLiters : null,
+          metadata: { filterType: f.filterType, notes: f.notes },
+        });
+      }
+
+      // 6. Packaging (bottle runs)
+      const packaging = await db
+        .select({
+          id: bottleRuns.id,
+          packagedAt: bottleRuns.packagedAt,
+          packageSizeML: bottleRuns.packageSizeML,
+          unitsProduced: bottleRuns.unitsProduced,
+          volumeTakenLiters: bottleRuns.volumeTakenLiters,
+        })
+        .from(bottleRuns)
+        .where(eq(bottleRuns.batchId, batchId));
+
+      for (const p of packaging) {
+        const volumeTaken = parseFloat(p.volumeTakenLiters || "0");
+        events.push({
+          id: `packaging-${p.id}`,
+          type: "packaging",
+          date: p.packagedAt,
+          description: `Packaged ${p.unitsProduced} × ${p.packageSizeML}ml units`,
+          volumeChange: -volumeTaken,
+          runningVolume: null,
+          vesselFrom: null,
+          vesselTo: null,
+          lossLiters: null,
+          metadata: {
+            packageSizeML: p.packageSizeML,
+            unitsProduced: p.unitsProduced,
+          },
+        });
+      }
+
+      // 7. Volume adjustments
+      const adjustments = await db
+        .select({
+          id: batchVolumeAdjustments.id,
+          adjustmentDate: batchVolumeAdjustments.adjustmentDate,
+          reason: batchVolumeAdjustments.reason,
+          volumeBefore: batchVolumeAdjustments.volumeBefore,
+          volumeAfter: batchVolumeAdjustments.volumeAfter,
+          notes: batchVolumeAdjustments.notes,
+        })
+        .from(batchVolumeAdjustments)
+        .where(eq(batchVolumeAdjustments.batchId, batchId));
+
+      for (const a of adjustments) {
+        const prevVol = parseFloat(a.volumeBefore || "0");
+        const newVol = parseFloat(a.volumeAfter || "0");
+        const change = newVol - prevVol;
+
+        events.push({
+          id: `adjustment-${a.id}`,
+          type: "volume_adjustment",
+          date: a.adjustmentDate,
+          description: `Volume adjusted: ${a.reason || "manual correction"}`,
+          volumeChange: change,
+          runningVolume: null,
+          vesselFrom: null,
+          vesselTo: null,
+          lossLiters: change < 0 ? Math.abs(change) : null,
+          metadata: {
+            reason: a.reason,
+            notes: a.notes,
+            previousVolume: prevVol,
+            newVolume: newVol,
+          },
+        });
+      }
+
+      // Sort events by date
+      events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // Calculate running volume
+      let runningVolume = 0;
+      for (const event of events) {
+        if (event.type === "creation") {
+          runningVolume = event.volumeChange || 0;
+        } else {
+          runningVolume += event.volumeChange || 0;
+        }
+        event.runningVolume = Math.max(0, runningVolume);
+      }
+
+      // Filter by date range if provided
+      let filteredEvents = events;
+      if (startDate) {
+        const start = new Date(startDate);
+        filteredEvents = filteredEvents.filter((e) => new Date(e.date) >= start);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        filteredEvents = filteredEvents.filter((e) => new Date(e.date) <= end);
+      }
+
+      return {
+        batch: {
+          id: batch.id,
+          name: batch.name,
+          productType: batch.productType,
+          status: batch.status,
+          initialVolumeLiters: parseFloat(batch.initialVolumeLiters || "0"),
+          currentVolumeLiters: parseFloat(batch.currentVolumeLiters || "0"),
+          currentVessel: batch.vesselName,
+        },
+        events: filteredEvents,
+        summary: {
+          totalEvents: filteredEvents.length,
+          totalLossLiters: filteredEvents.reduce((sum, e) => sum + (e.lossLiters || 0), 0),
+          totalPackagedLiters: filteredEvents
+            .filter((e) => e.type === "packaging")
+            .reduce((sum, e) => sum + Math.abs(e.volumeChange || 0), 0),
+        },
+      };
+    }),
+
+  /**
+   * Get batch lifecycle activity grouped by tax class.
+   * Shows Opening → Activity → Ending for each tax class.
+   */
+  getBatchLifecycleByTaxClass: protectedProcedure
+    .input(
+      z.object({
+        startDate: z.string(), // ISO date string
+        endDate: z.string(), // ISO date string
+      })
+    )
+    .query(async ({ input }) => {
+      const { startDate, endDate } = input;
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      // Get opening balance from reconciliation snapshots or TTB opening balance
+      const [lastRecon] = await db
+        .select()
+        .from(ttbReconciliationSnapshots)
+        .where(lt(ttbReconciliationSnapshots.reconciliationDate, startDate))
+        .orderBy(desc(ttbReconciliationSnapshots.reconciliationDate))
+        .limit(1);
+
+      type TaxClassData = {
+        taxClass: string;
+        openingLiters: number;
+        productionLiters: number;
+        transfersInLiters: number;
+        transfersOutLiters: number;
+        packagingLiters: number;
+        lossesLiters: number;
+        endingLiters: number;
+        batches: Array<{
+          id: string;
+          name: string;
+          productType: string;
+          openingVolume: number;
+          currentVolume: number;
+          vessel: string | null;
+        }>;
+      };
+
+      // Get all batches grouped by product type (tax class)
+      const allBatches = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          productType: batches.productType,
+          startDate: batches.startDate,
+          initialVolumeLiters: batches.initialVolumeLiters,
+          currentVolumeLiters: batches.currentVolumeLiters,
+          vesselName: vessels.name,
+          status: batches.status,
+          isArchived: batches.isArchived,
+        })
+        .from(batches)
+        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+        .where(
+          and(
+            eq(batches.isArchived, false),
+            isNull(batches.deletedAt)
+          )
+        );
+
+      // Map product types to tax classes
+      const productTypeToTaxClass: Record<string, string> = {
+        cider: "hardCider",
+        wine: "wineUnder16",
+        pommeau: "wine16To21",
+        brandy: "appleBrandy",
+        perry: "hardCider",
+        juice: "materials",
+      };
+
+      // Group batches by tax class
+      const taxClassMap = new Map<string, TaxClassData>();
+
+      for (const batch of allBatches) {
+        const taxClass = productTypeToTaxClass[batch.productType] || "other";
+
+        if (!taxClassMap.has(taxClass)) {
+          taxClassMap.set(taxClass, {
+            taxClass,
+            openingLiters: 0,
+            productionLiters: 0,
+            transfersInLiters: 0,
+            transfersOutLiters: 0,
+            packagingLiters: 0,
+            lossesLiters: 0,
+            endingLiters: 0,
+            batches: [],
+          });
+        }
+
+        const data = taxClassMap.get(taxClass)!;
+
+        // Calculate opening volume (batch volume at start date)
+        // For simplicity, use initial volume if batch started before period, else 0
+        const batchStartDate = new Date(batch.startDate);
+        const openingVolume = batchStartDate < start
+          ? parseFloat(batch.initialVolumeLiters || "0")
+          : 0;
+
+        // Production = batches created during period
+        const productionVolume = batchStartDate >= start && batchStartDate <= end
+          ? parseFloat(batch.initialVolumeLiters || "0")
+          : 0;
+
+        data.openingLiters += openingVolume;
+        data.productionLiters += productionVolume;
+        data.endingLiters += parseFloat(batch.currentVolumeLiters || "0");
+
+        data.batches.push({
+          id: batch.id,
+          name: batch.name,
+          productType: batch.productType,
+          openingVolume,
+          currentVolume: parseFloat(batch.currentVolumeLiters || "0"),
+          vessel: batch.vesselName,
+        });
+      }
+
+      // Get transfers during period
+      const transfers = await db
+        .select({
+          id: batchTransfers.id,
+          transferredAt: batchTransfers.transferredAt,
+          volumeTransferred: batchTransfers.volumeTransferred,
+          loss: batchTransfers.loss,
+          sourceBatchId: batchTransfers.sourceBatchId,
+          destBatchId: batchTransfers.destinationBatchId,
+          sourceProductType: sql<string>`source_batch.product_type`,
+          destProductType: sql<string>`dest_batch.product_type`,
+        })
+        .from(batchTransfers)
+        .leftJoin(sql`batches source_batch`, sql`source_batch.id = ${batchTransfers.sourceBatchId}`)
+        .leftJoin(sql`batches dest_batch`, sql`dest_batch.id = ${batchTransfers.destinationBatchId}`)
+        .where(
+          and(
+            gte(batchTransfers.transferredAt, start),
+            lte(batchTransfers.transferredAt, end)
+          )
+        );
+
+      for (const t of transfers) {
+        const sourceClass = productTypeToTaxClass[t.sourceProductType] || "other";
+        const targetClass = productTypeToTaxClass[t.destProductType] || "other";
+        const volume = parseFloat(t.volumeTransferred || "0");
+        const loss = parseFloat(t.loss || "0");
+
+        // Add loss to source class
+        if (taxClassMap.has(sourceClass)) {
+          taxClassMap.get(sourceClass)!.lossesLiters += loss;
+        }
+
+        // If transfer is between different tax classes, track it
+        if (sourceClass !== targetClass) {
+          if (taxClassMap.has(sourceClass)) {
+            taxClassMap.get(sourceClass)!.transfersOutLiters += volume;
+          }
+          if (taxClassMap.has(targetClass)) {
+            taxClassMap.get(targetClass)!.transfersInLiters += volume;
+          }
+        }
+      }
+
+      // Get packaging during period
+      const packagingRuns = await db
+        .select({
+          id: bottleRuns.id,
+          batchId: bottleRuns.batchId,
+          volumeTakenLiters: bottleRuns.volumeTakenLiters,
+          productType: batches.productType,
+        })
+        .from(bottleRuns)
+        .leftJoin(batches, eq(bottleRuns.batchId, batches.id))
+        .where(
+          and(
+            gte(bottleRuns.packagedAt, start),
+            lte(bottleRuns.packagedAt, end)
+          )
+        );
+
+      for (const p of packagingRuns) {
+        const taxClass = productTypeToTaxClass[p.productType || "cider"] || "other";
+        const volume = parseFloat(p.volumeTakenLiters || "0");
+
+        if (taxClassMap.has(taxClass)) {
+          taxClassMap.get(taxClass)!.packagingLiters += volume;
+        }
+      }
+
+      // Convert map to array and calculate reconciliation
+      const result = Array.from(taxClassMap.values()).map((data) => ({
+        ...data,
+        calculatedEnding:
+          data.openingLiters +
+          data.productionLiters +
+          data.transfersInLiters -
+          data.transfersOutLiters -
+          data.packagingLiters -
+          data.lossesLiters,
+        variance: data.endingLiters - (
+          data.openingLiters +
+          data.productionLiters +
+          data.transfersInLiters -
+          data.transfersOutLiters -
+          data.packagingLiters -
+          data.lossesLiters
+        ),
+      }));
+
+      return {
+        periodStart: startDate,
+        periodEnd: endDate,
+        taxClasses: result.filter((tc) => tc.batches.length > 0),
+        summary: {
+          totalOpeningLiters: result.reduce((sum, tc) => sum + tc.openingLiters, 0),
+          totalProductionLiters: result.reduce((sum, tc) => sum + tc.productionLiters, 0),
+          totalPackagingLiters: result.reduce((sum, tc) => sum + tc.packagingLiters, 0),
+          totalLossesLiters: result.reduce((sum, tc) => sum + tc.lossesLiters, 0),
+          totalEndingLiters: result.reduce((sum, tc) => sum + tc.endingLiters, 0),
+        },
+      };
+    }),
+
+  /**
+   * Get disposition summary - where each batch ended up.
+   * Shows: In Vessel, Packaged, Lost, Transferred Out
+   */
+  getBatchDispositionSummary: protectedProcedure
+    .input(
+      z.object({
+        reconciliationSnapshotId: z.string().uuid().optional(),
+        endDate: z.string(), // ISO date string - "as of" date
+      })
+    )
+    .query(async ({ input }) => {
+      const { endDate } = input;
+      const asOfDate = new Date(endDate);
+
+      type BatchDisposition = {
+        id: string;
+        name: string;
+        productType: string;
+        startDate: Date;
+        initialVolumeLiters: number;
+        disposition: {
+          inVesselLiters: number;
+          vesselName: string | null;
+          packagedLiters: number;
+          lostLiters: number;
+          transferredOutLiters: number;
+        };
+        percentagePackaged: number;
+        percentageLost: number;
+      };
+
+      // Get all batches
+      const allBatches = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          productType: batches.productType,
+          startDate: batches.startDate,
+          initialVolumeLiters: batches.initialVolumeLiters,
+          currentVolumeLiters: batches.currentVolumeLiters,
+          vesselName: vessels.name,
+          status: batches.status,
+        })
+        .from(batches)
+        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+        .where(
+          and(
+            eq(batches.isArchived, false),
+            isNull(batches.deletedAt),
+            lte(batches.startDate, asOfDate)
+          )
+        );
+
+      const dispositions: BatchDisposition[] = [];
+
+      for (const batch of allBatches) {
+        const initialVolume = parseFloat(batch.initialVolumeLiters || "0");
+        const currentVolume = parseFloat(batch.currentVolumeLiters || "0");
+
+        // Get total packaged volume
+        const [packagingResult] = await db
+          .select({
+            totalLiters: sql<string>`COALESCE(SUM(${bottleRuns.volumeTakenLiters}), 0)`,
+          })
+          .from(bottleRuns)
+          .where(
+            and(
+              eq(bottleRuns.batchId, batch.id),
+              lte(bottleRuns.packagedAt, asOfDate)
+            )
+          );
+
+        const packagedLiters = parseFloat(packagingResult?.totalLiters || "0");
+
+        // Get total transferred out (where this batch was source)
+        const [transferResult] = await db
+          .select({
+            totalLiters: sql<string>`COALESCE(SUM(${batchTransfers.volumeTransferred}), 0)`,
+            totalLoss: sql<string>`COALESCE(SUM(${batchTransfers.loss}), 0)`,
+          })
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.sourceBatchId, batch.id),
+              lte(batchTransfers.transferredAt, asOfDate)
+            )
+          );
+
+        const transferredOutLiters = parseFloat(transferResult?.totalLiters || "0");
+        const transferLossLiters = parseFloat(transferResult?.totalLoss || "0");
+
+        // Get other losses (racking, filtering)
+        const [rackingLoss] = await db
+          .select({
+            totalLoss: sql<string>`COALESCE(SUM(${batchRackingOperations.volumeLoss}), 0)`,
+          })
+          .from(batchRackingOperations)
+          .where(
+            and(
+              eq(batchRackingOperations.batchId, batch.id),
+              lte(batchRackingOperations.rackedAt, asOfDate)
+            )
+          );
+
+        const [filterLoss] = await db
+          .select({
+            totalLoss: sql<string>`COALESCE(SUM(${batchFilterOperations.volumeLoss}), 0)`,
+          })
+          .from(batchFilterOperations)
+          .where(
+            and(
+              eq(batchFilterOperations.batchId, batch.id),
+              lte(batchFilterOperations.filteredAt, asOfDate)
+            )
+          );
+
+        const rackingLossLiters = parseFloat(rackingLoss?.totalLoss || "0");
+        const filterLossLiters = parseFloat(filterLoss?.totalLoss || "0");
+        const totalLostLiters = transferLossLiters + rackingLossLiters + filterLossLiters;
+
+        // Calculate variance (unaccounted)
+        const accountedFor = currentVolume + packagedLiters + transferredOutLiters + totalLostLiters;
+        const variance = initialVolume - accountedFor;
+        const adjustedLoss = totalLostLiters + (variance > 0 ? variance : 0);
+
+        dispositions.push({
+          id: batch.id,
+          name: batch.name,
+          productType: batch.productType,
+          startDate: batch.startDate,
+          initialVolumeLiters: initialVolume,
+          disposition: {
+            inVesselLiters: currentVolume,
+            vesselName: batch.vesselName,
+            packagedLiters,
+            lostLiters: adjustedLoss,
+            transferredOutLiters,
+          },
+          percentagePackaged: initialVolume > 0 ? (packagedLiters / initialVolume) * 100 : 0,
+          percentageLost: initialVolume > 0 ? (adjustedLoss / initialVolume) * 100 : 0,
+        });
+      }
+
+      // Group by product type for summary
+      const byProductType = dispositions.reduce(
+        (acc, d) => {
+          if (!acc[d.productType]) {
+            acc[d.productType] = {
+              inVesselLiters: 0,
+              packagedLiters: 0,
+              lostLiters: 0,
+              transferredOutLiters: 0,
+              batchCount: 0,
+            };
+          }
+          acc[d.productType].inVesselLiters += d.disposition.inVesselLiters;
+          acc[d.productType].packagedLiters += d.disposition.packagedLiters;
+          acc[d.productType].lostLiters += d.disposition.lostLiters;
+          acc[d.productType].transferredOutLiters += d.disposition.transferredOutLiters;
+          acc[d.productType].batchCount += 1;
+          return acc;
+        },
+        {} as Record<string, { inVesselLiters: number; packagedLiters: number; lostLiters: number; transferredOutLiters: number; batchCount: number }>
+      );
+
+      return {
+        asOfDate: endDate,
+        batches: dispositions,
+        byProductType,
+        summary: {
+          totalBatches: dispositions.length,
+          totalInVesselLiters: dispositions.reduce((sum, d) => sum + d.disposition.inVesselLiters, 0),
+          totalPackagedLiters: dispositions.reduce((sum, d) => sum + d.disposition.packagedLiters, 0),
+          totalLostLiters: dispositions.reduce((sum, d) => sum + d.disposition.lostLiters, 0),
+          totalTransferredOutLiters: dispositions.reduce((sum, d) => sum + d.disposition.transferredOutLiters, 0),
+        },
+      };
+    }),
+
+  // ============================================
+  // PHYSICAL INVENTORY ENDPOINTS
+  // ============================================
+
+  /**
+   * Get vessels with their book inventory for physical counting.
+   */
+  getVesselsForPhysicalCount: protectedProcedure
+    .input(
+      z.object({
+        reconciliationSnapshotId: z.string().uuid().optional(),
+        includeEmpty: z.boolean().default(false),
+      })
+    )
+    .query(async ({ input }) => {
+      const { includeEmpty } = input;
+
+      // Get all vessels with their current batch volumes
+      const vesselsWithBatches = await db
+        .select({
+          vesselId: vessels.id,
+          vesselName: vessels.name,
+          vesselCapacity: vessels.capacity,
+          vesselMaterial: vessels.material,
+          batchId: batches.id,
+          batchName: batches.name,
+          batchProductType: batches.productType,
+          batchCurrentVolumeLiters: batches.currentVolumeLiters,
+        })
+        .from(vessels)
+        .leftJoin(
+          batches,
+          and(
+            eq(batches.vesselId, vessels.id),
+            eq(batches.isArchived, false),
+            isNull(batches.deletedAt)
+          )
+        )
+        .where(isNull(vessels.deletedAt))
+        .orderBy(asc(vessels.name));
+
+      // Group by vessel and calculate total book volume
+      const vesselMap = new Map<
+        string,
+        {
+          vesselId: string;
+          vesselName: string;
+          vesselCapacity: number | null;
+          vesselMaterial: string | null;
+          bookVolumeLiters: number;
+          batches: Array<{
+            id: string;
+            name: string;
+            productType: string;
+            volumeLiters: number;
+          }>;
+        }
+      >();
+
+      for (const row of vesselsWithBatches) {
+        if (!vesselMap.has(row.vesselId)) {
+          vesselMap.set(row.vesselId, {
+            vesselId: row.vesselId,
+            vesselName: row.vesselName || "Unknown",
+            vesselCapacity: row.vesselCapacity ? parseFloat(String(row.vesselCapacity)) : null,
+            vesselMaterial: row.vesselMaterial,
+            bookVolumeLiters: 0,
+            batches: [],
+          });
+        }
+
+        if (row.batchId) {
+          const vessel = vesselMap.get(row.vesselId)!;
+          const volumeLiters = parseFloat(row.batchCurrentVolumeLiters || "0");
+          vessel.bookVolumeLiters += volumeLiters;
+          vessel.batches.push({
+            id: row.batchId,
+            name: row.batchName || "Unknown",
+            productType: row.batchProductType || "cider",
+            volumeLiters,
+          });
+        }
+      }
+
+      // Convert to array and optionally filter empty vessels
+      let result = Array.from(vesselMap.values());
+      if (!includeEmpty) {
+        result = result.filter((v) => v.bookVolumeLiters > 0);
+      }
+
+      return {
+        vessels: result,
+        summary: {
+          totalVessels: result.length,
+          totalBookVolumeLiters: result.reduce((sum, v) => sum + v.bookVolumeLiters, 0),
+          vesselsWithInventory: result.filter((v) => v.bookVolumeLiters > 0).length,
+        },
+      };
+    }),
+
+  /**
+   * Save a physical inventory count for a vessel.
+   */
+  savePhysicalInventoryCount: adminProcedure
+    .input(
+      z.object({
+        reconciliationSnapshotId: z.string().uuid(),
+        vesselId: z.string().uuid(),
+        batchId: z.string().uuid().optional(),
+        physicalVolumeLiters: z.number().min(0),
+        measurementMethod: z.enum(["dipstick", "sight_glass", "flowmeter", "estimated", "weighed"]).optional(),
+        notes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const {
+        reconciliationSnapshotId,
+        vesselId,
+        batchId,
+        physicalVolumeLiters,
+        measurementMethod,
+        notes,
+      } = input;
+
+      // Get book volume for the vessel
+      const vesselBatches = await db
+        .select({
+          batchId: batches.id,
+          volumeLiters: batches.currentVolumeLiters,
+        })
+        .from(batches)
+        .where(
+          and(
+            eq(batches.vesselId, vesselId),
+            eq(batches.isArchived, false),
+            isNull(batches.deletedAt)
+          )
+        );
+
+      const bookVolumeLiters = vesselBatches.reduce(
+        (sum, b) => sum + parseFloat(b.volumeLiters || "0"),
+        0
+      );
+
+      // Calculate variance
+      const varianceLiters = physicalVolumeLiters - bookVolumeLiters;
+      const variancePercentage = bookVolumeLiters > 0
+        ? (varianceLiters / bookVolumeLiters) * 100
+        : 0;
+
+      // Check if a count already exists for this vessel/reconciliation
+      const [existingCount] = await db
+        .select()
+        .from(physicalInventoryCounts)
+        .where(
+          and(
+            eq(physicalInventoryCounts.reconciliationSnapshotId, reconciliationSnapshotId),
+            eq(physicalInventoryCounts.vesselId, vesselId)
+          )
+        );
+
+      let result;
+      if (existingCount) {
+        // Update existing count
+        [result] = await db
+          .update(physicalInventoryCounts)
+          .set({
+            batchId: batchId || (vesselBatches.length === 1 ? vesselBatches[0].batchId : null),
+            bookVolumeLiters: String(bookVolumeLiters),
+            physicalVolumeLiters: String(physicalVolumeLiters),
+            varianceLiters: String(varianceLiters),
+            variancePercentage: String(variancePercentage),
+            countedAt: new Date(),
+            countedBy: ctx.session.user.id,
+            measurementMethod: measurementMethod || null,
+            notes,
+            updatedAt: new Date(),
+          })
+          .where(eq(physicalInventoryCounts.id, existingCount.id))
+          .returning();
+      } else {
+        // Create new count
+        [result] = await db
+          .insert(physicalInventoryCounts)
+          .values({
+            reconciliationSnapshotId,
+            vesselId,
+            batchId: batchId || (vesselBatches.length === 1 ? vesselBatches[0].batchId : null),
+            bookVolumeLiters: String(bookVolumeLiters),
+            physicalVolumeLiters: String(physicalVolumeLiters),
+            varianceLiters: String(varianceLiters),
+            variancePercentage: String(variancePercentage),
+            countedAt: new Date(),
+            countedBy: ctx.session.user.id,
+            measurementMethod: measurementMethod || null,
+            notes,
+          })
+          .returning();
+      }
+
+      return {
+        count: result,
+        bookVolumeLiters,
+        varianceLiters,
+        variancePercentage,
+      };
+    }),
+
+  /**
+   * Get summary of all physical inventory counts for a reconciliation.
+   */
+  getPhysicalInventorySummary: protectedProcedure
+    .input(
+      z.object({
+        reconciliationSnapshotId: z.string().uuid(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { reconciliationSnapshotId } = input;
+
+      const counts = await db
+        .select({
+          id: physicalInventoryCounts.id,
+          vesselId: physicalInventoryCounts.vesselId,
+          vesselName: vessels.name,
+          batchId: physicalInventoryCounts.batchId,
+          batchName: batches.name,
+          bookVolumeLiters: physicalInventoryCounts.bookVolumeLiters,
+          physicalVolumeLiters: physicalInventoryCounts.physicalVolumeLiters,
+          varianceLiters: physicalInventoryCounts.varianceLiters,
+          variancePercentage: physicalInventoryCounts.variancePercentage,
+          countedAt: physicalInventoryCounts.countedAt,
+          measurementMethod: physicalInventoryCounts.measurementMethod,
+          notes: physicalInventoryCounts.notes,
+        })
+        .from(physicalInventoryCounts)
+        .leftJoin(vessels, eq(physicalInventoryCounts.vesselId, vessels.id))
+        .leftJoin(batches, eq(physicalInventoryCounts.batchId, batches.id))
+        .where(eq(physicalInventoryCounts.reconciliationSnapshotId, reconciliationSnapshotId))
+        .orderBy(asc(vessels.name));
+
+      const totalBookLiters = counts.reduce(
+        (sum, c) => sum + parseFloat(c.bookVolumeLiters || "0"),
+        0
+      );
+      const totalPhysicalLiters = counts.reduce(
+        (sum, c) => sum + parseFloat(c.physicalVolumeLiters || "0"),
+        0
+      );
+      const totalVarianceLiters = totalPhysicalLiters - totalBookLiters;
+
+      // Find counts with significant variance (> 2%)
+      const significantVariances = counts.filter(
+        (c) => Math.abs(parseFloat(c.variancePercentage || "0")) > 2
+      );
+
+      return {
+        counts: counts.map((c) => ({
+          ...c,
+          bookVolumeLiters: parseFloat(c.bookVolumeLiters || "0"),
+          physicalVolumeLiters: parseFloat(c.physicalVolumeLiters || "0"),
+          varianceLiters: parseFloat(c.varianceLiters || "0"),
+          variancePercentage: parseFloat(c.variancePercentage || "0"),
+        })),
+        summary: {
+          totalCounts: counts.length,
+          totalBookLiters,
+          totalPhysicalLiters,
+          totalVarianceLiters,
+          overallVariancePercentage: totalBookLiters > 0
+            ? (totalVarianceLiters / totalBookLiters) * 100
+            : 0,
+          significantVarianceCount: significantVariances.length,
+        },
+      };
+    }),
+
+  // ============================================
+  // RECONCILIATION ADJUSTMENT ENDPOINTS
+  // ============================================
+
+  /**
+   * Create a reconciliation adjustment with reason code.
+   */
+  createReconciliationAdjustment: adminProcedure
+    .input(
+      z.object({
+        reconciliationSnapshotId: z.string().uuid(),
+        batchId: z.string().uuid().optional(),
+        vesselId: z.string().uuid().optional(),
+        physicalCountId: z.string().uuid().optional(),
+        adjustmentType: z.enum([
+          "evaporation",
+          "measurement_error",
+          "sampling",
+          "contamination",
+          "spillage",
+          "theft",
+          "correction_up",
+          "correction_down",
+          "other",
+        ]),
+        volumeBeforeLiters: z.number(),
+        volumeAfterLiters: z.number(),
+        reason: z.string().min(1),
+        notes: z.string().optional(),
+        applyToBatch: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const {
+        reconciliationSnapshotId,
+        batchId,
+        vesselId,
+        physicalCountId,
+        adjustmentType,
+        volumeBeforeLiters,
+        volumeAfterLiters,
+        reason,
+        notes,
+        applyToBatch,
+      } = input;
+
+      const adjustmentLiters = volumeAfterLiters - volumeBeforeLiters;
+      let batchVolumeAdjustmentId: string | null = null;
+      let appliedToBatchId: string | null = null;
+
+      // If applying to batch, create a batch_volume_adjustment
+      if (applyToBatch && batchId) {
+        // Get current batch volume
+        const [batch] = await db
+          .select({
+            currentVolumeLiters: batches.currentVolumeLiters,
+          })
+          .from(batches)
+          .where(eq(batches.id, batchId));
+
+        if (batch) {
+          const currentVolume = parseFloat(batch.currentVolumeLiters || "0");
+          const newVolume = currentVolume + adjustmentLiters;
+
+          // Create batch volume adjustment
+          const [batchAdj] = await db
+            .insert(batchVolumeAdjustments)
+            .values({
+              batchId,
+              adjustmentDate: new Date(),
+              adjustmentType: adjustmentType as "evaporation" | "measurement_error" | "sampling" | "contamination" | "spillage" | "theft" | "correction_up" | "correction_down",
+              volumeBefore: String(currentVolume),
+              volumeAfter: String(Math.max(0, newVolume)),
+              adjustmentAmount: String(adjustmentLiters),
+              reason: `Reconciliation adjustment: ${reason}`,
+              notes: `Adjustment type: ${adjustmentType}. ${notes || ""}`,
+              reconciliationSnapshotId,
+              adjustedBy: ctx.session.user.id,
+            })
+            .returning();
+
+          batchVolumeAdjustmentId = batchAdj.id;
+          appliedToBatchId = batchId;
+
+          // Update batch current volume
+          await db
+            .update(batches)
+            .set({
+              currentVolumeLiters: String(Math.max(0, newVolume)),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, batchId));
+        }
+      }
+
+      // Create reconciliation adjustment
+      const [result] = await db
+        .insert(reconciliationAdjustments)
+        .values({
+          reconciliationSnapshotId,
+          batchId,
+          vesselId,
+          physicalCountId,
+          adjustmentType,
+          volumeBeforeLiters: String(volumeBeforeLiters),
+          volumeAfterLiters: String(volumeAfterLiters),
+          adjustmentLiters: String(adjustmentLiters),
+          reason,
+          notes,
+          appliedToBatchId,
+          batchVolumeAdjustmentId,
+          adjustedBy: ctx.session.user.id,
+          adjustedAt: new Date(),
+        })
+        .returning();
+
+      return {
+        adjustment: result,
+        appliedToBatch: applyToBatch && batchId,
+        batchVolumeAdjustmentId,
+      };
+    }),
+
+  /**
+   * Get all reconciliation adjustments for a snapshot.
+   */
+  getReconciliationAdjustments: protectedProcedure
+    .input(
+      z.object({
+        reconciliationSnapshotId: z.string().uuid(),
+      })
+    )
+    .query(async ({ input }) => {
+      const { reconciliationSnapshotId } = input;
+
+      const adjustments = await db
+        .select({
+          id: reconciliationAdjustments.id,
+          batchId: reconciliationAdjustments.batchId,
+          batchName: batches.name,
+          vesselId: reconciliationAdjustments.vesselId,
+          vesselName: vessels.name,
+          adjustmentType: reconciliationAdjustments.adjustmentType,
+          volumeBeforeLiters: reconciliationAdjustments.volumeBeforeLiters,
+          volumeAfterLiters: reconciliationAdjustments.volumeAfterLiters,
+          adjustmentLiters: reconciliationAdjustments.adjustmentLiters,
+          reason: reconciliationAdjustments.reason,
+          notes: reconciliationAdjustments.notes,
+          appliedToBatchId: reconciliationAdjustments.appliedToBatchId,
+          adjustedAt: reconciliationAdjustments.adjustedAt,
+          adjustedByName: users.name,
+        })
+        .from(reconciliationAdjustments)
+        .leftJoin(batches, eq(reconciliationAdjustments.batchId, batches.id))
+        .leftJoin(vessels, eq(reconciliationAdjustments.vesselId, vessels.id))
+        .leftJoin(users, eq(reconciliationAdjustments.adjustedBy, users.id))
+        .where(eq(reconciliationAdjustments.reconciliationSnapshotId, reconciliationSnapshotId))
+        .orderBy(desc(reconciliationAdjustments.adjustedAt));
+
+      const totalAdjustmentLiters = adjustments.reduce(
+        (sum, a) => sum + parseFloat(a.adjustmentLiters || "0"),
+        0
+      );
+
+      // Group by adjustment type
+      const byType = adjustments.reduce(
+        (acc, a) => {
+          if (!acc[a.adjustmentType]) {
+            acc[a.adjustmentType] = { count: 0, totalLiters: 0 };
+          }
+          acc[a.adjustmentType].count += 1;
+          acc[a.adjustmentType].totalLiters += parseFloat(a.adjustmentLiters || "0");
+          return acc;
+        },
+        {} as Record<string, { count: number; totalLiters: number }>
+      );
+
+      return {
+        adjustments: adjustments.map((a) => ({
+          ...a,
+          volumeBeforeLiters: parseFloat(a.volumeBeforeLiters || "0"),
+          volumeAfterLiters: parseFloat(a.volumeAfterLiters || "0"),
+          adjustmentLiters: parseFloat(a.adjustmentLiters || "0"),
+        })),
+        summary: {
+          totalAdjustments: adjustments.length,
+          totalAdjustmentLiters,
+          appliedToBatchCount: adjustments.filter((a) => a.appliedToBatchId).length,
+          byType,
+        },
+      };
+    }),
 });

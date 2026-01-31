@@ -22,7 +22,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { users } from "../schema";
+import { users, vessels, batches, batchVolumeAdjustments } from "../schema";
 
 /**
  * Sales channel enum for categorizing distributions
@@ -444,6 +444,12 @@ export const ttbReconciliationSnapshots = pgTable(
     notes: text("notes"),
     discrepancyExplanation: text("discrepancy_explanation"), // If not reconciled, explain why
 
+    // Physical Inventory Support (added in migration 0108)
+    hasPhysicalInventory: boolean("has_physical_inventory").default(false),
+    physicalInventoryTotalLiters: numeric("physical_inventory_total_liters", { precision: 12, scale: 3 }),
+    adjustmentsTotalLiters: numeric("adjustments_total_liters", { precision: 12, scale: 3 }),
+    batchDispositionSummary: text("batch_disposition_summary"), // JSON summary of where batches ended up
+
     // Audit
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -461,7 +467,7 @@ export const ttbReconciliationSnapshots = pgTable(
 // Reconciliation Snapshots Relations
 export const ttbReconciliationSnapshotsRelations = relations(
   ttbReconciliationSnapshots,
-  ({ one }) => ({
+  ({ one, many }) => ({
     previousReconciliation: one(ttbReconciliationSnapshots, {
       fields: [ttbReconciliationSnapshots.previousReconciliationId],
       references: [ttbReconciliationSnapshots.id],
@@ -477,6 +483,203 @@ export const ttbReconciliationSnapshotsRelations = relations(
       references: [users.id],
       relationName: "ttb_reconciliation_created_by",
     }),
+    // Physical inventory and adjustments (added in migration 0108)
+    physicalInventoryCounts: many(physicalInventoryCounts, {
+      relationName: "reconciliation_physical_counts",
+    }),
+    reconciliationAdjustments: many(reconciliationAdjustments, {
+      relationName: "reconciliation_adjustments",
+    }),
+  }),
+);
+
+/**
+ * Measurement Method Enum
+ * How physical inventory was measured
+ */
+export const measurementMethodEnum = pgEnum("measurement_method", [
+  "dipstick",
+  "sight_glass",
+  "flowmeter",
+  "estimated",
+  "weighed",
+]);
+
+/**
+ * Adjustment Type Enum
+ * Reason codes for reconciliation adjustments
+ */
+export const adjustmentTypeEnum = pgEnum("adjustment_type", [
+  "evaporation",
+  "measurement_error",
+  "sampling",
+  "contamination",
+  "spillage",
+  "theft",
+  "correction_up",
+  "correction_down",
+  "other",
+]);
+
+/**
+ * Physical Inventory Counts
+ *
+ * Stores vessel-by-vessel physical count entries during TTB reconciliation.
+ * Allows comparing book (calculated) inventory vs actual measured inventory.
+ * Variances can trigger reconciliation adjustments.
+ */
+export const physicalInventoryCounts = pgTable(
+  "physical_inventory_counts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reconciliationSnapshotId: uuid("reconciliation_snapshot_id")
+      .notNull()
+      .references(() => ttbReconciliationSnapshots.id, { onDelete: "cascade" }),
+    vesselId: uuid("vessel_id")
+      .notNull()
+      .references(() => vessels.id),
+    batchId: uuid("batch_id").references(() => batches.id),
+
+    // Book vs Physical volumes (in liters for consistency with batch volumes)
+    bookVolumeLiters: numeric("book_volume_liters", { precision: 10, scale: 3 }).notNull(),
+    physicalVolumeLiters: numeric("physical_volume_liters", { precision: 10, scale: 3 }).notNull(),
+    varianceLiters: numeric("variance_liters", { precision: 10, scale: 3 }).notNull(),
+    variancePercentage: numeric("variance_percentage", { precision: 5, scale: 2 }),
+
+    // Count metadata
+    countedAt: timestamp("counted_at").notNull(),
+    countedBy: uuid("counted_by").references(() => users.id),
+    measurementMethod: measurementMethodEnum("measurement_method"),
+    notes: text("notes"),
+
+    // Audit
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    reconIdx: index("physical_inventory_counts_recon_idx").on(table.reconciliationSnapshotId),
+    vesselIdx: index("physical_inventory_counts_vessel_idx").on(table.vesselId),
+    batchIdx: index("physical_inventory_counts_batch_idx").on(table.batchId),
+    countedAtIdx: index("physical_inventory_counts_counted_at_idx").on(table.countedAt),
+  }),
+);
+
+// Physical Inventory Counts Relations
+export const physicalInventoryCountsRelations = relations(
+  physicalInventoryCounts,
+  ({ one }) => ({
+    reconciliationSnapshot: one(ttbReconciliationSnapshots, {
+      fields: [physicalInventoryCounts.reconciliationSnapshotId],
+      references: [ttbReconciliationSnapshots.id],
+      relationName: "reconciliation_physical_counts",
+    }),
+    vessel: one(vessels, {
+      fields: [physicalInventoryCounts.vesselId],
+      references: [vessels.id],
+      relationName: "vessel_physical_counts",
+    }),
+    batch: one(batches, {
+      fields: [physicalInventoryCounts.batchId],
+      references: [batches.id],
+      relationName: "batch_physical_counts",
+    }),
+    countedByUser: one(users, {
+      fields: [physicalInventoryCounts.countedBy],
+      references: [users.id],
+      relationName: "physical_count_user",
+    }),
+  }),
+);
+
+/**
+ * Reconciliation Adjustments
+ *
+ * Stores adjustments made during reconciliation to explain variances.
+ * Each adjustment has a reason code and can optionally be applied to
+ * a batch's volume through batch_volume_adjustments.
+ */
+export const reconciliationAdjustments = pgTable(
+  "reconciliation_adjustments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reconciliationSnapshotId: uuid("reconciliation_snapshot_id")
+      .notNull()
+      .references(() => ttbReconciliationSnapshots.id, { onDelete: "cascade" }),
+
+    // Link to what was adjusted
+    batchId: uuid("batch_id").references(() => batches.id),
+    vesselId: uuid("vessel_id").references(() => vessels.id),
+    physicalCountId: uuid("physical_count_id").references(() => physicalInventoryCounts.id),
+
+    // Adjustment details (volumes in liters)
+    adjustmentType: adjustmentTypeEnum("adjustment_type").notNull(),
+    volumeBeforeLiters: numeric("volume_before_liters", { precision: 10, scale: 3 }).notNull(),
+    volumeAfterLiters: numeric("volume_after_liters", { precision: 10, scale: 3 }).notNull(),
+    adjustmentLiters: numeric("adjustment_liters", { precision: 10, scale: 3 }).notNull(),
+
+    // Reason and audit trail
+    reason: text("reason").notNull(),
+    notes: text("notes"),
+
+    // Link to batch_volume_adjustments if adjustment was applied
+    appliedToBatchId: uuid("applied_to_batch_id").references(() => batches.id),
+    batchVolumeAdjustmentId: uuid("batch_volume_adjustment_id").references(() => batchVolumeAdjustments.id),
+
+    // Audit
+    adjustedBy: uuid("adjusted_by")
+      .notNull()
+      .references(() => users.id),
+    adjustedAt: timestamp("adjusted_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    reconIdx: index("reconciliation_adjustments_recon_idx").on(table.reconciliationSnapshotId),
+    batchIdx: index("reconciliation_adjustments_batch_idx").on(table.batchId),
+    vesselIdx: index("reconciliation_adjustments_vessel_idx").on(table.vesselId),
+    adjustedAtIdx: index("reconciliation_adjustments_adjusted_at_idx").on(table.adjustedAt),
+  }),
+);
+
+// Reconciliation Adjustments Relations
+export const reconciliationAdjustmentsRelations = relations(
+  reconciliationAdjustments,
+  ({ one }) => ({
+    reconciliationSnapshot: one(ttbReconciliationSnapshots, {
+      fields: [reconciliationAdjustments.reconciliationSnapshotId],
+      references: [ttbReconciliationSnapshots.id],
+      relationName: "reconciliation_adjustments",
+    }),
+    batch: one(batches, {
+      fields: [reconciliationAdjustments.batchId],
+      references: [batches.id],
+      relationName: "batch_reconciliation_adjustments",
+    }),
+    vessel: one(vessels, {
+      fields: [reconciliationAdjustments.vesselId],
+      references: [vessels.id],
+      relationName: "vessel_reconciliation_adjustments",
+    }),
+    physicalCount: one(physicalInventoryCounts, {
+      fields: [reconciliationAdjustments.physicalCountId],
+      references: [physicalInventoryCounts.id],
+      relationName: "physical_count_adjustments",
+    }),
+    appliedToBatch: one(batches, {
+      fields: [reconciliationAdjustments.appliedToBatchId],
+      references: [batches.id],
+      relationName: "applied_batch_adjustments",
+    }),
+    batchVolumeAdjustment: one(batchVolumeAdjustments, {
+      fields: [reconciliationAdjustments.batchVolumeAdjustmentId],
+      references: [batchVolumeAdjustments.id],
+      relationName: "linked_volume_adjustment",
+    }),
+    adjustedByUser: one(users, {
+      fields: [reconciliationAdjustments.adjustedBy],
+      references: [users.id],
+      relationName: "adjustment_user",
+    }),
   }),
 );
 
@@ -489,6 +692,10 @@ export type TTBPeriodSnapshot = typeof ttbPeriodSnapshots.$inferSelect;
 export type NewTTBPeriodSnapshot = typeof ttbPeriodSnapshots.$inferInsert;
 export type TTBReconciliationSnapshot = typeof ttbReconciliationSnapshots.$inferSelect;
 export type NewTTBReconciliationSnapshot = typeof ttbReconciliationSnapshots.$inferInsert;
+export type PhysicalInventoryCount = typeof physicalInventoryCounts.$inferSelect;
+export type NewPhysicalInventoryCount = typeof physicalInventoryCounts.$inferInsert;
+export type ReconciliationAdjustment = typeof reconciliationAdjustments.$inferSelect;
+export type NewReconciliationAdjustment = typeof reconciliationAdjustments.$inferInsert;
 
 /**
  * TTB Opening Balances Type

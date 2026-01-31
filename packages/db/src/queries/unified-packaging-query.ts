@@ -62,10 +62,12 @@ export async function getUnifiedPackagingRuns(
         // Ready to distribute
         bottleConditions.push(eq(bottleRuns.status, "ready"));
       } else if (filters.status === "distributed") {
-        // Distributed (for bottles, this is also complete)
-        bottleConditions.push(eq(bottleRuns.status, "distributed"));
+        // For bottles/cans, distributed is the terminal state — include both 'distributed' and 'completed'
+        bottleConditions.push(
+          or(eq(bottleRuns.status, "distributed"), eq(bottleRuns.status, "completed"))!
+        );
       } else if (filters.status === "completed") {
-        // Completed includes both 'completed' and 'distributed' (lifecycle done)
+        // Completed filter (used by kegs tab) — for bottles, same as distributed
         bottleConditions.push(
           or(eq(bottleRuns.status, "completed"), eq(bottleRuns.status, "distributed"))!
         );

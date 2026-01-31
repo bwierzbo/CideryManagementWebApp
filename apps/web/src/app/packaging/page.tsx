@@ -233,6 +233,7 @@ export default function PackagingPage() {
                 isExporting={isExporting}
                 initialFilters={filters}
                 itemCount={tableData.count}
+                variant="bottles"
               />
             </Suspense>
 
@@ -327,6 +328,7 @@ export default function PackagingPage() {
                 isExporting={isExporting}
                 initialFilters={filters}
                 itemCount={tableData.count}
+                variant="kegs"
               />
             </Suspense>
 

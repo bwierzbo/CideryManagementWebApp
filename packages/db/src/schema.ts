@@ -11,6 +11,7 @@ import {
   date,
   index,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
@@ -772,7 +773,7 @@ export const batches = pgTable(
     // verified=counted, duplicate=racking duplicate not counted, excluded=manually excluded, pending=needs review
     reconciliationStatus: batchReconciliationStatusEnum("reconciliation_status").default("pending"),
     reconciliationNotes: text("reconciliation_notes"),
-    parentBatchId: uuid("parent_batch_id").references(() => batches.id),
+    parentBatchId: uuid("parent_batch_id").references((): AnyPgColumn => batches.id),
     isRackingDerivative: boolean("is_racking_derivative").default(false),
     // User attribution
     createdBy: uuid("created_by").references(() => users.id),
