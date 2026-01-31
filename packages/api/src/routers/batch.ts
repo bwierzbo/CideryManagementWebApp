@@ -534,8 +534,9 @@ export const batchRouter = router({
         }
 
         // Only exclude archived batches if includeArchived is false
+        // Handle NULL values - treat NULL as not archived
         if (!input.includeArchived) {
-          conditions.push(eq(batches.isArchived, false));
+          conditions.push(or(eq(batches.isArchived, false), isNull(batches.isArchived)));
         }
 
         if (input.status) {

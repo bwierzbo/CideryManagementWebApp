@@ -754,6 +754,8 @@ export function TTBReconciliationSummary() {
 
           const openingBalance = totals.ttbOpeningBalance ?? totals.ttbBalance ?? 0;
           const production = totals.production ?? data.productionAudit?.totals.totalProduction ?? 0;
+          const ciderProduction = (totals as { ciderProduction?: number }).ciderProduction;
+          const brandyReceived = (totals as { brandyReceived?: number }).brandyReceived ?? 0;
           const removals = totals.removals ?? data.breakdown?.sales ?? 0;
           const losses = totals.losses ?? data.breakdown?.losses ?? 0;
           const distillation = totals.distillation ?? 0;
@@ -782,10 +784,23 @@ export function TTBReconciliationSummary() {
                       <span>Opening Balance:</span>
                       <span>{openingBalance.toFixed(1)} gal</span>
                     </div>
-                    <div className="flex justify-between text-green-700">
-                      <span>+ Production:</span>
-                      <span>+{production.toFixed(1)} gal</span>
-                    </div>
+                    {brandyReceived > 0 && ciderProduction !== undefined ? (
+                      <>
+                        <div className="flex justify-between text-green-700">
+                          <span>+ Cider Production:</span>
+                          <span>+{ciderProduction.toFixed(1)} gal</span>
+                        </div>
+                        <div className="flex justify-between text-green-700">
+                          <span>+ Brandy Received:</span>
+                          <span>+{brandyReceived.toFixed(1)} gal</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex justify-between text-green-700">
+                        <span>+ Production:</span>
+                        <span>+{production.toFixed(1)} gal</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-red-700">
                       <span>- Tax-paid Removals:</span>
                       <span>-{removals.toFixed(1)} gal</span>
@@ -847,7 +862,7 @@ export function TTBReconciliationSummary() {
 
         {/* Inventory Breakdown Cards */}
         {data.breakdown && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <div className="p-3 bg-blue-50 rounded-lg">
               <div className="flex items-center gap-2 text-blue-700 mb-1">
                 <Package className="w-4 h-4" />
@@ -882,6 +897,15 @@ export function TTBReconciliationSummary() {
               </div>
               <p className="text-lg font-semibold text-red-900">
                 {data.breakdown.losses.toFixed(1)} gal
+              </p>
+            </div>
+            <div className="p-3 bg-amber-50 rounded-lg">
+              <div className="flex items-center gap-2 text-amber-700 mb-1">
+                <Beaker className="w-4 h-4" />
+                <span className="text-xs font-medium">Sent to DSP</span>
+              </div>
+              <p className="text-lg font-semibold text-amber-900">
+                {((data.breakdown as { distillation?: number }).distillation ?? 0).toFixed(1)} gal
               </p>
             </div>
           </div>
@@ -924,13 +948,16 @@ export function TTBReconciliationSummary() {
         )}
 
         {/* Production Audit Section */}
-        {data.productionAudit && (
+        {data.productionAudit && (() => {
+          const rawTotal = data.productionAudit.totals.pressRuns + data.productionAudit.totals.juicePurchases;
+          const juiceDeduction = rawTotal - data.productionAudit.totals.totalProduction;
+          return (
           <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
             <h4 className="text-sm font-medium text-orange-800 mb-3 flex items-center gap-2">
               <Factory className="w-4 h-4" />
               Production Audit (Source-Based)
             </h4>
-            <div className="grid grid-cols-3 gap-3 mb-3">
+            <div className="grid grid-cols-4 gap-3 mb-3">
               <div className="p-3 bg-white rounded-lg border border-orange-200">
                 <div className="flex items-center gap-2 text-orange-700 mb-1">
                   <Factory className="w-4 h-4" />
@@ -949,10 +976,21 @@ export function TTBReconciliationSummary() {
                   {data.productionAudit.totals.juicePurchases.toFixed(1)} gal
                 </p>
               </div>
+              {juiceDeduction > 0.5 && (
+                <div className="p-3 bg-white rounded-lg border border-orange-200">
+                  <div className="flex items-center gap-2 text-orange-700 mb-1">
+                    <Beaker className="w-4 h-4" />
+                    <span className="text-xs font-medium">Less: Non-Fermented</span>
+                  </div>
+                  <p className="text-lg font-semibold text-orange-600">
+                    -{juiceDeduction.toFixed(1)} gal
+                  </p>
+                </div>
+              )}
               <div className="p-3 bg-white rounded-lg border border-orange-200">
                 <div className="flex items-center gap-2 text-orange-700 mb-1">
                   <Calculator className="w-4 h-4" />
-                  <span className="text-xs font-medium">Total Production</span>
+                  <span className="text-xs font-medium">TTB Production</span>
                 </div>
                 <p className="text-lg font-semibold text-orange-900">
                   {data.productionAudit.totals.totalProduction.toFixed(1)} gal
@@ -988,10 +1026,12 @@ export function TTBReconciliationSummary() {
               </div>
             )}
             <p className="text-xs text-orange-600 mt-2">
-              This shows all cider tracked from original sources (pressing and purchasing).
+              TTB Production = Press Runs + Juice Purchases - juice that was never fermented (stayed as juice).
+              {juiceDeduction > 0.5 && ` Non-fermented juice: ${juiceDeduction.toFixed(1)} gal.`}
             </p>
           </div>
-        )}
+          );
+        })()}
 
         {/* Summary Table */}
         <div className="border rounded-lg overflow-hidden">
@@ -1264,8 +1304,8 @@ export function TTBReconciliationSummary() {
     {/* Batch Lifecycle Audit Section */}
     {lastReconciliation?.id && (
       <Card className="border-orange-200">
-        <Collapsible>
-          <CollapsibleTrigger className="w-full">
+        <Collapsible defaultOpen>
+          <CollapsibleTrigger className="w-full group cursor-pointer hover:bg-orange-50/50 transition-colors">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1286,6 +1326,235 @@ export function TTBReconciliationSummary() {
                 periodStartDate={periodStartDate || lastReconciliation.reconciliationDate}
                 periodEndDate={selectedDate}
               />
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
+    )}
+
+    {/* Debug Calculation Panel */}
+    {data && 'debug' in data && data.debug && (
+      <Card className="border-gray-200 bg-gray-50">
+        <Collapsible>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-gray-100 transition-colors group">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calculator className="h-5 w-5 text-gray-600" />
+                  <CardTitle className="text-lg">Calculation Debug</CardTitle>
+                </div>
+                <ChevronDown className="h-5 w-5 text-gray-500 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              </div>
+              <CardDescription>
+                Detailed breakdown of all calculation components
+              </CardDescription>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0 space-y-6">
+              {/* TTB Calculation Breakdown */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-2">TTB Calculation</h4>
+                <div className="bg-white rounded-lg p-4 space-y-1 text-sm font-mono">
+                  <div className="flex justify-between">
+                    <span>Opening Balance:</span>
+                    <span>{(data.debug as any).ttbCalculation.opening.toFixed(2)} gal</span>
+                  </div>
+                  <div className="flex justify-between text-green-600">
+                    <span>+ Production:</span>
+                    <span>+{(data.debug as any).ttbCalculation.plusProduction.toFixed(2)} gal</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>- Sales/Removals:</span>
+                    <span>-{(data.debug as any).ttbCalculation.minusSales.toFixed(2)} gal</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>- Losses:</span>
+                    <span>-{(data.debug as any).ttbCalculation.minusLosses.toFixed(2)} gal</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>- Sent to DSP:</span>
+                    <span>-{(data.debug as any).ttbCalculation.minusDSP.toFixed(2)} gal</span>
+                  </div>
+                  <div className="border-t pt-1 mt-1">
+                    <div className="flex justify-between font-bold">
+                      <span>= TTB Calculated Ending:</span>
+                      <span>{(data.debug as any).ttbCalculation.ttbCalculatedEnding.toFixed(2)} gal</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>System On Hand:</span>
+                      <span>{(data.debug as any).ttbCalculation.systemOnHand.toFixed(2)} gal</span>
+                    </div>
+                    <div className={cn(
+                      "flex justify-between font-bold",
+                      Math.abs((data.debug as any).ttbCalculation.variance) < 1 ? "text-green-600" : "text-amber-600"
+                    )}>
+                      <span>Variance:</span>
+                      <span>{(data.debug as any).ttbCalculation.variance >= 0 ? '+' : ''}{(data.debug as any).ttbCalculation.variance.toFixed(2)} gal</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Losses Breakdown */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-2">Losses Breakdown</h4>
+                <div className="bg-white rounded-lg p-4 text-sm">
+                  <div className="font-medium mb-2">Overall Losses</div>
+                  <div className="grid grid-cols-2 gap-2 text-gray-600 font-mono">
+                    <span>Racking:</span><span className="text-right">{(data.debug as any).lossesBreakdown.overall.racking.toFixed(2)} gal</span>
+                    <span>Filter:</span><span className="text-right">{(data.debug as any).lossesBreakdown.overall.filter.toFixed(2)} gal</span>
+                    <span>Bottling:</span><span className="text-right">{(data.debug as any).lossesBreakdown.overall.bottling.toFixed(2)} gal</span>
+                    <span>Transfer:</span><span className="text-right">{(data.debug as any).lossesBreakdown.overall.transfer.toFixed(2)} gal</span>
+                    <span>Vol. Adjustments:</span><span className="text-right">{(data.debug as any).lossesBreakdown.overall.volumeAdjustments.toFixed(2)} gal</span>
+                    <span className="font-bold">Total:</span><span className="text-right font-bold">{(data.debug as any).lossesBreakdown.overall.total.toFixed(2)} gal</span>
+                  </div>
+                  <div className="mt-4 font-medium mb-2">By Tax Class</div>
+                  <div className="grid grid-cols-2 gap-2 text-gray-600 font-mono">
+                    {Object.entries((data.debug as any).lossesBreakdown.byTaxClass as Record<string, number>)
+                      .filter(([, v]) => v > 0)
+                      .map(([k, v]) => (
+                        <React.Fragment key={k}>
+                          <span>{k}:</span><span className="text-right">{v.toFixed(2)} gal</span>
+                        </React.Fragment>
+                      ))
+                    }
+                    <span className="font-bold">Total:</span>
+                    <span className="text-right font-bold">{(data.debug as any).lossesBreakdown.byTaxClassTotal.toFixed(2)} gal</span>
+                  </div>
+                  {Math.abs((data.debug as any).lossesBreakdown.overall.total - (data.debug as any).lossesBreakdown.byTaxClassTotal) > 0.5 && (
+                    <div className="mt-2 text-amber-600 flex items-center gap-1">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span>
+                        Discrepancy: {((data.debug as any).lossesBreakdown.overall.total - (data.debug as any).lossesBreakdown.byTaxClassTotal).toFixed(2)} gal
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Production Breakdown */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-2">Production Breakdown</h4>
+                <div className="bg-white rounded-lg p-4 space-y-1 text-sm font-mono">
+                  <div className="flex justify-between">
+                    <span>Press Runs:</span>
+                    <span>{(data.debug as any).productionBreakdown.pressRuns.toFixed(2)} gal</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Juice Purchases:</span>
+                    <span>{(data.debug as any).productionBreakdown.juicePurchases.toFixed(2)} gal</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>- Juice-Only Deduction:</span>
+                    <span>-{(data.debug as any).productionBreakdown.juiceOnlyDeduction.toFixed(2)} gal</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>- Transfers Into Juice:</span>
+                    <span>-{(data.debug as any).productionBreakdown.transfersIntoJuiceDeduction.toFixed(2)} gal</span>
+                  </div>
+                  <div className="border-t pt-1">
+                    <div className="flex justify-between">
+                      <span>= Cider Production:</span>
+                      <span>{(data.debug as any).productionBreakdown.ciderProduction.toFixed(2)} gal</span>
+                    </div>
+                    <div className="flex justify-between text-green-600">
+                      <span>+ Brandy Received:</span>
+                      <span>+{(data.debug as any).productionBreakdown.brandyReceived.toFixed(2)} gal</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span>= Total Production:</span>
+                      <span>{(data.debug as any).productionBreakdown.totalProduction.toFixed(2)} gal</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Inventory Breakdown */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-2">Inventory Breakdown</h4>
+                <div className="bg-white rounded-lg p-4 text-sm">
+                  <div className="grid grid-cols-2 gap-2 text-gray-600 font-mono">
+                    <span>Bulk:</span><span className="text-right">{(data.debug as any).inventoryBreakdown.bulk.toFixed(2)} gal</span>
+                    <span>Packaged:</span><span className="text-right">{(data.debug as any).inventoryBreakdown.packaged.toFixed(2)} gal</span>
+                    <span className="font-bold">Bulk + Packaged:</span>
+                    <span className="text-right font-bold">{(data.debug as any).inventoryBreakdown.bulkPlusPackaged.toFixed(2)} gal</span>
+                    <span className="font-bold">By Tax Class Total:</span>
+                    <span className="text-right font-bold">{(data.debug as any).inventoryBreakdown.byTaxClassTotal.toFixed(2)} gal</span>
+                  </div>
+                  {Object.entries((data.debug as any).inventoryBreakdown.byTaxClass as Record<string, number>)
+                    .filter(([, v]) => v > 0)
+                    .map(([k, v]) => (
+                      <div key={k} className="flex justify-between text-gray-600 font-mono mt-1">
+                        <span className="ml-4">{k}:</span><span>{v.toFixed(2)} gal</span>
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+
+              {/* Opening Balance Verification */}
+              {(data.debug as any).openingBalanceVerification && (
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-2">Opening Balance Verification</h4>
+                  <div className="bg-white rounded-lg p-4 text-sm">
+                    <div className="grid grid-cols-2 gap-2 text-gray-600 font-mono mb-4">
+                      <span>Opening Date:</span>
+                      <span className="text-right">{(data.debug as any).openingBalanceVerification.configuredOpeningDate}</span>
+                      <span>Configured Balance:</span>
+                      <span className="text-right">{(data.debug as any).openingBalanceVerification.configuredOpeningBalanceGallons.toFixed(2)} gal</span>
+                      <span>Batches Initial Vol:</span>
+                      <span className="text-right">{(data.debug as any).openingBalanceVerification.batchesTotalInitialVolumeGallons.toFixed(2)} gal</span>
+                      <span className={cn(
+                        "font-bold",
+                        Math.abs((data.debug as any).openingBalanceVerification.differenceFromConfigured) > 1 ? "text-amber-600" : "text-green-600"
+                      )}>Difference:</span>
+                      <span className={cn(
+                        "text-right font-bold",
+                        Math.abs((data.debug as any).openingBalanceVerification.differenceFromConfigured) > 1 ? "text-amber-600" : "text-green-600"
+                      )}>
+                        {(data.debug as any).openingBalanceVerification.differenceFromConfigured.toFixed(2)} gal
+                      </span>
+                    </div>
+                    {(data.debug as any).openingBalanceVerification.batchesAtOpeningDate.length > 0 && (
+                      <div className="mt-4">
+                        <div className="font-medium mb-2">Batches at Opening Date ({(data.debug as any).openingBalanceVerification.batchesAtOpeningDate.length})</div>
+                        <div className="max-h-60 overflow-y-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="text-xs">Batch</TableHead>
+                                <TableHead className="text-xs">Type</TableHead>
+                                <TableHead className="text-xs text-right">Initial Vol</TableHead>
+                                <TableHead className="text-xs text-right">Current Vol</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {((data.debug as any).openingBalanceVerification.batchesAtOpeningDate as Array<{
+                                batchNumber: string;
+                                customName: string | null;
+                                productType: string;
+                                initialVolumeGallons: number;
+                                currentVolumeGallons: number;
+                              }>).map((batch, idx) => (
+                                <TableRow key={idx}>
+                                  <TableCell className="text-xs py-1">
+                                    {batch.batchNumber}
+                                    {batch.customName && <span className="text-gray-500 ml-1">({batch.customName})</span>}
+                                  </TableCell>
+                                  <TableCell className="text-xs py-1">{batch.productType}</TableCell>
+                                  <TableCell className="text-xs py-1 text-right">{batch.initialVolumeGallons.toFixed(1)}</TableCell>
+                                  <TableCell className="text-xs py-1 text-right">{batch.currentVolumeGallons.toFixed(1)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </CollapsibleContent>
         </Collapsible>

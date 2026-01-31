@@ -121,8 +121,9 @@ export function BatchLifecycleAudit({
   } | null>(null);
 
   // Get batches for selector
-  const { data: batchList } = trpc.batch.list.useQuery({
+  const { data: batchList, isLoading: batchListLoading } = trpc.batch.list.useQuery({
     includeArchived: false,
+    limit: 500, // Get more batches for selection
   });
 
   // Get batch lifecycle timeline
@@ -203,16 +204,23 @@ export function BatchLifecycleAudit({
                 <Select
                   value={selectedBatchId || ""}
                   onValueChange={(v) => setSelectedBatchId(v)}
+                  disabled={batchListLoading}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a batch to view timeline" />
+                    <SelectValue placeholder={batchListLoading ? "Loading batches..." : "Select a batch to view timeline"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {batchList?.batches.map((batch) => (
-                      <SelectItem key={batch.id} value={batch.id}>
-                        {batch.name} ({batch.productType})
-                      </SelectItem>
-                    ))}
+                    {batchList?.batches && batchList.batches.length > 0 ? (
+                      batchList.batches.map((batch) => (
+                        <SelectItem key={batch.id} value={batch.id}>
+                          {batch.customName || batch.name} ({batch.productType})
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="p-2 text-sm text-muted-foreground text-center">
+                        {batchListLoading ? "Loading..." : "No batches found"}
+                      </div>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

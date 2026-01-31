@@ -2660,6 +2660,29 @@ export const ttbRouter = router({
         lossesByTaxClass[taxClass] += Number(row.totalLiters || 0) * 0.264172;
       }
 
+      // Volume adjustments (losses) by tax class
+      const volumeAdjustmentsByType = await db
+        .select({
+          productType: batches.productType,
+          totalLiters: sql<number>`COALESCE(SUM(ABS(CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL))), 0)`,
+        })
+        .from(batchVolumeAdjustments)
+        .innerJoin(batches, eq(batchVolumeAdjustments.batchId, batches.id))
+        .where(
+          and(
+            isNull(batchVolumeAdjustments.deletedAt),
+            sql`${batchVolumeAdjustments.adjustmentDate}::date > ${openingDate}::date`,
+            sql`${batchVolumeAdjustments.adjustmentDate}::date <= ${reconciliationDate}::date`,
+            sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) < 0` // Only negative (loss) adjustments
+          )
+        )
+        .groupBy(batches.productType);
+
+      for (const row of volumeAdjustmentsByType) {
+        const taxClass = productTypeToTaxClass(row.productType);
+        lossesByTaxClass[taxClass] += Number(row.totalLiters || 0) * 0.264172;
+      }
+
       // ============================================
       // PRODUCTION AND DISTILLATION BY TAX CLASS
       // Production: All juice production becomes hard cider
@@ -2752,6 +2775,34 @@ export const ttbRouter = router({
 
       // Add brandy used in pommeau to brandy removals
       removalsByTaxClass["appleBrandy"] += brandyToPommeauGallons;
+
+      // Cider Removals for Pommeau = cider (hard cider tax class) transferred to pommeau batches
+      // This balances the pommeau production by removing that volume from cider's tax class
+      // Hard cider includes all product types EXCEPT 'pommeau' and 'brandy'
+      const ciderToPommeauData = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
+        })
+        .from(batchTransfers)
+        .innerJoin(batches, eq(batchTransfers.sourceBatchId, batches.id))
+        .where(
+          and(
+            isNull(batchTransfers.deletedAt),
+            // Source must be hard cider (not pommeau, not brandy)
+            sql`COALESCE(${batches.productType}, 'cider') NOT IN ('pommeau', 'brandy')`,
+            sql`EXISTS (
+              SELECT 1 FROM batches dest
+              WHERE dest.id = ${batchTransfers.destinationBatchId}
+              AND dest.product_type = 'pommeau'
+            )`,
+            sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
+            sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
+          )
+        );
+      const ciderToPommeauGallons = Number(ciderToPommeauData[0]?.totalLiters || 0) * 0.264172;
+
+      // Add cider used in pommeau to hard cider removals
+      removalsByTaxClass["hardCider"] += ciderToPommeauGallons;
 
       // ============================================
       // BATCH DETAILS BY TAX CLASS
@@ -3086,6 +3137,38 @@ export const ttbRouter = router({
 
       let totalLegacy = Object.values(legacyByTaxClass).reduce((sum, val) => sum + val, 0);
 
+      // Debug: Get batches that existed on the opening date for verification
+      const batchesAtOpeningDate = await db
+        .select({
+          id: batches.id,
+          batchNumber: batches.batchNumber,
+          customName: batches.customName,
+          productType: batches.productType,
+          initialVolume: batches.initialVolume,
+          currentVolume: batches.currentVolume,
+          startDate: batches.startDate,
+        })
+        .from(batches)
+        .where(
+          and(
+            isNull(batches.deletedAt),
+            sql`${batches.startDate}::date <= ${openingDate}::date`,
+            sql`COALESCE(${batches.isArchived}, false) = false`
+          )
+        )
+        .orderBy(batches.batchNumber);
+
+      const openingBatchDebug = batchesAtOpeningDate.map((b) => ({
+        batchNumber: b.batchNumber,
+        customName: b.customName,
+        productType: b.productType || 'cider',
+        startDate: b.startDate,
+        initialVolumeGallons: parseFloat((parseFloat(b.initialVolume || "0") * 0.264172).toFixed(2)),
+        currentVolumeGallons: parseFloat((parseFloat(b.currentVolume || "0") * 0.264172).toFixed(2)),
+      }));
+
+      const openingBatchTotalGallons = openingBatchDebug.reduce((sum, b) => sum + b.initialVolumeGallons, 0);
+
       // 5. Build reconciliation by tax class
       const taxClassLabels: Record<string, string> = {
         hardCider: "Hard Cider (<8.5% ABV)",
@@ -3192,13 +3275,20 @@ export const ttbRouter = router({
 
       // ============================================
       // CORRECT TTB RECONCILIATION FORMULA
-      // TTB Calculated Ending = Opening + Production - Removals - Losses
+      // TTB Calculated Ending = Opening + Production - Removals - Losses - DSP
       // Variance = TTB Calculated - System On Hand
       // ============================================
       // System On Hand = actual current batch volumes + packaged inventory (from inventoryByTaxClass)
-      // NOT the historical production-minus-removals calc (which cancels out with ttbCalculatedEnding)
+      //
+      // IMPORTANT: Total production must include ALL sources:
+      // 1. Juice production (press runs + juice purchases - juice-only)
+      // 2. Brandy received from distillery (this is NEW inventory entering the system)
+      //
+      // Cross-class transfers (cider→pommeau, brandy→pommeau) are NOT additional production
+      // at the total level - they just reclassify existing inventory.
       const systemOnHand = totalInventoryByTaxClass;
-      const ttbCalculatedEnding = totalTtb + totalProductionGallons - salesGallons - lossesGallons - distillationGallons;
+      const totalProductionIncludingBrandy = totalProductionGallons + brandyReceivedGallons;
+      const ttbCalculatedEnding = totalTtb + totalProductionIncludingBrandy - salesGallons - lossesGallons - distillationGallons;
       const variance = ttbCalculatedEnding - systemOnHand;
 
       return {
@@ -3210,7 +3300,9 @@ export const ttbRouter = router({
         totals: {
           // TTB Flow
           ttbOpeningBalance: parseFloat(totalTtb.toFixed(1)),
-          production: parseFloat(totalProductionGallons.toFixed(1)),
+          production: parseFloat(totalProductionIncludingBrandy.toFixed(1)),
+          ciderProduction: parseFloat(totalProductionGallons.toFixed(1)),
+          brandyReceived: parseFloat(brandyReceivedGallons.toFixed(1)),
           removals: parseFloat(salesGallons.toFixed(1)),
           losses: parseFloat(lossesGallons.toFixed(1)),
           distillation: parseFloat(distillationGallons.toFixed(1)),
@@ -3260,6 +3352,58 @@ export const ttbRouter = router({
             })),
           ])
         ),
+        // Debug breakdown for troubleshooting calculations
+        debug: {
+          lossesBreakdown: {
+            overall: {
+              racking: parseFloat(rackingLossesBeforeGallons.toFixed(2)),
+              filter: parseFloat(filterLossesBeforeGallons.toFixed(2)),
+              bottling: parseFloat(bottlingLossesBeforeGallons.toFixed(2)),
+              transfer: parseFloat(transferLossesBeforeGallons.toFixed(2)),
+              volumeAdjustments: parseFloat(volumeAdjustmentsBeforeGallons.toFixed(2)),
+              total: parseFloat(lossesGallons.toFixed(2)),
+            },
+            byTaxClass: Object.fromEntries(
+              Object.entries(lossesByTaxClass).map(([key, val]) => [key, parseFloat(val.toFixed(2))])
+            ),
+            byTaxClassTotal: parseFloat(Object.values(lossesByTaxClass).reduce((sum, val) => sum + val, 0).toFixed(2)),
+          },
+          inventoryBreakdown: {
+            byTaxClass: Object.fromEntries(
+              Object.entries(inventoryByTaxClass).map(([key, val]) => [key, parseFloat(val.toFixed(2))])
+            ),
+            byTaxClassTotal: parseFloat(totalInventoryByTaxClass.toFixed(2)),
+            bulk: parseFloat(actualBulkGallons.toFixed(2)),
+            packaged: parseFloat(actualPackagedGallons.toFixed(2)),
+            bulkPlusPackaged: parseFloat((actualBulkGallons + actualPackagedGallons).toFixed(2)),
+          },
+          productionBreakdown: {
+            pressRuns: parseFloat(totalPressRunsGallons.toFixed(2)),
+            juicePurchases: parseFloat(totalJuicePurchasesGallons.toFixed(2)),
+            juiceOnlyDeduction: parseFloat(auditJuiceOnlyGallons.toFixed(2)),
+            transfersIntoJuiceDeduction: parseFloat(auditTransfersIntoJuiceGallons.toFixed(2)),
+            ciderProduction: parseFloat(totalProductionGallons.toFixed(2)),
+            brandyReceived: parseFloat(brandyReceivedGallons.toFixed(2)),
+            totalProduction: parseFloat(totalProductionIncludingBrandy.toFixed(2)),
+          },
+          ttbCalculation: {
+            opening: parseFloat(totalTtb.toFixed(2)),
+            plusProduction: parseFloat(totalProductionIncludingBrandy.toFixed(2)),
+            minusSales: parseFloat(salesGallons.toFixed(2)),
+            minusLosses: parseFloat(lossesGallons.toFixed(2)),
+            minusDSP: parseFloat(distillationGallons.toFixed(2)),
+            ttbCalculatedEnding: parseFloat(ttbCalculatedEnding.toFixed(2)),
+            systemOnHand: parseFloat(systemOnHand.toFixed(2)),
+            variance: parseFloat(variance.toFixed(2)),
+          },
+          openingBalanceVerification: {
+            configuredOpeningDate: openingDate,
+            configuredOpeningBalanceGallons: parseFloat(totalTtb.toFixed(2)),
+            batchesAtOpeningDate: openingBatchDebug,
+            batchesTotalInitialVolumeGallons: parseFloat(openingBatchTotalGallons.toFixed(2)),
+            differenceFromConfigured: parseFloat((totalTtb - openingBatchTotalGallons).toFixed(2)),
+          },
+        },
       };
     } catch (error) {
       console.error("Error getting reconciliation summary:", error);
