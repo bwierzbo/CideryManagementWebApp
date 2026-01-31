@@ -2009,6 +2009,25 @@ export const ttbRouter = router({
           },
           // Include empty batchDetailsByTaxClass for consistent return type
           batchDetailsByTaxClass: {},
+          // Include empty waterfall for consistent return type
+          waterfall: {
+            periodStart: null,
+            periodEnd: null,
+            hasLastReconciliation: false,
+            byTaxClass: [],
+            totals: {
+              opening: 0,
+              production: 0,
+              transfersIn: 0,
+              transfersOut: 0,
+              packaging: 0,
+              losses: 0,
+              distillation: 0,
+              calculatedEnding: 0,
+              physical: 0,
+              variance: 0,
+            },
+          },
         };
       }
 
@@ -3169,6 +3188,228 @@ export const ttbRouter = router({
 
       const openingBatchTotalGallons = openingBatchDebug.reduce((sum, b) => sum + b.initialVolumeGallons, 0);
 
+      // ============================================
+      // WATERFALL CALCULATION
+      // Track inventory flow from last reconciliation to current
+      // Opening (last recon) + Production + Transfers In - Transfers Out - Packaging - Losses = Calculated Ending
+      // Compare to Physical (current inventory) for variance
+      // ============================================
+
+      // Get last reconciliation snapshot
+      const [lastRecon] = await db
+        .select({
+          id: ttbReconciliationSnapshots.id,
+          periodEndDate: ttbReconciliationSnapshots.periodEndDate,
+          reconciliationDate: ttbReconciliationSnapshots.reconciliationDate,
+          taxClassBreakdown: ttbReconciliationSnapshots.taxClassBreakdown,
+        })
+        .from(ttbReconciliationSnapshots)
+        .orderBy(sql`${ttbReconciliationSnapshots.periodEndDate} DESC`)
+        .limit(1);
+
+      // Parse last reconciliation's tax class data for opening balances
+      let waterfallOpening: Record<string, number> = {};
+      let waterfallPeriodStart = openingDate; // Default to TTB opening date if no prior recon
+      if (lastRecon?.taxClassBreakdown) {
+        try {
+          const parsed = JSON.parse(lastRecon.taxClassBreakdown);
+          if (Array.isArray(parsed)) {
+            for (const tc of parsed) {
+              if (tc.key && tc.currentInventory !== undefined) {
+                waterfallOpening[tc.key] = tc.currentInventory; // Already in gallons
+              }
+            }
+          }
+          // Use last reconciliation's end date as the start of this period
+          waterfallPeriodStart = lastRecon.periodEndDate || lastRecon.reconciliationDate || openingDate;
+        } catch {
+          // Ignore parse errors, fall back to TTB opening
+        }
+      }
+
+      // If no prior reconciliation, use configured TTB opening balances
+      if (Object.keys(waterfallOpening).length === 0) {
+        waterfallOpening = {
+          hardCider: (balances.bulk.hardCider || 0) + (balances.bottled.hardCider || 0),
+          wineUnder16: (balances.bulk.wineUnder16 || 0) + (balances.bottled.wineUnder16 || 0),
+          wine16To21: (balances.bulk.wine16To21 || 0) + (balances.bottled.wine16To21 || 0),
+          wine21To24: (balances.bulk.wine21To24 || 0) + (balances.bottled.wine21To24 || 0),
+          sparklingWine: (balances.bulk.sparklingWine || 0) + (balances.bottled.sparklingWine || 0),
+          carbonatedWine: (balances.bulk.carbonatedWine || 0) + (balances.bottled.carbonatedWine || 0),
+          appleBrandy: balances.spirits.appleBrandy || 0,
+          grapeSpirits: balances.spirits.grapeSpirits || 0,
+        };
+      }
+
+      // Calculate packaging by tax class (volume converted from bulk to packaged DURING period)
+      // This includes bottling and kegging
+      const packagingByTaxClassData = await db
+        .select({
+          productType: batches.productType,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
+        })
+        .from(bottleRuns)
+        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+        .where(
+          and(
+            sql`${bottleRuns.packagedAt}::date > ${waterfallPeriodStart}::date`,
+            sql`${bottleRuns.packagedAt}::date <= ${reconciliationDate}::date`
+          )
+        )
+        .groupBy(batches.productType);
+
+      const packagingByTaxClass: Record<string, number> = {
+        hardCider: 0,
+        wineUnder16: 0,
+        wine16To21: 0,
+        wine21To24: 0,
+        sparklingWine: 0,
+        carbonatedWine: 0,
+        appleBrandy: 0,
+        grapeSpirits: 0,
+      };
+
+      for (const row of packagingByTaxClassData) {
+        const taxClass = productTypeToTaxClass(row.productType);
+        const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+        packagingByTaxClass[taxClass] += volumeGallons;
+      }
+
+      // Add kegging to packaging (kegFills during period)
+      const keggingByTaxClassData = await db
+        .select({
+          productType: batches.productType,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
+        })
+        .from(kegFills)
+        .innerJoin(batches, eq(kegFills.batchId, batches.id))
+        .where(
+          and(
+            isNull(kegFills.voidedAt),
+            sql`${kegFills.filledAt}::date > ${waterfallPeriodStart}::date`,
+            sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
+          )
+        )
+        .groupBy(batches.productType);
+
+      for (const row of keggingByTaxClassData) {
+        const taxClass = productTypeToTaxClass(row.productType);
+        const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+        packagingByTaxClass[taxClass] += volumeGallons;
+      }
+
+      // Calculate transfers between tax classes DURING period
+      // This tracks volume moving from one tax class to another (e.g., cider -> pommeau)
+      const transfersBetweenClasses = await db
+        .select({
+          sourceProductType: sql<string>`source_batch.product_type`,
+          destProductType: sql<string>`dest_batch.product_type`,
+          volumeTransferred: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
+        })
+        .from(batchTransfers)
+        .leftJoin(sql`batches source_batch`, sql`source_batch.id = ${batchTransfers.sourceBatchId}`)
+        .leftJoin(sql`batches dest_batch`, sql`dest_batch.id = ${batchTransfers.destinationBatchId}`)
+        .where(
+          and(
+            isNull(batchTransfers.deletedAt),
+            sql`${batchTransfers.transferredAt}::date > ${waterfallPeriodStart}::date`,
+            sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
+          )
+        )
+        .groupBy(sql`source_batch.product_type`, sql`dest_batch.product_type`);
+
+      const transfersInByTaxClass: Record<string, number> = {
+        hardCider: 0, wineUnder16: 0, wine16To21: 0, wine21To24: 0,
+        sparklingWine: 0, carbonatedWine: 0, appleBrandy: 0, grapeSpirits: 0,
+      };
+      const transfersOutByTaxClass: Record<string, number> = {
+        hardCider: 0, wineUnder16: 0, wine16To21: 0, wine21To24: 0,
+        sparklingWine: 0, carbonatedWine: 0, appleBrandy: 0, grapeSpirits: 0,
+      };
+
+      for (const row of transfersBetweenClasses) {
+        const sourceClass = productTypeToTaxClass(row.sourceProductType || "cider");
+        const destClass = productTypeToTaxClass(row.destProductType || "cider");
+        const volumeGallons = Number(row.volumeTransferred || 0) * 0.264172;
+
+        // Only track transfers between DIFFERENT tax classes
+        if (sourceClass !== destClass) {
+          transfersOutByTaxClass[sourceClass] += volumeGallons;
+          transfersInByTaxClass[destClass] += volumeGallons;
+        }
+      }
+
+      // Build waterfall data per tax class
+      type WaterfallEntry = {
+        taxClass: string;
+        label: string;
+        opening: number;
+        production: number;
+        transfersIn: number;
+        transfersOut: number;
+        packaging: number;
+        losses: number;
+        distillation: number;
+        calculatedEnding: number;
+        physical: number;
+        variance: number;
+      };
+
+      const waterfallData: WaterfallEntry[] = [];
+      const waterfallTaxClasses = [
+        "hardCider", "wineUnder16", "wine16To21", "wine21To24",
+        "sparklingWine", "carbonatedWine", "appleBrandy", "grapeSpirits"
+      ];
+
+      const waterfallLabels: Record<string, string> = {
+        hardCider: "Hard Cider",
+        wineUnder16: "Wine (<16%)",
+        wine16To21: "Wine (16-21%)",
+        wine21To24: "Wine (21-24%)",
+        sparklingWine: "Sparkling Wine",
+        carbonatedWine: "Carbonated Wine",
+        appleBrandy: "Apple Brandy",
+        grapeSpirits: "Grape Spirits",
+      };
+
+      for (const key of waterfallTaxClasses) {
+        const opening = waterfallOpening[key] || 0;
+        const production = productionByTaxClass[key] || 0;
+        const transfersIn = transfersInByTaxClass[key] || 0;
+        const transfersOut = transfersOutByTaxClass[key] || 0;
+        const packaging = 0; // Note: packaging doesn't remove from TTB - bulk becomes packaged but stays in inventory
+        const losses = lossesByTaxClass[key] || 0;
+        const distillation = distillationByTaxClass[key] || 0;
+        const physical = inventoryByTaxClass[key] || 0;
+
+        // Calculated Ending = Opening + Production + Transfers In - Transfers Out - Losses - Distillation
+        // Note: Packaging and removals (sales) are tracked separately - packaging converts bulk to packaged,
+        // removals (sales) actually remove from the system
+        const removals = removalsByTaxClass[key] || 0;
+        const calculatedEnding = opening + production + transfersIn - transfersOut - losses - distillation - removals;
+
+        // Variance = Calculated - Physical (positive = we calculated more than we have)
+        const variance = calculatedEnding - physical;
+
+        // Only include tax classes with activity
+        if (opening > 0 || production > 0 || physical > 0 || calculatedEnding > 0) {
+          waterfallData.push({
+            taxClass: key,
+            label: waterfallLabels[key] || key,
+            opening: parseFloat(opening.toFixed(2)),
+            production: parseFloat(production.toFixed(2)),
+            transfersIn: parseFloat(transfersIn.toFixed(2)),
+            transfersOut: parseFloat(transfersOut.toFixed(2)),
+            packaging: parseFloat(packagingByTaxClass[key]?.toFixed(2) || "0"),
+            losses: parseFloat(losses.toFixed(2)),
+            distillation: parseFloat(distillation.toFixed(2)),
+            calculatedEnding: parseFloat(calculatedEnding.toFixed(2)),
+            physical: parseFloat(physical.toFixed(2)),
+            variance: parseFloat(variance.toFixed(2)),
+          });
+        }
+      }
+
       // 5. Build reconciliation by tax class
       const taxClassLabels: Record<string, string> = {
         hardCider: "Hard Cider (<8.5% ABV)",
@@ -3402,6 +3643,25 @@ export const ttbRouter = router({
             batchesAtOpeningDate: openingBatchDebug,
             batchesTotalInitialVolumeGallons: parseFloat(openingBatchTotalGallons.toFixed(2)),
             differenceFromConfigured: parseFloat((totalTtb - openingBatchTotalGallons).toFixed(2)),
+          },
+        },
+        // Waterfall calculation per tax class
+        waterfall: {
+          periodStart: waterfallPeriodStart,
+          periodEnd: reconciliationDate,
+          hasLastReconciliation: !!lastRecon,
+          byTaxClass: waterfallData,
+          totals: {
+            opening: parseFloat(waterfallData.reduce((sum, w) => sum + w.opening, 0).toFixed(2)),
+            production: parseFloat(waterfallData.reduce((sum, w) => sum + w.production, 0).toFixed(2)),
+            transfersIn: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersIn, 0).toFixed(2)),
+            transfersOut: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersOut, 0).toFixed(2)),
+            packaging: parseFloat(waterfallData.reduce((sum, w) => sum + w.packaging, 0).toFixed(2)),
+            losses: parseFloat(waterfallData.reduce((sum, w) => sum + w.losses, 0).toFixed(2)),
+            distillation: parseFloat(waterfallData.reduce((sum, w) => sum + w.distillation, 0).toFixed(2)),
+            calculatedEnding: parseFloat(waterfallData.reduce((sum, w) => sum + w.calculatedEnding, 0).toFixed(2)),
+            physical: parseFloat(waterfallData.reduce((sum, w) => sum + w.physical, 0).toFixed(2)),
+            variance: parseFloat(waterfallData.reduce((sum, w) => sum + w.variance, 0).toFixed(2)),
           },
         },
       };
@@ -4178,6 +4438,24 @@ export const ttbRouter = router({
         .orderBy(desc(ttbReconciliationSnapshots.reconciliationDate))
         .limit(1);
 
+      // Parse last reconciliation's tax class breakdown if available
+      let lastReconTaxClassData: Record<string, number> = {};
+      if (lastRecon?.taxClassBreakdown) {
+        try {
+          const parsed = JSON.parse(lastRecon.taxClassBreakdown);
+          if (Array.isArray(parsed)) {
+            for (const tc of parsed) {
+              if (tc.key && tc.currentInventory !== undefined) {
+                // Use the ending inventory from last recon as opening for this period
+                lastReconTaxClassData[tc.key] = tc.currentInventory;
+              }
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
       type TaxClassData = {
         taxClass: string;
         openingLiters: number;
@@ -4232,46 +4510,51 @@ export const ttbRouter = router({
       // Group batches by tax class
       const taxClassMap = new Map<string, TaxClassData>();
 
+      // Initialize tax classes with opening balances from last reconciliation
+      const taxClassKeys = ["hardCider", "wineUnder16", "wine16To21", "wine21To24", "appleBrandy", "grapeSpirits", "materials", "other"];
+      for (const key of taxClassKeys) {
+        taxClassMap.set(key, {
+          taxClass: key,
+          openingLiters: lastReconTaxClassData[key] ? lastReconTaxClassData[key] / 0.264172 : 0, // Convert gallons to liters
+          productionLiters: 0,
+          transfersInLiters: 0,
+          transfersOutLiters: 0,
+          packagingLiters: 0,
+          lossesLiters: 0,
+          endingLiters: 0,
+          batches: [],
+        });
+      }
+
       for (const batch of allBatches) {
         const taxClass = productTypeToTaxClass[batch.productType] || "other";
-
-        if (!taxClassMap.has(taxClass)) {
-          taxClassMap.set(taxClass, {
-            taxClass,
-            openingLiters: 0,
-            productionLiters: 0,
-            transfersInLiters: 0,
-            transfersOutLiters: 0,
-            packagingLiters: 0,
-            lossesLiters: 0,
-            endingLiters: 0,
-            batches: [],
-          });
-        }
-
         const data = taxClassMap.get(taxClass)!;
 
-        // Calculate opening volume (batch volume at start date)
-        // For simplicity, use initial volume if batch started before period, else 0
         const batchStartDate = new Date(batch.startDate);
-        const openingVolume = batchStartDate < start
-          ? parseFloat(batch.initialVolumeLiters || "0")
-          : 0;
 
-        // Production = batches created during period
+        // Production = batches created during period (new inventory entering the system)
         const productionVolume = batchStartDate >= start && batchStartDate <= end
           ? parseFloat(batch.initialVolumeLiters || "0")
           : 0;
 
-        data.openingLiters += openingVolume;
+        // If no prior reconciliation, add pre-period batches to opening
+        if (Object.keys(lastReconTaxClassData).length === 0 && batchStartDate < start) {
+          data.openingLiters += parseFloat(batch.initialVolumeLiters || "0");
+        }
+
         data.productionLiters += productionVolume;
         data.endingLiters += parseFloat(batch.currentVolumeLiters || "0");
+
+        // Opening volume for a batch: 0 if created during period, else its initial volume
+        const batchOpeningVolume = batchStartDate >= start
+          ? 0
+          : parseFloat(batch.initialVolumeLiters || "0");
 
         data.batches.push({
           id: batch.id,
           name: batch.name,
           productType: batch.productType,
-          openingVolume,
+          openingVolume: batchOpeningVolume,
           currentVolume: parseFloat(batch.currentVolumeLiters || "0"),
           vessel: batch.vesselName,
         });
@@ -4327,6 +4610,7 @@ export const ttbRouter = router({
           id: bottleRuns.id,
           batchId: bottleRuns.batchId,
           volumeTakenLiters: bottleRuns.volumeTakenLiters,
+          loss: bottleRuns.loss,
           productType: batches.productType,
         })
         .from(bottleRuns)
@@ -4341,9 +4625,84 @@ export const ttbRouter = router({
       for (const p of packagingRuns) {
         const taxClass = productTypeToTaxClass[p.productType || "cider"] || "other";
         const volume = parseFloat(p.volumeTakenLiters || "0");
+        const loss = parseFloat(p.loss || "0");
 
         if (taxClassMap.has(taxClass)) {
           taxClassMap.get(taxClass)!.packagingLiters += volume;
+          taxClassMap.get(taxClass)!.lossesLiters += loss; // Bottling loss
+        }
+      }
+
+      // Get racking losses during period
+      const rackingOps = await db
+        .select({
+          volumeLoss: batchRackingOperations.volumeLoss,
+          productType: batches.productType,
+        })
+        .from(batchRackingOperations)
+        .leftJoin(batches, eq(batchRackingOperations.batchId, batches.id))
+        .where(
+          and(
+            isNull(batchRackingOperations.deletedAt),
+            gte(batchRackingOperations.rackedAt, start),
+            lte(batchRackingOperations.rackedAt, end)
+          )
+        );
+
+      for (const r of rackingOps) {
+        const taxClass = productTypeToTaxClass[r.productType || "cider"] || "other";
+        const loss = parseFloat(r.volumeLoss || "0");
+        if (taxClassMap.has(taxClass)) {
+          taxClassMap.get(taxClass)!.lossesLiters += loss;
+        }
+      }
+
+      // Get filter losses during period
+      const filterOps = await db
+        .select({
+          volumeLoss: batchFilterOperations.volumeLoss,
+          productType: batches.productType,
+        })
+        .from(batchFilterOperations)
+        .leftJoin(batches, eq(batchFilterOperations.batchId, batches.id))
+        .where(
+          and(
+            isNull(batchFilterOperations.deletedAt),
+            gte(batchFilterOperations.filteredAt, start),
+            lte(batchFilterOperations.filteredAt, end)
+          )
+        );
+
+      for (const f of filterOps) {
+        const taxClass = productTypeToTaxClass[f.productType || "cider"] || "other";
+        const loss = parseFloat(f.volumeLoss || "0");
+        if (taxClassMap.has(taxClass)) {
+          taxClassMap.get(taxClass)!.lossesLiters += loss;
+        }
+      }
+
+      // Get volume adjustments (negative = loss) during period
+      const volumeAdjs = await db
+        .select({
+          adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+          productType: batches.productType,
+        })
+        .from(batchVolumeAdjustments)
+        .leftJoin(batches, eq(batchVolumeAdjustments.batchId, batches.id))
+        .where(
+          and(
+            isNull(batchVolumeAdjustments.deletedAt),
+            gte(batchVolumeAdjustments.adjustmentDate, start),
+            lte(batchVolumeAdjustments.adjustmentDate, end),
+            sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) < 0` // Only losses
+          )
+        );
+
+      for (const v of volumeAdjs) {
+        const taxClass = productTypeToTaxClass[v.productType || "cider"] || "other";
+        const loss = Math.abs(parseFloat(v.adjustmentAmount || "0"));
+        if (taxClassMap.has(taxClass)) {
+          taxClassMap.get(taxClass)!.lossesLiters += loss;
         }
       }
 

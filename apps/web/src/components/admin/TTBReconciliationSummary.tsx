@@ -1033,6 +1033,114 @@ export function TTBReconciliationSummary() {
           );
         })()}
 
+        {/* Waterfall Calculation Table */}
+        {data.waterfall && data.waterfall.byTaxClass.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <Calculator className="w-4 h-4" />
+              Inventory Waterfall by Tax Class
+              {data.waterfall.periodStart && data.waterfall.periodEnd && (
+                <span className="text-xs text-gray-500 font-normal">
+                  ({formatDate(data.waterfall.periodStart)} → {formatDate(data.waterfall.periodEnd)})
+                </span>
+              )}
+            </h4>
+            <div className="border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-blue-50">
+                    <TableHead className="font-semibold">Tax Class</TableHead>
+                    <TableHead className="text-right font-semibold text-xs">Opening</TableHead>
+                    <TableHead className="text-right font-semibold text-xs text-green-700">+Prod</TableHead>
+                    <TableHead className="text-right font-semibold text-xs text-blue-700">+In</TableHead>
+                    <TableHead className="text-right font-semibold text-xs text-orange-700">-Out</TableHead>
+                    <TableHead className="text-right font-semibold text-xs text-red-700">-Loss</TableHead>
+                    <TableHead className="text-right font-semibold text-xs text-purple-700">-DSP</TableHead>
+                    <TableHead className="text-right font-semibold text-xs text-red-700">-Sales</TableHead>
+                    <TableHead className="text-right font-semibold bg-gray-100">=Calc End</TableHead>
+                    <TableHead className="text-right font-semibold bg-gray-100">Physical</TableHead>
+                    <TableHead className="text-right font-semibold">Variance</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.waterfall.byTaxClass.map((w: { taxClass: string; label: string; opening: number; production: number; transfersIn: number; transfersOut: number; losses: number; distillation: number; calculatedEnding: number; physical: number; variance: number }) => {
+                    // Find removals from taxClasses data
+                    const tcData = data.taxClasses?.find(tc => tc.key === w.taxClass);
+                    const removals = tcData?.removals || 0;
+                    return (
+                      <TableRow key={w.taxClass}>
+                        <TableCell className="font-medium text-sm whitespace-nowrap">{w.label}</TableCell>
+                        <TableCell className="text-right font-mono text-sm">{w.opening.toFixed(1)}</TableCell>
+                        <TableCell className="text-right font-mono text-sm text-green-700">
+                          {w.production > 0 ? `+${w.production.toFixed(1)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-blue-700">
+                          {w.transfersIn > 0 ? `+${w.transfersIn.toFixed(1)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-orange-700">
+                          {w.transfersOut > 0 ? `-${w.transfersOut.toFixed(1)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-red-700">
+                          {w.losses > 0 ? `-${w.losses.toFixed(1)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-purple-700">
+                          {w.distillation > 0 ? `-${w.distillation.toFixed(1)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-red-700">
+                          {removals > 0 ? `-${removals.toFixed(1)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm font-semibold bg-gray-50">
+                          {w.calculatedEnding.toFixed(1)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm font-semibold bg-gray-50">
+                          {w.physical.toFixed(1)}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "text-right font-mono text-sm font-semibold",
+                          w.variance > 0.5 && "text-amber-600",
+                          w.variance < -0.5 && "text-red-600",
+                          Math.abs(w.variance) <= 0.5 && "text-green-600"
+                        )}>
+                          {w.variance > 0 ? "+" : ""}{w.variance.toFixed(1)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {/* Totals Row */}
+                  <TableRow className="bg-gray-100 font-semibold">
+                    <TableCell>Total</TableCell>
+                    <TableCell className="text-right font-mono">{data.waterfall.totals.opening.toFixed(1)}</TableCell>
+                    <TableCell className="text-right font-mono text-green-700">+{data.waterfall.totals.production.toFixed(1)}</TableCell>
+                    <TableCell className="text-right font-mono text-blue-700">+{data.waterfall.totals.transfersIn.toFixed(1)}</TableCell>
+                    <TableCell className="text-right font-mono text-orange-700">-{data.waterfall.totals.transfersOut.toFixed(1)}</TableCell>
+                    <TableCell className="text-right font-mono text-red-700">-{data.waterfall.totals.losses.toFixed(1)}</TableCell>
+                    <TableCell className="text-right font-mono text-purple-700">-{data.waterfall.totals.distillation.toFixed(1)}</TableCell>
+                    <TableCell className="text-right font-mono text-red-700">
+                      -{data.taxClasses?.reduce((sum, tc) => sum + tc.removals, 0).toFixed(1) || "0.0"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold bg-gray-200">{data.waterfall.totals.calculatedEnding.toFixed(1)}</TableCell>
+                    <TableCell className="text-right font-mono font-bold bg-gray-200">{data.waterfall.totals.physical.toFixed(1)}</TableCell>
+                    <TableCell className={cn(
+                      "text-right font-mono font-bold",
+                      data.waterfall.totals.variance > 0.5 && "text-amber-600",
+                      data.waterfall.totals.variance < -0.5 && "text-red-600",
+                      Math.abs(data.waterfall.totals.variance) <= 0.5 && "text-green-600"
+                    )}>
+                      {data.waterfall.totals.variance > 0 ? "+" : ""}{data.waterfall.totals.variance.toFixed(1)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-xs text-gray-500">
+              {data.waterfall.hasLastReconciliation
+                ? "Opening = Last reconciliation ending. "
+                : "Opening = Configured TTB opening balances. "}
+              Variance = Calculated - Physical (positive = missing inventory).
+            </p>
+          </div>
+        )}
+
         {/* Summary Table */}
         <div className="border rounded-lg overflow-hidden">
           <Table>
