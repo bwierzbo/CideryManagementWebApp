@@ -2484,6 +2484,7 @@ export const batchRouter = router({
                 or(
                   eq(bottleRuns.status, "completed"),
                   eq(bottleRuns.status, "active"),
+                  eq(bottleRuns.status, "distributed"),
                   isNull(bottleRuns.status)
                 )
               ),

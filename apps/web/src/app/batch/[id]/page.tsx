@@ -182,11 +182,10 @@ export default function BatchDetailsPage() {
       offset: 0,
     });
 
-  // Fetch carbonation operations (mock for now - will be implemented with tRPC router)
-  // const { data: carbonationOperations, isLoading: carbonationsLoading } =
-  //   trpc.carbonation.list.useQuery({ batchId });
-  const carbonationOperations: any[] = []; // Mock empty array until router is implemented
-  const carbonationsLoading = false;
+  // Fetch carbonation operations for this batch
+  const { data: carbonationOperationsData, isLoading: carbonationsLoading } =
+    trpc.carbonation.list.useQuery({ batchId });
+  const carbonationOperations = carbonationOperationsData || [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -919,20 +918,22 @@ export default function BatchDetailsPage() {
                   </TableHeader>
                   <TableBody>
                     {carbonationOperations.map((op: any) => {
-                      const isInProgress = !op.completedAt;
-                      const duration = op.durationHours
-                        ? `${op.durationHours.toFixed(1)}h`
+                      const carb = op.carbonation;
+                      const isInProgress = !carb.completedAt;
+                      const durationHours = carb.durationHours ? parseFloat(carb.durationHours) : null;
+                      const duration = durationHours
+                        ? `${durationHours.toFixed(1)}h`
                         : isInProgress
-                          ? `${((Date.now() - new Date(op.startedAt).getTime()) / (1000 * 60 * 60)).toFixed(1)}h (ongoing)`
+                          ? `${((Date.now() - new Date(carb.startedAt).getTime()) / (1000 * 60 * 60)).toFixed(1)}h (ongoing)`
                           : "-";
 
                       return (
-                        <TableRow key={op.id}>
+                        <TableRow key={carb.id}>
                           <TableCell>
-                            {formatDateTime(op.startedAt)}
+                            {formatDateTime(carb.startedAt)}
                           </TableCell>
-                          <TableCell>{op.targetCO2Volumes} vol</TableCell>
-                          <TableCell>{op.pressureApplied} PSI</TableCell>
+                          <TableCell>{carb.targetCo2Volumes} vol</TableCell>
+                          <TableCell>{carb.pressureApplied} PSI</TableCell>
                           <TableCell>
                             {isInProgress ? (
                               <Badge variant="secondary">
@@ -948,8 +949,8 @@ export default function BatchDetailsPage() {
                           </TableCell>
                           <TableCell>{duration}</TableCell>
                           <TableCell>
-                            {op.qualityCheck ? (
-                              op.qualityCheck === "pass" ? (
+                            {carb.qualityCheck ? (
+                              carb.qualityCheck === "pass" ? (
                                 <Badge
                                   variant="default"
                                   className="bg-green-100 text-green-700"
@@ -957,7 +958,7 @@ export default function BatchDetailsPage() {
                                   <CheckCircle2 className="w-3 h-3 mr-1" />
                                   Pass
                                 </Badge>
-                              ) : op.qualityCheck === "needs_adjustment" ? (
+                              ) : carb.qualityCheck === "needs_adjustment" ? (
                                 <Badge
                                   variant="default"
                                   className="bg-yellow-100 text-yellow-700"
@@ -984,7 +985,7 @@ export default function BatchDetailsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
-                                  setSelectedCarbonationOperation(op);
+                                  setSelectedCarbonationOperation(carb);
                                   setShowCompleteCarbonationModal(true);
                                 }}
                               >
@@ -1436,16 +1437,15 @@ export default function BatchDetailsPage() {
             batchName: batch.name,
             vesselName: batch.vesselName || "Unknown Vessel",
             startedAt: new Date(selectedCarbonationOperation.startedAt),
-            targetCO2Volumes: selectedCarbonationOperation.targetCO2Volumes,
-            pressureApplied: selectedCarbonationOperation.pressureApplied,
-            startingVolume: selectedCarbonationOperation.startingVolume,
+            targetCO2Volumes: parseFloat(selectedCarbonationOperation.targetCo2Volumes),
+            pressureApplied: parseFloat(selectedCarbonationOperation.pressureApplied),
+            startingVolume: parseFloat(selectedCarbonationOperation.startingVolume),
             startingVolumeUnit: selectedCarbonationOperation.startingVolumeUnit,
-            startingTemperature: selectedCarbonationOperation.startingTemperature,
+            startingTemperature: selectedCarbonationOperation.startingTemperature ? parseFloat(selectedCarbonationOperation.startingTemperature) : undefined,
           }}
           onSuccess={() => {
             setSelectedCarbonationOperation(null);
-            // TODO: Invalidate carbonation operations query when router is implemented
-            // utils.carbonation.list.invalidate({ batchId });
+            utils.carbonation.list.invalidate({ batchId });
             toast({
               title: "Success",
               description: "Carbonation operation completed successfully",
