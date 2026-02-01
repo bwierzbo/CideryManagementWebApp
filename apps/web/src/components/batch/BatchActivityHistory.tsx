@@ -94,6 +94,26 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
   } | null>(null);
   // For blended batches: toggle to show/hide source batch history
   const [showSourceHistory, setShowSourceHistory] = useState(false);
+  // For expandable child batches in outgoing transfers
+  const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
+
+  // Fetch child batches for this batch (for expandable lineage view)
+  const childBatchesQuery = trpc.batch.getChildBatches.useQuery(
+    { batchId },
+    { enabled: !!batchId }
+  );
+
+  const toggleChildExpansion = (childBatchId: string) => {
+    setExpandedChildren(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(childBatchId)) {
+        newSet.delete(childBatchId);
+      } else {
+        newSet.add(childBatchId);
+      }
+      return newSet;
+    });
+  };
 
   // When viewing from a packaging detail page (bottleRunId provided), fetch ALL activities
   // to ensure packaging events (bottling, pasteurize, label) are always included.
@@ -116,6 +136,121 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
       }
       return newSet;
     });
+  };
+
+  // Helper to find child batch info from transfer
+  const getChildBatchFromTransfer = (activity: any) => {
+    if (activity.type !== "transfer" || !activity.metadata?.destinationBatchId) return null;
+    // Only show expand for outgoing transfers (direction === "outgoing" or explicit destinationBatchId)
+    const destBatchId = activity.metadata.destinationBatchId;
+    if (destBatchId === batchId) return null; // Skip incoming transfers
+
+    // Find matching child from childBatchesQuery
+    const child = childBatchesQuery.data?.children?.find(
+      (c: any) => c.destinationBatchId === destBatchId
+    );
+    return child;
+  };
+
+  // Inline component for expandable child batch activities
+  const ExpandableChildBatch = ({ childBatchId, depth = 0 }: { childBatchId: string; depth?: number }) => {
+    const summaryQuery = trpc.batch.getChildActivitySummary.useQuery(
+      { batchId: childBatchId },
+      { enabled: expandedChildren.has(childBatchId) }
+    );
+
+    if (!expandedChildren.has(childBatchId)) return null;
+
+    if (summaryQuery.isLoading) {
+      return (
+        <div className="ml-8 mt-2 p-3 bg-gray-50 rounded-lg border-l-2 border-indigo-200">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600" />
+            Loading activities...
+          </div>
+        </div>
+      );
+    }
+
+    if (!summaryQuery.data) return null;
+
+    const { batch: childBatch, activities, activityCounts, childCount, hasPackaging } = summaryQuery.data;
+
+    return (
+      <div
+        className="ml-8 mt-2 border-l-2 border-indigo-200 bg-indigo-50/30 rounded-r-lg"
+        style={{ marginLeft: `${32 + depth * 16}px` }}
+      >
+        {/* Child batch header */}
+        <div className="p-3 flex items-center justify-between border-b border-indigo-100">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="bg-indigo-100 text-indigo-700 border-indigo-300">
+              {childBatch.customName || childBatch.name || childBatch.batchNumber}
+            </Badge>
+            <span className="text-xs text-muted-foreground">
+              {activityCounts.total} activities
+            </span>
+            {hasPackaging && (
+              <Badge variant="outline" className="bg-emerald-100 text-emerald-700 border-emerald-300 text-xs">
+                Packaged
+              </Badge>
+            )}
+            {childCount > 0 && (
+              <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-300 text-xs">
+                {childCount} sub-batches
+              </Badge>
+            )}
+          </div>
+          <Button
+            variant="link"
+            size="sm"
+            onClick={() => window.open(`/batch/${childBatchId}`, "_blank")}
+            className="text-indigo-600 hover:text-indigo-700"
+          >
+            Open Full View
+          </Button>
+        </div>
+
+        {/* Child activities list */}
+        <div className="p-2 space-y-1">
+          {activities.slice(0, 5).map((act: any) => {
+            const Icon = activityIcons[act.activityType as keyof typeof activityIcons] || Activity;
+            const colorClass = activityColors[act.activityType as keyof typeof activityColors] || "bg-gray-500/10 text-gray-700";
+
+            return (
+              <div key={act.id} className="flex items-center gap-2 py-1 px-2 hover:bg-white/50 rounded text-sm">
+                <div className={cn("p-1 rounded", colorClass)}>
+                  <Icon className="h-3 w-3" />
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {act.date ? formatDateTime(act.date) : "—"}
+                </span>
+                <span className="capitalize">{act.activityType}</span>
+                {act.activityType === "measurement" && act.specificGravity && (
+                  <span className="text-muted-foreground">SG: {act.specificGravity}</span>
+                )}
+                {act.activityType === "additive" && act.additiveName && (
+                  <span className="text-muted-foreground">{act.additiveName}</span>
+                )}
+                {act.activityType === "bottling" && act.unitsProduced && (
+                  <span className="text-muted-foreground">{act.unitsProduced} units</span>
+                )}
+              </div>
+            );
+          })}
+          {activities.length > 5 && (
+            <div className="text-xs text-muted-foreground text-center py-1">
+              +{activities.length - 5} more activities
+            </div>
+          )}
+          {activities.length === 0 && (
+            <div className="text-xs text-muted-foreground text-center py-2">
+              No activities recorded
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -413,6 +548,48 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                                   )}
                                 </div>
                               )}
+                              {/* Expandable child batch for outgoing transfers */}
+                              {activity.type === "transfer" && activity.details.direction === "outgoing" && (() => {
+                                const childBatch = getChildBatchFromTransfer(activity);
+                                if (!childBatch) return null;
+                                const isChildExpanded = expandedChildren.has(childBatch.destinationBatchId);
+                                return (
+                                  <div className="mt-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleChildExpansion(childBatch.destinationBatchId);
+                                      }}
+                                      className="flex items-center gap-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                    >
+                                      {isChildExpanded ? (
+                                        <ChevronDown className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4" />
+                                      )}
+                                      <span>
+                                        {childBatch.childCustomName || childBatch.childName || "Child Batch"}
+                                      </span>
+                                      {childBatch.grandchildCount > 0 && (
+                                        <Badge variant="secondary" className="text-xs ml-1">
+                                          {childBatch.grandchildCount} sub-batches
+                                        </Badge>
+                                      )}
+                                      {childBatch.hasPackaging && (
+                                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 text-xs ml-1">
+                                          Packaged
+                                        </Badge>
+                                      )}
+                                    </Button>
+                                    <ExpandableChildBatch
+                                      childBatchId={childBatch.destinationBatchId}
+                                      depth={0}
+                                    />
+                                  </div>
+                                );
+                              })()}
                               {activity.details.notes && (
                                 <div className="text-sm text-muted-foreground italic">
                                   Note: {activity.details.notes}

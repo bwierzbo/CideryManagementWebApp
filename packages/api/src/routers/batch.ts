@@ -27,7 +27,7 @@ import {
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, inArray, aliasedTable } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, inArray, aliasedTable, ne } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
 import {
@@ -3056,6 +3056,341 @@ export const batchRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to fetch batch activity history",
+        });
+      }
+    }),
+
+  /**
+   * Get child batches that were created from transfers out of this batch
+   * Used for expandable Activity History lineage view
+   */
+  getChildBatches: createRbacProcedure("read", "batch")
+    .input(z.object({ batchId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      try {
+        // Find all transfers where this batch is the source
+        // The destination batch is the "child"
+        const transfers = await db
+          .select({
+            transferId: batchTransfers.id,
+            destinationBatchId: batchTransfers.destinationBatchId,
+            volumeTransferred: batchTransfers.volumeTransferred,
+            volumeTransferredUnit: batchTransfers.volumeTransferredUnit,
+            loss: batchTransfers.loss,
+            lossUnit: batchTransfers.lossUnit,
+            transferredAt: batchTransfers.transferredAt,
+            notes: batchTransfers.notes,
+            // Child batch details
+            childName: batches.name,
+            childCustomName: batches.customName,
+            childBatchNumber: batches.batchNumber,
+            childStatus: batches.status,
+            childCurrentVolume: batches.currentVolume,
+            childCurrentVolumeUnit: batches.currentVolumeUnit,
+            childProductType: batches.productType,
+            // Destination vessel
+            destinationVesselId: batchTransfers.destinationVesselId,
+            destinationVesselName: vessels.name,
+          })
+          .from(batchTransfers)
+          .leftJoin(batches, eq(batchTransfers.destinationBatchId, batches.id))
+          .leftJoin(vessels, eq(batchTransfers.destinationVesselId, vessels.id))
+          .where(
+            and(
+              eq(batchTransfers.sourceBatchId, input.batchId),
+              isNull(batchTransfers.deletedAt),
+              // Only include if destination batch exists and is different from source
+              ne(batchTransfers.destinationBatchId, input.batchId),
+              isNotNull(batchTransfers.destinationBatchId)
+            )
+          )
+          .orderBy(asc(batchTransfers.transferredAt));
+
+        // For each child, get a count of their children (grandchildren)
+        const childrenWithCounts = await Promise.all(
+          transfers.map(async (transfer) => {
+            if (!transfer.destinationBatchId) return { ...transfer, grandchildCount: 0, hasPackaging: false };
+
+            // Count grandchildren (transfers out of this child)
+            const grandchildCount = await db
+              .select({ count: sql<number>`count(*)` })
+              .from(batchTransfers)
+              .where(
+                and(
+                  eq(batchTransfers.sourceBatchId, transfer.destinationBatchId),
+                  isNull(batchTransfers.deletedAt),
+                  ne(batchTransfers.destinationBatchId, transfer.destinationBatchId)
+                )
+              );
+
+            // Check if child has packaging (bottle runs)
+            const packagingCount = await db
+              .select({ count: sql<number>`count(*)` })
+              .from(bottleRuns)
+              .where(eq(bottleRuns.batchId, transfer.destinationBatchId));
+
+            return {
+              ...transfer,
+              grandchildCount: grandchildCount[0]?.count || 0,
+              hasPackaging: (packagingCount[0]?.count || 0) > 0,
+            };
+          })
+        );
+
+        return {
+          children: childrenWithCounts,
+          totalCount: childrenWithCounts.length,
+        };
+      } catch (error) {
+        console.error("Error fetching child batches:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch child batches",
+        });
+      }
+    }),
+
+  /**
+   * Get a lightweight summary of child batch activities for expandable row preview
+   * Returns activities scoped to this batch's vessel period only
+   */
+  getChildActivitySummary: createRbacProcedure("read", "batch")
+    .input(z.object({ batchId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      try {
+        // Get the batch info
+        const batch = await db
+          .select()
+          .from(batches)
+          .where(eq(batches.id, input.batchId))
+          .limit(1);
+
+        if (!batch.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Batch not found",
+          });
+        }
+
+        const batchData = batch[0];
+
+        // Find when this batch was created (via transfer or creation)
+        const incomingTransfer = await db
+          .select({ transferredAt: batchTransfers.transferredAt })
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.destinationBatchId, input.batchId),
+              isNull(batchTransfers.deletedAt)
+            )
+          )
+          .orderBy(asc(batchTransfers.transferredAt))
+          .limit(1);
+
+        const startDate = incomingTransfer[0]?.transferredAt || batchData.startDate || batchData.createdAt;
+
+        // Find when this batch ended (transferred out completely or packaged)
+        const outgoingTransfers = await db
+          .select({
+            transferredAt: batchTransfers.transferredAt,
+            volumeTransferred: batchTransfers.volumeTransferred,
+          })
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.sourceBatchId, input.batchId),
+              isNull(batchTransfers.deletedAt)
+            )
+          )
+          .orderBy(desc(batchTransfers.transferredAt));
+
+        // Get activities in parallel (scoped to this batch only, no inheritance)
+        const [measurements, additives, rackings, filters, carbonations, bottlings, kegFillsData] = await Promise.all([
+          // Measurements
+          db
+            .select({
+              id: batchMeasurements.id,
+              date: batchMeasurements.measurementDate,
+              type: sql<string>`'measurement'`,
+              specificGravity: batchMeasurements.specificGravity,
+              abv: batchMeasurements.abv,
+              ph: batchMeasurements.ph,
+            })
+            .from(batchMeasurements)
+            .where(
+              and(
+                eq(batchMeasurements.batchId, input.batchId),
+                isNull(batchMeasurements.deletedAt)
+              )
+            )
+            .orderBy(desc(batchMeasurements.measurementDate)),
+
+          // Additives
+          db
+            .select({
+              id: batchAdditives.id,
+              date: batchAdditives.addedAt,
+              type: sql<string>`'additive'`,
+              additiveType: batchAdditives.additiveType,
+              additiveName: batchAdditives.additiveName,
+              amount: batchAdditives.amount,
+              unit: batchAdditives.unit,
+            })
+            .from(batchAdditives)
+            .where(
+              and(
+                eq(batchAdditives.batchId, input.batchId),
+                isNull(batchAdditives.deletedAt)
+              )
+            )
+            .orderBy(desc(batchAdditives.addedAt)),
+
+          // Racking
+          db
+            .select({
+              id: batchRackingOperations.id,
+              date: batchRackingOperations.rackedAt,
+              type: sql<string>`'rack'`,
+              volumeLoss: batchRackingOperations.volumeLoss,
+            })
+            .from(batchRackingOperations)
+            .where(
+              and(
+                eq(batchRackingOperations.batchId, input.batchId),
+                isNull(batchRackingOperations.deletedAt)
+              )
+            )
+            .orderBy(desc(batchRackingOperations.rackedAt)),
+
+          // Filtering
+          db
+            .select({
+              id: batchFilterOperations.id,
+              date: batchFilterOperations.filteredAt,
+              type: sql<string>`'filter'`,
+              filterType: batchFilterOperations.filterType,
+              volumeLoss: batchFilterOperations.volumeLoss,
+            })
+            .from(batchFilterOperations)
+            .where(
+              and(
+                eq(batchFilterOperations.batchId, input.batchId),
+                isNull(batchFilterOperations.deletedAt)
+              )
+            )
+            .orderBy(desc(batchFilterOperations.filteredAt)),
+
+          // Carbonation
+          db
+            .select({
+              id: batchCarbonationOperations.id,
+              date: batchCarbonationOperations.startedAt,
+              type: sql<string>`'carbonation'`,
+              targetCo2: batchCarbonationOperations.targetCo2Volumes,
+              completedAt: batchCarbonationOperations.completedAt,
+            })
+            .from(batchCarbonationOperations)
+            .where(
+              and(
+                eq(batchCarbonationOperations.batchId, input.batchId),
+                isNull(batchCarbonationOperations.deletedAt)
+              )
+            )
+            .orderBy(desc(batchCarbonationOperations.startedAt)),
+
+          // Bottling
+          db
+            .select({
+              id: bottleRuns.id,
+              date: bottleRuns.packagedAt,
+              type: sql<string>`'bottling'`,
+              unitsProduced: bottleRuns.unitsProduced,
+              packageSizeML: bottleRuns.packageSizeML,
+              volumeTaken: bottleRuns.volumeTaken,
+            })
+            .from(bottleRuns)
+            .where(eq(bottleRuns.batchId, input.batchId))
+            .orderBy(desc(bottleRuns.packagedAt)),
+
+          // Keg fills
+          db
+            .select({
+              id: kegFills.id,
+              date: kegFills.filledAt,
+              type: sql<string>`'keg'`,
+              volumeTaken: kegFills.volumeTaken,
+              kegId: kegFills.kegId,
+            })
+            .from(kegFills)
+            .where(
+              and(
+                eq(kegFills.batchId, input.batchId),
+                isNull(kegFills.deletedAt)
+              )
+            )
+            .orderBy(desc(kegFills.filledAt)),
+        ]);
+
+        // Get child count (transfers out)
+        const childCount = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(batchTransfers)
+          .where(
+            and(
+              eq(batchTransfers.sourceBatchId, input.batchId),
+              isNull(batchTransfers.deletedAt),
+              ne(batchTransfers.destinationBatchId, input.batchId)
+            )
+          );
+
+        // Combine and sort all activities by date
+        const allActivities = [
+          ...measurements.map((m) => ({ ...m, activityType: "measurement" as const })),
+          ...additives.map((a) => ({ ...a, activityType: "additive" as const })),
+          ...rackings.map((r) => ({ ...r, activityType: "rack" as const })),
+          ...filters.map((f) => ({ ...f, activityType: "filter" as const })),
+          ...carbonations.map((c) => ({ ...c, activityType: "carbonation" as const })),
+          ...bottlings.map((b) => ({ ...b, activityType: "bottling" as const })),
+          ...kegFillsData.map((k) => ({ ...k, activityType: "keg" as const })),
+        ].sort((a, b) => {
+          const dateA = a.date ? new Date(a.date).getTime() : 0;
+          const dateB = b.date ? new Date(b.date).getTime() : 0;
+          return dateB - dateA; // Most recent first
+        });
+
+        return {
+          batch: {
+            id: batchData.id,
+            name: batchData.name,
+            customName: batchData.customName,
+            batchNumber: batchData.batchNumber,
+            status: batchData.status,
+            currentVolume: batchData.currentVolume,
+            currentVolumeUnit: batchData.currentVolumeUnit,
+            productType: batchData.productType,
+          },
+          activities: allActivities,
+          activityCounts: {
+            measurements: measurements.length,
+            additives: additives.length,
+            rackings: rackings.length,
+            filters: filters.length,
+            carbonations: carbonations.length,
+            bottlings: bottlings.length,
+            kegFills: kegFillsData.length,
+            total: allActivities.length,
+          },
+          childCount: childCount[0]?.count || 0,
+          hasPackaging: bottlings.length > 0 || kegFillsData.length > 0,
+          startDate,
+          outgoingTransfers: outgoingTransfers.length,
+        };
+      } catch (error) {
+        console.error("Error fetching child activity summary:", error);
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to fetch child activity summary",
         });
       }
     }),
