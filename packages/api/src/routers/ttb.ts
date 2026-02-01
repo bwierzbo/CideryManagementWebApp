@@ -3389,9 +3389,12 @@ export const ttbRouter = router({
         const totalRemovals = removalsByTaxClass[key] || 0;
         const actualSales = Math.max(0, totalRemovals - transfersOut);
 
-        // Calculated Ending = Opening + Production + Transfers In - Transfers Out - Losses - Distillation - Sales
-        // Note: We use actualSales (not totalRemovals) because transfersOut is already separated
-        const calculatedEnding = opening + production + transfersIn - transfersOut - losses - distillation - actualSales;
+        // TTB Calculated Ending = Opening + Production - Transfers Out - Losses - Distillation - Sales
+        // NOTE: We do NOT add transfersIn because:
+        // - For pommeau: production already includes transfers (cider+brandy→pommeau)
+        // - For cider/brandy: there are no transfers IN from other tax classes
+        // The transfersIn column is shown for transparency but not added to calculation
+        const calculatedEnding = opening + production - transfersOut - losses - distillation - actualSales;
 
         // Variance = Calculated - Physical (positive = we calculated more than we have)
         const variance = calculatedEnding - physical;
