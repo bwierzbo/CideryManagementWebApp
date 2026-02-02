@@ -106,6 +106,7 @@ export default function BatchDetailsPage() {
   const [isEditingCustomName, setIsEditingCustomName] = useState(false);
   const [editCustomName, setEditCustomName] = useState("");
   const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
+  const [activeTab, setActiveTab] = useState("activity");
 
   const utils = trpc.useUtils();
 
@@ -638,15 +639,16 @@ export default function BatchDetailsPage() {
 
       {/* Tabs */}
       <Tabs
-        defaultValue="activity"
-        className="space-y-6"
+        value={activeTab}
         onValueChange={(value) => {
           console.log("🔄 Tab changed to:", value);
+          setActiveTab(value);
           if (value === "composition") {
             console.log("🔄 Forcing composition refetch with cache buster");
             setCompositionCacheBuster(Date.now());
           }
         }}
+        className="space-y-6"
       >
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>

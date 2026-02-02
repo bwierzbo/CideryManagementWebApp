@@ -30,6 +30,7 @@ import {
   AlertCircle,
   CheckCircle2,
   TrendingDown,
+  Scale,
 } from "lucide-react";
 import { formatDateTime } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
@@ -48,6 +49,7 @@ const typeIcons = {
   bottling: Package,
   kegging: Beer,
   distillation: Flame,
+  adjustment: Scale,
 };
 
 const typeColors = {
@@ -58,6 +60,7 @@ const typeColors = {
   bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
   kegging: "bg-orange-500/10 text-orange-700 border-orange-500/20",
   distillation: "bg-red-500/10 text-red-700 border-red-500/20",
+  adjustment: "bg-purple-500/10 text-purple-700 border-purple-500/20",
 };
 
 const typeLabels = {
@@ -68,6 +71,7 @@ const typeLabels = {
   bottling: "Bottling",
   kegging: "Kegging",
   distillation: "Distillation",
+  adjustment: "Adjustment",
 };
 
 export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {

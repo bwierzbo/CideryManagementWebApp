@@ -2213,6 +2213,7 @@ export const batchRouter = router({
           bottles,
           kegFillsList,
           statusChangeLogs,
+          volumeAdjustmentsList,
         ] = await Promise.all([
           // Check for earliest transfer to determine true origin vessel
           db
@@ -2529,6 +2530,28 @@ export const batchRouter = router({
               )
             )
             .orderBy(asc(auditLogs.changedAt)),
+
+          // Get volume adjustments (sediment, evaporation, sampling, etc.)
+          db
+            .select({
+              id: batchVolumeAdjustments.id,
+              batchId: batchVolumeAdjustments.batchId,
+              adjustmentDate: batchVolumeAdjustments.adjustmentDate,
+              adjustmentType: batchVolumeAdjustments.adjustmentType,
+              volumeBefore: batchVolumeAdjustments.volumeBefore,
+              volumeAfter: batchVolumeAdjustments.volumeAfter,
+              adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+              reason: batchVolumeAdjustments.reason,
+              notes: batchVolumeAdjustments.notes,
+            })
+            .from(batchVolumeAdjustments)
+            .where(
+              and(
+                eq(batchVolumeAdjustments.batchId, input.batchId),
+                isNull(batchVolumeAdjustments.deletedAt)
+              )
+            )
+            .orderBy(asc(batchVolumeAdjustments.adjustmentDate)),
         ]);
 
         let activities: any[] = [];
@@ -2993,6 +3016,32 @@ export const batchRouter = router({
               },
             });
           }
+        });
+
+        // Process volume adjustments (sediment, evaporation, sampling, etc.)
+        volumeAdjustmentsList.forEach((adj) => {
+          const amount = parseFloat(adj.adjustmentAmount || "0");
+          const isLoss = amount < 0;
+
+          // Format the adjustment type for display
+          const typeLabel = (adj.adjustmentType || "other")
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+
+          activities.push({
+            id: `adjustment-${adj.id}`,
+            type: "adjustment",
+            timestamp: adj.adjustmentDate,
+            description: adj.reason || `Volume ${isLoss ? "decreased" : "increased"} (${typeLabel})`,
+            details: {
+              adjustmentType: typeLabel,
+              volumeBefore: `${parseFloat(adj.volumeBefore || "0").toFixed(1)}L`,
+              volumeAfter: `${parseFloat(adj.volumeAfter || "0").toFixed(1)}L`,
+              adjustmentAmount: `${amount > 0 ? "+" : ""}${amount.toFixed(1)}L`,
+              notes: adj.notes || null,
+            },
+            metadata: { id: adj.id, adjustmentDate: adj.adjustmentDate },
+          });
         });
 
         // In lineage mode for blended batches, filter out inherited activities that are
@@ -5789,6 +5838,7 @@ export const batchRouter = router({
           initialVolume: batches.initialVolumeLiters,
           currentVolume: batches.currentVolumeLiters,
           status: batches.status,
+          parentBatchId: batches.parentBatchId,
         })
         .from(batches)
         .where(eq(batches.id, batchId))
@@ -5964,11 +6014,30 @@ export const batchRouter = router({
         ORDER BY sent_at ASC
       `);
 
+      // 7. Volume adjustments (sediment loss, evaporation, sampling, etc.)
+      const volumeAdjustments = await db
+        .select({
+          id: batchVolumeAdjustments.id,
+          date: batchVolumeAdjustments.adjustmentDate,
+          adjustmentType: batchVolumeAdjustments.adjustmentType,
+          adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+          reason: batchVolumeAdjustments.reason,
+          notes: batchVolumeAdjustments.notes,
+        })
+        .from(batchVolumeAdjustments)
+        .where(
+          and(
+            eq(batchVolumeAdjustments.batchId, batchId),
+            isNull(batchVolumeAdjustments.deletedAt)
+          )
+        )
+        .orderBy(asc(batchVolumeAdjustments.adjustmentDate));
+
       // Build unified entries list
       type VolumeEntry = {
         id: string;
         date: Date;
-        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation";
+        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation" | "adjustment";
         description: string;
         volumeOut: number;
         volumeIn: number;
@@ -6102,11 +6171,37 @@ export const batchRouter = router({
         });
       }
 
+      // Add volume adjustments (sediment, evaporation, sampling, etc.)
+      // These are tracked losses/gains that explain discrepancies
+      for (const adj of volumeAdjustments) {
+        const amount = parseFloat(adj.adjustmentAmount || "0");
+        // Negative adjustments are losses (sediment, evaporation, sampling, spillage)
+        // Positive adjustments are gains (correction_up, measurement corrections)
+        const isLoss = amount < 0;
+
+        // Format the adjustment type for display
+        const typeLabel = (adj.adjustmentType || "other")
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+
+        entries.push({
+          id: adj.id,
+          date: adj.date,
+          type: "adjustment",
+          description: adj.reason || adj.notes || typeLabel,
+          volumeOut: 0,
+          volumeIn: isLoss ? 0 : Math.abs(amount),
+          loss: isLoss ? Math.abs(amount) : 0,
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
       // Sort all entries by date
       entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
       // Calculate summary
-      const initialVolume = parseFloat(batch.initialVolume || "0");
+      const rawInitialVolume = parseFloat(batch.initialVolume || "0");
       const currentVolume = parseFloat(batch.currentVolume || "0");
       let totalOutflow = 0;
       let totalInflow = 0;
@@ -6118,9 +6213,18 @@ export const batchRouter = router({
         totalLoss += entry.loss;
       }
 
+      // For batches created via transfer (has parentBatchId AND has inflow from transfer),
+      // the initialVolume should not be counted as it would double-count with the transfer-in.
+      // The batch's volume came from the transfer, not as an independent initial volume.
+      const isTransferCreatedBatch = batch.parentBatchId && totalInflow > 0;
+      const effectiveInitialVolume = isTransferCreatedBatch ? 0 : rawInitialVolume;
+
       // accountedVolume = initial + inflow - outflow - loss
-      const accountedVolume = initialVolume + totalInflow - totalOutflow - totalLoss;
+      const accountedVolume = effectiveInitialVolume + totalInflow - totalOutflow - totalLoss;
       const discrepancy = currentVolume - accountedVolume;
+
+      // Use effectiveInitialVolume for display to show the corrected calculation
+      const initialVolume = effectiveInitialVolume;
 
       return {
         batch: {
@@ -6630,6 +6734,7 @@ export const batchRouter = router({
           "contamination",
           "spillage",
           "theft",
+          "sediment",
           "correction_up",
           "correction_down",
           "other",

@@ -516,6 +516,7 @@ export const adjustmentTypeEnum = pgEnum("adjustment_type", [
   "contamination",
   "spillage",
   "theft",
+  "sediment",
   "correction_up",
   "correction_down",
   "other",

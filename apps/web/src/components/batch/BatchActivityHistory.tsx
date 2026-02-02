@@ -65,6 +65,7 @@ const activityIcons = {
   carbonation: Sparkles,
   pasteurize: Flame,
   label: Tag,
+  adjustment: Scale,
 };
 
 const activityColors = {
@@ -79,6 +80,7 @@ const activityColors = {
   carbonation: "bg-blue-500/10 text-blue-700 border-blue-500/20",
   pasteurize: "bg-orange-500/10 text-orange-700 border-orange-500/20",
   label: "bg-green-500/10 text-green-700 border-green-500/20",
+  adjustment: "bg-red-500/10 text-red-700 border-red-500/20",
 };
 
 export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHistoryProps) {
