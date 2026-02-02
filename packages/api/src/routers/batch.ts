@@ -6448,8 +6448,6 @@ export const batchRouter = router({
       const targetDate = new Date(asOfDate);
 
       // Find all TTB-reportable batches that existed on or before the target date
-      // Include: Batches with reconciliationStatus = 'verified' (unique inventory, not duplicated)
-      // Exclude: Batches not verified, LEGACY- prefixed batches, discarded batches
       const baseBatches = await db
         .select({
           id: batches.id,
@@ -6468,23 +6466,36 @@ export const batchRouter = router({
         .where(
           and(
             sql`${batches.startDate} <= ${targetDate}`,
-            // Only include verified batches (unique inventory that's not double-counted)
             eq(batches.reconciliationStatus, "verified"),
-            // Exclude LEGACY- prefixed batches (handled separately in TTB reconciliation)
             sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`,
             isNull(batches.deletedAt),
             sql`${batches.status} != 'discarded'`,
-            // Exclude 0 volume batches (consumed/placeholder batches)
             sql`CAST(${batches.initialVolumeLiters} AS NUMERIC) > 0`
           )
         )
         .orderBy(asc(batches.customName), asc(batches.name));
 
-      // For each batch, get volume trace entries
-      const destBatch = aliasedTable(batches, "destBatch");
-      const sourceVessel = aliasedTable(vessels, "sourceVessel");
-      const destVessel = aliasedTable(vessels, "destVessel");
+      if (baseBatches.length === 0) {
+        return {
+          asOfDate,
+          summary: {
+            totalBatches: 0,
+            totalInitialVolume: 0,
+            totalCurrentVolume: 0,
+            totalInflow: 0,
+            totalTransferred: 0,
+            totalPackaged: 0,
+            totalLosses: 0,
+            totalDiscrepancy: 0,
+          },
+          batches: [],
+        };
+      }
 
+      // Get all batch IDs for bulk queries
+      const batchIds = baseBatches.map((b) => b.id);
+
+      // Type definitions
       type ChildOutcomeReport = {
         type: "bottling" | "kegging" | "loss" | "transfer";
         description: string;
@@ -6524,6 +6535,290 @@ export const batchRouter = router({
         };
       };
 
+      // ============ BULK FETCH ALL DATA ============
+      const destBatch = aliasedTable(batches, "destBatch");
+      const sourceBatch = aliasedTable(batches, "sourceBatch");
+      const sourceVessel = aliasedTable(vessels, "sourceVessel");
+      const destVessel = aliasedTable(vessels, "destVessel");
+
+      // 1. All transfers out from base batches
+      const allTransfersOut = await db
+        .select({
+          id: batchTransfers.id,
+          sourceBatchId: batchTransfers.sourceBatchId,
+          date: batchTransfers.transferredAt,
+          volumeOut: batchTransfers.volumeTransferred,
+          loss: batchTransfers.loss,
+          destinationId: batchTransfers.destinationBatchId,
+          destinationName: destBatch.customName,
+          destinationBatchNumber: destBatch.batchNumber,
+        })
+        .from(batchTransfers)
+        .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
+        .where(
+          and(
+            inArray(batchTransfers.sourceBatchId, batchIds),
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+            isNull(batchTransfers.deletedAt)
+          )
+        );
+
+      // 2. All transfers in to base batches
+      const allTransfersIn = await db
+        .select({
+          id: batchTransfers.id,
+          destinationBatchId: batchTransfers.destinationBatchId,
+          date: batchTransfers.transferredAt,
+          volumeIn: batchTransfers.volumeTransferred,
+          sourceId: batchTransfers.sourceBatchId,
+          sourceName: sourceBatch.customName,
+          sourceBatchNumber: sourceBatch.batchNumber,
+        })
+        .from(batchTransfers)
+        .leftJoin(sourceBatch, eq(batchTransfers.sourceBatchId, sourceBatch.id))
+        .where(
+          and(
+            inArray(batchTransfers.destinationBatchId, batchIds),
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+            isNull(batchTransfers.deletedAt)
+          )
+        );
+
+      // 3. All racking operations
+      const allRackings = await db
+        .select({
+          id: batchRackingOperations.id,
+          batchId: batchRackingOperations.batchId,
+          date: batchRackingOperations.rackedAt,
+          loss: batchRackingOperations.volumeLoss,
+          sourceVesselName: sourceVessel.name,
+          destVesselName: destVessel.name,
+          notes: batchRackingOperations.notes,
+        })
+        .from(batchRackingOperations)
+        .leftJoin(sourceVessel, eq(batchRackingOperations.sourceVesselId, sourceVessel.id))
+        .leftJoin(destVessel, eq(batchRackingOperations.destinationVesselId, destVessel.id))
+        .where(
+          and(
+            inArray(batchRackingOperations.batchId, batchIds),
+            isNull(batchRackingOperations.deletedAt)
+          )
+        );
+
+      // 4. All filter operations
+      const allFilterings = await db
+        .select({
+          id: batchFilterOperations.id,
+          batchId: batchFilterOperations.batchId,
+          date: batchFilterOperations.filteredAt,
+          loss: batchFilterOperations.volumeLoss,
+          filterType: batchFilterOperations.filterType,
+        })
+        .from(batchFilterOperations)
+        .where(
+          and(
+            inArray(batchFilterOperations.batchId, batchIds),
+            isNull(batchFilterOperations.deletedAt)
+          )
+        );
+
+      // 5. All bottle runs
+      const allBottlings = await db
+        .select({
+          id: bottleRuns.id,
+          batchId: bottleRuns.batchId,
+          date: bottleRuns.packagedAt,
+          volumeOut: bottleRuns.volumeTakenLiters,
+          loss: bottleRuns.loss,
+          unitsProduced: bottleRuns.unitsProduced,
+          packageSizeML: bottleRuns.packageSizeML,
+        })
+        .from(bottleRuns)
+        .where(
+          and(
+            inArray(bottleRuns.batchId, batchIds),
+            isNull(bottleRuns.voidedAt)
+          )
+        );
+
+      // 6. All keg fills
+      const allKegFills = await db
+        .select({
+          id: kegFills.id,
+          batchId: kegFills.batchId,
+          date: kegFills.filledAt,
+          volumeOut: kegFills.volumeTaken,
+          loss: kegFills.loss,
+          kegNumber: kegs.kegNumber,
+        })
+        .from(kegFills)
+        .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+        .where(
+          and(
+            inArray(kegFills.batchId, batchIds),
+            isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt)
+          )
+        );
+
+      // 7. All distillations
+      type DistillationRow = { id: string; source_batch_id: string; date: Date; volume_out: string; distillery_name: string };
+      let allDistillations: DistillationRow[] = [];
+      if (batchIds.length > 0) {
+        const distillationsResult = await db.execute(sql`
+          SELECT id, source_batch_id, sent_at as date, source_volume_liters as volume_out, distillery_name
+          FROM distillation_records
+          WHERE source_batch_id IN (${sql.join(batchIds.map(id => sql`${id}`), sql`, `)}) AND deleted_at IS NULL
+        `);
+        allDistillations = (distillationsResult as unknown as { rows: DistillationRow[] }).rows || [];
+      }
+
+      // ============ BULK FETCH CHILD BATCH DATA ============
+      // Get all destination batch IDs from transfers
+      const destinationBatchIds = [...new Set(
+        allTransfersOut
+          .filter((t) => t.destinationId)
+          .map((t) => t.destinationId as string)
+      )];
+
+      // Child batch bottlings
+      const allChildBottlings = destinationBatchIds.length > 0 ? await db
+        .select({
+          batchId: bottleRuns.batchId,
+          unitsProduced: bottleRuns.unitsProduced,
+          packageSizeML: bottleRuns.packageSizeML,
+          volumeTaken: bottleRuns.volumeTakenLiters,
+          loss: bottleRuns.loss,
+        })
+        .from(bottleRuns)
+        .where(
+          and(
+            inArray(bottleRuns.batchId, destinationBatchIds),
+            isNull(bottleRuns.voidedAt)
+          )
+        ) : [];
+
+      // Child batch keg fills
+      const allChildKegFills = destinationBatchIds.length > 0 ? await db
+        .select({
+          batchId: kegFills.batchId,
+          volumeTaken: kegFills.volumeTaken,
+          loss: kegFills.loss,
+          kegNumber: kegs.kegNumber,
+        })
+        .from(kegFills)
+        .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+        .where(
+          and(
+            inArray(kegFills.batchId, destinationBatchIds),
+            isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt)
+          )
+        ) : [];
+
+      // Child batch volume adjustments
+      const allChildAdjustments = destinationBatchIds.length > 0 ? await db
+        .select({
+          batchId: batchVolumeAdjustments.batchId,
+          adjustmentType: batchVolumeAdjustments.adjustmentType,
+          adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+          reason: batchVolumeAdjustments.reason,
+        })
+        .from(batchVolumeAdjustments)
+        .where(
+          and(
+            inArray(batchVolumeAdjustments.batchId, destinationBatchIds),
+            isNull(batchVolumeAdjustments.deletedAt)
+          )
+        ) : [];
+
+      // Child batch rackings
+      const allChildRackings = destinationBatchIds.length > 0 ? await db
+        .select({
+          batchId: batchRackingOperations.batchId,
+          volumeLoss: batchRackingOperations.volumeLoss,
+          notes: batchRackingOperations.notes,
+        })
+        .from(batchRackingOperations)
+        .where(
+          and(
+            inArray(batchRackingOperations.batchId, destinationBatchIds),
+            isNull(batchRackingOperations.deletedAt)
+          )
+        ) : [];
+
+      // Child batch filter operations
+      const allChildFilterings = destinationBatchIds.length > 0 ? await db
+        .select({
+          batchId: batchFilterOperations.batchId,
+          volumeLoss: batchFilterOperations.volumeLoss,
+          filterType: batchFilterOperations.filterType,
+        })
+        .from(batchFilterOperations)
+        .where(
+          and(
+            inArray(batchFilterOperations.batchId, destinationBatchIds),
+            isNull(batchFilterOperations.deletedAt)
+          )
+        ) : [];
+
+      // Child batch transfers out
+      const allChildTransfersOut = destinationBatchIds.length > 0 ? await db
+        .select({
+          sourceBatchId: batchTransfers.sourceBatchId,
+          volumeTransferred: batchTransfers.volumeTransferred,
+          destinationBatchId: batchTransfers.destinationBatchId,
+          destinationName: destBatch.customName,
+        })
+        .from(batchTransfers)
+        .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
+        .where(
+          and(
+            inArray(batchTransfers.sourceBatchId, destinationBatchIds),
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+            isNull(batchTransfers.deletedAt)
+          )
+        ) : [];
+
+      // ============ BUILD LOOKUP MAPS ============
+      // Group child data by batchId for O(1) lookups
+      const childBottlingsMap = new Map<string, typeof allChildBottlings>();
+      for (const b of allChildBottlings) {
+        if (!childBottlingsMap.has(b.batchId)) childBottlingsMap.set(b.batchId, []);
+        childBottlingsMap.get(b.batchId)!.push(b);
+      }
+
+      const childKegFillsMap = new Map<string, typeof allChildKegFills>();
+      for (const k of allChildKegFills) {
+        if (!childKegFillsMap.has(k.batchId)) childKegFillsMap.set(k.batchId, []);
+        childKegFillsMap.get(k.batchId)!.push(k);
+      }
+
+      const childAdjustmentsMap = new Map<string, typeof allChildAdjustments>();
+      for (const a of allChildAdjustments) {
+        if (!childAdjustmentsMap.has(a.batchId)) childAdjustmentsMap.set(a.batchId, []);
+        childAdjustmentsMap.get(a.batchId)!.push(a);
+      }
+
+      const childRackingsMap = new Map<string, typeof allChildRackings>();
+      for (const r of allChildRackings) {
+        if (!childRackingsMap.has(r.batchId)) childRackingsMap.set(r.batchId, []);
+        childRackingsMap.get(r.batchId)!.push(r);
+      }
+
+      const childFilteringsMap = new Map<string, typeof allChildFilterings>();
+      for (const f of allChildFilterings) {
+        if (!childFilteringsMap.has(f.batchId)) childFilteringsMap.set(f.batchId, []);
+        childFilteringsMap.get(f.batchId)!.push(f);
+      }
+
+      const childTransfersOutMap = new Map<string, typeof allChildTransfersOut>();
+      for (const t of allChildTransfersOut) {
+        if (!childTransfersOutMap.has(t.sourceBatchId)) childTransfersOutMap.set(t.sourceBatchId, []);
+        childTransfersOutMap.get(t.sourceBatchId)!.push(t);
+      }
+
+      // ============ PROCESS BATCHES ============
       const batchResults: BatchWithTrace[] = [];
       let grandTotalInitial = 0;
       let grandTotalCurrent = 0;
@@ -6537,49 +6832,13 @@ export const batchRouter = router({
         const entries: VolumeEntry[] = [];
 
         // 1. Transfers out
-        const transfersOut = await db
-          .select({
-            id: batchTransfers.id,
-            date: batchTransfers.transferredAt,
-            volumeOut: batchTransfers.volumeTransferred,
-            loss: batchTransfers.loss,
-            destinationId: batchTransfers.destinationBatchId,
-            destinationName: destBatch.customName,
-            destinationBatchNumber: destBatch.batchNumber,
-          })
-          .from(batchTransfers)
-          .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
-          .where(
-            and(
-              eq(batchTransfers.sourceBatchId, batchId),
-              sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
-              // Exclude deleted transfers
-              isNull(batchTransfers.deletedAt)
-            )
-          );
-
-        for (const t of transfersOut) {
+        const batchTransfersOut = allTransfersOut.filter((t) => t.sourceBatchId === batchId);
+        for (const t of batchTransfersOut) {
           const childOutcomes: ChildOutcomeReport[] = [];
 
           if (t.destinationId) {
-            // Query child batch outcomes: bottlings, keg fills, losses
-
             // Child batch bottlings
-            const childBottlings = await db
-              .select({
-                unitsProduced: bottleRuns.unitsProduced,
-                packageSizeML: bottleRuns.packageSizeML,
-                volumeTaken: bottleRuns.volumeTakenLiters,
-                loss: bottleRuns.loss,
-              })
-              .from(bottleRuns)
-              .where(
-                and(
-                  eq(bottleRuns.batchId, t.destinationId),
-                  isNull(bottleRuns.voidedAt)
-                )
-              );
-
+            const childBottlings = childBottlingsMap.get(t.destinationId) || [];
             for (const b of childBottlings) {
               const units = b.unitsProduced || 0;
               const size = b.packageSizeML || 0;
@@ -6600,23 +6859,8 @@ export const batchRouter = router({
             }
 
             // Child batch keg fills
-            const childKegFills = await db
-              .select({
-                volumeTaken: kegFills.volumeTaken,
-                loss: kegFills.loss,
-                kegNumber: kegs.kegNumber,
-              })
-              .from(kegFills)
-              .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
-              .where(
-                and(
-                  eq(kegFills.batchId, t.destinationId),
-                  isNull(kegFills.voidedAt),
-                  isNull(kegFills.deletedAt)
-                )
-              );
-
-            for (const k of childKegFills) {
+            const childKegFillsData = childKegFillsMap.get(t.destinationId) || [];
+            for (const k of childKegFillsData) {
               childOutcomes.push({
                 type: "kegging",
                 description: `Kegged: ${k.kegNumber || "keg"}`,
@@ -6632,22 +6876,9 @@ export const batchRouter = router({
               }
             }
 
-            // Child batch volume adjustments (sediment, evaporation, etc.)
-            const childAdjustments = await db
-              .select({
-                adjustmentType: batchVolumeAdjustments.adjustmentType,
-                adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
-                reason: batchVolumeAdjustments.reason,
-              })
-              .from(batchVolumeAdjustments)
-              .where(
-                and(
-                  eq(batchVolumeAdjustments.batchId, t.destinationId),
-                  isNull(batchVolumeAdjustments.deletedAt)
-                )
-              );
-
-            for (const adj of childAdjustments) {
+            // Child batch adjustments
+            const childAdj = childAdjustmentsMap.get(t.destinationId) || [];
+            for (const adj of childAdj) {
               const amount = parseFloat(adj.adjustmentAmount || "0");
               if (amount < 0) {
                 const typeLabel = (adj.adjustmentType || "other")
@@ -6662,20 +6893,8 @@ export const batchRouter = router({
             }
 
             // Child batch racking losses
-            const childRackings = await db
-              .select({
-                volumeLoss: batchRackingOperations.volumeLoss,
-                notes: batchRackingOperations.notes,
-              })
-              .from(batchRackingOperations)
-              .where(
-                and(
-                  eq(batchRackingOperations.batchId, t.destinationId),
-                  isNull(batchRackingOperations.deletedAt)
-                )
-              );
-
-            for (const r of childRackings) {
+            const childRack = childRackingsMap.get(t.destinationId) || [];
+            for (const r of childRack) {
               const loss = parseFloat(r.volumeLoss || "0");
               if (loss > 0 && !r.notes?.includes("Historical Record")) {
                 childOutcomes.push({
@@ -6687,20 +6906,8 @@ export const batchRouter = router({
             }
 
             // Child batch filter losses
-            const childFilterings = await db
-              .select({
-                volumeLoss: batchFilterOperations.volumeLoss,
-                filterType: batchFilterOperations.filterType,
-              })
-              .from(batchFilterOperations)
-              .where(
-                and(
-                  eq(batchFilterOperations.batchId, t.destinationId),
-                  isNull(batchFilterOperations.deletedAt)
-                )
-              );
-
-            for (const f of childFilterings) {
+            const childFilt = childFilteringsMap.get(t.destinationId) || [];
+            for (const f of childFilt) {
               const loss = parseFloat(f.volumeLoss || "0");
               if (loss > 0) {
                 childOutcomes.push({
@@ -6711,24 +6918,9 @@ export const batchRouter = router({
               }
             }
 
-            // Child batch further transfers out
-            const childTransfersOut = await db
-              .select({
-                volumeTransferred: batchTransfers.volumeTransferred,
-                destinationBatchId: batchTransfers.destinationBatchId,
-                destinationName: destBatch.customName,
-              })
-              .from(batchTransfers)
-              .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
-              .where(
-                and(
-                  eq(batchTransfers.sourceBatchId, t.destinationId),
-                  sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
-                  isNull(batchTransfers.deletedAt)
-                )
-              );
-
-            for (const ct of childTransfersOut) {
+            // Child batch transfers out
+            const childTrans = childTransfersOutMap.get(t.destinationId) || [];
+            for (const ct of childTrans) {
               childOutcomes.push({
                 type: "transfer",
                 description: `→ ${ct.destinationName || "child batch"}`,
@@ -6751,40 +6943,9 @@ export const batchRouter = router({
           });
         }
 
-        // 1b. Transfers in (from other batches, e.g., blending)
-        const transfersInRaw = await db
-          .select({
-            id: batchTransfers.id,
-            date: batchTransfers.transferredAt,
-            volumeIn: batchTransfers.volumeTransferred,
-            sourceId: batchTransfers.sourceBatchId,
-          })
-          .from(batchTransfers)
-          .where(
-            and(
-              eq(batchTransfers.destinationBatchId, batchId),
-              sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
-              isNull(batchTransfers.deletedAt)
-            )
-          );
-
-        // Look up source batch names
-        const transfersIn = await Promise.all(
-          transfersInRaw.map(async (t) => {
-            const sourceBatchInfo = await db
-              .select({ customName: batches.customName, batchNumber: batches.batchNumber })
-              .from(batches)
-              .where(eq(batches.id, t.sourceId))
-              .limit(1);
-            return {
-              ...t,
-              sourceName: sourceBatchInfo[0]?.customName || null,
-              sourceBatchNumber: sourceBatchInfo[0]?.batchNumber || null,
-            };
-          })
-        );
-
-        for (const t of transfersIn) {
+        // 1b. Transfers in
+        const batchTransfersIn = allTransfersIn.filter((t) => t.destinationBatchId === batchId);
+        for (const t of batchTransfersIn) {
           entries.push({
             id: t.id,
             date: t.date,
@@ -6798,30 +6959,12 @@ export const batchRouter = router({
           });
         }
 
-        // 2. Racking operations (losses)
-        const rackings = await db
-          .select({
-            id: batchRackingOperations.id,
-            date: batchRackingOperations.rackedAt,
-            loss: batchRackingOperations.volumeLoss,
-            sourceVesselName: sourceVessel.name,
-            destVesselName: destVessel.name,
-            notes: batchRackingOperations.notes,
-          })
-          .from(batchRackingOperations)
-          .leftJoin(sourceVessel, eq(batchRackingOperations.sourceVesselId, sourceVessel.id))
-          .leftJoin(destVessel, eq(batchRackingOperations.destinationVesselId, destVessel.id))
-          .where(
-            and(
-              eq(batchRackingOperations.batchId, batchId),
-              isNull(batchRackingOperations.deletedAt)
-            )
-          );
-
-        for (const r of rackings) {
+        // 2. Racking operations
+        const batchRackings = allRackings.filter((r) => r.batchId === batchId);
+        for (const r of batchRackings) {
           const lossValue = parseFloat(r.loss || "0");
           if (r.notes?.includes("Historical Record")) continue;
-          if (lossValue <= 0) continue; // Only show rackings with actual loss
+          if (lossValue <= 0) continue;
 
           entries.push({
             id: r.id,
@@ -6837,22 +6980,8 @@ export const batchRouter = router({
         }
 
         // 3. Filter operations
-        const filterings = await db
-          .select({
-            id: batchFilterOperations.id,
-            date: batchFilterOperations.filteredAt,
-            loss: batchFilterOperations.volumeLoss,
-            filterType: batchFilterOperations.filterType,
-          })
-          .from(batchFilterOperations)
-          .where(
-            and(
-              eq(batchFilterOperations.batchId, batchId),
-              isNull(batchFilterOperations.deletedAt)
-            )
-          );
-
-        for (const f of filterings) {
+        const batchFilterings = allFilterings.filter((f) => f.batchId === batchId);
+        for (const f of batchFilterings) {
           const lossValue = parseFloat(f.loss || "0");
           if (lossValue <= 0) continue;
 
@@ -6870,35 +6999,14 @@ export const batchRouter = router({
         }
 
         // 4. Bottle runs
-        const bottlings = await db
-          .select({
-            id: bottleRuns.id,
-            date: bottleRuns.packagedAt,
-            volumeOut: bottleRuns.volumeTakenLiters,
-            loss: bottleRuns.loss,
-            unitsProduced: bottleRuns.unitsProduced,
-            packageSizeML: bottleRuns.packageSizeML,
-          })
-          .from(bottleRuns)
-          .where(
-            and(
-              eq(bottleRuns.batchId, batchId),
-              isNull(bottleRuns.voidedAt)
-            )
-          );
-
-        // Data entry is inconsistent: some batches have loss included in volume_taken,
-        // others have it separate. Detect which by comparing volume_taken to product + loss.
-        for (const b of bottlings) {
+        const batchBottlings = allBottlings.filter((b) => b.batchId === batchId);
+        for (const b of batchBottlings) {
           const units = b.unitsProduced || 0;
           const size = b.packageSizeML || 0;
           const productVolume = (units * size) / 1000;
           const volumeTaken = parseFloat(b.volumeOut || "0");
           const lossValue = parseFloat(b.loss || "0");
-
-          // If volume_taken ≈ product + loss (within 2L tolerance), loss is already included
-          const lossIncludedInVolumeTaken =
-            Math.abs(volumeTaken - (productVolume + lossValue)) < 2;
+          const lossIncludedInVolumeTaken = Math.abs(volumeTaken - (productVolume + lossValue)) < 2;
           const effectiveLoss = lossIncludedInVolumeTaken ? 0 : lossValue;
 
           entries.push({
@@ -6915,25 +7023,8 @@ export const batchRouter = router({
         }
 
         // 5. Keg fills
-        const kegFillsList = await db
-          .select({
-            id: kegFills.id,
-            date: kegFills.filledAt,
-            volumeOut: kegFills.volumeTaken,
-            loss: kegFills.loss,
-            kegNumber: kegs.kegNumber,
-          })
-          .from(kegFills)
-          .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
-          .where(
-            and(
-              eq(kegFills.batchId, batchId),
-              isNull(kegFills.voidedAt),
-              isNull(kegFills.deletedAt)
-            )
-          );
-
-        for (const k of kegFillsList) {
+        const batchKegFills = allKegFills.filter((k) => k.batchId === batchId);
+        for (const k of batchKegFills) {
           entries.push({
             id: k.id,
             date: k.date,
@@ -6948,15 +7039,8 @@ export const batchRouter = router({
         }
 
         // 6. Distillation
-        const distillations = await db.execute(sql`
-          SELECT id, sent_at as date, source_volume_liters as volume_out, distillery_name
-          FROM distillation_records
-          WHERE source_batch_id = ${batchId} AND deleted_at IS NULL
-        `);
-
-        type DistillationRow = { id: string; date: Date; volume_out: string; distillery_name: string };
-        const distillationRows = (distillations as unknown as { rows: DistillationRow[] }).rows || [];
-        for (const d of distillationRows) {
+        const batchDistillations = allDistillations.filter((d) => d.source_batch_id === batchId);
+        for (const d of batchDistillations) {
           entries.push({
             id: d.id,
             date: d.date,
@@ -6990,7 +7074,6 @@ export const batchRouter = router({
           }
         }
 
-        // accountedVolume = initial + inflow - outflow - loss
         const accountedVolume = initialVolume + totalInflow - totalOutflow - totalLoss;
         const discrepancy = currentVolume - accountedVolume;
 
@@ -7032,7 +7115,6 @@ export const batchRouter = router({
           totalTransferred: grandTotalOutflow - grandTotalPackaged,
           totalPackaged: grandTotalPackaged,
           totalLosses: grandTotalLoss,
-          // accountedVolume = initial + inflow - outflow - loss
           totalDiscrepancy: grandTotalCurrent - (grandTotalInitial + grandTotalInflow - grandTotalOutflow - grandTotalLoss),
         },
         batches: batchResults,

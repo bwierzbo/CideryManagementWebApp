@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Card,
   CardContent,
@@ -33,6 +33,8 @@ import {
   Scale,
   CornerDownRight,
   Droplets,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { formatDateTime } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
@@ -75,6 +77,158 @@ const typeLabels = {
   distillation: "Distillation",
   adjustment: "Adjustment",
 };
+
+// Collapsible row component for transfers with child outcomes
+function ExpandableTransferRow({
+  entry,
+  Icon,
+  colorClass,
+  label,
+  childOutcomes,
+  hasChildren,
+  childTotalLoss,
+  childTotalPackaged,
+}: {
+  entry: {
+    id: string;
+    date: Date | string;
+    type: string;
+    description: string;
+    volumeOut: number;
+    volumeIn?: number;
+    loss: number;
+    destinationId: string | null;
+    destinationName: string | null;
+  };
+  Icon: React.ElementType;
+  colorClass: string;
+  label: string;
+  childOutcomes: { type: string; description: string; volume: number }[];
+  hasChildren: boolean;
+  childTotalLoss: number;
+  childTotalPackaged: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <React.Fragment>
+      <TableRow className={hasChildren ? "cursor-pointer hover:bg-muted/50" : ""} onClick={() => hasChildren && setExpanded(!expanded)}>
+        <TableCell className="text-sm text-muted-foreground">
+          {formatDateTime(entry.date)}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1">
+            {hasChildren && (
+              expanded ? (
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3 w-3 text-muted-foreground" />
+              )
+            )}
+            <Badge
+              variant="outline"
+              className={cn("flex items-center gap-1 w-fit", colorClass)}
+            >
+              <Icon className="h-3 w-3" />
+              {label}
+            </Badge>
+          </div>
+        </TableCell>
+        <TableCell className="font-medium">
+          {entry.description}
+          {hasChildren && !expanded && (
+            <span className="text-xs text-muted-foreground ml-2">
+              ({childOutcomes.length} outcomes)
+            </span>
+          )}
+        </TableCell>
+        <TableCell className="text-right font-mono">
+          {(entry.volumeIn ?? 0) > 0 ? (
+            <span className="text-green-600">
+              +{(entry.volumeIn ?? 0).toFixed(1)} L
+            </span>
+          ) : entry.volumeOut > 0 ? (
+            <span className="text-blue-600">
+              -{entry.volumeOut.toFixed(1)} L
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right font-mono">
+          {/* Show transfer loss + child losses summary when collapsed */}
+          {hasChildren && !expanded ? (
+            <span className="text-amber-600">
+              -{(entry.loss + childTotalLoss).toFixed(1)} L
+            </span>
+          ) : entry.loss > 0 ? (
+            <span className="text-amber-600">
+              -{entry.loss.toFixed(1)} L
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell>
+          {entry.destinationId ? (
+            <Link
+              href={`/batch/${entry.destinationId}`}
+              className="text-blue-600 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {entry.destinationName}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+      </TableRow>
+      {/* Expanded child outcome rows */}
+      {expanded && childOutcomes.map((child, idx) => {
+        const isLoss = child.type === "loss";
+        const isPackaging = child.type === "bottling" || child.type === "kegging";
+        const isTransfer = child.type === "transfer";
+
+        return (
+          <TableRow
+            key={`${entry.id}-child-${idx}`}
+            className="bg-muted/30 text-sm"
+          >
+            <TableCell />
+            <TableCell>
+              <div className="flex items-center gap-1 text-muted-foreground pl-4">
+                <CornerDownRight className="h-3 w-3" />
+                {isLoss && <Droplets className="h-3 w-3 text-amber-600" />}
+                {isPackaging && <Package className="h-3 w-3 text-emerald-600" />}
+                {isTransfer && <ArrowRight className="h-3 w-3 text-indigo-600" />}
+              </div>
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {child.description}
+            </TableCell>
+            <TableCell className="text-right font-mono">
+              {isPackaging ? (
+                <span className="text-emerald-600">{child.volume.toFixed(1)} L</span>
+              ) : isTransfer ? (
+                <span className="text-indigo-600">{child.volume.toFixed(1)} L</span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </TableCell>
+            <TableCell className="text-right font-mono">
+              {isLoss ? (
+                <span className="text-amber-600">-{child.volume.toFixed(1)} L</span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </TableCell>
+            <TableCell />
+          </TableRow>
+        );
+      })}
+    </React.Fragment>
+  );
+}
 
 export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
   const {
@@ -243,104 +397,28 @@ export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
                   const colorClass = typeColors[entry.type] || "bg-gray-500/10 text-gray-700";
                   const label = typeLabels[entry.type] || entry.type;
                   const childOutcomes = entry.childOutcomes || [];
+                  const hasChildren = childOutcomes.length > 0;
+
+                  // Calculate child summary
+                  const childTotalLoss = childOutcomes
+                    .filter((c) => c.type === "loss")
+                    .reduce((sum, c) => sum + c.volume, 0);
+                  const childTotalPackaged = childOutcomes
+                    .filter((c) => c.type === "bottling" || c.type === "kegging")
+                    .reduce((sum, c) => sum + c.volume, 0);
 
                   return (
-                    <React.Fragment key={`${entry.type}-${entry.id}`}>
-                      <TableRow>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {formatDateTime(entry.date)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={cn("flex items-center gap-1 w-fit", colorClass)}
-                          >
-                            <Icon className="h-3 w-3" />
-                            {label}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {entry.description}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {(entry.volumeIn ?? 0) > 0 ? (
-                            <span className="text-green-600">
-                              +{(entry.volumeIn ?? 0).toFixed(1)} L
-                            </span>
-                          ) : entry.volumeOut > 0 ? (
-                            <span className="text-blue-600">
-                              -{entry.volumeOut.toFixed(1)} L
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-mono">
-                          {entry.loss > 0 ? (
-                            <span className="text-amber-600">
-                              -{entry.loss.toFixed(1)} L
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {entry.destinationId ? (
-                            <Link
-                              href={`/batch/${entry.destinationId}`}
-                              className="text-blue-600 hover:underline"
-                            >
-                              {entry.destinationName}
-                            </Link>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      {/* Child batch outcome roll-up rows */}
-                      {childOutcomes.map((child, idx) => {
-                        const isLoss = child.type === "loss";
-                        const isPackaging = child.type === "bottling" || child.type === "kegging";
-                        const isTransfer = child.type === "transfer";
-
-                        return (
-                          <TableRow
-                            key={`${entry.id}-child-${idx}`}
-                            className="bg-muted/30 text-sm"
-                          >
-                            <TableCell />
-                            <TableCell>
-                              <div className="flex items-center gap-1 text-muted-foreground pl-2">
-                                <CornerDownRight className="h-3 w-3" />
-                                {isLoss && <Droplets className="h-3 w-3 text-amber-600" />}
-                                {isPackaging && <Package className="h-3 w-3 text-emerald-600" />}
-                                {isTransfer && <ArrowRight className="h-3 w-3 text-indigo-600" />}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
-                              {child.description}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {isPackaging ? (
-                                <span className="text-emerald-600">{child.volume.toFixed(1)} L</span>
-                              ) : isTransfer ? (
-                                <span className="text-indigo-600">{child.volume.toFixed(1)} L</span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {isLoss ? (
-                                <span className="text-amber-600">-{child.volume.toFixed(1)} L</span>
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              )}
-                            </TableCell>
-                            <TableCell />
-                          </TableRow>
-                        );
-                      })}
-                    </React.Fragment>
+                    <ExpandableTransferRow
+                      key={`${entry.type}-${entry.id}`}
+                      entry={entry}
+                      Icon={Icon}
+                      colorClass={colorClass}
+                      label={label}
+                      childOutcomes={childOutcomes}
+                      hasChildren={hasChildren}
+                      childTotalLoss={childTotalLoss}
+                      childTotalPackaged={childTotalPackaged}
+                    />
                   );
                 })}
                 {/* Summary row */}

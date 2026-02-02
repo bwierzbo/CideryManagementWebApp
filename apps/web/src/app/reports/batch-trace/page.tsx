@@ -48,6 +48,10 @@ import { trpc } from "@/utils/trpc";
 import { formatDate, formatDateTime } from "@/utils/date-format";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
+import { downloadBatchTraceReportPDF } from "@/utils/pdf/batchTraceReport";
+import { downloadBatchTraceReportExcel } from "@/utils/excel/batchTraceReport";
+import { downloadBatchTraceReportCSV } from "@/utils/csv/batchTraceReport";
 
 const typeIcons: Record<string, React.ElementType> = {
   transfer: ArrowRight,
@@ -78,6 +82,156 @@ const typeLabels: Record<string, string> = {
   kegging: "Kegging",
   distillation: "Distillation",
 };
+
+// Collapsible row component for transfers with child outcomes
+function ExpandableEntryRow({
+  entry,
+  idx,
+}: {
+  entry: {
+    id: string;
+    date: Date | string;
+    type: string;
+    description: string;
+    volumeOut: number;
+    volumeIn: number;
+    loss: number;
+    destinationId: string | null;
+    destinationName: string | null;
+    childOutcomes?: { type: string; description: string; volume: number }[];
+  };
+  idx: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const Icon = typeIcons[entry.type] || ArrowRight;
+  const colorClass = typeColors[entry.type] || "bg-gray-500/10 text-gray-700";
+  const label = typeLabels[entry.type] || entry.type;
+  const childOutcomes = entry.childOutcomes || [];
+  const hasChildren = childOutcomes.length > 0;
+
+  // Calculate child summary
+  const childTotalLoss = childOutcomes
+    .filter((c) => c.type === "loss")
+    .reduce((sum, c) => sum + c.volume, 0);
+
+  return (
+    <React.Fragment>
+      <TableRow
+        className={hasChildren ? "cursor-pointer hover:bg-muted/50" : ""}
+        onClick={() => hasChildren && setExpanded(!expanded)}
+      >
+        <TableCell className="text-sm text-muted-foreground">
+          {formatDate(entry.date)}
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1">
+            {hasChildren && (
+              expanded ? (
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3 w-3 text-muted-foreground" />
+              )
+            )}
+            <Badge
+              variant="outline"
+              className={cn("flex items-center gap-1 w-fit text-xs", colorClass)}
+            >
+              <Icon className="h-3 w-3" />
+              {label}
+            </Badge>
+          </div>
+        </TableCell>
+        <TableCell>
+          {entry.destinationId ? (
+            <Link
+              href={`/batch/${entry.destinationId}`}
+              className="text-blue-600 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {entry.description}
+            </Link>
+          ) : (
+            entry.description
+          )}
+          {hasChildren && !expanded && (
+            <span className="text-xs text-muted-foreground ml-2">
+              ({childOutcomes.length} outcomes)
+            </span>
+          )}
+        </TableCell>
+        <TableCell className="text-right font-mono">
+          {(entry.volumeIn ?? 0) > 0 ? (
+            <span className="text-green-600">
+              +{(entry.volumeIn ?? 0).toFixed(1)} L
+            </span>
+          ) : entry.volumeOut > 0 ? (
+            <span className="text-blue-600">
+              -{entry.volumeOut.toFixed(1)} L
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+        <TableCell className="text-right font-mono">
+          {/* Show transfer loss + child losses summary when collapsed */}
+          {hasChildren && !expanded ? (
+            <span className="text-amber-600">
+              -{(entry.loss + childTotalLoss).toFixed(1)} L
+            </span>
+          ) : entry.loss > 0 ? (
+            <span className="text-amber-600">
+              -{entry.loss.toFixed(1)} L
+            </span>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
+      </TableRow>
+      {/* Expanded child outcome rows */}
+      {expanded && childOutcomes.map((child, childIdx) => {
+        const isLoss = child.type === "loss";
+        const isPackaging = child.type === "bottling" || child.type === "kegging";
+        const isTransfer = child.type === "transfer";
+
+        return (
+          <TableRow
+            key={`${entry.id}-child-${childIdx}`}
+            className="bg-muted/30 text-sm"
+          >
+            <TableCell />
+            <TableCell>
+              <div className="flex items-center gap-1 text-muted-foreground pl-4">
+                <CornerDownRight className="h-3 w-3" />
+                {isLoss && <Droplets className="h-3 w-3 text-amber-600" />}
+                {isPackaging && <Package className="h-3 w-3 text-emerald-600" />}
+                {isTransfer && <ArrowRight className="h-3 w-3 text-indigo-600" />}
+              </div>
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {child.description}
+            </TableCell>
+            <TableCell className="text-right font-mono">
+              {isPackaging ? (
+                <span className="text-emerald-600">{child.volume.toFixed(1)} L</span>
+              ) : isTransfer ? (
+                <span className="text-indigo-600">{child.volume.toFixed(1)} L</span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </TableCell>
+            <TableCell className="text-right font-mono">
+              {isLoss ? (
+                <span className="text-amber-600">-{child.volume.toFixed(1)} L</span>
+              ) : (
+                <span className="text-muted-foreground">—</span>
+              )}
+            </TableCell>
+          </TableRow>
+        );
+      })}
+    </React.Fragment>
+  );
+}
 
 export default function BatchTraceReportPage() {
   const [asOfDate, setAsOfDate] = useState("2025-01-01");
@@ -169,6 +323,20 @@ export default function BatchTraceReportPage() {
                   </>
                 )}
               </Button>
+              {data && (
+                <ReportExportDropdown
+                  disabled={isLoading}
+                  onExportPDF={async () => {
+                    await downloadBatchTraceReportPDF(data);
+                  }}
+                  onExportExcel={async () => {
+                    await downloadBatchTraceReportExcel(data);
+                  }}
+                  onExportCSV={async () => {
+                    downloadBatchTraceReportCSV(data);
+                  }}
+                />
+              )}
             </div>
           </CardContent>
         </Card>
@@ -267,7 +435,7 @@ export default function BatchTraceReportPage() {
                               ) : (
                                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
                               )}
-                              <div>
+                              <div className="flex-1">
                                 <CardTitle className="text-base flex items-center gap-2 flex-wrap">
                                   <Link
                                     href={`/batch/${batch.id}`}
@@ -284,23 +452,43 @@ export default function BatchTraceReportPage() {
                                   <Badge variant="outline" className="ml-2">
                                     {batch.status}
                                   </Badge>
-                                  {hasDiscrepancy && (
-                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-                                      <AlertCircle className="h-3 w-3 mr-1" />
-                                      Discrepancy
-                                    </Badge>
-                                  )}
                                 </CardTitle>
-                                <CardDescription className="mt-1">
-                                  <span className="font-mono text-xs mr-2">{batch.name}</span> |
-                                  Initial: {batch.initialVolume.toFixed(1)} L →
-                                  Current: {batch.currentVolume.toFixed(1)} L |
-                                  Transferred: {batch.summary.totalOutflow.toFixed(1)} L |
-                                  Losses: {batch.summary.totalLoss.toFixed(1)} L
-                                </CardDescription>
+                                <p className="text-xs text-muted-foreground font-mono mt-0.5">{batch.name}</p>
+                                {/* Summary stats row - mirrors top-level summary */}
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Initial:</span>{" "}
+                                    <span className="font-medium">{batch.initialVolume.toFixed(1)} L</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Transferred:</span>{" "}
+                                    <span className="font-medium text-indigo-600">{batch.summary.totalOutflow.toFixed(1)} L</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Packaged:</span>{" "}
+                                    <span className="font-medium text-emerald-600">{batch.summary.totalPackaged.toFixed(1)} L</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Losses:</span>{" "}
+                                    <span className="font-medium text-amber-600">{batch.summary.totalLoss.toFixed(1)} L</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Current:</span>{" "}
+                                    <span className="font-medium">{batch.currentVolume.toFixed(1)} L</span>
+                                  </div>
+                                  {hasDiscrepancy && (
+                                    <div className="flex items-center gap-1">
+                                      <AlertCircle className="h-3 w-3 text-amber-500" />
+                                      <span className="text-amber-600 font-medium">
+                                        Discrepancy: {batch.summary.discrepancy > 0 ? "+" : ""}
+                                        {batch.summary.discrepancy.toFixed(1)} L
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right flex-shrink-0">
                               {batch.entries.length > 0 ? (
                                 <span className="text-sm text-muted-foreground">
                                   {batch.entries.length} event{batch.entries.length !== 1 ? "s" : ""}
@@ -330,107 +518,13 @@ export default function BatchTraceReportPage() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {batch.entries.map((entry, idx) => {
-                                  const Icon = typeIcons[entry.type] || ArrowRight;
-                                  const colorClass = typeColors[entry.type] || "bg-gray-500/10 text-gray-700";
-                                  const label = typeLabels[entry.type] || entry.type;
-                                  const childOutcomes = entry.childOutcomes || [];
-
-                                  return (
-                                    <React.Fragment key={`${entry.type}-${entry.id}-${idx}`}>
-                                      <TableRow>
-                                        <TableCell className="text-sm text-muted-foreground">
-                                          {formatDate(entry.date)}
-                                        </TableCell>
-                                        <TableCell>
-                                          <Badge
-                                            variant="outline"
-                                            className={cn("flex items-center gap-1 w-fit text-xs", colorClass)}
-                                          >
-                                            <Icon className="h-3 w-3" />
-                                            {label}
-                                          </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                          {entry.destinationId ? (
-                                            <Link
-                                              href={`/batch/${entry.destinationId}`}
-                                              className="text-blue-600 hover:underline"
-                                            >
-                                              {entry.description}
-                                            </Link>
-                                          ) : (
-                                            entry.description
-                                          )}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono">
-                                          {(entry.volumeIn ?? 0) > 0 ? (
-                                            <span className="text-green-600">
-                                              +{(entry.volumeIn ?? 0).toFixed(1)} L
-                                            </span>
-                                          ) : entry.volumeOut > 0 ? (
-                                            <span className="text-blue-600">
-                                              -{entry.volumeOut.toFixed(1)} L
-                                            </span>
-                                          ) : (
-                                            <span className="text-muted-foreground">—</span>
-                                          )}
-                                        </TableCell>
-                                        <TableCell className="text-right font-mono">
-                                          {entry.loss > 0 ? (
-                                            <span className="text-amber-600">
-                                              -{entry.loss.toFixed(1)} L
-                                            </span>
-                                          ) : (
-                                            <span className="text-muted-foreground">—</span>
-                                          )}
-                                        </TableCell>
-                                      </TableRow>
-                                      {/* Child batch outcome roll-up rows */}
-                                      {childOutcomes.map((child, childIdx) => {
-                                        const isLoss = child.type === "loss";
-                                        const isPackaging = child.type === "bottling" || child.type === "kegging";
-                                        const isTransfer = child.type === "transfer";
-
-                                        return (
-                                          <TableRow
-                                            key={`${entry.id}-child-${childIdx}`}
-                                            className="bg-muted/30 text-sm"
-                                          >
-                                            <TableCell />
-                                            <TableCell>
-                                              <div className="flex items-center gap-1 text-muted-foreground pl-2">
-                                                <CornerDownRight className="h-3 w-3" />
-                                                {isLoss && <Droplets className="h-3 w-3 text-amber-600" />}
-                                                {isPackaging && <Package className="h-3 w-3 text-emerald-600" />}
-                                                {isTransfer && <ArrowRight className="h-3 w-3 text-indigo-600" />}
-                                              </div>
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground">
-                                              {child.description}
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">
-                                              {isPackaging ? (
-                                                <span className="text-emerald-600">{child.volume.toFixed(1)} L</span>
-                                              ) : isTransfer ? (
-                                                <span className="text-indigo-600">{child.volume.toFixed(1)} L</span>
-                                              ) : (
-                                                <span className="text-muted-foreground">—</span>
-                                              )}
-                                            </TableCell>
-                                            <TableCell className="text-right font-mono">
-                                              {isLoss ? (
-                                                <span className="text-amber-600">-{child.volume.toFixed(1)} L</span>
-                                              ) : (
-                                                <span className="text-muted-foreground">—</span>
-                                              )}
-                                            </TableCell>
-                                          </TableRow>
-                                        );
-                                      })}
-                                    </React.Fragment>
-                                  );
-                                })}
+                                {batch.entries.map((entry, idx) => (
+                                  <ExpandableEntryRow
+                                    key={`${entry.type}-${entry.id}-${idx}`}
+                                    entry={entry}
+                                    idx={idx}
+                                  />
+                                ))}
                                 {/* Summary row */}
                                 <TableRow className="bg-muted/50 font-medium">
                                   <TableCell colSpan={3} className="text-right">
