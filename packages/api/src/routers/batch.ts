@@ -6034,6 +6034,12 @@ export const batchRouter = router({
         .orderBy(asc(batchVolumeAdjustments.adjustmentDate));
 
       // Build unified entries list
+      type ChildOutcome = {
+        type: "bottling" | "kegging" | "loss" | "transfer";
+        description: string;
+        volume: number;
+      };
+
       type VolumeEntry = {
         id: string;
         date: Date;
@@ -6044,12 +6050,193 @@ export const batchRouter = router({
         loss: number;
         destinationId: string | null;
         destinationName: string | null;
+        childOutcomes?: ChildOutcome[];  // For transfers: shows what happened to the liquid in child batch
       };
 
       const entries: VolumeEntry[] = [];
 
-      // Add transfers out
+      // Add transfers out with child batch outcome roll-up
       for (const t of transfersOut) {
+        const childOutcomes: ChildOutcome[] = [];
+
+        if (t.destinationId) {
+          // Query child batch outcomes: bottlings, keg fills, losses, and further transfers
+
+          // Child batch bottlings
+          const childBottlings = await db
+            .select({
+              unitsProduced: bottleRuns.unitsProduced,
+              packageSizeML: bottleRuns.packageSizeML,
+              volumeTaken: bottleRuns.volumeTakenLiters,
+              loss: bottleRuns.loss,
+            })
+            .from(bottleRuns)
+            .where(
+              and(
+                eq(bottleRuns.batchId, t.destinationId),
+                isNull(bottleRuns.voidedAt)
+              )
+            );
+
+          for (const b of childBottlings) {
+            const units = b.unitsProduced || 0;
+            const size = b.packageSizeML || 0;
+            const productVolume = (units * size) / 1000;
+            childOutcomes.push({
+              type: "bottling",
+              description: `Bottled: ${units} × ${size}ml`,
+              volume: productVolume,
+            });
+            // Add bottling loss if any
+            const bLoss = parseFloat(b.loss || "0");
+            if (bLoss > 0) {
+              childOutcomes.push({
+                type: "loss",
+                description: "Bottling loss",
+                volume: bLoss,
+              });
+            }
+          }
+
+          // Child batch keg fills
+          const childKegFills = await db
+            .select({
+              volumeTaken: kegFills.volumeTaken,
+              loss: kegFills.loss,
+              kegNumber: kegs.kegNumber,
+            })
+            .from(kegFills)
+            .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+            .where(
+              and(
+                eq(kegFills.batchId, t.destinationId),
+                isNull(kegFills.voidedAt),
+                isNull(kegFills.deletedAt)
+              )
+            );
+
+          for (const k of childKegFills) {
+            childOutcomes.push({
+              type: "kegging",
+              description: `Kegged: ${k.kegNumber || "keg"}`,
+              volume: parseFloat(k.volumeTaken || "0"),
+            });
+            const kLoss = parseFloat(k.loss || "0");
+            if (kLoss > 0) {
+              childOutcomes.push({
+                type: "loss",
+                description: "Kegging loss",
+                volume: kLoss,
+              });
+            }
+          }
+
+          // Child batch volume adjustments (sediment, evaporation, etc.)
+          const childAdjustments = await db
+            .select({
+              adjustmentType: batchVolumeAdjustments.adjustmentType,
+              adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+              reason: batchVolumeAdjustments.reason,
+            })
+            .from(batchVolumeAdjustments)
+            .where(
+              and(
+                eq(batchVolumeAdjustments.batchId, t.destinationId),
+                isNull(batchVolumeAdjustments.deletedAt)
+              )
+            );
+
+          for (const adj of childAdjustments) {
+            const amount = parseFloat(adj.adjustmentAmount || "0");
+            if (amount < 0) {
+              // Negative = loss
+              const typeLabel = (adj.adjustmentType || "other")
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase());
+              childOutcomes.push({
+                type: "loss",
+                description: adj.reason || `${typeLabel} loss`,
+                volume: Math.abs(amount),
+              });
+            }
+          }
+
+          // Child batch racking losses
+          const childRackings = await db
+            .select({
+              volumeLoss: batchRackingOperations.volumeLoss,
+              notes: batchRackingOperations.notes,
+            })
+            .from(batchRackingOperations)
+            .where(
+              and(
+                eq(batchRackingOperations.batchId, t.destinationId),
+                isNull(batchRackingOperations.deletedAt)
+              )
+            );
+
+          for (const r of childRackings) {
+            const loss = parseFloat(r.volumeLoss || "0");
+            if (loss > 0 && !r.notes?.includes("Historical Record")) {
+              childOutcomes.push({
+                type: "loss",
+                description: "Racking loss",
+                volume: loss,
+              });
+            }
+          }
+
+          // Child batch filter losses
+          const childFilterings = await db
+            .select({
+              volumeLoss: batchFilterOperations.volumeLoss,
+              filterType: batchFilterOperations.filterType,
+            })
+            .from(batchFilterOperations)
+            .where(
+              and(
+                eq(batchFilterOperations.batchId, t.destinationId),
+                isNull(batchFilterOperations.deletedAt)
+              )
+            );
+
+          for (const f of childFilterings) {
+            const loss = parseFloat(f.volumeLoss || "0");
+            if (loss > 0) {
+              childOutcomes.push({
+                type: "loss",
+                description: `${f.filterType || "Filtering"} loss`,
+                volume: loss,
+              });
+            }
+          }
+
+          // Child batch further transfers out
+          const childTransfersOut = await db
+            .select({
+              volumeTransferred: batchTransfers.volumeTransferred,
+              destinationBatchId: batchTransfers.destinationBatchId,
+              destinationName: destBatch.customName,
+            })
+            .from(batchTransfers)
+            .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
+            .where(
+              and(
+                eq(batchTransfers.sourceBatchId, t.destinationId),
+                sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+                isNull(batchTransfers.deletedAt)
+              )
+            );
+
+          for (const ct of childTransfersOut) {
+            childOutcomes.push({
+              type: "transfer",
+              description: `→ ${ct.destinationName || "child batch"}`,
+              volume: parseFloat(ct.volumeTransferred || "0"),
+            });
+          }
+        }
+
         entries.push({
           id: t.id,
           date: t.date,
@@ -6060,6 +6247,7 @@ export const batchRouter = router({
           loss: parseFloat(t.loss || "0"),
           destinationId: t.destinationId,
           destinationName: t.destinationName || t.destinationBatchNumber || null,
+          childOutcomes: childOutcomes.length > 0 ? childOutcomes : undefined,
         });
       }
 
@@ -6297,6 +6485,12 @@ export const batchRouter = router({
       const sourceVessel = aliasedTable(vessels, "sourceVessel");
       const destVessel = aliasedTable(vessels, "destVessel");
 
+      type ChildOutcomeReport = {
+        type: "bottling" | "kegging" | "loss" | "transfer";
+        description: string;
+        volume: number;
+      };
+
       type VolumeEntry = {
         id: string;
         date: Date;
@@ -6307,6 +6501,7 @@ export const batchRouter = router({
         loss: number;
         destinationId: string | null;
         destinationName: string | null;
+        childOutcomes?: ChildOutcomeReport[];
       };
 
       type BatchWithTrace = {
@@ -6364,6 +6559,184 @@ export const batchRouter = router({
           );
 
         for (const t of transfersOut) {
+          const childOutcomes: ChildOutcomeReport[] = [];
+
+          if (t.destinationId) {
+            // Query child batch outcomes: bottlings, keg fills, losses
+
+            // Child batch bottlings
+            const childBottlings = await db
+              .select({
+                unitsProduced: bottleRuns.unitsProduced,
+                packageSizeML: bottleRuns.packageSizeML,
+                volumeTaken: bottleRuns.volumeTakenLiters,
+                loss: bottleRuns.loss,
+              })
+              .from(bottleRuns)
+              .where(
+                and(
+                  eq(bottleRuns.batchId, t.destinationId),
+                  isNull(bottleRuns.voidedAt)
+                )
+              );
+
+            for (const b of childBottlings) {
+              const units = b.unitsProduced || 0;
+              const size = b.packageSizeML || 0;
+              const productVolume = (units * size) / 1000;
+              childOutcomes.push({
+                type: "bottling",
+                description: `Bottled: ${units} × ${size}ml`,
+                volume: productVolume,
+              });
+              const bLoss = parseFloat(b.loss || "0");
+              if (bLoss > 0) {
+                childOutcomes.push({
+                  type: "loss",
+                  description: "Bottling loss",
+                  volume: bLoss,
+                });
+              }
+            }
+
+            // Child batch keg fills
+            const childKegFills = await db
+              .select({
+                volumeTaken: kegFills.volumeTaken,
+                loss: kegFills.loss,
+                kegNumber: kegs.kegNumber,
+              })
+              .from(kegFills)
+              .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+              .where(
+                and(
+                  eq(kegFills.batchId, t.destinationId),
+                  isNull(kegFills.voidedAt),
+                  isNull(kegFills.deletedAt)
+                )
+              );
+
+            for (const k of childKegFills) {
+              childOutcomes.push({
+                type: "kegging",
+                description: `Kegged: ${k.kegNumber || "keg"}`,
+                volume: parseFloat(k.volumeTaken || "0"),
+              });
+              const kLoss = parseFloat(k.loss || "0");
+              if (kLoss > 0) {
+                childOutcomes.push({
+                  type: "loss",
+                  description: "Kegging loss",
+                  volume: kLoss,
+                });
+              }
+            }
+
+            // Child batch volume adjustments (sediment, evaporation, etc.)
+            const childAdjustments = await db
+              .select({
+                adjustmentType: batchVolumeAdjustments.adjustmentType,
+                adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+                reason: batchVolumeAdjustments.reason,
+              })
+              .from(batchVolumeAdjustments)
+              .where(
+                and(
+                  eq(batchVolumeAdjustments.batchId, t.destinationId),
+                  isNull(batchVolumeAdjustments.deletedAt)
+                )
+              );
+
+            for (const adj of childAdjustments) {
+              const amount = parseFloat(adj.adjustmentAmount || "0");
+              if (amount < 0) {
+                const typeLabel = (adj.adjustmentType || "other")
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (c) => c.toUpperCase());
+                childOutcomes.push({
+                  type: "loss",
+                  description: adj.reason || `${typeLabel} loss`,
+                  volume: Math.abs(amount),
+                });
+              }
+            }
+
+            // Child batch racking losses
+            const childRackings = await db
+              .select({
+                volumeLoss: batchRackingOperations.volumeLoss,
+                notes: batchRackingOperations.notes,
+              })
+              .from(batchRackingOperations)
+              .where(
+                and(
+                  eq(batchRackingOperations.batchId, t.destinationId),
+                  isNull(batchRackingOperations.deletedAt)
+                )
+              );
+
+            for (const r of childRackings) {
+              const loss = parseFloat(r.volumeLoss || "0");
+              if (loss > 0 && !r.notes?.includes("Historical Record")) {
+                childOutcomes.push({
+                  type: "loss",
+                  description: "Racking loss",
+                  volume: loss,
+                });
+              }
+            }
+
+            // Child batch filter losses
+            const childFilterings = await db
+              .select({
+                volumeLoss: batchFilterOperations.volumeLoss,
+                filterType: batchFilterOperations.filterType,
+              })
+              .from(batchFilterOperations)
+              .where(
+                and(
+                  eq(batchFilterOperations.batchId, t.destinationId),
+                  isNull(batchFilterOperations.deletedAt)
+                )
+              );
+
+            for (const f of childFilterings) {
+              const loss = parseFloat(f.volumeLoss || "0");
+              if (loss > 0) {
+                childOutcomes.push({
+                  type: "loss",
+                  description: `${f.filterType || "Filtering"} loss`,
+                  volume: loss,
+                });
+              }
+            }
+
+            // Child batch further transfers out
+            const childTransfersOut = await db
+              .select({
+                volumeTransferred: batchTransfers.volumeTransferred,
+                destinationBatchId: batchTransfers.destinationBatchId,
+                destinationName: destBatch.customName,
+              })
+              .from(batchTransfers)
+              .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
+              .where(
+                and(
+                  eq(batchTransfers.sourceBatchId, t.destinationId),
+                  sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+                  isNull(batchTransfers.deletedAt)
+                )
+              );
+
+            for (const ct of childTransfersOut) {
+              childOutcomes.push({
+                type: "transfer",
+                description: `→ ${ct.destinationName || "child batch"}`,
+                volume: parseFloat(ct.volumeTransferred || "0"),
+              });
+            }
+          }
+
           entries.push({
             id: t.id,
             date: t.date,
@@ -6374,6 +6747,7 @@ export const batchRouter = router({
             loss: parseFloat(t.loss || "0"),
             destinationId: t.destinationId,
             destinationName: t.destinationName || t.destinationBatchNumber || null,
+            childOutcomes: childOutcomes.length > 0 ? childOutcomes : undefined,
           });
         }
 

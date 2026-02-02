@@ -31,6 +31,8 @@ import {
   CheckCircle2,
   TrendingDown,
   Scale,
+  CornerDownRight,
+  Droplets,
 } from "lucide-react";
 import { formatDateTime } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
@@ -240,59 +242,105 @@ export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
                   const Icon = typeIcons[entry.type] || ArrowRight;
                   const colorClass = typeColors[entry.type] || "bg-gray-500/10 text-gray-700";
                   const label = typeLabels[entry.type] || entry.type;
+                  const childOutcomes = entry.childOutcomes || [];
 
                   return (
-                    <TableRow key={`${entry.type}-${entry.id}`}>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDateTime(entry.date)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn("flex items-center gap-1 w-fit", colorClass)}
-                        >
-                          <Icon className="h-3 w-3" />
-                          {label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {entry.description}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {(entry.volumeIn ?? 0) > 0 ? (
-                          <span className="text-green-600">
-                            +{(entry.volumeIn ?? 0).toFixed(1)} L
-                          </span>
-                        ) : entry.volumeOut > 0 ? (
-                          <span className="text-blue-600">
-                            -{entry.volumeOut.toFixed(1)} L
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {entry.loss > 0 ? (
-                          <span className="text-amber-600">
-                            -{entry.loss.toFixed(1)} L
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {entry.destinationId ? (
-                          <Link
-                            href={`/batch/${entry.destinationId}`}
-                            className="text-blue-600 hover:underline"
+                    <React.Fragment key={`${entry.type}-${entry.id}`}>
+                      <TableRow>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {formatDateTime(entry.date)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={cn("flex items-center gap-1 w-fit", colorClass)}
                           >
-                            {entry.destinationName}
-                          </Link>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
+                            <Icon className="h-3 w-3" />
+                            {label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {entry.description}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {(entry.volumeIn ?? 0) > 0 ? (
+                            <span className="text-green-600">
+                              +{(entry.volumeIn ?? 0).toFixed(1)} L
+                            </span>
+                          ) : entry.volumeOut > 0 ? (
+                            <span className="text-blue-600">
+                              -{entry.volumeOut.toFixed(1)} L
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {entry.loss > 0 ? (
+                            <span className="text-amber-600">
+                              -{entry.loss.toFixed(1)} L
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {entry.destinationId ? (
+                            <Link
+                              href={`/batch/${entry.destinationId}`}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {entry.destinationName}
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {/* Child batch outcome roll-up rows */}
+                      {childOutcomes.map((child, idx) => {
+                        const isLoss = child.type === "loss";
+                        const isPackaging = child.type === "bottling" || child.type === "kegging";
+                        const isTransfer = child.type === "transfer";
+
+                        return (
+                          <TableRow
+                            key={`${entry.id}-child-${idx}`}
+                            className="bg-muted/30 text-sm"
+                          >
+                            <TableCell />
+                            <TableCell>
+                              <div className="flex items-center gap-1 text-muted-foreground pl-2">
+                                <CornerDownRight className="h-3 w-3" />
+                                {isLoss && <Droplets className="h-3 w-3 text-amber-600" />}
+                                {isPackaging && <Package className="h-3 w-3 text-emerald-600" />}
+                                {isTransfer && <ArrowRight className="h-3 w-3 text-indigo-600" />}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {child.description}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {isPackaging ? (
+                                <span className="text-emerald-600">{child.volume.toFixed(1)} L</span>
+                              ) : isTransfer ? (
+                                <span className="text-indigo-600">{child.volume.toFixed(1)} L</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {isLoss ? (
+                                <span className="text-amber-600">-{child.volume.toFixed(1)} L</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell />
+                          </TableRow>
+                        );
+                      })}
+                    </React.Fragment>
                   );
                 })}
                 {/* Summary row */}
