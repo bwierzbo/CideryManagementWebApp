@@ -49,11 +49,15 @@ interface SalesByChannelTabProps {
     };
   };
   isLoading: boolean;
+  formatVol?: (liters: number) => string;
+  volumeUnit?: string;
 }
 
 export function SalesByChannelTab({
   channelData,
   isLoading,
+  formatVol,
+  volumeUnit = "L",
 }: SalesByChannelTabProps) {
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -154,7 +158,7 @@ export function SalesByChannelTab({
                   <th className="text-right py-3 px-4 font-medium">Revenue</th>
                   <th className="text-right py-3 px-4 font-medium">Units</th>
                   <th className="text-right py-3 px-4 font-medium">
-                    Volume (L)
+                    Volume ({volumeUnit})
                   </th>
                   <th className="text-right py-3 px-4 font-medium">Kegs</th>
                   <th className="text-right py-3 px-4 font-medium">% Share</th>
@@ -185,7 +189,7 @@ export function SalesByChannelTab({
                       {formatNumber(channel.units)}
                     </td>
                     <td className="text-right py-3 px-4">
-                      {formatNumber(Math.round(channel.volumeLiters))}
+                      {formatVol ? formatVol(channel.volumeLiters) : formatNumber(Math.round(channel.volumeLiters))}
                     </td>
                     <td className="text-right py-3 px-4">
                       {channel.kegCount > 0 ? formatNumber(channel.kegCount) : "-"}
@@ -220,7 +224,7 @@ export function SalesByChannelTab({
                     {formatNumber(channelData.totals.units)}
                   </td>
                   <td className="text-right py-3 px-4">
-                    {formatNumber(Math.round(channelData.totals.volumeLiters))}
+                    {formatVol ? formatVol(channelData.totals.volumeLiters) : formatNumber(Math.round(channelData.totals.volumeLiters))}
                   </td>
                   <td className="text-right py-3 px-4">
                     {channelData.totals.kegCount > 0

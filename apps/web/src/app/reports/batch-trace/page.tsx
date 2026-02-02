@@ -52,6 +52,8 @@ import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown"
 import { downloadBatchTraceReportPDF } from "@/utils/pdf/batchTraceReport";
 import { downloadBatchTraceReportExcel } from "@/utils/excel/batchTraceReport";
 import { downloadBatchTraceReportCSV } from "@/utils/csv/batchTraceReport";
+import { useVolumeUnit } from "@/hooks/use-volume-unit";
+import { VolumeUnitToggle } from "@/components/ui/volume-unit-toggle";
 
 const typeIcons: Record<string, React.ElementType> = {
   transfer: ArrowRight,
@@ -87,6 +89,7 @@ const typeLabels: Record<string, string> = {
 function ExpandableEntryRow({
   entry,
   idx,
+  formatVol,
 }: {
   entry: {
     id: string;
@@ -101,6 +104,7 @@ function ExpandableEntryRow({
     childOutcomes?: { type: string; description: string; volume: number }[];
   };
   idx: number;
+  formatVol: (liters: number) => string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = typeIcons[entry.type] || ArrowRight;
@@ -109,10 +113,11 @@ function ExpandableEntryRow({
   const childOutcomes = entry.childOutcomes || [];
   const hasChildren = childOutcomes.length > 0;
 
-  // Calculate child summary
+  // Calculate child loss summary for display
   const childTotalLoss = childOutcomes
     .filter((c) => c.type === "loss")
     .reduce((sum, c) => sum + c.volume, 0);
+  const combinedLoss = entry.loss + childTotalLoss;
 
   return (
     <React.Fragment>
@@ -162,25 +167,21 @@ function ExpandableEntryRow({
         <TableCell className="text-right font-mono">
           {(entry.volumeIn ?? 0) > 0 ? (
             <span className="text-green-600">
-              +{(entry.volumeIn ?? 0).toFixed(1)} L
+              +{formatVol(entry.volumeIn ?? 0)}
             </span>
           ) : entry.volumeOut > 0 ? (
             <span className="text-blue-600">
-              -{entry.volumeOut.toFixed(1)} L
+              -{formatVol(entry.volumeOut)}
             </span>
           ) : (
             <span className="text-muted-foreground">—</span>
           )}
         </TableCell>
         <TableCell className="text-right font-mono">
-          {/* Show transfer loss + child losses summary when collapsed */}
-          {hasChildren && !expanded ? (
+          {/* Show combined loss (direct transfer loss + child batch losses) */}
+          {combinedLoss > 0 ? (
             <span className="text-amber-600">
-              -{(entry.loss + childTotalLoss).toFixed(1)} L
-            </span>
-          ) : entry.loss > 0 ? (
-            <span className="text-amber-600">
-              -{entry.loss.toFixed(1)} L
+              -{formatVol(combinedLoss)}
             </span>
           ) : (
             <span className="text-muted-foreground">—</span>
@@ -212,16 +213,16 @@ function ExpandableEntryRow({
             </TableCell>
             <TableCell className="text-right font-mono">
               {isPackaging ? (
-                <span className="text-emerald-600">{child.volume.toFixed(1)} L</span>
+                <span className="text-emerald-600">{formatVol(child.volume)}</span>
               ) : isTransfer ? (
-                <span className="text-indigo-600">{child.volume.toFixed(1)} L</span>
+                <span className="text-indigo-600">{formatVol(child.volume)}</span>
               ) : (
                 <span className="text-muted-foreground">—</span>
               )}
             </TableCell>
             <TableCell className="text-right font-mono">
               {isLoss ? (
-                <span className="text-amber-600">-{child.volume.toFixed(1)} L</span>
+                <span className="text-amber-600">-{formatVol(child.volume)}</span>
               ) : (
                 <span className="text-muted-foreground">—</span>
               )}
@@ -236,6 +237,7 @@ function ExpandableEntryRow({
 export default function BatchTraceReportPage() {
   const [asOfDate, setAsOfDate] = useState("2025-01-01");
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
+  const { unit, toggleUnit, format: formatVol } = useVolumeUnit();
 
   const {
     data,
@@ -337,6 +339,7 @@ export default function BatchTraceReportPage() {
                   }}
                 />
               )}
+              <VolumeUnitToggle unit={unit} onToggle={toggleUnit} />
             </div>
           </CardContent>
         </Card>
@@ -367,14 +370,14 @@ export default function BatchTraceReportPage() {
               <Card>
                 <CardContent className="pt-4">
                   <p className="text-sm text-muted-foreground">Initial Volume</p>
-                  <p className="text-2xl font-bold">{data.summary.totalInitialVolume.toFixed(1)} L</p>
+                  <p className="text-2xl font-bold">{formatVol(data.summary.totalInitialVolume)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4">
                   <p className="text-sm text-muted-foreground">Transferred</p>
                   <p className="text-2xl font-bold text-indigo-600">
-                    {data.summary.totalTransferred.toFixed(1)} L
+                    {formatVol(data.summary.totalTransferred)}
                   </p>
                 </CardContent>
               </Card>
@@ -382,7 +385,7 @@ export default function BatchTraceReportPage() {
                 <CardContent className="pt-4">
                   <p className="text-sm text-muted-foreground">Packaged</p>
                   <p className="text-2xl font-bold text-emerald-600">
-                    {data.summary.totalPackaged.toFixed(1)} L
+                    {formatVol(data.summary.totalPackaged)}
                   </p>
                 </CardContent>
               </Card>
@@ -390,14 +393,14 @@ export default function BatchTraceReportPage() {
                 <CardContent className="pt-4">
                   <p className="text-sm text-muted-foreground">Losses</p>
                   <p className="text-2xl font-bold text-amber-600">
-                    {data.summary.totalLosses.toFixed(1)} L
+                    {formatVol(data.summary.totalLosses)}
                   </p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-4">
                   <p className="text-sm text-muted-foreground">Current Volume</p>
-                  <p className="text-2xl font-bold">{data.summary.totalCurrentVolume.toFixed(1)} L</p>
+                  <p className="text-2xl font-bold">{formatVol(data.summary.totalCurrentVolume)}</p>
                 </CardContent>
               </Card>
             </div>
@@ -421,7 +424,7 @@ export default function BatchTraceReportPage() {
             <div className="space-y-3">
               {data.batches.map((batch) => {
                 const isExpanded = expandedBatches.has(batch.id);
-                const hasDiscrepancy = Math.abs(batch.summary.discrepancy) > 0.5;
+                const hasDiscrepancy = Math.abs(batch.summary?.discrepancy ?? 0) > 0.5;
 
                 return (
                   <Card key={batch.id} className={cn(hasDiscrepancy && "border-amber-300")}>
@@ -458,30 +461,30 @@ export default function BatchTraceReportPage() {
                                 <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm">
                                   <div>
                                     <span className="text-muted-foreground">Initial:</span>{" "}
-                                    <span className="font-medium">{batch.initialVolume.toFixed(1)} L</span>
+                                    <span className="font-medium">{formatVol(batch.initialVolume)}</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Transferred:</span>{" "}
-                                    <span className="font-medium text-indigo-600">{batch.summary.totalOutflow.toFixed(1)} L</span>
+                                    <span className="font-medium text-indigo-600">{formatVol(batch.summary?.totalOutflow ?? 0)}</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Packaged:</span>{" "}
-                                    <span className="font-medium text-emerald-600">{batch.summary.totalPackaged.toFixed(1)} L</span>
+                                    <span className="font-medium text-emerald-600">{formatVol(batch.summary?.totalPackaged ?? 0)}</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Losses:</span>{" "}
-                                    <span className="font-medium text-amber-600">{batch.summary.totalLoss.toFixed(1)} L</span>
+                                    <span className="font-medium text-amber-600">{formatVol(batch.summary?.totalLoss ?? 0)}</span>
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Current:</span>{" "}
-                                    <span className="font-medium">{batch.currentVolume.toFixed(1)} L</span>
+                                    <span className="font-medium">{formatVol(batch.currentVolume ?? 0)}</span>
                                   </div>
                                   {hasDiscrepancy && (
                                     <div className="flex items-center gap-1">
                                       <AlertCircle className="h-3 w-3 text-amber-500" />
                                       <span className="text-amber-600 font-medium">
-                                        Discrepancy: {batch.summary.discrepancy > 0 ? "+" : ""}
-                                        {batch.summary.discrepancy.toFixed(1)} L
+                                        Discrepancy: {(batch.summary?.discrepancy ?? 0) > 0 ? "+" : ""}
+                                        {formatVol(batch.summary?.discrepancy ?? 0)}
                                       </span>
                                     </div>
                                   )}
@@ -523,6 +526,7 @@ export default function BatchTraceReportPage() {
                                     key={`${entry.type}-${entry.id}-${idx}`}
                                     entry={entry}
                                     idx={idx}
+                                    formatVol={formatVol}
                                   />
                                 ))}
                                 {/* Summary row */}
@@ -531,20 +535,20 @@ export default function BatchTraceReportPage() {
                                     Batch Totals:
                                   </TableCell>
                                   <TableCell className="text-right font-mono">
-                                    {(batch.summary.totalInflow ?? 0) > 0 && (
-                                      <span className="text-green-600">+{(batch.summary.totalInflow ?? 0).toFixed(1)} L / </span>
+                                    {(batch.summary?.totalInflow ?? 0) > 0 && (
+                                      <span className="text-green-600">+{formatVol(batch.summary?.totalInflow ?? 0)} / </span>
                                     )}
-                                    <span className="text-blue-600">-{batch.summary.totalOutflow.toFixed(1)} L</span>
+                                    <span className="text-blue-600">-{formatVol(batch.summary?.totalOutflow ?? 0)}</span>
                                   </TableCell>
                                   <TableCell className="text-right font-mono text-amber-600">
-                                    -{batch.summary.totalLoss.toFixed(1)} L
+                                    -{formatVol(batch.summary?.totalLoss ?? 0)}
                                   </TableCell>
                                 </TableRow>
                               </TableBody>
                             </Table>
                           )}
 
-                          {/* Batch accounting summary */}
+                          {/* Batch trace accounting summary */}
                           <div className="mt-4 p-3 bg-muted/30 rounded-md text-sm">
                             <div className="flex items-center gap-2">
                               {hasDiscrepancy ? (
@@ -553,22 +557,30 @@ export default function BatchTraceReportPage() {
                                 <CheckCircle2 className="h-4 w-4 text-green-500" />
                               )}
                               <span>
-                                Initial ({batch.initialVolume.toFixed(1)} L)
-                                {(batch.summary.totalInflow ?? 0) > 0 && (
-                                  <> + Inflow ({(batch.summary.totalInflow ?? 0).toFixed(1)} L)</>
+                                <span className="font-medium">Trace:</span>{" "}
+                                Initial ({formatVol(batch.initialVolume ?? 0)})
+                                {(batch.summary?.totalInflow ?? 0) > 0 && (
+                                  <> + Inflow ({formatVol(batch.summary?.totalInflow ?? 0)})</>
                                 )}
-                                {" "}- Outflow ({batch.summary.totalOutflow.toFixed(1)} L) -
-                                Losses ({batch.summary.totalLoss.toFixed(1)} L) =
-                                Expected ({batch.summary.accountedVolume.toFixed(1)} L)
+                                {" "}={" "}
+                                <span className="text-emerald-600">Packaged ({formatVol(batch.summary?.totalPackaged ?? 0)})</span>
+                                {" "}+{" "}
+                                <span className="text-amber-600">Losses ({formatVol(batch.summary?.totalLoss ?? 0)})</span>
+                                {" "}+{" "}
+                                <span className="text-blue-600">Remaining ({formatVol(batch.summary?.totalRemaining ?? batch.currentVolume ?? 0)})</span>
                                 {hasDiscrepancy && (
                                   <span className="text-amber-600 ml-2">
-                                    | Actual: {batch.currentVolume.toFixed(1)} L
-                                    (Discrepancy: {batch.summary.discrepancy > 0 ? "+" : ""}
-                                    {batch.summary.discrepancy.toFixed(1)} L)
+                                    | Unaccounted: {(batch.summary?.discrepancy ?? 0) > 0 ? "+" : ""}
+                                    {formatVol(batch.summary?.discrepancy ?? 0)}
                                   </span>
                                 )}
                               </span>
                             </div>
+                            {(batch.summary?.childrenRemaining ?? 0) > 0 && (
+                              <div className="text-xs text-muted-foreground mt-1 ml-6">
+                                (Remaining includes {formatVol(batch.summary?.childrenRemaining ?? 0)} still in child batches)
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </CollapsibleContent>

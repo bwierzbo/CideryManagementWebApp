@@ -25,6 +25,8 @@ export interface BatchTraceReportPDFData {
     totalTransferred: number;
     totalPackaged: number;
     totalLosses: number;
+    totalChildrenRemaining?: number;
+    totalRemaining?: number;
     totalDiscrepancy: number;
   };
   batches: Array<{
@@ -53,7 +55,8 @@ export interface BatchTraceReportPDFData {
       totalOutflow: number;
       totalLoss: number;
       totalPackaged: number;
-      accountedVolume: number;
+      childrenRemaining?: number;
+      totalRemaining?: number;
       discrepancy: number;
     };
   }>;

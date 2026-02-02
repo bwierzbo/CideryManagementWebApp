@@ -38,6 +38,8 @@ import { SalesByChannelTab } from "@/components/reports/sales/SalesByChannelTab"
 import { ProductsTab } from "@/components/reports/sales/ProductsTab";
 import { MarginsTab } from "@/components/reports/sales/MarginsTab";
 import { TransactionsTab } from "@/components/reports/sales/TransactionsTab";
+import { useVolumeUnit } from "@/hooks/use-volume-unit";
+import { VolumeUnitToggle } from "@/components/ui/volume-unit-toggle";
 
 // Default date range: current month
 const defaultStartDate = startOfMonth(new Date());
@@ -49,6 +51,7 @@ export default function SalesReportPage() {
   const [dateLabel, setDateLabel] = useState("This Month");
   const [activeTab, setActiveTab] = useState("overview");
   const [isExporting, setIsExporting] = useState(false);
+  const { unit, toggleUnit, format: formatVol, convert: convertVol } = useVolumeUnit();
 
   // Handle date range changes from picker
   const handleDateRangeChange = (start: Date, end: Date, label: string) => {
@@ -228,7 +231,8 @@ export default function SalesReportPage() {
               </p>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              <VolumeUnitToggle unit={unit} onToggle={toggleUnit} />
               <Button
                 variant="outline"
                 onClick={() => refetchSummary()}
@@ -391,10 +395,7 @@ export default function SalesReportPage() {
                   ) : (
                     <>
                       <p className="text-2xl font-bold">
-                        {formatNumber(
-                          Math.round(summaryData?.totalVolumeLiters || 0)
-                        )}{" "}
-                        L
+                        {formatVol(summaryData?.totalVolumeLiters || 0)}
                       </p>
                       <p
                         className={`text-xs flex items-center mt-1 ${
@@ -460,6 +461,8 @@ export default function SalesReportPage() {
             <SalesByChannelTab
               channelData={channelData}
               isLoading={isLoadingChannels}
+              formatVol={formatVol}
+              volumeUnit={unit}
             />
           </TabsContent>
 
