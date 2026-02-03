@@ -6785,6 +6785,74 @@ export const batchRouter = router({
           )
         ) : [];
 
+      // ============ GRANDCHILD DATA (from child transfers) ============
+      const grandchildBatchIds = [...new Set(
+        allChildTransfersOut
+          .filter((t) => t.destinationBatchId)
+          .map((t) => t.destinationBatchId as string)
+      )];
+
+      // Grandchild bottlings
+      const allGrandchildBottlings = grandchildBatchIds.length > 0 ? await db
+        .select({
+          batchId: bottleRuns.batchId,
+          unitsProduced: bottleRuns.unitsProduced,
+          packageSizeML: bottleRuns.packageSizeML,
+          loss: bottleRuns.loss,
+        })
+        .from(bottleRuns)
+        .where(
+          and(
+            inArray(bottleRuns.batchId, grandchildBatchIds),
+            isNull(bottleRuns.voidedAt)
+          )
+        ) : [];
+
+      // Grandchild keg fills
+      const allGrandchildKegFills = grandchildBatchIds.length > 0 ? await db
+        .select({
+          batchId: kegFills.batchId,
+          volumeTaken: kegFills.volumeTaken,
+          loss: kegFills.loss,
+        })
+        .from(kegFills)
+        .where(
+          and(
+            inArray(kegFills.batchId, grandchildBatchIds),
+            isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt)
+          )
+        ) : [];
+
+      // Grandchild volume adjustments (losses)
+      const allGrandchildAdjustments = grandchildBatchIds.length > 0 ? await db
+        .select({
+          batchId: batchVolumeAdjustments.batchId,
+          adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+        })
+        .from(batchVolumeAdjustments)
+        .where(
+          and(
+            inArray(batchVolumeAdjustments.batchId, grandchildBatchIds),
+            isNull(batchVolumeAdjustments.deletedAt)
+          )
+        ) : [];
+
+      // Grandchild racking losses
+      const allGrandchildRackings = grandchildBatchIds.length > 0 ? await db
+        .select({
+          batchId: batchRackingOperations.batchId,
+          volumeLoss: batchRackingOperations.volumeLoss,
+          notes: batchRackingOperations.notes,
+        })
+        .from(batchRackingOperations)
+        .where(
+          and(
+            inArray(batchRackingOperations.batchId, grandchildBatchIds),
+            isNull(batchRackingOperations.deletedAt)
+          )
+        ) : [];
+
       // ============ BUILD LOOKUP MAPS ============
       // Group child data by batchId for O(1) lookups
       const childBottlingsMap = new Map<string, typeof allChildBottlings>();
@@ -6821,6 +6889,31 @@ export const batchRouter = router({
       for (const t of allChildTransfersOut) {
         if (!childTransfersOutMap.has(t.sourceBatchId)) childTransfersOutMap.set(t.sourceBatchId, []);
         childTransfersOutMap.get(t.sourceBatchId)!.push(t);
+      }
+
+      // Grandchild lookup maps
+      const grandchildBottlingsMap = new Map<string, typeof allGrandchildBottlings>();
+      for (const b of allGrandchildBottlings) {
+        if (!grandchildBottlingsMap.has(b.batchId)) grandchildBottlingsMap.set(b.batchId, []);
+        grandchildBottlingsMap.get(b.batchId)!.push(b);
+      }
+
+      const grandchildKegFillsMap = new Map<string, typeof allGrandchildKegFills>();
+      for (const k of allGrandchildKegFills) {
+        if (!grandchildKegFillsMap.has(k.batchId)) grandchildKegFillsMap.set(k.batchId, []);
+        grandchildKegFillsMap.get(k.batchId)!.push(k);
+      }
+
+      const grandchildAdjustmentsMap = new Map<string, typeof allGrandchildAdjustments>();
+      for (const a of allGrandchildAdjustments) {
+        if (!grandchildAdjustmentsMap.has(a.batchId)) grandchildAdjustmentsMap.set(a.batchId, []);
+        grandchildAdjustmentsMap.get(a.batchId)!.push(a);
+      }
+
+      const grandchildRackingsMap = new Map<string, typeof allGrandchildRackings>();
+      for (const r of allGrandchildRackings) {
+        if (!grandchildRackingsMap.has(r.batchId)) grandchildRackingsMap.set(r.batchId, []);
+        grandchildRackingsMap.get(r.batchId)!.push(r);
       }
 
       // ============ PROCESS BATCHES ============
@@ -6941,6 +7034,74 @@ export const batchRouter = router({
                   description: "Transfer loss (to grandchild)",
                   volume: ctLoss,
                 });
+              }
+
+              // Include grandchild outcomes (what happened to the transferred volume)
+              if (ct.destinationBatchId) {
+                // Grandchild bottlings
+                const gcBottlings = grandchildBottlingsMap.get(ct.destinationBatchId) || [];
+                for (const gb of gcBottlings) {
+                  const units = gb.unitsProduced || 0;
+                  const size = gb.packageSizeML || 0;
+                  const productVolume = (units * size) / 1000;
+                  childOutcomes.push({
+                    type: "bottling",
+                    description: `Grandchild bottled: ${units} × ${size}ml`,
+                    volume: productVolume,
+                  });
+                  const gbLoss = parseFloat(gb.loss || "0");
+                  if (gbLoss > 0) {
+                    childOutcomes.push({
+                      type: "loss",
+                      description: "Grandchild bottling loss",
+                      volume: gbLoss,
+                    });
+                  }
+                }
+
+                // Grandchild keg fills
+                const gcKegFills = grandchildKegFillsMap.get(ct.destinationBatchId) || [];
+                for (const gk of gcKegFills) {
+                  childOutcomes.push({
+                    type: "kegging",
+                    description: "Grandchild kegged",
+                    volume: parseFloat(gk.volumeTaken || "0"),
+                  });
+                  const gkLoss = parseFloat(gk.loss || "0");
+                  if (gkLoss > 0) {
+                    childOutcomes.push({
+                      type: "loss",
+                      description: "Grandchild kegging loss",
+                      volume: gkLoss,
+                    });
+                  }
+                }
+
+                // Grandchild adjustments (losses)
+                const gcAdj = grandchildAdjustmentsMap.get(ct.destinationBatchId) || [];
+                for (const ga of gcAdj) {
+                  const amount = parseFloat(ga.adjustmentAmount || "0");
+                  if (amount < 0) {
+                    childOutcomes.push({
+                      type: "loss",
+                      description: "Grandchild adjustment loss",
+                      volume: Math.abs(amount),
+                    });
+                  }
+                }
+
+                // Grandchild racking losses
+                const gcRack = grandchildRackingsMap.get(ct.destinationBatchId) || [];
+                for (const gr of gcRack) {
+                  const loss = parseFloat(gr.volumeLoss || "0");
+                  if (loss > 0 && !gr.notes?.includes("Historical Record")) {
+                    childOutcomes.push({
+                      type: "loss",
+                      description: "Grandchild racking loss",
+                      volume: loss,
+                    });
+                  }
+                }
               }
             }
           }
