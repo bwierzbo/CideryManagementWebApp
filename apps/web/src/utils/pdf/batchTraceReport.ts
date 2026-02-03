@@ -48,6 +48,7 @@ export interface BatchTraceReportPDFData {
         type: string;
         description: string;
         volume: number;
+        grandchildCurrentVolume?: number;
       }>;
     }>;
     summary: {

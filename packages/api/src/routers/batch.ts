@@ -6500,6 +6500,7 @@ export const batchRouter = router({
         type: "bottling" | "kegging" | "loss" | "transfer";
         description: string;
         volume: number;
+        grandchildCurrentVolume?: number; // For transfers to grandchildren
       };
 
       type VolumeEntry = {
@@ -6764,13 +6765,15 @@ export const batchRouter = router({
           )
         ) : [];
 
-      // Child batch transfers out
+      // Child batch transfers out (to grandchildren)
       const allChildTransfersOut = destinationBatchIds.length > 0 ? await db
         .select({
           sourceBatchId: batchTransfers.sourceBatchId,
           volumeTransferred: batchTransfers.volumeTransferred,
+          loss: batchTransfers.loss,
           destinationBatchId: batchTransfers.destinationBatchId,
           destinationName: destBatch.customName,
+          destinationCurrentVolume: destBatch.currentVolumeLiters,
         })
         .from(batchTransfers)
         .leftJoin(destBatch, eq(batchTransfers.destinationBatchId, destBatch.id))
@@ -6921,14 +6924,24 @@ export const batchRouter = router({
               }
             }
 
-            // Child batch transfers out
+            // Child batch transfers out (to grandchildren)
             const childTrans = childTransfersOutMap.get(t.destinationId) || [];
             for (const ct of childTrans) {
               childOutcomes.push({
                 type: "transfer",
-                description: `→ ${ct.destinationName || "child batch"}`,
+                description: `→ ${ct.destinationName || "grandchild batch"}`,
                 volume: parseFloat(ct.volumeTransferred || "0"),
+                grandchildCurrentVolume: parseFloat(ct.destinationCurrentVolume || "0"),
               });
+              // Include loss from child → grandchild transfer
+              const ctLoss = parseFloat(ct.loss || "0");
+              if (ctLoss > 0) {
+                childOutcomes.push({
+                  type: "loss",
+                  description: "Transfer loss (to grandchild)",
+                  volume: ctLoss,
+                });
+              }
             }
           }
 
@@ -7082,13 +7095,16 @@ export const batchRouter = router({
             totalPackaged += entry.volumeOut;
           }
 
-          // Include child outcome losses and packaging
+          // Include child outcome losses, packaging, and grandchild remaining volumes
           if (entry.childOutcomes) {
             for (const child of entry.childOutcomes) {
               if (child.type === "loss") {
                 totalLoss += child.volume;
               } else if (child.type === "bottling" || child.type === "kegging") {
                 totalPackaged += child.volume;
+              } else if (child.type === "transfer" && child.grandchildCurrentVolume !== undefined) {
+                // Track grandchild remaining volume
+                childrenRemaining += child.grandchildCurrentVolume;
               }
             }
           }
