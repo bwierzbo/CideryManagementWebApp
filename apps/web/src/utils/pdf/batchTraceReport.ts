@@ -24,10 +24,12 @@ export interface BatchTraceReportPDFData {
     totalInflow: number;
     totalTransferred: number;
     totalPackaged: number;
+    totalDistilled?: number;
     totalLosses: number;
     totalChildrenRemaining?: number;
     totalRemaining?: number;
     totalDiscrepancy: number;
+    totalUnaccounted?: number;
   };
   batches: Array<{
     id: string;
@@ -56,6 +58,7 @@ export interface BatchTraceReportPDFData {
       totalOutflow: number;
       totalLoss: number;
       totalPackaged: number;
+      totalDistilled?: number;
       childrenRemaining?: number;
       totalRemaining?: number;
       discrepancy: number;
@@ -94,6 +97,7 @@ function getTypeLabel(type: string): string {
     bottling: "Bottling",
     kegging: "Kegging",
     distillation: "Distillation",
+    adjustment: "Adjustment",
   };
   return labels[type] || type;
 }

@@ -32,6 +32,7 @@ import {
   ChevronRight,
   Loader2,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
@@ -63,6 +64,7 @@ const typeIcons: Record<string, React.ElementType> = {
   bottling: Package,
   kegging: Beer,
   distillation: Flame,
+  adjustment: AlertTriangle,
 };
 
 const typeColors: Record<string, string> = {
@@ -73,6 +75,7 @@ const typeColors: Record<string, string> = {
   bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
   kegging: "bg-orange-500/10 text-orange-700 border-orange-500/20",
   distillation: "bg-red-500/10 text-red-700 border-red-500/20",
+  adjustment: "bg-amber-500/10 text-amber-700 border-amber-500/20",
 };
 
 const typeLabels: Record<string, string> = {
@@ -83,6 +86,7 @@ const typeLabels: Record<string, string> = {
   bottling: "Bottling",
   kegging: "Kegging",
   distillation: "Distillation",
+  adjustment: "Adjustment",
 };
 
 // Collapsible row component for transfers with child outcomes
@@ -359,50 +363,78 @@ export default function BatchTraceReportPage() {
         {/* Report Content */}
         {data && (
           <>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Base Batches</p>
-                  <p className="text-2xl font-bold">{data.summary.totalBatches}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Initial Volume</p>
-                  <p className="text-2xl font-bold">{formatVol(data.summary.totalInitialVolume)}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Transferred</p>
-                  <p className="text-2xl font-bold text-indigo-600">
-                    {formatVol(data.summary.totalTransferred)}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Packaged</p>
-                  <p className="text-2xl font-bold text-emerald-600">
-                    {formatVol(data.summary.totalPackaged)}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Losses</p>
-                  <p className="text-2xl font-bold text-amber-600">
-                    {formatVol(data.summary.totalLosses)}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-4">
-                  <p className="text-sm text-muted-foreground">Current Volume</p>
-                  <p className="text-2xl font-bold">{formatVol(data.summary.totalCurrentVolume)}</p>
-                </CardContent>
-              </Card>
+            {/* Summary Cards - Volume Reconciliation */}
+            <div className="mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <p className="text-sm text-muted-foreground">Base Batches</p>
+                    <p className="text-2xl font-bold">{data.summary.totalBatches}</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-blue-200 bg-blue-50/50">
+                  <CardContent className="pt-4">
+                    <p className="text-sm text-muted-foreground">Initial Volume</p>
+                    <p className="text-2xl font-bold text-blue-700">{formatVol(data.summary.totalInitialVolume)}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <p className="text-sm text-muted-foreground">→ Packaged</p>
+                    <p className="text-2xl font-bold text-emerald-600">
+                      {formatVol(data.summary.totalPackaged)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <p className="text-sm text-muted-foreground">→ Distilled</p>
+                    <p className="text-2xl font-bold text-red-600">
+                      {formatVol(data.summary.totalDistilled ?? 0)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <p className="text-sm text-muted-foreground">→ Losses</p>
+                    <p className="text-2xl font-bold text-amber-600">
+                      {formatVol(data.summary.totalLosses)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <p className="text-sm text-muted-foreground">= Remaining</p>
+                    <p className="text-2xl font-bold">{formatVol(data.summary.totalCurrentVolume)}</p>
+                  </CardContent>
+                </Card>
+                <Card className={cn(
+                  Math.abs(data.summary.totalDiscrepancy ?? 0) > 0.5
+                    ? "border-amber-300 bg-amber-50/50"
+                    : "border-green-200 bg-green-50/50"
+                )}>
+                  <CardContent className="pt-4">
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      {Math.abs(data.summary.totalDiscrepancy ?? 0) > 0.5 ? (
+                        <AlertTriangle className="h-3 w-3 text-amber-500" />
+                      ) : (
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      )}
+                      Discrepancy
+                    </p>
+                    <p className={cn(
+                      "text-2xl font-bold",
+                      Math.abs(data.summary.totalDiscrepancy ?? 0) > 0.5 ? "text-amber-600" : "text-green-600"
+                    )}>
+                      {formatVol(data.summary.totalDiscrepancy ?? 0)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+              {/* Balance explanation */}
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Volume flow: Initial + Inflow → Packaged + Distilled + Losses + Remaining | Discrepancy = sum of per-batch volume gaps
+              </p>
             </div>
 
             {/* Batch List Controls */}

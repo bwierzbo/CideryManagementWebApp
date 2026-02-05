@@ -61,14 +61,14 @@ export async function generateBatchTraceReportExcel(data: BatchTraceReportPDFDat
     ["Metric", "Value"],
     ["Base Batches", data.summary.totalBatches],
     ["Initial Volume (L)", data.summary.totalInitialVolume],
-    ["Transferred (L)", data.summary.totalTransferred],
     ["Packaged (L)", data.summary.totalPackaged],
+    ["Distilled (L)", data.summary.totalDistilled ?? 0],
     ["Losses (L)", data.summary.totalLosses],
-    ["Current Volume (L)", data.summary.totalCurrentVolume],
+    ["Remaining (L)", data.summary.totalCurrentVolume],
   ];
 
-  if (Math.abs(data.summary.totalDiscrepancy) > 0.5) {
-    summaryData.push(["Total Discrepancy (L)", data.summary.totalDiscrepancy]);
+  if (Math.abs(data.summary.totalUnaccounted ?? 0) > 0.5) {
+    summaryData.push(["Unaccounted (L)", data.summary.totalUnaccounted ?? 0]);
   }
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);

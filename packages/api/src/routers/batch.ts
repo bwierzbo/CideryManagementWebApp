@@ -6493,8 +6493,12 @@ export const batchRouter = router({
             totalInflow: 0,
             totalTransferred: 0,
             totalPackaged: 0,
+            totalDistilled: 0,
             totalLosses: 0,
+            totalChildrenRemaining: 0,
+            totalRemaining: 0,
             totalDiscrepancy: 0,
+            totalUnaccounted: 0,
           },
           batches: [],
         };
@@ -6539,6 +6543,7 @@ export const batchRouter = router({
           totalOutflow: number;
           totalLoss: number;
           totalPackaged: number;
+          totalDistilled: number; // Volume sent to distillery
           childrenRemaining: number; // Volume still in child batches
           totalRemaining: number; // This batch + children
           discrepancy: number;
@@ -6950,6 +6955,7 @@ export const batchRouter = router({
       let grandTotalOutflow = 0;
       let grandTotalLoss = 0;
       let grandTotalPackaged = 0;
+      let grandTotalDistilled = 0;
       let grandTotalChildrenRemaining = 0;
 
       for (const batch of baseBatches) {
@@ -7294,6 +7300,7 @@ export const batchRouter = router({
         let totalInflow = 0;
         let totalLoss = 0; // Direct losses only (same as Volume Trace)
         let totalPackaged = 0; // Direct packaging only (for display)
+        let totalDistilled = 0; // Volume sent to distillery
         let childrenRemaining = 0; // For display context
 
         // Track unique child batches for display
@@ -7310,6 +7317,9 @@ export const batchRouter = router({
 
           if (entry.type === "bottling" || entry.type === "kegging") {
             totalPackaged += entry.volumeOut;
+          }
+          if (entry.type === "distillation") {
+            totalDistilled += entry.volumeOut;
           }
 
           // Track child outcomes for DISPLAY purposes only (not in discrepancy calculation)
@@ -7342,6 +7352,7 @@ export const batchRouter = router({
 
         // For display: show combined totals (direct + child)
         const displayPackaged = totalPackaged + childPackaged;
+        const displayDistilled = totalDistilled; // Distillation doesn't have child outcomes
         const displayLoss = totalLoss + childLoss;
         const totalRemaining = currentVolume + childrenRemaining;
 
@@ -7360,6 +7371,7 @@ export const batchRouter = router({
             totalOutflow,
             totalLoss: displayLoss, // Show combined (direct + child) for display
             totalPackaged: displayPackaged, // Show combined (direct + child) for display
+            totalDistilled: displayDistilled, // Volume sent to distillery
             childrenRemaining,
             totalRemaining,
             discrepancy, // Calculated using Volume Trace formula (direct only)
@@ -7373,6 +7385,7 @@ export const batchRouter = router({
         grandTotalOutflow += totalOutflow;
         grandTotalLoss += totalLoss; // Direct loss only
         grandTotalPackaged += totalPackaged; // Direct packaged only
+        grandTotalDistilled += totalDistilled; // Volume sent to distillery
         grandTotalChildrenRemaining += childrenRemaining;
       }
 
@@ -7383,6 +7396,12 @@ export const batchRouter = router({
       const grandTotalDiscrepancy = grandTotalCurrent - grandTotalAccountedVolume;
       const grandTotalRemaining = grandTotalCurrent + grandTotalChildrenRemaining;
 
+      // Balance check: Initial + Inflow = Packaged + Distilled + Losses + Current + Unaccounted
+      // Unaccounted = volume that left batches via transfers but didn't reach a final destination
+      // (e.g., transfers to non-verified batches, deleted batches, etc.)
+      const grandTotalAccounted = grandTotalPackaged + grandTotalDistilled + grandTotalLoss + grandTotalCurrent;
+      const grandTotalUnaccounted = grandTotalInitial + grandTotalInflow - grandTotalAccounted;
+
       return {
         asOfDate,
         summary: {
@@ -7390,12 +7409,14 @@ export const batchRouter = router({
           totalInitialVolume: grandTotalInitial,
           totalCurrentVolume: grandTotalCurrent,
           totalInflow: grandTotalInflow,
-          totalTransferred: grandTotalOutflow,
+          totalTransferred: grandTotalOutflow, // Keep for backward compatibility
           totalPackaged: grandTotalPackaged,
+          totalDistilled: grandTotalDistilled,
           totalLosses: grandTotalLoss,
           totalChildrenRemaining: grandTotalChildrenRemaining,
           totalRemaining: grandTotalRemaining,
           totalDiscrepancy: grandTotalDiscrepancy,
+          totalUnaccounted: grandTotalUnaccounted, // Balance check: volume not in final destination
         },
         batches: batchResults,
       };
