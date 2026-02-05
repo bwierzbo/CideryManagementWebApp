@@ -6470,7 +6470,15 @@ export const batchRouter = router({
             sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`,
             isNull(batches.deletedAt),
             sql`${batches.status} != 'discarded'`,
-            sql`CAST(${batches.initialVolumeLiters} AS NUMERIC) > 0`
+            // Include batches with initial volume > 0 OR that received transfers (transfer-destination batches)
+            sql`(
+              CAST(${batches.initialVolumeLiters} AS NUMERIC) > 0
+              OR EXISTS (
+                SELECT 1 FROM batch_transfers bt
+                WHERE bt.destination_batch_id = ${batches.id}
+                  AND bt.deleted_at IS NULL
+              )
+            )`
           )
         )
         .orderBy(asc(batches.customName), asc(batches.name));
@@ -6506,7 +6514,7 @@ export const batchRouter = router({
       type VolumeEntry = {
         id: string;
         date: Date;
-        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation";
+        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation" | "adjustment";
         description: string;
         volumeOut: number;
         volumeIn: number;
@@ -6675,6 +6683,24 @@ export const batchRouter = router({
         `);
         allDistillations = (distillationsResult as unknown as { rows: DistillationRow[] }).rows || [];
       }
+
+      // 8. All volume adjustments for base batches (sediment, evaporation, dumps, etc.)
+      const allAdjustments = await db
+        .select({
+          id: batchVolumeAdjustments.id,
+          batchId: batchVolumeAdjustments.batchId,
+          date: batchVolumeAdjustments.adjustmentDate,
+          adjustmentType: batchVolumeAdjustments.adjustmentType,
+          adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+          reason: batchVolumeAdjustments.reason,
+        })
+        .from(batchVolumeAdjustments)
+        .where(
+          and(
+            inArray(batchVolumeAdjustments.batchId, batchIds),
+            isNull(batchVolumeAdjustments.deletedAt)
+          )
+        );
 
       // ============ BULK FETCH CHILD BATCH DATA ============
       // Get all destination batch IDs from transfers
@@ -7231,48 +7257,76 @@ export const batchRouter = router({
           });
         }
 
+        // 7. Volume adjustments (sediment, evaporation, dumps, etc.)
+        const batchAdjustments = allAdjustments.filter((a) => a.batchId === batchId);
+        for (const adj of batchAdjustments) {
+          const amount = parseFloat(adj.adjustmentAmount || "0");
+          // Only include negative adjustments (losses) - positive adjustments are gains
+          if (amount < 0) {
+            const typeLabel = (adj.adjustmentType || "other")
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase());
+            entries.push({
+              id: adj.id,
+              date: adj.date,
+              type: "adjustment",
+              description: adj.reason || `${typeLabel}`,
+              volumeOut: 0,
+              volumeIn: 0,
+              loss: Math.abs(amount),
+              destinationId: null,
+              destinationName: null,
+            });
+          }
+        }
+
         // Sort entries by date
         entries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // Calculate batch summary using TRACE accounting
-        // Equation: Initial + Inflow = Packaged + Losses + Remaining (this batch + children)
+        // Calculate batch summary using SAME formula as Volume Trace
+        // Formula: accounted = initial + inflow - outflow - loss
+        // Discrepancy = current - accounted
+        // Child outcomes are displayed for context but NOT included in discrepancy calculation
+        // (they would double-count when child batches are also base batches)
         const initialVolume = parseFloat(batch.initialVolume || "0");
         const currentVolume = parseFloat(batch.currentVolume || "0");
         let totalOutflow = 0;
         let totalInflow = 0;
-        let totalLoss = 0; // All losses (direct + child)
-        let totalPackaged = 0; // All packaging (direct + child)
-        let childrenRemaining = 0; // Current volume still in child batches
+        let totalLoss = 0; // Direct losses only (same as Volume Trace)
+        let totalPackaged = 0; // Direct packaging only (for display)
+        let childrenRemaining = 0; // For display context
 
-        // Track unique child batches to avoid double-counting their current volume
+        // Track unique child batches for display
         const countedChildBatches = new Set<string>();
+
+        // Separate tracking for child outcomes (display only, not in discrepancy)
+        let childPackaged = 0;
+        let childLoss = 0;
 
         for (const entry of entries) {
           totalOutflow += entry.volumeOut;
           totalInflow += entry.volumeIn;
-          totalLoss += entry.loss; // Direct loss from this entry
+          totalLoss += entry.loss; // Direct loss from this entry only
 
           if (entry.type === "bottling" || entry.type === "kegging") {
             totalPackaged += entry.volumeOut;
           }
 
-          // Include child outcome losses, packaging, and grandchild remaining volumes
+          // Track child outcomes for DISPLAY purposes only (not in discrepancy calculation)
           if (entry.childOutcomes) {
             for (const child of entry.childOutcomes) {
               if (child.type === "loss") {
-                totalLoss += child.volume;
+                childLoss += child.volume;
               } else if (child.type === "bottling" || child.type === "kegging") {
-                totalPackaged += child.volume;
+                childPackaged += child.volume;
               } else if (child.type === "transfer" && child.grandchildCurrentVolume !== undefined) {
-                // Track grandchild remaining volume
                 childrenRemaining += child.grandchildCurrentVolume;
               }
             }
           }
 
-          // Track remaining volume in child batches (from transfers)
+          // Track remaining volume in child batches (for display)
           if (entry.type === "transfer" && entry.destinationId && !countedChildBatches.has(entry.destinationId)) {
-            // Get child's current volume from the transfer data
             const transfer = batchTransfersOut.find(t => t.destinationId === entry.destinationId);
             if (transfer?.destinationCurrentVolume) {
               childrenRemaining += parseFloat(transfer.destinationCurrentVolume);
@@ -7281,11 +7335,15 @@ export const batchRouter = router({
           }
         }
 
-        // TRACE accounting: Initial + Inflow should equal Packaged + Losses + Remaining
-        // Remaining = this batch's current + all children's current
+        // Use SAME formula as Volume Trace for discrepancy
+        // This avoids double-counting when child batches are also base batches
+        const accountedVolume = initialVolume + totalInflow - totalOutflow - totalLoss;
+        const discrepancy = currentVolume - accountedVolume;
+
+        // For display: show combined totals (direct + child)
+        const displayPackaged = totalPackaged + childPackaged;
+        const displayLoss = totalLoss + childLoss;
         const totalRemaining = currentVolume + childrenRemaining;
-        const totalAccountedFor = totalPackaged + totalLoss + totalRemaining;
-        const discrepancy = (initialVolume + totalInflow) - totalAccountedFor;
 
         batchResults.push({
           id: batch.id,
@@ -7300,28 +7358,30 @@ export const batchRouter = router({
           summary: {
             totalInflow,
             totalOutflow,
-            totalLoss,
-            totalPackaged,
+            totalLoss: displayLoss, // Show combined (direct + child) for display
+            totalPackaged: displayPackaged, // Show combined (direct + child) for display
             childrenRemaining,
             totalRemaining,
-            discrepancy,
+            discrepancy, // Calculated using Volume Trace formula (direct only)
           },
         });
 
+        // Grand totals use direct values only (same as Volume Trace)
         grandTotalInitial += initialVolume;
         grandTotalCurrent += currentVolume;
         grandTotalInflow += totalInflow;
         grandTotalOutflow += totalOutflow;
-        grandTotalLoss += totalLoss;
-        grandTotalPackaged += totalPackaged;
+        grandTotalLoss += totalLoss; // Direct loss only
+        grandTotalPackaged += totalPackaged; // Direct packaged only
         grandTotalChildrenRemaining += childrenRemaining;
       }
 
-      // TRACE accounting for grand totals:
-      // Initial + Inflow = Packaged + Losses + Remaining (base batches + children)
+      // Grand total discrepancy uses same formula as Volume Trace
+      // accounted = initial + inflow - outflow - loss
+      // discrepancy = current - accounted
+      const grandTotalAccountedVolume = grandTotalInitial + grandTotalInflow - grandTotalOutflow - grandTotalLoss;
+      const grandTotalDiscrepancy = grandTotalCurrent - grandTotalAccountedVolume;
       const grandTotalRemaining = grandTotalCurrent + grandTotalChildrenRemaining;
-      const grandTotalAccountedFor = grandTotalPackaged + grandTotalLoss + grandTotalRemaining;
-      const grandTotalDiscrepancy = (grandTotalInitial + grandTotalInflow) - grandTotalAccountedFor;
 
       return {
         asOfDate,
