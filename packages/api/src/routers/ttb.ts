@@ -1282,8 +1282,12 @@ export const ttbRouter = router({
           },
         };
 
-        // Update bulkWines line21 to show distilling material sent
+        // Update bulkWines line21 and line27 to include distilling material
         bulkWines.line21_distillingMaterial = ciderSentToDspGallons;
+        bulkWines.line27_total = roundGallons(bulkWines.line27_total + ciderSentToDspGallons);
+        // Also update the cider-specific column (was spread before distillation was computed)
+        ciderBulkWines.line21_distillingMaterial = ciderSentToDspGallons;
+        ciderBulkWines.line27_total = roundGallons(ciderBulkWines.line27_total + ciderSentToDspGallons);
 
         // ============================================
         // Build Response
