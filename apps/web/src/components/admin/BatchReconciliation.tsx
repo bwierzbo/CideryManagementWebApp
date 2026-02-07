@@ -53,6 +53,8 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
+  ChevronsUpDown,
   ClipboardCheck,
   ArrowLeft,
 } from "lucide-react";
@@ -82,6 +84,9 @@ const PRODUCT_TYPES = [
 ] as const;
 
 type ReconciliationStatus = "verified" | "duplicate" | "excluded" | "pending";
+
+type SortField = "name" | "productType" | "startDate" | "initialVolumeLiters" | "currentVolumeLiters" | "gallons" | "vesselName" | "reconciliationStatus";
+type SortDirection = "asc" | "desc";
 
 function getStatusBadge(status: string) {
   const config = RECONCILIATION_STATUSES.find((s) => s.value === status);
@@ -141,6 +146,10 @@ export function BatchReconciliation() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [batchToDelete, setBatchToDelete] = useState<any>(null);
 
+  // Sorting
+  const [sortField, setSortField] = useState<SortField>("startDate");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
   // TTB Preview
   const [ttbPreviewOpen, setTtbPreviewOpen] = useState(false);
 
@@ -197,8 +206,61 @@ export function BatchReconciliation() {
     },
   });
 
-  const batches = data?.batches || [];
+  const rawBatches = data?.batches || [];
   const statusCounts = data?.statusCounts || { verified: 0, duplicate: 0, excluded: 0, pending: 0, total: 0 };
+
+  // Sort batches
+  const batches = useMemo(() => {
+    const sorted = [...rawBatches].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "name":
+          cmp = (a.customName || a.name || "").localeCompare(b.customName || b.name || "");
+          break;
+        case "productType":
+          cmp = (a.productType || "").localeCompare(b.productType || "");
+          break;
+        case "startDate":
+          cmp = (a.startDate ?? "").localeCompare(b.startDate ?? "");
+          break;
+        case "initialVolumeLiters":
+          cmp = (parseFloat(a.initialVolumeLiters || "0")) - (parseFloat(b.initialVolumeLiters || "0"));
+          break;
+        case "currentVolumeLiters":
+          cmp = (parseFloat(a.currentVolumeLiters || "0")) - (parseFloat(b.currentVolumeLiters || "0"));
+          break;
+        case "gallons":
+          cmp = (parseFloat(a.currentVolumeLiters || "0")) - (parseFloat(b.currentVolumeLiters || "0"));
+          break;
+        case "vesselName":
+          cmp = (a.vesselName || "").localeCompare(b.vesselName || "");
+          break;
+        case "reconciliationStatus":
+          cmp = (a.reconciliationStatus || "").localeCompare(b.reconciliationStatus || "");
+          break;
+      }
+      return sortDirection === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [rawBatches, sortField, sortDirection]);
+
+  // Sort toggle handler
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  // Sort icon helper
+  const sortIcon = (field: SortField) => {
+    if (sortField !== field) return <ChevronsUpDown className="w-3 h-3 ml-1 opacity-40" />;
+    return sortDirection === "asc"
+      ? <ChevronUp className="w-3 h-3 ml-1" />
+      : <ChevronDown className="w-3 h-3 ml-1" />;
+  };
 
   // Selection handlers
   const allSelected = batches.length > 0 && batches.every((b) => selectedIds.has(b.id));
@@ -476,14 +538,30 @@ export function BatchReconciliation() {
                           onCheckedChange={toggleSelectAll}
                         />
                       </TableHead>
-                      <TableHead>Batch</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Initial (L)</TableHead>
-                      <TableHead className="text-right">Current (L)</TableHead>
-                      <TableHead className="text-right">Gallons</TableHead>
-                      <TableHead>Vessel</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("name")}>
+                        <span className="flex items-center">Batch{sortIcon("name")}</span>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("productType")}>
+                        <span className="flex items-center">Type{sortIcon("productType")}</span>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("startDate")}>
+                        <span className="flex items-center">Date{sortIcon("startDate")}</span>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900 text-right" onClick={() => handleSort("initialVolumeLiters")}>
+                        <span className="flex items-center justify-end">Initial (L){sortIcon("initialVolumeLiters")}</span>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900 text-right" onClick={() => handleSort("currentVolumeLiters")}>
+                        <span className="flex items-center justify-end">Current (L){sortIcon("currentVolumeLiters")}</span>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900 text-right" onClick={() => handleSort("gallons")}>
+                        <span className="flex items-center justify-end">Gallons{sortIcon("gallons")}</span>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("vesselName")}>
+                        <span className="flex items-center">Vessel{sortIcon("vesselName")}</span>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("reconciliationStatus")}>
+                        <span className="flex items-center">Status{sortIcon("reconciliationStatus")}</span>
+                      </TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -505,9 +583,12 @@ export function BatchReconciliation() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="font-medium text-sm">
+                            <Link
+                              href={`/batch/${batch.id}`}
+                              className="font-medium text-sm text-blue-700 hover:text-blue-900 hover:underline"
+                            >
                               {batch.customName || batch.name}
-                            </span>
+                            </Link>
                             <span className="text-xs text-gray-500">{batch.batchNumber}</span>
                             {batch.suggestDuplicate && batch.reconciliationStatus === "pending" && (
                               <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 w-fit mt-1 text-xs">

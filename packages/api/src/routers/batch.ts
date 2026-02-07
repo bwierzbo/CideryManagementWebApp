@@ -27,7 +27,7 @@ import {
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, inArray, aliasedTable, ne } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
 import {
@@ -2094,8 +2094,9 @@ export const batchRouter = router({
       }
       if (input.search) {
         conditions.push(or(
-          like(batches.name, `%${input.search}%`),
-          like(batches.customName, `%${input.search}%`),
+          ilike(batches.name, `%${input.search}%`),
+          ilike(batches.customName, `%${input.search}%`),
+          ilike(batches.batchNumber, `%${input.search}%`),
         ));
       }
 
