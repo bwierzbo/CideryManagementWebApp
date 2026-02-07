@@ -500,7 +500,20 @@ export default function TTBReportsPage() {
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex gap-2">
-                                <Button size="sm" variant="outline">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setPeriodType(report.periodType);
+                                    setSelectedYear(new Date(report.periodStart).getFullYear());
+                                    if (report.periodType === "monthly") {
+                                      setSelectedPeriod(new Date(report.periodStart).getMonth() + 1);
+                                    } else if (report.periodType === "quarterly") {
+                                      setSelectedPeriod(Math.ceil((new Date(report.periodStart).getMonth() + 1) / 3));
+                                    }
+                                    setActiveTab("generate");
+                                  }}
+                                >
                                   View
                                 </Button>
                                 {report.status === "draft" && (

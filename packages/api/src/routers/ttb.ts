@@ -65,6 +65,9 @@ import {
   roundGallons,
   getPeriodDateRange,
   formatPeriodLabel,
+  productTypeToTaxClass,
+  WINE_GALLONS_PER_LITER,
+  LITERS_PER_WINE_GALLON,
   type TTBForm512017Data,
   type InventoryBreakdown,
   type TaxPaidRemovals,
@@ -236,6 +239,7 @@ export const ttbRouter = router({
               .where(
                 and(
                   isNull(batches.deletedAt),
+                  eq(batches.reconciliationStatus, "verified"),
                   lte(batches.startDate, dayBeforeStart),
                   or(
                     isNull(batches.endDate),
@@ -293,6 +297,7 @@ export const ttbRouter = router({
         // ============================================
 
         // Sum of initial volume from batches started in period
+        // Exclude pommeau (blended, not fermented) and brandy (received from DSP) from production
         const productionData = await db
           .select({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)`,
@@ -301,14 +306,38 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
+              eq(batches.reconciliationStatus, "verified"),
               gte(batches.startDate, startDate),
-              lte(batches.startDate, endDate)
+              lte(batches.startDate, endDate),
+              sql`COALESCE(${batches.productType}, 'cider') NOT IN ('pommeau', 'brandy')`
             )
           );
 
         const wineProducedLiters = Number(productionData[0]?.totalLiters || 0);
         const wineProducedGallons = roundGallons(
           litersToWineGallons(wineProducedLiters)
+        );
+
+        // Pommeau production: volume of pommeau batches created during the period
+        // Pommeau is blended (cider + brandy), not fermented, so tracked separately
+        const pommeauProductionData = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)`,
+          })
+          .from(batches)
+          .where(
+            and(
+              isNull(batches.deletedAt),
+              eq(batches.reconciliationStatus, "verified"),
+              eq(batches.productType, "pommeau"),
+              gte(batches.startDate, startDate),
+              lte(batches.startDate, endDate)
+            )
+          );
+
+        const pommeauProducedLiters = Number(pommeauProductionData[0]?.totalLiters || 0);
+        const pommeauProducedGallons = roundGallons(
+          litersToWineGallons(pommeauProducedLiters)
         );
 
         // ============================================
@@ -501,11 +530,13 @@ export const ttbRouter = router({
             initialVolume: batches.initialVolumeLiters,
             startDate: batches.startDate,
             status: batches.status,
+            productType: batches.productType,
           })
           .from(batches)
           .where(
             and(
               isNull(batches.deletedAt),
+              eq(batches.reconciliationStatus, "verified"),
               lte(batches.startDate, endDate),
               // Exclude batches that ended before the period end
               or(isNull(batches.endDate), gte(batches.endDate, endDate)),
@@ -516,6 +547,7 @@ export const ttbRouter = router({
           );
 
         let endingBulkLiters = 0;
+        let endingPommeauBulkLiters = 0;
 
         for (const batch of batchesAtEnd) {
           let batchVolume = Number(batch.initialVolume || 0);
@@ -631,7 +663,11 @@ export const ttbRouter = router({
 
           // Only add positive volumes (batch had liquid at endDate)
           if (batchVolume > 0) {
-            endingBulkLiters += batchVolume;
+            if (batch.productType === "pommeau") {
+              endingPommeauBulkLiters += batchVolume;
+            } else {
+              endingBulkLiters += batchVolume;
+            }
           }
         }
 
@@ -705,15 +741,18 @@ export const ttbRouter = router({
           );
         const kegsInStockLiters = Number(kegsInStock[0]?.totalLiters || 0);
 
+        const endingPommeauBulkGallons = roundGallons(litersToWineGallons(endingPommeauBulkLiters));
+        const endingCiderBulkGallons = roundGallons(litersToWineGallons(endingBulkLiters));
+        const endingBottledGallons = roundGallons(
+          mlToWineGallons(endingBottledML) + litersToWineGallons(kegsInStockLiters)
+        );
+
         const endingInventory: InventoryBreakdown = {
-          bulk: roundGallons(litersToWineGallons(endingBulkLiters)),
-          bottled: roundGallons(
-            mlToWineGallons(endingBottledML) + litersToWineGallons(kegsInStockLiters)
-          ),
+          bulk: roundGallons(endingCiderBulkGallons + endingPommeauBulkGallons),
+          bottled: endingBottledGallons,
           total: roundGallons(
-            litersToWineGallons(endingBulkLiters) +
-              mlToWineGallons(endingBottledML) +
-              litersToWineGallons(kegsInStockLiters)
+            endingCiderBulkGallons + endingPommeauBulkGallons +
+              endingBottledGallons
           ),
         };
 
@@ -729,7 +768,7 @@ export const ttbRouter = router({
 
         const reconciliation = calculateReconciliation({
           beginningInventory: beginningInventory.total,
-          wineProduced: wineProducedGallons,
+          wineProduced: wineProducedGallons + pommeauProducedGallons,
           receipts: 0, // No receipts from other premises
           taxPaidRemovals: taxPaidRemovals.total,
           otherRemovals: otherRemovals.total,
@@ -861,6 +900,7 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
+              eq(batches.reconciliationStatus, "verified"),
               eq(batches.status, "fermentation"),
               lte(batches.startDate, endDate)
             )
@@ -930,6 +970,62 @@ export const ttbRouter = router({
           line30_onHandUnfinished: 0,
           line31_inTransit: 0,
           line32_totalOnHand: endingInventory.bulk,
+        };
+
+        // Build per-tax-class bulk wines columns
+        // Hard cider column: excludes pommeau volumes
+        const ciderLine11 = beginningInventory.bulk - endingPommeauBulkGallons + wineProducedGallons;
+        const ciderBulkWines: BulkWinesSection = {
+          ...bulkWines,
+          line1_onHandFirst: roundGallons(beginningInventory.bulk - endingPommeauBulkGallons),
+          line2_produced: wineProducedGallons,
+          line3_otherProduction: 0,
+          line11_total: roundGallons(ciderLine11),
+          line29_onHandFinished: roundGallons(endingCiderBulkGallons - fermenters.gallonsInFermenters),
+          line32_totalOnHand: endingCiderBulkGallons,
+        };
+
+        // Wine 16-21% column (pommeau): production = blending, no fermentation
+        const pommeauLine11 = endingPommeauBulkGallons + pommeauProducedGallons;
+        const pommeauBulkWines: BulkWinesSection = {
+          line1_onHandFirst: endingPommeauBulkGallons > 0 && pommeauProducedGallons === 0
+            ? endingPommeauBulkGallons : 0, // Opening balance if no new production
+          line2_produced: 0, // Pommeau is not fermented
+          line3_otherProduction: pommeauProducedGallons, // Blended production
+          line4_receivedBonded: 0,
+          line5_receivedCustoms: 0,
+          line6_receivedReturned: 0,
+          line7_receivedTransfer: 0,
+          line8_dumpedToBulk: 0,
+          line9_transferredIn: 0,
+          line10_withdrawnFermenters: 0,
+          line11_total: roundGallons(pommeauLine11),
+          line12_bottled: 0, // TODO: separate pommeau bottling
+          line13_exportTransfer: 0,
+          line14_bondedTransfer: 0,
+          line15_customsTransfer: 0,
+          line16_ftzTransfer: 0,
+          line17_taxpaid: 0, // TODO: separate pommeau tax-paid removals
+          line18_taxFreeUS: 0,
+          line19_taxFreeExport: 0,
+          line20_transferredOut: 0,
+          line21_distillingMaterial: 0,
+          line22_spiritsAdded: 0,
+          line23_inventoryLosses: 0,
+          line24_destroyed: 0,
+          line25_returnedToBond: 0,
+          line26_other: 0,
+          line27_total: 0,
+          line28_onHandFermenters: 0,
+          line29_onHandFinished: endingPommeauBulkGallons,
+          line30_onHandUnfinished: 0,
+          line31_inTransit: 0,
+          line32_totalOnHand: endingPommeauBulkGallons,
+        };
+
+        const bulkWinesByTaxClass: Record<string, BulkWinesSection> = {
+          hardCider: ciderBulkWines,
+          wine16To21: pommeauBulkWines,
         };
 
         // ============================================
@@ -1008,17 +1104,14 @@ export const ttbRouter = router({
         );
         const brandyReceivedReturns = Number(brandyFromDsp[0]?.returnCount || 0);
 
-        // 3. Get all brandy batch IDs (by name pattern)
+        // 3. Get all brandy batch IDs (by productType)
         const brandyBatchesQuery = await db
           .select({ id: batches.id })
           .from(batches)
           .where(
             and(
               isNull(batches.deletedAt),
-              or(
-                sql`${batches.customName} ILIKE '%apple brandy%'`,
-                sql`${batches.name} ILIKE '%apple brandy%'`
-              )
+              eq(batches.productType, "brandy")
             )
           );
 
@@ -1050,8 +1143,7 @@ export const ttbRouter = router({
               and(
                 isNull(batchTransfers.deletedAt),
                 sql`${batchTransfers.sourceBatchId} IN (${sql.raw(brandyBatchIds.map(id => `'${id}'`).join(","))})`,
-                sql`dest.custom_name NOT ILIKE '%brandy%'`,
-                sql`dest.name NOT ILIKE '%brandy%'`,
+                sql`dest.product_type != 'brandy'`,
                 gte(batchTransfers.transferredAt, startDate),
                 lte(batchTransfers.transferredAt, endDate)
               )
@@ -1110,8 +1202,20 @@ export const ttbRouter = router({
         }
 
         // Calculate brandy based on transfers (TTB-accurate)
-        // Brandy ending = Beginning (0) + Received from DSP - Used in cider
-        const brandyOpening = 0; // TODO: Get from opening balances if available
+        // Brandy ending = Beginning + Received from DSP - Used in cider
+        // Get brandy opening from TTB opening balances if available
+        let brandyOpening = 0;
+        {
+          const [brandySettings] = await db
+            .select({
+              ttbOpeningBalances: organizationSettings.ttbOpeningBalances,
+            })
+            .from(organizationSettings)
+            .limit(1);
+          if (brandySettings?.ttbOpeningBalances?.spirits?.appleBrandy) {
+            brandyOpening = Number(brandySettings.ttbOpeningBalances.spirits.appleBrandy) || 0;
+          }
+        }
         const brandyCalculatedGallons = roundGallons(
           brandyOpening + brandyReceivedGallons - brandyUsedInCiderGallons
         );
@@ -1200,7 +1304,7 @@ export const ttbRouter = router({
           fermenters,
           beginningInventory,
           wineProduced: {
-            total: wineProducedGallons,
+            total: roundGallons(wineProducedGallons + pommeauProducedGallons),
           },
           receipts: {
             total: 0,
@@ -1213,6 +1317,7 @@ export const ttbRouter = router({
           distilleryOperations,
           ciderBrandyInventory,
           ciderBrandyReconciliation,
+          bulkWinesByTaxClass,
         };
 
         return {
@@ -2105,6 +2210,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batches.deletedAt),
+            eq(batches.reconciliationStatus, "verified"),
             eq(batches.productType, "juice"),
             sql`${batches.startDate}::date > ${openingDate}::date`,
             sql`${batches.startDate}::date <= ${reconciliationDate}::date`
@@ -2149,7 +2255,7 @@ export const ttbRouter = router({
           )
         );
 
-      const rackingLossesBeforeGallons = Number(rackingLossesBefore[0]?.totalLiters || 0) * 0.264172;
+      const rackingLossesBeforeGallons = litersToWineGallons(Number(rackingLossesBefore[0]?.totalLiters || 0));
 
       // 3b. Filter losses
       const filterLossesBefore = await db
@@ -2166,7 +2272,7 @@ export const ttbRouter = router({
           )
         );
 
-      const filterLossesBeforeGallons = Number(filterLossesBefore[0]?.totalLiters || 0) * 0.264172;
+      const filterLossesBeforeGallons = litersToWineGallons(Number(filterLossesBefore[0]?.totalLiters || 0));
 
       // 3c. Bottling losses
       const bottlingLossesBefore = await db
@@ -2182,7 +2288,7 @@ export const ttbRouter = router({
           )
         );
 
-      const bottlingLossesBeforeGallons = Number(bottlingLossesBefore[0]?.totalLiters || 0) * 0.264172;
+      const bottlingLossesBeforeGallons = litersToWineGallons(Number(bottlingLossesBefore[0]?.totalLiters || 0));
 
       // 3d. Transfer losses - from two sources:
       // 1. batch.transferLossL - for batches started during the period
@@ -2194,6 +2300,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batches.deletedAt),
+            eq(batches.reconciliationStatus, "verified"),
             sql`${batches.startDate}::date > ${openingDate}::date`,
             sql`${batches.startDate}::date <= ${reconciliationDate}::date`
           )
@@ -2214,8 +2321,8 @@ export const ttbRouter = router({
         );
 
       const transferLossesBeforeGallons =
-        Number(batchTransferLossesBefore[0]?.totalLiters || 0) * 0.264172 +
-        Number(transferOperationLossesBefore[0]?.totalLiters || 0) * 0.264172;
+        litersToWineGallons(Number(batchTransferLossesBefore[0]?.totalLiters || 0)) +
+        litersToWineGallons(Number(transferOperationLossesBefore[0]?.totalLiters || 0));
 
       // 3e. Distillation removals (cider sent to DSP)
       const distillationsBefore = await db
@@ -2231,7 +2338,7 @@ export const ttbRouter = router({
           )
         );
 
-      const distillationsBeforeGallons = Number(distillationsBefore[0]?.totalLiters || 0) * 0.264172;
+      const distillationsBeforeGallons = litersToWineGallons(Number(distillationsBefore[0]?.totalLiters || 0));
 
       // 3f. Volume adjustments (losses recorded via manual adjustments)
       const volumeAdjustmentsBefore = await db
@@ -2248,7 +2355,7 @@ export const ttbRouter = router({
           )
         );
 
-      const volumeAdjustmentsBeforeGallons = Number(volumeAdjustmentsBefore[0]?.totalLiters || 0) * 0.264172;
+      const volumeAdjustmentsBeforeGallons = litersToWineGallons(Number(volumeAdjustmentsBefore[0]?.totalLiters || 0));
 
       // 3g. Distributions (sales) on or before the date
       // Bottle/can distributions
@@ -2268,7 +2375,7 @@ export const ttbRouter = router({
           )
         );
 
-      const bottleDistributionsBeforeGallons = Number(bottleDistributionsBefore[0]?.totalML || 0) / 3785.41;
+      const bottleDistributionsBeforeGallons = mlToWineGallons(Number(bottleDistributionsBefore[0]?.totalML || 0));
 
       // Keg distributions (when distributed_at is set, keg left bonded space)
       const kegDistributionsBefore = await db
@@ -2285,7 +2392,7 @@ export const ttbRouter = router({
           )
         );
 
-      const kegDistributionsBeforeGallons = Number(kegDistributionsBefore[0]?.totalLiters || 0) * 0.264172;
+      const kegDistributionsBeforeGallons = litersToWineGallons(Number(kegDistributionsBefore[0]?.totalLiters || 0));
 
       const distributionsBeforeGallons = bottleDistributionsBeforeGallons + kegDistributionsBeforeGallons;
 
@@ -2303,7 +2410,7 @@ export const ttbRouter = router({
           )
         );
 
-      const bottlesPackagedBeforeGallons = Number(bottlesPackagedBefore[0]?.totalLiters || 0) * 0.264172;
+      const bottlesPackagedBeforeGallons = litersToWineGallons(Number(bottlesPackagedBefore[0]?.totalLiters || 0));
 
       // Kegs filled
       const kegsFilledBefore = await db
@@ -2319,13 +2426,31 @@ export const ttbRouter = router({
           )
         );
 
-      const kegsFilledBeforeGallons = Number(kegsFilledBefore[0]?.totalLiters || 0) * 0.264172;
+      const kegsFilledBeforeGallons = litersToWineGallons(Number(kegsFilledBefore[0]?.totalLiters || 0));
 
       const packagedVolumeBeforeGallons = bottlesPackagedBeforeGallons + kegsFilledBeforeGallons;
 
+      // 3h. Keg fill losses
+      const kegFillLossesBefore = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.loss} AS DECIMAL)), 0)`,
+        })
+        .from(kegFills)
+        .where(
+          and(
+            isNull(kegFills.voidedAt),
+            isNotNull(kegFills.loss),
+            sql`${kegFills.filledAt}::date > ${openingDate}::date`,
+            sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
+          )
+        );
+
+      const kegFillLossesBeforeGallons = litersToWineGallons(Number(kegFillLossesBefore[0]?.totalLiters || 0));
+
       // Calculate total losses (process losses)
       const processLossesGallons = rackingLossesBeforeGallons + filterLossesBeforeGallons +
-        bottlingLossesBeforeGallons + transferLossesBeforeGallons + volumeAdjustmentsBeforeGallons;
+        bottlingLossesBeforeGallons + transferLossesBeforeGallons + volumeAdjustmentsBeforeGallons +
+        kegFillLossesBeforeGallons;
 
       // Total losses including distillation (sent to DSP)
       const totalLossesGallons = processLossesGallons + distillationsBeforeGallons;
@@ -2336,7 +2461,7 @@ export const ttbRouter = router({
       // ============================================
 
       // Total production in gallons
-      const totalProductionGallons = totalProductionLiters * 0.264172;
+      const totalProductionGallons = litersToWineGallons(totalProductionLiters);
 
       // Total removals = losses + distributions (sales leave the system)
       const totalRemovalsGallons = totalLossesGallons + distributionsBeforeGallons;
@@ -2362,15 +2487,16 @@ export const ttbRouter = router({
       const bulkByYearData = await db
         .select({
           year: sql<number>`EXTRACT(YEAR FROM ${batches.startDate})`,
-          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolume} AS DECIMAL)), 0)`,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)`,
           batchCount: sql<number>`COUNT(*)`,
         })
         .from(batches)
         .where(
           and(
             isNull(batches.deletedAt),
+            eq(batches.reconciliationStatus, "verified"),
             sql`${batches.startDate} <= ${reconciliationDate}::date`,
-            sql`COALESCE(${batches.currentVolume}, 0) > 0`, // Only count batches with remaining volume
+            sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0`, // Only count batches with remaining volume
             sql`COALESCE(${batches.isArchived}, false) = false`
           )
         )
@@ -2405,7 +2531,7 @@ export const ttbRouter = router({
       for (const row of bulkByYearData) {
         const year = Number(row.year);
         const existing = yearMap.get(year) || { bulk: 0, packaged: 0, batchCount: 0, itemCount: 0 };
-        existing.bulk = Number(row.totalLiters || 0) * 0.264172;
+        existing.bulk = litersToWineGallons(Number(row.totalLiters || 0));
         existing.batchCount = Number(row.batchCount || 0);
         yearMap.set(year, existing);
       }
@@ -2413,7 +2539,7 @@ export const ttbRouter = router({
       for (const row of packagedByYearData) {
         const year = Number(row.year);
         const existing = yearMap.get(year) || { bulk: 0, packaged: 0, batchCount: 0, itemCount: 0 };
-        existing.packaged = Number(row.totalML || 0) / 3785.41;
+        existing.packaged = mlToWineGallons(Number(row.totalML || 0));
         existing.itemCount = Number(row.itemCount || 0);
         yearMap.set(year, existing);
       }
@@ -2435,15 +2561,6 @@ export const ttbRouter = router({
       // For ongoing reconciliation, use current_volume
       // ============================================
 
-      // Map product_type to tax class key
-      const productTypeToTaxClass = (productType: string | null): string => {
-        switch (productType) {
-          case 'pommeau': return 'wine16To21';
-          case 'brandy': return 'appleBrandy';
-          default: return 'hardCider';
-        }
-      };
-
       // Build inventory by tax class
       const inventoryByTaxClass: Record<string, number> = {
         hardCider: 0,
@@ -2463,14 +2580,15 @@ export const ttbRouter = router({
         const bulkByProductType = await db
           .select({
             productType: batches.productType,
-            totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolume} AS DECIMAL)), 0)`,
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)`,
           })
           .from(batches)
           .where(
             and(
               isNull(batches.deletedAt),
+              eq(batches.reconciliationStatus, "verified"),
               sql`${batches.startDate} <= ${reconciliationDate}::date`,
-              sql`COALESCE(${batches.currentVolume}, 0) > 0`,
+              sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0`,
               sql`COALESCE(${batches.isArchived}, false) = false`,
               sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
             )
@@ -2479,7 +2597,8 @@ export const ttbRouter = router({
 
         for (const row of bulkByProductType) {
           const taxClass = productTypeToTaxClass(row.productType);
-          const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+          if (!taxClass) continue; // Skip juice (non-taxable)
+          const volumeGallons = litersToWineGallons(Number(row.totalLiters || 0));
           inventoryByTaxClass[taxClass] += volumeGallons;
           actualBulkGallons += volumeGallons;
         }
@@ -2507,7 +2626,8 @@ export const ttbRouter = router({
 
         for (const row of packagedByProductType) {
           const taxClass = productTypeToTaxClass(row.productType);
-          const volumeGallons = Number(row.totalML || 0) / 3785.41;
+          if (!taxClass) continue; // Skip juice (non-taxable)
+          const volumeGallons = mlToWineGallons(Number(row.totalML || 0));
           inventoryByTaxClass[taxClass] += volumeGallons;
           actualPackagedGallons += volumeGallons;
         }
@@ -2551,7 +2671,8 @@ export const ttbRouter = router({
 
       for (const row of bottleRemovalsByType) {
         const taxClass = productTypeToTaxClass(row.productType);
-        const volumeGallons = Number(row.totalML || 0) / 3785.41;
+        if (!taxClass) continue;
+        const volumeGallons = mlToWineGallons(Number(row.totalML || 0));
         removalsByTaxClass[taxClass] += volumeGallons;
       }
 
@@ -2575,7 +2696,8 @@ export const ttbRouter = router({
 
       for (const row of kegRemovalsByType) {
         const taxClass = productTypeToTaxClass(row.productType);
-        const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        const volumeGallons = litersToWineGallons(Number(row.totalLiters || 0));
         removalsByTaxClass[taxClass] += volumeGallons;
       }
 
@@ -2613,7 +2735,8 @@ export const ttbRouter = router({
 
       for (const row of rackingLossesByType) {
         const taxClass = productTypeToTaxClass(row.productType);
-        lossesByTaxClass[taxClass] += Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
       // Filter losses by tax class
@@ -2635,7 +2758,8 @@ export const ttbRouter = router({
 
       for (const row of filterLossesByType) {
         const taxClass = productTypeToTaxClass(row.productType);
-        lossesByTaxClass[taxClass] += Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
       // Bottling losses by tax class
@@ -2656,7 +2780,8 @@ export const ttbRouter = router({
 
       for (const row of bottlingLossesByType) {
         const taxClass = productTypeToTaxClass(row.productType);
-        lossesByTaxClass[taxClass] += Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
       // Transfer losses by tax class
@@ -2669,6 +2794,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batches.deletedAt),
+            eq(batches.reconciliationStatus, "verified"),
             sql`${batches.startDate}::date > ${openingDate}::date`,
             sql`${batches.startDate}::date <= ${reconciliationDate}::date`
           )
@@ -2677,7 +2803,8 @@ export const ttbRouter = router({
 
       for (const row of transferLossesByType) {
         const taxClass = productTypeToTaxClass(row.productType);
-        lossesByTaxClass[taxClass] += Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
       // Volume adjustments (losses) by tax class
@@ -2700,7 +2827,32 @@ export const ttbRouter = router({
 
       for (const row of volumeAdjustmentsByType) {
         const taxClass = productTypeToTaxClass(row.productType);
-        lossesByTaxClass[taxClass] += Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
+      }
+
+      // Keg fill losses by tax class
+      const kegFillLossesByType = await db
+        .select({
+          productType: batches.productType,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.loss} AS DECIMAL)), 0)`,
+        })
+        .from(kegFills)
+        .innerJoin(batches, eq(kegFills.batchId, batches.id))
+        .where(
+          and(
+            isNull(kegFills.voidedAt),
+            isNotNull(kegFills.loss),
+            sql`${kegFills.filledAt}::date > ${openingDate}::date`,
+            sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
+          )
+        )
+        .groupBy(batches.productType);
+
+      for (const row of kegFillLossesByType) {
+        const taxClass = productTypeToTaxClass(row.productType);
+        if (!taxClass) continue;
+        lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
       // ============================================
@@ -2723,7 +2875,7 @@ export const ttbRouter = router({
             sql`${distillationRecords.receivedAt}::date <= ${reconciliationDate}::date`
           )
         );
-      const brandyReceivedGallons = Number(brandyReceivedData[0]?.totalLiters || 0) * 0.264172;
+      const brandyReceivedGallons = litersToWineGallons(Number(brandyReceivedData[0]?.totalLiters || 0));
 
       // Apple Brandy Removals = brandy transferred to pommeau batches
       const brandyToPommeauData = await db
@@ -2745,7 +2897,7 @@ export const ttbRouter = router({
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
         );
-      const brandyToPommeauGallons = Number(brandyToPommeauData[0]?.totalLiters || 0) * 0.264172;
+      const brandyToPommeauGallons = litersToWineGallons(Number(brandyToPommeauData[0]?.totalLiters || 0));
 
       // Pommeau Production = transfers INTO pommeau batches from NON-pommeau sources
       // Excludes pommeau-to-pommeau transfers (just moving within same tax class)
@@ -2769,7 +2921,7 @@ export const ttbRouter = router({
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
         );
-      const transfersIntoPommeauGallons = Number(transfersIntoPommeauData[0]?.totalLiters || 0) * 0.264172;
+      const transfersIntoPommeauGallons = litersToWineGallons(Number(transfersIntoPommeauData[0]?.totalLiters || 0));
 
       const productionByTaxClass: Record<string, number> = {
         hardCider: totalProductionGallons, // All juice production goes to cider
@@ -2819,7 +2971,7 @@ export const ttbRouter = router({
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
         );
-      const ciderToPommeauGallons = Number(ciderToPommeauData[0]?.totalLiters || 0) * 0.264172;
+      const ciderToPommeauGallons = litersToWineGallons(Number(ciderToPommeauData[0]?.totalLiters || 0));
 
       // Add cider used in pommeau to hard cider removals
       removalsByTaxClass["hardCider"] += ciderToPommeauGallons;
@@ -2843,7 +2995,7 @@ export const ttbRouter = router({
               b.custom_name as "customName",
               b.batch_number as "batchNumber",
               b.product_type as "productType",
-              b.current_volume as volume,
+              b.current_volume_liters as volume,
               COALESCE(
                 (SELECT bro.destination_vessel_id
                  FROM batch_racking_operations bro
@@ -2870,11 +3022,12 @@ export const ttbRouter = router({
             FROM batches b
             LEFT JOIN vessels v ON v.id = b.vessel_id
             WHERE b.deleted_at IS NULL
+              AND b.reconciliation_status = 'verified'
               AND b.start_date <= ${reconciliationDate}::date
-              AND COALESCE(b.current_volume, 0) > 0
+              AND COALESCE(b.current_volume_liters, 0) > 0
               AND COALESCE(b.is_archived, false) = false
               AND NOT (b.batch_number LIKE 'LEGACY-%')
-            ORDER BY CAST(b.current_volume AS DECIMAL) DESC
+            ORDER BY CAST(b.current_volume_liters AS DECIMAL) DESC
           `);
 
       // Get packaged inventory details
@@ -2938,8 +3091,9 @@ export const ttbRouter = router({
 
       for (const batch of batchRows) {
         const taxClass = productTypeToTaxClass(batch.productType);
+        if (!taxClass) continue;
         const volumeLiters = parseFloat(batch.volume || "0");
-        const volumeGallons = volumeLiters * 0.264172;
+        const volumeGallons = litersToWineGallons(volumeLiters);
 
         batchDetailsByTaxClass[taxClass].push({
           id: batch.id,
@@ -2956,11 +3110,12 @@ export const ttbRouter = router({
       // Add packaged inventory
       for (const item of packagedDetailData) {
         const taxClass = productTypeToTaxClass(item.productType);
+        if (!taxClass) continue;
         const packageSize = Number(item.packageSizeML || 0);
         const quantity = Number(item.currentQuantity || 0);
         const volumeML = packageSize * quantity;
         const volumeLiters = volumeML / 1000;
-        const volumeGallons = volumeML / 3785.41;
+        const volumeGallons = mlToWineGallons(volumeML);
 
         batchDetailsByTaxClass[taxClass].push({
           id: `pkg-${item.batchId}-${item.lotCode || 'unknown'}`,
@@ -3047,7 +3202,7 @@ export const ttbRouter = router({
           pressRunCount: 0,
           purchaseCount: 0
         };
-        existing.pressRuns = Number(row.totalLiters || 0) * 0.264172; // to gallons
+        existing.pressRuns = litersToWineGallons(Number(row.totalLiters || 0));
         existing.pressRunCount = Number(row.runCount || 0);
         productionYearMap.set(year, existing);
       }
@@ -3060,7 +3215,7 @@ export const ttbRouter = router({
           pressRunCount: 0,
           purchaseCount: 0
         };
-        existing.juicePurchases = Number(row.totalLiters || 0) * 0.264172; // to gallons
+        existing.juicePurchases = litersToWineGallons(Number(row.totalLiters || 0));
         existing.purchaseCount = Number(row.purchaseCount || 0);
         productionYearMap.set(year, existing);
       }
@@ -3089,12 +3244,13 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batches.deletedAt),
+            eq(batches.reconciliationStatus, "verified"),
             eq(batches.productType, "juice"),
             sql`${batches.startDate}::date > ${openingDate}::date`,
             sql`${batches.startDate}::date <= ${reconciliationDate}::date`
           )
         );
-      const auditJuiceOnlyGallons = Number(auditJuiceOnlyBatches[0]?.totalLiters || 0) * 0.264172;
+      const auditJuiceOnlyGallons = litersToWineGallons(Number(auditJuiceOnlyBatches[0]?.totalLiters || 0));
 
       // Also subtract transfers INTO juice batches from audit production
       const auditTransfersIntoJuiceBatches = await db
@@ -3111,7 +3267,7 @@ export const ttbRouter = router({
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
         );
-      const auditTransfersIntoJuiceGallons = Number(auditTransfersIntoJuiceBatches[0]?.totalLiters || 0) * 0.264172;
+      const auditTransfersIntoJuiceGallons = litersToWineGallons(Number(auditTransfersIntoJuiceBatches[0]?.totalLiters || 0));
       const auditTotalProductionGallons = totalPressRunsGallons + totalJuicePurchasesGallons - auditJuiceOnlyGallons - auditTransfersIntoJuiceGallons;
 
       // 4. Get legacy batches grouped by tax class
@@ -3144,7 +3300,7 @@ export const ttbRouter = router({
 
       for (const batch of legacyBatchData) {
         const volumeLiters = parseFloat(batch.initialVolumeLiters || "0");
-        const volumeGallons = volumeLiters * 0.264172;
+        const volumeGallons = litersToWineGallons(volumeLiters);
 
         // Extract tax class from customName
         const taxClassMatch = batch.customName?.match(/Tax Class: (\w+)/);
@@ -3183,8 +3339,8 @@ export const ttbRouter = router({
         customName: b.customName,
         productType: b.productType || 'cider',
         startDate: b.startDate,
-        initialVolumeGallons: parseFloat((parseFloat(b.initialVolume || "0") * 0.264172).toFixed(2)),
-        currentVolumeGallons: parseFloat((parseFloat(b.currentVolume || "0") * 0.264172).toFixed(2)),
+        initialVolumeGallons: parseFloat(litersToWineGallons(parseFloat(b.initialVolume || "0")).toFixed(2)),
+        currentVolumeGallons: parseFloat(litersToWineGallons(parseFloat(b.currentVolume || "0")).toFixed(2)),
       }));
 
       const openingBatchTotalGallons = openingBatchDebug.reduce((sum, b) => sum + b.initialVolumeGallons, 0);
@@ -3196,7 +3352,7 @@ export const ttbRouter = router({
       // Compare to Physical (current inventory) for variance
       // ============================================
 
-      // Get last reconciliation snapshot
+      // Get last finalized reconciliation snapshot
       const [lastRecon] = await db
         .select({
           id: ttbReconciliationSnapshots.id,
@@ -3205,6 +3361,7 @@ export const ttbRouter = router({
           taxClassBreakdown: ttbReconciliationSnapshots.taxClassBreakdown,
         })
         .from(ttbReconciliationSnapshots)
+        .where(eq(ttbReconciliationSnapshots.status, "finalized"))
         .orderBy(sql`${ttbReconciliationSnapshots.periodEndDate} DESC`)
         .limit(1);
 
@@ -3272,7 +3429,8 @@ export const ttbRouter = router({
 
       for (const row of packagingByTaxClassData) {
         const taxClass = productTypeToTaxClass(row.productType);
-        const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        const volumeGallons = litersToWineGallons(Number(row.totalLiters || 0));
         packagingByTaxClass[taxClass] += volumeGallons;
       }
 
@@ -3295,7 +3453,8 @@ export const ttbRouter = router({
 
       for (const row of keggingByTaxClassData) {
         const taxClass = productTypeToTaxClass(row.productType);
-        const volumeGallons = Number(row.totalLiters || 0) * 0.264172;
+        if (!taxClass) continue;
+        const volumeGallons = litersToWineGallons(Number(row.totalLiters || 0));
         packagingByTaxClass[taxClass] += volumeGallons;
       }
 
@@ -3331,7 +3490,8 @@ export const ttbRouter = router({
       for (const row of transfersBetweenClasses) {
         const sourceClass = productTypeToTaxClass(row.sourceProductType || "cider");
         const destClass = productTypeToTaxClass(row.destProductType || "cider");
-        const volumeGallons = Number(row.volumeTransferred || 0) * 0.264172;
+        if (!sourceClass || !destClass) continue;
+        const volumeGallons = litersToWineGallons(Number(row.volumeTransferred || 0));
 
         // Only track transfers between DIFFERENT tax classes
         if (sourceClass !== destClass) {
@@ -3611,6 +3771,7 @@ export const ttbRouter = router({
               bottling: parseFloat(bottlingLossesBeforeGallons.toFixed(2)),
               transfer: parseFloat(transferLossesBeforeGallons.toFixed(2)),
               volumeAdjustments: parseFloat(volumeAdjustmentsBeforeGallons.toFixed(2)),
+              kegFills: parseFloat(kegFillLossesBeforeGallons.toFixed(2)),
               total: parseFloat(lossesGallons.toFixed(2)),
             },
             byTaxClass: Object.fromEntries(
@@ -4503,19 +4664,10 @@ export const ttbRouter = router({
         .where(
           and(
             eq(batches.isArchived, false),
-            isNull(batches.deletedAt)
+            isNull(batches.deletedAt),
+            eq(batches.reconciliationStatus, "verified")
           )
         );
-
-      // Map product types to tax classes
-      const productTypeToTaxClass: Record<string, string> = {
-        cider: "hardCider",
-        wine: "wineUnder16",
-        pommeau: "wine16To21",
-        brandy: "appleBrandy",
-        perry: "hardCider",
-        juice: "materials",
-      };
 
       // Group batches by tax class
       const taxClassMap = new Map<string, TaxClassData>();
@@ -4525,7 +4677,7 @@ export const ttbRouter = router({
       for (const key of taxClassKeys) {
         taxClassMap.set(key, {
           taxClass: key,
-          openingLiters: lastReconTaxClassData[key] ? lastReconTaxClassData[key] / 0.264172 : 0, // Convert gallons to liters
+          openingLiters: lastReconTaxClassData[key] ? lastReconTaxClassData[key] * LITERS_PER_WINE_GALLON : 0, // Convert gallons to liters
           productionLiters: 0,
           transfersInLiters: 0,
           transfersOutLiters: 0,
@@ -4537,7 +4689,7 @@ export const ttbRouter = router({
       }
 
       for (const batch of allBatches) {
-        const taxClass = productTypeToTaxClass[batch.productType] || "other";
+        const taxClass = productTypeToTaxClass(batch.productType) || "other";
         const data = taxClassMap.get(taxClass)!;
 
         const batchStartDate = new Date(batch.startDate);
@@ -4593,8 +4745,8 @@ export const ttbRouter = router({
         );
 
       for (const t of transfers) {
-        const sourceClass = productTypeToTaxClass[t.sourceProductType] || "other";
-        const targetClass = productTypeToTaxClass[t.destProductType] || "other";
+        const sourceClass = productTypeToTaxClass(t.sourceProductType) || "other";
+        const targetClass = productTypeToTaxClass(t.destProductType) || "other";
         const volume = parseFloat(t.volumeTransferred || "0");
         const loss = parseFloat(t.loss || "0");
 
@@ -4633,7 +4785,7 @@ export const ttbRouter = router({
         );
 
       for (const p of packagingRuns) {
-        const taxClass = productTypeToTaxClass[p.productType || "cider"] || "other";
+        const taxClass = productTypeToTaxClass(p.productType || "cider") || "other";
         const volume = parseFloat(p.volumeTakenLiters || "0");
         const loss = parseFloat(p.loss || "0");
 
@@ -4660,7 +4812,7 @@ export const ttbRouter = router({
         );
 
       for (const r of rackingOps) {
-        const taxClass = productTypeToTaxClass[r.productType || "cider"] || "other";
+        const taxClass = productTypeToTaxClass(r.productType || "cider") || "other";
         const loss = parseFloat(r.volumeLoss || "0");
         if (taxClassMap.has(taxClass)) {
           taxClassMap.get(taxClass)!.lossesLiters += loss;
@@ -4684,7 +4836,7 @@ export const ttbRouter = router({
         );
 
       for (const f of filterOps) {
-        const taxClass = productTypeToTaxClass[f.productType || "cider"] || "other";
+        const taxClass = productTypeToTaxClass(f.productType || "cider") || "other";
         const loss = parseFloat(f.volumeLoss || "0");
         if (taxClassMap.has(taxClass)) {
           taxClassMap.get(taxClass)!.lossesLiters += loss;
@@ -4709,7 +4861,7 @@ export const ttbRouter = router({
         );
 
       for (const v of volumeAdjs) {
-        const taxClass = productTypeToTaxClass[v.productType || "cider"] || "other";
+        const taxClass = productTypeToTaxClass(v.productType || "cider") || "other";
         const loss = Math.abs(parseFloat(v.adjustmentAmount || "0"));
         if (taxClassMap.has(taxClass)) {
           taxClassMap.get(taxClass)!.lossesLiters += loss;
@@ -4800,6 +4952,7 @@ export const ttbRouter = router({
           and(
             eq(batches.isArchived, false),
             isNull(batches.deletedAt),
+            eq(batches.reconciliationStatus, "verified"),
             lte(batches.startDate, asOfDate)
           )
         );

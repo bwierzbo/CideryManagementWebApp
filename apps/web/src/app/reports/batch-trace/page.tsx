@@ -27,6 +27,12 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   FileText,
   ChevronDown,
   ChevronRight,
@@ -44,203 +50,144 @@ import {
   TrendingDown,
   CornerDownRight,
   Droplets,
+  Wine,
+  Grape,
+  GlassWater,
+  Calendar,
+  Factory,
+  Clock,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { formatDate, formatDateTime } from "@/utils/date-format";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
-import { downloadBatchTraceReportPDF } from "@/utils/pdf/batchTraceReport";
-import { downloadBatchTraceReportExcel } from "@/utils/excel/batchTraceReport";
-import { downloadBatchTraceReportCSV } from "@/utils/csv/batchTraceReport";
 import { useVolumeUnit } from "@/hooks/use-volume-unit";
 import { VolumeUnitToggle } from "@/components/ui/volume-unit-toggle";
+import { VolumeAdjustmentModal } from "@/components/cellar/VolumeAdjustmentModal";
 
-const typeIcons: Record<string, React.ElementType> = {
-  transfer: ArrowRight,
-  transfer_in: ArrowLeft,
-  racking: FlaskConical,
-  filtering: Filter,
-  bottling: Package,
-  kegging: Beer,
-  distillation: Flame,
-  adjustment: AlertTriangle,
+// Type definitions matching the API response
+type ProductTypeSummaryData = {
+  productType: string;
+  ttbTaxClass: string;
+  batchCount: number;
+  openingBalanceLiters: number;
+  productionLiters: number;
+  receiptsLiters: number;
+  blendedInLiters: number;
+  totalSourceLiters: number;
+  packagedLiters: number;
+  distilledLiters: number;
+  blendedOutLiters: number;
+  lossesLiters: number;
+  endingBalanceLiters: number;
+  totalDestinationLiters: number;
+  discrepancyLiters: number;
+  isBalanced: boolean;
 };
 
-const typeColors: Record<string, string> = {
-  transfer: "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
-  transfer_in: "bg-green-500/10 text-green-700 border-green-500/20",
-  racking: "bg-amber-500/10 text-amber-700 border-amber-500/20",
-  filtering: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
-  bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
-  kegging: "bg-orange-500/10 text-orange-700 border-orange-500/20",
-  distillation: "bg-red-500/10 text-red-700 border-red-500/20",
-  adjustment: "bg-amber-500/10 text-amber-700 border-amber-500/20",
+type BatchData = {
+  id: string;
+  name: string;
+  customName: string | null;
+  batchNumber: string;
+  productType: string | null;
+  initialVolume: string | null;
+  currentVolume: string | null;
+  status: string | null;
+  vesselName: string | null;
+  vesselId: string | null;
+  startDate: Date | string | null;
 };
 
-const typeLabels: Record<string, string> = {
-  transfer: "Transfer",
-  transfer_in: "Blend In",
-  racking: "Racking",
-  filtering: "Filtering",
-  bottling: "Bottling",
-  kegging: "Kegging",
-  distillation: "Distillation",
-  adjustment: "Adjustment",
-};
-
-// Collapsible row component for transfers with child outcomes
-function ExpandableEntryRow({
-  entry,
-  idx,
-  formatVol,
-}: {
-  entry: {
+type DistilleryOpsData = {
+  ciderSentLiters: number;
+  brandyReceivedLiters: number;
+  operations: Array<{
     id: string;
+    type: "sent" | "received";
+    sourceBatchId: string | null;
+    sourceBatchName: string | null;
+    resultBatchId: string | null;
+    resultBatchName: string | null;
+    volumeLiters: number;
+    abv: number | null;
     date: Date | string;
-    type: string;
-    description: string;
-    volumeOut: number;
-    volumeIn: number;
-    loss: number;
-    destinationId: string | null;
-    destinationName: string | null;
-    childOutcomes?: { type: string; description: string; volume: number }[];
+    distilleryName: string;
+    status: string;
+  }>;
+  pendingReturns: Array<{
+    id: string;
+    sourceBatchName: string;
+    volumeSentLiters: number;
+    sentAt: Date | string;
+    distilleryName: string;
+  }>;
+};
+
+type DiscrepancyData = {
+  type: string;
+  batchId: string;
+  batchName: string;
+  productType: string;
+  description: string;
+  volumeAffectedLiters: number;
+  suggestedAction: string;
+};
+
+type TTBReportData = {
+  periodStart: string;
+  periodEnd: string;
+  summaries: {
+    cider: ProductTypeSummaryData;
+    perry: ProductTypeSummaryData;
+    brandy: ProductTypeSummaryData;
+    pommeau: ProductTypeSummaryData;
+    juice: ProductTypeSummaryData;
+    other: ProductTypeSummaryData;
   };
-  idx: number;
-  formatVol: (liters: number) => string;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const Icon = typeIcons[entry.type] || ArrowRight;
-  const colorClass = typeColors[entry.type] || "bg-gray-500/10 text-gray-700";
-  const label = typeLabels[entry.type] || entry.type;
-  const childOutcomes = entry.childOutcomes || [];
-  const hasChildren = childOutcomes.length > 0;
+  grandSummary: {
+    totalBatches: number;
+    totalSourceLiters: number;
+    totalDestinationLiters: number;
+    totalDiscrepancyLiters: number;
+    isBalanced: boolean;
+  };
+  distilleryOps: DistilleryOpsData;
+  batchesByType: {
+    cider: BatchData[];
+    perry: BatchData[];
+    brandy: BatchData[];
+    pommeau: BatchData[];
+    juice: BatchData[];
+    other: BatchData[];
+  };
+  discrepancies: DiscrepancyData[];
+};
 
-  // Calculate child loss summary for display
-  const childTotalLoss = childOutcomes
-    .filter((c) => c.type === "loss")
-    .reduce((sum, c) => sum + c.volume, 0);
-  const combinedLoss = entry.loss + childTotalLoss;
-
-  return (
-    <React.Fragment>
-      <TableRow
-        className={hasChildren ? "cursor-pointer hover:bg-muted/50" : ""}
-        onClick={() => hasChildren && setExpanded(!expanded)}
-      >
-        <TableCell className="text-sm text-muted-foreground">
-          {formatDate(entry.date)}
-        </TableCell>
-        <TableCell>
-          <div className="flex items-center gap-1">
-            {hasChildren && (
-              expanded ? (
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="h-3 w-3 text-muted-foreground" />
-              )
-            )}
-            <Badge
-              variant="outline"
-              className={cn("flex items-center gap-1 w-fit text-xs", colorClass)}
-            >
-              <Icon className="h-3 w-3" />
-              {label}
-            </Badge>
-          </div>
-        </TableCell>
-        <TableCell>
-          {entry.destinationId ? (
-            <Link
-              href={`/batch/${entry.destinationId}`}
-              className="text-blue-600 hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {entry.description}
-            </Link>
-          ) : (
-            entry.description
-          )}
-          {hasChildren && !expanded && (
-            <span className="text-xs text-muted-foreground ml-2">
-              ({childOutcomes.length} outcomes)
-            </span>
-          )}
-        </TableCell>
-        <TableCell className="text-right font-mono">
-          {(entry.volumeIn ?? 0) > 0 ? (
-            <span className="text-green-600">
-              +{formatVol(entry.volumeIn ?? 0)}
-            </span>
-          ) : entry.volumeOut > 0 ? (
-            <span className="text-blue-600">
-              -{formatVol(entry.volumeOut)}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
-        <TableCell className="text-right font-mono">
-          {/* Show combined loss (direct transfer loss + child batch losses) */}
-          {combinedLoss > 0 ? (
-            <span className="text-amber-600">
-              -{formatVol(combinedLoss)}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          )}
-        </TableCell>
-      </TableRow>
-      {/* Expanded child outcome rows */}
-      {expanded && childOutcomes.map((child, childIdx) => {
-        const isLoss = child.type === "loss";
-        const isPackaging = child.type === "bottling" || child.type === "kegging";
-        const isTransfer = child.type === "transfer";
-
-        return (
-          <TableRow
-            key={`${entry.id}-child-${childIdx}`}
-            className="bg-muted/30 text-sm"
-          >
-            <TableCell />
-            <TableCell>
-              <div className="flex items-center gap-1 text-muted-foreground pl-4">
-                <CornerDownRight className="h-3 w-3" />
-                {isLoss && <Droplets className="h-3 w-3 text-amber-600" />}
-                {isPackaging && <Package className="h-3 w-3 text-emerald-600" />}
-                {isTransfer && <ArrowRight className="h-3 w-3 text-indigo-600" />}
-              </div>
-            </TableCell>
-            <TableCell className="text-muted-foreground">
-              {child.description}
-            </TableCell>
-            <TableCell className="text-right font-mono">
-              {isPackaging ? (
-                <span className="text-emerald-600">{formatVol(child.volume)}</span>
-              ) : isTransfer ? (
-                <span className="text-indigo-600">{formatVol(child.volume)}</span>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </TableCell>
-            <TableCell className="text-right font-mono">
-              {isLoss ? (
-                <span className="text-amber-600">-{formatVol(child.volume)}</span>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </TableCell>
-          </TableRow>
-        );
-      })}
-    </React.Fragment>
-  );
-}
+// Product type icons and colors
+const productTypeConfig: Record<string, { icon: React.ElementType; color: string; label: string }> = {
+  cider: { icon: Wine, color: "text-amber-600", label: "Cider" },
+  perry: { icon: Grape, color: "text-green-600", label: "Perry" },
+  brandy: { icon: Flame, color: "text-red-600", label: "Brandy" },
+  pommeau: { icon: GlassWater, color: "text-purple-600", label: "Pommeau" },
+  juice: { icon: Droplets, color: "text-blue-600", label: "Juice" },
+  other: { icon: Package, color: "text-gray-600", label: "Other" },
+};
 
 export default function BatchTraceReportPage() {
-  const [asOfDate, setAsOfDate] = useState("2025-01-01");
+  // Default to current year period
+  const currentYear = new Date().getFullYear();
+  const [periodStart, setPeriodStart] = useState(`${currentYear}-01-01`);
+  const [periodEnd, setPeriodEnd] = useState(`${currentYear}-12-31`);
+  const [activeTab, setActiveTab] = useState<string>("all");
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set());
+  const [adjustmentBatch, setAdjustmentBatch] = useState<{
+    id: string;
+    name: string;
+    currentVolume: number;
+    vesselName?: string;
+  } | null>(null);
   const { unit, toggleUnit, format: formatVol } = useVolumeUnit();
 
   const {
@@ -248,9 +195,9 @@ export default function BatchTraceReportPage() {
     isLoading,
     error,
     refetch,
-  } = trpc.batch.getBatchTraceReport.useQuery(
-    { asOfDate },
-    { enabled: false } // Don't auto-fetch
+  } = trpc.batch.getTTBBatchTraceReport.useQuery(
+    { periodStart, periodEnd },
+    { enabled: false }
   );
 
   const handleGenerateReport = () => {
@@ -269,14 +216,56 @@ export default function BatchTraceReportPage() {
     });
   };
 
-  const expandAll = () => {
-    if (data?.batches) {
-      setExpandedBatches(new Set(data.batches.map((b) => b.id)));
+  // Get batches for current tab
+  const getBatchesForTab = () => {
+    if (!data) return [];
+    if (activeTab === "all") {
+      return Object.values(data.batchesByType).flat();
     }
+    return data.batchesByType[activeTab as keyof typeof data.batchesByType] || [];
+  };
+
+  // Get summary for current tab
+  const getSummaryForTab = () => {
+    if (!data) return null;
+    if (activeTab === "all") {
+      return data.grandSummary;
+    }
+    return data.summaries[activeTab as keyof typeof data.summaries];
+  };
+
+  const expandAll = () => {
+    const batches = getBatchesForTab();
+    setExpandedBatches(new Set(batches.map((b) => b.id)));
   };
 
   const collapseAll = () => {
     setExpandedBatches(new Set());
+  };
+
+  // Calculate combined cider/perry summary
+  const getCombinedCiderPerrySummary = () => {
+    if (!data) return null;
+    const cider = data.summaries.cider;
+    const perry = data.summaries.perry;
+    return {
+      productType: "cider_perry" as const,
+      ttbTaxClass: "Wine (7% or less)",
+      batchCount: cider.batchCount + perry.batchCount,
+      openingBalanceLiters: cider.openingBalanceLiters + perry.openingBalanceLiters,
+      productionLiters: cider.productionLiters + perry.productionLiters,
+      receiptsLiters: cider.receiptsLiters + perry.receiptsLiters,
+      blendedInLiters: cider.blendedInLiters + perry.blendedInLiters,
+      totalSourceLiters: cider.totalSourceLiters + perry.totalSourceLiters,
+      packagedLiters: cider.packagedLiters + perry.packagedLiters,
+      distilledLiters: cider.distilledLiters + perry.distilledLiters,
+      blendedOutLiters: cider.blendedOutLiters + perry.blendedOutLiters,
+      lossesLiters: cider.lossesLiters + perry.lossesLiters,
+      endingBalanceLiters: cider.endingBalanceLiters + perry.endingBalanceLiters,
+      totalDestinationLiters: cider.totalDestinationLiters + perry.totalDestinationLiters,
+      discrepancyLiters: cider.discrepancyLiters + perry.discrepancyLiters,
+      isBalanced: cider.isBalanced && perry.isBalanced,
+    };
   };
 
   return (
@@ -288,31 +277,44 @@ export default function BatchTraceReportPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
               <TrendingDown className="h-8 w-8 text-blue-600" />
-              Batch Tracing Report
+              TTB Batch Trace Report
             </h1>
             <p className="text-gray-600 mt-1">
-              Track where all base batch volume went - transfers, packaging, and losses
+              Track inventory by product type for TTB Form 5120.17 compliance
             </p>
           </div>
         </div>
 
-        {/* Date Selector */}
+        {/* Period Selector */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle className="text-base">Report Parameters</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Report Period
+            </CardTitle>
             <CardDescription>
-              Select a date to see all base batches that existed on or before that date
+              Select the reporting period to track inventory changes
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-end gap-4">
+            <div className="flex items-end gap-4 flex-wrap">
               <div className="space-y-2">
-                <Label htmlFor="asOfDate">As of Date</Label>
+                <Label htmlFor="periodStart">Period Start</Label>
                 <Input
-                  id="asOfDate"
+                  id="periodStart"
                   type="date"
-                  value={asOfDate}
-                  onChange={(e) => setAsOfDate(e.target.value)}
+                  value={periodStart}
+                  onChange={(e) => setPeriodStart(e.target.value)}
+                  className="w-48"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="periodEnd">Period End</Label>
+                <Input
+                  id="periodEnd"
+                  type="date"
+                  value={periodEnd}
+                  onChange={(e) => setPeriodEnd(e.target.value)}
                   className="w-48"
                 />
               </div>
@@ -329,20 +331,6 @@ export default function BatchTraceReportPage() {
                   </>
                 )}
               </Button>
-              {data && (
-                <ReportExportDropdown
-                  disabled={isLoading}
-                  onExportPDF={async () => {
-                    await downloadBatchTraceReportPDF(data);
-                  }}
-                  onExportExcel={async () => {
-                    await downloadBatchTraceReportExcel(data);
-                  }}
-                  onExportCSV={async () => {
-                    downloadBatchTraceReportCSV(data);
-                  }}
-                />
-              )}
               <VolumeUnitToggle unit={unit} onToggle={toggleUnit} />
             </div>
           </CardContent>
@@ -363,272 +351,136 @@ export default function BatchTraceReportPage() {
         {/* Report Content */}
         {data && (
           <>
-            {/* Summary Cards - Volume Reconciliation */}
-            <div className="mb-6">
-              <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
-                <Card>
-                  <CardContent className="pt-4">
-                    <p className="text-sm text-muted-foreground">Base Batches</p>
-                    <p className="text-2xl font-bold">{data.summary.totalBatches}</p>
-                  </CardContent>
-                </Card>
-                <Card className="border-blue-200 bg-blue-50/50">
-                  <CardContent className="pt-4">
-                    <p className="text-sm text-muted-foreground">Initial Volume</p>
-                    <p className="text-2xl font-bold text-blue-700">{formatVol(data.summary.totalInitialVolume)}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-4">
-                    <p className="text-sm text-muted-foreground">→ Packaged</p>
-                    <p className="text-2xl font-bold text-emerald-600">
-                      {formatVol(data.summary.totalPackaged)}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-4">
-                    <p className="text-sm text-muted-foreground">→ Distilled</p>
-                    <p className="text-2xl font-bold text-red-600">
-                      {formatVol(data.summary.totalDistilled ?? 0)}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-4">
-                    <p className="text-sm text-muted-foreground">→ Losses</p>
-                    <p className="text-2xl font-bold text-amber-600">
-                      {formatVol(data.summary.totalLosses)}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-4">
-                    <p className="text-sm text-muted-foreground">= Remaining</p>
-                    <p className="text-2xl font-bold">{formatVol(data.summary.totalCurrentVolume)}</p>
-                  </CardContent>
-                </Card>
-                <Card className={cn(
-                  Math.abs(data.summary.totalDiscrepancy ?? 0) > 0.5
-                    ? "border-amber-300 bg-amber-50/50"
-                    : "border-green-200 bg-green-50/50"
-                )}>
-                  <CardContent className="pt-4">
-                    <p className="text-sm text-muted-foreground flex items-center gap-1">
-                      {Math.abs(data.summary.totalDiscrepancy ?? 0) > 0.5 ? (
-                        <AlertTriangle className="h-3 w-3 text-amber-500" />
-                      ) : (
-                        <CheckCircle2 className="h-3 w-3 text-green-500" />
-                      )}
-                      Discrepancy
-                    </p>
-                    <p className={cn(
-                      "text-2xl font-bold",
-                      Math.abs(data.summary.totalDiscrepancy ?? 0) > 0.5 ? "text-amber-600" : "text-green-600"
-                    )}>
-                      {formatVol(data.summary.totalDiscrepancy ?? 0)}
-                    </p>
-                  </CardContent>
-                </Card>
+            {/* Product Type Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+              <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+                <TabsTrigger value="all" className="flex items-center gap-1">
+                  All
+                  <Badge variant="secondary" className="ml-1">
+                    {data.grandSummary.totalBatches}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="cider_perry" className="flex items-center gap-1">
+                  <Wine className="h-3 w-3" />
+                  Cider/Perry
+                  <Badge variant="secondary" className="ml-1">
+                    {data.summaries.cider.batchCount + data.summaries.perry.batchCount}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="brandy" className="flex items-center gap-1">
+                  <Flame className="h-3 w-3" />
+                  Brandy
+                  <Badge variant="secondary" className="ml-1">
+                    {data.summaries.brandy.batchCount}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="pommeau" className="flex items-center gap-1">
+                  <GlassWater className="h-3 w-3" />
+                  Pommeau
+                  <Badge variant="secondary" className="ml-1">
+                    {data.summaries.pommeau.batchCount}
+                  </Badge>
+                </TabsTrigger>
+                <TabsTrigger value="other" className="flex items-center gap-1">
+                  Other
+                  <Badge variant="secondary" className="ml-1">
+                    {data.summaries.juice.batchCount + data.summaries.other.batchCount}
+                  </Badge>
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Summary Cards based on tab */}
+              <div className="mt-6">
+                {activeTab === "all" && (
+                  <GrandSummarySection data={data} formatVol={formatVol} />
+                )}
+                {activeTab === "cider_perry" && (
+                  <ProductTypeSummarySection
+                    summary={getCombinedCiderPerrySummary()!}
+                    formatVol={formatVol}
+                    showDistillery={true}
+                    distilleryOps={data.distilleryOps}
+                  />
+                )}
+                {activeTab === "brandy" && (
+                  <ProductTypeSummarySection
+                    summary={data.summaries.brandy}
+                    formatVol={formatVol}
+                    showDistillery={true}
+                    distilleryOps={data.distilleryOps}
+                    isBrandy={true}
+                  />
+                )}
+                {activeTab === "pommeau" && (
+                  <ProductTypeSummarySection
+                    summary={data.summaries.pommeau}
+                    formatVol={formatVol}
+                  />
+                )}
+                {activeTab === "other" && (
+                  <ProductTypeSummarySection
+                    summary={{
+                      ...data.summaries.juice,
+                      batchCount: data.summaries.juice.batchCount + data.summaries.other.batchCount,
+                      openingBalanceLiters: data.summaries.juice.openingBalanceLiters + data.summaries.other.openingBalanceLiters,
+                      productionLiters: data.summaries.juice.productionLiters + data.summaries.other.productionLiters,
+                      endingBalanceLiters: data.summaries.juice.endingBalanceLiters + data.summaries.other.endingBalanceLiters,
+                      totalSourceLiters: data.summaries.juice.totalSourceLiters + data.summaries.other.totalSourceLiters,
+                      totalDestinationLiters: data.summaries.juice.totalDestinationLiters + data.summaries.other.totalDestinationLiters,
+                      discrepancyLiters: data.summaries.juice.discrepancyLiters + data.summaries.other.discrepancyLiters,
+                      isBalanced: data.summaries.juice.isBalanced && data.summaries.other.isBalanced,
+                    }}
+                    formatVol={formatVol}
+                  />
+                )}
               </div>
-              {/* Balance explanation */}
-              <p className="text-xs text-muted-foreground mt-2 text-center">
-                Volume flow: Initial + Inflow → Packaged + Distilled + Losses + Remaining | Discrepancy = sum of per-batch volume gaps
-              </p>
-            </div>
 
-            {/* Batch List Controls */}
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">
-                Batch Details ({data.batches.length} batches)
-              </h2>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={expandAll}>
-                  Expand All
-                </Button>
-                <Button variant="outline" size="sm" onClick={collapseAll}>
-                  Collapse All
-                </Button>
-              </div>
-            </div>
+              {/* Distillery Operations Section (for All tab) */}
+              {activeTab === "all" && data.distilleryOps.operations.length > 0 && (
+                <DistilleryOperationsSection
+                  distilleryOps={data.distilleryOps}
+                  formatVol={formatVol}
+                />
+              )}
 
-            {/* Batch Cards */}
-            <div className="space-y-3">
-              {data.batches.map((batch) => {
-                const isExpanded = expandedBatches.has(batch.id);
-                const hasDiscrepancy = Math.abs(batch.summary?.discrepancy ?? 0) > 0.5;
+              {/* Discrepancies Section */}
+              {data.discrepancies.length > 0 && (activeTab === "all" ||
+                data.discrepancies.some(d =>
+                  activeTab === "cider_perry" ? (d.productType === "cider" || d.productType === "perry") :
+                  activeTab === "other" ? (d.productType === "juice" || d.productType === "other") :
+                  d.productType === activeTab
+                )
+              ) && (
+                <DiscrepanciesSection
+                  discrepancies={data.discrepancies.filter(d =>
+                    activeTab === "all" ? true :
+                    activeTab === "cider_perry" ? (d.productType === "cider" || d.productType === "perry") :
+                    activeTab === "other" ? (d.productType === "juice" || d.productType === "other") :
+                    d.productType === activeTab
+                  )}
+                  formatVol={formatVol}
+                  onFixDiscrepancy={(batch) => setAdjustmentBatch(batch)}
+                />
+              )}
 
-                return (
-                  <Card key={batch.id} className={cn(hasDiscrepancy && "border-amber-300")}>
-                    <Collapsible open={isExpanded} onOpenChange={() => toggleBatch(batch.id)}>
-                      <CollapsibleTrigger asChild>
-                        <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              {isExpanded ? (
-                                <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                              ) : (
-                                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                              )}
-                              <div className="flex-1">
-                                <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-                                  <Link
-                                    href={`/batch/${batch.id}`}
-                                    className="text-blue-600 hover:underline"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {batch.customName || batch.name}
-                                  </Link>
-                                  {batch.vesselName && (
-                                    <span className="text-muted-foreground font-normal text-sm">
-                                      ({batch.vesselName})
-                                    </span>
-                                  )}
-                                  <Badge variant="outline" className="ml-2">
-                                    {batch.status}
-                                  </Badge>
-                                </CardTitle>
-                                <p className="text-xs text-muted-foreground font-mono mt-0.5">{batch.name}</p>
-                                {/* Summary stats row - mirrors top-level summary */}
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-sm">
-                                  <div>
-                                    <span className="text-muted-foreground">Initial:</span>{" "}
-                                    <span className="font-medium">{formatVol(batch.initialVolume)}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Transferred:</span>{" "}
-                                    <span className="font-medium text-indigo-600">{formatVol(batch.summary?.totalOutflow ?? 0)}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Packaged:</span>{" "}
-                                    <span className="font-medium text-emerald-600">{formatVol(batch.summary?.totalPackaged ?? 0)}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Losses:</span>{" "}
-                                    <span className="font-medium text-amber-600">{formatVol(batch.summary?.totalLoss ?? 0)}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-muted-foreground">Current:</span>{" "}
-                                    <span className="font-medium">{formatVol(batch.currentVolume ?? 0)}</span>
-                                  </div>
-                                  {hasDiscrepancy && (
-                                    <div className="flex items-center gap-1">
-                                      <AlertCircle className="h-3 w-3 text-amber-500" />
-                                      <span className="text-amber-600 font-medium">
-                                        Discrepancy: {(batch.summary?.discrepancy ?? 0) > 0 ? "+" : ""}
-                                        {formatVol(batch.summary?.discrepancy ?? 0)}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              {batch.entries.length > 0 ? (
-                                <span className="text-sm text-muted-foreground">
-                                  {batch.entries.length} event{batch.entries.length !== 1 ? "s" : ""}
-                                </span>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">No activity</span>
-                              )}
-                            </div>
-                          </div>
-                        </CardHeader>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <CardContent className="pt-0">
-                          {batch.entries.length === 0 ? (
-                            <div className="text-center py-4 text-muted-foreground">
-                              No volume flow events recorded for this batch
-                            </div>
-                          ) : (
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead className="w-[120px]">Date</TableHead>
-                                  <TableHead className="w-[100px]">Type</TableHead>
-                                  <TableHead>Description</TableHead>
-                                  <TableHead className="text-right w-[100px]">Volume</TableHead>
-                                  <TableHead className="text-right w-[80px]">Loss</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {batch.entries.map((entry, idx) => (
-                                  <ExpandableEntryRow
-                                    key={`${entry.type}-${entry.id}-${idx}`}
-                                    entry={entry}
-                                    idx={idx}
-                                    formatVol={formatVol}
-                                  />
-                                ))}
-                                {/* Summary row */}
-                                <TableRow className="bg-muted/50 font-medium">
-                                  <TableCell colSpan={3} className="text-right">
-                                    Batch Totals:
-                                  </TableCell>
-                                  <TableCell className="text-right font-mono">
-                                    {(batch.summary?.totalInflow ?? 0) > 0 && (
-                                      <span className="text-green-600">+{formatVol(batch.summary?.totalInflow ?? 0)} / </span>
-                                    )}
-                                    <span className="text-blue-600">-{formatVol(batch.summary?.totalOutflow ?? 0)}</span>
-                                  </TableCell>
-                                  <TableCell className="text-right font-mono text-amber-600">
-                                    -{formatVol(batch.summary?.totalLoss ?? 0)}
-                                  </TableCell>
-                                </TableRow>
-                              </TableBody>
-                            </Table>
-                          )}
-
-                          {/* Batch trace accounting summary */}
-                          <div className="mt-4 p-3 bg-muted/30 rounded-md text-sm">
-                            <div className="flex items-center gap-2">
-                              {hasDiscrepancy ? (
-                                <AlertCircle className="h-4 w-4 text-amber-500" />
-                              ) : (
-                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                              )}
-                              <span>
-                                <span className="font-medium">Trace:</span>{" "}
-                                Initial ({formatVol(batch.initialVolume ?? 0)})
-                                {(batch.summary?.totalInflow ?? 0) > 0 && (
-                                  <> + Inflow ({formatVol(batch.summary?.totalInflow ?? 0)})</>
-                                )}
-                                {" "}={" "}
-                                <span className="text-emerald-600">Packaged ({formatVol(batch.summary?.totalPackaged ?? 0)})</span>
-                                {" "}+{" "}
-                                <span className="text-amber-600">Losses ({formatVol(batch.summary?.totalLoss ?? 0)})</span>
-                                {" "}+{" "}
-                                <span className="text-blue-600">Remaining ({formatVol(batch.summary?.totalRemaining ?? batch.currentVolume ?? 0)})</span>
-                                {hasDiscrepancy && (
-                                  <span className="text-amber-600 ml-2">
-                                    | Unaccounted: {(batch.summary?.discrepancy ?? 0) > 0 ? "+" : ""}
-                                    {formatVol(batch.summary?.discrepancy ?? 0)}
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                            {(batch.summary?.childrenRemaining ?? 0) > 0 && (
-                              <div className="text-xs text-muted-foreground mt-1 ml-6">
-                                (Remaining includes {formatVol(batch.summary?.childrenRemaining ?? 0)} still in child batches)
-                              </div>
-                            )}
-                          </div>
-                        </CardContent>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  </Card>
-                );
-              })}
-            </div>
-
-            {data.batches.length === 0 && (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  No base batches found for the selected date.
-                </CardContent>
-              </Card>
-            )}
+              {/* Batch List */}
+              <TabsContent value={activeTab} className="mt-6">
+                <BatchListSection
+                  batches={
+                    activeTab === "all" ? Object.values(data.batchesByType).flat() :
+                    activeTab === "cider_perry" ? [...data.batchesByType.cider, ...data.batchesByType.perry] :
+                    activeTab === "other" ? [...data.batchesByType.juice, ...data.batchesByType.other] :
+                    data.batchesByType[activeTab as keyof typeof data.batchesByType] || []
+                  }
+                  expandedBatches={expandedBatches}
+                  toggleBatch={toggleBatch}
+                  expandAll={expandAll}
+                  collapseAll={collapseAll}
+                  formatVol={formatVol}
+                  onFixDiscrepancy={(batch) => setAdjustmentBatch(batch)}
+                />
+              </TabsContent>
+            </Tabs>
           </>
         )}
 
@@ -637,7 +489,635 @@ export default function BatchTraceReportPage() {
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
               <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Select a date and click "Generate Report" to see batch tracing data.</p>
+              <p>Select a period and click "Generate Report" to see TTB batch tracing data.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Volume Adjustment Modal */}
+      {adjustmentBatch && (
+        <VolumeAdjustmentModal
+          open={!!adjustmentBatch}
+          onClose={() => {
+            setAdjustmentBatch(null);
+            refetch();
+          }}
+          batchId={adjustmentBatch.id}
+          batchName={adjustmentBatch.name}
+          currentVolumeL={adjustmentBatch.currentVolume}
+          vesselName={adjustmentBatch.vesselName}
+        />
+      )}
+    </div>
+  );
+}
+
+// Grand Summary Section (All Products)
+function GrandSummarySection({
+  data,
+  formatVol,
+}: {
+  data: TTBReportData;
+  formatVol: (liters: number) => string;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Product Type Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Cider/Perry */}
+        <Card className="border-amber-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Wine className="h-4 w-4 text-amber-600" />
+              Cider/Perry
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Opening:</span>
+                <span className="font-mono">{formatVol(data.summaries.cider.openingBalanceLiters + data.summaries.perry.openingBalanceLiters)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Ending:</span>
+                <span className="font-mono">{formatVol(data.summaries.cider.endingBalanceLiters + data.summaries.perry.endingBalanceLiters)}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t">
+                <span className="text-muted-foreground">Discrepancy:</span>
+                <span className={cn(
+                  "font-mono",
+                  Math.abs(data.summaries.cider.discrepancyLiters + data.summaries.perry.discrepancyLiters) > 1 ? "text-amber-600" : "text-green-600"
+                )}>
+                  {formatVol(data.summaries.cider.discrepancyLiters + data.summaries.perry.discrepancyLiters)}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Brandy */}
+        <Card className="border-red-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Flame className="h-4 w-4 text-red-600" />
+              Brandy
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Opening:</span>
+                <span className="font-mono">{formatVol(data.summaries.brandy.openingBalanceLiters)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Receipts:</span>
+                <span className="font-mono text-green-600">+{formatVol(data.summaries.brandy.receiptsLiters)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Ending:</span>
+                <span className="font-mono">{formatVol(data.summaries.brandy.endingBalanceLiters)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pommeau */}
+        <Card className="border-purple-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <GlassWater className="h-4 w-4 text-purple-600" />
+              Pommeau
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Opening:</span>
+                <span className="font-mono">{formatVol(data.summaries.pommeau.openingBalanceLiters)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Ending:</span>
+                <span className="font-mono">{formatVol(data.summaries.pommeau.endingBalanceLiters)}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Grand Total */}
+        <Card className={cn(
+          data.grandSummary.isBalanced ? "border-green-200 bg-green-50/50" : "border-amber-200 bg-amber-50/50"
+        )}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              {data.grandSummary.isBalanced ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+              )}
+              Grand Total
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Batches:</span>
+                <span className="font-mono">{data.grandSummary.totalBatches}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Source:</span>
+                <span className="font-mono">{formatVol(data.grandSummary.totalSourceLiters)}</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t">
+                <span className="text-muted-foreground">Discrepancy:</span>
+                <span className={cn(
+                  "font-mono font-bold",
+                  data.grandSummary.isBalanced ? "text-green-600" : "text-amber-600"
+                )}>
+                  {formatVol(data.grandSummary.totalDiscrepancyLiters)}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Product Type Summary Section
+function ProductTypeSummarySection({
+  summary,
+  formatVol,
+  showDistillery = false,
+  distilleryOps,
+  isBrandy = false,
+}: {
+  summary: {
+    productType: string;
+    ttbTaxClass: string;
+    batchCount: number;
+    openingBalanceLiters: number;
+    productionLiters: number;
+    receiptsLiters: number;
+    blendedInLiters: number;
+    totalSourceLiters: number;
+    packagedLiters: number;
+    distilledLiters: number;
+    blendedOutLiters: number;
+    lossesLiters: number;
+    endingBalanceLiters: number;
+    totalDestinationLiters: number;
+    discrepancyLiters: number;
+    isBalanced: boolean;
+  };
+  formatVol: (liters: number) => string;
+  showDistillery?: boolean;
+  distilleryOps?: {
+    ciderSentLiters: number;
+    brandyReceivedLiters: number;
+    operations: Array<{
+      id: string;
+      type: "sent" | "received";
+      sourceBatchName: string | null;
+      resultBatchName: string | null;
+      volumeLiters: number;
+      date: Date | string;
+      distilleryName: string;
+    }>;
+    pendingReturns: Array<{
+      id: string;
+      sourceBatchName: string;
+      volumeSentLiters: number;
+      sentAt: Date | string;
+      distilleryName: string;
+    }>;
+  };
+  isBrandy?: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* TTB Balance Equation */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center justify-between">
+            <span>TTB Balance: {summary.ttbTaxClass}</span>
+            <Badge variant={summary.isBalanced ? "default" : "destructive"}>
+              {summary.isBalanced ? "Balanced" : "Discrepancy"}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {/* Source Side */}
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">Opening Balance</p>
+              <p className="text-lg font-bold text-blue-700">{formatVol(summary.openingBalanceLiters)}</p>
+            </div>
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">+ Production</p>
+              <p className="text-lg font-bold text-blue-600">{formatVol(summary.productionLiters)}</p>
+            </div>
+            {(summary.receiptsLiters > 0 || isBrandy) && (
+              <div className="p-3 bg-green-50 rounded-lg">
+                <p className="text-xs text-muted-foreground">+ Receipts {isBrandy && "(from DSP)"}</p>
+                <p className="text-lg font-bold text-green-600">{formatVol(summary.receiptsLiters)}</p>
+              </div>
+            )}
+
+            {/* Destination Side */}
+            <div className="p-3 bg-emerald-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">- Packaged</p>
+              <p className="text-lg font-bold text-emerald-600">{formatVol(summary.packagedLiters)}</p>
+            </div>
+            {showDistillery && !isBrandy && (
+              <div className="p-3 bg-red-50 rounded-lg">
+                <p className="text-xs text-muted-foreground">- To Distillery</p>
+                <p className="text-lg font-bold text-red-600">{formatVol(summary.distilledLiters)}</p>
+              </div>
+            )}
+            <div className="p-3 bg-amber-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">- Losses</p>
+              <p className="text-lg font-bold text-amber-600">{formatVol(summary.lossesLiters)}</p>
+            </div>
+            <div className="p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">= Ending Balance</p>
+              <p className="text-lg font-bold">{formatVol(summary.endingBalanceLiters)}</p>
+            </div>
+          </div>
+
+          {/* Balance equation */}
+          <div className="mt-4 p-3 bg-muted/30 rounded-md">
+            <p className="text-sm text-center font-mono">
+              <span className="text-blue-600">{formatVol(summary.openingBalanceLiters)}</span>
+              {" + "}
+              <span className="text-blue-600">{formatVol(summary.productionLiters)}</span>
+              {summary.receiptsLiters > 0 && (
+                <> + <span className="text-green-600">{formatVol(summary.receiptsLiters)}</span></>
+              )}
+              {" = "}
+              <span className="text-emerald-600">{formatVol(summary.packagedLiters)}</span>
+              {showDistillery && !isBrandy && (
+                <> + <span className="text-red-600">{formatVol(summary.distilledLiters)}</span></>
+              )}
+              {" + "}
+              <span className="text-amber-600">{formatVol(summary.lossesLiters)}</span>
+              {" + "}
+              <span>{formatVol(summary.endingBalanceLiters)}</span>
+              {Math.abs(summary.discrepancyLiters) > 0.5 && (
+                <>
+                  {" ± "}
+                  <span className="text-amber-600">{formatVol(summary.discrepancyLiters)}</span>
+                </>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground text-center mt-1">
+              {summary.batchCount} batches | {summary.ttbTaxClass}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Distillery Operations Section
+function DistilleryOperationsSection({
+  distilleryOps,
+  formatVol,
+}: {
+  distilleryOps: {
+    ciderSentLiters: number;
+    brandyReceivedLiters: number;
+    operations: Array<{
+      id: string;
+      type: "sent" | "received";
+      sourceBatchName: string | null;
+      resultBatchName: string | null;
+      volumeLiters: number;
+      date: Date | string;
+      distilleryName: string;
+    }>;
+    pendingReturns: Array<{
+      id: string;
+      sourceBatchName: string;
+      volumeSentLiters: number;
+      sentAt: Date | string;
+      distilleryName: string;
+    }>;
+  };
+  formatVol: (liters: number) => string;
+}) {
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Factory className="h-4 w-4" />
+          Distillery Operations
+        </CardTitle>
+        <CardDescription>
+          Cider sent to distillery and brandy received back
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="p-3 bg-red-50 rounded-lg text-center">
+            <p className="text-xs text-muted-foreground">Cider Sent</p>
+            <p className="text-xl font-bold text-red-600">{formatVol(distilleryOps.ciderSentLiters)}</p>
+          </div>
+          <div className="p-3 bg-green-50 rounded-lg text-center">
+            <p className="text-xs text-muted-foreground">Brandy Received</p>
+            <p className="text-xl font-bold text-green-600">{formatVol(distilleryOps.brandyReceivedLiters)}</p>
+          </div>
+          <div className="p-3 bg-amber-50 rounded-lg text-center">
+            <p className="text-xs text-muted-foreground">Pending Returns</p>
+            <p className="text-xl font-bold text-amber-600">{distilleryOps.pendingReturns.length}</p>
+          </div>
+        </div>
+
+        {distilleryOps.operations.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Batch</TableHead>
+                <TableHead>Distillery</TableHead>
+                <TableHead className="text-right">Volume</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {distilleryOps.operations.map((op) => (
+                <TableRow key={op.id}>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {formatDate(op.date)}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={op.type === "sent" ? "destructive" : "default"}>
+                      {op.type === "sent" ? "Sent" : "Received"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {op.type === "sent" ? op.sourceBatchName : op.resultBatchName}
+                  </TableCell>
+                  <TableCell>{op.distilleryName}</TableCell>
+                  <TableCell className="text-right font-mono">
+                    <span className={op.type === "sent" ? "text-red-600" : "text-green-600"}>
+                      {op.type === "sent" ? "-" : "+"}{formatVol(op.volumeLiters)}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {distilleryOps.pendingReturns.length > 0 && (
+          <div className="mt-4">
+            <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
+              <Clock className="h-4 w-4 text-amber-500" />
+              Pending Returns
+            </h4>
+            <div className="space-y-2">
+              {distilleryOps.pendingReturns.map((pending) => (
+                <div key={pending.id} className="flex items-center justify-between p-2 bg-amber-50 rounded">
+                  <div>
+                    <span className="font-medium">{pending.sourceBatchName}</span>
+                    <span className="text-sm text-muted-foreground ml-2">
+                      → {pending.distilleryName}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-mono">{formatVol(pending.volumeSentLiters)}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      sent {formatDate(pending.sentAt)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Discrepancies Section
+function DiscrepanciesSection({
+  discrepancies,
+  formatVol,
+  onFixDiscrepancy,
+}: {
+  discrepancies: Array<{
+    type: string;
+    batchId: string;
+    batchName: string;
+    productType: string;
+    description: string;
+    volumeAffectedLiters: number;
+    suggestedAction: string;
+  }>;
+  formatVol: (liters: number) => string;
+  onFixDiscrepancy: (batch: { id: string; name: string; currentVolume: number }) => void;
+}) {
+  return (
+    <Card className="mt-6 border-amber-200">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2 text-amber-700">
+          <AlertTriangle className="h-4 w-4" />
+          Discrepancies ({discrepancies.length})
+        </CardTitle>
+        <CardDescription>
+          Issues requiring attention for accurate TTB reporting
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {discrepancies.map((d, idx) => {
+            const config = productTypeConfig[d.productType] || productTypeConfig.other;
+            const Icon = config.icon;
+
+            return (
+              <div key={idx} className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
+                    <Icon className={cn("h-5 w-5 mt-0.5", config.color)} />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/batch/${d.batchId}`} className="font-medium text-blue-600 hover:underline">
+                          {d.batchName}
+                        </Link>
+                        <Badge variant="outline" className="text-xs">
+                          {d.type.replace(/_/g, " ")}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">{d.description}</p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        <strong>Suggested:</strong> {d.suggestedAction}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono text-amber-600">{formatVol(d.volumeAffectedLiters)}</p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-2 text-xs"
+                      onClick={() => onFixDiscrepancy({
+                        id: d.batchId,
+                        name: d.batchName,
+                        currentVolume: 0, // Will be fetched from batch
+                      })}
+                    >
+                      Fix
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Batch List Section
+function BatchListSection({
+  batches,
+  expandedBatches,
+  toggleBatch,
+  expandAll,
+  collapseAll,
+  formatVol,
+  onFixDiscrepancy,
+}: {
+  batches: Array<{
+    id: string;
+    name: string;
+    customName: string | null;
+    batchNumber: string;
+    productType: string | null;
+    initialVolume: string | null;
+    currentVolume: string | null;
+    status: string | null;
+    vesselName: string | null;
+    startDate: Date | string | null;
+  }>;
+  expandedBatches: Set<string>;
+  toggleBatch: (id: string) => void;
+  expandAll: () => void;
+  collapseAll: () => void;
+  formatVol: (liters: number) => string;
+  onFixDiscrepancy: (batch: { id: string; name: string; currentVolume: number; vesselName?: string }) => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">
+          Batch Details ({batches.length} batches)
+        </h2>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={expandAll}>
+            Expand All
+          </Button>
+          <Button variant="outline" size="sm" onClick={collapseAll}>
+            Collapse All
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {batches.map((batch) => {
+          const isExpanded = expandedBatches.has(batch.id);
+          const config = productTypeConfig[batch.productType || "other"] || productTypeConfig.other;
+          const Icon = config.icon;
+          const initialVol = parseFloat(batch.initialVolume || "0");
+          const currentVol = parseFloat(batch.currentVolume || "0");
+
+          return (
+            <Card key={batch.id}>
+              <Collapsible open={isExpanded} onOpenChange={() => toggleBatch(batch.id)}>
+                <CollapsibleTrigger asChild>
+                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {isExpanded ? (
+                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        )}
+                        <Icon className={cn("h-5 w-5", config.color)} />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/batch/${batch.id}`}
+                              className="font-medium text-blue-600 hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {batch.customName || batch.name}
+                            </Link>
+                            {batch.vesselName && (
+                              <span className="text-muted-foreground text-sm">
+                                ({batch.vesselName})
+                              </span>
+                            )}
+                            <Badge variant="outline" className="text-xs">
+                              {batch.status}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground font-mono">{batch.batchNumber}</p>
+                        </div>
+                      </div>
+                      <div className="text-right text-sm">
+                        <div className="flex gap-4">
+                          <div>
+                            <span className="text-muted-foreground">Initial:</span>{" "}
+                            <span className="font-mono">{formatVol(initialVol)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Current:</span>{" "}
+                            <span className="font-mono">{formatVol(currentVol)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-0">
+                    <div className="p-3 bg-muted/30 rounded-md text-sm">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <span className="text-muted-foreground">Product Type:</span>
+                          <p className="font-medium capitalize">{batch.productType || "Other"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Start Date:</span>
+                          <p className="font-medium">{batch.startDate ? formatDate(batch.startDate) : "N/A"}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Initial Volume:</span>
+                          <p className="font-medium">{formatVol(initialVol)}</p>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Current Volume:</span>
+                          <p className="font-medium">{formatVol(currentVol)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Collapsible>
+            </Card>
+          );
+        })}
+
+        {batches.length === 0 && (
+          <Card>
+            <CardContent className="py-12 text-center text-muted-foreground">
+              No batches found for this product type.
             </CardContent>
           </Card>
         )}

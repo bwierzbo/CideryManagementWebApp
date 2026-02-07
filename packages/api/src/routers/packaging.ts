@@ -1123,6 +1123,7 @@ export const packagingRouter = router({
           cursor: input.cursor,
           limit: input.limit || 50,
           direction: input.direction,
+          offset: input.offset, // Support offset-based pagination as fallback
         };
 
         // Use unified query (bottles + kegs) with performance measurement

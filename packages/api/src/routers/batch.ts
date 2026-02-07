@@ -6466,6 +6466,7 @@ export const batchRouter = router({
         .where(
           and(
             sql`${batches.startDate} <= ${targetDate}`,
+            // Only include verified batches as base batches
             eq(batches.reconciliationStatus, "verified"),
             sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`,
             isNull(batches.deletedAt),
@@ -6488,24 +6489,40 @@ export const batchRouter = router({
           asOfDate,
           summary: {
             totalBatches: 0,
+            // Source volumes
             totalInitialVolume: 0,
-            totalCurrentVolume: 0,
             totalInflow: 0,
-            totalTransferred: 0,
+            totalSource: 0,
+            // Destination volumes
             totalPackaged: 0,
             totalDistilled: 0,
             totalLosses: 0,
-            totalChildrenRemaining: 0,
             totalRemaining: 0,
+            // Accounting
+            totalDestinations: 0,
             totalDiscrepancy: 0,
-            totalUnaccounted: 0,
+            // Legacy/compatibility
+            totalCurrentVolume: 0,
+            totalTransferred: 0,
+            totalChildrenRemaining: 0,
           },
           batches: [],
+          inflowBreakdown: [] as {
+            destinationBatchId: string;
+            destinationBatchName: string;
+            sourceBatchId: string;
+            sourceBatchName: string;
+            isSourceBaseBatch: boolean;
+            isExternalInflow: boolean;
+            volumeLiters: number;
+            date: Date;
+          }[],
         };
       }
 
       // Get all batch IDs for bulk queries
       const batchIds = baseBatches.map((b) => b.id);
+      const baseBatchIdSet = new Set(batchIds); // For O(1) lookup to prevent double-counting
 
       // Type definitions
       type ChildOutcomeReport = {
@@ -6684,12 +6701,13 @@ export const batchRouter = router({
         const distillationsResult = await db.execute(sql`
           SELECT id, source_batch_id, sent_at as date, source_volume_liters as volume_out, distillery_name
           FROM distillation_records
-          WHERE source_batch_id IN (${sql.join(batchIds.map(id => sql`${id}`), sql`, `)}) AND deleted_at IS NULL
+          WHERE source_batch_id IN (${sql.join(batchIds.map(id => sql`${id}`), sql`, `)})
+            AND deleted_at IS NULL
         `);
         allDistillations = (distillationsResult as unknown as { rows: DistillationRow[] }).rows || [];
       }
 
-      // 8. All volume adjustments for base batches (sediment, evaporation, dumps, etc.)
+      // 8. All volume adjustments for base batches
       const allAdjustments = await db
         .select({
           id: batchVolumeAdjustments.id,
@@ -6718,6 +6736,7 @@ export const batchRouter = router({
       // Child batch bottlings
       const allChildBottlings = destinationBatchIds.length > 0 ? await db
         .select({
+          id: bottleRuns.id,
           batchId: bottleRuns.batchId,
           unitsProduced: bottleRuns.unitsProduced,
           packageSizeML: bottleRuns.packageSizeML,
@@ -6735,6 +6754,7 @@ export const batchRouter = router({
       // Child batch keg fills
       const allChildKegFills = destinationBatchIds.length > 0 ? await db
         .select({
+          id: kegFills.id,
           batchId: kegFills.batchId,
           volumeTaken: kegFills.volumeTaken,
           loss: kegFills.loss,
@@ -6753,6 +6773,7 @@ export const batchRouter = router({
       // Child batch volume adjustments
       const allChildAdjustments = destinationBatchIds.length > 0 ? await db
         .select({
+          id: batchVolumeAdjustments.id,
           batchId: batchVolumeAdjustments.batchId,
           adjustmentType: batchVolumeAdjustments.adjustmentType,
           adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
@@ -6769,6 +6790,7 @@ export const batchRouter = router({
       // Child batch rackings
       const allChildRackings = destinationBatchIds.length > 0 ? await db
         .select({
+          id: batchRackingOperations.id,
           batchId: batchRackingOperations.batchId,
           volumeLoss: batchRackingOperations.volumeLoss,
           notes: batchRackingOperations.notes,
@@ -6784,6 +6806,7 @@ export const batchRouter = router({
       // Child batch filter operations
       const allChildFilterings = destinationBatchIds.length > 0 ? await db
         .select({
+          id: batchFilterOperations.id,
           batchId: batchFilterOperations.batchId,
           volumeLoss: batchFilterOperations.volumeLoss,
           filterType: batchFilterOperations.filterType,
@@ -6826,6 +6849,7 @@ export const batchRouter = router({
       // Grandchild bottlings
       const allGrandchildBottlings = grandchildBatchIds.length > 0 ? await db
         .select({
+          id: bottleRuns.id,
           batchId: bottleRuns.batchId,
           unitsProduced: bottleRuns.unitsProduced,
           packageSizeML: bottleRuns.packageSizeML,
@@ -6842,6 +6866,7 @@ export const batchRouter = router({
       // Grandchild keg fills
       const allGrandchildKegFills = grandchildBatchIds.length > 0 ? await db
         .select({
+          id: kegFills.id,
           batchId: kegFills.batchId,
           volumeTaken: kegFills.volumeTaken,
           loss: kegFills.loss,
@@ -6858,6 +6883,7 @@ export const batchRouter = router({
       // Grandchild volume adjustments (losses)
       const allGrandchildAdjustments = grandchildBatchIds.length > 0 ? await db
         .select({
+          id: batchVolumeAdjustments.id,
           batchId: batchVolumeAdjustments.batchId,
           adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
         })
@@ -6872,6 +6898,7 @@ export const batchRouter = router({
       // Grandchild racking losses
       const allGrandchildRackings = grandchildBatchIds.length > 0 ? await db
         .select({
+          id: batchRackingOperations.id,
           batchId: batchRackingOperations.batchId,
           volumeLoss: batchRackingOperations.volumeLoss,
           notes: batchRackingOperations.notes,
@@ -7298,6 +7325,7 @@ export const batchRouter = router({
         const currentVolume = parseFloat(batch.currentVolume || "0");
         let totalOutflow = 0;
         let totalInflow = 0;
+        let externalInflow = 0; // Inflow from non-base-batch sources only (for grand total)
         let totalLoss = 0; // Direct losses only (same as Volume Trace)
         let totalPackaged = 0; // Direct packaging only (for display)
         let totalDistilled = 0; // Volume sent to distillery
@@ -7314,6 +7342,14 @@ export const batchRouter = router({
           totalOutflow += entry.volumeOut;
           totalInflow += entry.volumeIn;
           totalLoss += entry.loss; // Direct loss from this entry only
+
+          // Track external inflow (from non-base-batch sources) for grand total
+          if (entry.type === "transfer_in" && entry.volumeIn > 0) {
+            const transferIn = batchTransfersIn.find((t) => t.id === entry.id);
+            if (transferIn && !baseBatchIdSet.has(transferIn.sourceId)) {
+              externalInflow += entry.volumeIn;
+            }
+          }
 
           if (entry.type === "bottling" || entry.type === "kegging") {
             totalPackaged += entry.volumeOut;
@@ -7336,7 +7372,8 @@ export const batchRouter = router({
           }
 
           // Track remaining volume in child batches (for display)
-          if (entry.type === "transfer" && entry.destinationId && !countedChildBatches.has(entry.destinationId)) {
+          // Only count if child is NOT a base batch (base batches have their own row)
+          if (entry.type === "transfer" && entry.destinationId && !countedChildBatches.has(entry.destinationId) && !baseBatchIdSet.has(entry.destinationId)) {
             const transfer = batchTransfersOut.find(t => t.destinationId === entry.destinationId);
             if (transfer?.destinationCurrentVolume) {
               childrenRemaining += parseFloat(transfer.destinationCurrentVolume);
@@ -7345,16 +7382,19 @@ export const batchRouter = router({
           }
         }
 
-        // Use SAME formula as Volume Trace for discrepancy
-        // This avoids double-counting when child batches are also base batches
-        const accountedVolume = initialVolume + totalInflow - totalOutflow - totalLoss;
-        const discrepancy = currentVolume - accountedVolume;
-
         // For display: show combined totals (direct + child)
         const displayPackaged = totalPackaged + childPackaged;
         const displayDistilled = totalDistilled; // Distillation doesn't have child outcomes
         const displayLoss = totalLoss + childLoss;
         const totalRemaining = currentVolume + childrenRemaining;
+
+        // Per-batch discrepancy uses Volume Trace formula (NOT tree rollup)
+        // Tree rollup doesn't work correctly when children have multiple parents (blends)
+        // Formula: initial + inflow = outflow + loss + current
+        // Discrepancy = (initial + inflow) - (outflow + loss + current)
+        const source = initialVolume + totalInflow;
+        const accounted = totalOutflow + totalLoss + currentVolume;
+        const discrepancy = source - accounted;
 
         batchResults.push({
           id: batch.id,
@@ -7377,48 +7417,942 @@ export const batchRouter = router({
             discrepancy, // Calculated using Volume Trace formula (direct only)
           },
         });
-
-        // Grand totals use direct values only (same as Volume Trace)
-        grandTotalInitial += initialVolume;
-        grandTotalCurrent += currentVolume;
-        grandTotalInflow += totalInflow;
-        grandTotalOutflow += totalOutflow;
-        grandTotalLoss += totalLoss; // Direct loss only
-        grandTotalPackaged += totalPackaged; // Direct packaged only
-        grandTotalDistilled += totalDistilled; // Volume sent to distillery
-        grandTotalChildrenRemaining += childrenRemaining;
       }
 
-      // Grand total discrepancy uses same formula as Volume Trace
-      // accounted = initial + inflow - outflow - loss
-      // discrepancy = current - accounted
-      const grandTotalAccountedVolume = grandTotalInitial + grandTotalInflow - grandTotalOutflow - grandTotalLoss;
-      const grandTotalDiscrepancy = grandTotalCurrent - grandTotalAccountedVolume;
-      const grandTotalRemaining = grandTotalCurrent + grandTotalChildrenRemaining;
+      // ============ CALCULATE GRAND TOTALS USING GLOBAL TRACKING ============
+      // Use unique IDs to prevent double-counting when children have multiple parents
+      const countedPackagingIds = new Set<string>();
+      const countedLossIds = new Set<string>();
+      const countedChildBatchIds = new Set<string>();
 
-      // Balance check: Initial + Inflow = Packaged + Distilled + Losses + Current + Unaccounted
-      // Unaccounted = volume that left batches via transfers but didn't reach a final destination
-      // (e.g., transfers to non-verified batches, deleted batches, etc.)
-      const grandTotalAccounted = grandTotalPackaged + grandTotalDistilled + grandTotalLoss + grandTotalCurrent;
-      const grandTotalUnaccounted = grandTotalInitial + grandTotalInflow - grandTotalAccounted;
+      for (const batch of batchResults) {
+        grandTotalInitial += batch.initialVolume;
+        grandTotalCurrent += batch.currentVolume;
+
+        // Count DIRECT packaging/distillation/losses from base batches
+        for (const entry of batch.entries) {
+          if (entry.type === "bottling" || entry.type === "kegging") {
+            if (!countedPackagingIds.has(entry.id)) {
+              grandTotalPackaged += entry.volumeOut;
+              countedPackagingIds.add(entry.id);
+            }
+          }
+          if (entry.type === "distillation") {
+            grandTotalDistilled += entry.volumeOut;
+          }
+          if (entry.type === "racking" || entry.type === "filtering" || entry.type === "adjustment") {
+            if (!countedLossIds.has(entry.id) && entry.loss > 0) {
+              grandTotalLoss += entry.loss;
+              countedLossIds.add(entry.id);
+            }
+          }
+
+          // Track child outcomes (only if child is not a base batch)
+          if (entry.type === "transfer" && entry.destinationId && !baseBatchIdSet.has(entry.destinationId)) {
+            const childBatchId = entry.destinationId;
+
+            // Count child's remaining volume only once
+            if (!countedChildBatchIds.has(childBatchId)) {
+              const transfer = allTransfersOut.find(t => t.destinationId === childBatchId);
+              if (transfer?.destinationCurrentVolume) {
+                grandTotalChildrenRemaining += parseFloat(transfer.destinationCurrentVolume);
+              }
+              countedChildBatchIds.add(childBatchId);
+            }
+
+            // Count child packaging (by unique ID)
+            const childBottlings = childBottlingsMap.get(childBatchId) || [];
+            for (const b of childBottlings) {
+              if (!countedPackagingIds.has(b.id)) {
+                const units = b.unitsProduced || 0;
+                const size = b.packageSizeML || 0;
+                const productVolume = (units * size) / 1000;
+                grandTotalPackaged += productVolume;
+                countedPackagingIds.add(b.id);
+              }
+            }
+
+            const childKegFills = childKegFillsMap.get(childBatchId) || [];
+            for (const k of childKegFills) {
+              if (!countedPackagingIds.has(k.id)) {
+                grandTotalPackaged += parseFloat(k.volumeTaken || "0");
+                countedPackagingIds.add(k.id);
+              }
+            }
+
+            // Count child losses (by unique ID)
+            const childAdjustments = childAdjustmentsMap.get(childBatchId) || [];
+            for (const a of childAdjustments) {
+              if (!countedLossIds.has(a.id)) {
+                const amount = parseFloat(a.adjustmentAmount || "0");
+                if (amount < 0) {
+                  grandTotalLoss += Math.abs(amount);
+                  countedLossIds.add(a.id);
+                }
+              }
+            }
+
+            const childRackings = childRackingsMap.get(childBatchId) || [];
+            for (const r of childRackings) {
+              if (!countedLossIds.has(r.id)) {
+                grandTotalLoss += parseFloat(r.volumeLoss || "0");
+                countedLossIds.add(r.id);
+              }
+            }
+
+            const childFilterings = childFilteringsMap.get(childBatchId) || [];
+            for (const f of childFilterings) {
+              if (!countedLossIds.has(f.id)) {
+                grandTotalLoss += parseFloat(f.volumeLoss || "0");
+                countedLossIds.add(f.id);
+              }
+            }
+
+            // ============ GRANDCHILD OUTCOMES ============
+            // Process transfers from this child to grandchildren
+            const childTransfers = childTransfersOutMap.get(childBatchId) || [];
+            for (const ct of childTransfers) {
+              if (ct.destinationBatchId && !baseBatchIdSet.has(ct.destinationBatchId)) {
+                const grandchildId = ct.destinationBatchId;
+
+                // Grandchild bottlings
+                const gcBottlings = grandchildBottlingsMap.get(grandchildId) || [];
+                for (const gb of gcBottlings) {
+                  if (!countedPackagingIds.has(gb.id)) {
+                    const units = gb.unitsProduced || 0;
+                    const size = gb.packageSizeML || 0;
+                    const productVolume = (units * size) / 1000;
+                    grandTotalPackaged += productVolume;
+                    countedPackagingIds.add(gb.id);
+                  }
+                }
+
+                // Grandchild keg fills
+                const gcKegFills = grandchildKegFillsMap.get(grandchildId) || [];
+                for (const gk of gcKegFills) {
+                  if (!countedPackagingIds.has(gk.id)) {
+                    grandTotalPackaged += parseFloat(gk.volumeTaken || "0");
+                    countedPackagingIds.add(gk.id);
+                  }
+                }
+
+                // Grandchild adjustment losses
+                const gcAdjustments = grandchildAdjustmentsMap.get(grandchildId) || [];
+                for (const ga of gcAdjustments) {
+                  if (!countedLossIds.has(ga.id)) {
+                    const amount = parseFloat(ga.adjustmentAmount || "0");
+                    if (amount < 0) {
+                      grandTotalLoss += Math.abs(amount);
+                      countedLossIds.add(ga.id);
+                    }
+                  }
+                }
+
+                // Grandchild racking losses
+                const gcRackings = grandchildRackingsMap.get(grandchildId) || [];
+                for (const gr of gcRackings) {
+                  if (!countedLossIds.has(gr.id)) {
+                    grandTotalLoss += parseFloat(gr.volumeLoss || "0");
+                    countedLossIds.add(gr.id);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Calculate external inflow (from non-base-batch sources only)
+      for (const t of allTransfersIn) {
+        if (!baseBatchIdSet.has(t.sourceId)) {
+          grandTotalInflow += parseFloat(t.volumeIn || "0");
+        }
+      }
+
+      // Remaining = base batch current volumes only
+      // Children's volumes are already accounted for in their packaging/losses
+      const grandTotalRemaining = grandTotalCurrent;
+
+      // Balance equation: Initial + Inflow = Packaged + Distilled + Losses + Remaining + Discrepancy
+      // If discrepancy is ~0, the data is clean
+      const grandTotalSource = grandTotalInitial + grandTotalInflow;
+      const grandTotalDestinations = grandTotalPackaged + grandTotalDistilled + grandTotalLoss + grandTotalRemaining;
+      const grandTotalDiscrepancy = grandTotalSource - grandTotalDestinations;
+
+      // Build inflow breakdown for debugging/analysis
+      const inflowBreakdown = allTransfersIn.map((t) => {
+        const destBatch = baseBatches.find((b) => b.id === t.destinationBatchId);
+        const isSourceBaseBatch = baseBatchIdSet.has(t.sourceId);
+        return {
+          destinationBatchId: t.destinationBatchId,
+          destinationBatchName: destBatch?.customName || destBatch?.name || "Unknown",
+          sourceBatchId: t.sourceId,
+          sourceBatchName: t.sourceName || t.sourceBatchNumber || "Unknown",
+          isSourceBaseBatch,
+          isExternalInflow: !isSourceBaseBatch,
+          volumeLiters: parseFloat(t.volumeIn || "0"),
+          date: t.date,
+        };
+      });
 
       return {
         asOfDate,
         summary: {
           totalBatches: batchResults.length,
+          // Source volumes
           totalInitialVolume: grandTotalInitial,
-          totalCurrentVolume: grandTotalCurrent,
           totalInflow: grandTotalInflow,
+          totalSource: grandTotalSource, // Initial + Inflow (for balance display)
+          // Destination volumes (tree rollup)
+          totalPackaged: grandTotalPackaged, // All packaging in tree
+          totalDistilled: grandTotalDistilled, // All distillation
+          totalLosses: grandTotalLoss, // All losses in tree
+          totalRemaining: grandTotalRemaining, // All current volumes
+          // Accounting
+          totalDestinations: grandTotalDestinations, // Sum of all destinations
+          totalDiscrepancy: grandTotalDiscrepancy, // Source - Destinations (should be ~0)
+          // Legacy/compatibility fields
+          totalCurrentVolume: grandTotalCurrent, // Base batch current volumes only
           totalTransferred: grandTotalOutflow, // Keep for backward compatibility
-          totalPackaged: grandTotalPackaged,
-          totalDistilled: grandTotalDistilled,
-          totalLosses: grandTotalLoss,
           totalChildrenRemaining: grandTotalChildrenRemaining,
-          totalRemaining: grandTotalRemaining,
-          totalDiscrepancy: grandTotalDiscrepancy,
-          totalUnaccounted: grandTotalUnaccounted, // Balance check: volume not in final destination
         },
         batches: batchResults,
+        inflowBreakdown, // Diagnostic: shows all transfers into base batches with source info
+      };
+    }),
+
+  /**
+   * Get TTB-aligned batch trace report with period-based reporting and product type grouping.
+   * This is the enhanced version for TTB Form 5120.17 compliance.
+   * Groups inventory by product type (Cider/Perry, Brandy, Pommeau) and tracks
+   * distillery operations (cider sent out, brandy received back).
+   */
+  getTTBBatchTraceReport: protectedProcedure
+    .input(z.object({
+      periodStart: z.string(), // ISO date string YYYY-MM-DD
+      periodEnd: z.string(),   // ISO date string YYYY-MM-DD
+    }))
+    .query(async ({ input }) => {
+      const { periodStart, periodEnd } = input;
+      const startDate = new Date(periodStart);
+      const endDate = new Date(periodEnd);
+      // Set end date to end of day for inclusive filtering
+      endDate.setHours(23, 59, 59, 999);
+
+      // Type definitions
+      type ProductType = "cider" | "perry" | "brandy" | "pommeau" | "juice" | "other";
+
+      type ProductTypeSummary = {
+        productType: ProductType;
+        ttbTaxClass: string;
+        batchCount: number;
+        // Source side (where volume comes from)
+        openingBalanceLiters: number;
+        productionLiters: number;      // New batches created in period
+        receiptsLiters: number;        // Brandy returns or external transfers
+        blendedInLiters: number;       // Volume received via blending
+        totalSourceLiters: number;
+        // Destination side (where volume goes)
+        packagedLiters: number;
+        distilledLiters: number;       // Cider only - sent to distillery
+        blendedOutLiters: number;      // Volume transferred to other batches
+        lossesLiters: number;
+        endingBalanceLiters: number;
+        totalDestinationLiters: number;
+        // Reconciliation
+        discrepancyLiters: number;
+        isBalanced: boolean;
+      };
+
+      type DistilleryOperation = {
+        id: string;
+        type: "sent" | "received";
+        sourceBatchId: string | null;
+        sourceBatchName: string | null;
+        resultBatchId: string | null;
+        resultBatchName: string | null;
+        volumeLiters: number;
+        abv: number | null;
+        date: Date;
+        distilleryName: string;
+        status: string;
+      };
+
+      type DiscrepancyItem = {
+        type: "volume_mismatch" | "missing_source" | "orphan_brandy" | "missing_distillation" | "unbalanced_yield";
+        batchId: string;
+        batchName: string;
+        productType: ProductType;
+        description: string;
+        volumeAffectedLiters: number;
+        suggestedAction: string;
+      };
+
+      // TTB tax class mapping
+      const getTTBTaxClass = (productType: ProductType): string => {
+        switch (productType) {
+          case "cider":
+          case "perry":
+          case "juice":
+            return "Wine (7% or less)";
+          case "brandy":
+            return "Spirits";
+          case "pommeau":
+            return "Wine (16-21%)";
+          default:
+            return "Other";
+        }
+      };
+
+      // Initialize summaries for each product type
+      const initSummary = (productType: ProductType): ProductTypeSummary => ({
+        productType,
+        ttbTaxClass: getTTBTaxClass(productType),
+        batchCount: 0,
+        openingBalanceLiters: 0,
+        productionLiters: 0,
+        receiptsLiters: 0,
+        blendedInLiters: 0,
+        totalSourceLiters: 0,
+        packagedLiters: 0,
+        distilledLiters: 0,
+        blendedOutLiters: 0,
+        lossesLiters: 0,
+        endingBalanceLiters: 0,
+        totalDestinationLiters: 0,
+        discrepancyLiters: 0,
+        isBalanced: true,
+      });
+
+      // ============ QUERY ALL BATCHES WITH PRODUCT TYPE ============
+      // Get all verified batches that existed within or before the period
+      const allBatches = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          customName: batches.customName,
+          batchNumber: batches.batchNumber,
+          productType: batches.productType,
+          initialVolume: batches.initialVolumeLiters,
+          currentVolume: batches.currentVolumeLiters,
+          status: batches.status,
+          vesselId: batches.vesselId,
+          vesselName: vessels.name,
+          startDate: batches.startDate,
+        })
+        .from(batches)
+        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+        .where(
+          and(
+            sql`${batches.startDate} <= ${endDate}`,
+            eq(batches.reconciliationStatus, "verified"),
+            sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`,
+            isNull(batches.deletedAt),
+            sql`${batches.status} != 'discarded'`,
+            sql`(
+              CAST(${batches.initialVolumeLiters} AS NUMERIC) > 0
+              OR EXISTS (
+                SELECT 1 FROM batch_transfers bt
+                WHERE bt.destination_batch_id = ${batches.id}
+                  AND bt.deleted_at IS NULL
+              )
+            )`
+          )
+        )
+        .orderBy(asc(batches.productType), asc(batches.customName), asc(batches.name));
+
+      if (allBatches.length === 0) {
+        return {
+          periodStart,
+          periodEnd,
+          summaries: {
+            cider: initSummary("cider"),
+            perry: initSummary("perry"),
+            brandy: initSummary("brandy"),
+            pommeau: initSummary("pommeau"),
+            juice: initSummary("juice"),
+            other: initSummary("other"),
+          },
+          grandSummary: {
+            totalBatches: 0,
+            totalSourceLiters: 0,
+            totalDestinationLiters: 0,
+            totalDiscrepancyLiters: 0,
+            isBalanced: true,
+          },
+          distilleryOps: {
+            ciderSentLiters: 0,
+            brandyReceivedLiters: 0,
+            operations: [] as DistilleryOperation[],
+            pendingReturns: [] as { id: string; sourceBatchName: string; volumeSentLiters: number; sentAt: Date; distilleryName: string }[],
+          },
+          batchesByType: {
+            cider: [],
+            perry: [],
+            brandy: [],
+            pommeau: [],
+            juice: [],
+            other: [],
+          } as Record<ProductType, typeof allBatches>,
+          discrepancies: [] as DiscrepancyItem[],
+        };
+      }
+
+      const batchIds = allBatches.map((b) => b.id);
+      const batchIdSet = new Set(batchIds);
+
+      // Group batches by product type
+      const batchesByType: Record<ProductType, typeof allBatches> = {
+        cider: [],
+        perry: [],
+        brandy: [],
+        pommeau: [],
+        juice: [],
+        other: [],
+      };
+
+      for (const batch of allBatches) {
+        const pType = (batch.productType || "other") as ProductType;
+        if (batchesByType[pType]) {
+          batchesByType[pType].push(batch);
+        } else {
+          batchesByType.other.push(batch);
+        }
+      }
+
+      // ============ QUERY DISTILLATION RECORDS ============
+      type DistillationRow = {
+        id: string;
+        source_batch_id: string;
+        source_batch_name: string | null;
+        source_volume_liters: string;
+        source_abv: string | null;
+        result_batch_id: string | null;
+        result_batch_name: string | null;
+        received_volume_liters: string | null;
+        received_abv: string | null;
+        sent_at: Date;
+        received_at: Date | null;
+        distillery_name: string;
+        status: string;
+      };
+
+      const distillationResult = await db.execute(sql`
+        SELECT
+          dr.id,
+          dr.source_batch_id,
+          sb.custom_name as source_batch_name,
+          dr.source_volume_liters,
+          dr.source_abv,
+          dr.result_batch_id,
+          rb.custom_name as result_batch_name,
+          dr.received_volume_liters,
+          dr.received_abv,
+          dr.sent_at,
+          dr.received_at,
+          dr.distillery_name,
+          dr.status
+        FROM distillation_records dr
+        LEFT JOIN batches sb ON dr.source_batch_id = sb.id
+        LEFT JOIN batches rb ON dr.result_batch_id = rb.id
+        WHERE dr.deleted_at IS NULL
+          AND (
+            (dr.sent_at BETWEEN ${startDate} AND ${endDate})
+            OR (dr.received_at BETWEEN ${startDate} AND ${endDate})
+          )
+        ORDER BY dr.sent_at
+      `);
+
+      const distillationRecords = (distillationResult as unknown as { rows: DistillationRow[] }).rows || [];
+
+      // Build distillery operations list and calculate totals
+      let ciderSentLiters = 0;
+      let brandyReceivedLiters = 0;
+      const distilleryOperations: DistilleryOperation[] = [];
+      const pendingReturns: { id: string; sourceBatchName: string; volumeSentLiters: number; sentAt: Date; distilleryName: string }[] = [];
+
+      for (const dr of distillationRecords) {
+        const sentAt = new Date(dr.sent_at);
+        const receivedAt = dr.received_at ? new Date(dr.received_at) : null;
+
+        // Cider sent to distillery (within period)
+        if (sentAt >= startDate && sentAt <= endDate) {
+          const volumeSent = parseFloat(dr.source_volume_liters || "0");
+          ciderSentLiters += volumeSent;
+          distilleryOperations.push({
+            id: dr.id,
+            type: "sent",
+            sourceBatchId: dr.source_batch_id,
+            sourceBatchName: dr.source_batch_name,
+            resultBatchId: dr.result_batch_id,
+            resultBatchName: dr.result_batch_name,
+            volumeLiters: volumeSent,
+            abv: dr.source_abv ? parseFloat(dr.source_abv) : null,
+            date: sentAt,
+            distilleryName: dr.distillery_name,
+            status: dr.status,
+          });
+        }
+
+        // Brandy received from distillery (within period)
+        if (receivedAt && receivedAt >= startDate && receivedAt <= endDate && dr.received_volume_liters) {
+          const volumeReceived = parseFloat(dr.received_volume_liters);
+          brandyReceivedLiters += volumeReceived;
+          distilleryOperations.push({
+            id: dr.id,
+            type: "received",
+            sourceBatchId: dr.source_batch_id,
+            sourceBatchName: dr.source_batch_name,
+            resultBatchId: dr.result_batch_id,
+            resultBatchName: dr.result_batch_name,
+            volumeLiters: volumeReceived,
+            abv: dr.received_abv ? parseFloat(dr.received_abv) : null,
+            date: receivedAt,
+            distilleryName: dr.distillery_name,
+            status: dr.status,
+          });
+        }
+
+        // Track pending returns (sent but not yet received)
+        if (dr.status === "sent" && !dr.received_at) {
+          pendingReturns.push({
+            id: dr.id,
+            sourceBatchName: dr.source_batch_name || "Unknown",
+            volumeSentLiters: parseFloat(dr.source_volume_liters || "0"),
+            sentAt: sentAt,
+            distilleryName: dr.distillery_name,
+          });
+        }
+      }
+
+      // ============ QUERY ALL ACTIVITY DATA ============
+      const destBatch = aliasedTable(batches, "destBatch");
+      const sourceBatch = aliasedTable(batches, "sourceBatch");
+
+      // Transfers out
+      const allTransfersOut = await db
+        .select({
+          id: batchTransfers.id,
+          sourceBatchId: batchTransfers.sourceBatchId,
+          date: batchTransfers.transferredAt,
+          volumeOut: batchTransfers.volumeTransferred,
+          loss: batchTransfers.loss,
+          destinationId: batchTransfers.destinationBatchId,
+        })
+        .from(batchTransfers)
+        .where(
+          and(
+            inArray(batchTransfers.sourceBatchId, batchIds),
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+            isNull(batchTransfers.deletedAt)
+          )
+        );
+
+      // Transfers in
+      const allTransfersIn = await db
+        .select({
+          id: batchTransfers.id,
+          destinationBatchId: batchTransfers.destinationBatchId,
+          date: batchTransfers.transferredAt,
+          volumeIn: batchTransfers.volumeTransferred,
+          sourceId: batchTransfers.sourceBatchId,
+        })
+        .from(batchTransfers)
+        .where(
+          and(
+            inArray(batchTransfers.destinationBatchId, batchIds),
+            sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
+            isNull(batchTransfers.deletedAt)
+          )
+        );
+
+      // Bottlings
+      const allBottlings = await db
+        .select({
+          id: bottleRuns.id,
+          batchId: bottleRuns.batchId,
+          date: bottleRuns.packagedAt,
+          unitsProduced: bottleRuns.unitsProduced,
+          packageSizeML: bottleRuns.packageSizeML,
+          volumeTaken: bottleRuns.volumeTakenLiters,
+          loss: bottleRuns.loss,
+        })
+        .from(bottleRuns)
+        .where(
+          and(
+            inArray(bottleRuns.batchId, batchIds),
+            isNull(bottleRuns.voidedAt)
+          )
+        );
+
+      // Keg fills
+      const allKegFills = await db
+        .select({
+          id: kegFills.id,
+          batchId: kegFills.batchId,
+          date: kegFills.filledAt,
+          volumeOut: kegFills.volumeTaken,
+          loss: kegFills.loss,
+        })
+        .from(kegFills)
+        .where(
+          and(
+            inArray(kegFills.batchId, batchIds),
+            isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt)
+          )
+        );
+
+      // Volume adjustments (losses)
+      const allAdjustments = await db
+        .select({
+          id: batchVolumeAdjustments.id,
+          batchId: batchVolumeAdjustments.batchId,
+          adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+        })
+        .from(batchVolumeAdjustments)
+        .where(
+          and(
+            inArray(batchVolumeAdjustments.batchId, batchIds),
+            isNull(batchVolumeAdjustments.deletedAt)
+          )
+        );
+
+      // Rackings (losses)
+      const allRackings = await db
+        .select({
+          id: batchRackingOperations.id,
+          batchId: batchRackingOperations.batchId,
+          loss: batchRackingOperations.volumeLoss,
+          notes: batchRackingOperations.notes,
+        })
+        .from(batchRackingOperations)
+        .where(
+          and(
+            inArray(batchRackingOperations.batchId, batchIds),
+            isNull(batchRackingOperations.deletedAt)
+          )
+        );
+
+      // Filter operations (losses)
+      const allFilterings = await db
+        .select({
+          id: batchFilterOperations.id,
+          batchId: batchFilterOperations.batchId,
+          loss: batchFilterOperations.volumeLoss,
+        })
+        .from(batchFilterOperations)
+        .where(
+          and(
+            inArray(batchFilterOperations.batchId, batchIds),
+            isNull(batchFilterOperations.deletedAt)
+          )
+        );
+
+      // Distillations (cider sent out)
+      type DistillationOutRow = { id: string; source_batch_id: string; volume_out: string };
+      let allDistillationsOut: DistillationOutRow[] = [];
+      if (batchIds.length > 0) {
+        const distillationsOutResult = await db.execute(sql`
+          SELECT id, source_batch_id, source_volume_liters as volume_out
+          FROM distillation_records
+          WHERE source_batch_id IN (${sql.join(batchIds.map(id => sql`${id}`), sql`, `)})
+            AND deleted_at IS NULL
+        `);
+        allDistillationsOut = (distillationsOutResult as unknown as { rows: DistillationOutRow[] }).rows || [];
+      }
+
+      // ============ BUILD LOOKUP MAPS ============
+      const transfersOutByBatch = new Map<string, typeof allTransfersOut>();
+      for (const t of allTransfersOut) {
+        if (!transfersOutByBatch.has(t.sourceBatchId)) transfersOutByBatch.set(t.sourceBatchId, []);
+        transfersOutByBatch.get(t.sourceBatchId)!.push(t);
+      }
+
+      const transfersInByBatch = new Map<string, typeof allTransfersIn>();
+      for (const t of allTransfersIn) {
+        if (!transfersInByBatch.has(t.destinationBatchId)) transfersInByBatch.set(t.destinationBatchId, []);
+        transfersInByBatch.get(t.destinationBatchId)!.push(t);
+      }
+
+      const bottlingsByBatch = new Map<string, typeof allBottlings>();
+      for (const b of allBottlings) {
+        if (!bottlingsByBatch.has(b.batchId)) bottlingsByBatch.set(b.batchId, []);
+        bottlingsByBatch.get(b.batchId)!.push(b);
+      }
+
+      const kegFillsByBatch = new Map<string, typeof allKegFills>();
+      for (const k of allKegFills) {
+        if (!kegFillsByBatch.has(k.batchId)) kegFillsByBatch.set(k.batchId, []);
+        kegFillsByBatch.get(k.batchId)!.push(k);
+      }
+
+      const adjustmentsByBatch = new Map<string, typeof allAdjustments>();
+      for (const a of allAdjustments) {
+        if (!adjustmentsByBatch.has(a.batchId)) adjustmentsByBatch.set(a.batchId, []);
+        adjustmentsByBatch.get(a.batchId)!.push(a);
+      }
+
+      const rackingsByBatch = new Map<string, typeof allRackings>();
+      for (const r of allRackings) {
+        if (!rackingsByBatch.has(r.batchId)) rackingsByBatch.set(r.batchId, []);
+        rackingsByBatch.get(r.batchId)!.push(r);
+      }
+
+      const filteringsByBatch = new Map<string, typeof allFilterings>();
+      for (const f of allFilterings) {
+        if (!filteringsByBatch.has(f.batchId)) filteringsByBatch.set(f.batchId, []);
+        filteringsByBatch.get(f.batchId)!.push(f);
+      }
+
+      const distillationsOutByBatch = new Map<string, typeof allDistillationsOut>();
+      for (const d of allDistillationsOut) {
+        if (!distillationsOutByBatch.has(d.source_batch_id)) distillationsOutByBatch.set(d.source_batch_id, []);
+        distillationsOutByBatch.get(d.source_batch_id)!.push(d);
+      }
+
+      // ============ CALCULATE SUMMARIES BY PRODUCT TYPE ============
+      const summaries: Record<ProductType, ProductTypeSummary> = {
+        cider: initSummary("cider"),
+        perry: initSummary("perry"),
+        brandy: initSummary("brandy"),
+        pommeau: initSummary("pommeau"),
+        juice: initSummary("juice"),
+        other: initSummary("other"),
+      };
+
+      const discrepancies: DiscrepancyItem[] = [];
+
+      // Process each batch and aggregate into product type summaries
+      for (const batch of allBatches) {
+        const pType = (batch.productType || "other") as ProductType;
+        const summary = summaries[pType] || summaries.other;
+
+        summary.batchCount++;
+
+        const initialVolume = parseFloat(batch.initialVolume || "0");
+        const currentVolume = parseFloat(batch.currentVolume || "0");
+        const batchStartDate = batch.startDate ? new Date(batch.startDate) : null;
+
+        // Determine if this batch existed before the period (opening balance)
+        // vs created during the period (production)
+        if (batchStartDate && batchStartDate < startDate) {
+          // Batch existed before period - contributes to opening balance
+          // Opening balance = initial volume + all inflows - all outflows up to period start
+          // For simplicity, we use current volume as the "effective" state
+          // In a full implementation, you'd calculate volume at period start
+          summary.openingBalanceLiters += initialVolume;
+        } else {
+          // Batch created during period - counts as production
+          summary.productionLiters += initialVolume;
+        }
+
+        // Ending balance is current volume
+        summary.endingBalanceLiters += currentVolume;
+
+        // Process transfers out (blended out)
+        const transfersOut = transfersOutByBatch.get(batch.id) || [];
+        for (const t of transfersOut) {
+          summary.blendedOutLiters += parseFloat(t.volumeOut || "0");
+          // Add transfer loss to losses
+          const tLoss = parseFloat(t.loss || "0");
+          if (tLoss > 0) {
+            summary.lossesLiters += tLoss;
+          }
+        }
+
+        // Process transfers in (blended in or receipts)
+        const transfersIn = transfersInByBatch.get(batch.id) || [];
+        for (const t of transfersIn) {
+          const volumeIn = parseFloat(t.volumeIn || "0");
+          // Check if source is within our tracked batches or external
+          if (batchIdSet.has(t.sourceId)) {
+            summary.blendedInLiters += volumeIn;
+          } else {
+            // External source - count as receipts
+            summary.receiptsLiters += volumeIn;
+          }
+        }
+
+        // Process bottlings
+        const bBottlings = bottlingsByBatch.get(batch.id) || [];
+        for (const b of bBottlings) {
+          summary.packagedLiters += parseFloat(b.volumeTaken || "0");
+        }
+
+        // Process keg fills
+        const bKegFills = kegFillsByBatch.get(batch.id) || [];
+        for (const k of bKegFills) {
+          summary.packagedLiters += parseFloat(k.volumeOut || "0");
+        }
+
+        // Process volume adjustments (losses)
+        const bAdjustments = adjustmentsByBatch.get(batch.id) || [];
+        for (const a of bAdjustments) {
+          const amount = parseFloat(a.adjustmentAmount || "0");
+          if (amount < 0) {
+            summary.lossesLiters += Math.abs(amount);
+          }
+        }
+
+        // Process rackings (losses)
+        const bRackings = rackingsByBatch.get(batch.id) || [];
+        for (const r of bRackings) {
+          const loss = parseFloat(r.loss || "0");
+          if (loss > 0 && !r.notes?.includes("Historical Record")) {
+            summary.lossesLiters += loss;
+          }
+        }
+
+        // Process filterings (losses)
+        const bFilterings = filteringsByBatch.get(batch.id) || [];
+        for (const f of bFilterings) {
+          const loss = parseFloat(f.loss || "0");
+          if (loss > 0) {
+            summary.lossesLiters += loss;
+          }
+        }
+
+        // Process distillations (cider/perry only)
+        if (pType === "cider" || pType === "perry") {
+          const bDistillations = distillationsOutByBatch.get(batch.id) || [];
+          for (const d of bDistillations) {
+            summary.distilledLiters += parseFloat(d.volume_out || "0");
+          }
+        }
+      }
+
+      // Add brandy receipts from distillery returns
+      summaries.brandy.receiptsLiters += brandyReceivedLiters;
+
+      // Calculate totals for each product type
+      for (const pType of Object.keys(summaries) as ProductType[]) {
+        const s = summaries[pType];
+
+        // Total source = opening + production + receipts + blended in
+        s.totalSourceLiters = s.openingBalanceLiters + s.productionLiters + s.receiptsLiters + s.blendedInLiters;
+
+        // Total destination = packaged + distilled + blended out + losses + ending
+        s.totalDestinationLiters = s.packagedLiters + s.distilledLiters + s.blendedOutLiters + s.lossesLiters + s.endingBalanceLiters;
+
+        // Discrepancy = source - destination
+        s.discrepancyLiters = s.totalSourceLiters - s.totalDestinationLiters;
+        s.isBalanced = Math.abs(s.discrepancyLiters) < 1; // Allow small rounding differences
+      }
+
+      // ============ CALCULATE GRAND SUMMARY ============
+      const grandSummary = {
+        totalBatches: allBatches.length,
+        totalSourceLiters: Object.values(summaries).reduce((sum, s) => sum + s.totalSourceLiters, 0),
+        totalDestinationLiters: Object.values(summaries).reduce((sum, s) => sum + s.totalDestinationLiters, 0),
+        totalDiscrepancyLiters: Object.values(summaries).reduce((sum, s) => sum + s.discrepancyLiters, 0),
+        isBalanced: Object.values(summaries).every(s => s.isBalanced),
+      };
+
+      // ============ IDENTIFY DISCREPANCIES ============
+      for (const batch of allBatches) {
+        const pType = (batch.productType || "other") as ProductType;
+        const initialVolume = parseFloat(batch.initialVolume || "0");
+        const currentVolume = parseFloat(batch.currentVolume || "0");
+
+        // Calculate batch-level balance
+        let inflow = initialVolume;
+        let outflow = currentVolume;
+
+        const transfersIn = transfersInByBatch.get(batch.id) || [];
+        for (const t of transfersIn) {
+          inflow += parseFloat(t.volumeIn || "0");
+        }
+
+        const transfersOut = transfersOutByBatch.get(batch.id) || [];
+        for (const t of transfersOut) {
+          outflow += parseFloat(t.volumeOut || "0");
+          outflow += parseFloat(t.loss || "0");
+        }
+
+        const bBottlings = bottlingsByBatch.get(batch.id) || [];
+        for (const b of bBottlings) {
+          outflow += parseFloat(b.volumeTaken || "0");
+        }
+
+        const bKegFills = kegFillsByBatch.get(batch.id) || [];
+        for (const k of bKegFills) {
+          outflow += parseFloat(k.volumeOut || "0");
+        }
+
+        const bAdjustments = adjustmentsByBatch.get(batch.id) || [];
+        for (const a of bAdjustments) {
+          const amount = parseFloat(a.adjustmentAmount || "0");
+          if (amount < 0) {
+            outflow += Math.abs(amount);
+          }
+        }
+
+        const bRackings = rackingsByBatch.get(batch.id) || [];
+        for (const r of bRackings) {
+          const loss = parseFloat(r.loss || "0");
+          if (loss > 0 && !r.notes?.includes("Historical Record")) {
+            outflow += loss;
+          }
+        }
+
+        const bFilterings = filteringsByBatch.get(batch.id) || [];
+        for (const f of bFilterings) {
+          outflow += parseFloat(f.loss || "0");
+        }
+
+        const bDistillations = distillationsOutByBatch.get(batch.id) || [];
+        for (const d of bDistillations) {
+          outflow += parseFloat(d.volume_out || "0");
+        }
+
+        const batchDiscrepancy = inflow - outflow;
+        if (Math.abs(batchDiscrepancy) > 1) {
+          discrepancies.push({
+            type: "volume_mismatch",
+            batchId: batch.id,
+            batchName: batch.customName || batch.name,
+            productType: pType,
+            description: `Inflow (${inflow.toFixed(1)}L) does not match outflow (${outflow.toFixed(1)}L)`,
+            volumeAffectedLiters: Math.abs(batchDiscrepancy),
+            suggestedAction: batchDiscrepancy > 0
+              ? "Record a volume adjustment or check for missing transfers/packaging"
+              : "Check for duplicate entries or unrecorded inflows",
+          });
+        }
+      }
+
+      // Check for orphan brandy batches (no distillation record linking them)
+      for (const batch of batchesByType.brandy) {
+        const hasDistillationLink = distillationRecords.some(
+          dr => dr.result_batch_id === batch.id
+        );
+        if (!hasDistillationLink && parseFloat(batch.initialVolume || "0") > 0) {
+          discrepancies.push({
+            type: "orphan_brandy",
+            batchId: batch.id,
+            batchName: batch.customName || batch.name,
+            productType: "brandy",
+            description: "Brandy batch has no linked distillation record",
+            volumeAffectedLiters: parseFloat(batch.initialVolume || "0"),
+            suggestedAction: "Create a distillation record linking this brandy to its source cider",
+          });
+        }
+      }
+
+      return {
+        periodStart,
+        periodEnd,
+        summaries,
+        grandSummary,
+        distilleryOps: {
+          ciderSentLiters,
+          brandyReceivedLiters,
+          operations: distilleryOperations,
+          pendingReturns,
+        },
+        batchesByType,
+        discrepancies,
       };
     }),
 

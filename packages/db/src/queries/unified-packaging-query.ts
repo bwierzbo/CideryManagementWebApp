@@ -373,8 +373,10 @@ export async function getUnifiedPackagingRuns(
   // Sort by packagedAt desc
   combined.sort((a, b) => b.packagedAt.getTime() - a.packagedAt.getTime());
 
-  // Apply pagination
-  const offset = pagination.cursor ? parseInt(Buffer.from(pagination.cursor, 'base64').toString()) : 0;
+  // Apply pagination - use cursor if provided, otherwise use offset parameter
+  const offset = pagination.cursor
+    ? parseInt(Buffer.from(pagination.cursor, 'base64').toString())
+    : (pagination.offset || 0);
   const paginatedItems = combined.slice(offset, offset + limit);
 
   // Calculate total

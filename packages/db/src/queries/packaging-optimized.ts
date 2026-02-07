@@ -119,6 +119,7 @@ export interface CursorPaginationParams {
   cursor?: string; // Base64 encoded cursor
   limit?: number;
   direction?: "forward" | "backward";
+  offset?: number; // Fallback for offset-based pagination when cursor is not provided
 }
 
 export interface PackagingRunFilters {
@@ -180,9 +181,11 @@ export function withCursorPagination<T extends PgSelect<any, any, any>>(
     }
   }
 
-  // No cursor, start from beginning
+  // No cursor - use offset-based pagination as fallback
+  const offset = params.offset || 0;
   return qb
     .orderBy(desc(bottleRuns.packagedAt), desc(bottleRuns.id))
+    .offset(offset)
     .limit(limit);
 }
 
@@ -210,13 +213,23 @@ export async function getBottleRunsOptimized(
   // Use packaging_runs_status_type_date_idx for status + type + date filtering
   if (filters.status) {
     if (filters.status === "active") {
-      // Active means NOT completed (null or any other status)
+      // Active means NOT completed/distributed (null or "active" or "ready")
       conditions.push(
-        or(isNull(bottleRuns.status), ne(bottleRuns.status, "completed"))!,
+        or(
+          isNull(bottleRuns.status),
+          eq(bottleRuns.status, "active"),
+          eq(bottleRuns.status, "ready")
+        )!,
       );
     } else if (filters.status === "completed") {
       // Completed means explicitly completed
       conditions.push(eq(bottleRuns.status, "completed"));
+    } else if (filters.status === "distributed") {
+      // Distributed status
+      conditions.push(eq(bottleRuns.status, "distributed"));
+    } else if (filters.status === "ready") {
+      // Ready status
+      conditions.push(eq(bottleRuns.status, "ready"));
     }
   }
 

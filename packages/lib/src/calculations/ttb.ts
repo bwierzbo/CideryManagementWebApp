@@ -30,6 +30,55 @@ export const SMALL_PRODUCER_CREDIT_LIMIT_GALLONS = 30000;
 export const EFFECTIVE_TAX_RATE = HARD_CIDER_TAX_RATE - SMALL_PRODUCER_CREDIT_PER_GALLON; // $0.17
 
 // ============================================
+// Tax Class Mapping
+// ============================================
+
+/** TTB tax class identifiers used for Form 5120.17 reporting */
+export const TTB_TAX_CLASSES = [
+  "hardCider",
+  "wineUnder16",
+  "wine16To21",
+  "wine21To24",
+  "sparklingWine",
+  "carbonatedWine",
+  "appleBrandy",
+  "grapeSpirits",
+] as const;
+
+export type TTBTaxClass = (typeof TTB_TAX_CLASSES)[number];
+
+/**
+ * Map a batch productType to its TTB tax class.
+ *
+ * Returns null for "juice" since juice is not a taxable product
+ * and should be excluded from TTB reporting.
+ *
+ * @param productType - The batch productType value (from productTypeEnum)
+ * @returns TTB tax class key, or null for juice
+ */
+export function productTypeToTaxClass(productType: string | null | undefined): TTBTaxClass | null {
+  switch (productType) {
+    case "cider":
+      return "hardCider";
+    case "perry":
+      return "hardCider";
+    case "pommeau":
+      return "wine16To21";
+    case "brandy":
+      return "appleBrandy";
+    case "wine":
+      return "wineUnder16";
+    case "juice":
+      return null;
+    case null:
+    case undefined:
+    case "other":
+    default:
+      return "hardCider";
+  }
+}
+
+// ============================================
 // Volume Conversions
 // ============================================
 
@@ -538,6 +587,12 @@ export interface TTBForm512017Data {
 
   /** Cider/Brandy separated reconciliation */
   ciderBrandyReconciliation?: CiderBrandyReconciliation;
+
+  /** Part I Section A - Bulk Wines by tax class (multi-column form) */
+  bulkWinesByTaxClass?: Record<string, BulkWinesSection>;
+
+  /** Part I Section B - Bottled Wines by tax class (multi-column form) */
+  bottledWinesByTaxClass?: Record<string, BottledWinesSection>;
 }
 
 // ============================================
