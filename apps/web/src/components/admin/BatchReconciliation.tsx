@@ -436,18 +436,41 @@ export function BatchReconciliation() {
                   losses: number; distillation: number; ttbCalculatedEnding: number;
                   systemOnHand: number; variance: number;
                 };
-                const isCurrentYear = yearFilter === currentYear;
+                const isCurrentYear = yearFilter >= currentYear;
+                const openingYear = reconciliationData.openingBalanceDate
+                  ? new Date(reconciliationData.openingBalanceDate as string).getFullYear()
+                  : null;
+                const isOpeningYear = openingYear !== null && yearFilter <= openingYear;
                 return (
                   <div className="text-right text-sm">
-                    <p className="font-medium text-gray-700">TTB Balance</p>
-                    <p className="text-gray-600">Opening: {t.ttbOpeningBalance.toLocaleString()} gal</p>
-                    {isCurrentYear && (
+                    {isOpeningYear ? (
                       <>
-                        <p className="text-gray-600">On Hand: {t.systemOnHand.toLocaleString()} gal</p>
-                        {Math.abs(t.variance) > 0.1 && (
-                          <p className={`${Math.abs(t.variance) < 10 ? "text-green-700" : Math.abs(t.variance) < 100 ? "text-amber-700" : "text-red-700"}`}>
-                            Variance: {t.variance.toFixed(1)} gal
-                          </p>
+                        <p className="font-medium text-gray-700">TTB Ending Balance</p>
+                        <p className="font-semibold text-gray-800">{t.ttbOpeningBalance.toLocaleString()} gal</p>
+                        <p className="text-xs text-gray-500 mt-1">Configured from physical inventory</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium text-gray-700">TTB Balance</p>
+                        <p className="text-gray-600">Opening: {t.ttbOpeningBalance.toLocaleString()} gal</p>
+                        {t.production > 0 && (
+                          <p className="text-gray-600">+ Production: {t.production.toLocaleString()} gal</p>
+                        )}
+                        {(t.removals + t.losses + t.distillation) > 0 && (
+                          <p className="text-gray-600">- Removals: {(t.removals + t.losses + t.distillation).toFixed(1)} gal</p>
+                        )}
+                        <p className="font-semibold text-gray-800 border-t border-gray-300 mt-1 pt-1">
+                          Calculated Ending: {t.ttbCalculatedEnding.toLocaleString()} gal
+                        </p>
+                        {isCurrentYear && (
+                          <>
+                            <p className="text-gray-600">On Hand: {t.systemOnHand.toLocaleString()} gal</p>
+                            {Math.abs(t.variance) > 0.1 && (
+                              <p className={`${Math.abs(t.variance) < 10 ? "text-green-700" : Math.abs(t.variance) < 100 ? "text-amber-700" : "text-red-700"}`}>
+                                Variance: {t.variance.toFixed(1)} gal
+                              </p>
+                            )}
+                          </>
                         )}
                       </>
                     )}
