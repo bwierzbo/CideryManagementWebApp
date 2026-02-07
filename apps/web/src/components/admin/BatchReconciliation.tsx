@@ -168,6 +168,58 @@ export function BatchReconciliation() {
     { asOfDate: `${yearFilter}-12-31` },
   );
 
+  // Year classification
+  const openingBalanceYear = reconciliationData?.openingBalanceDate
+    ? new Date(reconciliationData.openingBalanceDate as string).getFullYear()
+    : null;
+  const isOpeningYear = openingBalanceYear !== null && yearFilter <= openingBalanceYear;
+  const isCurrentYear = yearFilter === currentYear;
+
+  // Prior year query for year-specific TTB breakdown
+  const { data: priorYearData } = trpc.ttb.getReconciliationSummary.useQuery(
+    { asOfDate: `${yearFilter - 1}-12-31` },
+    { enabled: !isOpeningYear && reconciliationData !== undefined },
+  );
+
+  // Compute year-specific metrics from cumulative TTB data
+  type TtbTotals = {
+    ttbOpeningBalance: number; production: number; removals: number;
+    losses: number; distillation: number; ttbCalculatedEnding: number;
+    systemOnHand: number; variance: number;
+  };
+  const yearMetrics = useMemo(() => {
+    if (!reconciliationData || !("hasOpeningBalances" in reconciliationData) || !reconciliationData.hasOpeningBalances) {
+      return null;
+    }
+    const t = reconciliationData.totals as TtbTotals;
+    if (isOpeningYear) {
+      return {
+        opening: t.ttbOpeningBalance,
+        production: 0,
+        removals: 0,
+        losses: 0,
+        distillation: 0,
+        ending: t.ttbOpeningBalance,
+        onHand: t.systemOnHand,
+        variance: 0,
+        isConfigured: true,
+      };
+    }
+    if (!priorYearData || !("totals" in priorYearData)) return null;
+    const prior = priorYearData.totals as TtbTotals;
+    return {
+      opening: parseFloat(prior.ttbCalculatedEnding.toFixed(1)),
+      production: parseFloat((t.production - prior.production).toFixed(1)),
+      removals: parseFloat((t.removals - prior.removals).toFixed(1)),
+      losses: parseFloat((t.losses - prior.losses).toFixed(1)),
+      distillation: parseFloat((t.distillation - prior.distillation).toFixed(1)),
+      ending: parseFloat(t.ttbCalculatedEnding.toFixed(1)),
+      onHand: parseFloat(t.systemOnHand.toFixed(1)),
+      variance: parseFloat((t.ttbCalculatedEnding - t.systemOnHand).toFixed(1)),
+      isConfigured: false,
+    };
+  }, [reconciliationData, priorYearData, isOpeningYear]);
+
   // Mutations
   const updateMutation = trpc.batch.update.useMutation({
     onSuccess: () => {
@@ -401,73 +453,82 @@ export function BatchReconciliation() {
         </div>
 
         {/* Reconciliation Status Banner */}
-        {!isLoading && statusCounts.total > 0 && (
-          <div className={`mb-4 p-4 rounded-lg border ${
-            statusCounts.pending === 0
-              ? "bg-green-50 border-green-200"
-              : "bg-amber-50 border-amber-200"
-          }`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  {statusCounts.pending === 0 ? (
-                    <>
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                      <span className="font-semibold text-green-800">
-                        {yearFilter} — Fully Reconciled
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <Clock className="w-5 h-5 text-amber-600" />
-                      <span className="font-semibold text-amber-800">
-                        {yearFilter} — {statusCounts.pending} batch{statusCounts.pending !== 1 ? "es" : ""} pending review
-                      </span>
-                    </>
+        {!isLoading && (() => {
+          const allReviewed = statusCounts.pending === 0;
+          const hasVerified = statusCounts.verified > 0;
+          const hasBatches = statusCounts.total > 0;
+
+          let bannerStyle: string;
+          let icon: React.ReactNode;
+          let title: string;
+
+          if (!hasBatches) {
+            bannerStyle = "bg-gray-50 border-gray-200";
+            icon = <Clock className="w-5 h-5 text-gray-400" />;
+            title = `${yearFilter} — No batches`;
+          } else if (!allReviewed) {
+            bannerStyle = "bg-amber-50 border-amber-200";
+            icon = <Clock className="w-5 h-5 text-amber-600" />;
+            title = `${yearFilter} — ${statusCounts.pending} batch${statusCounts.pending !== 1 ? "es" : ""} pending review`;
+          } else if (isOpeningYear) {
+            bannerStyle = "bg-green-50 border-green-200";
+            icon = <CheckCircle className="w-5 h-5 text-green-600" />;
+            title = `${yearFilter} — Opening Balance Configured`;
+          } else if (isCurrentYear) {
+            bannerStyle = "bg-blue-50 border-blue-200";
+            icon = <ClipboardCheck className="w-5 h-5 text-blue-600" />;
+            title = `${yearFilter} — Batches Reviewed (Year in Progress)`;
+          } else if (!hasVerified) {
+            bannerStyle = "bg-gray-50 border-gray-200";
+            icon = <Clock className="w-5 h-5 text-gray-400" />;
+            title = `${yearFilter} — No verified batches`;
+          } else {
+            bannerStyle = "bg-green-50 border-green-200";
+            icon = <CheckCircle className="w-5 h-5 text-green-600" />;
+            title = `${yearFilter} — Fully Reconciled`;
+          }
+
+          return (
+            <div className={`mb-4 p-4 rounded-lg border ${bannerStyle}`}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    {icon}
+                    <span className="font-semibold text-gray-800">{title}</span>
+                  </div>
+                  {hasBatches && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {statusCounts.verified} verified, {statusCounts.duplicate} duplicate, {statusCounts.excluded} excluded
+                    </p>
                   )}
                 </div>
-                <p className="text-sm text-gray-600 mt-1">
-                  {statusCounts.verified} verified, {statusCounts.duplicate} duplicate, {statusCounts.excluded} excluded
-                </p>
-              </div>
-              {reconciliationData && "hasOpeningBalances" in reconciliationData && reconciliationData.hasOpeningBalances && (() => {
-                const t = reconciliationData.totals as {
-                  ttbOpeningBalance: number; production: number; removals: number;
-                  losses: number; distillation: number; ttbCalculatedEnding: number;
-                  systemOnHand: number; variance: number;
-                };
-                const isCurrentYear = yearFilter >= currentYear;
-                const openingYear = reconciliationData.openingBalanceDate
-                  ? new Date(reconciliationData.openingBalanceDate as string).getFullYear()
-                  : null;
-                const isOpeningYear = openingYear !== null && yearFilter <= openingYear;
-                return (
+                {yearMetrics && (
                   <div className="text-right text-sm">
-                    {isOpeningYear ? (
+                    {yearMetrics.isConfigured ? (
                       <>
                         <p className="font-medium text-gray-700">TTB Ending Balance</p>
-                        <p className="font-semibold text-gray-800">{t.ttbOpeningBalance.toLocaleString()} gal</p>
+                        <p className="font-semibold text-gray-800">{yearMetrics.opening.toLocaleString()} gal</p>
                         <p className="text-xs text-gray-500 mt-1">Configured from physical inventory</p>
                       </>
                     ) : (
                       <>
-                        <p className="font-medium text-gray-700">TTB Balance</p>
-                        <p className="text-gray-600">Opening: {t.ttbOpeningBalance.toLocaleString()} gal</p>
-                        {t.production > 0 && (
-                          <p className="text-gray-600">+ Production: {t.production.toLocaleString()} gal</p>
+                        <p className="font-medium text-gray-700">TTB Balance ({yearFilter})</p>
+                        <p className="text-gray-600">Opening: {yearMetrics.opening.toLocaleString()} gal</p>
+                        {yearMetrics.production > 0 && (
+                          <p className="text-gray-600">+ Production: {yearMetrics.production.toLocaleString()} gal</p>
                         )}
-                        {(t.removals + t.losses + t.distillation) > 0 && (
-                          <p className="text-gray-600">- Removals: {(t.removals + t.losses + t.distillation).toFixed(1)} gal</p>
+                        {(yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation) > 0 && (
+                          <p className="text-gray-600">- Removals: {(yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation).toFixed(1)} gal</p>
                         )}
                         <p className="font-semibold text-gray-800 border-t border-gray-300 mt-1 pt-1">
-                          Calculated Ending: {t.ttbCalculatedEnding.toLocaleString()} gal
+                          Calculated Ending: {yearMetrics.ending.toLocaleString()} gal
                         </p>
                         {isCurrentYear && (
                           <>
-                            <p className="text-gray-600">On Hand: {t.systemOnHand.toLocaleString()} gal</p>
-                            {Math.abs(t.variance) > 0.1 && (
-                              <p className={`${Math.abs(t.variance) < 10 ? "text-green-700" : Math.abs(t.variance) < 100 ? "text-amber-700" : "text-red-700"}`}>
-                                Variance: {t.variance.toFixed(1)} gal
+                            <p className="text-gray-600">On Hand: {yearMetrics.onHand.toLocaleString()} gal</p>
+                            {Math.abs(yearMetrics.variance) > 0.1 && (
+                              <p className={`${Math.abs(yearMetrics.variance) < 10 ? "text-green-700" : Math.abs(yearMetrics.variance) < 100 ? "text-amber-700" : "text-red-700"}`}>
+                                Variance: {yearMetrics.variance.toFixed(1)} gal
                               </p>
                             )}
                           </>
@@ -475,11 +536,11 @@ export function BatchReconciliation() {
                       </>
                     )}
                   </div>
-                );
-              })()}
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Filter Bar */}
         <Card className="mb-4">
@@ -756,61 +817,65 @@ export function BatchReconciliation() {
             <CollapsibleContent>
               <Card className="border-t-0 rounded-t-none">
                 <CardContent className="pt-4">
-                  {reconciliationData && "hasOpeningBalances" in reconciliationData && reconciliationData.hasOpeningBalances ? (
-                    (() => {
-                      const t = reconciliationData.totals as {
-                        ttbOpeningBalance: number; production: number; removals: number;
-                        losses: number; distillation: number; ttbCalculatedEnding: number;
-                        systemOnHand: number; variance: number;
-                      };
-                      const variance = t.variance;
-                      return (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <p className="text-xs text-gray-500 uppercase">Opening Balance</p>
-                            <p className="text-lg font-bold">{t.ttbOpeningBalance} gal</p>
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <p className="text-xs text-gray-500 uppercase">Production</p>
-                            <p className="text-lg font-bold">{t.production} gal</p>
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <p className="text-xs text-gray-500 uppercase">Removals + Losses</p>
-                            <p className="text-lg font-bold">{(t.removals + t.losses).toFixed(1)} gal</p>
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <p className="text-xs text-gray-500 uppercase">Calculated Ending</p>
-                            <p className="text-lg font-bold">{t.ttbCalculatedEnding} gal</p>
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <p className="text-xs text-gray-500 uppercase">System On Hand</p>
-                            <p className="text-lg font-bold">{t.systemOnHand} gal</p>
-                          </div>
-                          <div className="p-3 bg-gray-50 rounded-lg">
-                            <p className="text-xs text-gray-500 uppercase">Sent to DSP</p>
-                            <p className="text-lg font-bold">{t.distillation} gal</p>
-                          </div>
-                          <div className={`p-3 rounded-lg col-span-2 ${
-                            Math.abs(variance) < 10
-                              ? "bg-green-50"
-                              : Math.abs(variance) < 100
-                                ? "bg-amber-50"
-                                : "bg-red-50"
-                          }`}>
-                            <p className="text-xs text-gray-500 uppercase">Variance</p>
-                            <p className={`text-lg font-bold ${
-                              Math.abs(variance) < 10
-                                ? "text-green-700"
-                                : Math.abs(variance) < 100
-                                  ? "text-amber-700"
-                                  : "text-red-700"
-                            }`}>
-                              {variance} gal
-                            </p>
-                          </div>
+                  {yearMetrics ? (
+                    yearMetrics.isConfigured ? (
+                      <div className="text-center py-4">
+                        <p className="text-lg font-bold">{yearMetrics.opening} gal</p>
+                        <p className="text-sm text-gray-500">Ending balance configured from physical inventory</p>
+                        <p className="text-xs text-gray-400 mt-1">This was entered as the starting point for TTB tracking</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500 uppercase">Opening Balance</p>
+                          <p className="text-lg font-bold">{yearMetrics.opening} gal</p>
                         </div>
-                      );
-                    })()
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500 uppercase">Production ({yearFilter})</p>
+                          <p className="text-lg font-bold">{yearMetrics.production} gal</p>
+                        </div>
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500 uppercase">Removals + Losses</p>
+                          <p className="text-lg font-bold">{(yearMetrics.removals + yearMetrics.losses).toFixed(1)} gal</p>
+                        </div>
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <p className="text-xs text-gray-500 uppercase">Sent to DSP</p>
+                          <p className="text-lg font-bold">{yearMetrics.distillation} gal</p>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-lg col-span-2">
+                          <p className="text-xs text-gray-500 uppercase">Calculated Ending</p>
+                          <p className="text-lg font-bold">{yearMetrics.ending} gal</p>
+                        </div>
+                        {isCurrentYear && (
+                          <>
+                            <div className="p-3 bg-gray-50 rounded-lg">
+                              <p className="text-xs text-gray-500 uppercase">System On Hand</p>
+                              <p className="text-lg font-bold">{yearMetrics.onHand} gal</p>
+                            </div>
+                            <div className={`p-3 rounded-lg ${
+                              Math.abs(yearMetrics.variance) < 10
+                                ? "bg-green-50"
+                                : Math.abs(yearMetrics.variance) < 100
+                                  ? "bg-amber-50"
+                                  : "bg-red-50"
+                            }`}>
+                              <p className="text-xs text-gray-500 uppercase">Variance</p>
+                              <p className={`text-lg font-bold ${
+                                Math.abs(yearMetrics.variance) < 10
+                                  ? "text-green-700"
+                                  : Math.abs(yearMetrics.variance) < 100
+                                    ? "text-amber-700"
+                                    : "text-red-700"
+                              }`}>
+                                {yearMetrics.variance} gal
+                              </p>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )
+                  ) : reconciliationData && "hasOpeningBalances" in reconciliationData && reconciliationData.hasOpeningBalances ? (
+                    <div className="text-center py-4 text-gray-500">Loading year-specific data...</div>
                   ) : reconciliationData ? (
                     <div className="text-center py-4 text-gray-500">
                       No TTB opening balances configured. Set up opening balances in{" "}
