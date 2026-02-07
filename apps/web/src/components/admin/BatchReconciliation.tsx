@@ -65,7 +65,7 @@ import {
   showSuccess,
   showLoading,
 } from "@/utils/error-handling";
-import { litersToWineGallons, productTypeToTaxClass } from "lib/src/calculations/ttb";
+import { litersToWineGallons } from "lib/src/calculations/ttb";
 
 const RECONCILIATION_STATUSES = [
   { value: "verified", label: "Verified", icon: CheckCircle, color: "bg-green-100 text-green-800" },
@@ -163,10 +163,9 @@ export function BatchReconciliation() {
 
   const { data, isLoading } = trpc.batch.listForReconciliation.useQuery(queryInput);
 
-  // TTB preview query - shows impact of current verified batches
+  // TTB reconciliation summary - always loaded for banner + preview
   const { data: reconciliationData } = trpc.ttb.getReconciliationSummary.useQuery(
     { asOfDate: `${yearFilter}-12-31` },
-    { enabled: ttbPreviewOpen }
   );
 
   // Mutations
@@ -261,22 +260,6 @@ export function BatchReconciliation() {
       ? <ChevronUp className="w-3 h-3 ml-1" />
       : <ChevronDown className="w-3 h-3 ml-1" />;
   };
-
-  // Verified volume summary by tax class
-  const verifiedSummary = useMemo(() => {
-    const byTaxClass: Record<string, number> = {};
-    let total = 0;
-    for (const b of rawBatches) {
-      if (b.reconciliationStatus !== "verified") continue;
-      const liters = parseFloat(b.initialVolumeLiters || "0");
-      if (liters <= 0) continue;
-      const gallons = litersToWineGallons(liters);
-      const taxClass = productTypeToTaxClass(b.productType) || "other";
-      byTaxClass[taxClass] = (byTaxClass[taxClass] || 0) + gallons;
-      total += gallons;
-    }
-    return { byTaxClass, total };
-  }, [rawBatches]);
 
   // Selection handlers
   const allSelected = batches.length > 0 && batches.every((b) => selectedIds.has(b.id));
@@ -447,25 +430,30 @@ export function BatchReconciliation() {
                   {statusCounts.verified} verified, {statusCounts.duplicate} duplicate, {statusCounts.excluded} excluded
                 </p>
               </div>
-              {verifiedSummary.total > 0 && (
-                <div className="text-right text-sm">
-                  <p className="font-medium text-gray-700">Verified Bulk Volume</p>
-                  {Object.entries(verifiedSummary.byTaxClass)
-                    .sort(([, a], [, b]) => b - a)
-                    .map(([taxClass, gallons]) => (
-                      <p key={taxClass} className="text-gray-600">
-                        {taxClass === "hardCider" ? "Hard Cider" :
-                         taxClass === "wine16To21" ? "Wine 16-21%" :
-                         taxClass === "wineUnder16" ? "Wine <16%" :
-                         taxClass === "appleBrandy" ? "Apple Brandy" :
-                         taxClass}: {gallons.toFixed(1)} gal
-                      </p>
-                    ))}
-                  <p className="font-semibold text-gray-800 border-t border-gray-300 mt-1 pt-1">
-                    Total: {verifiedSummary.total.toFixed(1)} gal
-                  </p>
-                </div>
-              )}
+              {reconciliationData && "hasOpeningBalances" in reconciliationData && reconciliationData.hasOpeningBalances && (() => {
+                const t = reconciliationData.totals as {
+                  ttbOpeningBalance: number; production: number; removals: number;
+                  losses: number; distillation: number; ttbCalculatedEnding: number;
+                  systemOnHand: number; variance: number;
+                };
+                const isCurrentYear = yearFilter === currentYear;
+                return (
+                  <div className="text-right text-sm">
+                    <p className="font-medium text-gray-700">TTB Balance</p>
+                    <p className="text-gray-600">Opening: {t.ttbOpeningBalance.toLocaleString()} gal</p>
+                    {isCurrentYear && (
+                      <>
+                        <p className="text-gray-600">On Hand: {t.systemOnHand.toLocaleString()} gal</p>
+                        {Math.abs(t.variance) > 0.1 && (
+                          <p className={`${Math.abs(t.variance) < 10 ? "text-green-700" : Math.abs(t.variance) < 100 ? "text-amber-700" : "text-red-700"}`}>
+                            Variance: {t.variance.toFixed(1)} gal
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
