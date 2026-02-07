@@ -223,6 +223,8 @@ const updateBatchSchema = z.object({
     .or(z.string().transform((val) => new Date(val)))
     .optional(),
   notes: z.string().optional(),
+  reconciliationStatus: z.enum(["verified", "duplicate", "excluded", "pending"]).optional(),
+  reconciliationNotes: z.string().optional(),
 });
 
 const transferJuiceToTankSchema = z.object({
@@ -1951,11 +1953,16 @@ export const batchRouter = router({
         if (input.vesselId !== undefined) updateData.vesselId = input.vesselId;
         if (input.startDate) updateData.startDate = input.startDate;
         if (input.endDate) updateData.endDate = input.endDate;
+        if (input.reconciliationStatus !== undefined)
+          updateData.reconciliationStatus = input.reconciliationStatus;
+        if (input.reconciliationNotes !== undefined)
+          updateData.reconciliationNotes = input.reconciliationNotes;
 
         // Capture old values for audit log
         const oldStatus = existingBatch[0].status;
         const oldProductType = existingBatch[0].productType;
         const oldFermentationStage = existingBatch[0].fermentationStage;
+        const oldReconciliationStatus = existingBatch[0].reconciliationStatus;
 
         // Update batch
         const updatedBatch = await db
@@ -2025,12 +2032,33 @@ export const batchRouter = router({
           });
         }
 
+        // Create audit log if reconciliationStatus changed
+        if (input.reconciliationStatus && input.reconciliationStatus !== oldReconciliationStatus) {
+          await db.insert(auditLogs).values({
+            tableName: 'batches',
+            recordId: input.batchId,
+            operation: 'update',
+            oldData: { reconciliationStatus: oldReconciliationStatus },
+            newData: { reconciliationStatus: input.reconciliationStatus },
+            diffData: {
+              reconciliationStatus: {
+                old: oldReconciliationStatus || 'pending',
+                new: input.reconciliationStatus,
+              },
+            },
+            changedAt: new Date(),
+            reason: `Reconciliation status changed to ${input.reconciliationStatus}`,
+          });
+        }
+
         return {
           success: true,
           batch: updatedBatch[0],
-          message: input.fermentationStage === 'early' && oldFermentationStage === 'not_started'
-            ? "Batch updated - fermentation started"
-            : "Batch updated successfully",
+          message: input.reconciliationStatus
+            ? `Batch reconciliation status set to ${input.reconciliationStatus}`
+            : input.fermentationStage === 'early' && oldFermentationStage === 'not_started'
+              ? "Batch updated - fermentation started"
+              : "Batch updated successfully",
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -2040,6 +2068,122 @@ export const batchRouter = router({
           message: "Failed to update batch",
         });
       }
+    }),
+
+  /**
+   * List batches with reconciliation-relevant fields for TTB verification workflow
+   */
+  listForReconciliation: adminProcedure
+    .input(z.object({
+      year: z.number().int().min(2020).max(2100).optional(),
+      productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
+      reconciliationStatus: z.enum(["verified", "duplicate", "excluded", "pending"]).optional(),
+      search: z.string().optional(),
+    }).optional())
+    .query(async ({ input = {} }) => {
+      const conditions: any[] = [isNull(batches.deletedAt)];
+
+      if (input.year) {
+        conditions.push(sql`EXTRACT(YEAR FROM ${batches.startDate}) = ${input.year}`);
+      }
+      if (input.productType) {
+        conditions.push(eq(batches.productType, input.productType));
+      }
+      if (input.reconciliationStatus) {
+        conditions.push(eq(batches.reconciliationStatus, input.reconciliationStatus));
+      }
+      if (input.search) {
+        conditions.push(or(
+          like(batches.name, `%${input.search}%`),
+          like(batches.customName, `%${input.search}%`),
+        ));
+      }
+
+      const batchesList = await db
+        .select({
+          id: batches.id,
+          name: batches.name,
+          customName: batches.customName,
+          batchNumber: batches.batchNumber,
+          status: batches.status,
+          productType: batches.productType,
+          startDate: batches.startDate,
+          vesselName: vessels.name,
+          initialVolumeLiters: batches.initialVolumeLiters,
+          currentVolumeLiters: batches.currentVolumeLiters,
+          reconciliationStatus: batches.reconciliationStatus,
+          reconciliationNotes: batches.reconciliationNotes,
+          parentBatchId: batches.parentBatchId,
+          isRackingDerivative: batches.isRackingDerivative,
+          isArchived: batches.isArchived,
+        })
+        .from(batches)
+        .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+        .where(and(...conditions))
+        .orderBy(asc(batches.startDate));
+
+      const result = batchesList.map((b) => ({
+        ...b,
+        suggestDuplicate:
+          b.isRackingDerivative === true ||
+          (b.initialVolumeLiters !== null && parseFloat(String(b.initialVolumeLiters)) === 0 && b.parentBatchId !== null) ||
+          false,
+      }));
+
+      const statusCounts = {
+        verified: result.filter((b) => b.reconciliationStatus === "verified").length,
+        duplicate: result.filter((b) => b.reconciliationStatus === "duplicate").length,
+        excluded: result.filter((b) => b.reconciliationStatus === "excluded").length,
+        pending: result.filter((b) => b.reconciliationStatus === "pending").length,
+        total: result.length,
+      };
+
+      return { batches: result, statusCounts };
+    }),
+
+  /**
+   * Bulk update reconciliation status for multiple batches
+   */
+  bulkUpdateReconciliationStatus: adminProcedure
+    .input(z.object({
+      batchIds: z.array(z.string().uuid()).min(1).max(500),
+      reconciliationStatus: z.enum(["verified", "duplicate", "excluded", "pending"]),
+      reconciliationNotes: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const updateData: Record<string, any> = {
+        reconciliationStatus: input.reconciliationStatus,
+        updatedAt: new Date(),
+      };
+      if (input.reconciliationNotes !== undefined) {
+        updateData.reconciliationNotes = input.reconciliationNotes;
+      }
+
+      const updated = await db
+        .update(batches)
+        .set(updateData)
+        .where(and(
+          inArray(batches.id, input.batchIds),
+          isNull(batches.deletedAt),
+        ))
+        .returning({ id: batches.id });
+
+      // Audit log for bulk change
+      if (updated.length > 0) {
+        await db.insert(auditLogs).values(
+          updated.map((batch) => ({
+            tableName: 'batches' as const,
+            recordId: batch.id,
+            operation: 'update' as const,
+            newData: { reconciliationStatus: input.reconciliationStatus },
+            diffData: { reconciliationStatus: { new: input.reconciliationStatus } },
+            changedAt: new Date(),
+            reason: `Bulk reconciliation status update to ${input.reconciliationStatus}`,
+          }))
+        );
+      }
+
+      return { success: true, updatedCount: updated.length };
     }),
 
   /**
@@ -4013,6 +4157,8 @@ export const batchRouter = router({
                 finalGravity: batch[0].finalGravity,
                 estimatedAbv: batch[0].estimatedAbv,
                 actualAbv: batch[0].actualAbv,
+                parentBatchId: input.batchId,
+                isRackingDerivative: true,
               })
               .returning();
 

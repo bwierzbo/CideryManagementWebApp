@@ -1872,12 +1872,20 @@ function SystemSettings() {
                   Re-running the wizard will allow you to update your TTB opening balances and legacy batches.
                 </p>
               </div>
-              <Button variant="outline" asChild>
-                <Link href="/admin/ttb-onboarding">
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Re-run Setup
-                </Link>
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" asChild>
+                  <Link href="/admin/ttb-onboarding">
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Re-run Setup
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/admin/batch-reconciliation">
+                    <FileText className="w-4 h-4 mr-2" />
+                    Batch Reconciliation
+                  </Link>
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
