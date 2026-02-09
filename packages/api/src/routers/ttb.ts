@@ -633,15 +633,15 @@ async function computeReconciliationFromBatches(
   // Operations are partitioned by date later for period-specific columns.
   // Fetching all-time allows accurate drift detection (comparing with live currentVolumeLiters).
   const [tOut, tIn, merges, mergesOut, bottles, kegs, dist, adjs, racks, filters, bottleDist, kegDist] = await Promise.all([
-    // 2a. Transfers OUT (source)
+    // 2a. Transfers OUT (source) — include destination_batch_id for same-vessel detection
     db.execute(sql`
-      SELECT source_batch_id, volume_transferred, loss, transferred_at
+      SELECT source_batch_id, destination_batch_id, volume_transferred, loss, transferred_at
       FROM batch_transfers
       WHERE source_batch_id IN (${idList}) AND deleted_at IS NULL
     `),
-    // 2b. Transfers IN (destination)
+    // 2b. Transfers IN (destination) — include source_batch_id for same-vessel detection
     db.execute(sql`
-      SELECT destination_batch_id, volume_transferred, transferred_at
+      SELECT destination_batch_id, source_batch_id, volume_transferred, transferred_at
       FROM batch_transfers
       WHERE destination_batch_id IN (${idList}) AND deleted_at IS NULL
     `),
@@ -683,7 +683,7 @@ async function computeReconciliationFromBatches(
     `),
     // 2h. Racking operations (loss only — transfers tracked via merges-out and child batches)
     db.execute(sql`
-      SELECT batch_id, volume_loss, racked_at, source_vessel_id, destination_vessel_id
+      SELECT batch_id, volume_loss, volume_before, volume_after, racked_at, source_vessel_id, destination_vessel_id
       FROM batch_racking_operations
       WHERE batch_id IN (${idList}) AND deleted_at IS NULL
         AND (notes IS NULL OR notes NOT LIKE '%Historical Record%')
@@ -870,14 +870,22 @@ async function computeReconciliationFromBatches(
       events.push({ date: batchStart, deltaL: effectiveInitialL + rackingReceivedL });
     }
 
-    // Transfers in: +volume_transferred
+    // Transfers in: +volume_transferred (skip same-vessel transfers — volume was already physically there)
     for (const r of transfersIn) {
-      events.push({ date: r.transferred_at ? new Date(r.transferred_at) : batchStart, deltaL: num(r.volume_transferred) });
+      const sourceBatchVesselId = r.source_batch_id ? batchInfoMap.get(r.source_batch_id)?.vesselId : null;
+      const isSameVessel = sourceBatchVesselId && sourceBatchVesselId === info.vesselId;
+      if (!isSameVessel) {
+        events.push({ date: r.transferred_at ? new Date(r.transferred_at) : batchStart, deltaL: num(r.volume_transferred) });
+      }
     }
 
-    // Transfers out: -(volume_transferred + loss)
+    // Transfers out: -(volume_transferred + loss) (skip same-vessel transfers — volume stays physically there)
     for (const r of transfersOut) {
-      events.push({ date: r.transferred_at ? new Date(r.transferred_at) : batchStart, deltaL: -(num(r.volume_transferred) + num(r.loss)) });
+      const destBatchVesselId = r.destination_batch_id ? batchInfoMap.get(r.destination_batch_id)?.vesselId : null;
+      const isSameVessel = destBatchVesselId && destBatchVesselId === info.vesselId;
+      if (!isSameVessel) {
+        events.push({ date: r.transferred_at ? new Date(r.transferred_at) : batchStart, deltaL: -(num(r.volume_transferred) + num(r.loss)) });
+      }
     }
 
     // Merges in: +volume_added
@@ -890,9 +898,22 @@ async function computeReconciliationFromBatches(
       events.push({ date: r.merged_at ? new Date(r.merged_at) : batchStart, deltaL: -num(r.volume_merged_out) });
     }
 
-    // Racking: -volume_loss
+    // Racking: use full volume delta (volume_before - volume_after) when available,
+    // falls back to volume_loss. This correctly captures lees loss even when volume_loss=0
+    // but the racking actually reduced volume (e.g., racking from tank to drum).
+    // For vessel-change rackings, schedule the volume reduction 1ms BEFORE the vessel change
+    // so the loss is attributed to the source vessel, not the destination.
     for (const r of rackingRows) {
-      events.push({ date: r.racked_at ? new Date(r.racked_at) : batchStart, deltaL: -num(r.volume_loss) });
+      const vBefore = num(r.volume_before);
+      const vAfter = num(r.volume_after);
+      const rackingDelta = (vBefore > 0 && vAfter >= 0 && vBefore > vAfter)
+        ? -(vBefore - vAfter)
+        : -num(r.volume_loss);
+      const rackingDate = r.racked_at ? new Date(r.racked_at) : batchStart;
+      const isVesselChange = r.source_vessel_id && r.destination_vessel_id
+        && r.source_vessel_id !== r.destination_vessel_id;
+      const eventDate = isVesselChange ? new Date(rackingDate.getTime() - 1) : rackingDate;
+      events.push({ date: eventDate, deltaL: rackingDelta });
     }
 
     // Bottling: compute per bottle run using same logic as bottlingTakenL
@@ -935,7 +956,21 @@ async function computeReconciliationFromBatches(
 
     // 4. Walk through events, tracking running volume and current vessel
     let runningVolumeL = 0;
+    // Infer the STARTING vessel: if racking moved the batch to its current vessel,
+    // the batch actually started in the source vessel of the first vessel-change racking.
     let currentVesselId = info.vesselId || "";
+    if (vesselChanges.length > 0) {
+      // Find the first racking record that matches the first vessel change
+      const firstChange = vesselChanges[0];
+      const matchingRack = rackingRows.find(
+        (r) => r.source_vessel_id && r.destination_vessel_id
+          && r.source_vessel_id !== r.destination_vessel_id
+          && r.destination_vessel_id === firstChange.newVesselId
+      );
+      if (matchingRack && matchingRack.source_vessel_id) {
+        currentVesselId = matchingRack.source_vessel_id;
+      }
+    }
     let vesselChangeIdx = 0;
 
     // Track peak volume per vessel
