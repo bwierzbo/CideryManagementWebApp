@@ -558,10 +558,23 @@ function DrillDownRow({
               <div>
                 <p className="font-semibold text-gray-600 mb-1">Vessel Capacity</p>
                 <div className="space-y-0.5 text-gray-500">
-                  {batch.vesselCapacityGal ? (
+                  {batch.vesselCapacityHistory && batch.vesselCapacityHistory.length > 0 ? (
+                    <div className="space-y-1">
+                      {batch.vesselCapacityHistory.map((vh: any, idx: number) => (
+                        <div key={idx} className={vh.exceeds ? "text-purple-700" : ""}>
+                          <p className="font-medium text-xs">{vh.vesselName}</p>
+                          <p className="text-xs">Cap: {vh.vesselCapacityGal.toFixed(1)} gal / Peak: {vh.peakVolumeGal.toFixed(1)} gal</p>
+                          {vh.exceeds && <p className="text-xs font-semibold">EXCEEDS — peak on {vh.peakDate}</p>}
+                        </div>
+                      ))}
+                      {!batch.exceedsVesselCapacity && (
+                        <p className="text-xs mt-1">All vessel periods within capacity</p>
+                      )}
+                    </div>
+                  ) : batch.vesselCapacityGal ? (
                     <>
                       <p>Capacity: {batch.vesselCapacityGal.toFixed(1)} gal</p>
-                      <p>Max received: {batch.maxVolumeReceivedGal.toFixed(1)} gal</p>
+                      <p>Peak volume: {batch.maxVolumeReceivedGal.toFixed(1)} gal</p>
                       <p className={batch.exceedsVesselCapacity ? "text-purple-700" : ""}>
                         {batch.exceedsVesselCapacity ? "EXCEEDS CAPACITY" : "Within capacity"}
                       </p>

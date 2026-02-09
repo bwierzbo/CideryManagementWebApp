@@ -38,7 +38,13 @@ import {
   Tag,
   BarChart3,
   List,
+  History,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { formatDateTime } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
 import { cn } from "@/lib/utils";
@@ -98,6 +104,8 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
   const [showSourceHistory, setShowSourceHistory] = useState(false);
   // For expandable child batches in outgoing transfers
   const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
+  // For collapsible parent history section
+  const [parentHistoryOpen, setParentHistoryOpen] = useState(false);
 
   // Fetch child batches for this batch (for expandable lineage view)
   const childBatchesQuery = trpc.batch.getChildBatches.useQuery(
@@ -324,10 +332,25 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
       })
     : allActivities;
 
-  // Apply sorting based on toggle state
-  const sortedActivities = isReversed ? [...activities].reverse() : activities;
+  // Split activities into parent (inherited) and current batch (non-inherited)
+  const parentActivities = activities.filter((a: any) => a.inherited === true);
+  const currentBatchActivities = activities.filter((a: any) => !a.inherited);
+  const hasParentHistory = parentActivities.length > 0;
 
-  // Extract measurements for chart/list views
+  // Group parent activities by ancestor name for display
+  const parentActivitiesByAncestor = new Map<string, any[]>();
+  parentActivities.forEach((a: any) => {
+    const key = a.inheritedFrom || "Parent Batch";
+    if (!parentActivitiesByAncestor.has(key)) {
+      parentActivitiesByAncestor.set(key, []);
+    }
+    parentActivitiesByAncestor.get(key)!.push(a);
+  });
+
+  // Apply sorting — timeline tab shows current batch activities only; parent history is separate
+  const sortedActivities = isReversed ? [...currentBatchActivities].reverse() : currentBatchActivities;
+
+  // Extract measurements for chart/list views (use ALL activities for full picture)
   const measurements = activities
     .filter(a => a.type === 'measurement' && a.metadata)
     .map(a => a.metadata)
@@ -422,6 +445,77 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
 
           {/* Timeline Tab */}
           <TabsContent value="timeline">
+            {/* Parent History — collapsible section for inherited activities */}
+            {hasParentHistory && (
+              <Collapsible open={parentHistoryOpen} onOpenChange={setParentHistoryOpen} className="mb-4">
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors">
+                    {parentHistoryOpen ? (
+                      <ChevronDown className="h-4 w-4 text-gray-500" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-gray-500" />
+                    )}
+                    <History className="h-4 w-4 text-gray-500" />
+                    <span className="text-sm font-medium text-gray-700">
+                      Parent History
+                    </span>
+                    <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600 border-gray-300">
+                      {parentActivities.length} event{parentActivities.length !== 1 ? "s" : ""}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground ml-auto">
+                      {Array.from(parentActivitiesByAncestor.keys()).join(", ")}
+                    </span>
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-2 border-l-2 border-gray-200 ml-2">
+                    {Array.from(parentActivitiesByAncestor.entries()).map(([ancestorName, ancestorActivities]) => (
+                      <div key={ancestorName} className="mb-3">
+                        {parentActivitiesByAncestor.size > 1 && (
+                          <div className="flex items-center gap-2 mb-2 ml-4 mt-2">
+                            <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600 border-gray-300">
+                              {ancestorName}
+                            </Badge>
+                          </div>
+                        )}
+                        <div className="space-y-1 p-2">
+                          {(isReversed ? [...ancestorActivities].reverse() : ancestorActivities).map((activity: any) => {
+                            const Icon = activityIcons[activity.type as keyof typeof activityIcons] || Activity;
+                            const colorClass = activityColors[activity.type as keyof typeof activityColors] || "bg-gray-500/10 text-gray-700";
+                            return (
+                              <div key={activity.id} className="flex items-center gap-2 py-1.5 px-3 hover:bg-white/50 rounded text-sm">
+                                <div className={cn("p-1 rounded shrink-0", colorClass)}>
+                                  <Icon className="h-3 w-3" />
+                                </div>
+                                <span className="text-xs text-muted-foreground shrink-0">
+                                  {formatDateTime(activity.timestamp)}
+                                </span>
+                                <Badge variant="outline" className={cn("text-xs shrink-0", colorClass)}>
+                                  {activity.type}
+                                </Badge>
+                                <span className="text-sm text-gray-700 truncate">{activity.description}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Current Batch label — only shown when parent history exists */}
+            {hasParentHistory && (
+              <div className="flex items-center gap-2 mb-4">
+                <Beaker className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-gray-700">Current Batch</span>
+                <Badge variant="outline" className="text-xs">
+                  {currentBatchActivities.length} event{currentBatchActivities.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+            )}
+
             <div className="relative">
           {/* Timeline line */}
           <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-border" />
@@ -466,14 +560,7 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                           >
                             {activity.type}
                           </Badge>
-                          {activity.inherited && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs bg-gray-100 text-gray-600 border-gray-300"
-                            >
-                              inherited
-                            </Badge>
-                          )}
+                          {/* inherited badge removed — parent activities now shown in separate collapsible section */}
                           <span className="text-xs text-muted-foreground">
                             {formatDateTime(activity.timestamp)}
                           </span>
@@ -481,11 +568,7 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
 
                         <p className="font-medium text-sm">
                           {activity.description}
-                          {activity.inherited && activity.inheritedFrom && (
-                            <span className="text-xs text-muted-foreground ml-2 italic">
-                              via {activity.inheritedFrom}
-                            </span>
-                          )}
+                          {/* inheritedFrom text removed — parent activities now shown in separate collapsible section */}
                         </p>
 
                         {isExpanded && activity.details &&
@@ -1010,7 +1093,14 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                 </div>
                 <div>
                   <span className="text-muted-foreground">Total Events:</span>
-                  <span className="ml-2 font-medium">{activities.length}</span>
+                  <span className="ml-2 font-medium">
+                    {activities.length}
+                    {hasParentHistory && (
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({currentBatchActivities.length} current + {parentActivities.length} inherited)
+                      </span>
+                    )}
+                  </span>
                 </div>
               </div>
             </div>
