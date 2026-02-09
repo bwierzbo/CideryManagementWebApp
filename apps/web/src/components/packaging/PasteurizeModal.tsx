@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Flame, Info, Loader2, Thermometer, Droplet, AlertTriangle, Snowflake, Wind, Waves } from "lucide-react";
@@ -91,6 +92,7 @@ export function PasteurizeModal({
   onSuccess,
 }: PasteurizeModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   // State for custom starting temperature input
   const [useCustomStartTemp, setUseCustomStartTemp] = useState(false);
@@ -124,7 +126,7 @@ export function PasteurizeModal({
   } = useForm<PasteurizeForm>({
     resolver: zodResolver(pasteurizeSchema),
     defaultValues: {
-      pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      pasteurizedAt: formatDateTimeForInput(new Date()),
       bottleTypeId: "750ml_glass",
       startingTempC: 20, // Room temperature default
       temperatureCelsius: 65, // Hot-start bath temperature
@@ -230,7 +232,7 @@ export function PasteurizeModal({
   useEffect(() => {
     if (open) {
       reset({
-        pasteurizedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+        pasteurizedAt: formatDateTimeForInput(new Date()),
         bottleTypeId: "750ml_glass",
         startingTempC: 20,
         temperatureCelsius: 65,
@@ -368,7 +370,7 @@ export function PasteurizeModal({
   const onSubmit = (data: PasteurizeForm) => {
     // Use enhanced calculation for total PU
     const totalPU = enhancedResult?.totals.total_pu || calculatePU(data.temperatureCelsius, data.timeMinutes);
-    const pasteurizedAt = new Date(data.pasteurizedAt);
+    const pasteurizedAt = parseDateTimeFromInput(data.pasteurizedAt);
 
     // Build notes with enhanced details
     const enhancedNotes = [

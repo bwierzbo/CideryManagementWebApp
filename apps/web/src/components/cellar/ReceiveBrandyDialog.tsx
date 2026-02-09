@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Wine, Info, Check } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { formatDate } from "@/utils/date-format";
 
 interface ReceiveBrandyDialogProps {
@@ -35,11 +36,9 @@ export function ReceiveBrandyDialog({
   onOpenChange,
   preselectedRecordId,
 }: ReceiveBrandyDialogProps) {
-  // Initialize with current date and time in local timezone
-  const now = new Date();
-  const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16);
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+
+  const localISOTime = formatDateTimeForInput(new Date());
 
   // Multi-select for distillation records
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>(
@@ -176,7 +175,7 @@ export function ReceiveBrandyDialog({
       receivedVolume: parseFloat(receivedVolume),
       receivedVolumeUnit,
       receivedAbv: parseFloat(receivedAbv),
-      receivedAt: new Date(receivedAt),
+      receivedAt: parseDateTimeFromInput(receivedAt),
       tibInboundNumber: tibInboundNumber.trim() || undefined,
       destinationVesselId: destinationVesselId && destinationVesselId !== "__none__" ? destinationVesselId : undefined,
       notes: notes.trim() || undefined,

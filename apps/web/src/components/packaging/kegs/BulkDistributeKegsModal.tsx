@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Send, Store, AlertTriangle, Beer } from "lucide-react";
 
 const bulkDistributeSchema = z.object({
@@ -54,6 +55,7 @@ export function BulkDistributeKegsModal({
   onSuccess,
 }: BulkDistributeKegsModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   // Separate valid (filled) from invalid kegs
   const { validKegs, invalidKegs } = useMemo(() => {
@@ -76,7 +78,7 @@ export function BulkDistributeKegsModal({
   } = useForm<BulkDistributeForm>({
     resolver: zodResolver(bulkDistributeSchema),
     defaultValues: {
-      distributedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      distributedAt: formatDateTimeForInput(new Date()),
       distributionLocation: "",
       salesChannelId: undefined,
     },
@@ -111,7 +113,7 @@ export function BulkDistributeKegsModal({
   });
 
   const onSubmit = (data: BulkDistributeForm) => {
-    const distributedAt = new Date(data.distributedAt);
+    const distributedAt = parseDateTimeFromInput(data.distributedAt);
     bulkDistributeMutation.mutate({
       kegFillIds: validKegs.map((k) => k.id),
       distributedAt,

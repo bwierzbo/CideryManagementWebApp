@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { calculateAbv } from "lib";
 import { DateWarning } from "@/components/ui/DateWarning";
@@ -114,6 +115,7 @@ export function MarkCompleteModal({
   onSuccess,
 }: MarkCompleteModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [dateWarning, setDateWarning] = React.useState<string | null>(null);
   const [dateError, setDateError] = React.useState<string | null>(null);
 
@@ -138,7 +140,7 @@ export function MarkCompleteModal({
   } = useForm<MarkCompleteForm>({
     resolver: zodResolver(markCompleteSchema),
     defaultValues: {
-      completedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      completedAt: formatDateTimeForInput(new Date()),
     },
   });
 
@@ -149,7 +151,7 @@ export function MarkCompleteModal({
   useEffect(() => {
     if (open) {
       reset({
-        completedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+        completedAt: formatDateTimeForInput(new Date()),
       });
       setDateWarning(null);
       setDateError(null);
@@ -185,7 +187,7 @@ export function MarkCompleteModal({
   });
 
   const onSubmit = (data: MarkCompleteForm) => {
-    const completedAt = new Date(data.completedAt);
+    const completedAt = parseDateTimeFromInput(data.completedAt);
     markCompleteMutation.mutate({
       runId: bottleRunId,
       completedAt: completedAt,

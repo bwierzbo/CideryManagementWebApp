@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Truck, Plus, Trash2 } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface BatchSelection {
   sourceBatchId: string;
@@ -41,11 +42,9 @@ export function SendToDistilleryDialog({
   onOpenChange,
   preselectedBatchId,
 }: SendToDistilleryDialogProps) {
-  // Initialize with current date and time in local timezone
-  const now = new Date();
-  const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16);
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+
+  const localISOTime = formatDateTimeForInput(new Date());
 
   // Batch selections - array of batches to send
   const [batchSelections, setBatchSelections] = useState<BatchSelection[]>([
@@ -217,7 +216,7 @@ export function SendToDistilleryDialog({
       distilleryName: distilleryName.trim(),
       distilleryAddress: distilleryAddress.trim() || undefined,
       distilleryPermitNumber: distilleryPermitNumber.trim() || undefined,
-      sentAt: new Date(sentAt),
+      sentAt: parseDateTimeFromInput(sentAt),
       tibOutboundNumber: tibOutboundNumber.trim() || undefined,
       notes: notes.trim() || undefined,
       deductFromBatch,

@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface Measurement {
   id: string;
@@ -45,6 +46,7 @@ export function EditMeasurementDialog({
   onSuccess,
 }: EditMeasurementDialogProps) {
   const { toast } = useToast();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [measurementDateTime, setMeasurementDateTime] = useState("");
   const [specificGravity, setSpecificGravity] = useState("");
   const [abv, setAbv] = useState("");
@@ -58,13 +60,7 @@ export function EditMeasurementDialog({
 
   useEffect(() => {
     if (measurement && open) {
-      // Convert date to local datetime-local format
-      const date = new Date(measurement.measurementDate);
-      const localISOTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16);
-
-      setMeasurementDateTime(localISOTime);
+      setMeasurementDateTime(formatDateTimeForInput(new Date(measurement.measurementDate)));
       setSpecificGravity(measurement.specificGravity || "");
       setAbv(measurement.abv || "");
       setPh(measurement.ph || "");
@@ -109,7 +105,7 @@ export function EditMeasurementDialog({
 
     const updateData: any = {
       measurementId: measurement.id,
-      measurementDate: new Date(measurementDateTime).toISOString(),
+      measurementDate: parseDateTimeFromInput(measurementDateTime).toISOString(),
     };
 
     if (specificGravity) updateData.specificGravity = parseFloat(specificGravity);

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { ArrowRight, AlertTriangle, Info, Plus, Droplets, Search } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 
@@ -55,6 +56,7 @@ export function TransferToTankModal({
   onSuccess,
 }: TransferToTankModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [selectedVesselHasBatch, setSelectedVesselHasBatch] = useState(false);
   const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<
     string | null
@@ -80,14 +82,6 @@ export function TransferToTankModal({
   const volumeToTransfer = watch("volumeToTransfer");
   const volumeUnit = watch("volumeUnit");
   const transferDate = watch("transferDate");
-
-  // Helper to safely format date for datetime-local input
-  const formatDateForInput = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return '';
-    }
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  };
 
   // Get vessels and liquid map
   const vesselsQuery = trpc.vessel.list.useQuery();
@@ -200,11 +194,10 @@ export function TransferToTankModal({
             </Label>
             <Input
               type="datetime-local"
-              value={formatDateForInput(transferDate)}
+              value={transferDate ? formatDateTimeForInput(transferDate) : ''}
               onChange={(e) => {
-                const dateValue = new Date(e.target.value);
-                if (!isNaN(dateValue.getTime())) {
-                  setValue("transferDate", dateValue);
+                if (e.target.value) {
+                  setValue("transferDate", parseDateTimeFromInput(e.target.value));
                 }
               }}
               className="w-full mt-1"

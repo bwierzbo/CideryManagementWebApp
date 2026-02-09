@@ -18,6 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Loader2, Search, Package, AlertTriangle, Calculator } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import {
   Command,
   CommandEmpty,
@@ -68,6 +69,7 @@ export function AddBatchAdditiveForm({
   onSuccess,
   onCancel,
 }: AddBatchAdditiveFormProps) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [selectedAdditiveType, setSelectedAdditiveType] = useState("");
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<any>(null);
   const [amount, setAmount] = useState("");
@@ -76,9 +78,7 @@ export function AddBatchAdditiveForm({
   const [searchQuery, setSearchQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [addedDate, setAddedDate] = useState(() => {
-    // Default to current date and time in YYYY-MM-DDTHH:mm format
-    const now = new Date();
-    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    return formatDateTimeForInput(new Date());
   });
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [dosageRate, setDosageRate] = useState("");
@@ -206,7 +206,7 @@ export function AddBatchAdditiveForm({
       additiveName,
       amount: parsedAmount,
       unit,
-      addedAt: new Date(addedDate),
+      addedAt: parseDateTimeFromInput(addedDate),
       notes: notes || undefined,
       // This is the key - pass the purchase item ID to decrement inventory
       additivePurchaseItemId: selectedInventoryItem.id,

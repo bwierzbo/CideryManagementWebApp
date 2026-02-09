@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import {
   Wine,
   AlertTriangle,
@@ -75,6 +76,7 @@ export function StartFruitWineBatchDialog({
   onSuccess,
 }: StartFruitWineBatchDialogProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [vesselSearchQuery, setVesselSearchQuery] = useState("");
   const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
 
@@ -99,14 +101,6 @@ export function StartFruitWineBatchDialog({
   const waterAddedL = watch("waterAddedL");
   const sugarAddedKg = watch("sugarAddedKg");
   const startDate = watch("startDate");
-
-  // Helper to safely format date for datetime-local input
-  const formatDateForInput = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return '';
-    }
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  };
 
   // Get vessels
   const vesselsQuery = trpc.vessel.list.useQuery();
@@ -222,11 +216,10 @@ export function StartFruitWineBatchDialog({
             </Label>
             <Input
               type="datetime-local"
-              value={formatDateForInput(startDate)}
+              value={startDate ? formatDateTimeForInput(startDate) : ''}
               onChange={(e) => {
-                const dateValue = new Date(e.target.value);
-                if (!isNaN(dateValue.getTime())) {
-                  setValue("startDate", dateValue);
+                if (e.target.value) {
+                  setValue("startDate", parseDateTimeFromInput(e.target.value));
                 }
               }}
               className="w-full mt-1"

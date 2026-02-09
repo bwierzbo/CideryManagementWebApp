@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Wine, AlertTriangle, CheckCircle, Loader2, Plus, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
@@ -77,6 +78,7 @@ export function BottleFromKegModal({
   onSuccess,
 }: BottleFromKegModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
@@ -109,7 +111,7 @@ export function BottleFromKegModal({
       volumeTakenL: undefined,
       packageSizeMl: undefined,
       unitsProduced: undefined,
-      packagedAt: new Date().toISOString().slice(0, 16), // Current date/time in local format
+      packagedAt: formatDateTimeForInput(new Date()),
       notes: "",
       materials: [],
     },
@@ -262,7 +264,7 @@ export function BottleFromKegModal({
   useEffect(() => {
     if (open) {
       reset({
-        packagedAt: new Date().toISOString().slice(0, 16),
+        packagedAt: formatDateTimeForInput(new Date()),
         notes: "",
         materials: [],
       });
@@ -302,7 +304,7 @@ export function BottleFromKegModal({
         kegFillId, // This tells the API to bottle from the keg
         batchId,
         vesselId,
-        packagedAt: new Date(data.packagedAt),
+        packagedAt: parseDateTimeFromInput(data.packagedAt),
         packageSizeMl: data.packageSizeMl,
         unitsProduced: data.unitsProduced,
         volumeTakenL: data.volumeTakenL,

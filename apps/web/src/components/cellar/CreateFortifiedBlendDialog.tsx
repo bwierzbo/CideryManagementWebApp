@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Wine } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface CreateFortifiedBlendDialogProps {
   open: boolean;
@@ -36,11 +37,9 @@ export function CreateFortifiedBlendDialog({
   preselectedBatchId,
   preselectedBatchType,
 }: CreateFortifiedBlendDialogProps) {
-  // Initialize with current date and time in local timezone
-  const now = new Date();
-  const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16);
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+
+  const localISOTime = formatDateTimeForInput(new Date());
 
   // Form state
   const [ciderBatchId, setCiderBatchId] = useState("");
@@ -228,7 +227,7 @@ export function CreateFortifiedBlendDialog({
       brandyVolumeLiters: brandyVol,
       deductFromBrandy,
       destinationVesselId: destinationVesselId || undefined,
-      blendDate: new Date(blendDate),
+      blendDate: parseDateTimeFromInput(blendDate),
       notes: notes.trim() || undefined,
     });
   };

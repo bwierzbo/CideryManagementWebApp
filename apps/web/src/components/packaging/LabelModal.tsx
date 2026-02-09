@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/command";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Tag, AlertTriangle, Info, Loader2, ChevronsUpDown, Check, Plus, X } from "lucide-react";
@@ -69,6 +70,7 @@ export function LabelModal({
   onSuccess,
 }: LabelModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [comboboxOpen, setComboboxOpen] = useState<{[key: number]: boolean}>({});
   const [appliedLabels, setAppliedLabels] = useState<Array<{name: string, quantity: number}>>([]);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export function LabelModal({
     defaultValues: {
       unitsToLabel: remainingUnits,
       labels: [{ packagingItemId: "", quantity: remainingUnits }],
-      labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      labeledAt: formatDateTimeForInput(new Date()),
       laborHours: undefined,
     },
   });
@@ -147,7 +149,7 @@ export function LabelModal({
       reset({
         unitsToLabel: remainingUnits,
         labels: [{ packagingItemId: "", quantity: remainingUnits }],
-        labeledAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+        labeledAt: formatDateTimeForInput(new Date()),
         laborHours: undefined,
       });
       setAppliedLabels([]);
@@ -162,7 +164,7 @@ export function LabelModal({
 
   const onSubmit = async (data: LabelForm) => {
     setIsSubmitting(true);
-    const labeledAt = new Date(data.labeledAt);
+    const labeledAt = parseDateTimeFromInput(data.labeledAt);
     const appliedLabelsList: Array<{name: string, quantity: number}> = [];
 
     try {

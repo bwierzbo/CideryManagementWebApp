@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Send, Store } from "lucide-react";
 
 const distributeKegSchema = z.object({
@@ -48,6 +49,8 @@ export function DistributeKegModal({
   kegNumber,
   onSuccess,
 }: DistributeKegModalProps) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+
   // Fetch sales channels
   const { data: salesChannels } = trpc.inventory.getSalesChannels.useQuery(undefined, {
     enabled: open,
@@ -62,7 +65,7 @@ export function DistributeKegModal({
   } = useForm<DistributeKegForm>({
     resolver: zodResolver(distributeKegSchema),
     defaultValues: {
-      distributedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      distributedAt: formatDateTimeForInput(new Date()),
       salesChannelId: undefined,
     },
   });
@@ -86,7 +89,7 @@ export function DistributeKegModal({
   });
 
   const onSubmit = (data: DistributeKegForm) => {
-    const distributedAt = new Date(data.distributedAt);
+    const distributedAt = parseDateTimeFromInput(data.distributedAt);
     distributeMutation.mutate({
       kegFillId,
       distributedAt: distributedAt,

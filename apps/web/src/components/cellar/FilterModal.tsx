@@ -29,6 +29,7 @@ import { DateWarning } from "@/components/ui/DateWarning";
 import { Filter, AlertTriangle } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 const filterSchema = z.object({
   filterType: z.enum(["coarse", "fine", "sterile"], {
@@ -62,6 +63,7 @@ export function FilterModal({
   currentVolumeL,
 }: FilterModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [showLossWarning, setShowLossWarning] = useState(false);
   const [calculatedLoss, setCalculatedLoss] = useState(0);
   const [lossPercentage, setLossPercentage] = useState(0);
@@ -94,14 +96,6 @@ export function FilterModal({
   const volumeAfter = watch("volumeAfter");
   const volumeAfterUnit = watch("volumeAfterUnit");
   const filteredAt = watch("filteredAt");
-
-  // Helper to safely format date for datetime-local input
-  const formatDateForInput = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return '';
-    }
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  };
 
   // Calculate loss whenever volumes change
   useEffect(() => {
@@ -208,11 +202,10 @@ export function FilterModal({
             </Label>
             <Input
               type="datetime-local"
-              value={formatDateForInput(filteredAt)}
+              value={filteredAt ? formatDateTimeForInput(filteredAt) : ''}
               onChange={(e) => {
-                const dateValue = new Date(e.target.value);
-                // Only update if we have a valid date
-                if (!isNaN(dateValue.getTime())) {
+                if (e.target.value) {
+                  const dateValue = parseDateTimeFromInput(e.target.value);
                   setValue("filteredAt", dateValue);
                   const result = validateDate(dateValue);
                   setDateWarning(result.warning);

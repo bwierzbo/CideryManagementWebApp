@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { RotateCcw, AlertTriangle, Beer, MapPin, Calendar } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 
@@ -48,6 +49,7 @@ export function BulkReturnKegsModal({
   onSuccess,
 }: BulkReturnKegsModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   // Separate valid (distributed) from invalid kegs
   const { validKegs, invalidKegs } = useMemo(() => {
@@ -64,7 +66,7 @@ export function BulkReturnKegsModal({
   } = useForm<BulkReturnForm>({
     resolver: zodResolver(bulkReturnSchema),
     defaultValues: {
-      returnedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      returnedAt: formatDateTimeForInput(new Date()),
     },
     mode: "onChange",
   });
@@ -97,7 +99,7 @@ export function BulkReturnKegsModal({
   });
 
   const onSubmit = (data: BulkReturnForm) => {
-    const returnedAt = new Date(data.returnedAt);
+    const returnedAt = parseDateTimeFromInput(data.returnedAt);
     bulkReturnMutation.mutate({
       kegFillIds: validKegs.map((k) => k.id),
       returnedAt,

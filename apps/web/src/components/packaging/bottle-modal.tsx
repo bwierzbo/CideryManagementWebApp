@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertTriangle, CheckCircle, Plus, X } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Card } from "@/components/ui/card";
 import { PackageTypeSelector } from "./UnifiedPackagingModal";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
@@ -81,6 +82,7 @@ export function BottleModal({
   showTypeSelector = false,
   onTypeChange,
 }: BottleModalProps) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([]);
   const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
@@ -117,7 +119,7 @@ export function BottleModal({
       volumeTakenL: undefined,
       packageSizeMl: undefined,
       unitsProduced: undefined,
-      packagedAt: new Date().toISOString().slice(0, 16), // Current date/time in local format
+      packagedAt: formatDateTimeForInput(new Date()),
       notes: "",
       materials: [],
       laborHours: undefined,
@@ -279,7 +281,7 @@ export function BottleModal({
   useEffect(() => {
     if (open) {
       reset({
-        packagedAt: new Date().toISOString().slice(0, 16),
+        packagedAt: formatDateTimeForInput(new Date()),
         notes: "",
         materials: [],
         // packageSizeMl will be set automatically when primary packaging is selected
@@ -297,7 +299,7 @@ export function BottleModal({
     }
 
     // Validate packagedAt is a valid date
-    const packagedAtDate = new Date(data.packagedAt);
+    const packagedAtDate = parseDateTimeFromInput(data.packagedAt);
     if (!data.packagedAt || isNaN(packagedAtDate.getTime())) {
       toast({
         title: "Invalid Date",

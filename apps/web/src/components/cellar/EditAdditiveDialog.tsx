@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface Additive {
   id: string;
@@ -54,6 +55,7 @@ export function EditAdditiveDialog({
   onSuccess,
 }: EditAdditiveDialogProps) {
   const { toast } = useToast();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [additiveType, setAdditiveType] = useState("");
   const [additiveName, setAdditiveName] = useState("");
   const [amount, setAmount] = useState("");
@@ -64,17 +66,11 @@ export function EditAdditiveDialog({
 
   useEffect(() => {
     if (additive && open) {
-      // Convert date to local datetime format (YYYY-MM-DDTHH:mm)
-      const date = new Date(additive.addedAt);
-      const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16);
-
       setAdditiveType(additive.additiveType);
       setAdditiveName(additive.additiveName);
       setAmount(additive.amount);
       setUnit(additive.unit);
-      setAddedDate(localDateTime);
+      setAddedDate(formatDateTimeForInput(new Date(additive.addedAt)));
       setNotes(additive.notes || "");
       setAddedBy(additive.addedBy || "");
     }
@@ -120,7 +116,7 @@ export function EditAdditiveDialog({
       additiveName,
       amount: parseFloat(amount),
       unit,
-      addedAt: new Date(addedDate).toISOString(),
+      addedAt: parseDateTimeFromInput(addedDate).toISOString(),
     };
 
     if (notes !== undefined) updateData.notes = notes;

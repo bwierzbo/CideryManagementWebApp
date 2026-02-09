@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Send, DollarSign, Package, Store } from "lucide-react";
 
 const distributeInventorySchema = z.object({
@@ -56,6 +57,8 @@ export function DistributeInventoryModal({
   suggestedPrice,
   onSuccess,
 }: DistributeInventoryModalProps) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+
   // Fetch sales channels
   const { data: salesChannels } = trpc.inventory.getSalesChannels.useQuery(undefined, {
     enabled: open,
@@ -71,7 +74,7 @@ export function DistributeInventoryModal({
   } = useForm<DistributeInventoryForm>({
     resolver: zodResolver(distributeInventorySchema),
     defaultValues: {
-      distributionDate: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
+      distributionDate: formatDateTimeForInput(new Date()),
       pricePerUnit: suggestedPrice || 0,
       quantityDistributed: 0,
       salesChannelId: undefined,
@@ -116,7 +119,7 @@ export function DistributeInventoryModal({
       return;
     }
 
-    const distributionDate = new Date(data.distributionDate);
+    const distributionDate = parseDateTimeFromInput(data.distributionDate);
     distributeMutation.mutate({
       inventoryItemId,
       distributionLocation: data.distributionLocation,

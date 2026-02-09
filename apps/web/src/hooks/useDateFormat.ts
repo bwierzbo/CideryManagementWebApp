@@ -7,6 +7,8 @@ import {
   formatDateLong as baseFormatDateLong,
   formatDateShort as baseFormatDateShort,
   formatDateForInput as baseFormatDateForInput,
+  formatDateTimeForInput as baseFormatDateTimeForInput,
+  parseDateTimeFromInput as baseParseDateTimeFromInput,
   nowInTimezone,
 } from "@/utils/date-format";
 
@@ -70,6 +72,23 @@ export function useDateFormat() {
      * @returns Date string in YYYY-MM-DD format in the current timezone
      */
     formatDateForInput: (date: string | Date) => baseFormatDateForInput(date, timezone),
+
+    /**
+     * Format a date for datetime-local inputs (YYYY-MM-DDTHH:mm format)
+     * Converts a UTC Date to the org timezone wall-clock representation.
+     * @param date - ISO date string or Date object
+     * @returns Date string in YYYY-MM-DDTHH:mm format in the current timezone
+     */
+    formatDateTimeForInput: (date: string | Date) => baseFormatDateTimeForInput(date, timezone),
+
+    /**
+     * Parse a datetime-local input string into a UTC Date using the org timezone.
+     * Inverse of formatDateTimeForInput — interprets the wall-clock time in the
+     * org timezone and returns the corresponding UTC Date.
+     * @param value - String from a datetime-local input (YYYY-MM-DDTHH:mm)
+     * @returns Date object in UTC
+     */
+    parseDateTimeFromInput: (value: string) => baseParseDateTimeFromInput(value, timezone),
 
     /**
      * Get the current date/time in the configured timezone

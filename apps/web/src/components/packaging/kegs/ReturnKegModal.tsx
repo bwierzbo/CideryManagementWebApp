@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { RotateCcw, MapPin, Calendar, Loader2 } from "lucide-react";
 import { formatDate } from "@/utils/date-format";
 
@@ -42,6 +43,7 @@ export function ReturnKegModal({
   onSuccess,
 }: ReturnKegModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   // Fetch keg fill details to show distribution info
   const { data: kegFillDetails, isLoading: isLoadingDetails } =
@@ -63,20 +65,6 @@ export function ReturnKegModal({
   });
 
   const returnedAt = watch("returnedAt");
-
-  // Format date for datetime-local input
-  const formatDatetimeLocal = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return "";
-    }
-    try {
-      const offset = date.getTimezoneOffset() * 60000;
-      const localDate = new Date(date.getTime() - offset);
-      return localDate.toISOString().slice(0, 16);
-    } catch {
-      return "";
-    }
-  };
 
   // Reset when modal opens
   useEffect(() => {
@@ -164,8 +152,8 @@ export function ReturnKegModal({
             </Label>
             <Input
               type="datetime-local"
-              value={formatDatetimeLocal(returnedAt)}
-              onChange={(e) => setValue("returnedAt", new Date(e.target.value))}
+              value={returnedAt ? formatDateTimeForInput(returnedAt) : ""}
+              onChange={(e) => setValue("returnedAt", parseDateTimeFromInput(e.target.value))}
               className="w-full mt-1"
             />
             {errors.returnedAt && (

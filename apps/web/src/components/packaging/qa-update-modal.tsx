@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle, AlertTriangle, BeakerIcon } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 // Form validation schema
 const qaUpdateSchema = z.object({
@@ -73,6 +74,7 @@ export function QAUpdateModal({
   runId,
   runData,
 }: QAUpdateModalProps) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // tRPC queries and mutations
@@ -109,7 +111,7 @@ export function QAUpdateModal({
         carbonationLevel: (runData.carbonationLevel as any) || undefined,
         testMethod: runData.testMethod || "",
         testDate: runData.testDate
-          ? new Date(runData.testDate).toISOString().slice(0, 16)
+          ? formatDateTimeForInput(new Date(runData.testDate))
           : "",
         qaNotes: runData.qaNotes || "",
       });
@@ -201,7 +203,7 @@ export function QAUpdateModal({
       if (data.testMethod !== undefined && data.testMethod.trim() !== "")
         updateData.testMethod = data.testMethod.trim();
       if (data.testDate !== undefined && data.testDate.trim() !== "")
-        updateData.testDate = new Date(data.testDate);
+        updateData.testDate = parseDateTimeFromInput(data.testDate);
       if (data.qaNotes !== undefined && data.qaNotes.trim() !== "")
         updateData.qaNotes = data.qaNotes.trim();
 

@@ -193,38 +193,80 @@ export function formatDateForInput(date: string | Date, timezone?: string): stri
 
 /**
  * Format a date for datetime-local inputs (YYYY-MM-DDTHH:mm format)
+ * Uses the org timezone so the displayed wall-clock time matches the org's location,
+ * regardless of the user's browser timezone.
  * @param date - ISO date string or Date object
  * @param timezone - IANA timezone string (defaults to Pacific if not provided)
  * @returns Date string in YYYY-MM-DDTHH:mm format
  */
 export function formatDateTimeForInput(date: string | Date, timezone?: string): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(dateObj.getTime())) return "";
   const tz = timezone || DEFAULT_TZ;
 
-  // Format in specified timezone to get the correct date components
-  const year = dateObj.toLocaleDateString("en-US", {
-    timeZone: tz,
-    year: "numeric",
-  });
-  const month = dateObj.toLocaleDateString("en-US", {
-    timeZone: tz,
-    month: "2-digit",
-  });
-  const day = dateObj.toLocaleDateString("en-US", {
-    timeZone: tz,
-    day: "2-digit",
-  });
-  const hour = dateObj.toLocaleTimeString("en-US", {
-    timeZone: tz,
-    hour: "2-digit",
-    hour12: false,
-  });
-  const minute = dateObj.toLocaleTimeString("en-US", {
-    timeZone: tz,
-    minute: "2-digit",
-  });
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(dateObj).map(p => [p.type, p.value]),
+  );
 
-  return `${year}-${month}-${day}T${hour}:${minute}`;
+  // Intl may return "24" for midnight — normalize to "00"
+  const hour = parts.hour === "24" ? "00" : parts.hour;
+  return `${parts.year}-${parts.month}-${parts.day}T${hour}:${parts.minute}`;
+}
+
+/**
+ * Parse a datetime-local input string into a UTC Date, interpreting the wall-clock
+ * time in the specified timezone. This is the inverse of formatDateTimeForInput.
+ *
+ * Example: parseDateTimeFromInput("2025-10-15T14:30", "America/Los_Angeles")
+ * → Date representing 2025-10-15T21:30:00Z (14:30 PDT = 21:30 UTC)
+ *
+ * @param value - String from a datetime-local input (YYYY-MM-DDTHH:mm)
+ * @param timezone - IANA timezone string (defaults to Pacific if not provided)
+ * @returns Date object in UTC, or Invalid Date if the input is invalid
+ */
+export function parseDateTimeFromInput(value: string, timezone?: string): Date {
+  if (!value) return new Date(NaN);
+  const tz = timezone || DEFAULT_TZ;
+
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return new Date(NaN);
+
+  const y = +match[1], m = +match[2], d = +match[3];
+  const h = +match[4], min = +match[5];
+
+  // Strategy: create a UTC Date at the target wall-clock values, then compute the
+  // timezone offset at that approximate time and correct.
+  const utcGuess = new Date(Date.UTC(y, m - 1, d, h, min, 0, 0));
+
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(utcGuess).map(p => [p.type, p.value]),
+  );
+
+  const tzH = parts.hour === "24" ? 0 : +parts.hour;
+  const tzMs = Date.UTC(+parts.year, +parts.month - 1, +parts.day, tzH, +parts.minute, +parts.second);
+
+  // offset = what the clock shows in tz − actual UTC
+  const offsetMs = tzMs - utcGuess.getTime();
+
+  // Correct: actual UTC = target wall-clock − offset
+  return new Date(utcGuess.getTime() - offsetMs);
 }
 
 /**

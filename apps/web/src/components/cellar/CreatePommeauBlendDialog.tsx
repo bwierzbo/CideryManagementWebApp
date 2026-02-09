@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Loader2, Beaker, Info, AlertTriangle } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface CreatePommeauBlendDialogProps {
@@ -58,11 +59,9 @@ export function CreatePommeauBlendDialog({
   preselectedCiderBatchId,
   preselectedBrandyBatchId,
 }: CreatePommeauBlendDialogProps) {
-  // Initialize with current date in local timezone
-  const now = new Date();
-  const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16);
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+
+  const localISOTime = formatDateTimeForInput(new Date());
 
   // Juice/Cider source - now selected from inventory
   const [ciderBatchId, setCiderBatchId] = useState(preselectedCiderBatchId || "");
@@ -263,7 +262,7 @@ export function CreatePommeauBlendDialog({
       brandyBatchId,
       brandyVolumeLiters: blendPreview.brandyVolLiters,
       destinationVesselId: destinationVesselId && destinationVesselId !== "__none__" ? destinationVesselId : undefined,
-      blendDate: new Date(blendDate),
+      blendDate: parseDateTimeFromInput(blendDate),
       notes: notes || undefined,
       deductFromBrandy,
     });

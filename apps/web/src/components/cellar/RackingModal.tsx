@@ -30,6 +30,7 @@ import { FlaskConical, AlertTriangle, Loader2, Info, Search } from "lucide-react
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
 import { Badge } from "@/components/ui/badge";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
@@ -63,6 +64,7 @@ export function RackingModal({
   sourceVesselCapacityUnit,
 }: RackingModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [remainingVolume, setRemainingVolume] = useState(0);
   const [isFullRack, setIsFullRack] = useState(false);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
@@ -109,14 +111,6 @@ export function RackingModal({
   const loss = watch("loss");
   const destinationVesselId = watch("destinationVesselId");
   const rackedAt = watch("rackedAt");
-
-  // Helper to safely format date for datetime-local input
-  const formatDateForInput = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return '';
-    }
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  };
 
   // Check if selected vessel has a batch (for merge warning)
   useEffect(() => {
@@ -261,10 +255,10 @@ export function RackingModal({
             </Label>
             <Input
               type="datetime-local"
-              value={formatDateForInput(rackedAt)}
+              value={rackedAt ? formatDateTimeForInput(rackedAt) : ''}
               onChange={(e) => {
-                const dateValue = new Date(e.target.value);
-                if (!isNaN(dateValue.getTime())) {
+                if (e.target.value) {
+                  const dateValue = parseDateTimeFromInput(e.target.value);
                   setValue("rackedAt", dateValue);
                   const result = validateDate(dateValue);
                   setDateWarning(result.warning);

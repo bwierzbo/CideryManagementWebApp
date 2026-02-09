@@ -29,6 +29,7 @@ import { DateWarning } from "@/components/ui/DateWarning";
 import { Scale, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 const ADJUSTMENT_TYPES = [
   { value: "evaporation", label: "Evaporation", description: "Natural evaporation (angel's share)" },
@@ -89,6 +90,7 @@ export function VolumeAdjustmentModal({
   reconciliationSnapshotId,
 }: VolumeAdjustmentModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [showWarning, setShowWarning] = useState(false);
   const [adjustmentAmount, setAdjustmentAmount] = useState(0);
   const [adjustmentPercentage, setAdjustmentPercentage] = useState(0);
@@ -119,14 +121,6 @@ export function VolumeAdjustmentModal({
   const volumeAfter = watch("volumeAfter");
   const volumeAfterUnit = watch("volumeAfterUnit");
   const adjustmentDate = watch("adjustmentDate");
-
-  // Helper to safely format date for datetime-local input
-  const formatDateForInput = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return '';
-    }
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  };
 
   // Calculate adjustment whenever volume changes
   useEffect(() => {
@@ -254,10 +248,10 @@ export function VolumeAdjustmentModal({
             </Label>
             <Input
               type="datetime-local"
-              value={formatDateForInput(adjustmentDate)}
+              value={adjustmentDate ? formatDateTimeForInput(adjustmentDate) : ''}
               onChange={(e) => {
-                const dateValue = new Date(e.target.value);
-                if (!isNaN(dateValue.getTime())) {
+                if (e.target.value) {
+                  const dateValue = parseDateTimeFromInput(e.target.value);
                   setValue("adjustmentDate", dateValue);
                   const result = validateDate(dateValue);
                   setDateWarning(result.warning);

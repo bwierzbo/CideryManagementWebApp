@@ -27,6 +27,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { trpc } from "@/utils/trpc";
 import { formatDate } from "@/utils/date-format";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import {
@@ -120,6 +121,7 @@ export function CarbonateModal({
   onSuccess,
 }: CarbonateModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [carbonationMethod, setCarbonationMethod] = React.useState<"forced" | "bottle_conditioning">("forced");
   const [lastEditedField, setLastEditedField] = React.useState<"co2" | "sugar">("co2");
   const [dateWarning, setDateWarning] = React.useState<string | null>(null);
@@ -534,9 +536,9 @@ export function CarbonateModal({
                 id="startedAt"
                 type="datetime-local"
                 {...register("startedAt", {
-                  setValueAs: (value) => (value ? new Date(value) : new Date()),
+                  setValueAs: (value) => (value ? parseDateTimeFromInput(value) : new Date()),
                 })}
-                defaultValue={new Date().toISOString().slice(0, 16)}
+                defaultValue={formatDateTimeForInput(new Date())}
               />
               <DateWarning warning={dateWarning} />
               {(errors as any).startedAt && (

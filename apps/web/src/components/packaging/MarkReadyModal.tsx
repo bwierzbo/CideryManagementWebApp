@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 const markReadySchema = z.object({
@@ -42,6 +43,7 @@ export function MarkReadyModal({
   onSuccess,
 }: MarkReadyModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   const {
     register,
@@ -51,9 +53,7 @@ export function MarkReadyModal({
   } = useForm<MarkReadyForm>({
     resolver: zodResolver(markReadySchema),
     defaultValues: {
-      readyAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16),
+      readyAt: formatDateTimeForInput(new Date()),
     },
   });
 
@@ -61,9 +61,7 @@ export function MarkReadyModal({
   useEffect(() => {
     if (open) {
       reset({
-        readyAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 16),
+        readyAt: formatDateTimeForInput(new Date()),
       });
     }
   }, [open, reset]);
@@ -112,7 +110,7 @@ export function MarkReadyModal({
   const isPending = markBottleReadyMutation.isPending || markKegReadyMutation.isPending;
 
   const onSubmit = (data: MarkReadyForm) => {
-    const readyAt = new Date(data.readyAt);
+    const readyAt = parseDateTimeFromInput(data.readyAt);
 
     if (itemType === "bottle") {
       markBottleReadyMutation.mutate({

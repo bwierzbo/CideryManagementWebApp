@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { formatDateTimeForInput, formatDate } from "@/utils/date-format";
+import { formatDate } from "@/utils/date-format";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { trpc } from "@/utils/trpc";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -703,6 +704,7 @@ function TankTransferForm({
   fromVesselId: string;
   onClose: () => void;
 }) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [showBlendConfirm, setShowBlendConfirm] = useState(false);
   const [selectedDestVesselId, setSelectedDestVesselId] = useState<string | null>(null);
   const [vesselSearchQuery, setVesselSearchQuery] = useState("");
@@ -723,14 +725,6 @@ function TankTransferForm({
   });
 
   const transferDate = watch("transferDate");
-
-  // Helper to format date for datetime-local input
-  const formatDateForInput = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return formatDateTimeForInput(new Date()); // Fallback to current time
-    }
-    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  };
 
   const vesselListQuery = trpc.vessel.list.useQuery();
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
@@ -913,11 +907,10 @@ function TankTransferForm({
         <Input
           id="transferDate"
           type="datetime-local"
-          value={formatDateForInput(transferDate as Date | undefined)}
+          value={transferDate ? formatDateTimeForInput(transferDate as Date) : ''}
           onChange={(e) => {
-            const dateValue = new Date(e.target.value);
-            if (!isNaN(dateValue.getTime())) {
-              setValue("transferDate", dateValue);
+            if (e.target.value) {
+              setValue("transferDate", parseDateTimeFromInput(e.target.value));
             }
           }}
           className="w-full"
@@ -1185,6 +1178,7 @@ function TankTransferForm({
 }
 
 function VesselMap() {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const orgSettings = useOrganizationSettings();
   const [showAddTank, setShowAddTank] = useState(false);
   const [editingVesselId, setEditingVesselId] = useState<string | null>(null);
@@ -2698,9 +2692,13 @@ function VesselMap() {
                   <Input
                     id="aging-date"
                     type="datetime-local"
-                    value={agingDate ? new Date(agingDate.getTime() - agingDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16) : ''}
-                    onChange={(e) => setAgingDate(new Date(e.target.value))}
-                    max={new Date().toISOString().slice(0, 16)}
+                    value={agingDate ? formatDateTimeForInput(agingDate) : ''}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setAgingDate(parseDateTimeFromInput(e.target.value));
+                      }
+                    }}
+                    max={formatDateTimeForInput(new Date())}
                   />
                   <p className="text-sm text-muted-foreground">
                     This date and time will be recorded as when the batch transitioned to the aging phase

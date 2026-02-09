@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { CheckCircle } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 const cleanTankSchema = z.object({
   cleanedAt: z.date(),
@@ -40,6 +41,7 @@ export function CleanTankModal({
   vesselName,
 }: CleanTankModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   const {
     register,
@@ -57,20 +59,6 @@ export function CleanTankModal({
   });
 
   const cleanedAt = watch("cleanedAt");
-
-  // Format date for datetime-local input
-  const formatDatetimeLocal = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return "";
-    }
-    try {
-      const offset = date.getTimezoneOffset() * 60000;
-      const localDate = new Date(date.getTime() - offset);
-      return localDate.toISOString().slice(0, 16);
-    } catch {
-      return "";
-    }
-  };
 
   // Reset when modal opens
   useEffect(() => {
@@ -130,8 +118,12 @@ export function CleanTankModal({
             </Label>
             <Input
               type="datetime-local"
-              value={formatDatetimeLocal(cleanedAt)}
-              onChange={(e) => setValue("cleanedAt", new Date(e.target.value))}
+              value={cleanedAt ? formatDateTimeForInput(cleanedAt) : ''}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setValue("cleanedAt", parseDateTimeFromInput(e.target.value));
+                }
+              }}
               className="w-full mt-1"
             />
             {errors.cleanedAt && (

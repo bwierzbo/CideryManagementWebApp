@@ -26,6 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Wine, AlertTriangle, Loader2, Package } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Card, CardContent } from "@/components/ui/card";
 import { PackageTypeSelector } from "../UnifiedPackagingModal";
 
@@ -109,6 +110,7 @@ export function FillKegModal({
   showTypeSelector = false,
   onTypeChange,
 }: FillKegModalProps) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
   const [kegVolumes, setKegVolumes] = useState<Record<string, number>>({});
 
@@ -122,7 +124,7 @@ export function FillKegModal({
   } = useForm<FillKegsForm>({
     resolver: zodResolver(fillKegsSchema),
     defaultValues: {
-      filledAt: new Date().toISOString().slice(0, 16),
+      filledAt: formatDateTimeForInput(new Date()),
       volumeTakenUnit: "L",
       lossUnit: "L",
       carbonationMethod: "none",
@@ -242,7 +244,7 @@ export function FillKegModal({
       kegVolumes: kegVolumesArray,
       batchId,
       vesselId,
-      filledAt: new Date(data.filledAt),
+      filledAt: parseDateTimeFromInput(data.filledAt),
       volumeTakenUnit: data.volumeTakenUnit,
       loss: data.loss,
       lossUnit: data.lossUnit,

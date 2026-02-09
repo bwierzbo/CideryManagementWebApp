@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
 import { Send, Store, Loader2 } from "lucide-react";
 
 const distributeBottlesSchema = z.object({
@@ -51,6 +52,7 @@ export function DistributeBottlesModal({
   onSuccess,
 }: DistributeBottlesModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   // Fetch sales channels
   const { data: salesChannels } = trpc.inventory.getSalesChannels.useQuery(undefined, {
@@ -66,9 +68,7 @@ export function DistributeBottlesModal({
   } = useForm<DistributeBottlesForm>({
     resolver: zodResolver(distributeBottlesSchema),
     defaultValues: {
-      distributedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
-        .toISOString()
-        .slice(0, 16),
+      distributedAt: formatDateTimeForInput(new Date()),
       salesChannelId: undefined,
     },
   });
@@ -77,9 +77,7 @@ export function DistributeBottlesModal({
   useEffect(() => {
     if (open) {
       reset({
-        distributedAt: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 16),
+        distributedAt: formatDateTimeForInput(new Date()),
         distributionLocation: "",
         salesChannelId: undefined,
       });
@@ -106,7 +104,7 @@ export function DistributeBottlesModal({
   });
 
   const onSubmit = (data: DistributeBottlesForm) => {
-    const distributedAt = new Date(data.distributedAt);
+    const distributedAt = parseDateTimeFromInput(data.distributedAt);
     distributeMutation.mutate({
       runId: bottleRunId,
       distributedAt,

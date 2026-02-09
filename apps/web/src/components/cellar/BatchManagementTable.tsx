@@ -79,6 +79,7 @@ import { CreatePommeauBlendDialog } from "./CreatePommeauBlendDialog";
 import { AssignToVesselDialog } from "./AssignToVesselDialog";
 import { toast } from "@/hooks/use-toast";
 import { VolumeDisplay } from "@/components/ui/volume-input";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface BatchManagementTableProps {
   className?: string;
@@ -132,6 +133,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const [assignVesselBatch, setAssignVesselBatch] = useState<{ id: string; name: string } | null>(null);
 
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
 
   // Fetch batches
   const { data, isLoading, error } = trpc.batch.list.useQuery({
@@ -221,8 +223,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
   const handleStatusChange = (batchId: string, newStatus: string) => {
     if (newStatus === "aging") {
       // Open modal with current datetime
-      const now = new Date();
-      setAgingDate(new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+      setAgingDate(formatDateTimeForInput(new Date()));
       setAgingBatchId(batchId);
       setAgingDialogOpen(true);
     } else {
@@ -238,7 +239,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
       updateMutation.mutate({
         batchId: agingBatchId,
         status: "aging" as any,
-        startDate: new Date(agingDate),
+        startDate: parseDateTimeFromInput(agingDate),
       });
       setAgingDialogOpen(false);
       setAgingBatchId(null);

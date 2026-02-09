@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { trpc } from '@/utils/trpc';
+import { useDateFormat } from '@/hooks/useDateFormat';
 import {
   Dialog,
   DialogContent,
@@ -76,6 +77,7 @@ export function CarbonateModal({
   vessel,
   onSuccess,
 }: CarbonateModalProps) {
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [calculationMode, setCalculationMode] = useState<'co2' | 'psi'>('co2');
 
@@ -189,20 +191,6 @@ export function CarbonateModal({
     return 'default';
   };
 
-  // Format date for datetime-local input
-  const formatDatetimeLocal = (date: Date | undefined): string => {
-    if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
-      return '';
-    }
-    try {
-      const offset = date.getTimezoneOffset() * 60000;
-      const localDate = new Date(date.getTime() - offset);
-      return localDate.toISOString().slice(0, 16);
-    } catch {
-      return '';
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -227,8 +215,8 @@ export function CarbonateModal({
                   <FormControl>
                     <Input
                       type="datetime-local"
-                      value={formatDatetimeLocal(startedAt)}
-                      onChange={(e) => field.onChange(new Date(e.target.value))}
+                      value={startedAt ? formatDateTimeForInput(startedAt) : ''}
+                      onChange={(e) => field.onChange(parseDateTimeFromInput(e.target.value))}
                       className="w-full"
                     />
                   </FormControl>

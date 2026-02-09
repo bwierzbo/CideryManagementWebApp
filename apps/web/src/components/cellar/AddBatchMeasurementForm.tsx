@@ -18,6 +18,7 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Loader2, Info, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useDateFormat } from "@/hooks/useDateFormat";
 
 interface AddBatchMeasurementFormProps {
   batchId: string;
@@ -32,11 +33,9 @@ export function AddBatchMeasurementForm({
   onSuccess,
   onCancel,
 }: AddBatchMeasurementFormProps) {
-  // Initialize with current date and time in local timezone
-  const now = new Date();
-  const localISOTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-    .toISOString()
-    .slice(0, 16); // Format: YYYY-MM-DDTHH:mm
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+
+  const localISOTime = formatDateTimeForInput(new Date());
 
   const [measurementDateTime, setMeasurementDateTime] = useState(localISOTime);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
@@ -127,7 +126,7 @@ export function AddBatchMeasurementForm({
     // The preview is for display only, not for submission
     const measurementData: any = {
       batchId,
-      measurementDate: new Date(measurementDateTime).toISOString(),
+      measurementDate: parseDateTimeFromInput(measurementDateTime).toISOString(),
       measurementMethod,
     };
 
