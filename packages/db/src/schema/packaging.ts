@@ -694,6 +694,9 @@ export const kegFills = pgTable(
     // Metadata
     productionNotes: text("production_notes"),
     voidReason: text("void_reason"),
+    /** Set when fill is voided ("this fill was a mistake").
+     *  IMPORTANT: keg_fills has TWO independent soft-delete columns.
+     *  Queries filtering active fills must check BOTH voidedAt AND deletedAt. */
     voidedAt: timestamp("voided_at"),
     voidedBy: uuid("voided_by"),
 
@@ -712,6 +715,9 @@ export const kegFills = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedBy: uuid("updated_by").references(() => users.id),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    /** Set when fill is consumed by bottling-from-keg ("this keg's contents were used up").
+     *  IMPORTANT: keg_fills has TWO independent soft-delete columns.
+     *  Queries filtering active fills must check BOTH voidedAt AND deletedAt. */
     deletedAt: timestamp("deleted_at"),
   },
   (table) => ({

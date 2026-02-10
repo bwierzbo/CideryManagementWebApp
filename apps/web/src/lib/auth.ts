@@ -28,7 +28,7 @@ export const authOptions = {
           const user = await db
             .select()
             .from(users)
-            .where(eq(users.email, credentials.email))
+            .where(eq(users.email, credentials.email.toLowerCase()))
             .limit(1);
 
           console.log("✅ Query successful, found user:", !!user[0]);

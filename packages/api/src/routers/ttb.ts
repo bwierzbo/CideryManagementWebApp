@@ -320,6 +320,7 @@ async function computeSystemCalculatedOnHand(
     FROM keg_fills
     WHERE batch_id IN (${idList})
       AND voided_at IS NULL
+      AND deleted_at IS NULL
       AND filled_at < ${endDate}
   `);
   const kegsByBatch = groupBy(kegs.rows as any[], "batch_id");
@@ -667,7 +668,7 @@ async function computeReconciliationFromBatches(
     db.execute(sql`
       SELECT batch_id, volume_taken, loss, filled_at, distributed_at
       FROM keg_fills
-      WHERE batch_id IN (${idList}) AND voided_at IS NULL
+      WHERE batch_id IN (${idList}) AND voided_at IS NULL AND deleted_at IS NULL
     `),
     // 2f. Distillation
     db.execute(sql`
@@ -708,7 +709,7 @@ async function computeReconciliationFromBatches(
     db.execute(sql`
       SELECT batch_id, volume_taken AS dist_liters, distributed_at
       FROM keg_fills
-      WHERE batch_id IN (${idList}) AND distributed_at IS NOT NULL AND voided_at IS NULL
+      WHERE batch_id IN (${idList}) AND distributed_at IS NOT NULL AND voided_at IS NULL AND deleted_at IS NULL
     `),
   ]);
 
@@ -1522,6 +1523,7 @@ export const ttbRouter = router({
               .where(
                 and(
                   isNull(kegFills.voidedAt),
+                  isNull(kegFills.deletedAt),
                   lte(kegFills.filledAt, dayBeforeStart),
                   or(
                     isNull(kegFills.distributedAt),
@@ -1639,6 +1641,7 @@ export const ttbRouter = router({
             and(
               isNotNull(kegFills.distributedAt),
               isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt),
               gte(kegFills.distributedAt, startDate),
               lte(kegFills.distributedAt, endDate)
             )
@@ -1812,6 +1815,7 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt),
               gte(kegFills.filledAt, startDate),
               lte(kegFills.filledAt, endDate)
             )
@@ -1932,6 +1936,7 @@ export const ttbRouter = router({
               and(
                 eq(kegFills.batchId, batch.id),
                 isNull(kegFills.voidedAt),
+                isNull(kegFills.deletedAt),
                 lte(kegFills.filledAt, endDate)
               )
             );
@@ -2070,6 +2075,7 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt),
               lte(kegFills.filledAt, endDate),
               or(
                 isNull(kegFills.distributedAt),
@@ -3852,6 +3858,7 @@ export const ttbRouter = router({
           and(
             isNotNull(kegFills.distributedAt),
             isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt),
             sql`${kegFills.distributedAt}::date > ${openingDate}::date`,
             sql`${kegFills.distributedAt}::date <= ${reconciliationDate}::date`
           )
@@ -3886,6 +3893,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt),
             sql`${kegFills.filledAt}::date > ${openingDate}::date`,
             sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
           )
@@ -3904,6 +3912,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt),
             isNotNull(kegFills.loss),
             sql`${kegFills.filledAt}::date > ${openingDate}::date`,
             sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
@@ -4157,6 +4166,7 @@ export const ttbRouter = router({
           and(
             isNotNull(kegFills.distributedAt),
             isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt),
             sql`${kegFills.distributedAt}::date > ${openingDate}::date`,
             sql`${kegFills.distributedAt}::date <= ${reconciliationDate}::date`
           )
@@ -4346,6 +4356,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt),
             isNotNull(kegFills.loss),
             sql`${kegFills.filledAt}::date > ${openingDate}::date`,
             sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
@@ -4951,6 +4962,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(kegFills.voidedAt),
+            isNull(kegFills.deletedAt),
             sql`${kegFills.filledAt}::date > ${waterfallPeriodStart}::date`,
             sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
           )
