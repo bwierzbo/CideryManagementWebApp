@@ -410,8 +410,11 @@ async function computeSystemCalculatedOnHand(
     const rackingLoss = (racksByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_loss), 0);
     const filterLoss = (filtersByBatch.get(batchId) || []).reduce((s, f) => s + num(f.volume_loss), 0);
 
-    // Transfer-created batches: effective initial is 0 if they have parent + inflow
-    const effectiveInitial = (batch.parentId && transfersIn > 0) ? 0 : batch.initial;
+    // Transfer-created batches: effective initial is 0 if they have parent + transfers
+    // account for most of the initial volume (>= 90%). Small top-up transfers should
+    // NOT zero out the initial volume.
+    const isTransferCreated = batch.parentId && transfersIn >= batch.initial * 0.9;
+    const effectiveInitial = isTransferCreated ? 0 : batch.initial;
 
     const ending = effectiveInitial + mergesIn - mergesOut + transfersIn
       - transfersOut - transferLoss
@@ -1057,9 +1060,11 @@ async function computeReconciliationFromBatches(
     const info = batchInfoMap.get(batchId)!;
 
     // Determine if transfer-created (effective initial = 0)
+    // Only zero initial if transfers account for most of the initial volume (>= 90%).
+    // Small top-up transfers should NOT zero out the initial volume.
     const allTransfersIn = transfersInByBatch.get(batchId) || [];
     const totalTransfersInAllTime = allTransfersIn.reduce((s, r) => s + num(r.volume_transferred), 0);
-    const isTransferCreated = !!(info.parentBatchId && totalTransfersInAllTime > 0);
+    const isTransferCreated = !!(info.parentBatchId && totalTransfersInAllTime >= info.initialVolumeLiters * 0.9);
     const effectiveInitialL = isTransferCreated ? 0 : info.initialVolumeLiters;
 
     // Check if batch existed before period or was created during period
@@ -1208,7 +1213,10 @@ async function computeReconciliationFromBatches(
     const driftLiters = reconstructedEndingLiters - Math.max(0, storedAtEndDateL);
 
     // Initial volume anomaly: transfer-created batch should have initialVolume = 0
-    const hasInitialVolumeAnomaly = !!(info.parentBatchId && info.initialVolumeLiters > 0 && totalTransfersInAllTime > 0);
+    // Only flag if transfers account for most of the initial volume (the batch was
+    // truly created by transfer but initialVolumeLiters wasn't zeroed).
+    // Small top-up transfers (< 90% of initial) are not anomalies.
+    const hasInitialVolumeAnomaly = !!(info.parentBatchId && info.initialVolumeLiters > 0 && totalTransfersInAllTime >= info.initialVolumeLiters * 0.9);
 
     // Vessel capacity check: time-series walk tracking volume at each vessel
     const vesselCapacityResult = checkVesselCapacityTimeline(
@@ -3528,12 +3536,13 @@ export const ttbRouter = router({
     )
     .query(async ({ input }) => {
     try {
-      // 1. Get TTB opening balances
+      // 1. Get TTB opening balances and safeguard config
       const [settings] = await db
         .select({
           ttbOpeningBalanceDate: organizationSettings.ttbOpeningBalanceDate,
           ttbOpeningBalances: organizationSettings.ttbOpeningBalances,
           ttbVarianceThresholdPct: organizationSettings.ttbVarianceThresholdPct,
+          reconciliationLockedYears: organizationSettings.reconciliationLockedYears,
         })
         .from(organizationSettings)
         .limit(1);
@@ -5500,6 +5509,8 @@ export const ttbRouter = router({
           vesselCapacityWarnings: batchRecon.vesselCapacityWarnings,
           batches: batchRecon.batches,
         },
+        // Reconciliation safeguards
+        lockedYears: (settings?.reconciliationLockedYears as number[]) || [],
         // Period finalization status
         periodStatus: {
           finalizedPeriods: finalizedPeriods.map((fp) => ({
@@ -7235,5 +7246,64 @@ export const ttbRouter = router({
           byType,
         },
       };
+    }),
+
+  // ============================================================
+  // Reconciliation Safeguards
+  // ============================================================
+
+  /** Lock a reconciliation year — prevents accidental edits to batches in that year */
+  lockReconciliationYear: adminProcedure
+    .input(z.object({ year: z.number().int().min(2020).max(2100) }))
+    .mutation(async ({ input }) => {
+      const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+      const settings = await db.select().from(organizationSettings)
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID)).limit(1);
+      const current: number[] = (settings[0]?.reconciliationLockedYears as number[]) || [];
+      if (current.includes(input.year)) {
+        return { locked: true, years: current };
+      }
+      const updated = [...current, input.year].sort();
+      await db.update(organizationSettings)
+        .set({ reconciliationLockedYears: updated, updatedAt: new Date() })
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID));
+      return { locked: true, years: updated };
+    }),
+
+  /** Unlock a reconciliation year — allows edits again */
+  unlockReconciliationYear: adminProcedure
+    .input(z.object({ year: z.number().int().min(2020).max(2100) }))
+    .mutation(async ({ input }) => {
+      const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+      const settings = await db.select().from(organizationSettings)
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID)).limit(1);
+      const current: number[] = (settings[0]?.reconciliationLockedYears as number[]) || [];
+      const updated = current.filter(y => y !== input.year);
+      await db.update(organizationSettings)
+        .set({ reconciliationLockedYears: updated, updatedAt: new Date() })
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID));
+      return { locked: false, years: updated };
+    }),
+
+  /** Get volume audit trail for a specific batch */
+  getBatchVolumeAudit: protectedProcedure
+    .input(z.object({ batchId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const rows = await db.execute(sql`
+        SELECT id, batch_id, field_name, old_value, new_value, changed_at, change_source
+        FROM batch_volume_audit
+        WHERE batch_id = ${input.batchId}
+        ORDER BY changed_at DESC
+        LIMIT 100
+      `);
+      return rows.rows.map((r: any) => ({
+        id: r.id,
+        batchId: r.batch_id,
+        fieldName: r.field_name,
+        oldValue: r.old_value,
+        newValue: r.new_value,
+        changedAt: r.changed_at,
+        changeSource: r.change_source,
+      }));
     }),
 });

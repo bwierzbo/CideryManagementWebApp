@@ -70,6 +70,9 @@ import {
   RotateCcw,
   EyeOff,
   Copy,
+  Lock,
+  Unlock,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import { trpc } from "@/utils/trpc";
@@ -215,6 +218,61 @@ function ValidationStatusMenu({
   );
 }
 
+function VolumeAuditPanel({ batchId }: { batchId: string }) {
+  const { data: auditEntries, isLoading } = trpc.ttb.getBatchVolumeAudit.useQuery(
+    { batchId },
+  );
+
+  if (isLoading) {
+    return <div className="text-xs text-gray-400 py-2">Loading volume history...</div>;
+  }
+
+  if (!auditEntries || auditEntries.length === 0) {
+    return <div className="text-xs text-gray-400 py-2">No volume changes recorded.</div>;
+  }
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center gap-1.5 mb-2">
+        <History className="w-3.5 h-3.5 text-gray-500" />
+        <span className="text-xs font-semibold text-gray-600 uppercase">Volume History</span>
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-gray-500 border-b">
+            <th className="text-left py-1 pr-3">Date</th>
+            <th className="text-left py-1 pr-3">Field</th>
+            <th className="text-right py-1 pr-3">Old</th>
+            <th className="text-center py-1 pr-3"></th>
+            <th className="text-right py-1 pr-3">New</th>
+            <th className="text-left py-1 pl-3">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {auditEntries.map((entry: any) => (
+            <tr key={entry.id} className="border-b border-gray-100">
+              <td className="py-1 pr-3 text-gray-600">
+                {entry.changedAt
+                  ? new Date(entry.changedAt).toLocaleDateString()
+                  : "—"}
+              </td>
+              <td className="py-1 pr-3 text-gray-700 font-medium">{entry.fieldName}</td>
+              <td className="py-1 pr-3 text-right font-mono text-gray-500">
+                {entry.oldValue ?? "—"}
+              </td>
+              <td className="py-1 pr-3 text-center text-gray-400">&rarr;</td>
+              <td className="py-1 pr-3 text-right font-mono text-gray-700">
+                {entry.newValue ?? "—"}
+              </td>
+              <td className="py-1 pl-3 text-gray-400">{entry.changeSource || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function ExpandableReconciliationRow({
   batch,
   selectedIds,
@@ -285,6 +343,11 @@ function ExpandableReconciliationRow({
               >
                 {batch.customName || batch.name}
               </Link>
+              {batch.volumeManuallyCorrected && (
+                <span title="Volume manually corrected">
+                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                </span>
+              )}
               {batch.category === "carried_forward" && (
                 <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] px-1.5 py-0 h-4">
                   Carried Forward
@@ -369,6 +432,17 @@ function ExpandableReconciliationRow({
                 </div>
               ))}
             </div>
+          </TableCell>
+          <TableCell></TableCell>
+        </TableRow>
+      )}
+
+      {/* Volume Audit Trail */}
+      {expanded && (
+        <TableRow className="bg-gray-50/30">
+          <TableCell></TableCell>
+          <TableCell colSpan={8}>
+            <VolumeAuditPanel batchId={batch.id} />
           </TableCell>
           <TableCell></TableCell>
         </TableRow>
@@ -462,6 +536,38 @@ export function BatchReconciliation() {
   const { data: reconciliationData } = trpc.ttb.getReconciliationSummary.useQuery(
     { asOfDate: `${yearFilter}-12-31` },
   );
+
+  // Year lock state
+  const lockedYears: number[] = (reconciliationData as any)?.lockedYears ?? [];
+  const isYearLocked = lockedYears.includes(yearFilter);
+
+  const lockYearMutation = trpc.ttb.lockReconciliationYear.useMutation({
+    onSuccess: () => {
+      utils.ttb.getReconciliationSummary.invalidate();
+      showSuccess("Year Locked", `${yearFilter} is now locked for reconciliation`);
+    },
+    onError: (error) => {
+      handleTransactionError(error, "Year Lock", "Lock");
+    },
+  });
+
+  const unlockYearMutation = trpc.ttb.unlockReconciliationYear.useMutation({
+    onSuccess: () => {
+      utils.ttb.getReconciliationSummary.invalidate();
+      showSuccess("Year Unlocked", `${yearFilter} is now unlocked`);
+    },
+    onError: (error) => {
+      handleTransactionError(error, "Year Lock", "Unlock");
+    },
+  });
+
+  const handleToggleYearLock = () => {
+    if (isYearLocked) {
+      unlockYearMutation.mutate({ year: yearFilter });
+    } else {
+      lockYearMutation.mutate({ year: yearFilter });
+    }
+  };
 
   // Year classification
   const openingBalanceYear = reconciliationData?.openingBalanceDate
@@ -1113,6 +1219,26 @@ export function BatchReconciliation() {
                   ))}
                 </SelectContent>
               </Select>
+
+              <Button
+                variant={isYearLocked ? "secondary" : "outline"}
+                size="sm"
+                onClick={handleToggleYearLock}
+                disabled={lockYearMutation.isPending || unlockYearMutation.isPending}
+                title={isYearLocked ? `Unlock ${yearFilter} for editing` : `Lock ${yearFilter} to prevent edits`}
+                className="flex items-center gap-1.5"
+              >
+                {isYearLocked ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] px-1.5 py-0 h-4">
+                      Locked
+                    </Badge>
+                  </>
+                ) : (
+                  <Unlock className="w-4 h-4 text-gray-500" />
+                )}
+              </Button>
 
               <Select value={productTypeFilter} onValueChange={(v) => { setProductTypeFilter(v); setSelectedIds(new Set()); }}>
                 <SelectTrigger className="w-[140px]">

@@ -2175,6 +2175,7 @@ export const batchRouter = router({
           actualAbv: batches.actualAbv,
           estimatedAbv: batches.estimatedAbv,
           reconciliationVerifiedForYear: batches.reconciliationVerifiedForYear,
+          volumeManuallyCorrected: batches.volumeManuallyCorrected,
         })
         .from(batches)
         .leftJoin(vessels, eq(batches.vesselId, vessels.id))

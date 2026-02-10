@@ -777,6 +777,8 @@ export const batches = pgTable(
     reconciliationNotes: text("reconciliation_notes"),
     parentBatchId: uuid("parent_batch_id").references((): AnyPgColumn => batches.id),
     isRackingDerivative: boolean("is_racking_derivative").default(false),
+    // Volume protection flag - prevents trigger overwrites of manually corrected volume fields
+    volumeManuallyCorrected: boolean("volume_manually_corrected").default(false),
     // User attribution
     createdBy: uuid("created_by").references(() => users.id),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1330,6 +1332,35 @@ export const batchVolumeAdjustments = pgTable(
     ),
   }),
 );
+
+// Batch volume audit trail - automatically logs all changes to volume fields via trigger
+export const batchVolumeAudit = pgTable(
+  "batch_volume_audit",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id, { onDelete: "cascade" }),
+    fieldName: text("field_name").notNull(),
+    oldValue: text("old_value"),
+    newValue: text("new_value"),
+    changedAt: timestamp("changed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    changeSource: text("change_source").default("unknown"),
+  },
+  (table) => ({
+    batchIdx: index("idx_batch_volume_audit_batch").on(table.batchId),
+    timeIdx: index("idx_batch_volume_audit_time").on(table.changedAt),
+  }),
+);
+
+export const batchVolumeAuditRelations = relations(batchVolumeAudit, ({ one }) => ({
+  batch: one(batches, {
+    fields: [batchVolumeAudit.batchId],
+    references: [batches.id],
+  }),
+}));
 
 // Vessel cleaning operations for tracking tank cleaning
 export const vesselCleaningOperations = pgTable(

@@ -370,9 +370,10 @@ function checkVolumeBalance(
   const filterLosses = data.filters.reduce((s, f) => s + num(f.volumeLoss), 0);
   const distillation = data.distillations.reduce((s, d) => s + num(d.source_volume_liters), 0);
 
-  // Match getBatchVolumeTrace logic (batch.ts:6603-6607):
-  // Transfer-created batches use 0 initial (volume comes from transfer-in)
-  const isTransferCreated = batch.parentBatchId && transfersIn > 0;
+  // Transfer-created batches use 0 initial (volume comes from transfer-in).
+  // Only zero initial if transfers account for most of the initial volume (>= 90%).
+  // Small top-up transfers should NOT zero out the initial volume.
+  const isTransferCreated = batch.parentBatchId && transfersIn >= initial * 0.9;
   const effectiveInitial = isTransferCreated ? 0 : initial;
 
   // accountedVolume = initial + inflow (transfers + merges) - outflow - loss

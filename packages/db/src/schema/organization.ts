@@ -378,6 +378,14 @@ export const organizationSettings = pgTable(
      * NULL means use DEFAULT_TTB_CLASSIFICATION_CONFIG defaults
      */
     ttbClassificationConfig: jsonb("ttb_classification_config"),
+    /**
+     * Locked reconciliation years — years where batch data is frozen
+     * and should not be modified without explicit admin action.
+     * Array of year integers, e.g. [2024]
+     */
+    reconciliationLockedYears: integer("reconciliation_locked_years")
+      .array()
+      .default([]),
 
     // ==========================================
     // Tax Reporting Preferences

@@ -167,6 +167,8 @@ export const settingsRouter = router({
         estimatedAnnualTaxLiability: null,
         // TTB Onboarding
         ttbOnboardingCompletedAt: null,
+        // Reconciliation safeguards
+        reconciliationLockedYears: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       };
