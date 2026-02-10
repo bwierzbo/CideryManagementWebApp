@@ -602,16 +602,15 @@ export function BatchReconciliation() {
         distillation: 0,
         ending: t.ttbOpeningBalance,
         onHand: t.systemOnHand,
-        systemCalculated: t.systemCalculatedOnHand ?? t.systemOnHand,
+        systemCalculated: t.systemOnHand,
         variance: 0,
-        systemVariance: parseFloat(((t.systemCalculatedOnHand ?? t.systemOnHand) - t.ttbOpeningBalance).toFixed(1)),
+        systemVariance: parseFloat((t.systemOnHand - t.ttbOpeningBalance).toFixed(1)),
         isConfigured: true,
       };
     }
     if (!priorYearData || !("totals" in priorYearData)) return null;
     const prior = priorYearData.totals as TtbTotals;
     const ending = parseFloat(t.ttbCalculatedEnding.toFixed(1));
-    const systemCalc = t.systemCalculatedOnHand ?? t.systemOnHand;
     return {
       opening: parseFloat(prior.ttbCalculatedEnding.toFixed(1)),
       production: parseFloat((t.production - prior.production).toFixed(1)),
@@ -620,9 +619,9 @@ export function BatchReconciliation() {
       distillation: parseFloat((t.distillation - prior.distillation).toFixed(1)),
       ending,
       onHand: parseFloat(t.systemOnHand.toFixed(1)),
-      systemCalculated: parseFloat(systemCalc.toFixed(1)),
+      systemCalculated: parseFloat(t.systemOnHand.toFixed(1)),
       variance: parseFloat((t.ttbCalculatedEnding - t.systemOnHand).toFixed(1)),
-      systemVariance: parseFloat((systemCalc - ending).toFixed(1)),
+      systemVariance: parseFloat((t.systemOnHand - ending).toFixed(1)),
       isConfigured: false,
     };
   }, [reconciliationData, priorYearData, isOpeningYear]);
@@ -1078,7 +1077,7 @@ export function BatchReconciliation() {
                         <p className="font-medium text-gray-700">TTB Ending Balance</p>
                         <p className="font-semibold text-gray-800">{yearMetrics.opening.toLocaleString()} gal</p>
                         <p className="text-xs text-gray-500 mt-1">Configured from physical inventory</p>
-                        <p className="text-gray-600 mt-2">System Calculated: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
+                        <p className="text-gray-600 mt-2">System On Hand: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
                         {Math.abs(yearMetrics.systemVariance) > 0.1 && (
                           <p className={`${Math.abs(yearMetrics.systemVariance) < 10 ? "text-green-700" : Math.abs(yearMetrics.systemVariance) < 100 ? "text-amber-700" : "text-red-700"}`}>
                             Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
@@ -1098,7 +1097,7 @@ export function BatchReconciliation() {
                         <p className="font-semibold text-gray-800 border-t border-gray-300 mt-1 pt-1">
                           Calculated Ending: {yearMetrics.ending.toLocaleString()} gal
                         </p>
-                        <p className="text-gray-600">System Calculated: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
+                        <p className="text-gray-600">System On Hand: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
                         {Math.abs(yearMetrics.systemVariance) > 0.1 && (
                           <p className={`${Math.abs(yearMetrics.systemVariance) < 10 ? "text-green-700" : Math.abs(yearMetrics.systemVariance) < 100 ? "text-amber-700" : "text-red-700"}`}>
                             Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
@@ -1447,7 +1446,7 @@ export function BatchReconciliation() {
                           <p className="text-lg font-bold">{yearMetrics.ending} gal</p>
                         </div>
                         <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">System Calculated</p>
+                          <p className="text-xs text-gray-500 uppercase">System On Hand</p>
                           <p className="text-lg font-bold">{yearMetrics.systemCalculated} gal</p>
                         </div>
                         <div className={`p-3 rounded-lg col-span-2 ${
