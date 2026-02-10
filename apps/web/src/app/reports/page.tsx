@@ -35,6 +35,7 @@ import {
   Apple,
   ArrowRight,
   Receipt,
+  CheckCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { trpc } from "@/utils/trpc";
@@ -290,7 +291,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Quick Links to Dedicated Reports */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <Link href="/reports/sales">
             <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-200 hover:border-green-400">
               <CardContent className="p-6">
@@ -345,6 +346,27 @@ export default function ReportsPage() {
                       <h3 className="font-semibold text-gray-900">Batch Tracing</h3>
                       <p className="text-sm text-gray-500">
                         Track where batch volume went
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/reports/reconciliation">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-amber-200 hover:border-amber-400">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-amber-100 rounded-lg">
+                      <CheckCircle className="w-6 h-6 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Reconciliation</h3>
+                      <p className="text-sm text-gray-500">
+                        Verify batch volumes for TTB compliance
                       </p>
                     </div>
                   </div>

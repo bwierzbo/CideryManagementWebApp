@@ -107,6 +107,7 @@ import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
 import { TTBOpeningBalancesSettings } from "@/components/admin/TTBOpeningBalancesSettings";
 import { TaxReportingSettings } from "@/components/admin/TaxReportingSettings";
 import { LegacyInventorySection } from "@/components/admin/LegacyInventorySection";
+import { TTBClassificationSettings } from "@/components/admin/TTBClassificationSettings";
 import { useSettings } from "@/contexts/SettingsContext";
 import { cn } from "@/lib/utils";
 
@@ -1841,16 +1842,35 @@ function SystemSettings() {
       {/* Measurement Schedules - Product-type-specific measurement schedules */}
       <MeasurementSchedulesSettings />
 
-      {/* Tax Reporting Preferences - TTB and State frequency settings */}
+      {/* Save Button */}
+      <div className="flex justify-end">
+        <Button
+          onClick={handleSave}
+          disabled={isSaving || updateTimezoneMutation.isPending}
+          size="lg"
+          className="bg-purple-600 hover:bg-purple-700"
+        >
+          {isSaving ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4 mr-2" />
+          )}
+          Save Settings
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function TTBSettingsTab() {
+  const { settings } = useSettings();
+
+  return (
+    <>
+      <TTBClassificationSettings />
       <TaxReportingSettings />
-
-      {/* TTB Opening Balances - For beginning inventory tracking */}
       <TTBOpeningBalancesSettings />
-
-      {/* Legacy Inventory - For TTB reconciliation */}
       <LegacyInventorySection />
-
-      {/* TTB Initial Setup - Re-run option */}
       {settings?.ttbOnboardingCompletedAt && (
         <Card>
           <CardHeader>
@@ -1880,9 +1900,9 @@ function SystemSettings() {
                   </Link>
                 </Button>
                 <Button variant="outline" asChild>
-                  <Link href="/admin/batch-reconciliation">
+                  <Link href="/reports/reconciliation">
                     <FileText className="w-4 h-4 mr-2" />
-                    Batch Reconciliation
+                    Reconciliation (Reports)
                   </Link>
                 </Button>
               </div>
@@ -1890,30 +1910,13 @@ function SystemSettings() {
           </CardContent>
         </Card>
       )}
-
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleSave}
-          disabled={isSaving || updateTimezoneMutation.isPending}
-          size="lg"
-          className="bg-purple-600 hover:bg-purple-700"
-        >
-          {isSaving ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4 mr-2" />
-          )}
-          Save Settings
-        </Button>
-      </div>
-    </div>
+    </>
   );
 }
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    "users" | "reference" | "settings" | "calibration" | "square"
+    "users" | "reference" | "settings" | "calibration" | "square" | "ttb"
   >("users");
 
   // Check if TTB onboarding has been completed
@@ -1960,6 +1963,7 @@ export default function AdminPage() {
             { key: "users", label: "User Management", icon: Users },
             { key: "reference", label: "Reference Data", icon: Database },
             { key: "settings", label: "System Settings", icon: Settings },
+            { key: "ttb", label: "TTB", icon: FileText },
             { key: "calibration", label: "Calibration", icon: Ruler },
             { key: "square", label: "Square Integration", icon: CreditCard },
           ].map((tab) => {
@@ -1992,6 +1996,7 @@ export default function AdminPage() {
             </>
           )}
           {activeTab === "settings" && <SystemSettings />}
+          {activeTab === "ttb" && <TTBSettingsTab />}
           {activeTab === "calibration" && <CalibrationSettings />}
           {activeTab === "square" && <SquareIntegration />}
         </div>

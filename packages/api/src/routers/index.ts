@@ -57,7 +57,6 @@ import {
   batchCompositions,
   batchMeasurements,
   batchTransfers,
-  batchMergeHistory,
   vessels,
   vesselCleaningOperations,
   baseFruitVarieties,
@@ -3581,8 +3580,10 @@ export const appRouter = router({
                   customName: sourceBatch[0].customName, // Inherit parent's custom name
                   initialVolume: input.volumeL.toString(),
                   initialVolumeUnit: "L",
+                  initialVolumeLiters: input.volumeL.toString(),
                   currentVolume: input.volumeL.toString(),
                   currentVolumeUnit: "L",
+                  currentVolumeLiters: input.volumeL.toString(),
                   status: sourceBatch[0].status || "fermentation",
                   productType: sourceBatch[0].productType, // Inherit parent's product type
                   originPressRunId: sourceBatch[0].originPressRunId,
@@ -3591,6 +3592,7 @@ export const appRouter = router({
                   finalGravity: sourceBatch[0].finalGravity,
                   estimatedAbv: sourceBatch[0].estimatedAbv,
                   actualAbv: sourceBatch[0].actualAbv,
+                  parentBatchId: sourceBatch[0].id,
                   startDate: transferDate,
                   createdAt: new Date(),
                   updatedAt: new Date(),
@@ -3983,39 +3985,9 @@ export const appRouter = router({
                   (sourceProductType === "juice" || destProductType === "juice") ? "juice" :
                   (sourceProductType === "perry" || destProductType === "perry") ? "perry" : "cider";
 
-                // Create batch_merge_history entry to track the spirit addition
-                await tx.insert(batchMergeHistory).values({
-                  targetBatchId: destBatch[0].id,
-                  sourceBatchId: sourceBatch[0].id,
-                  sourceType: "batch",
-                  volumeAdded: input.volumeL.toString(),
-                  volumeAddedUnit: "L",
-                  targetVolumeBefore: destCurrentVolumeL.toString(),
-                  targetVolumeBeforeUnit: "L",
-                  targetVolumeAfter: newVolumeL.toString(),
-                  targetVolumeAfterUnit: "L",
-                  sourceAbv: brandyAbv.toString(),
-                  resultingAbv: newEstimatedAbv,
-                  compositionSnapshot: {
-                    brandy: {
-                      batchId: brandyBatch.id,
-                      name: brandyBatch.name,
-                      volume: brandyVolumeL,
-                      abv: brandyAbv,
-                    },
-                    [otherLabel]: {
-                      batchId: otherBatch.id,
-                      name: otherBatch.name,
-                      volume: otherVolumeL,
-                      abv: otherAbv,
-                    },
-                    resultingAbv: parseFloat(newEstimatedAbv),
-                  },
-                  notes: isBrandyToPommeau
-                    ? `Brandy added to pommeau: ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% + ${otherVolumeL.toFixed(1)}L pommeau @ ${otherAbv}% = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}%`
-                    : `Pommeau blend created via transfer: ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% + ${otherVolumeL.toFixed(1)}L ${otherLabel} @ ${otherAbv}%`,
-                  mergedAt: input.transferDate || new Date(),
-                });
+                // No batchMergeHistory insert here — the batchTransfers record (created below)
+                // already captures this volume movement. Creating both would double-count
+                // the volume in TTB reconciliation (mergesIn + transfersIn on destination).
 
                 blendNote = isBrandyToPommeau
                   ? `🍎🥃 Brandy added to pommeau! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${otherVolumeL.toFixed(1)}L pommeau @ ${otherAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`
@@ -4397,8 +4369,10 @@ export const appRouter = router({
                     customName: sourceBatch[0].customName,
                     initialVolume: "0", // Volume comes from transfer, not initial production
                     initialVolumeUnit: "L",
+                    initialVolumeLiters: "0",
                     currentVolume: input.volumeL.toString(),
                     currentVolumeUnit: "L",
+                    currentVolumeLiters: input.volumeL.toString(),
                     status: sourceBatch[0].status || "fermentation",
                     productType: sourceBatch[0].productType, // Inherit parent's product type
                     originPressRunId: sourceBatch[0].originPressRunId,
@@ -4407,6 +4381,7 @@ export const appRouter = router({
                     finalGravity: sourceBatch[0].finalGravity,
                     estimatedAbv: sourceBatch[0].estimatedAbv,
                     actualAbv: sourceBatch[0].actualAbv,
+                    parentBatchId: sourceBatch[0].id,
                     startDate: transferDate,
                     createdAt: new Date(),
                     updatedAt: new Date(),

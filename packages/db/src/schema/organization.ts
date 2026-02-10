@@ -363,6 +363,21 @@ export const organizationSettings = pgTable(
      * NULL means onboarding not yet completed
      */
     ttbOnboardingCompletedAt: timestamp("ttb_onboarding_completed_at", { withTimezone: true }),
+    /**
+     * Maximum allowed variance (as a percentage) between TTB calculated ending
+     * and system-calculated on-hand before auto-verification is blocked.
+     * e.g., 0.5 means 0.5%. Default: 0.5
+     */
+    ttbVarianceThresholdPct: decimal("ttb_variance_threshold_pct", {
+      precision: 5,
+      scale: 2,
+    }).default("0.50"),
+    /**
+     * TTB classification thresholds and tax rates
+     * Configurable by admin to reflect current TTB regulations (27 CFR 24.10)
+     * NULL means use DEFAULT_TTB_CLASSIFICATION_CONFIG defaults
+     */
+    ttbClassificationConfig: jsonb("ttb_classification_config"),
 
     // ==========================================
     // Tax Reporting Preferences

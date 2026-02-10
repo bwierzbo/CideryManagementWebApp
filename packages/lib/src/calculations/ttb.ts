@@ -30,6 +30,98 @@ export const SMALL_PRODUCER_CREDIT_LIMIT_GALLONS = 30000;
 export const EFFECTIVE_TAX_RATE = HARD_CIDER_TAX_RATE - SMALL_PRODUCER_CREDIT_PER_GALLON; // $0.17
 
 // ============================================
+// TTB Classification Configuration
+// ============================================
+
+/** CO2 density factor: 1 volume CO2 = 0.1977 grams per 100ml at STP */
+export const CO2_VOLUMES_TO_GRAMS_PER_100ML = 0.1977;
+
+/** Convert CO2 volumes (1 vol = 1L CO2/L liquid) to grams per 100ml */
+export function co2VolumesToGramsPer100ml(co2Volumes: number): number {
+  return co2Volumes * CO2_VOLUMES_TO_GRAMS_PER_100ML;
+}
+
+/**
+ * Configurable TTB classification thresholds, tax rates, and CBMA credits.
+ * Stored in organizationSettings.ttbClassificationConfig as JSONB.
+ * NULL in DB means use DEFAULT_TTB_CLASSIFICATION_CONFIG.
+ */
+export interface TTBClassificationConfig {
+  thresholds: {
+    hardCider: {
+      /** Max ABV for hard cider classification (default 8.5%) */
+      maxAbv: number;
+      /** Min ABV for hard cider classification (default 0.5%) */
+      minAbv: number;
+      /** Max CO2 in grams per 100ml for hard cider (default 0.64) */
+      maxCo2GramsPer100ml: number;
+      /** Fruit sources that qualify for hard cider (default ["apple", "pear"]) */
+      allowedFruitSources: string[];
+    };
+    /** Max CO2 in grams per 100ml for still wine classification (default 0.392) */
+    stillWineMaxCo2GramsPer100ml: number;
+    abvBrackets: {
+      /** Max ABV for "not over 16%" category (default 16) */
+      under16MaxAbv: number;
+      /** Max ABV for "16-21%" category (default 21) */
+      midRangeMaxAbv: number;
+      /** Max ABV for "21-24%" category (default 24) */
+      upperMaxAbv: number;
+    };
+  };
+  taxRates: {
+    /** $/gallon for hard cider (default 0.226) */
+    hardCider: number;
+    /** $/gallon for still wine ≤16% (default 1.07) */
+    wineUnder16: number;
+    /** $/gallon for still wine 16-21% (default 1.57) */
+    wine16To21: number;
+    /** $/gallon for still wine 21-24% (default 3.15) */
+    wine21To24: number;
+    /** $/gallon for artificially carbonated wine (default 3.30) */
+    carbonatedWine: number;
+    /** $/gallon for sparkling wine (default 3.40) */
+    sparklingWine: number;
+  };
+  cbmaCredits: {
+    /** Small producer credit per gallon (default 0.056) */
+    smallProducerCreditPerGallon: number;
+    /** Max gallons eligible for credit annually (default 30000) */
+    creditLimitGallons: number;
+  };
+}
+
+/** Default TTB classification config per 27 CFR 24.10 */
+export const DEFAULT_TTB_CLASSIFICATION_CONFIG: TTBClassificationConfig = {
+  thresholds: {
+    hardCider: {
+      maxAbv: 8.5,
+      minAbv: 0.5,
+      maxCo2GramsPer100ml: 0.64,
+      allowedFruitSources: ["apple", "pear"],
+    },
+    stillWineMaxCo2GramsPer100ml: 0.392,
+    abvBrackets: {
+      under16MaxAbv: 16,
+      midRangeMaxAbv: 21,
+      upperMaxAbv: 24,
+    },
+  },
+  taxRates: {
+    hardCider: 0.226,
+    wineUnder16: 1.07,
+    wine16To21: 1.57,
+    wine21To24: 3.15,
+    carbonatedWine: 3.30,
+    sparklingWine: 3.40,
+  },
+  cbmaCredits: {
+    smallProducerCreditPerGallon: 0.056,
+    creditLimitGallons: 30000,
+  },
+};
+
+// ============================================
 // Tax Class Mapping
 // ============================================
 
@@ -76,6 +168,93 @@ export function productTypeToTaxClass(productType: string | null | undefined): T
     default:
       return "hardCider";
   }
+}
+
+// ============================================
+// Dynamic Tax Class Classification
+// ============================================
+
+/** Data needed from a batch for dynamic TTB classification */
+export interface BatchClassificationData {
+  /** Batch productType (cider, perry, pommeau, brandy, juice, etc.) */
+  productType: string | null | undefined;
+  /** ABV percentage — prefer actualAbv, fall back to estimatedAbv */
+  abv: number | null | undefined;
+  /** CO2 level in volumes from batchCarbonationOperations.finalCo2Volumes */
+  co2Volumes: number | null | undefined;
+  /** Carbonation method: "headspace"|"inline"|"stone"|"bottle_conditioning" */
+  carbonationMethod: string | null | undefined;
+}
+
+/**
+ * Determine TTB tax class from batch data and configurable thresholds.
+ * Pure function — no DB calls.
+ *
+ * Classification priority (per 27 CFR 24.10, §24.331):
+ * 1. brandy → appleBrandy
+ * 2. juice → null (non-taxable)
+ * 3. apple/pear fruit + ABV 0.5-8.5% + CO2 ≤ 0.64 g/100ml → hardCider
+ * 4. CO2 > 0.392 g/100ml + natural fermentation → sparklingWine
+ * 5. CO2 > 0.392 g/100ml + artificial injection → carbonatedWine
+ * 6. ABV ≤ 16% → wineUnder16
+ * 7. ABV 16-21% → wine16To21
+ * 8. ABV 21-24% → wine21To24
+ * 9. Fallback → productTypeToTaxClass()
+ */
+export function classifyBatchTaxClass(
+  batch: BatchClassificationData,
+  config: TTBClassificationConfig = DEFAULT_TTB_CLASSIFICATION_CONFIG,
+): TTBTaxClass | null {
+  const { productType, abv, co2Volumes, carbonationMethod } = batch;
+
+  // 1. Brandy → appleBrandy
+  if (productType === "brandy") return "appleBrandy";
+
+  // 2. Juice → null (non-taxable)
+  if (productType === "juice") return null;
+
+  // Determine fruit source eligibility for hard cider
+  const fruitSource =
+    productType === "cider" ? "apple" :
+    productType === "perry" ? "pear" :
+    productType || "";
+  const isHardCiderFruit = config.thresholds.hardCider.allowedFruitSources.includes(fruitSource);
+
+  // Convert CO2 volumes to g/100ml (missing data = 0, i.e. still/uncarbonated)
+  const co2GramsPer100ml = co2Volumes != null ? co2VolumesToGramsPer100ml(co2Volumes) : 0;
+  const effectiveAbv = abv ?? 0;
+
+  // 3. Hard cider: eligible fruit + ABV in range + CO2 within limit
+  if (
+    isHardCiderFruit &&
+    effectiveAbv >= config.thresholds.hardCider.minAbv &&
+    effectiveAbv <= config.thresholds.hardCider.maxAbv &&
+    co2GramsPer100ml <= config.thresholds.hardCider.maxCo2GramsPer100ml
+  ) {
+    return "hardCider";
+  }
+
+  // 4 & 5. Effervescent wine: CO2 above still wine threshold
+  if (co2GramsPer100ml > config.thresholds.stillWineMaxCo2GramsPer100ml) {
+    // bottle_conditioning = natural secondary fermentation → sparkling
+    // all other methods (headspace, inline, stone) = artificially carbonated
+    const isNaturalCarbonation = carbonationMethod === "bottle_conditioning";
+    return isNaturalCarbonation ? "sparklingWine" : "carbonatedWine";
+  }
+
+  // 6-8. Still wine ABV brackets
+  if (effectiveAbv <= config.thresholds.abvBrackets.under16MaxAbv) {
+    return "wineUnder16";
+  }
+  if (effectiveAbv <= config.thresholds.abvBrackets.midRangeMaxAbv) {
+    return "wine16To21";
+  }
+  if (effectiveAbv <= config.thresholds.abvBrackets.upperMaxAbv) {
+    return "wine21To24";
+  }
+
+  // 9. Fallback for ABV above 24% or unexpected data
+  return productTypeToTaxClass(productType);
 }
 
 // ============================================
@@ -163,7 +342,8 @@ export interface TaxCalculationResult {
  */
 export function calculateHardCiderTax(
   taxableGallons: number,
-  priorYearGallonsUsed: number = 0
+  priorYearGallonsUsed: number = 0,
+  config?: TTBClassificationConfig,
 ): TaxCalculationResult {
   if (taxableGallons <= 0) {
     return {
@@ -176,18 +356,19 @@ export function calculateHardCiderTax(
     };
   }
 
+  const taxRate = config?.taxRates.hardCider ?? HARD_CIDER_TAX_RATE;
+  const creditPerGallon = config?.cbmaCredits.smallProducerCreditPerGallon ?? SMALL_PRODUCER_CREDIT_PER_GALLON;
+  const creditLimit = config?.cbmaCredits.creditLimitGallons ?? SMALL_PRODUCER_CREDIT_LIMIT_GALLONS;
+
   // Calculate gross tax
-  const grossTax = taxableGallons * HARD_CIDER_TAX_RATE;
+  const grossTax = taxableGallons * taxRate;
 
   // Calculate how many gallons are eligible for credit
-  const remainingCreditGallons = Math.max(
-    0,
-    SMALL_PRODUCER_CREDIT_LIMIT_GALLONS - priorYearGallonsUsed
-  );
+  const remainingCreditGallons = Math.max(0, creditLimit - priorYearGallonsUsed);
   const creditEligibleGallons = Math.min(taxableGallons, remainingCreditGallons);
 
   // Calculate credit amount
-  const smallProducerCredit = creditEligibleGallons * SMALL_PRODUCER_CREDIT_PER_GALLON;
+  const smallProducerCredit = creditEligibleGallons * creditPerGallon;
 
   // Calculate net tax
   const netTaxOwed = grossTax - smallProducerCredit;

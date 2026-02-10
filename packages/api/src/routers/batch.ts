@@ -30,6 +30,7 @@ import { batchCarbonationOperations } from "db/src/schema/carbonation";
 import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
+import { validateBatches, type BatchValidation } from "../validation/batch-validation";
 import {
   calculateEstimatedSGAfterAddition,
   calculateEstimatedABV,
@@ -2077,14 +2078,67 @@ export const batchRouter = router({
     .input(z.object({
       year: z.number().int().min(2020).max(2100).optional(),
       productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
-      reconciliationStatus: z.enum(["verified", "duplicate", "excluded", "pending"]).optional(),
+      reconciliationStatus: z.enum(["verified", "pending"]).optional(),
       search: z.string().optional(),
     }).optional())
     .query(async ({ input = {} }) => {
-      const conditions: any[] = [isNull(batches.deletedAt)];
+      const conditions: any[] = [
+        isNull(batches.deletedAt),
+        // Auto-exclude brandy and juice (not reportable on TTB wine form)
+        sql`(${batches.productType} IS NULL OR ${batches.productType} NOT IN ('brandy', 'juice'))`,
+        // Auto-exclude racking derivatives (tracked under parent batch)
+        sql`${batches.isRackingDerivative} IS NOT TRUE`,
+        // Auto-exclude transfer-destination batches with 0 initial volume
+        sql`NOT (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0)`,
+      ];
 
       if (input.year) {
-        conditions.push(sql`EXTRACT(YEAR FROM ${batches.startDate}) = ${input.year}`);
+        // Show ALL batches "in bond" during this year:
+        // 1. Started this year (new production), OR
+        // 2. Started before this year AND still has volume (aging/carrying forward), OR
+        // 3. Started before this year AND had activity during this year
+        const yearStart = `${input.year}-01-01`;
+        const yearEnd = `${input.year}-12-31`;
+        conditions.push(sql`(
+          EXTRACT(YEAR FROM ${batches.startDate}) = ${input.year}
+          OR (
+            ${batches.startDate} < ${yearStart}::date
+            AND (
+              CAST(COALESCE(${batches.currentVolumeLiters}, '0') AS DECIMAL) > 0
+              OR EXISTS (
+                SELECT 1 FROM batch_transfers bt
+                WHERE (bt.source_batch_id = ${batches.id} OR bt.destination_batch_id = ${batches.id})
+                  AND bt.deleted_at IS NULL
+                  AND bt.transferred_at >= ${yearStart}::date AND bt.transferred_at < (${yearEnd}::date + INTERVAL '1 day')
+              )
+              OR EXISTS (
+                SELECT 1 FROM bottle_runs br
+                WHERE br.batch_id = ${batches.id} AND br.voided_at IS NULL
+                  AND br.packaged_at >= ${yearStart}::date AND br.packaged_at < (${yearEnd}::date + INTERVAL '1 day')
+              )
+              OR EXISTS (
+                SELECT 1 FROM keg_fills kf
+                WHERE kf.batch_id = ${batches.id} AND kf.voided_at IS NULL AND kf.deleted_at IS NULL
+                  AND kf.filled_at >= ${yearStart}::date AND kf.filled_at < (${yearEnd}::date + INTERVAL '1 day')
+              )
+              OR EXISTS (
+                SELECT 1 FROM batch_volume_adjustments bva
+                WHERE bva.batch_id = ${batches.id} AND bva.deleted_at IS NULL
+                  AND bva.adjustment_date >= ${yearStart}::date AND bva.adjustment_date <= ${yearEnd}::date
+              )
+              OR EXISTS (
+                SELECT 1 FROM batch_merge_history bmh
+                WHERE bmh.target_batch_id = ${batches.id} AND bmh.deleted_at IS NULL
+                  AND bmh.merged_at >= ${yearStart}::date AND bmh.merged_at < (${yearEnd}::date + INTERVAL '1 day')
+              )
+              OR EXISTS (
+                SELECT 1 FROM distillation_records dr
+                WHERE dr.source_batch_id = ${batches.id} AND dr.deleted_at IS NULL AND dr.status IN ('sent', 'received')
+                  AND dr.sent_at >= ${yearStart}::date AND dr.sent_at < (${yearEnd}::date + INTERVAL '1 day')
+              )
+            )
+          )
+        )`);
       }
       if (input.productType) {
         conditions.push(eq(batches.productType, input.productType));
@@ -2117,26 +2171,101 @@ export const batchRouter = router({
           parentBatchId: batches.parentBatchId,
           isRackingDerivative: batches.isRackingDerivative,
           isArchived: batches.isArchived,
+          vesselId: batches.vesselId,
+          actualAbv: batches.actualAbv,
+          estimatedAbv: batches.estimatedAbv,
+          reconciliationVerifiedForYear: batches.reconciliationVerifiedForYear,
         })
         .from(batches)
         .leftJoin(vessels, eq(batches.vesselId, vessels.id))
         .where(and(...conditions))
         .orderBy(asc(batches.startDate));
 
-      const result = batchesList.map((b) => ({
-        ...b,
-        suggestDuplicate:
-          b.isRackingDerivative === true ||
-          (b.initialVolumeLiters !== null && parseFloat(String(b.initialVolumeLiters)) === 0 && b.parentBatchId !== null) ||
-          false,
-      }));
+      // Run validation on all batches
+      const validationYear = input.year || new Date().getFullYear();
+      let validationMap = new Map<string, BatchValidation>();
+      try {
+        validationMap = await validateBatches(batchesList, validationYear);
+      } catch (err) {
+        console.error("Batch validation failed:", err);
+      }
 
+      // Fetch transfer-derived children for expandable rows
+      const parentIds = batchesList.map(b => b.id);
+      let childBatches: Array<{
+        id: string;
+        name: string | null;
+        customName: string | null;
+        batchNumber: string | null;
+        productType: string | null;
+        startDate: Date | null;
+        vesselName: string | null;
+        initialVolumeLiters: string | null;
+        currentVolumeLiters: string | null;
+        parentBatchId: string | null;
+      }> = [];
+
+      if (parentIds.length > 0) {
+        childBatches = await db
+          .select({
+            id: batches.id,
+            name: batches.name,
+            customName: batches.customName,
+            batchNumber: batches.batchNumber,
+            productType: batches.productType,
+            startDate: batches.startDate,
+            vesselName: vessels.name,
+            initialVolumeLiters: batches.initialVolumeLiters,
+            currentVolumeLiters: batches.currentVolumeLiters,
+            parentBatchId: batches.parentBatchId,
+          })
+          .from(batches)
+          .leftJoin(vessels, eq(batches.vesselId, vessels.id))
+          .where(and(
+            isNull(batches.deletedAt),
+            inArray(batches.parentBatchId, parentIds),
+            sql`(${batches.isRackingDerivative} IS TRUE OR (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0) OR COALESCE(${batches.reconciliationStatus}, 'pending') IN ('duplicate', 'excluded'))`,
+          ))
+          .orderBy(asc(batches.startDate));
+      }
+
+      // Group children by parent
+      const childrenByParent = new Map<string, typeof childBatches>();
+      for (const child of childBatches) {
+        if (child.parentBatchId) {
+          const existing = childrenByParent.get(child.parentBatchId) || [];
+          existing.push(child);
+          childrenByParent.set(child.parentBatchId, existing);
+        }
+      }
+
+      const result = batchesList.map((b) => {
+        const batchYear = b.startDate ? new Date(b.startDate).getFullYear() : null;
+        const category: "new_production" | "carried_forward" =
+          batchYear === validationYear ? "new_production" : "carried_forward";
+        const isVerifiedForYear =
+          b.reconciliationStatus === "verified" &&
+          b.reconciliationVerifiedForYear === validationYear;
+
+        return {
+          ...b,
+          children: childrenByParent.get(b.id) || [],
+          validation: validationMap.get(b.id) || null,
+          category,
+          verifiedForYear: isVerifiedForYear,
+        };
+      });
+
+      const unverified = result.filter((b) => !b.verifiedForYear);
       const statusCounts = {
-        verified: result.filter((b) => b.reconciliationStatus === "verified").length,
-        duplicate: result.filter((b) => b.reconciliationStatus === "duplicate").length,
-        excluded: result.filter((b) => b.reconciliationStatus === "excluded").length,
-        pending: result.filter((b) => b.reconciliationStatus === "pending").length,
+        verified: result.filter((b) => b.verifiedForYear).length,
+        pending: unverified.length,
         total: result.length,
+        newProduction: result.filter((b) => b.category === "new_production").length,
+        carriedForward: result.filter((b) => b.category === "carried_forward").length,
+        passing: unverified.filter((b) => b.validation?.status === "pass").length,
+        warnings: unverified.filter((b) => b.validation?.status === "warning").length,
+        failing: unverified.filter((b) => b.validation?.status === "fail").length,
       };
 
       return { batches: result, statusCounts };
@@ -2148,7 +2277,7 @@ export const batchRouter = router({
   bulkUpdateReconciliationStatus: adminProcedure
     .input(z.object({
       batchIds: z.array(z.string().uuid()).min(1).max(500),
-      reconciliationStatus: z.enum(["verified", "duplicate", "excluded", "pending"]),
+      reconciliationStatus: z.enum(["verified", "pending", "duplicate", "excluded"]),
       reconciliationNotes: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
@@ -2185,6 +2314,77 @@ export const batchRouter = router({
       }
 
       return { success: true, updatedCount: updated.length };
+    }),
+
+  /**
+   * Validate batches and auto-verify those that pass all checks.
+   * Batches with only warnings can be force-verified.
+   */
+  validateAndVerify: adminProcedure
+    .input(z.object({
+      batchIds: z.array(z.string().uuid()).min(1).max(500),
+      forceVerifyWarnings: z.boolean().default(false),
+      year: z.number().int().min(2020).max(2100).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      // Fetch batch data needed for validation
+      const batchData = await db
+        .select({
+          id: batches.id,
+          productType: batches.productType,
+          startDate: batches.startDate,
+          initialVolumeLiters: batches.initialVolumeLiters,
+          currentVolumeLiters: batches.currentVolumeLiters,
+          parentBatchId: batches.parentBatchId,
+          vesselId: batches.vesselId,
+          actualAbv: batches.actualAbv,
+          estimatedAbv: batches.estimatedAbv,
+        })
+        .from(batches)
+        .where(and(inArray(batches.id, input.batchIds), isNull(batches.deletedAt)));
+
+      const year = input.year || new Date().getFullYear();
+      const validations = await validateBatches(batchData, year);
+
+      const toVerify: string[] = [];
+      const blocked: { batchId: string; validation: BatchValidation }[] = [];
+
+      for (const [batchId, validation] of validations) {
+        if (validation.status === "pass") {
+          toVerify.push(batchId);
+        } else if (validation.status === "warning" && input.forceVerifyWarnings) {
+          toVerify.push(batchId);
+        } else {
+          blocked.push({ batchId, validation });
+        }
+      }
+
+      if (toVerify.length > 0) {
+        await db
+          .update(batches)
+          .set({
+            reconciliationStatus: "verified",
+            reconciliationVerifiedForYear: year,
+            updatedAt: new Date(),
+          })
+          .where(inArray(batches.id, toVerify));
+
+        await db.insert(auditLogs).values(
+          toVerify.map((id) => ({
+            tableName: "batches" as const,
+            recordId: id,
+            operation: "update" as const,
+            newData: { reconciliationStatus: "verified" },
+            diffData: { reconciliationStatus: { new: "verified" } },
+            changedAt: new Date(),
+            reason: input.forceVerifyWarnings
+              ? "Auto-verified via batch validation (warnings overridden)"
+              : "Auto-verified via batch validation (all checks passed)",
+          })),
+        );
+      }
+
+      return { verified: toVerify, blocked };
     }),
 
   /**
@@ -4148,8 +4348,10 @@ export const batchRouter = router({
                 batchNumber: childBatchNumber,
                 initialVolume: "0", // Volume comes from transfer, not initial production
                 initialVolumeUnit: 'L',
+                initialVolumeLiters: "0",
                 currentVolume: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
+                currentVolumeLiters: volumeRackedL.toString(),
                 productType: batch[0].productType, // Inherit parent's product type
                 startDate: rackDate,
                 originPressRunId: batch[0].originPressRunId,
@@ -6180,6 +6382,23 @@ export const batchRouter = router({
         )
         .orderBy(asc(batchVolumeAdjustments.adjustmentDate));
 
+      // 8. Merge history (juice added post-creation from press runs, juice purchases, etc.)
+      const merges = await db
+        .select({
+          id: batchMergeHistory.id,
+          date: batchMergeHistory.mergedAt,
+          volumeAdded: batchMergeHistory.volumeAdded,
+          sourceType: batchMergeHistory.sourceType,
+        })
+        .from(batchMergeHistory)
+        .where(
+          and(
+            eq(batchMergeHistory.targetBatchId, batchId),
+            isNull(batchMergeHistory.deletedAt),
+          ),
+        )
+        .orderBy(asc(batchMergeHistory.mergedAt));
+
       // Build unified entries list
       type ChildOutcome = {
         type: "bottling" | "kegging" | "loss" | "transfer";
@@ -6190,7 +6409,7 @@ export const batchRouter = router({
       type VolumeEntry = {
         id: string;
         date: Date;
-        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation" | "adjustment";
+        type: "transfer" | "transfer_in" | "merge" | "racking" | "filtering" | "bottling" | "kegging" | "distillation" | "adjustment";
         description: string;
         volumeOut: number;
         volumeIn: number;
@@ -6407,6 +6626,23 @@ export const batchRouter = router({
           description: `Blended from ${t.sourceName || t.sourceBatchNumber || "batch"}`,
           volumeOut: 0,
           volumeIn: parseFloat(t.volumeIn || "0"),
+          loss: 0,
+          destinationId: null,
+          destinationName: null,
+        });
+      }
+
+      // Add merge history (juice added from press runs, juice purchases, etc.)
+      for (const m of merges) {
+        const sourceLabel = m.sourceType === "press_run" ? "press run" :
+          m.sourceType === "juice_purchase" ? "juice purchase" : "batch";
+        entries.push({
+          id: m.id,
+          date: m.date,
+          type: "merge",
+          description: `Merged from ${sourceLabel}`,
+          volumeOut: 0,
+          volumeIn: parseFloat(m.volumeAdded || "0"),
           loss: 0,
           destinationId: null,
           destinationName: null,
@@ -6682,7 +6918,7 @@ export const batchRouter = router({
       type VolumeEntry = {
         id: string;
         date: Date;
-        type: "transfer" | "transfer_in" | "racking" | "filtering" | "bottling" | "kegging" | "distillation" | "adjustment";
+        type: "transfer" | "transfer_in" | "merge" | "racking" | "filtering" | "bottling" | "kegging" | "distillation" | "adjustment";
         description: string;
         volumeOut: number;
         volumeIn: number;

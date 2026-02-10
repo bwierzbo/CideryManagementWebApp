@@ -213,6 +213,7 @@ interface SystemVolumeBreakdown {
   totalLiters: number;
   initialVolumeLiters: number;    // Sum of effectiveInitial for all batches
   mergesInLiters: number;         // Juice merges (press runs, purchases added post-creation)
+  mergesOutLiters: number;        // Volume sent out during merges (source batch side)
   transfersInLiters: number;      // Volume received from other batches
   transfersOutLiters: number;     // Volume sent to other batches
   transferLossLiters: number;     // Loss during transfers
@@ -238,7 +239,7 @@ async function computeSystemCalculatedOnHand(
   asOfDate: string,
 ): Promise<{ total: number; breakdown: SystemVolumeBreakdown }> {
   const emptyBreakdown: SystemVolumeBreakdown = {
-    totalLiters: 0, initialVolumeLiters: 0, mergesInLiters: 0,
+    totalLiters: 0, initialVolumeLiters: 0, mergesInLiters: 0, mergesOutLiters: 0,
     transfersInLiters: 0, transfersOutLiters: 0, transferLossLiters: 0,
     bottlingLiters: 0, bottlingLossLiters: 0, keggingLiters: 0, keggingLossLiters: 0,
     distillationLiters: 0, adjustmentsLiters: 0, rackingLossLiters: 0, filterLossLiters: 0,
@@ -303,6 +304,16 @@ async function computeSystemCalculatedOnHand(
       AND merged_at < ${endDate}
   `);
   const mergesByBatch = groupBy(merges.rows as any[], "target_batch_id");
+
+  // 3b. Merges OUT (source batch side)
+  const mOut = await db.execute(sql`
+    SELECT source_batch_id, volume_added AS volume_merged_out
+    FROM batch_merge_history
+    WHERE source_batch_id IN (${idList})
+      AND deleted_at IS NULL
+      AND merged_at < ${endDate}
+  `);
+  const mergesOutByBatch = groupBy(mOut.rows as any[], "source_batch_id");
 
   // 4. Bottle runs
   const bottles = await db.execute(sql`
@@ -380,6 +391,7 @@ async function computeSystemCalculatedOnHand(
     const transfersOut = (transfersOutByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_transferred), 0);
     const transferLoss = (transfersOutByBatch.get(batchId) || []).reduce((s, r) => s + num(r.loss), 0);
     const mergesIn = (mergesByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_added), 0);
+    const mergesOut = (mergesOutByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_merged_out), 0);
 
     // Bottling with smart loss detection (matching volume trace logic)
     const bottlingVol = (bottlesByBatch.get(batchId) || []).reduce((s, b) => s + num(b.volume_taken_liters), 0);
@@ -401,7 +413,7 @@ async function computeSystemCalculatedOnHand(
     // Transfer-created batches: effective initial is 0 if they have parent + inflow
     const effectiveInitial = (batch.parentId && transfersIn > 0) ? 0 : batch.initial;
 
-    const ending = effectiveInitial + mergesIn + transfersIn
+    const ending = effectiveInitial + mergesIn - mergesOut + transfersIn
       - transfersOut - transferLoss
       - bottlingVol - bottlingLoss
       - kegging - keggingLoss
@@ -415,6 +427,7 @@ async function computeSystemCalculatedOnHand(
     // Accumulate breakdown
     bd.initialVolumeLiters += effectiveInitial;
     bd.mergesInLiters += mergesIn;
+    bd.mergesOutLiters += mergesOut;
     bd.transfersInLiters += transfersIn;
     bd.transfersOutLiters += transfersOut;
     bd.transferLossLiters += transferLoss;

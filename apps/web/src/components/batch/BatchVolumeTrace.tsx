@@ -48,6 +48,7 @@ interface BatchVolumeTraceProps {
 const typeIcons = {
   transfer: ArrowRight,
   transfer_in: ArrowLeft,
+  merge: Droplets,
   racking: FlaskConical,
   filtering: Filter,
   bottling: Package,
@@ -59,6 +60,7 @@ const typeIcons = {
 const typeColors = {
   transfer: "bg-indigo-500/10 text-indigo-700 border-indigo-500/20",
   transfer_in: "bg-green-500/10 text-green-700 border-green-500/20",
+  merge: "bg-teal-500/10 text-teal-700 border-teal-500/20",
   racking: "bg-amber-500/10 text-amber-700 border-amber-500/20",
   filtering: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
   bottling: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
@@ -70,6 +72,7 @@ const typeColors = {
 const typeLabels = {
   transfer: "Transfer",
   transfer_in: "Blend In",
+  merge: "Merge In",
   racking: "Racking",
   filtering: "Filtering",
   bottling: "Bottling",

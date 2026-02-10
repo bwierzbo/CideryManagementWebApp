@@ -773,6 +773,7 @@ export const batches = pgTable(
     // TTB Reconciliation tracking
     // verified=counted, duplicate=racking duplicate not counted, excluded=manually excluded, pending=needs review
     reconciliationStatus: batchReconciliationStatusEnum("reconciliation_status").default("pending"),
+    reconciliationVerifiedForYear: integer("reconciliation_verified_for_year"),
     reconciliationNotes: text("reconciliation_notes"),
     parentBatchId: uuid("parent_batch_id").references((): AnyPgColumn => batches.id),
     isRackingDerivative: boolean("is_racking_derivative").default(false),

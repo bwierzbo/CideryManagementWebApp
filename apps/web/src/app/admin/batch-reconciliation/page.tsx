@@ -1,7 +1,5 @@
-"use client";
-
-import { BatchReconciliation } from "@/components/admin/BatchReconciliation";
+import { redirect } from "next/navigation";
 
 export default function BatchReconciliationPage() {
-  return <BatchReconciliation />;
+  redirect("/reports/reconciliation");
 }

@@ -588,19 +588,33 @@ export const carbonationRouter = router({
     }),
 
   /**
-   * Update carbonation dates
+   * Update carbonation operation — all editable fields
    */
   updateCarbonation: createRbacProcedure("update", "carbonation")
     .input(
       z.object({
         carbonationId: z.string().uuid("Invalid carbonation ID"),
+        // Dates
         startedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
-        completedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+        completedAt: z.date().or(z.string().transform((val) => new Date(val))).nullable().optional(),
+        // Target / process
+        targetCo2Volumes: z.number().min(0).max(5).optional(),
+        pressureApplied: z.number().min(0).max(50).optional(),
+        carbonationProcess: z.enum(["headspace", "inline", "stone", "bottle_conditioning"]).optional(),
+        gasType: z.string().optional(),
+        // Final measurements
+        finalCo2Volumes: z.number().min(0).max(5).nullable().optional(),
+        finalPressure: z.number().min(0).max(50).nullable().optional(),
+        finalTemperature: z.number().min(-5).max(25).nullable().optional(),
+        finalVolume: z.number().min(0).nullable().optional(),
+        // Quality
+        qualityCheck: z.enum(["pass", "fail", "needs_adjustment", "in_progress"]).optional(),
+        qualityNotes: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ input }) => {
       try {
-        // Verify carbonation operation exists
         const existingCarbonation = await db
           .select()
           .from(batchCarbonationOperations)
@@ -619,16 +633,36 @@ export const carbonationRouter = router({
           });
         }
 
-        // Build update object with only provided dates
-        const updateData: any = {
+        // Build update object with only provided fields
+        const updateData: Record<string, unknown> = {
           updatedAt: new Date(),
         };
 
-        if (input.startedAt) updateData.startedAt = input.startedAt;
+        if (input.startedAt !== undefined) updateData.startedAt = input.startedAt;
         if (input.completedAt !== undefined) updateData.completedAt = input.completedAt;
+        if (input.targetCo2Volumes !== undefined) updateData.targetCo2Volumes = input.targetCo2Volumes.toString();
+        if (input.pressureApplied !== undefined) updateData.pressureApplied = input.pressureApplied.toString();
+        if (input.carbonationProcess !== undefined) updateData.carbonationProcess = input.carbonationProcess;
+        if (input.gasType !== undefined) updateData.gasType = input.gasType;
+        if (input.finalCo2Volumes !== undefined) updateData.finalCo2Volumes = input.finalCo2Volumes?.toString() ?? null;
+        if (input.finalPressure !== undefined) updateData.finalPressure = input.finalPressure?.toString() ?? null;
+        if (input.finalTemperature !== undefined) updateData.finalTemperature = input.finalTemperature?.toString() ?? null;
+        if (input.finalVolume !== undefined) updateData.finalVolume = input.finalVolume?.toString() ?? null;
+        if (input.qualityCheck !== undefined) updateData.qualityCheck = input.qualityCheck;
+        if (input.qualityNotes !== undefined) updateData.qualityNotes = input.qualityNotes;
+        if (input.notes !== undefined) updateData.notes = input.notes;
 
-        // Update carbonation operation
-        const updatedCarbonation = await db
+        // Recalculate duration if both dates are set
+        const startedAt = input.startedAt ?? existingCarbonation[0].startedAt;
+        const completedAt = input.completedAt !== undefined ? input.completedAt : existingCarbonation[0].completedAt;
+        if (startedAt && completedAt) {
+          const durationHours = ((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / (1000 * 60 * 60)).toFixed(1);
+          updateData.durationHours = durationHours;
+        } else if (completedAt === null) {
+          updateData.durationHours = null;
+        }
+
+        const [updated] = await db
           .update(batchCarbonationOperations)
           .set(updateData)
           .where(eq(batchCarbonationOperations.id, input.carbonationId))
@@ -636,8 +670,8 @@ export const carbonationRouter = router({
 
         return {
           success: true,
-          carbonation: updatedCarbonation[0],
-          message: "Carbonation dates updated successfully",
+          carbonation: updated,
+          message: "Carbonation operation updated successfully",
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;

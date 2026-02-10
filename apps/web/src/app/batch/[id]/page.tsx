@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { trpc } from "@/utils/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,7 @@ import { BatchActivityHistory } from "@/components/batch/BatchActivityHistory";
 import { BatchVolumeTrace } from "@/components/batch/BatchVolumeTrace";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { CompleteCarbonationModal } from "@/components/batch/CompleteCarbonationModal";
+import { EditCarbonationModal } from "@/components/batch/EditCarbonationModal";
 import { toast } from "@/hooks/use-toast";
 import {
   WeightDisplay,
@@ -97,6 +98,8 @@ export default function BatchDetailsPage() {
   const [newStatus, setNewStatus] = useState<string>("");
   const [selectedCarbonationOperation, setSelectedCarbonationOperation] =
     useState<any>(null);
+  const [showEditCarbonationModal, setShowEditCarbonationModal] = useState(false);
+  const [editCarbonationOp, setEditCarbonationOp] = useState<any>(null);
   const [isEditingStartDate, setIsEditingStartDate] = useState(false);
   const [editStartDate, setEditStartDate] = useState("");
   const [isEditingName, setIsEditingName] = useState(false);
@@ -106,7 +109,9 @@ export default function BatchDetailsPage() {
   const [isEditingCustomName, setIsEditingCustomName] = useState(false);
   const [editCustomName, setEditCustomName] = useState("");
   const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
-  const [activeTab, setActiveTab] = useState("activity");
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState(tabParam || "activity");
 
   const utils = trpc.useUtils();
 
@@ -981,7 +986,18 @@ export default function BatchDetailsPage() {
                               <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right space-x-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditCarbonationOp(carb);
+                                setShowEditCarbonationModal(true);
+                              }}
+                            >
+                              <Edit3 className="w-4 h-4 mr-1" />
+                              Edit
+                            </Button>
                             {isInProgress && (
                               <Button
                                 size="sm"
@@ -1452,6 +1468,20 @@ export default function BatchDetailsPage() {
               title: "Success",
               description: "Carbonation operation completed successfully",
             });
+          }}
+        />
+      )}
+
+      {/* Edit Carbonation Modal */}
+      {showEditCarbonationModal && editCarbonationOp && (
+        <EditCarbonationModal
+          open={showEditCarbonationModal}
+          onOpenChange={setShowEditCarbonationModal}
+          carbonation={editCarbonationOp}
+          batchName={batch.name}
+          onSuccess={() => {
+            setEditCarbonationOp(null);
+            utils.carbonation.list.invalidate({ batchId });
           }}
         />
       )}
