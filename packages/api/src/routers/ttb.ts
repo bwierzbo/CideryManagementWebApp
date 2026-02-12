@@ -1545,7 +1545,8 @@ export const ttbRouter = router({
                 db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken_liters AS DECIMAL)), 0) as total
                   FROM bottle_runs WHERE batch_id IN (${begIdList})
                   AND voided_at IS NULL AND packaged_at <= ${dayBeforeStart} GROUP BY batch_id`),
-                db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken AS DECIMAL)), 0) as total
+                db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken AS DECIMAL)), 0) as total,
+                  COALESCE(SUM(CAST(COALESCE(loss, '0') AS DECIMAL)), 0) as total_loss
                   FROM keg_fills WHERE batch_id IN (${begIdList})
                   AND voided_at IS NULL AND deleted_at IS NULL AND filled_at <= ${dayBeforeStart} GROUP BY batch_id`),
                 db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(source_volume_liters AS DECIMAL)), 0) as total
@@ -1575,6 +1576,7 @@ export const ttbRouter = router({
               const bmOut = makeBegMap(begMergesOut.rows, "batch_id", "total");
               const bBott = makeBegMap(begBottlings.rows, "batch_id", "total");
               const bKeg = makeBegMap(begKegFillsQ.rows, "batch_id", "total");
+              const bKegLoss = makeBegMap(begKegFillsQ.rows, "batch_id", "total_loss");
               const bDist = makeBegMap(begDistillation.rows, "batch_id", "total");
               const bRack = makeBegMap(begRacking.rows, "batch_id", "total");
               const bFilt = makeBegMap(begFiltering.rows, "batch_id", "total");
@@ -1589,6 +1591,7 @@ export const ttbRouter = router({
                 vol -= (bmOut.get(batch.id) || 0);
                 vol -= (bBott.get(batch.id) || 0);
                 vol -= (bKeg.get(batch.id) || 0);
+                vol -= (bKegLoss.get(batch.id) || 0);
                 vol -= (bDist.get(batch.id) || 0);
                 vol -= (bRack.get(batch.id) || 0);
                 vol -= (bFilt.get(batch.id) || 0);
@@ -2110,7 +2113,8 @@ export const ttbRouter = router({
             db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken_liters AS DECIMAL)), 0) as total
               FROM bottle_runs WHERE batch_id IN (${endIdList})
               AND voided_at IS NULL AND packaged_at <= ${endDate} GROUP BY batch_id`),
-            db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken AS DECIMAL)), 0) as total
+            db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken AS DECIMAL)), 0) as total,
+              COALESCE(SUM(CAST(COALESCE(loss, '0') AS DECIMAL)), 0) as total_loss
               FROM keg_fills WHERE batch_id IN (${endIdList})
               AND voided_at IS NULL AND deleted_at IS NULL AND filled_at <= ${endDate} GROUP BY batch_id`),
             db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(source_volume_liters AS DECIMAL)), 0) as total
@@ -2141,6 +2145,7 @@ export const ttbRouter = router({
           const mOutMap = makeMap(endMergesOut.rows, "batch_id", "total");
           const bottMap = makeMap(endBottlings.rows, "batch_id", "total");
           const kegMap = makeMap(endKegFillsQ.rows, "batch_id", "total");
+          const kegLossMap = makeMap(endKegFillsQ.rows, "batch_id", "total_loss");
           const distMap = makeMap(endDistillation.rows, "batch_id", "total");
           const rackMap = makeMap(endRacking.rows, "batch_id", "total");
           const filtMap = makeMap(endFiltering.rows, "batch_id", "total");
@@ -2155,6 +2160,7 @@ export const ttbRouter = router({
             vol -= (mOutMap.get(batch.id) || 0);
             vol -= (bottMap.get(batch.id) || 0);
             vol -= (kegMap.get(batch.id) || 0);
+            vol -= (kegLossMap.get(batch.id) || 0);
             vol -= (distMap.get(batch.id) || 0);
             vol -= (rackMap.get(batch.id) || 0);
             vol -= (filtMap.get(batch.id) || 0);
@@ -2335,12 +2341,14 @@ export const ttbRouter = router({
           GROUP BY ii.batch_id
         `);
 
-        // Aggregate removals by tax class
+        // Aggregate removals by tax class (keg-only for bulk line 17, combined for tax computation)
+        const kegRemovalsByTaxClass: Record<string, number> = {};
         const removalsByTaxClass: Record<string, number> = {};
         for (const row of kegDistsByBatch.rows) {
           const batchId = String(row["batch_id"]);
           const gallons = litersToWineGallons(Number(row["total_liters"] || 0));
           const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
+          kegRemovalsByTaxClass[taxClass] = (kegRemovalsByTaxClass[taxClass] || 0) + gallons;
           removalsByTaxClass[taxClass] = (removalsByTaxClass[taxClass] || 0) + gallons;
         }
         for (const row of bottleDistsByBatch.rows) {
@@ -2615,7 +2623,7 @@ export const ttbRouter = router({
         // Hard cider column: excludes pommeau and wineUnder16 volumes
         const ciderBeginning = roundGallons(beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons);
         const ciderLine11 = ciderBeginning + wineProducedGallons;
-        const ciderKegTaxPaid = roundGallons(removalsByTaxClass["hardCider"] || 0);
+        const ciderKegTaxPaid = roundGallons(kegRemovalsByTaxClass["hardCider"] || 0);
         const ciderBulkWines: BulkWinesSection = {
           ...bulkWines,
           line1_onHandFirst: ciderBeginning,
@@ -2629,7 +2637,7 @@ export const ttbRouter = router({
 
         // Wine ≤16% column (fruit wine): receives volume via tax class transfers
         const wineUnder16Line11 = beginningWineUnder16BulkGallons;
-        const wineUnder16KegTaxPaid = roundGallons(removalsByTaxClass["wineUnder16"] || 0);
+        const wineUnder16KegTaxPaid = roundGallons(kegRemovalsByTaxClass["wineUnder16"] || 0);
         const wineUnder16BulkWines: BulkWinesSection = {
           line1_onHandFirst: beginningWineUnder16BulkGallons,
           line2_produced: 0,
@@ -2667,7 +2675,7 @@ export const ttbRouter = router({
 
         // Wine 16-21% column (pommeau): production = blending, no fermentation
         const pommeauLine11 = beginningPommeauBulkGallons + pommeauProducedGallons;
-        const pommeauKegTaxPaid = roundGallons(removalsByTaxClass["wine16To21"] || 0);
+        const pommeauKegTaxPaid = roundGallons(kegRemovalsByTaxClass["wine16To21"] || 0);
         const pommeauBulkWines: BulkWinesSection = {
           line1_onHandFirst: beginningPommeauBulkGallons,
           line2_produced: 0, // Pommeau is not fermented
