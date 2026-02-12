@@ -1326,7 +1326,7 @@ async function computeReconciliationFromBatches(
     aggLoss.adjustments += lossBreakdown.adjustments;
 
     // Count issues
-    if (Math.abs(identityGal) > 0.01) batchesWithIdentityIssues++;
+    if (Math.abs(identityGal) >= 0.25) batchesWithIdentityIssues++;
     if (Math.abs(driftLiters) > 0.5 && info.reconciliationStatus !== "verified") batchesWithDrift++;
     if (hasInitialVolumeAnomaly) batchesWithInitialAnomaly++;
     if (exceedsVesselCapacity && info.reconciliationStatus !== "verified") vesselCapacityWarnings++;

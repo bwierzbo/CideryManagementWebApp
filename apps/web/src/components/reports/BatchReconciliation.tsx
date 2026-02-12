@@ -83,6 +83,8 @@ import {
   showLoading,
 } from "@/utils/error-handling";
 import { litersToWineGallons } from "lib/src/calculations/ttb";
+import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
+import { arrayToCSV, downloadCSV, escapeCSVValue } from "@/utils/csv/exportHelpers";
 
 const PRODUCT_TYPES = [
   { value: "cider", label: "Cider" },
@@ -258,7 +260,7 @@ function ExpandableReconciliationRow({
   const hasIssues = validation && validation.status !== "pass";
   const recon = reconMap.get(batch.id);
   const hasReconIssue = recon && (
-    Math.abs(recon.identityCheck) >= 0.1 ||
+    Math.abs(recon.identityCheck) >= 0.25 ||
     Math.abs(recon.driftLiters) >= 0.5 ||
     recon.hasInitialVolumeAnomaly ||
     recon.exceedsVesselCapacity
@@ -355,7 +357,7 @@ function ExpandableReconciliationRow({
         </TableCell>
         <TableCell className="text-center">
           {recon ? (() => {
-            const hasId = Math.abs(recon.identityCheck) >= 0.1;
+            const hasId = Math.abs(recon.identityCheck) >= 0.25;
             const hasDr = Math.abs(recon.driftLiters) >= 0.5;
             return (
               <div className="flex items-center justify-center gap-0.5">
@@ -429,8 +431,8 @@ function ExpandableReconciliationRow({
               <div>
                 <p className="font-semibold text-gray-600 mb-1">Check Details</p>
                 <div className="space-y-0.5 text-gray-500">
-                  <p className={Math.abs(recon.identityCheck) >= 0.1 ? "text-red-700" : ""}>
-                    Identity: {recon.identityCheck.toFixed(2)} gal {Math.abs(recon.identityCheck) >= 0.1 ? "FAIL" : "OK"}
+                  <p className={Math.abs(recon.identityCheck) >= 0.25 ? "text-red-700" : ""}>
+                    Identity: {recon.identityCheck.toFixed(2)} gal {Math.abs(recon.identityCheck) >= 0.25 ? "FAIL" : "OK"}
                   </p>
                   <p className={Math.abs(recon.driftLiters) >= 0.5 ? "text-red-700" : ""}>
                     Drift: {recon.driftLiters < 0 ? "−" : ""}{litersToWineGallons(Math.abs(recon.driftLiters)).toFixed(2)} gal {Math.abs(recon.driftLiters) >= 0.5 ? "FAIL" : "OK"}
@@ -761,7 +763,7 @@ export function BatchReconciliation() {
   const periodStatus = (reconciliationData as any)?.periodStatus;
 
   // Identity check: is the batch-derived identity within tolerance?
-  const identityCheckPasses = batchRecon ? Math.abs(batchRecon.identityCheck) < 0.1 : false;
+  const identityCheckPasses = batchRecon ? Math.abs(batchRecon.identityCheck) < 0.25 : false;
   const hasNoDoubleCountingIssues = batchRecon
     ? batchRecon.batchesWithDrift === 0 && batchRecon.batchesWithInitialAnomaly === 0 && batchRecon.vesselCapacityWarnings === 0
     : false;
@@ -881,7 +883,7 @@ export function BatchReconciliation() {
       const r = reconMap.get(b.id);
       if (!r) return false;
       switch (ttbFilter) {
-        case "identityIssues": return Math.abs(r.identityCheck) >= 0.1;
+        case "identityIssues": return Math.abs(r.identityCheck) >= 0.25;
         case "drift": return Math.abs(r.driftLiters) >= 0.5;
         case "initialAnomaly": return r.hasInitialVolumeAnomaly;
         case "capacity": return r.exceedsVesselCapacity;
@@ -1031,6 +1033,94 @@ export function BatchReconciliation() {
   // Year options
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - 3 + i);
 
+  // CSV Export handler
+  const handleExportCSV = useCallback(async () => {
+    const lines: string[] = [];
+    lines.push(`Batch Reconciliation - ${yearFilter}`);
+    lines.push(`Period,${reconStartDate} to ${reconEndDate}`);
+    lines.push(`Generated,${new Date().toISOString().split("T")[0]}`);
+    lines.push("");
+
+    if (yearMetrics) {
+      lines.push("TTB Balance (gal)");
+      lines.push(`Opening,${yearMetrics.opening}`);
+      lines.push(`Production,${yearMetrics.production}`);
+      if ((yearMetrics as any).pressRuns > 0) lines.push(`  Pressed,${(yearMetrics as any).pressRuns}`);
+      if ((yearMetrics as any).juicePurchases > 0) lines.push(`  Purchased,${(yearMetrics as any).juicePurchases}`);
+      const totalRemovals = (yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation).toFixed(1);
+      lines.push(`Removals,${totalRemovals}`);
+      if ((yearMetrics as any).bottleSales > 0) lines.push(`  Bottled,${(yearMetrics as any).bottleSales}`);
+      if ((yearMetrics as any).kegSales > 0) lines.push(`  Kegged,${(yearMetrics as any).kegSales}`);
+      if (yearMetrics.losses > 0) lines.push(`  Process Losses,${yearMetrics.losses.toFixed(1)}`);
+      if (yearMetrics.distillation > 0) lines.push(`  Sent to DSP,${yearMetrics.distillation.toFixed(1)}`);
+      lines.push(`Calculated Ending,${yearMetrics.ending}`);
+      lines.push(`System Calculated,${yearMetrics.systemCalculated}`);
+      if (Math.abs(yearMetrics.systemVariance) > 0.1) {
+        lines.push(`Variance,${yearMetrics.systemVariance.toFixed(1)}`);
+      }
+      lines.push("");
+    }
+
+    if (batchRecon) {
+      lines.push("Batch Aggregate (gal)");
+      lines.push(`Opening,${batchRecon.totals.opening}`);
+      lines.push(`Production,${batchRecon.totals.production}`);
+      lines.push(`Losses,${batchRecon.totals.losses}`);
+      lines.push(`Sales,${batchRecon.totals.sales}`);
+      lines.push(`Distillation,${batchRecon.totals.distillation}`);
+      lines.push(`Ending,${batchRecon.totals.ending}`);
+      lines.push("");
+      lines.push("Loss Breakdown (gal)");
+      lines.push(`Racking,${batchRecon.lossBreakdown.racking}`);
+      lines.push(`Filter,${batchRecon.lossBreakdown.filter}`);
+      lines.push(`Bottling,${batchRecon.lossBreakdown.bottling}`);
+      lines.push(`Kegging,${batchRecon.lossBreakdown.kegging}`);
+      lines.push(`Transfer,${batchRecon.lossBreakdown.transfer}`);
+      lines.push(`Adjustments,${batchRecon.lossBreakdown.adjustments}`);
+      lines.push("");
+    }
+
+    const batchRows = batches.map((b: any) => {
+      const recon = reconMap.get(b.id);
+      return {
+        name: b.customName || b.name || b.batchNumber,
+        batchNumber: b.batchNumber,
+        type: b.productType || "cider",
+        startDate: b.startDate ? new Date(b.startDate).toLocaleDateString() : "",
+        initialL: parseFloat(b.initialVolumeLiters || 0).toFixed(1),
+        endingL: recon ? (recon.reconstructedEndingLiters ?? 0).toFixed(1) : parseFloat(b.currentVolumeLiters || 0).toFixed(1),
+        endingGal: recon ? (recon.ending ?? 0).toFixed(2) : "",
+        vessel: b.vesselName || "",
+        driftL: recon ? recon.driftLiters.toFixed(2) : "",
+        identity: recon ? (Math.abs(recon.identityCheck) >= 0.25 ? "FAIL" : "OK") : "",
+        driftCheck: recon ? (Math.abs(recon.driftLiters) >= 0.5 ? "FAIL" : "OK") : "",
+        initialCheck: recon ? (recon.hasInitialVolumeAnomaly ? "ANOMALY" : "OK") : "",
+        capacityCheck: recon ? (recon.exceedsVesselCapacity ? "OVER" : "OK") : "",
+        status: b.reconciliationStatus || "pending",
+      };
+    });
+
+    const batchCSV = arrayToCSV(batchRows as any[], [
+      { key: "name", header: "Batch Name" },
+      { key: "batchNumber", header: "Batch Number" },
+      { key: "type", header: "Type" },
+      { key: "startDate", header: "Start Date" },
+      { key: "initialL", header: "Initial (L)" },
+      { key: "endingL", header: "Ending (L)" },
+      { key: "endingGal", header: "Ending (gal)" },
+      { key: "vessel", header: "Vessel" },
+      { key: "driftL", header: "Drift (L)" },
+      { key: "identity", header: "Identity" },
+      { key: "driftCheck", header: "Drift" },
+      { key: "initialCheck", header: "Initial Volume" },
+      { key: "capacityCheck", header: "Vessel Capacity" },
+      { key: "status", header: "Status" },
+    ]);
+
+    const fullCSV = lines.join("\n") + "Batch Detail\n" + batchCSV;
+    downloadCSV(fullCSV, `batch-reconciliation-${yearFilter}.csv`);
+  }, [yearFilter, reconStartDate, reconEndDate, yearMetrics, batchRecon, batches, reconMap]);
+
   // Derived counts for bulk actions
   const selectedHasWarnings = Array.from(selectedIds).some((id) => {
     const b = rawBatches.find((b: any) => b.id === id);
@@ -1147,6 +1237,12 @@ export function BatchReconciliation() {
 
               {/* Go button */}
               <Button size="sm" onClick={applyPeriod}>Go</Button>
+
+              {/* Export */}
+              <ReportExportDropdown
+                onExportCSV={handleExportCSV}
+                disabled={isLoading || !data?.batches?.length}
+              />
 
               {/* Divider */}
               <div className="h-8 w-px bg-gray-200" />
