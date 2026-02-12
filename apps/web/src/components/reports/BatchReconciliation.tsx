@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
@@ -131,12 +132,14 @@ function ValidationStatusMenu({
   onResetToPending,
   onSetStatus,
   disabled,
+  hasReconIssue,
 }: {
   batch: any;
   onForceVerify: (batchId: string) => void;
   onResetToPending: (batchId: string) => void;
   onSetStatus: (batchId: string, status: ReconciliationStatus) => void;
   disabled: boolean;
+  hasReconIssue?: boolean;
 }) {
   const validation = batch.validation;
   const isVerified = batch.verifiedForYear === true;
@@ -148,9 +151,19 @@ function ValidationStatusMenu({
 
   if (isVerified) {
     const hasOverrides = validation && validation.status !== "pass";
-    icon = <ShieldCheck className={`w-4 h-4 ${hasOverrides ? "text-blue-400" : "text-blue-500"}`} />;
-    label = hasOverrides ? "Verified (override)" : "Verified";
-    colorClass = hasOverrides ? "text-blue-500" : "text-blue-600";
+    if (hasReconIssue) {
+      icon = <AlertTriangle className="w-4 h-4 text-amber-500" />;
+      label = "Verified (drift)";
+      colorClass = "text-amber-600";
+    } else if (hasOverrides) {
+      icon = <ShieldCheck className="w-4 h-4 text-blue-400" />;
+      label = "Verified (override)";
+      colorClass = "text-blue-500";
+    } else {
+      icon = <ShieldCheck className="w-4 h-4 text-blue-500" />;
+      label = "Verified";
+      colorClass = "text-blue-600";
+    }
   } else if (!validation) {
     icon = <Clock className="w-4 h-4 text-gray-400" />;
     label = "Pending";
@@ -237,13 +250,20 @@ function ExpandableReconciliationRow({
   onResetToPending: (batchId: string) => void;
   onSetStatus: (batchId: string, status: ReconciliationStatus) => void;
   isVerifying: boolean;
-  reconMap: Map<string, { endingLiters: number; endingGal: number }>;
+  reconMap: Map<string, any>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasChildren = batch.children && batch.children.length > 0;
   const validation = batch.validation;
   const hasIssues = validation && validation.status !== "pass";
-  const isExpandable = hasChildren || hasIssues;
+  const recon = reconMap.get(batch.id);
+  const hasReconIssue = recon && (
+    Math.abs(recon.identityCheck) >= 0.1 ||
+    Math.abs(recon.driftLiters) >= 0.5 ||
+    recon.hasInitialVolumeAnomaly ||
+    recon.exceedsVesselCapacity
+  );
+  const isExpandable = hasChildren || hasIssues || !!recon;
 
   const handleRowClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -314,19 +334,46 @@ function ExpandableReconciliationRow({
           {formatVolume(batch.initialVolumeLiters)}
         </TableCell>
         <TableCell className="text-right text-sm tabular-nums">
-          {(() => {
-            const recon = reconMap.get(batch.id);
-            return recon ? recon.endingLiters.toFixed(1) : formatVolume(batch.currentVolumeLiters);
-          })()}
+          {recon ? (recon.reconstructedEndingLiters ?? 0).toFixed(1) : formatVolume(batch.currentVolumeLiters)}
         </TableCell>
         <TableCell className="text-right text-sm tabular-nums">
-          {(() => {
-            const recon = reconMap.get(batch.id);
-            return recon ? recon.endingGal.toFixed(2) : formatGallons(batch.currentVolumeLiters);
-          })()}
+          {recon ? (recon.ending ?? 0).toFixed(2) : formatGallons(batch.currentVolumeLiters)}
         </TableCell>
         <TableCell className="text-sm text-gray-600">
           {batch.vesselName || "—"}
+        </TableCell>
+        <TableCell className="text-right text-sm tabular-nums">
+          {recon ? (() => {
+            const hasDrift = Math.abs(recon.driftLiters) >= 0.5;
+            const driftGal = litersToWineGallons(Math.abs(recon.driftLiters));
+            return (
+              <span className={hasDrift ? "text-red-700 font-semibold" : "text-green-700"}>
+                {hasDrift ? `${recon.driftLiters > 0 ? "+" : "−"}${driftGal.toFixed(1)}` : "0"}
+              </span>
+            );
+          })() : "—"}
+        </TableCell>
+        <TableCell className="text-center">
+          {recon ? (() => {
+            const hasId = Math.abs(recon.identityCheck) >= 0.1;
+            const hasDr = Math.abs(recon.driftLiters) >= 0.5;
+            return (
+              <div className="flex items-center justify-center gap-0.5">
+                <span title={hasId ? `Identity: ${recon.identityCheck.toFixed(1)} gal` : "Identity OK"}>
+                  {hasId ? <XCircle className="w-3.5 h-3.5 text-red-500" /> : <CheckCircle className="w-3.5 h-3.5 text-green-500" />}
+                </span>
+                <span title={hasDr ? `Drift: ${litersToWineGallons(recon.driftLiters).toFixed(1)} gal` : "No drift"}>
+                  {hasDr ? <XCircle className="w-3.5 h-3.5 text-red-500" /> : <CheckCircle className="w-3.5 h-3.5 text-green-500" />}
+                </span>
+                <span title={recon.hasInitialVolumeAnomaly ? "Initial volume anomaly" : "Initial OK"}>
+                  {recon.hasInitialVolumeAnomaly ? <XCircle className="w-3.5 h-3.5 text-orange-500" /> : <CheckCircle className="w-3.5 h-3.5 text-green-500" />}
+                </span>
+                <span title={recon.exceedsVesselCapacity ? "Exceeds vessel capacity" : "Capacity OK"}>
+                  {recon.exceedsVesselCapacity ? <XCircle className="w-3.5 h-3.5 text-purple-500" /> : <CheckCircle className="w-3.5 h-3.5 text-green-500" />}
+                </span>
+              </div>
+            );
+          })() : "—"}
         </TableCell>
         <TableCell>
           <ValidationStatusMenu
@@ -335,6 +382,7 @@ function ExpandableReconciliationRow({
             onResetToPending={onResetToPending}
             onSetStatus={onSetStatus}
             disabled={isVerifying}
+            hasReconIssue={hasReconIssue}
           />
         </TableCell>
         <TableCell>
@@ -350,11 +398,93 @@ function ExpandableReconciliationRow({
         </TableCell>
       </TableRow>
 
+      {/* TTB Forensic Details */}
+      {expanded && recon && (
+        <TableRow className="bg-gray-50/30">
+          <TableCell></TableCell>
+          <TableCell colSpan={11}>
+            {/* TTB Volume Flow */}
+            <div className="flex flex-wrap gap-4 py-2 text-xs">
+              <span className="text-gray-500">Opening: <span className="font-mono font-medium text-gray-700">{recon.opening.toFixed(1)}</span></span>
+              {recon.production > 0 && <span className="text-gray-500">+Prod: <span className="font-mono font-medium text-gray-700">{recon.production.toFixed(1)}</span></span>}
+              {recon.losses > 0 && <span className="text-gray-500">-Loss: <span className="font-mono font-medium text-gray-700">{recon.losses.toFixed(1)}</span></span>}
+              {recon.sales > 0 && <span className="text-gray-500">-Sales: <span className="font-mono font-medium text-gray-700">{recon.sales.toFixed(1)}</span></span>}
+              {recon.distillation > 0 && <span className="text-gray-500">-DSP: <span className="font-mono font-medium text-gray-700">{recon.distillation.toFixed(1)}</span></span>}
+              <span className="text-gray-500">=Ending: <span className="font-mono font-semibold text-gray-900">{recon.ending.toFixed(1)}</span> gal</span>
+            </div>
+            {/* Detail grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs pb-2">
+              <div>
+                <p className="font-semibold text-gray-600 mb-1">Loss Breakdown (gal)</p>
+                <div className="space-y-0.5 text-gray-500">
+                  {recon.lossBreakdown?.racking > 0 && <p>Racking: {recon.lossBreakdown.racking.toFixed(1)}</p>}
+                  {recon.lossBreakdown?.filter > 0 && <p>Filter: {recon.lossBreakdown.filter.toFixed(1)}</p>}
+                  {recon.lossBreakdown?.bottling > 0 && <p>Bottling: {recon.lossBreakdown.bottling.toFixed(1)}</p>}
+                  {recon.lossBreakdown?.kegging > 0 && <p>Kegging: {recon.lossBreakdown.kegging.toFixed(1)}</p>}
+                  {recon.lossBreakdown?.transfer > 0 && <p>Transfer: {recon.lossBreakdown.transfer.toFixed(1)}</p>}
+                  {recon.lossBreakdown?.adjustments !== 0 && recon.lossBreakdown?.adjustments != null && <p>Adjustments: {recon.lossBreakdown.adjustments.toFixed(1)}</p>}
+                  {recon.lossBreakdown && Object.values(recon.lossBreakdown).every((v: any) => Math.abs(v) < 0.05) && <p className="text-gray-400">No losses</p>}
+                </div>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-600 mb-1">Check Details</p>
+                <div className="space-y-0.5 text-gray-500">
+                  <p className={Math.abs(recon.identityCheck) >= 0.1 ? "text-red-700" : ""}>
+                    Identity: {recon.identityCheck.toFixed(2)} gal {Math.abs(recon.identityCheck) >= 0.1 ? "FAIL" : "OK"}
+                  </p>
+                  <p className={Math.abs(recon.driftLiters) >= 0.5 ? "text-red-700" : ""}>
+                    Drift: {recon.driftLiters < 0 ? "−" : ""}{litersToWineGallons(Math.abs(recon.driftLiters)).toFixed(2)} gal {Math.abs(recon.driftLiters) >= 0.5 ? "FAIL" : "OK"}
+                  </p>
+                  <p className={recon.hasInitialVolumeAnomaly ? "text-orange-700" : ""}>
+                    Initial: {recon.hasInitialVolumeAnomaly ? "ANOMALY — transfer-created with non-zero initial" : "OK"}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-600 mb-1">Vessel Capacity</p>
+                <div className="space-y-0.5 text-gray-500">
+                  {recon.vesselCapacityHistory?.length > 0 ? (
+                    <div className="space-y-1">
+                      {recon.vesselCapacityHistory.map((vh: any, idx: number) => (
+                        <div key={idx} className={vh.exceeds ? "text-purple-700" : ""}>
+                          <p className="font-medium text-xs">{vh.vesselName}</p>
+                          <p className="text-xs">Cap: {vh.vesselCapacityGal.toFixed(1)} / Peak: {vh.peakVolumeGal.toFixed(1)} gal</p>
+                          {vh.exceeds && <p className="text-xs font-semibold">EXCEEDS — peak on {vh.peakDate}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  ) : recon.vesselCapacityGal ? (
+                    <>
+                      <p>Capacity: {recon.vesselCapacityGal.toFixed(1)} gal</p>
+                      <p>Peak: {recon.maxVolumeReceivedGal.toFixed(1)} gal</p>
+                      <p className={recon.exceedsVesselCapacity ? "text-purple-700" : ""}>{recon.exceedsVesselCapacity ? "EXCEEDS" : "OK"}</p>
+                    </>
+                  ) : (
+                    <p className="text-gray-400">No vessel assigned</p>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p className="font-semibold text-gray-600 mb-1">Volume Comparison</p>
+                <div className="space-y-0.5 text-gray-500">
+                  <p>Stored: {litersToWineGallons(recon.currentVolumeLitersStored).toFixed(2)} gal</p>
+                  <p>Reconstructed: {litersToWineGallons(recon.reconstructedEndingLiters).toFixed(2)} gal</p>
+                  <p className={Math.abs(recon.driftLiters) >= 0.5 ? "text-red-700" : ""}>
+                    Delta: {recon.driftLiters < 0 ? "−" : "+"}{litersToWineGallons(Math.abs(recon.driftLiters)).toFixed(2)} gal
+                  </p>
+                </div>
+              </div>
+            </div>
+          </TableCell>
+          <TableCell></TableCell>
+        </TableRow>
+      )}
+
       {/* Validation details */}
       {expanded && nonPassChecks.length > 0 && (
         <TableRow className={validation.status === "fail" ? "bg-red-50/30" : "bg-amber-50/30"}>
           <TableCell></TableCell>
-          <TableCell colSpan={8}>
+          <TableCell colSpan={11}>
             <div className="py-2 space-y-1.5">
               {nonPassChecks.map((check: any) => (
                 <div key={check.id} className="flex items-start gap-2 text-sm">
@@ -415,18 +545,20 @@ function ExpandableReconciliationRow({
           <TableCell className="text-right text-sm tabular-nums text-gray-500">
             {(() => {
               const recon = reconMap.get(child.id);
-              return recon ? recon.endingLiters.toFixed(1) : formatVolume(child.currentVolumeLiters);
+              return recon ? recon.reconstructedEndingLiters.toFixed(1) : formatVolume(child.currentVolumeLiters);
             })()}
           </TableCell>
           <TableCell className="text-right text-sm tabular-nums text-gray-500">
             {(() => {
               const recon = reconMap.get(child.id);
-              return recon ? recon.endingGal.toFixed(2) : formatGallons(child.currentVolumeLiters);
+              return recon ? recon.ending.toFixed(2) : formatGallons(child.currentVolumeLiters);
             })()}
           </TableCell>
           <TableCell className="text-sm text-gray-400">
             {child.vesselName || "—"}
           </TableCell>
+          <TableCell className="text-right text-sm text-gray-400">—</TableCell>
+          <TableCell className="text-center text-sm text-gray-400">—</TableCell>
           <TableCell>
             <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">
               Auto-excluded
@@ -439,199 +571,79 @@ function ExpandableReconciliationRow({
   );
 }
 
-function DrillDownRow({
-  batch,
-  hasIdentityIssue,
-  hasDrift,
-  driftGal,
-}: {
-  batch: any;
-  hasIdentityIssue: boolean;
-  hasDrift: boolean;
-  driftGal: number;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const hasAnyIssue = hasIdentityIssue || hasDrift || batch.hasInitialVolumeAnomaly || batch.exceedsVesselCapacity;
-
-  return (
-    <>
-      <tr
-        className={`border-b border-gray-100 ${hasAnyIssue ? "cursor-pointer hover:bg-red-50/30" : "hover:bg-gray-50/50"}`}
-        onClick={() => hasAnyIssue && setExpanded(!expanded)}
-      >
-        <td className="py-1.5 pr-2">
-          <div className="flex items-center gap-1">
-            {hasAnyIssue && (
-              expanded
-                ? <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                : <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
-            )}
-            <Link
-              href={`/batch/${batch.batchId}`}
-              className="text-blue-700 hover:underline font-medium"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {batch.batchName}
-            </Link>
-            {batch.isTransferCreated && (
-              <span title="Transfer-created"><CornerDownRight className="w-3 h-3 text-gray-400 ml-0.5" /></span>
-            )}
-          </div>
-          <span className="text-xs text-gray-400 ml-4">{batch.batchNumber}</span>
-        </td>
-        <td className="py-1.5 px-1 text-gray-600">{batch.vesselName || "—"}</td>
-        <td className="py-1.5 px-1 text-right font-mono">{batch.opening.toFixed(1)}</td>
-        <td className="py-1.5 px-1 text-right font-mono">{batch.production > 0 ? batch.production.toFixed(1) : "—"}</td>
-        <td className="py-1.5 px-1 text-right font-mono">{batch.losses > 0 ? batch.losses.toFixed(1) : "—"}</td>
-        <td className="py-1.5 px-1 text-right font-mono">{batch.sales > 0 ? batch.sales.toFixed(1) : "—"}</td>
-        <td className="py-1.5 px-1 text-right font-mono">{batch.distillation > 0 ? batch.distillation.toFixed(1) : "—"}</td>
-        <td className="py-1.5 px-1 text-right font-mono font-semibold">{batch.ending.toFixed(1)}</td>
-        <td className={`py-1.5 px-1 text-right font-mono ${hasDrift ? "text-red-700 font-semibold" : "text-green-700"}`}>
-          {hasDrift ? `${driftGal > 0 ? "+" : ""}${driftGal.toFixed(1)}` : "0"}
-        </td>
-        <td className="py-1.5 px-1 text-center">
-          <div className="flex items-center justify-center gap-0.5">
-            <span title={hasIdentityIssue ? `Identity: ${batch.identityCheck.toFixed(1)} gal` : "Identity OK"}>
-              {hasIdentityIssue ? (
-                <XCircle className="w-3.5 h-3.5 text-red-500" />
-              ) : (
-                <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-              )}
-            </span>
-            <span title={hasDrift ? `Drift: ${litersToWineGallons(batch.driftLiters).toFixed(1)} gal` : "No drift"}>
-              {hasDrift ? (
-                <XCircle className="w-3.5 h-3.5 text-red-500" />
-              ) : (
-                <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-              )}
-            </span>
-            <span title={batch.hasInitialVolumeAnomaly ? "Initial volume anomaly" : "Initial OK"}>
-              {batch.hasInitialVolumeAnomaly ? (
-                <XCircle className="w-3.5 h-3.5 text-orange-500" />
-              ) : (
-                <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-              )}
-            </span>
-            <span title={batch.exceedsVesselCapacity ? "Exceeds vessel capacity" : "Capacity OK"}>
-              {batch.exceedsVesselCapacity ? (
-                <XCircle className="w-3.5 h-3.5 text-purple-500" />
-              ) : (
-                <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-              )}
-            </span>
-          </div>
-        </td>
-      </tr>
-      {expanded && (
-        <tr className="bg-gray-50/50">
-          <td colSpan={10} className="py-2 px-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-              {/* Loss Breakdown */}
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Loss Breakdown (gal)</p>
-                <div className="space-y-0.5 text-gray-500">
-                  {batch.lossBreakdown.racking > 0 && <p>Racking: {batch.lossBreakdown.racking.toFixed(1)}</p>}
-                  {batch.lossBreakdown.filter > 0 && <p>Filter: {batch.lossBreakdown.filter.toFixed(1)}</p>}
-                  {batch.lossBreakdown.bottling > 0 && <p>Bottling: {batch.lossBreakdown.bottling.toFixed(1)}</p>}
-                  {batch.lossBreakdown.kegging > 0 && <p>Kegging: {batch.lossBreakdown.kegging.toFixed(1)}</p>}
-                  {batch.lossBreakdown.transfer > 0 && <p>Transfer: {batch.lossBreakdown.transfer.toFixed(1)}</p>}
-                  {batch.lossBreakdown.adjustments !== 0 && <p>Adjustments: {batch.lossBreakdown.adjustments.toFixed(1)}</p>}
-                  {Object.values(batch.lossBreakdown).every((v: any) => Math.abs(v) < 0.05) && <p className="text-gray-400">No losses</p>}
-                </div>
-              </div>
-              {/* Check Details */}
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Check Details</p>
-                <div className="space-y-0.5 text-gray-500">
-                  <p className={hasIdentityIssue ? "text-red-700" : ""}>
-                    Identity: {batch.identityCheck.toFixed(2)} gal {hasIdentityIssue ? "FAIL" : "OK"}
-                  </p>
-                  <p className={hasDrift ? "text-red-700" : ""}>
-                    Drift: {litersToWineGallons(batch.driftLiters).toFixed(2)} gal {hasDrift ? "FAIL" : "OK"}
-                  </p>
-                  <p className={batch.hasInitialVolumeAnomaly ? "text-orange-700" : ""}>
-                    Initial: {batch.hasInitialVolumeAnomaly ? "ANOMALY — transfer-created with non-zero initial" : "OK"}
-                  </p>
-                </div>
-              </div>
-              {/* Vessel Info */}
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Vessel Capacity</p>
-                <div className="space-y-0.5 text-gray-500">
-                  {batch.vesselCapacityHistory && batch.vesselCapacityHistory.length > 0 ? (
-                    <div className="space-y-1">
-                      {batch.vesselCapacityHistory.map((vh: any, idx: number) => (
-                        <div key={idx} className={vh.exceeds ? "text-purple-700" : ""}>
-                          <p className="font-medium text-xs">{vh.vesselName}</p>
-                          <p className="text-xs">Cap: {vh.vesselCapacityGal.toFixed(1)} gal / Peak: {vh.peakVolumeGal.toFixed(1)} gal</p>
-                          {vh.exceeds && <p className="text-xs font-semibold">EXCEEDS — peak on {vh.peakDate}</p>}
-                        </div>
-                      ))}
-                      {!batch.exceedsVesselCapacity && (
-                        <p className="text-xs mt-1">All vessel periods within capacity</p>
-                      )}
-                    </div>
-                  ) : batch.vesselCapacityGal ? (
-                    <>
-                      <p>Capacity: {batch.vesselCapacityGal.toFixed(1)} gal</p>
-                      <p>Peak volume: {batch.maxVolumeReceivedGal.toFixed(1)} gal</p>
-                      <p className={batch.exceedsVesselCapacity ? "text-purple-700" : ""}>
-                        {batch.exceedsVesselCapacity ? "EXCEEDS CAPACITY" : "Within capacity"}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-gray-400">No vessel assigned</p>
-                  )}
-                </div>
-              </div>
-              {/* Volume Comparison */}
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Volume Comparison</p>
-                <div className="space-y-0.5 text-gray-500">
-                  <p>Stored: {litersToWineGallons(batch.currentVolumeLitersStored).toFixed(2)} gal</p>
-                  <p>Reconstructed: {litersToWineGallons(batch.reconstructedEndingLiters).toFixed(2)} gal</p>
-                  <p className={hasDrift ? "text-red-700" : ""}>
-                    Delta: {litersToWineGallons(batch.driftLiters).toFixed(2)} gal
-                  </p>
-                </div>
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
 export function BatchReconciliation() {
   const { data: session } = useSession();
   const utils = trpc.useContext();
 
-  // Filters
+  // URL persistence for period selection
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Filters — committed state (drives queries)
   const currentYear = new Date().getFullYear();
-  const [yearFilter, setYearFilter] = useState<number>(currentYear);
-  const [periodPreset, setPeriodPreset] = useState<string>("annual");
+  const [yearFilter, setYearFilter] = useState<number>(() => {
+    const y = searchParams.get("year");
+    return y ? Number(y) : currentYear;
+  });
+  const [periodPreset, setPeriodPreset] = useState<string>(() => {
+    return searchParams.get("period") || "annual";
+  });
+
+  // Pending period selectors (what dropdowns show before "Go")
+  const [pendingYear, setPendingYear] = useState(yearFilter);
+  const [pendingPeriod, setPendingPeriod] = useState(periodPreset);
+
+  const getPeriodType = (period: string) => {
+    if (period.startsWith("q")) return "quarterly";
+    if (period.startsWith("m")) return "monthly";
+    return "annual";
+  };
+  const pendingPeriodType = getPeriodType(pendingPeriod);
+
+  // Apply period selection
+  const applyPeriod = useCallback(() => {
+    setYearFilter(pendingYear);
+    setPeriodPreset(pendingPeriod);
+    setSelectedIds(new Set());
+    const params = new URLSearchParams();
+    params.set("year", String(pendingYear));
+    if (pendingPeriod !== "annual") params.set("period", pendingPeriod);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [pendingYear, pendingPeriod, router]);
+
+  // Other filters (remain reactive)
   const [productTypeFilter, setProductTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [validationFilter, setValidationFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Drill-down
-  const [drillDownOpen, setDrillDownOpen] = useState(false);
-  const [drillDownFilter, setDrillDownFilter] = useState<string>("all");
-  const [drillDownSort, setDrillDownSort] = useState<string>("identityCheck");
-  const [drillDownSortDir, setDrillDownSortDir] = useState<"asc" | "desc">("desc");
+  // TTB issue filter
+  const [ttbFilter, setTtbFilter] = useState<string>("all");
 
   // Compute date range from year + period preset
   const { reconStartDate, reconEndDate } = useMemo(() => {
     const y = yearFilter;
-    switch (periodPreset) {
-      case "q1": return { reconStartDate: `${y - 1}-12-31`, reconEndDate: `${y}-03-31` };
-      case "q2": return { reconStartDate: `${y}-03-31`, reconEndDate: `${y}-06-30` };
-      case "q3": return { reconStartDate: `${y}-06-30`, reconEndDate: `${y}-09-30` };
-      case "q4": return { reconStartDate: `${y}-09-30`, reconEndDate: `${y}-12-31` };
-      default:   return { reconStartDate: `${y - 1}-12-31`, reconEndDate: `${y}-12-31` };
+    const pad = (n: number) => String(n).padStart(2, "0");
+    if (periodPreset.startsWith("q")) {
+      switch (periodPreset) {
+        case "q1": return { reconStartDate: `${y - 1}-12-31`, reconEndDate: `${y}-03-31` };
+        case "q2": return { reconStartDate: `${y}-03-31`, reconEndDate: `${y}-06-30` };
+        case "q3": return { reconStartDate: `${y}-06-30`, reconEndDate: `${y}-09-30` };
+        case "q4": return { reconStartDate: `${y}-09-30`, reconEndDate: `${y}-12-31` };
+      }
     }
+    if (periodPreset.startsWith("m")) {
+      const month = parseInt(periodPreset.slice(1));
+      const endDay = new Date(y, month, 0).getDate();
+      const endDate = `${y}-${pad(month)}-${pad(endDay)}`;
+      if (month === 1) {
+        return { reconStartDate: `${y - 1}-12-31`, reconEndDate: endDate };
+      }
+      const prevEndDay = new Date(y, month - 1, 0).getDate();
+      const startDate = `${y}-${pad(month - 1)}-${pad(prevEndDay)}`;
+      return { reconStartDate: startDate, reconEndDate: endDate };
+    }
+    return { reconStartDate: `${y - 1}-12-31`, reconEndDate: `${y}-12-31` };
   }, [yearFilter, periodPreset]);
 
   // Selection
@@ -681,6 +693,8 @@ export function BatchReconciliation() {
     ttbOpeningBalance: number; production: number; removals: number;
     losses: number; distillation: number; ttbCalculatedEnding: number;
     systemOnHand: number; systemCalculatedOnHand: number; variance: number;
+    pressRunsProduction?: number; juicePurchasesProduction?: number;
+    bottleDistributions?: number; kegDistributions?: number;
   };
   const yearMetrics = useMemo(() => {
     if (!reconciliationData || !("hasOpeningBalances" in reconciliationData) || !reconciliationData.hasOpeningBalances) {
@@ -718,6 +732,11 @@ export function BatchReconciliation() {
       variance: parseFloat((t.ttbCalculatedEnding - t.systemOnHand).toFixed(1)),
       systemVariance: parseFloat((systemCalc - ending).toFixed(1)),
       isConfigured: false,
+      // Breakdowns
+      pressRuns: parseFloat(((t.pressRunsProduction || 0) - (prior.pressRunsProduction || 0)).toFixed(1)),
+      juicePurchases: parseFloat(((t.juicePurchasesProduction || 0) - (prior.juicePurchasesProduction || 0)).toFixed(1)),
+      bottleSales: parseFloat(((t.bottleDistributions || 0) - (prior.bottleDistributions || 0)).toFixed(1)),
+      kegSales: parseFloat(((t.kegDistributions || 0) - (prior.kegDistributions || 0)).toFixed(1)),
     };
   }, [reconciliationData, priorYearData, isOpeningYear]);
 
@@ -833,15 +852,12 @@ export function BatchReconciliation() {
   const rawBatches = data?.batches || [];
   const statusCounts = data?.statusCounts || { verified: 0, pending: 0, total: 0, newProduction: 0, carriedForward: 0, passing: 0, warnings: 0, failing: 0 };
 
-  // Build a lookup map from batch-derived reconciliation data (reconstructed ending volumes)
+  // Build a lookup map from batch-derived reconciliation data (full TTB data per batch)
   const reconMap = useMemo(() => {
-    const map = new Map<string, { endingLiters: number; endingGal: number }>();
+    const map = new Map<string, any>();
     if (batchRecon?.batches) {
       for (const b of batchRecon.batches as any[]) {
-        map.set(b.batchId, {
-          endingLiters: b.reconstructedEndingLiters ?? 0,
-          endingGal: b.ending ?? 0,
-        });
+        map.set(b.batchId, b);
       }
     }
     return map;
@@ -858,9 +874,25 @@ export function BatchReconciliation() {
     });
   }, [rawBatches, validationFilter]);
 
+  // Apply TTB issue filter
+  const ttbFiltered = useMemo(() => {
+    if (ttbFilter === "all") return validationFiltered;
+    return validationFiltered.filter((b: any) => {
+      const r = reconMap.get(b.id);
+      if (!r) return false;
+      switch (ttbFilter) {
+        case "identityIssues": return Math.abs(r.identityCheck) >= 0.1;
+        case "drift": return Math.abs(r.driftLiters) >= 0.5;
+        case "initialAnomaly": return r.hasInitialVolumeAnomaly;
+        case "capacity": return r.exceedsVesselCapacity;
+        default: return true;
+      }
+    });
+  }, [validationFiltered, ttbFilter, reconMap]);
+
   // Sort batches
   const batches = useMemo(() => {
-    const sorted = [...validationFiltered].sort((a: any, b: any) => {
+    const sorted = [...ttbFiltered].sort((a: any, b: any) => {
       let cmp = 0;
       switch (sortField) {
         case "name":
@@ -876,12 +908,12 @@ export function BatchReconciliation() {
           cmp = (parseFloat(a.initialVolumeLiters || "0")) - (parseFloat(b.initialVolumeLiters || "0"));
           break;
         case "endingVolume":
-          cmp = (reconMap.get(a.id)?.endingLiters ?? parseFloat(a.currentVolumeLiters || "0"))
-              - (reconMap.get(b.id)?.endingLiters ?? parseFloat(b.currentVolumeLiters || "0"));
+          cmp = (reconMap.get(a.id)?.reconstructedEndingLiters ?? parseFloat(a.currentVolumeLiters || "0"))
+              - (reconMap.get(b.id)?.reconstructedEndingLiters ?? parseFloat(b.currentVolumeLiters || "0"));
           break;
         case "gallons":
-          cmp = (reconMap.get(a.id)?.endingGal ?? parseFloat(a.currentVolumeLiters || "0") * 0.2642)
-              - (reconMap.get(b.id)?.endingGal ?? parseFloat(b.currentVolumeLiters || "0") * 0.2642);
+          cmp = (reconMap.get(a.id)?.ending ?? parseFloat(a.currentVolumeLiters || "0") * 0.2642)
+              - (reconMap.get(b.id)?.ending ?? parseFloat(b.currentVolumeLiters || "0") * 0.2642);
           break;
         case "vesselName":
           cmp = (a.vesselName || "").localeCompare(b.vesselName || "");
@@ -897,7 +929,7 @@ export function BatchReconciliation() {
       return sortDirection === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [validationFiltered, sortField, sortDirection, reconMap]);
+  }, [ttbFiltered, sortField, sortDirection, reconMap]);
 
   // Sort toggle handler
   const handleSort = (field: SortField) => {
@@ -1043,6 +1075,127 @@ export function BatchReconciliation() {
           </p>
         </div>
 
+        {/* Filter Bar */}
+        <Card className="mb-4">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex flex-wrap gap-3 items-center">
+              {/* Period type */}
+              <Select value={pendingPeriodType} onValueChange={(v) => {
+                if (v === "annual") setPendingPeriod("annual");
+                else if (v === "quarterly") setPendingPeriod("q1");
+                else if (v === "monthly") setPendingPeriod("m1");
+              }}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="Period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="annual">Annual</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Year */}
+              <Select value={String(pendingYear)} onValueChange={(v) => setPendingYear(Number(v))}>
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue placeholder="Year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {yearOptions.map((y) => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Quarter selector (conditional) */}
+              {pendingPeriodType === "quarterly" && (
+                <Select value={pendingPeriod} onValueChange={setPendingPeriod}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue placeholder="Quarter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="q1">Q1 (Jan–Mar)</SelectItem>
+                    <SelectItem value="q2">Q2 (Apr–Jun)</SelectItem>
+                    <SelectItem value="q3">Q3 (Jul–Sep)</SelectItem>
+                    <SelectItem value="q4">Q4 (Oct–Dec)</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Month selector (conditional) */}
+              {pendingPeriodType === "monthly" && (
+                <Select value={pendingPeriod} onValueChange={setPendingPeriod}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="m1">January</SelectItem>
+                    <SelectItem value="m2">February</SelectItem>
+                    <SelectItem value="m3">March</SelectItem>
+                    <SelectItem value="m4">April</SelectItem>
+                    <SelectItem value="m5">May</SelectItem>
+                    <SelectItem value="m6">June</SelectItem>
+                    <SelectItem value="m7">July</SelectItem>
+                    <SelectItem value="m8">August</SelectItem>
+                    <SelectItem value="m9">September</SelectItem>
+                    <SelectItem value="m10">October</SelectItem>
+                    <SelectItem value="m11">November</SelectItem>
+                    <SelectItem value="m12">December</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Go button */}
+              <Button size="sm" onClick={applyPeriod}>Go</Button>
+
+              {/* Divider */}
+              <div className="h-8 w-px bg-gray-200" />
+
+              {/* Product type filter */}
+              <Select value={productTypeFilter} onValueChange={(v) => { setProductTypeFilter(v); setSelectedIds(new Set()); }}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Product Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {PRODUCT_TYPES.map((pt) => (
+                    <SelectItem key={pt.value} value={pt.value}>{pt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Status filter */}
+              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setSelectedIds(new Set()); }}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Search */}
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Search batch name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
+              {(statusFilter !== "all" || validationFilter !== "all" || productTypeFilter !== "all") && (
+                <Button variant="ghost" size="sm" onClick={() => { setStatusFilter("all"); setValidationFilter("all"); setProductTypeFilter("all"); }}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Validation Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card
@@ -1183,7 +1336,7 @@ export function BatchReconciliation() {
               <div className="flex flex-wrap gap-2">
                 {batchRecon.batchesWithDrift > 0 && (
                   <button
-                    onClick={() => { setDrillDownOpen(true); setDrillDownFilter("drift"); }}
+                    onClick={() => { setTtbFilter("drift"); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 transition-colors text-sm text-red-800"
                   >
                     <AlertCircle className="w-4 h-4" />
@@ -1192,7 +1345,7 @@ export function BatchReconciliation() {
                 )}
                 {batchRecon.batchesWithInitialAnomaly > 0 && (
                   <button
-                    onClick={() => { setDrillDownOpen(true); setDrillDownFilter("initialAnomaly"); }}
+                    onClick={() => { setTtbFilter("initialAnomaly"); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-orange-200 bg-orange-50 hover:bg-orange-100 transition-colors text-sm text-orange-800"
                   >
                     <AlertCircle className="w-4 h-4" />
@@ -1201,7 +1354,7 @@ export function BatchReconciliation() {
                 )}
                 {batchRecon.vesselCapacityWarnings > 0 && (
                   <button
-                    onClick={() => { setDrillDownOpen(true); setDrillDownFilter("capacity"); }}
+                    onClick={() => { setTtbFilter("capacity"); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 transition-colors text-sm text-purple-800"
                   >
                     <AlertCircle className="w-4 h-4" />
@@ -1303,10 +1456,24 @@ export function BatchReconciliation() {
                         <p className="font-medium text-gray-700">TTB Balance ({yearFilter})</p>
                         <p className="text-gray-600">Opening: {yearMetrics.opening.toLocaleString()} gal</p>
                         {yearMetrics.production > 0 && (
-                          <p className="text-gray-600">+ Production: {yearMetrics.production.toLocaleString()} gal</p>
+                          <div>
+                            <p className="text-gray-600">+ Production: {yearMetrics.production.toLocaleString()} gal</p>
+                            <div className="ml-4 text-xs text-gray-400">
+                              {(yearMetrics as any).pressRuns > 0 && <p>Pressed: {(yearMetrics as any).pressRuns.toLocaleString()} gal</p>}
+                              {(yearMetrics as any).juicePurchases > 0 && <p>Purchased: {(yearMetrics as any).juicePurchases.toLocaleString()} gal</p>}
+                            </div>
+                          </div>
                         )}
                         {(yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation) > 0 && (
-                          <p className="text-gray-600">- Removals: {(yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation).toFixed(1)} gal</p>
+                          <div>
+                            <p className="text-gray-600">- Removals: {(yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation).toFixed(1)} gal</p>
+                            <div className="ml-4 text-xs text-gray-400">
+                              {(yearMetrics as any).bottleSales > 0 && <p>Bottled: {(yearMetrics as any).bottleSales.toLocaleString()} gal</p>}
+                              {(yearMetrics as any).kegSales > 0 && <p>Kegged: {(yearMetrics as any).kegSales.toLocaleString()} gal</p>}
+                              {yearMetrics.losses > 0 && <p>Process Losses: {yearMetrics.losses.toFixed(1)} gal</p>}
+                              {yearMetrics.distillation > 0 && <p>Sent to DSP: {yearMetrics.distillation.toFixed(1)} gal</p>}
+                            </div>
+                          </div>
                         )}
                         <p className="font-semibold text-gray-800 border-t border-gray-300 mt-1 pt-1">
                           Calculated Ending: {yearMetrics.ending.toLocaleString()} gal
@@ -1418,267 +1585,6 @@ export function BatchReconciliation() {
           );
         })()}
 
-        {/* Per-Batch TTB Contribution Drill-Down */}
-        {batchRecon && batchRecon.batches.length > 0 && (
-          <div className="mb-4">
-            <Collapsible open={drillDownOpen} onOpenChange={setDrillDownOpen}>
-              <CollapsibleTrigger asChild>
-                <Card className="cursor-pointer hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-lg flex items-center">
-                      {drillDownOpen ? (
-                        <ChevronDown className="w-5 h-5 mr-2" />
-                      ) : (
-                        <ChevronRight className="w-5 h-5 mr-2" />
-                      )}
-                      Per-Batch TTB Contributions ({batchRecon.batches.length} batches)
-                    </CardTitle>
-                    <CardDescription>
-                      Volume reconstructed from operations. Drill down to see each batch&apos;s TTB contribution and check results.
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <Card className="border-t-0 rounded-t-none">
-                  <CardContent className="pt-4">
-                    {/* Filter Chips */}
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {[
-                        { key: "all", label: "All", count: batchRecon.batches.length },
-                        { key: "identityIssues", label: "Identity Issues", count: batchRecon.batchesWithIdentityIssues },
-                        { key: "drift", label: "Has Drift", count: batchRecon.batchesWithDrift },
-                        { key: "initialAnomaly", label: "Initial Anomaly", count: batchRecon.batchesWithInitialAnomaly },
-                        { key: "capacity", label: "Over Capacity", count: batchRecon.vesselCapacityWarnings },
-                      ].map((chip) => (
-                        <button
-                          key={chip.key}
-                          onClick={() => setDrillDownFilter(chip.key)}
-                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                            drillDownFilter === chip.key
-                              ? "bg-gray-900 text-white"
-                              : chip.count > 0 || chip.key === "all"
-                                ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                                : "bg-gray-50 text-gray-400 cursor-default"
-                          }`}
-                          disabled={chip.count === 0 && chip.key !== "all"}
-                        >
-                          {chip.label} ({chip.count})
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Summary Row */}
-                    <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4 p-3 bg-gray-50 rounded-lg text-sm">
-                      <div>
-                        <p className="text-xs text-gray-500">Opening</p>
-                        <p className="font-semibold">{batchRecon.totals.opening.toFixed(1)} gal</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Production</p>
-                        <p className="font-semibold">{batchRecon.totals.production.toFixed(1)} gal</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Losses</p>
-                        <p className="font-semibold">{batchRecon.totals.losses.toFixed(1)} gal</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Sales</p>
-                        <p className="font-semibold">{batchRecon.totals.sales.toFixed(1)} gal</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Distillation</p>
-                        <p className="font-semibold">{batchRecon.totals.distillation.toFixed(1)} gal</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Ending</p>
-                        <p className="font-semibold">{batchRecon.totals.ending.toFixed(1)} gal</p>
-                      </div>
-                    </div>
-
-                    {/* Drill-Down Table */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-gray-500 border-b text-xs">
-                            <th className="text-left py-2 pr-2">
-                              <button className="flex items-center hover:text-gray-900" onClick={() => {
-                                if (drillDownSort === "name") setDrillDownSortDir(d => d === "asc" ? "desc" : "asc");
-                                else { setDrillDownSort("name"); setDrillDownSortDir("asc"); }
-                              }}>
-                                Batch {drillDownSort === "name" && (drillDownSortDir === "asc" ? "▲" : "▼")}
-                              </button>
-                            </th>
-                            <th className="text-left py-2 px-1">Vessel</th>
-                            <th className="text-right py-2 px-1">
-                              <button className="flex items-center justify-end hover:text-gray-900 ml-auto" onClick={() => {
-                                if (drillDownSort === "opening") setDrillDownSortDir(d => d === "asc" ? "desc" : "asc");
-                                else { setDrillDownSort("opening"); setDrillDownSortDir("desc"); }
-                              }}>
-                                Opening {drillDownSort === "opening" && (drillDownSortDir === "asc" ? "▲" : "▼")}
-                              </button>
-                            </th>
-                            <th className="text-right py-2 px-1">+Prod</th>
-                            <th className="text-right py-2 px-1">-Loss</th>
-                            <th className="text-right py-2 px-1">-Sales</th>
-                            <th className="text-right py-2 px-1">-DSP</th>
-                            <th className="text-right py-2 px-1">
-                              <button className="flex items-center justify-end hover:text-gray-900 ml-auto" onClick={() => {
-                                if (drillDownSort === "ending") setDrillDownSortDir(d => d === "asc" ? "desc" : "asc");
-                                else { setDrillDownSort("ending"); setDrillDownSortDir("desc"); }
-                              }}>
-                                =Ending {drillDownSort === "ending" && (drillDownSortDir === "asc" ? "▲" : "▼")}
-                              </button>
-                            </th>
-                            <th className="text-right py-2 px-1">
-                              <button className="flex items-center justify-end hover:text-gray-900 ml-auto" onClick={() => {
-                                if (drillDownSort === "drift") setDrillDownSortDir(d => d === "asc" ? "desc" : "asc");
-                                else { setDrillDownSort("drift"); setDrillDownSortDir("desc"); }
-                              }}>
-                                Drift {drillDownSort === "drift" && (drillDownSortDir === "asc" ? "▲" : "▼")}
-                              </button>
-                            </th>
-                            <th className="text-center py-2 px-1">
-                              <button className="flex items-center justify-center hover:text-gray-900 mx-auto" onClick={() => {
-                                if (drillDownSort === "identityCheck") setDrillDownSortDir(d => d === "asc" ? "desc" : "asc");
-                                else { setDrillDownSort("identityCheck"); setDrillDownSortDir("desc"); }
-                              }}>
-                                Checks {drillDownSort === "identityCheck" && (drillDownSortDir === "asc" ? "▲" : "▼")}
-                              </button>
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            let filtered = batchRecon.batches as any[];
-                            if (drillDownFilter === "identityIssues") filtered = filtered.filter((b: any) => Math.abs(b.identityCheck) >= 0.1);
-                            else if (drillDownFilter === "drift") filtered = filtered.filter((b: any) => Math.abs(b.driftLiters) >= 0.5);
-                            else if (drillDownFilter === "initialAnomaly") filtered = filtered.filter((b: any) => b.hasInitialVolumeAnomaly);
-                            else if (drillDownFilter === "capacity") filtered = filtered.filter((b: any) => b.exceedsVesselCapacity);
-
-                            const sorted = [...filtered].sort((a: any, b: any) => {
-                              let cmp = 0;
-                              switch (drillDownSort) {
-                                case "name": cmp = (a.batchName || "").localeCompare(b.batchName || ""); break;
-                                case "opening": cmp = a.opening - b.opening; break;
-                                case "ending": cmp = a.ending - b.ending; break;
-                                case "drift": cmp = Math.abs(a.driftLiters) - Math.abs(b.driftLiters); break;
-                                case "identityCheck": cmp = Math.abs(a.identityCheck) - Math.abs(b.identityCheck); break;
-                              }
-                              return drillDownSortDir === "asc" ? cmp : -cmp;
-                            });
-
-                            return sorted.map((b: any) => {
-                              const hasIdentityIssue = Math.abs(b.identityCheck) >= 0.1;
-                              const hasDrift = Math.abs(b.driftLiters) >= 0.5;
-                              const driftGal = litersToWineGallons(Math.abs(b.driftLiters));
-
-                              return (
-                                <DrillDownRow
-                                  key={b.batchId}
-                                  batch={b}
-                                  hasIdentityIssue={hasIdentityIssue}
-                                  hasDrift={hasDrift}
-                                  driftGal={driftGal}
-                                />
-                              );
-                            });
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Loss Breakdown Summary */}
-                    {batchRecon.lossBreakdown && (
-                      <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs font-semibold text-gray-600 mb-2">Aggregate Loss Breakdown (gal)</p>
-                        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
-                          <div>Racking: <span className="font-mono">{batchRecon.lossBreakdown.racking.toFixed(1)}</span></div>
-                          <div>Filter: <span className="font-mono">{batchRecon.lossBreakdown.filter.toFixed(1)}</span></div>
-                          <div>Bottling: <span className="font-mono">{batchRecon.lossBreakdown.bottling.toFixed(1)}</span></div>
-                          <div>Kegging: <span className="font-mono">{batchRecon.lossBreakdown.kegging.toFixed(1)}</span></div>
-                          <div>Transfer: <span className="font-mono">{batchRecon.lossBreakdown.transfer.toFixed(1)}</span></div>
-                          <div>Adjustments: <span className="font-mono">{batchRecon.lossBreakdown.adjustments.toFixed(1)}</span></div>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-        )}
-
-        {/* Filter Bar */}
-        <Card className="mb-4">
-          <CardContent className="pt-4 pb-4">
-            <div className="flex flex-wrap gap-3 items-center">
-              <Select value={String(yearFilter)} onValueChange={(v) => { setYearFilter(Number(v)); setSelectedIds(new Set()); }}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Year" />
-                </SelectTrigger>
-                <SelectContent>
-                  {yearOptions.map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={periodPreset} onValueChange={(v) => { setPeriodPreset(v); setSelectedIds(new Set()); }}>
-                <SelectTrigger className="w-[130px]">
-                  <SelectValue placeholder="Period" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="annual">Annual</SelectItem>
-                  <SelectItem value="q1">Q1 (Jan–Mar)</SelectItem>
-                  <SelectItem value="q2">Q2 (Apr–Jun)</SelectItem>
-                  <SelectItem value="q3">Q3 (Jul–Sep)</SelectItem>
-                  <SelectItem value="q4">Q4 (Oct–Dec)</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={productTypeFilter} onValueChange={(v) => { setProductTypeFilter(v); setSelectedIds(new Set()); }}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Product Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {PRODUCT_TYPES.map((pt) => (
-                    <SelectItem key={pt.value} value={pt.value}>{pt.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setSelectedIds(new Set()); }}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="verified">Verified</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search batch name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-
-              {(statusFilter !== "all" || validationFilter !== "all" || periodPreset !== "annual") && (
-                <Button variant="ghost" size="sm" onClick={() => { setStatusFilter("all"); setValidationFilter("all"); setPeriodPreset("annual"); }}>
-                  Clear filters
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Bulk Action Bar */}
         {someSelected && (
           <div className="flex items-center gap-3 mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1724,10 +1630,68 @@ export function BatchReconciliation() {
               {batches.length} Batches ({yearFilter})
             </CardTitle>
             <CardDescription>
-              Batches that pass all checks are auto-verified. Expand rows with issues to see details and fix links.
+              Expand rows to see TTB volume reconstruction, check details, and fix links.
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* TTB Filter Chips */}
+            {batchRecon && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[
+                  { key: "all", label: "All", count: batches.length },
+                  { key: "identityIssues", label: "Identity Issues", count: batchRecon.batchesWithIdentityIssues },
+                  { key: "drift", label: "Has Drift", count: batchRecon.batchesWithDrift },
+                  { key: "initialAnomaly", label: "Initial Anomaly", count: batchRecon.batchesWithInitialAnomaly },
+                  { key: "capacity", label: "Over Capacity", count: batchRecon.vesselCapacityWarnings },
+                ].map((chip) => (
+                  <button
+                    key={chip.key}
+                    onClick={() => setTtbFilter(chip.key)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      ttbFilter === chip.key
+                        ? "bg-gray-900 text-white"
+                        : chip.count > 0 || chip.key === "all"
+                          ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          : "bg-gray-50 text-gray-400 cursor-default"
+                    }`}
+                    disabled={chip.count === 0 && chip.key !== "all"}
+                  >
+                    {chip.label} ({chip.count})
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Summary Row */}
+            {batchRecon && (
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4 p-3 bg-gray-50 rounded-lg text-sm">
+                <div>
+                  <p className="text-xs text-gray-500">Opening</p>
+                  <p className="font-semibold">{batchRecon.totals.opening.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Production</p>
+                  <p className="font-semibold">{batchRecon.totals.production.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Losses</p>
+                  <p className="font-semibold">{batchRecon.totals.losses.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Sales</p>
+                  <p className="font-semibold">{batchRecon.totals.sales.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Distillation</p>
+                  <p className="font-semibold">{batchRecon.totals.distillation.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Ending</p>
+                  <p className="font-semibold">{batchRecon.totals.ending.toFixed(1)} gal</p>
+                </div>
+              </div>
+            )}
+
             {isLoading ? (
               <div className="text-center py-8 text-gray-500">Loading batches...</div>
             ) : batches.length === 0 ? (
@@ -1764,8 +1728,18 @@ export function BatchReconciliation() {
                       <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("vesselName")}>
                         <span className="flex items-center">Vessel{sortIcon("vesselName")}</span>
                       </TableHead>
+                      <TableHead className="text-right">Drift</TableHead>
+                      <TableHead className="text-center">
+                        <span>Checks</span>
+                        <div className="flex items-center justify-center gap-0.5 text-[9px] text-gray-400 font-normal mt-0.5">
+                          <span className="w-3.5 text-center">ID</span>
+                          <span className="w-3.5 text-center">DR</span>
+                          <span className="w-3.5 text-center">IV</span>
+                          <span className="w-3.5 text-center">VC</span>
+                        </div>
+                      </TableHead>
                       <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("validation")}>
-                        <span className="flex items-center">Validation{sortIcon("validation")}</span>
+                        <span className="flex items-center">Status{sortIcon("validation")}</span>
                       </TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
@@ -1787,6 +1761,21 @@ export function BatchReconciliation() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            )}
+
+            {/* Aggregate Loss Breakdown */}
+            {batchRecon?.lossBreakdown && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-semibold text-gray-600 mb-2">Aggregate Loss Breakdown (gal)</p>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-xs">
+                  <div>Racking: <span className="font-mono">{batchRecon.lossBreakdown.racking.toFixed(1)}</span></div>
+                  <div>Filter: <span className="font-mono">{batchRecon.lossBreakdown.filter.toFixed(1)}</span></div>
+                  <div>Bottling: <span className="font-mono">{batchRecon.lossBreakdown.bottling.toFixed(1)}</span></div>
+                  <div>Kegging: <span className="font-mono">{batchRecon.lossBreakdown.kegging.toFixed(1)}</span></div>
+                  <div>Transfer: <span className="font-mono">{batchRecon.lossBreakdown.transfer.toFixed(1)}</span></div>
+                  <div>Adjustments: <span className="font-mono">{batchRecon.lossBreakdown.adjustments.toFixed(1)}</span></div>
+                </div>
               </div>
             )}
           </CardContent>

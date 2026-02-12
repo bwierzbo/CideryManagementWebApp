@@ -555,13 +555,13 @@ async function computeReconciliationFromBatches(
   const eligibleBatches = await db.execute(sql`
     SELECT b.id, b.name, b.batch_number, b.product_type, b.start_date,
            b.initial_volume_liters, b.parent_batch_id, b.current_volume_liters,
-           b.is_racking_derivative, b.vessel_id,
+           b.is_racking_derivative, b.vessel_id, b.reconciliation_status,
            v.name AS vessel_name, v.capacity_liters AS vessel_capacity_liters
     FROM batches b
     LEFT JOIN vessels v ON b.vessel_id = v.id
     WHERE b.deleted_at IS NULL
       AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
-      AND COALESCE(b.product_type, 'cider') != 'juice'
+      AND COALESCE(b.product_type, 'cider') NOT IN ('juice', 'brandy')
       AND b.start_date::date <= ${endDate}::date
   `);
 
@@ -582,6 +582,7 @@ async function computeReconciliationFromBatches(
     currentVolumeLiters: number;
     isRackingDerivative: boolean;
     vesselCapacityLiters: number | null;
+    reconciliationStatus: string;
   }
 
   const batchInfoMap = new Map<string, BatchInfo>();
@@ -603,6 +604,7 @@ async function computeReconciliationFromBatches(
       currentVolumeLiters: parseFloat(b.current_volume_liters || "0"),
       isRackingDerivative: b.is_racking_derivative === true,
       vesselCapacityLiters: b.vessel_capacity_liters ? parseFloat(b.vessel_capacity_liters) : null,
+      reconciliationStatus: b.reconciliation_status || "pending",
     });
   }
 
@@ -1252,7 +1254,8 @@ async function computeReconciliationFromBatches(
     const salesGal = litersToWineGallons(periodSalesL);
     const distillationGal = litersToWineGallons(periodDistillationL);
     const endingGal = litersToWineGallons(endingClampedL);
-    const identityGal = litersToWineGallons(identityL);
+    // identityL is always <= 0 (clamping only removes); use raw conversion to preserve magnitude
+    const identityGal = identityL * WINE_GALLONS_PER_LITER;
 
     const lossBreakdown = {
       racking: litersToWineGallons(periodRackingLossL),
@@ -1324,9 +1327,9 @@ async function computeReconciliationFromBatches(
 
     // Count issues
     if (Math.abs(identityGal) > 0.01) batchesWithIdentityIssues++;
-    if (Math.abs(driftLiters) > 0.5) batchesWithDrift++;
+    if (Math.abs(driftLiters) > 0.5 && info.reconciliationStatus !== "verified") batchesWithDrift++;
     if (hasInitialVolumeAnomaly) batchesWithInitialAnomaly++;
-    if (exceedsVesselCapacity) vesselCapacityWarnings++;
+    if (exceedsVesselCapacity && info.reconciliationStatus !== "verified") vesselCapacityWarnings++;
   }
 
   // Round totals
@@ -3850,6 +3853,23 @@ export const ttbRouter = router({
 
       const volumeAdjustmentsBeforeGallons = litersToWineGallons(Number(volumeAdjustmentsBefore[0]?.totalLiters || 0));
 
+      // 3f-2. Positive volume adjustments (gains — e.g., reconciliation corrections)
+      const positiveAdjustmentsBefore = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL)), 0)`,
+        })
+        .from(batchVolumeAdjustments)
+        .where(
+          and(
+            isNull(batchVolumeAdjustments.deletedAt),
+            sql`${batchVolumeAdjustments.adjustmentDate}::date > ${openingDate}::date`,
+            sql`${batchVolumeAdjustments.adjustmentDate}::date <= ${reconciliationDate}::date`,
+            sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) > 0`
+          )
+        );
+
+      const positiveAdjustmentsBeforeGallons = litersToWineGallons(Number(positiveAdjustmentsBefore[0]?.totalLiters || 0));
+
       // 3g. Distributions (sales) on or before the date
       // Bottle/can distributions
       const bottleDistributionsBefore = await db
@@ -5245,7 +5265,7 @@ export const ttbRouter = router({
       // at the total level - they just reclassify existing inventory.
       const systemOnHand = totalInventoryByTaxClass;
       const totalProductionIncludingBrandy = totalProductionGallons + brandyReceivedGallons;
-      const ttbCalculatedEnding = totalTtb + totalProductionIncludingBrandy - salesGallons - lossesGallons - distillationGallons;
+      const ttbCalculatedEnding = totalTtb + totalProductionIncludingBrandy + positiveAdjustmentsBeforeGallons - salesGallons - lossesGallons - distillationGallons;
       const variance = ttbCalculatedEnding - systemOnHand;
 
       // Compute system-calculated on-hand using date-bounded batch volumes
@@ -5346,6 +5366,12 @@ export const ttbRouter = router({
           losses: parseFloat(lossesGallons.toFixed(1)),
           distillation: parseFloat(distillationGallons.toFixed(1)),
           ttbCalculatedEnding: parseFloat(ttbCalculatedEnding.toFixed(1)),
+          // Production breakdown
+          pressRunsProduction: parseFloat(totalPressRunsGallons.toFixed(1)),
+          juicePurchasesProduction: parseFloat(totalJuicePurchasesGallons.toFixed(1)),
+          // Sales breakdown (distributions)
+          bottleDistributions: parseFloat(bottleDistributionsBeforeGallons.toFixed(1)),
+          kegDistributions: parseFloat(kegDistributionsBeforeGallons.toFixed(1)),
           // System
           systemOnHand: parseFloat(systemOnHand.toFixed(1)),
           systemCalculatedOnHand: parseFloat(systemCalculatedOnHand.toFixed(1)),
