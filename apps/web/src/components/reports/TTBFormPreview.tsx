@@ -44,15 +44,15 @@ export function TTBFormPreview({ formData, periodLabel }: TTBFormPreviewProps) {
   const formatGallons = (gallons: number) => {
     if (gallons === 0) return "-";
     return gallons.toLocaleString("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
     });
   };
 
   const formatGallonsDecimal = (gallons: number) => {
     return gallons.toLocaleString("en-US", {
-      minimumFractionDigits: 3,
-      maximumFractionDigits: 3,
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
     });
   };
 
@@ -78,6 +78,76 @@ export function TTBFormPreview({ formData, periodLabel }: TTBFormPreviewProps) {
   const endDate = typeof formData.reportingPeriod.endDate === 'string'
     ? new Date(formData.reportingPeriod.endDate)
     : formData.reportingPeriod.endDate;
+
+  // Tax class column configuration
+  const taxClassLabels: Record<string, string> = {
+    hardCider: "Hard Cider (f)",
+    wineUnder16: "Wine ≤16% (a)",
+    wine16To21: "Wine 16-21% (c)",
+    wine21To24: "Wine 21-24% (d)",
+    sparklingWine: "Sparkling (e)",
+    carbonatedWine: "Carbonated (e)",
+  };
+
+  type BulkField = keyof NonNullable<typeof formData.bulkWinesByTaxClass>[string];
+
+  const taxClassColumns = Object.entries(formData.bulkWinesByTaxClass || {})
+    .filter(([key, section]) => {
+      // Always show hard cider; show others only if they have any data
+      if (key === "hardCider") return true;
+      return section.line1_onHandFirst !== 0 || section.line2_produced !== 0 ||
+        section.line3_otherProduction !== 0 || section.line32_totalOnHand !== 0 ||
+        section.line17_taxpaid !== 0;
+    })
+    .map(([key, section]) => ({
+      key,
+      label: taxClassLabels[key] || key,
+      section,
+    }));
+
+  const showMultiColumn = taxClassColumns.length > 1;
+
+  // Bulk wine line definitions
+  const bulkLineRows: Array<{
+    line: number;
+    desc: string;
+    field: BulkField;
+    bg?: string;
+    bold?: boolean;
+  }> = [
+    { line: 1, desc: "On hand first of period", field: "line1_onHandFirst", bg: "bg-blue-50", bold: true },
+    { line: 2, desc: "Produced by fermentation", field: "line2_produced" },
+    { line: 3, desc: "Produced by other processes", field: "line3_otherProduction" },
+    { line: 4, desc: "Received - bonded wine premises", field: "line4_receivedBonded" },
+    { line: 5, desc: "Received - customs custody", field: "line5_receivedCustoms" },
+    { line: 6, desc: "Received - returned after removal", field: "line6_receivedReturned" },
+    { line: 7, desc: "Received - by transfer in bond", field: "line7_receivedTransfer" },
+    { line: 8, desc: "Bottled wine dumped to bulk", field: "line8_dumpedToBulk" },
+    { line: 9, desc: "Wine transferred - from other tax classes", field: "line9_transferredIn" },
+    { line: 10, desc: "Withdrawn from fermenters", field: "line10_withdrawnFermenters" },
+    { line: 11, desc: "TOTAL (lines 1-10)", field: "line11_total", bg: "bg-gray-100", bold: true },
+    { line: 12, desc: "Bottled or packed", field: "line12_bottled" },
+    { line: 13, desc: "Transferred - for export", field: "line13_exportTransfer" },
+    { line: 14, desc: "Transferred - to bonded wine premises", field: "line14_bondedTransfer" },
+    { line: 15, desc: "Transferred - to customs bonded warehouse", field: "line15_customsTransfer" },
+    { line: 16, desc: "Transferred - to foreign trade zone", field: "line16_ftzTransfer" },
+    { line: 17, desc: "Taxpaid removals", field: "line17_taxpaid", bg: "bg-green-50", bold: true },
+    { line: 18, desc: "Tax-free removals - for use US", field: "line18_taxFreeUS" },
+    { line: 19, desc: "Tax-free removals - for export use", field: "line19_taxFreeExport" },
+    { line: 20, desc: "Wine transferred - to other tax classes", field: "line20_transferredOut" },
+    { line: 21, desc: "Used for distilling material or vinegar stock", field: "line21_distillingMaterial" },
+    { line: 22, desc: "Wine spirits added", field: "line22_spiritsAdded" },
+    { line: 23, desc: "Inventory losses", field: "line23_inventoryLosses", bg: "bg-red-50" },
+    { line: 24, desc: "Destroyed", field: "line24_destroyed" },
+    { line: 25, desc: "Returned to bond", field: "line25_returnedToBond" },
+    { line: 26, desc: "Other (describe in remarks)", field: "line26_other" },
+    { line: 27, desc: "TOTAL (lines 12-26)", field: "line27_total", bg: "bg-gray-100", bold: true },
+    { line: 28, desc: "On hand end - in fermenters", field: "line28_onHandFermenters" },
+    { line: 29, desc: "On hand end - finished (not bottled)", field: "line29_onHandFinished" },
+    { line: 30, desc: "On hand end - unfinished (other)", field: "line30_onHandUnfinished" },
+    { line: 31, desc: "In transit", field: "line31_inTransit" },
+    { line: 32, desc: "TOTAL on hand end of period (lines 28-31)", field: "line32_totalOnHand", bg: "bg-blue-50", bold: true },
+  ];
 
   return (
     <div className="space-y-6">
@@ -117,7 +187,9 @@ export function TTBFormPreview({ formData, periodLabel }: TTBFormPreviewProps) {
           <CardTitle className="text-base">
             PART I - SECTION A: BULK WINES (in wine gallons)
           </CardTitle>
-          <CardDescription>Hard Cider (Column f)</CardDescription>
+          <CardDescription>
+            {taxClassColumns.map(c => c.label).join(" | ")}
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <table className="w-full text-sm border-collapse">
@@ -125,185 +197,31 @@ export function TTBFormPreview({ formData, periodLabel }: TTBFormPreviewProps) {
               <tr className="bg-gray-100 border-b">
                 <th className="text-left py-2 px-3 w-12 font-medium">Line</th>
                 <th className="text-left py-2 px-3 font-medium">Description</th>
-                <th className="text-right py-2 px-3 w-32 font-medium">Hard Cider (f)</th>
+                {taxClassColumns.map(col => (
+                  <th key={col.key} className="text-right py-2 px-3 w-28 font-medium">{col.label}</th>
+                ))}
+                {showMultiColumn && (
+                  <th className="text-right py-2 px-3 w-28 font-medium">Total</th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {/* On Hand Beginning */}
-              <tr className="border-b bg-blue-50">
-                <td className="py-2 px-3 font-medium">1</td>
-                <td className="py-2 px-3">On hand first of period</td>
-                <td className="py-2 px-3 text-right font-medium">{formatGallons(formData.bulkWines.line1_onHandFirst)}</td>
-              </tr>
-
-              {/* Production */}
-              <tr className="border-b">
-                <td className="py-2 px-3">2</td>
-                <td className="py-2 px-3">Produced by fermentation</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line2_produced)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">3</td>
-                <td className="py-2 px-3">Produced by other processes</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line3_otherProduction)}</td>
-              </tr>
-
-              {/* Receipts */}
-              <tr className="border-b">
-                <td className="py-2 px-3">4</td>
-                <td className="py-2 px-3">Received - bonded wine premises</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line4_receivedBonded)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">5</td>
-                <td className="py-2 px-3">Received - customs custody</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line5_receivedCustoms)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">6</td>
-                <td className="py-2 px-3">Received - returned after removal</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line6_receivedReturned)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">7</td>
-                <td className="py-2 px-3">Received - by transfer in bond</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line7_receivedTransfer)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">8</td>
-                <td className="py-2 px-3">Bottled wine dumped to bulk</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line8_dumpedToBulk)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">9</td>
-                <td className="py-2 px-3">Wine transferred - from other tax classes</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line9_transferredIn)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">10</td>
-                <td className="py-2 px-3">Withdrawn from fermenters</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line10_withdrawnFermenters)}</td>
-              </tr>
-
-              {/* Total Line 11 */}
-              <tr className="border-b bg-gray-100">
-                <td className="py-2 px-3 font-bold">11</td>
-                <td className="py-2 px-3 font-bold">TOTAL (lines 1-10)</td>
-                <td className="py-2 px-3 text-right font-bold">{formatGallons(formData.bulkWines.line11_total)}</td>
-              </tr>
-
-              {/* Removals */}
-              <tr className="border-b">
-                <td className="py-2 px-3">12</td>
-                <td className="py-2 px-3">Bottled or packed</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line12_bottled)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">13</td>
-                <td className="py-2 px-3">Transferred - for export</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line13_exportTransfer)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">14</td>
-                <td className="py-2 px-3">Transferred - to bonded wine premises</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line14_bondedTransfer)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">15</td>
-                <td className="py-2 px-3">Transferred - to customs bonded warehouse</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line15_customsTransfer)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">16</td>
-                <td className="py-2 px-3">Transferred - to foreign trade zone</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line16_ftzTransfer)}</td>
-              </tr>
-              <tr className="border-b bg-green-50">
-                <td className="py-2 px-3 font-medium">17</td>
-                <td className="py-2 px-3 font-medium">Taxpaid removals</td>
-                <td className="py-2 px-3 text-right font-medium">{formatGallons(formData.bulkWines.line17_taxpaid)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">18</td>
-                <td className="py-2 px-3">Tax-free removals - for use US</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line18_taxFreeUS)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">19</td>
-                <td className="py-2 px-3">Tax-free removals - for export use</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line19_taxFreeExport)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">20</td>
-                <td className="py-2 px-3">Wine transferred - to other tax classes</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line20_transferredOut)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">21</td>
-                <td className="py-2 px-3">Used for distilling material or vinegar stock</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line21_distillingMaterial)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">22</td>
-                <td className="py-2 px-3">Wine spirits added</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line22_spiritsAdded)}</td>
-              </tr>
-              <tr className="border-b bg-red-50">
-                <td className="py-2 px-3">23</td>
-                <td className="py-2 px-3">Inventory losses</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line23_inventoryLosses)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">24</td>
-                <td className="py-2 px-3">Destroyed</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line24_destroyed)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">25</td>
-                <td className="py-2 px-3">Returned to bond</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line25_returnedToBond)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">26</td>
-                <td className="py-2 px-3">Other (describe in remarks)</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line26_other)}</td>
-              </tr>
-
-              {/* Total Line 27 */}
-              <tr className="border-b bg-gray-100">
-                <td className="py-2 px-3 font-bold">27</td>
-                <td className="py-2 px-3 font-bold">TOTAL (lines 12-26)</td>
-                <td className="py-2 px-3 text-right font-bold">{formatGallons(formData.bulkWines.line27_total)}</td>
-              </tr>
-
-              {/* On Hand End */}
-              <tr className="border-b">
-                <td className="py-2 px-3">28</td>
-                <td className="py-2 px-3">On hand end - in fermenters</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line28_onHandFermenters)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">29</td>
-                <td className="py-2 px-3">On hand end - finished (not bottled)</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line29_onHandFinished)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">30</td>
-                <td className="py-2 px-3">On hand end - unfinished (other)</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line30_onHandUnfinished)}</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 px-3">31</td>
-                <td className="py-2 px-3">In transit</td>
-                <td className="py-2 px-3 text-right">{formatGallons(formData.bulkWines.line31_inTransit)}</td>
-              </tr>
-
-              {/* Total Line 32 */}
-              <tr className="bg-blue-50">
-                <td className="py-2 px-3 font-bold">32</td>
-                <td className="py-2 px-3 font-bold">TOTAL on hand end of period (lines 28-31)</td>
-                <td className="py-2 px-3 text-right font-bold">{formatGallons(formData.bulkWines.line32_totalOnHand)}</td>
-              </tr>
+              {bulkLineRows.map(({ line, desc, field, bg, bold }) => (
+                <tr key={line} className={`border-b ${bg || ""}`}>
+                  <td className={`py-2 px-3 ${bold ? "font-bold" : ""}`}>{line}</td>
+                  <td className={`py-2 px-3 ${bold ? "font-bold" : ""}`}>{desc}</td>
+                  {taxClassColumns.map(col => (
+                    <td key={col.key} className={`py-2 px-3 text-right ${bold ? "font-bold" : ""}`}>
+                      {formatGallons(col.section[field] as number)}
+                    </td>
+                  ))}
+                  {showMultiColumn && (
+                    <td className={`py-2 px-3 text-right font-medium ${bold ? "font-bold" : ""}`}>
+                      {formatGallons(formData.bulkWines[field] as number)}
+                    </td>
+                  )}
+                </tr>
+              ))}
             </tbody>
           </table>
         </CardContent>
@@ -506,53 +424,101 @@ export function TTBFormPreview({ formData, periodLabel }: TTBFormPreviewProps) {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <DollarSign className="w-4 h-4" />
-            TAX COMPUTATION - Hard Cider (Under 8.5% ABV)
+            TAX COMPUTATION
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <table className="w-full text-sm">
-            <tbody>
-              <tr className="border-b">
-                <td className="py-2 text-gray-600">Taxable Gallons (Line 17 Bulk + Line 13 Bottled)</td>
-                <td className="py-2 text-right font-medium">
-                  {formatGallonsDecimal(formData.taxSummary.taxableGallons)} gal
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 text-gray-600">Tax Rate</td>
-                <td className="py-2 text-right font-medium">$0.226 / gal</td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 text-gray-600">Gross Tax</td>
-                <td className="py-2 text-right font-medium">
-                  {formatCurrency(formData.taxSummary.grossTax)}
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-2 text-gray-600">
-                  Small Producer Credit
-                  <span className="text-xs text-gray-400 ml-1">
-                    ({formatGallonsDecimal(formData.taxSummary.creditEligibleGallons)} gal @ $0.056)
-                  </span>
-                </td>
-                <td className="py-2 text-right font-medium text-green-600">
-                  -{formatCurrency(formData.taxSummary.smallProducerCredit)}
-                </td>
-              </tr>
-              <tr className="bg-amber-100">
-                <td className="py-3 font-bold">NET TAX OWED</td>
-                <td className="py-3 text-right font-bold text-lg">
-                  {formatCurrency(formData.taxSummary.netTaxOwed)}
-                </td>
-              </tr>
-              <tr>
-                <td className="py-2 text-gray-600">Effective Rate</td>
-                <td className="py-2 text-right font-medium">
-                  ${formData.taxSummary.effectiveRate.toFixed(4)} / gal
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          {formData.taxComputationByClass && formData.taxComputationByClass.length > 0 ? (
+            <div className="space-y-4">
+              {formData.taxComputationByClass.map((cls) => (
+                <div key={cls.taxClass}>
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">{cls.label}</h4>
+                  <table className="w-full text-sm mb-2">
+                    <tbody>
+                      <tr className="border-b">
+                        <td className="py-1.5 text-gray-600">Taxable Gallons</td>
+                        <td className="py-1.5 text-right font-medium">
+                          {formatGallonsDecimal(cls.taxableGallons)} gal
+                        </td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-1.5 text-gray-600">Tax Rate</td>
+                        <td className="py-1.5 text-right font-medium">
+                          ${cls.taxRate.toFixed(3)} / gal
+                        </td>
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-1.5 text-gray-600">Gross Tax</td>
+                        <td className="py-1.5 text-right font-medium">
+                          {formatCurrency(cls.grossTax)}
+                        </td>
+                      </tr>
+                      {cls.smallProducerCredit > 0 && (
+                        <tr className="border-b">
+                          <td className="py-1.5 text-gray-600">Small Producer Credit</td>
+                          <td className="py-1.5 text-right font-medium text-green-600">
+                            -{formatCurrency(cls.smallProducerCredit)}
+                          </td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td className="py-1.5 font-semibold">Net Tax</td>
+                        <td className="py-1.5 text-right font-semibold">
+                          {formatCurrency(cls.netTax)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+              <div className="bg-amber-100 rounded-lg p-3 flex justify-between items-center">
+                <span className="font-bold text-lg">TOTAL TAX OWED</span>
+                <span className="font-bold text-lg">
+                  {formatCurrency(
+                    formData.taxComputationByClass.reduce((sum, c) => sum + c.netTax, 0)
+                  )}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                <tr className="border-b">
+                  <td className="py-2 text-gray-600">Taxable Gallons</td>
+                  <td className="py-2 text-right font-medium">
+                    {formatGallonsDecimal(formData.taxSummary.taxableGallons)} gal
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="py-2 text-gray-600">Tax Rate</td>
+                  <td className="py-2 text-right font-medium">$0.226 / gal</td>
+                </tr>
+                <tr className="border-b">
+                  <td className="py-2 text-gray-600">Gross Tax</td>
+                  <td className="py-2 text-right font-medium">
+                    {formatCurrency(formData.taxSummary.grossTax)}
+                  </td>
+                </tr>
+                <tr className="border-b">
+                  <td className="py-2 text-gray-600">
+                    Small Producer Credit
+                    <span className="text-xs text-gray-400 ml-1">
+                      ({formatGallonsDecimal(formData.taxSummary.creditEligibleGallons)} gal @ $0.056)
+                    </span>
+                  </td>
+                  <td className="py-2 text-right font-medium text-green-600">
+                    -{formatCurrency(formData.taxSummary.smallProducerCredit)}
+                  </td>
+                </tr>
+                <tr className="bg-amber-100">
+                  <td className="py-3 font-bold">NET TAX OWED</td>
+                  <td className="py-3 text-right font-bold text-lg">
+                    {formatCurrency(formData.taxSummary.netTaxOwed)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
         </CardContent>
       </Card>
 

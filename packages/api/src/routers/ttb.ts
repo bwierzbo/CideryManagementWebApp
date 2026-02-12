@@ -1387,6 +1387,9 @@ export const ttbRouter = router({
         const dayBeforeStart = new Date(startDate);
         dayBeforeStart.setDate(dayBeforeStart.getDate() - 1);
 
+        // Build batch tax class map for per-class allocation
+        const { map: batchTaxClassMap, config: ttbConfig } = await buildBatchTaxClassMap();
+
         // ============================================
         // Part I: Beginning Inventory
         // Priority: 1) Previous snapshot, 2) TTB Opening Balance, 3) Calculate
@@ -1395,6 +1398,7 @@ export const ttbRouter = router({
         let beginningInventory: InventoryBreakdown;
         let beginningInventorySource: "snapshot" | "ttb_opening_balance" | "calculated" = "calculated";
         let beginningPommeauBulkGallons = 0;
+        let beginningWineUnder16BulkGallons = 0;
 
         // 1. Check for previous period snapshot
         // Format startDate as string for comparison
@@ -1439,6 +1443,9 @@ export const ttbRouter = router({
           beginningPommeauBulkGallons = roundGallons(
             parseFloat(previousSnapshot.bulkWine16To21 || "0")
           );
+          beginningWineUnder16BulkGallons = roundGallons(
+            parseFloat(previousSnapshot.bulkWineUnder16 || "0")
+          );
         } else {
           // 2. Check for TTB Opening Balance
           const [settings] = await db
@@ -1453,8 +1460,14 @@ export const ttbRouter = router({
             ? new Date(settings.ttbOpeningBalanceDate)
             : null;
 
-          // Use TTB Opening Balance if period starts on or after the opening balance date
-          if (settings?.ttbOpeningBalances && openingBalanceDate && startDate >= openingBalanceDate) {
+          // Use TTB Opening Balance only for the first period after the opening balance date
+          // (i.e., startDate is within 2 days of openingBalanceDate + 1 day)
+          const dayAfterOpening = openingBalanceDate ? new Date(openingBalanceDate) : null;
+          if (dayAfterOpening) dayAfterOpening.setDate(dayAfterOpening.getDate() + 2);
+          const isFirstPeriod = openingBalanceDate && dayAfterOpening &&
+            startDate >= openingBalanceDate && startDate <= dayAfterOpening;
+
+          if (settings?.ttbOpeningBalances && isFirstPeriod) {
             const balances = settings.ttbOpeningBalances;
 
             // Sum bulk balances across all tax classes
@@ -1478,67 +1491,166 @@ export const ttbRouter = router({
             beginningPommeauBulkGallons = roundGallons(
               Number(balances.bulk?.wine16To21 || 0)
             );
+            beginningWineUnder16BulkGallons = roundGallons(
+              Number(balances.bulk?.wineUnder16 || 0)
+            );
           } else {
-            // 3. Fall back to calculating from current inventory
-            // This is used for periods before the TTB opening balance date
-            // or when no opening balance is set
+            // 3. Fall back to reconstructing inventory as of dayBeforeStart
+            // Uses the same batched per-batch reconstruction approach as ending inventory
 
-            // Bulk inventory: Active batches with volume at start of period
-            const bulkAtStart = await db
+            // Bulk inventory: Reconstruct batch volumes as of dayBeforeStart
+            const batchesAtStart = await db
               .select({
-                totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)`,
+                id: batches.id,
+                initialVolume: batches.initialVolumeLiters,
+                productType: batches.productType,
               })
               .from(batches)
               .where(
                 and(
                   isNull(batches.deletedAt),
-                  eq(batches.reconciliationStatus, "verified"),
+                  sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
                   lte(batches.startDate, dayBeforeStart),
-                  or(
-                    isNull(batches.endDate),
-                    gte(batches.endDate, startDate)
-                  )
+                  or(isNull(batches.endDate), gte(batches.endDate, startDate)),
+                  sql`NOT (${batches.status} = 'discarded' AND ${batches.updatedAt} <= ${dayBeforeStart})`
                 )
               );
 
-            const beginningBulkLiters = Number(bulkAtStart[0]?.totalLiters || 0);
+            let beginningBulkLiters = 0;
+            let beginningPommeauBulkLiters = 0;
+            let beginningWineUnder16BulkLiters = 0;
 
-            // Pommeau bulk at start of period (for per-tax-class breakdown)
-            const pommeauAtStart = await db
-              .select({
-                totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)`,
-              })
-              .from(batches)
-              .where(
-                and(
-                  isNull(batches.deletedAt),
-                  eq(batches.reconciliationStatus, "verified"),
-                  eq(batches.productType, "pommeau"),
-                  lte(batches.startDate, dayBeforeStart),
-                  or(
-                    isNull(batches.endDate),
-                    gte(batches.endDate, startDate)
-                  )
-                )
-              );
+            if (batchesAtStart.length > 0) {
+              const begBatchIds = batchesAtStart.map(b => b.id);
+              const begIdList = sql.join(begBatchIds.map(id => sql`${id}::uuid`), sql`, `);
+
+              const [
+                begXferIn, begXferOut, begMergesIn, begMergesOut,
+                begBottlings, begKegFillsQ, begDistillation,
+                begRacking, begFiltering, begAdjustments
+              ] = await Promise.all([
+                db.execute(sql`SELECT destination_batch_id as batch_id, COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total
+                  FROM batch_transfers WHERE destination_batch_id IN (${begIdList}) AND source_batch_id != destination_batch_id
+                  AND deleted_at IS NULL AND transferred_at <= ${dayBeforeStart} GROUP BY destination_batch_id`),
+                db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total_vol,
+                  COALESCE(SUM(CAST(COALESCE(loss, '0') AS DECIMAL)), 0) as total_loss
+                  FROM batch_transfers WHERE source_batch_id IN (${begIdList}) AND destination_batch_id != source_batch_id
+                  AND deleted_at IS NULL AND transferred_at <= ${dayBeforeStart} GROUP BY source_batch_id`),
+                db.execute(sql`SELECT target_batch_id as batch_id, COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total
+                  FROM batch_merge_history WHERE target_batch_id IN (${begIdList})
+                  AND deleted_at IS NULL AND merged_at <= ${dayBeforeStart} GROUP BY target_batch_id`),
+                db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total
+                  FROM batch_merge_history WHERE source_batch_id IN (${begIdList})
+                  AND deleted_at IS NULL AND merged_at <= ${dayBeforeStart} GROUP BY source_batch_id`),
+                db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken_liters AS DECIMAL)), 0) as total
+                  FROM bottle_runs WHERE batch_id IN (${begIdList})
+                  AND voided_at IS NULL AND packaged_at <= ${dayBeforeStart} GROUP BY batch_id`),
+                db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken AS DECIMAL)), 0) as total
+                  FROM keg_fills WHERE batch_id IN (${begIdList})
+                  AND voided_at IS NULL AND deleted_at IS NULL AND filled_at <= ${dayBeforeStart} GROUP BY batch_id`),
+                db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(source_volume_liters AS DECIMAL)), 0) as total
+                  FROM distillation_records WHERE source_batch_id IN (${begIdList})
+                  AND deleted_at IS NULL AND sent_at <= ${dayBeforeStart} GROUP BY source_batch_id`),
+                db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total
+                  FROM batch_racking_operations WHERE batch_id IN (${begIdList})
+                  AND deleted_at IS NULL AND racked_at <= ${dayBeforeStart} GROUP BY batch_id`),
+                db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total
+                  FROM batch_filter_operations WHERE batch_id IN (${begIdList})
+                  AND deleted_at IS NULL AND filtered_at <= ${dayBeforeStart} GROUP BY batch_id`),
+                db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(adjustment_amount AS DECIMAL)), 0) as total
+                  FROM batch_volume_adjustments WHERE batch_id IN (${begIdList})
+                  AND deleted_at IS NULL AND adjustment_date <= ${dayBeforeStart} GROUP BY batch_id`),
+              ]);
+
+              const makeBegMap = (rows: Record<string, unknown>[], keyCol: string, valCol: string) => {
+                const m = new Map<string, number>();
+                for (const r of rows) m.set(String(r[keyCol]), Number(r[valCol] || 0));
+                return m;
+              };
+
+              const bxIn = makeBegMap(begXferIn.rows, "batch_id", "total");
+              const bxOutV = makeBegMap(begXferOut.rows, "batch_id", "total_vol");
+              const bxOutL = makeBegMap(begXferOut.rows, "batch_id", "total_loss");
+              const bmIn = makeBegMap(begMergesIn.rows, "batch_id", "total");
+              const bmOut = makeBegMap(begMergesOut.rows, "batch_id", "total");
+              const bBott = makeBegMap(begBottlings.rows, "batch_id", "total");
+              const bKeg = makeBegMap(begKegFillsQ.rows, "batch_id", "total");
+              const bDist = makeBegMap(begDistillation.rows, "batch_id", "total");
+              const bRack = makeBegMap(begRacking.rows, "batch_id", "total");
+              const bFilt = makeBegMap(begFiltering.rows, "batch_id", "total");
+              const bAdj = makeBegMap(begAdjustments.rows, "batch_id", "total");
+
+              for (const batch of batchesAtStart) {
+                let vol = Number(batch.initialVolume || 0);
+                vol += (bxIn.get(batch.id) || 0);
+                vol -= (bxOutV.get(batch.id) || 0);
+                vol -= (bxOutL.get(batch.id) || 0);
+                vol += (bmIn.get(batch.id) || 0);
+                vol -= (bmOut.get(batch.id) || 0);
+                vol -= (bBott.get(batch.id) || 0);
+                vol -= (bKeg.get(batch.id) || 0);
+                vol -= (bDist.get(batch.id) || 0);
+                vol -= (bRack.get(batch.id) || 0);
+                vol -= (bFilt.get(batch.id) || 0);
+                vol += (bAdj.get(batch.id) || 0);
+                if (vol > 0) {
+                  const taxClass = getTaxClassFromMap(batchTaxClassMap, batch.id, batch.productType);
+                  if (taxClass === "wine16To21") {
+                    beginningPommeauBulkLiters += vol;
+                  } else if (taxClass === "wineUnder16") {
+                    beginningWineUnder16BulkLiters += vol;
+                  } else {
+                    beginningBulkLiters += vol;
+                  }
+                }
+              }
+            }
+
             beginningPommeauBulkGallons = roundGallons(
-              litersToWineGallons(Number(pommeauAtStart[0]?.totalLiters || 0))
+              litersToWineGallons(beginningPommeauBulkLiters)
+            );
+            beginningWineUnder16BulkGallons = roundGallons(
+              litersToWineGallons(beginningWineUnder16BulkLiters)
             );
 
-            // Bottled inventory: Inventory items created before period start
-            const bottledAtStart = await db
+            // Bottled inventory as of dayBeforeStart (batched)
+            const itemsAtStart = await db
               .select({
-                totalML: sql<number>`COALESCE(SUM(
-                  CAST(${inventoryItems.currentQuantity} AS DECIMAL) *
-                  CAST(${inventoryItems.packageSizeML} AS DECIMAL)
-                ), 0)`,
+                id: inventoryItems.id,
+                packageSizeML: inventoryItems.packageSizeML,
+                currentQuantity: inventoryItems.currentQuantity,
               })
               .from(inventoryItems)
               .where(lte(inventoryItems.createdAt, dayBeforeStart));
 
-            const beginningBottledML = Number(bottledAtStart[0]?.totalML || 0);
+            let beginningBottledML = 0;
+            if (itemsAtStart.length > 0) {
+              const begItemIds = itemsAtStart.map(i => i.id);
+              const begItemIdList = sql.join(begItemIds.map(id => sql`${id}::uuid`), sql`, `);
+              const [begDistsAfter, begAdjsAfter] = await Promise.all([
+                db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_distributed), 0) as total
+                  FROM inventory_distributions WHERE inventory_item_id IN (${begItemIdList})
+                  AND distribution_date > ${dayBeforeStart} GROUP BY inventory_item_id`),
+                db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_change), 0) as total
+                  FROM inventory_adjustments WHERE inventory_item_id IN (${begItemIdList})
+                  AND adjusted_at > ${dayBeforeStart} GROUP BY inventory_item_id`),
+              ]);
+              const begDistMap = new Map<string, number>();
+              for (const r of begDistsAfter.rows) begDistMap.set(String(r["item_id"]), Number(r["total"] || 0));
+              const begAdjMap = new Map<string, number>();
+              for (const r of begAdjsAfter.rows) begAdjMap.set(String(r["item_id"]), Number(r["total"] || 0));
 
-            // Kegs in stock before period start (filled by cutoff, not yet distributed by cutoff)
+              for (const item of itemsAtStart) {
+                let qty = Number(item.currentQuantity || 0);
+                qty += (begDistMap.get(item.id) || 0);
+                qty -= (begAdjMap.get(item.id) || 0);
+                if (qty > 0) {
+                  beginningBottledML += qty * Number(item.packageSizeML || 0);
+                }
+              }
+            }
+
+            // Kegs in stock before period start
             const kegsAtStart = await db
               .select({
                 totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
@@ -1557,27 +1669,71 @@ export const ttbRouter = router({
               );
             const beginningKegsLiters = Number(kegsAtStart[0]?.totalLiters || 0);
 
+            const totalBeginningBulkLiters = beginningBulkLiters + beginningPommeauBulkLiters + beginningWineUnder16BulkLiters;
             beginningInventory = {
-              bulk: roundGallons(litersToWineGallons(beginningBulkLiters)),
+              bulk: roundGallons(litersToWineGallons(totalBeginningBulkLiters)),
               bottled: roundGallons(
                 mlToWineGallons(beginningBottledML) + litersToWineGallons(beginningKegsLiters)
               ),
               total: roundGallons(
-                litersToWineGallons(beginningBulkLiters) +
+                litersToWineGallons(totalBeginningBulkLiters) +
                   mlToWineGallons(beginningBottledML) +
                   litersToWineGallons(beginningKegsLiters)
               ),
             };
+            beginningInventorySource = "calculated";
           }
         }
 
         // ============================================
         // Part II: Wine/Cider Produced
+        // Uses press runs + juice purchases (matching reconciliation approach)
+        // This avoids double-counting transfer-child batches
         // ============================================
 
-        // Sum of initial volume from batches started in period
-        // Exclude pommeau (blended, not fermented) and brandy (received from DSP) from production
-        const productionData = await db
+        const prodStartStr = startDate.toISOString().split("T")[0];
+        const prodEndStr = endDate.toISOString().split("T")[0];
+
+        // Production from press runs completed during the period
+        const pressRunData = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${pressRuns.totalJuiceVolumeLiters} AS DECIMAL)), 0)`,
+          })
+          .from(pressRuns)
+          .where(
+            and(
+              isNull(pressRuns.deletedAt),
+              eq(pressRuns.status, "completed"),
+              sql`${pressRuns.dateCompleted}::date >= ${prodStartStr}::date`,
+              sql`${pressRuns.dateCompleted}::date <= ${prodEndStr}::date`
+            )
+          );
+        const pressRunLiters = Number(pressRunData[0]?.totalLiters || 0);
+
+        // Production from juice purchases during the period
+        const juicePurchaseData = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(
+              CASE
+                WHEN ${juicePurchaseItems.volumeUnit} = 'gal' THEN CAST(${juicePurchaseItems.volume} AS DECIMAL) * 3.78541
+                ELSE CAST(${juicePurchaseItems.volume} AS DECIMAL)
+              END
+            ), 0)`,
+          })
+          .from(juicePurchaseItems)
+          .innerJoin(juicePurchases, eq(juicePurchaseItems.purchaseId, juicePurchases.id))
+          .where(
+            and(
+              isNull(juicePurchases.deletedAt),
+              isNull(juicePurchaseItems.deletedAt),
+              sql`${juicePurchases.purchaseDate}::date >= ${prodStartStr}::date`,
+              sql`${juicePurchases.purchaseDate}::date <= ${prodEndStr}::date`
+            )
+          );
+        const juicePurchaseLiters = Number(juicePurchaseData[0]?.totalLiters || 0);
+
+        // Exclude juice that was never fermented (product_type = 'juice')
+        const juiceOnlyData = await db
           .select({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)`,
           })
@@ -1585,20 +1741,36 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
-              eq(batches.reconciliationStatus, "verified"),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
+              eq(batches.productType, "juice"),
               gte(batches.startDate, startDate),
-              lte(batches.startDate, endDate),
-              sql`COALESCE(${batches.productType}, 'cider') NOT IN ('pommeau', 'brandy', 'juice')`
+              lte(batches.startDate, endDate)
             )
           );
+        const juiceOnlyLiters = Number(juiceOnlyData[0]?.totalLiters || 0);
 
-        const wineProducedLiters = Number(productionData[0]?.totalLiters || 0);
-        const wineProducedGallons = roundGallons(
-          litersToWineGallons(wineProducedLiters)
-        );
+        // Exclude transfers INTO juice batches
+        const xferIntoJuiceData = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
+          })
+          .from(batchTransfers)
+          .innerJoin(batches, eq(batchTransfers.destinationBatchId, batches.id))
+          .where(
+            and(
+              isNull(batchTransfers.deletedAt),
+              eq(batches.productType, "juice"),
+              gte(batchTransfers.transferredAt, startDate),
+              lte(batchTransfers.transferredAt, endDate)
+            )
+          );
+        const xferIntoJuiceLiters = Number(xferIntoJuiceData[0]?.totalLiters || 0);
 
-        // Pommeau production: volume of pommeau batches created during the period
-        // Pommeau is blended (cider + brandy), not fermented, so tracked separately
+        const totalProductionLiters = pressRunLiters + juicePurchaseLiters - juiceOnlyLiters - xferIntoJuiceLiters;
+        const wineProducedGallons = roundGallons(litersToWineGallons(totalProductionLiters));
+
+        // Pommeau production for per-tax-class display (blended, not fermented)
+        // Note: Juice component is already included in press run production above
         const pommeauProductionData = await db
           .select({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)`,
@@ -1607,13 +1779,12 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
-              eq(batches.reconciliationStatus, "verified"),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.productType, "pommeau"),
               gte(batches.startDate, startDate),
               lte(batches.startDate, endDate)
             )
           );
-
         const pommeauProducedLiters = Number(pommeauProductionData[0]?.totalLiters || 0);
         const pommeauProducedGallons = roundGallons(
           litersToWineGallons(pommeauProducedLiters)
@@ -1761,14 +1932,17 @@ export const ttbRouter = router({
         }
 
         // Process losses (filtering, racking)
+        // All loss queries join to batches to exclude duplicate/excluded batches (matching reconciliation)
         const filterLosses = await db
           .select({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${batchFilterOperations.volumeLoss} AS DECIMAL)), 0)`,
           })
           .from(batchFilterOperations)
+          .innerJoin(batches, eq(batchFilterOperations.batchId, batches.id))
           .where(
             and(
               isNull(batchFilterOperations.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               gte(batchFilterOperations.filteredAt, startDate),
               lte(batchFilterOperations.filteredAt, endDate)
             )
@@ -1779,9 +1953,11 @@ export const ttbRouter = router({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${batchRackingOperations.volumeLoss} AS DECIMAL)), 0)`,
           })
           .from(batchRackingOperations)
+          .innerJoin(batches, eq(batchRackingOperations.batchId, batches.id))
           .where(
             and(
               isNull(batchRackingOperations.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               gte(batchRackingOperations.rackedAt, startDate),
               lte(batchRackingOperations.rackedAt, endDate)
             )
@@ -1793,23 +1969,28 @@ export const ttbRouter = router({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.loss} AS DECIMAL)), 0)`,
           })
           .from(bottleRuns)
+          .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
           .where(
             and(
               isNull(bottleRuns.voidedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               gte(bottleRuns.packagedAt, startDate),
               lte(bottleRuns.packagedAt, endDate)
             )
           );
 
         // Transfer losses (volume lost during transfers between batches)
+        // Join on source batch to filter by reconciliation status
         const transferLosses = await db
           .select({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.loss} AS DECIMAL)), 0)`,
           })
           .from(batchTransfers)
+          .innerJoin(batches, eq(batchTransfers.sourceBatchId, batches.id))
           .where(
             and(
               isNull(batchTransfers.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               gte(batchTransfers.transferredAt, startDate),
               lte(batchTransfers.transferredAt, endDate)
             )
@@ -1821,9 +2002,11 @@ export const ttbRouter = router({
             totalLiters: sql<number>`COALESCE(SUM(ABS(CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL))), 0)`,
           })
           .from(batchVolumeAdjustments)
+          .innerJoin(batches, eq(batchVolumeAdjustments.batchId, batches.id))
           .where(
             and(
               isNull(batchVolumeAdjustments.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) < 0`,
               gte(batchVolumeAdjustments.adjustmentDate, startDate),
               lte(batchVolumeAdjustments.adjustmentDate, endDate)
@@ -1836,10 +2019,12 @@ export const ttbRouter = router({
             totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.loss} AS DECIMAL)), 0)`,
           })
           .from(kegFills)
+          .innerJoin(batches, eq(kegFills.batchId, batches.id))
           .where(
             and(
               isNull(kegFills.voidedAt),
               isNull(kegFills.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               gte(kegFills.filledAt, startDate),
               lte(kegFills.filledAt, endDate)
             )
@@ -1885,7 +2070,7 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
-              eq(batches.reconciliationStatus, "verified"),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               lte(batches.startDate, endDate),
               // Exclude batches that ended before the period end
               or(isNull(batches.endDate), gte(batches.endDate, endDate)),
@@ -1897,149 +2082,99 @@ export const ttbRouter = router({
 
         let endingBulkLiters = 0;
         let endingPommeauBulkLiters = 0;
+        let endingWineUnder16BulkLiters = 0;
 
-        for (const batch of batchesAtEnd) {
-          let batchVolume = Number(batch.initialVolume || 0);
+        if (batchesAtEnd.length > 0) {
+          const endBatchIds = batchesAtEnd.map(b => b.id);
+          const endIdList = sql.join(endBatchIds.map(id => sql`${id}::uuid`), sql`, `);
 
-          // Add transfers IN on or before endDate
-          const transfersIn = await db
-            .select({
-              totalVolume: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
-            })
-            .from(batchTransfers)
-            .where(
-              and(
-                eq(batchTransfers.destinationBatchId, batch.id),
-                ne(batchTransfers.sourceBatchId, batch.id), // Exclude self-transfers
-                isNull(batchTransfers.deletedAt),
-                lte(batchTransfers.transferredAt, endDate)
-              )
-            );
-          batchVolume += Number(transfersIn[0]?.totalVolume || 0);
+          // Batch all operation queries in parallel (10 queries instead of N*10)
+          const [
+            endXferIn, endXferOut, endMergesIn, endMergesOut,
+            endBottlings, endKegFillsQ, endDistillation,
+            endRacking, endFiltering, endAdjustments
+          ] = await Promise.all([
+            db.execute(sql`SELECT destination_batch_id as batch_id, COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total
+              FROM batch_transfers WHERE destination_batch_id IN (${endIdList}) AND source_batch_id != destination_batch_id
+              AND deleted_at IS NULL AND transferred_at <= ${endDate} GROUP BY destination_batch_id`),
+            db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total_vol,
+              COALESCE(SUM(CAST(COALESCE(loss, '0') AS DECIMAL)), 0) as total_loss
+              FROM batch_transfers WHERE source_batch_id IN (${endIdList}) AND destination_batch_id != source_batch_id
+              AND deleted_at IS NULL AND transferred_at <= ${endDate} GROUP BY source_batch_id`),
+            db.execute(sql`SELECT target_batch_id as batch_id, COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total
+              FROM batch_merge_history WHERE target_batch_id IN (${endIdList})
+              AND deleted_at IS NULL AND merged_at <= ${endDate} GROUP BY target_batch_id`),
+            db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total
+              FROM batch_merge_history WHERE source_batch_id IN (${endIdList})
+              AND deleted_at IS NULL AND merged_at <= ${endDate} GROUP BY source_batch_id`),
+            db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken_liters AS DECIMAL)), 0) as total
+              FROM bottle_runs WHERE batch_id IN (${endIdList})
+              AND voided_at IS NULL AND packaged_at <= ${endDate} GROUP BY batch_id`),
+            db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_taken AS DECIMAL)), 0) as total
+              FROM keg_fills WHERE batch_id IN (${endIdList})
+              AND voided_at IS NULL AND deleted_at IS NULL AND filled_at <= ${endDate} GROUP BY batch_id`),
+            db.execute(sql`SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(source_volume_liters AS DECIMAL)), 0) as total
+              FROM distillation_records WHERE source_batch_id IN (${endIdList})
+              AND deleted_at IS NULL AND sent_at <= ${endDate} GROUP BY source_batch_id`),
+            db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total
+              FROM batch_racking_operations WHERE batch_id IN (${endIdList})
+              AND deleted_at IS NULL AND racked_at <= ${endDate} GROUP BY batch_id`),
+            db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total
+              FROM batch_filter_operations WHERE batch_id IN (${endIdList})
+              AND deleted_at IS NULL AND filtered_at <= ${endDate} GROUP BY batch_id`),
+            db.execute(sql`SELECT batch_id, COALESCE(SUM(CAST(adjustment_amount AS DECIMAL)), 0) as total
+              FROM batch_volume_adjustments WHERE batch_id IN (${endIdList})
+              AND deleted_at IS NULL AND adjustment_date <= ${endDate} GROUP BY batch_id`),
+          ]);
 
-          // Subtract transfers OUT on or before endDate
-          const transfersOut = await db
-            .select({
-              totalVolume: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
-              totalLoss: sql<number>`COALESCE(SUM(CAST(${batchTransfers.loss} AS DECIMAL)), 0)`,
-            })
-            .from(batchTransfers)
-            .where(
-              and(
-                eq(batchTransfers.sourceBatchId, batch.id),
-                ne(batchTransfers.destinationBatchId, batch.id), // Exclude self-transfers
-                isNull(batchTransfers.deletedAt),
-                lte(batchTransfers.transferredAt, endDate)
-              )
-            );
-          batchVolume -= Number(transfersOut[0]?.totalVolume || 0);
-          batchVolume -= Number(transfersOut[0]?.totalLoss || 0);
+          // Build lookup maps
+          const makeMap = (rows: Record<string, unknown>[], keyCol: string, valCol: string) => {
+            const m = new Map<string, number>();
+            for (const r of rows) m.set(String(r[keyCol]), Number(r[valCol] || 0));
+            return m;
+          };
 
-          // Subtract bottlings on or before endDate
-          const bottlings = await db
-            .select({
-              totalVolume: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
-            })
-            .from(bottleRuns)
-            .where(
-              and(
-                eq(bottleRuns.batchId, batch.id),
-                isNull(bottleRuns.voidedAt),
-                lte(bottleRuns.packagedAt, endDate)
-              )
-            );
-          batchVolume -= Number(bottlings[0]?.totalVolume || 0);
+          const xInMap = makeMap(endXferIn.rows, "batch_id", "total");
+          const xOutVolMap = makeMap(endXferOut.rows, "batch_id", "total_vol");
+          const xOutLossMap = makeMap(endXferOut.rows, "batch_id", "total_loss");
+          const mInMap = makeMap(endMergesIn.rows, "batch_id", "total");
+          const mOutMap = makeMap(endMergesOut.rows, "batch_id", "total");
+          const bottMap = makeMap(endBottlings.rows, "batch_id", "total");
+          const kegMap = makeMap(endKegFillsQ.rows, "batch_id", "total");
+          const distMap = makeMap(endDistillation.rows, "batch_id", "total");
+          const rackMap = makeMap(endRacking.rows, "batch_id", "total");
+          const filtMap = makeMap(endFiltering.rows, "batch_id", "total");
+          const adjMap = makeMap(endAdjustments.rows, "batch_id", "total");
 
-          // Subtract keg fills on or before endDate
-          const kegFillsData = await db
-            .select({
-              totalVolume: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
-            })
-            .from(kegFills)
-            .where(
-              and(
-                eq(kegFills.batchId, batch.id),
-                isNull(kegFills.voidedAt),
-                isNull(kegFills.deletedAt),
-                lte(kegFills.filledAt, endDate)
-              )
-            );
-          batchVolume -= Number(kegFillsData[0]?.totalVolume || 0);
+          for (const batch of batchesAtEnd) {
+            let vol = Number(batch.initialVolume || 0);
+            vol += (xInMap.get(batch.id) || 0);
+            vol -= (xOutVolMap.get(batch.id) || 0);
+            vol -= (xOutLossMap.get(batch.id) || 0);
+            vol += (mInMap.get(batch.id) || 0);
+            vol -= (mOutMap.get(batch.id) || 0);
+            vol -= (bottMap.get(batch.id) || 0);
+            vol -= (kegMap.get(batch.id) || 0);
+            vol -= (distMap.get(batch.id) || 0);
+            vol -= (rackMap.get(batch.id) || 0);
+            vol -= (filtMap.get(batch.id) || 0);
+            vol += (adjMap.get(batch.id) || 0);
 
-          // Subtract distillation on or before endDate
-          const distillation = await db
-            .select({
-              totalVolume: sql<number>`COALESCE(SUM(CAST(${distillationRecords.sourceVolumeLiters} AS DECIMAL)), 0)`,
-            })
-            .from(distillationRecords)
-            .where(
-              and(
-                eq(distillationRecords.sourceBatchId, batch.id),
-                isNull(distillationRecords.deletedAt),
-                lte(distillationRecords.sentAt, endDate)
-              )
-            );
-          batchVolume -= Number(distillation[0]?.totalVolume || 0);
-
-          // Subtract racking losses on or before endDate
-          const rackingLoss = await db
-            .select({
-              totalLoss: sql<number>`COALESCE(SUM(CAST(${batchRackingOperations.volumeLoss} AS DECIMAL)), 0)`,
-            })
-            .from(batchRackingOperations)
-            .where(
-              and(
-                eq(batchRackingOperations.batchId, batch.id),
-                isNull(batchRackingOperations.deletedAt),
-                lte(batchRackingOperations.rackedAt, endDate)
-              )
-            );
-          batchVolume -= Number(rackingLoss[0]?.totalLoss || 0);
-
-          // Subtract filter losses on or before endDate
-          const filterLoss = await db
-            .select({
-              totalLoss: sql<number>`COALESCE(SUM(CAST(${batchFilterOperations.volumeLoss} AS DECIMAL)), 0)`,
-            })
-            .from(batchFilterOperations)
-            .where(
-              and(
-                eq(batchFilterOperations.batchId, batch.id),
-                isNull(batchFilterOperations.deletedAt),
-                lte(batchFilterOperations.filteredAt, endDate)
-              )
-            );
-          batchVolume -= Number(filterLoss[0]?.totalLoss || 0);
-
-          // Apply volume adjustments on or before endDate
-          const volAdjustments = await db
-            .select({
-              totalAdjustment: sql<number>`COALESCE(SUM(CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL)), 0)`,
-            })
-            .from(batchVolumeAdjustments)
-            .where(
-              and(
-                eq(batchVolumeAdjustments.batchId, batch.id),
-                isNull(batchVolumeAdjustments.deletedAt),
-                lte(batchVolumeAdjustments.adjustmentDate, endDate)
-              )
-            );
-          batchVolume += Number(volAdjustments[0]?.totalAdjustment || 0);
-
-          // Only add positive volumes (batch had liquid at endDate)
-          if (batchVolume > 0) {
-            if (batch.productType === "pommeau") {
-              endingPommeauBulkLiters += batchVolume;
-            } else {
-              endingBulkLiters += batchVolume;
+            if (vol > 0) {
+              const taxClass = getTaxClassFromMap(batchTaxClassMap, batch.id, batch.productType);
+              if (taxClass === "wine16To21") {
+                endingPommeauBulkLiters += vol;
+              } else if (taxClass === "wineUnder16") {
+                endingWineUnder16BulkLiters += vol;
+              } else {
+                endingBulkLiters += vol;
+              }
             }
           }
         }
 
         // Bottled inventory AS OF period end date
-        // Calculate by taking current quantity and reversing changes that happened AFTER endDate
-
-        // Get all inventory items that were created on or before endDate
+        // Uses batched queries instead of per-item N+1 pattern
         const itemsCreatedByEndDate = await db
           .select({
             id: inventoryItems.id,
@@ -2051,42 +2186,35 @@ export const ttbRouter = router({
 
         let endingBottledML = 0;
 
-        for (const item of itemsCreatedByEndDate) {
-          // Start with current quantity
-          let itemQuantity = Number(item.currentQuantity || 0);
+        if (itemsCreatedByEndDate.length > 0) {
+          const itemIds = itemsCreatedByEndDate.map(i => i.id);
+          const itemIdList = sql.join(itemIds.map(id => sql`${id}::uuid`), sql`, `);
 
-          // Add back distributions that happened AFTER endDate (reverse them)
-          const distributionsAfter = await db
-            .select({
-              totalQuantity: sql<number>`COALESCE(SUM(${inventoryDistributions.quantityDistributed}), 0)`,
-            })
-            .from(inventoryDistributions)
-            .where(
-              and(
-                eq(inventoryDistributions.inventoryItemId, item.id),
-                sql`${inventoryDistributions.distributionDate} > ${endDate}`
-              )
-            );
-          itemQuantity += Number(distributionsAfter[0]?.totalQuantity || 0);
+          const [distsAfterEnd, adjsAfterEnd] = await Promise.all([
+            db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_distributed), 0) as total
+              FROM inventory_distributions WHERE inventory_item_id IN (${itemIdList})
+              AND distribution_date > ${endDate} GROUP BY inventory_item_id`),
+            db.execute(sql`SELECT inventory_item_id as item_id, COALESCE(SUM(quantity_change), 0) as total
+              FROM inventory_adjustments WHERE inventory_item_id IN (${itemIdList})
+              AND adjusted_at > ${endDate} GROUP BY inventory_item_id`),
+          ]);
 
-          // Reverse adjustments that happened AFTER endDate
-          const adjustmentsAfter = await db
-            .select({
-              totalChange: sql<number>`COALESCE(SUM(${inventoryAdjustments.quantityChange}), 0)`,
-            })
-            .from(inventoryAdjustments)
-            .where(
-              and(
-                eq(inventoryAdjustments.inventoryItemId, item.id),
-                sql`${inventoryAdjustments.adjustedAt} > ${endDate}`
-              )
-            );
-          // Reverse the adjustment (if it was -5 after endDate, add 5 back)
-          itemQuantity -= Number(adjustmentsAfter[0]?.totalChange || 0);
+          const makeItemMap = (rows: Record<string, unknown>[]) => {
+            const m = new Map<string, number>();
+            for (const r of rows) m.set(String(r["item_id"]), Number(r["total"] || 0));
+            return m;
+          };
 
-          // Only add positive quantities
-          if (itemQuantity > 0) {
-            endingBottledML += itemQuantity * Number(item.packageSizeML || 0);
+          const distAfterMap = makeItemMap(distsAfterEnd.rows);
+          const adjAfterMap = makeItemMap(adjsAfterEnd.rows);
+
+          for (const item of itemsCreatedByEndDate) {
+            let qty = Number(item.currentQuantity || 0);
+            qty += (distAfterMap.get(item.id) || 0); // Reverse distributions after endDate
+            qty -= (adjAfterMap.get(item.id) || 0); // Reverse adjustments after endDate
+            if (qty > 0) {
+              endingBottledML += qty * Number(item.packageSizeML || 0);
+            }
           }
         }
 
@@ -2110,16 +2238,17 @@ export const ttbRouter = router({
         const kegsInStockLiters = Number(kegsInStock[0]?.totalLiters || 0);
 
         const endingPommeauBulkGallons = roundGallons(litersToWineGallons(endingPommeauBulkLiters));
+        const endingWineUnder16BulkGallons = roundGallons(litersToWineGallons(endingWineUnder16BulkLiters));
         const endingCiderBulkGallons = roundGallons(litersToWineGallons(endingBulkLiters));
         const endingBottledGallons = roundGallons(
           mlToWineGallons(endingBottledML) + litersToWineGallons(kegsInStockLiters)
         );
 
         const endingInventory: InventoryBreakdown = {
-          bulk: roundGallons(endingCiderBulkGallons + endingPommeauBulkGallons),
+          bulk: roundGallons(endingCiderBulkGallons + endingPommeauBulkGallons + endingWineUnder16BulkGallons),
           bottled: endingBottledGallons,
           total: roundGallons(
-            endingCiderBulkGallons + endingPommeauBulkGallons +
+            endingCiderBulkGallons + endingPommeauBulkGallons + endingWineUnder16BulkGallons +
               endingBottledGallons
           ),
         };
@@ -2154,13 +2283,130 @@ export const ttbRouter = router({
         const ciderSentShipments = Number(ciderToDsp[0]?.shipmentCount || 0);
 
         // ============================================
+        // Positive Volume Adjustments (gains that increase inventory)
+        // These are included in ending inventory via per-batch reconstruction
+        // but must also be counted on the available side for the formula to balance
+        // ============================================
+
+        const positiveAdjustments = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL)), 0)`,
+          })
+          .from(batchVolumeAdjustments)
+          .innerJoin(batches, eq(batchVolumeAdjustments.batchId, batches.id))
+          .where(
+            and(
+              isNull(batchVolumeAdjustments.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
+              sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) > 0`,
+              gte(batchVolumeAdjustments.adjustmentDate, startDate),
+              lte(batchVolumeAdjustments.adjustmentDate, endDate)
+            )
+          );
+
+        const positiveAdjustmentGallons = roundGallons(
+          litersToWineGallons(Number(positiveAdjustments[0]?.totalLiters || 0))
+        );
+
+        // ============================================
+        // Per-Tax-Class Tax-Paid Removals
+        // Split keg and bottle distributions by batch tax class
+        // ============================================
+
+        // Keg distributions by batch
+        const kegDistsByBatch = await db.execute(sql`
+          SELECT kf.batch_id, COALESCE(SUM(CAST(kf.volume_taken AS DECIMAL)), 0) as total_liters
+          FROM keg_fills kf
+          WHERE kf.distributed_at IS NOT NULL
+            AND kf.voided_at IS NULL AND kf.deleted_at IS NULL
+            AND kf.distributed_at >= ${startDate} AND kf.distributed_at <= ${endDate}
+          GROUP BY kf.batch_id
+        `);
+
+        // Bottle distributions by batch
+        const bottleDistsByBatch = await db.execute(sql`
+          SELECT ii.batch_id, COALESCE(SUM(
+            CAST(id.quantity_distributed AS DECIMAL) * CAST(ii.package_size_ml AS DECIMAL)
+          ), 0) as total_ml
+          FROM inventory_distributions id
+          INNER JOIN inventory_items ii ON id.inventory_item_id = ii.id
+          WHERE id.distribution_date >= ${startDate} AND id.distribution_date <= ${endDate}
+            AND ii.batch_id IS NOT NULL
+          GROUP BY ii.batch_id
+        `);
+
+        // Aggregate removals by tax class
+        const removalsByTaxClass: Record<string, number> = {};
+        for (const row of kegDistsByBatch.rows) {
+          const batchId = String(row["batch_id"]);
+          const gallons = litersToWineGallons(Number(row["total_liters"] || 0));
+          const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
+          removalsByTaxClass[taxClass] = (removalsByTaxClass[taxClass] || 0) + gallons;
+        }
+        for (const row of bottleDistsByBatch.rows) {
+          const batchId = String(row["batch_id"]);
+          const gallons = mlToWineGallons(Number(row["total_ml"] || 0));
+          const taxClass = getTaxClassFromMap(batchTaxClassMap, batchId, null) || "hardCider";
+          removalsByTaxClass[taxClass] = (removalsByTaxClass[taxClass] || 0) + gallons;
+        }
+
+        // Build per-class tax computation
+        const taxClassLabels: Record<string, string> = {
+          hardCider: "Hard Cider (Under 8.5% ABV)",
+          wineUnder16: "Still Wine (Not Over 16%)",
+          wine16To21: "Still Wine (16-21%)",
+          wine21To24: "Still Wine (21-24%)",
+          sparklingWine: "Sparkling Wine",
+          carbonatedWine: "Carbonated Wine",
+        };
+
+        const taxComputationByClass: NonNullable<TTBForm512017Data["taxComputationByClass"]> = [];
+
+        // Always include hard cider (even if 0)
+        const classesToCompute = new Set<string>(["hardCider"]);
+        for (const cls of Object.keys(removalsByTaxClass)) {
+          if (removalsByTaxClass[cls] > 0) classesToCompute.add(cls);
+        }
+        // Include classes with ending inventory too
+        if (endingWineUnder16BulkGallons > 0 || beginningWineUnder16BulkGallons > 0) classesToCompute.add("wineUnder16");
+        if (endingPommeauBulkGallons > 0 || beginningPommeauBulkGallons > 0) classesToCompute.add("wine16To21");
+
+        for (const cls of ["hardCider", "wineUnder16", "wine16To21", "wine21To24", "sparklingWine", "carbonatedWine"]) {
+          if (!classesToCompute.has(cls)) continue;
+          const taxableGallons = roundGallons(removalsByTaxClass[cls] || 0);
+          const taxRate = (ttbConfig.taxRates as Record<string, number>)[cls] || 0;
+          const grossTax = Math.round(taxableGallons * taxRate * 100) / 100;
+
+          // Small producer credit only applies to hard cider
+          let creditAmount = 0;
+          if (cls === "hardCider") {
+            const creditPerGallon = ttbConfig.cbmaCredits.smallProducerCreditPerGallon;
+            const creditLimit = ttbConfig.cbmaCredits.creditLimitGallons;
+            const creditEligibleGallons = Math.min(taxableGallons, creditLimit);
+            creditAmount = Math.round(creditEligibleGallons * creditPerGallon * 100) / 100;
+          }
+
+          const netTax = Math.round((grossTax - creditAmount) * 100) / 100;
+
+          taxComputationByClass.push({
+            taxClass: cls,
+            label: taxClassLabels[cls] || cls,
+            taxRate,
+            taxableGallons,
+            grossTax,
+            smallProducerCredit: creditAmount,
+            netTax,
+          });
+        }
+
+        // ============================================
         // Reconciliation
         // ============================================
 
         const reconciliation = calculateReconciliation({
           beginningInventory: beginningInventory.total,
-          wineProduced: wineProducedGallons + pommeauProducedGallons,
-          receipts: 0, // No receipts from other premises
+          wineProduced: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
+          receipts: positiveAdjustmentGallons, // Positive volume adjustments
           taxPaidRemovals: taxPaidRemovals.total,
           otherRemovals: otherRemovals.total + ciderSentToDspGallons,
           endingInventory: endingInventory.total,
@@ -2291,7 +2537,7 @@ export const ttbRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
-              eq(batches.reconciliationStatus, "verified"),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.status, "fermentation"),
               lte(batches.startDate, endDate)
             )
@@ -2366,20 +2612,62 @@ export const ttbRouter = router({
         };
 
         // Build per-tax-class bulk wines columns
-        // Hard cider column: excludes pommeau volumes
-        const ciderLine11 = beginningInventory.bulk - beginningPommeauBulkGallons + wineProducedGallons;
+        // Hard cider column: excludes pommeau and wineUnder16 volumes
+        const ciderBeginning = roundGallons(beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons);
+        const ciderLine11 = ciderBeginning + wineProducedGallons;
+        const ciderKegTaxPaid = roundGallons(removalsByTaxClass["hardCider"] || 0);
         const ciderBulkWines: BulkWinesSection = {
           ...bulkWines,
-          line1_onHandFirst: roundGallons(beginningInventory.bulk - beginningPommeauBulkGallons),
+          line1_onHandFirst: ciderBeginning,
           line2_produced: wineProducedGallons,
           line3_otherProduction: 0,
           line11_total: roundGallons(ciderLine11),
+          line17_taxpaid: ciderKegTaxPaid,
           line29_onHandFinished: roundGallons(endingCiderBulkGallons - fermenters.gallonsInFermenters),
           line32_totalOnHand: endingCiderBulkGallons,
         };
 
+        // Wine ≤16% column (fruit wine): receives volume via tax class transfers
+        const wineUnder16Line11 = beginningWineUnder16BulkGallons;
+        const wineUnder16KegTaxPaid = roundGallons(removalsByTaxClass["wineUnder16"] || 0);
+        const wineUnder16BulkWines: BulkWinesSection = {
+          line1_onHandFirst: beginningWineUnder16BulkGallons,
+          line2_produced: 0,
+          line3_otherProduction: 0,
+          line4_receivedBonded: 0,
+          line5_receivedCustoms: 0,
+          line6_receivedReturned: 0,
+          line7_receivedTransfer: 0,
+          line8_dumpedToBulk: 0,
+          line9_transferredIn: 0,
+          line10_withdrawnFermenters: 0,
+          line11_total: roundGallons(wineUnder16Line11),
+          line12_bottled: 0,
+          line13_exportTransfer: 0,
+          line14_bondedTransfer: 0,
+          line15_customsTransfer: 0,
+          line16_ftzTransfer: 0,
+          line17_taxpaid: wineUnder16KegTaxPaid,
+          line18_taxFreeUS: 0,
+          line19_taxFreeExport: 0,
+          line20_transferredOut: 0,
+          line21_distillingMaterial: 0,
+          line22_spiritsAdded: 0,
+          line23_inventoryLosses: 0,
+          line24_destroyed: 0,
+          line25_returnedToBond: 0,
+          line26_other: 0,
+          line27_total: wineUnder16KegTaxPaid,
+          line28_onHandFermenters: 0,
+          line29_onHandFinished: endingWineUnder16BulkGallons,
+          line30_onHandUnfinished: 0,
+          line31_inTransit: 0,
+          line32_totalOnHand: endingWineUnder16BulkGallons,
+        };
+
         // Wine 16-21% column (pommeau): production = blending, no fermentation
         const pommeauLine11 = beginningPommeauBulkGallons + pommeauProducedGallons;
+        const pommeauKegTaxPaid = roundGallons(removalsByTaxClass["wine16To21"] || 0);
         const pommeauBulkWines: BulkWinesSection = {
           line1_onHandFirst: beginningPommeauBulkGallons,
           line2_produced: 0, // Pommeau is not fermented
@@ -2392,12 +2680,12 @@ export const ttbRouter = router({
           line9_transferredIn: 0,
           line10_withdrawnFermenters: 0,
           line11_total: roundGallons(pommeauLine11),
-          line12_bottled: 0, // TODO: separate pommeau bottling
+          line12_bottled: 0,
           line13_exportTransfer: 0,
           line14_bondedTransfer: 0,
           line15_customsTransfer: 0,
           line16_ftzTransfer: 0,
-          line17_taxpaid: 0, // TODO: separate pommeau tax-paid removals
+          line17_taxpaid: pommeauKegTaxPaid,
           line18_taxFreeUS: 0,
           line19_taxFreeExport: 0,
           line20_transferredOut: 0,
@@ -2407,7 +2695,7 @@ export const ttbRouter = router({
           line24_destroyed: 0,
           line25_returnedToBond: 0,
           line26_other: 0,
-          line27_total: 0,
+          line27_total: pommeauKegTaxPaid,
           line28_onHandFermenters: 0,
           line29_onHandFinished: endingPommeauBulkGallons,
           line30_onHandUnfinished: 0,
@@ -2417,6 +2705,7 @@ export const ttbRouter = router({
 
         const bulkWinesByTaxClass: Record<string, BulkWinesSection> = {
           hardCider: ciderBulkWines,
+          wineUnder16: wineUnder16BulkWines,
           wine16To21: pommeauBulkWines,
         };
 
@@ -2682,7 +2971,7 @@ export const ttbRouter = router({
           fermenters,
           beginningInventory,
           wineProduced: {
-            total: roundGallons(wineProducedGallons + pommeauProducedGallons),
+            total: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
           },
           receipts: {
             total: 0,
@@ -2696,6 +2985,7 @@ export const ttbRouter = router({
           ciderBrandyInventory,
           ciderBrandyReconciliation,
           bulkWinesByTaxClass,
+          taxComputationByClass,
         };
 
         return {

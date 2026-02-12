@@ -774,6 +774,17 @@ export interface TTBForm512017Data {
 
   /** Part I Section B - Bottled Wines by tax class (multi-column form) */
   bottledWinesByTaxClass?: Record<string, BottledWinesSection>;
+
+  /** Per-tax-class tax computation breakdown */
+  taxComputationByClass?: Array<{
+    taxClass: string;
+    label: string;
+    taxRate: number;
+    taxableGallons: number;
+    grossTax: number;
+    smallProducerCredit: number;
+    netTax: number;
+  }>;
 }
 
 // ============================================
