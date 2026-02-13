@@ -1399,6 +1399,7 @@ export const ttbRouter = router({
         let beginningInventorySource: "snapshot" | "ttb_opening_balance" | "calculated" = "calculated";
         let beginningPommeauBulkGallons = 0;
         let beginningWineUnder16BulkGallons = 0;
+        let brandyOpening = 0; // Spirits opening balance (excluded from wine beginningInventory)
 
         // 1. Check for previous period snapshot
         // Format startDate as string for comparison
@@ -1494,6 +1495,8 @@ export const ttbRouter = router({
             beginningWineUnder16BulkGallons = roundGallons(
               Number(balances.bulk?.wineUnder16 || 0)
             );
+            // Extract spirits opening (not included in wine bulk/bottled totals)
+            brandyOpening = Number(balances.spirits?.appleBrandy || 0);
           } else {
             // 3. Fall back to reconstructing inventory as of dayBeforeStart
             // Uses the same batched per-batch reconstruction approach as ending inventory
@@ -2315,6 +2318,29 @@ export const ttbRouter = router({
         );
 
         // ============================================
+        // Brandy received from distillery (needed before reconciliation)
+        // ============================================
+        const brandyFromDsp = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${distillationRecords.receivedVolumeLiters} AS DECIMAL)), 0)`,
+            returnCount: sql<number>`COUNT(*)`,
+          })
+          .from(distillationRecords)
+          .where(
+            and(
+              isNull(distillationRecords.deletedAt),
+              isNotNull(distillationRecords.receivedAt),
+              gte(distillationRecords.receivedAt, startDate),
+              lte(distillationRecords.receivedAt, endDate)
+            )
+          );
+
+        const brandyReceivedGallons = roundGallons(
+          litersToWineGallons(Number(brandyFromDsp[0]?.totalLiters || 0))
+        );
+        const brandyReceivedReturns = Number(brandyFromDsp[0]?.returnCount || 0);
+
+        // ============================================
         // Per-Tax-Class Tax-Paid Removals
         // Split keg and bottle distributions by batch tax class
         // ============================================
@@ -2412,12 +2438,12 @@ export const ttbRouter = router({
         // ============================================
 
         const reconciliation = calculateReconciliation({
-          beginningInventory: beginningInventory.total,
+          beginningInventory: beginningInventory.total + brandyOpening, // Wine + spirits opening
           wineProduced: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
-          receipts: positiveAdjustmentGallons, // Positive volume adjustments
+          receipts: positiveAdjustmentGallons + brandyReceivedGallons, // Positive adjustments + brandy from DSP
           taxPaidRemovals: taxPaidRemovals.total,
           otherRemovals: otherRemovals.total + ciderSentToDspGallons,
-          endingInventory: endingInventory.total,
+          endingInventory: endingInventory.total, // Includes all batches (wine + brandy)
         });
 
         // ============================================
@@ -2755,25 +2781,7 @@ export const ttbRouter = router({
         // computed earlier (before reconciliation)
 
         // 2. Brandy received from distillery
-        const brandyFromDsp = await db
-          .select({
-            totalLiters: sql<number>`COALESCE(SUM(CAST(${distillationRecords.receivedVolumeLiters} AS DECIMAL)), 0)`,
-            returnCount: sql<number>`COUNT(*)`,
-          })
-          .from(distillationRecords)
-          .where(
-            and(
-              isNull(distillationRecords.deletedAt),
-              isNotNull(distillationRecords.receivedAt),
-              gte(distillationRecords.receivedAt, startDate),
-              lte(distillationRecords.receivedAt, endDate)
-            )
-          );
-
-        const brandyReceivedGallons = roundGallons(
-          litersToWineGallons(Number(brandyFromDsp[0]?.totalLiters || 0))
-        );
-        const brandyReceivedReturns = Number(brandyFromDsp[0]?.returnCount || 0);
+        // (brandyFromDsp, brandyReceivedGallons, brandyReceivedReturns computed earlier, before reconciliation)
 
         // 3. Get all brandy batch IDs (by productType)
         const brandyBatchesQuery = await db
@@ -2874,19 +2882,7 @@ export const ttbRouter = router({
 
         // Calculate brandy based on transfers (TTB-accurate)
         // Brandy ending = Beginning + Received from DSP - Used in cider
-        // Get brandy opening from TTB opening balances if available
-        let brandyOpening = 0;
-        {
-          const [brandySettings] = await db
-            .select({
-              ttbOpeningBalances: organizationSettings.ttbOpeningBalances,
-            })
-            .from(organizationSettings)
-            .limit(1);
-          if (brandySettings?.ttbOpeningBalances?.spirits?.appleBrandy) {
-            brandyOpening = Number(brandySettings.ttbOpeningBalances.spirits.appleBrandy) || 0;
-          }
-        }
+        // brandyOpening computed earlier (from TTB opening balances or 0)
         const brandyCalculatedGallons = roundGallons(
           brandyOpening + brandyReceivedGallons - brandyUsedInCiderGallons
         );
@@ -2982,7 +2978,7 @@ export const ttbRouter = router({
             total: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
           },
           receipts: {
-            total: 0,
+            total: roundGallons(positiveAdjustmentGallons + brandyReceivedGallons),
           },
           taxPaidRemovals,
           otherRemovals,
