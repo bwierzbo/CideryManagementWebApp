@@ -27,7 +27,7 @@ import {
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne, gte, lte } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
 import { validateBatches, type BatchValidation } from "../validation/batch-validation";
@@ -4492,11 +4492,28 @@ export const batchRouter = router({
               .update(batches)
               .set({
                 currentVolume: volumeRackedL.toString(),
+                currentVolumeLiters: volumeRackedL.toString(),
                 currentVolumeUnit: 'L',
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, input.batchId))
               .returning();
+
+            // Log lees loss as a formal volume adjustment for reporting/audit
+            if (volumeLossL > 0) {
+              await tx.insert(batchVolumeAdjustments).values({
+                batchId: input.batchId,
+                vesselId: sourceVesselId,
+                adjustmentDate: input.rackedAt || new Date(),
+                adjustmentType: "sediment",
+                volumeBefore: volumeBeforeL.toString(),
+                volumeAfter: volumeRackedL.toString(),
+                adjustmentAmount: (-volumeLossL).toString(),
+                reason: "Lees/sediment loss from racking (rack to self)",
+                notes: input.notes || null,
+                adjustedBy: ctx.session!.user!.id,
+              });
+            }
 
             resultMessage = `Batch racked to itself in ${destinationVessel[0].name}. Sediment removed, volume loss recorded.`;
           } else if (hasBatchInDestination) {
@@ -4844,17 +4861,34 @@ export const batchRouter = router({
 
               resultMessage = `Batch racked and merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L)`;
             } else {
-              // Full rack: Move batch to destination vessel
+              // Full rack: Move batch to destination vessel (preserves batch ID)
               updatedBatch = await tx
                 .update(batches)
                 .set({
                   vesselId: input.destinationVesselId,
                   currentVolume: volumeRackedL.toString(),
+                  currentVolumeLiters: volumeRackedL.toString(),
                   currentVolumeUnit: 'L',
                   updatedAt: new Date(),
                 })
                 .where(eq(batches.id, input.batchId))
                 .returning();
+
+              // Log lees loss as a formal volume adjustment for reporting/audit
+              if (volumeLossL > 0) {
+                await tx.insert(batchVolumeAdjustments).values({
+                  batchId: input.batchId,
+                  vesselId: input.destinationVesselId,
+                  adjustmentDate: input.rackedAt || new Date(),
+                  adjustmentType: "sediment",
+                  volumeBefore: volumeBeforeL.toString(),
+                  volumeAfter: volumeRackedL.toString(),
+                  adjustmentAmount: (-volumeLossL).toString(),
+                  reason: "Lees/sediment loss from racking",
+                  notes: input.notes || null,
+                  adjustedBy: ctx.session!.user!.id,
+                });
+              }
 
               resultMessage = `Batch racked to ${destinationVessel[0].name}`;
             }
@@ -8313,7 +8347,193 @@ export const batchRouter = router({
       const destBatch = aliasedTable(batches, "destBatch");
       const sourceBatch = aliasedTable(batches, "sourceBatch");
 
-      // Transfers out
+      // ---- Point-in-time volume reconstruction ----
+      // We need two snapshots: volume at period start, volume at period end.
+      // "Before start" = all activities with date < startDate
+      // "In period" = activities with date >= startDate AND date <= endDate
+      // Opening balance = initialVolume + all activities before period start
+      // Ending balance  = initialVolume + all activities through period end
+      //                  = opening + in-period activities
+
+      // Helper: builds per-batch sum map from aggregate result
+      const buildSumMap = (rows: { batch_id: string; total: string }[]): Map<string, number> => {
+        const m = new Map<string, number>();
+        for (const r of rows) m.set(r.batch_id, parseFloat(r.total || "0"));
+        return m;
+      };
+
+      // Reconstruct volume at a cutoff date for all batches
+      // Returns Map<batchId, volumeAtCutoff>
+      const reconstructVolumesAtDate = async (cutoffDate: Date): Promise<Map<string, number>> => {
+        if (batchIds.length === 0) return new Map();
+
+        const batchIdsSql = sql.join(batchIds.map(id => sql`${id}`), sql`, `);
+
+        // Run all aggregate queries in parallel
+        const [
+          transfersInRes, transfersOutRes, transferLossRes,
+          mergesInRes, mergesOutRes,
+          bottlingsRes, kegFillsRes, kegLossRes,
+          distillationsRes, rackingsRes, filteringsRes, adjustmentsRes,
+        ] = await Promise.all([
+          // Transfers in (volume received via transfer)
+          db.execute(sql`
+            SELECT destination_batch_id as batch_id, COALESCE(SUM(CAST(volume_transferred AS NUMERIC)), 0) as total
+            FROM batch_transfers
+            WHERE destination_batch_id IN (${batchIdsSql})
+              AND source_batch_id != destination_batch_id
+              AND deleted_at IS NULL AND transferred_at <= ${cutoffDate}
+            GROUP BY destination_batch_id
+          `),
+          // Transfers out (volume sent via transfer)
+          db.execute(sql`
+            SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(volume_transferred AS NUMERIC)), 0) as total
+            FROM batch_transfers
+            WHERE source_batch_id IN (${batchIdsSql})
+              AND source_batch_id != destination_batch_id
+              AND deleted_at IS NULL AND transferred_at <= ${cutoffDate}
+            GROUP BY source_batch_id
+          `),
+          // Transfer loss
+          db.execute(sql`
+            SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(loss AS NUMERIC)), 0) as total
+            FROM batch_transfers
+            WHERE source_batch_id IN (${batchIdsSql})
+              AND source_batch_id != destination_batch_id
+              AND deleted_at IS NULL AND transferred_at <= ${cutoffDate}
+              AND loss IS NOT NULL
+            GROUP BY source_batch_id
+          `),
+          // Merges in
+          db.execute(sql`
+            SELECT destination_batch_id as batch_id, COALESCE(SUM(CAST(volume_added AS NUMERIC)), 0) as total
+            FROM batch_merge_history
+            WHERE destination_batch_id IN (${batchIdsSql})
+              AND deleted_at IS NULL AND merged_at <= ${cutoffDate}
+            GROUP BY destination_batch_id
+          `),
+          // Merges out
+          db.execute(sql`
+            SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(volume_added AS NUMERIC)), 0) as total
+            FROM batch_merge_history
+            WHERE source_batch_id IN (${batchIdsSql})
+              AND deleted_at IS NULL AND merged_at <= ${cutoffDate}
+            GROUP BY source_batch_id
+          `),
+          // Bottlings
+          db.execute(sql`
+            SELECT batch_id, COALESCE(SUM(CAST(volume_taken_liters AS NUMERIC)), 0) as total
+            FROM bottle_runs
+            WHERE batch_id IN (${batchIdsSql})
+              AND voided_at IS NULL AND packaged_at <= ${cutoffDate}
+            GROUP BY batch_id
+          `),
+          // Keg fills (volume)
+          db.execute(sql`
+            SELECT batch_id, COALESCE(SUM(CAST(volume_taken AS NUMERIC)), 0) as total
+            FROM keg_fills
+            WHERE batch_id IN (${batchIdsSql})
+              AND voided_at IS NULL AND deleted_at IS NULL AND filled_at <= ${cutoffDate}
+            GROUP BY batch_id
+          `),
+          // Keg fills (loss)
+          db.execute(sql`
+            SELECT batch_id, COALESCE(SUM(CAST(loss AS NUMERIC)), 0) as total
+            FROM keg_fills
+            WHERE batch_id IN (${batchIdsSql})
+              AND voided_at IS NULL AND deleted_at IS NULL AND filled_at <= ${cutoffDate}
+              AND loss IS NOT NULL
+            GROUP BY batch_id
+          `),
+          // Distillations out
+          db.execute(sql`
+            SELECT source_batch_id as batch_id, COALESCE(SUM(CAST(source_volume_liters AS NUMERIC)), 0) as total
+            FROM distillation_records
+            WHERE source_batch_id IN (${batchIdsSql})
+              AND deleted_at IS NULL AND sent_at <= ${cutoffDate}
+            GROUP BY source_batch_id
+          `),
+          // Racking losses
+          db.execute(sql`
+            SELECT batch_id, COALESCE(SUM(CAST(volume_loss AS NUMERIC)), 0) as total
+            FROM batch_racking_operations
+            WHERE batch_id IN (${batchIdsSql})
+              AND deleted_at IS NULL AND racked_at <= ${cutoffDate}
+            GROUP BY batch_id
+          `),
+          // Filter losses
+          db.execute(sql`
+            SELECT batch_id, COALESCE(SUM(CAST(volume_loss AS NUMERIC)), 0) as total
+            FROM batch_filter_operations
+            WHERE batch_id IN (${batchIdsSql})
+              AND deleted_at IS NULL AND filtered_at <= ${cutoffDate}
+            GROUP BY batch_id
+          `),
+          // Volume adjustments
+          db.execute(sql`
+            SELECT batch_id, COALESCE(SUM(CAST(adjustment_amount AS NUMERIC)), 0) as total
+            FROM batch_volume_adjustments
+            WHERE batch_id IN (${batchIdsSql})
+              AND deleted_at IS NULL AND adjustment_date <= ${cutoffDate}
+            GROUP BY batch_id
+          `),
+        ]);
+
+        const xIn = buildSumMap((transfersInRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const xOut = buildSumMap((transfersOutRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const xLoss = buildSumMap((transferLossRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const mIn = buildSumMap((mergesInRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const mOut = buildSumMap((mergesOutRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const bot = buildSumMap((bottlingsRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const keg = buildSumMap((kegFillsRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const kLoss = buildSumMap((kegLossRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const dist = buildSumMap((distillationsRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const rack = buildSumMap((rackingsRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const filt = buildSumMap((filteringsRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+        const adj = buildSumMap((adjustmentsRes as unknown as { rows: { batch_id: string; total: string }[] }).rows || []);
+
+        const result = new Map<string, number>();
+        for (const batch of allBatches) {
+          const bid = batch.id;
+          const initial = parseFloat(batch.initialVolume || "0");
+          const batchStart = batch.startDate ? new Date(batch.startDate) : null;
+
+          // If batch didn't exist yet at cutoff, volume = 0
+          if (batchStart && batchStart > cutoffDate) {
+            result.set(bid, 0);
+            continue;
+          }
+
+          const vol = initial
+            + (xIn.get(bid) || 0)
+            - (xOut.get(bid) || 0)
+            - (xLoss.get(bid) || 0)
+            + (mIn.get(bid) || 0)
+            - (mOut.get(bid) || 0)
+            - (bot.get(bid) || 0)
+            - (keg.get(bid) || 0)
+            - (kLoss.get(bid) || 0)
+            - (dist.get(bid) || 0)
+            - (rack.get(bid) || 0)
+            - (filt.get(bid) || 0)
+            + (adj.get(bid) || 0); // adjustments can be + or -
+
+          result.set(bid, Math.max(0, vol));
+        }
+        return result;
+      };
+
+      // Compute opening and ending volumes at period boundaries
+      const dayBeforeStart = new Date(startDate);
+      dayBeforeStart.setDate(dayBeforeStart.getDate() - 1);
+      dayBeforeStart.setHours(23, 59, 59, 999);
+
+      const [openingVolumes, endingVolumes] = await Promise.all([
+        reconstructVolumesAtDate(dayBeforeStart),
+        reconstructVolumesAtDate(endDate),
+      ]);
+
+      // Transfers out — date-filtered to period
       const allTransfersOut = await db
         .select({
           id: batchTransfers.id,
@@ -8328,11 +8548,13 @@ export const batchRouter = router({
           and(
             inArray(batchTransfers.sourceBatchId, batchIds),
             sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
-            isNull(batchTransfers.deletedAt)
+            isNull(batchTransfers.deletedAt),
+            gte(batchTransfers.transferredAt, startDate),
+            lte(batchTransfers.transferredAt, endDate)
           )
         );
 
-      // Transfers in
+      // Transfers in — date-filtered to period
       const allTransfersIn = await db
         .select({
           id: batchTransfers.id,
@@ -8346,11 +8568,13 @@ export const batchRouter = router({
           and(
             inArray(batchTransfers.destinationBatchId, batchIds),
             sql`${batchTransfers.sourceBatchId} != ${batchTransfers.destinationBatchId}`,
-            isNull(batchTransfers.deletedAt)
+            isNull(batchTransfers.deletedAt),
+            gte(batchTransfers.transferredAt, startDate),
+            lte(batchTransfers.transferredAt, endDate)
           )
         );
 
-      // Bottlings
+      // Bottlings — date-filtered to period
       const allBottlings = await db
         .select({
           id: bottleRuns.id,
@@ -8365,11 +8589,13 @@ export const batchRouter = router({
         .where(
           and(
             inArray(bottleRuns.batchId, batchIds),
-            isNull(bottleRuns.voidedAt)
+            isNull(bottleRuns.voidedAt),
+            gte(bottleRuns.packagedAt, startDate),
+            lte(bottleRuns.packagedAt, endDate)
           )
         );
 
-      // Keg fills
+      // Keg fills — date-filtered to period
       const allKegFills = await db
         .select({
           id: kegFills.id,
@@ -8383,57 +8609,68 @@ export const batchRouter = router({
           and(
             inArray(kegFills.batchId, batchIds),
             isNull(kegFills.voidedAt),
-            isNull(kegFills.deletedAt)
+            isNull(kegFills.deletedAt),
+            gte(kegFills.filledAt, startDate),
+            lte(kegFills.filledAt, endDate)
           )
         );
 
-      // Volume adjustments (losses)
+      // Volume adjustments — date-filtered to period
       const allAdjustments = await db
         .select({
           id: batchVolumeAdjustments.id,
           batchId: batchVolumeAdjustments.batchId,
           adjustmentAmount: batchVolumeAdjustments.adjustmentAmount,
+          date: batchVolumeAdjustments.adjustmentDate,
         })
         .from(batchVolumeAdjustments)
         .where(
           and(
             inArray(batchVolumeAdjustments.batchId, batchIds),
-            isNull(batchVolumeAdjustments.deletedAt)
+            isNull(batchVolumeAdjustments.deletedAt),
+            gte(batchVolumeAdjustments.adjustmentDate, startDate),
+            lte(batchVolumeAdjustments.adjustmentDate, endDate)
           )
         );
 
-      // Rackings (losses)
+      // Rackings — date-filtered to period
       const allRackings = await db
         .select({
           id: batchRackingOperations.id,
           batchId: batchRackingOperations.batchId,
           loss: batchRackingOperations.volumeLoss,
           notes: batchRackingOperations.notes,
+          date: batchRackingOperations.rackedAt,
         })
         .from(batchRackingOperations)
         .where(
           and(
             inArray(batchRackingOperations.batchId, batchIds),
-            isNull(batchRackingOperations.deletedAt)
+            isNull(batchRackingOperations.deletedAt),
+            gte(batchRackingOperations.rackedAt, startDate),
+            lte(batchRackingOperations.rackedAt, endDate)
           )
         );
 
-      // Filter operations (losses)
+      // Filter operations — date-filtered to period
       const allFilterings = await db
         .select({
           id: batchFilterOperations.id,
           batchId: batchFilterOperations.batchId,
           loss: batchFilterOperations.volumeLoss,
+          date: batchFilterOperations.filteredAt,
         })
         .from(batchFilterOperations)
         .where(
           and(
             inArray(batchFilterOperations.batchId, batchIds),
-            isNull(batchFilterOperations.deletedAt)
+            isNull(batchFilterOperations.deletedAt),
+            gte(batchFilterOperations.filteredAt, startDate),
+            lte(batchFilterOperations.filteredAt, endDate)
           )
         );
 
-      // Distillations (cider sent out)
+      // Distillations (cider sent out) — date-filtered to period
       type DistillationOutRow = { id: string; source_batch_id: string; volume_out: string };
       let allDistillationsOut: DistillationOutRow[] = [];
       if (batchIds.length > 0) {
@@ -8442,6 +8679,8 @@ export const batchRouter = router({
           FROM distillation_records
           WHERE source_batch_id IN (${sql.join(batchIds.map(id => sql`${id}`), sql`, `)})
             AND deleted_at IS NULL
+            AND sent_at >= ${startDate}
+            AND sent_at <= ${endDate}
         `);
         allDistillationsOut = (distillationsOutResult as unknown as { rows: DistillationOutRow[] }).rows || [];
       }
@@ -8515,24 +8754,22 @@ export const batchRouter = router({
         summary.batchCount++;
 
         const initialVolume = parseFloat(batch.initialVolume || "0");
-        const currentVolume = parseFloat(batch.currentVolume || "0");
         const batchStartDate = batch.startDate ? new Date(batch.startDate) : null;
+        const openingVol = openingVolumes.get(batch.id) || 0;
+        const endingVol = endingVolumes.get(batch.id) || 0;
 
         // Determine if this batch existed before the period (opening balance)
         // vs created during the period (production)
         if (batchStartDate && batchStartDate < startDate) {
-          // Batch existed before period - contributes to opening balance
-          // Opening balance = initial volume + all inflows - all outflows up to period start
-          // For simplicity, we use current volume as the "effective" state
-          // In a full implementation, you'd calculate volume at period start
-          summary.openingBalanceLiters += initialVolume;
+          // Batch existed before period - use reconstructed volume at period start
+          summary.openingBalanceLiters += openingVol;
         } else {
           // Batch created during period - counts as production
           summary.productionLiters += initialVolume;
         }
 
-        // Ending balance is current volume
-        summary.endingBalanceLiters += currentVolume;
+        // Ending balance = reconstructed volume at period end
+        summary.endingBalanceLiters += endingVol;
 
         // Process transfers out (blended out)
         const transfersOut = transfersOutByBatch.get(batch.id) || [];
@@ -8634,14 +8871,18 @@ export const batchRouter = router({
       };
 
       // ============ IDENTIFY DISCREPANCIES ============
+      // Per-batch balance check scoped to the period
       for (const batch of allBatches) {
         const pType = (batch.productType || "other") as ProductType;
+        const batchStartDate = batch.startDate ? new Date(batch.startDate) : null;
+        const openingVol = openingVolumes.get(batch.id) || 0;
+        const endingVol = endingVolumes.get(batch.id) || 0;
         const initialVolume = parseFloat(batch.initialVolume || "0");
-        const currentVolume = parseFloat(batch.currentVolume || "0");
 
-        // Calculate batch-level balance
-        let inflow = initialVolume;
-        let outflow = currentVolume;
+        // Inflow = opening balance (or production if created in period) + in-period receipts
+        let inflow = (batchStartDate && batchStartDate < startDate) ? openingVol : initialVolume;
+        // Outflow starts with ending balance
+        let outflow = endingVol;
 
         const transfersIn = transfersInByBatch.get(batch.id) || [];
         for (const t of transfersIn) {

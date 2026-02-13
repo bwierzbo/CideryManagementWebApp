@@ -68,23 +68,23 @@ export default function TTBReportsPage() {
   const [activeTab, setActiveTab] = useState("generate");
   const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Fetch organization settings to get saved reporting frequency
+  // Fetch organization settings for orgInfo
   const { data: orgSettings } = trpc.settings.getOrganizationSettings.useQuery();
 
-  // Initialize period type from saved settings
+  // Fetch the latest needed period from backend
+  const { data: latestNeeded } = trpc.ttb.getLatestNeededPeriod.useQuery();
+
+  // Initialize period type, year, and period from the latest needed period
   useEffect(() => {
-    if (orgSettings?.ttbReportingFrequency && !hasInitialized) {
-      const savedFrequency = orgSettings.ttbReportingFrequency as "monthly" | "quarterly" | "annual";
-      setPeriodType(savedFrequency);
-      // Adjust the selected period based on the frequency
-      if (savedFrequency === "quarterly") {
-        setSelectedPeriod(Math.ceil((new Date().getMonth() + 1) / 3));
-      } else if (savedFrequency === "monthly") {
-        setSelectedPeriod(new Date().getMonth() + 1);
+    if (latestNeeded && !hasInitialized) {
+      setPeriodType(latestNeeded.periodType);
+      setSelectedYear(latestNeeded.year);
+      if (latestNeeded.periodNumber) {
+        setSelectedPeriod(latestNeeded.periodNumber);
       }
       setHasInitialized(true);
     }
-  }, [orgSettings, hasInitialized]);
+  }, [latestNeeded, hasInitialized]);
 
   // Generate TTB Form data
   const {
@@ -98,7 +98,7 @@ export default function TTBReportsPage() {
       periodNumber: periodType !== "annual" ? selectedPeriod : undefined,
     },
     {
-      enabled: true,
+      enabled: hasInitialized,
     }
   );
 

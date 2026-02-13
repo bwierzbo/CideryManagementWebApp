@@ -117,13 +117,13 @@ export function TTBPeriodFinalization({
       periodStart,
       periodEnd,
       data: {
-        // Bulk wines
-        bulkHardCider: formData.endingInventory.bulk,
-        bulkWineUnder16: 0,
-        bulkWine16To21: 0,
-        bulkWine21To24: 0,
-        bulkSparklingWine: 0,
-        bulkCarbonatedWine: 0,
+        // Bulk wines by tax class
+        bulkHardCider: formData.bulkWinesByTaxClass?.hardCider?.line32_totalOnHand ?? formData.endingInventory.bulk,
+        bulkWineUnder16: formData.bulkWinesByTaxClass?.wineUnder16?.line32_totalOnHand ?? 0,
+        bulkWine16To21: formData.bulkWinesByTaxClass?.wine16To21?.line32_totalOnHand ?? 0,
+        bulkWine21To24: formData.bulkWinesByTaxClass?.wine21To24?.line32_totalOnHand ?? 0,
+        bulkSparklingWine: formData.bulkWinesByTaxClass?.sparklingWine?.line32_totalOnHand ?? 0,
+        bulkCarbonatedWine: formData.bulkWinesByTaxClass?.carbonatedWine?.line32_totalOnHand ?? 0,
         // Bottled wines
         bottledHardCider: formData.endingInventory.bottled,
         bottledWineUnder16: 0,
@@ -132,7 +132,7 @@ export function TTBPeriodFinalization({
         bottledSparklingWine: 0,
         bottledCarbonatedWine: 0,
         // Spirits
-        spiritsAppleBrandy: 0,
+        spiritsAppleBrandy: formData.ciderBrandyInventory?.brandy?.total ?? 0,
         spiritsGrape: 0,
         spiritsOther: 0,
         // Production
@@ -149,7 +149,7 @@ export function TTBPeriodFinalization({
         removedSamples: formData.otherRemovals.samples,
         removedBreakage: formData.otherRemovals.breakage,
         removedProcessLoss: formData.otherRemovals.processLosses,
-        removedDistilling: 0,
+        removedDistilling: formData.distilleryOperations?.ciderSentToDsp ?? 0,
         // Materials
         materialsApplesLbs: formData.materials.applesReceivedLbs,
         materialsOtherFruitLbs: formData.materials.otherFruitReceivedLbs,

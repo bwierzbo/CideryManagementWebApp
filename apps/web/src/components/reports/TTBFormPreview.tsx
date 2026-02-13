@@ -320,6 +320,167 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       </div>
 
       {/* ============================================================ */}
+      {/* PART II — SPIRITS                                            */}
+      {/* ============================================================ */}
+      {formData.distilleryOperations && (
+        formData.distilleryOperations.ciderSentToDsp > 0 ||
+        formData.distilleryOperations.brandyReceived > 0 ||
+        formData.distilleryOperations.brandyUsedInCider > 0 ||
+        (formData.ciderBrandyInventory?.brandy?.total ?? 0) > 0
+      ) && (
+        <div className="border-x-2 border-b-2 border-gray-600">
+          <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
+            Part II — Spirits
+            <span className="font-normal ml-2 text-gray-300">(in wine gallons)</span>
+          </div>
+
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className={cellHeader} style={{ width: 32 }}>LINE</th>
+                <th className={cellHeader} style={{ minWidth: 260 }}>DESCRIPTION</th>
+                <th className={cellHeader} style={{ width: 100 }}>GALLONS</th>
+                <th className={cellHeader} style={{ width: 80 }}>COUNT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className={cellLineNo}>1</td>
+                <td className={cellLeft}>CIDER SENT TO DISTILLERY (DSP)</td>
+                <td className={cellRight}>{fmt(formData.distilleryOperations.ciderSentToDsp)}</td>
+                <td className={`${cellRight} text-gray-500`}>{formData.distilleryOperations.ciderSentShipments || ""}</td>
+              </tr>
+              <tr>
+                <td className={cellLineNo}>2</td>
+                <td className={cellLeft}>BRANDY RECEIVED FROM DSP</td>
+                <td className={cellRight}>{fmt(formData.distilleryOperations.brandyReceived)}</td>
+                <td className={`${cellRight} text-gray-500`}>{formData.distilleryOperations.brandyReceivedReturns || ""}</td>
+              </tr>
+              <tr>
+                <td className={cellLineNo}>3</td>
+                <td className={cellLeft}>BRANDY USED IN CIDER PRODUCTION (FORTIFICATION)</td>
+                <td className={cellRight}>{fmt(formData.distilleryOperations.brandyUsedInCider)}</td>
+                <td className={cellRight} />
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Cider/Brandy Inventory Breakdown */}
+          {formData.ciderBrandyInventory && (
+            <>
+              <div className="bg-gray-200 text-xs font-semibold px-3 py-1 uppercase border-t border-gray-400">
+                Inventory Breakdown — End of Period
+              </div>
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className={cellHeader} style={{ minWidth: 200 }}>CATEGORY</th>
+                    <th className={cellHeader} style={{ width: 100 }}>BULK</th>
+                    <th className={cellHeader} style={{ width: 100 }}>BOTTLED/KEGS</th>
+                    <th className={cellHeader} style={{ width: 100 }}>TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className={`${cellLeft} font-medium`}>Cider</td>
+                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.cider.bulk)}</td>
+                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.cider.bottled + formData.ciderBrandyInventory.cider.kegs)}</td>
+                    <td className={`${cellRight} font-semibold`}>{fmt(formData.ciderBrandyInventory.cider.total)}</td>
+                  </tr>
+                  <tr>
+                    <td className={`${cellLeft} font-medium`}>Brandy (Apple)</td>
+                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.brandy.bulk)}</td>
+                    <td className={cellRight} />
+                    <td className={`${cellRight} font-semibold`}>{fmt(formData.ciderBrandyInventory.brandy.total)}</td>
+                  </tr>
+                  <tr className={totalRow}>
+                    <td className={`${cellLeft} font-bold`}>TOTAL</td>
+                    <td className={cellRight} />
+                    <td className={cellRight} />
+                    <td className={`${cellRight} font-bold`}>{fmt(formData.ciderBrandyInventory.total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {/* Cider/Brandy Reconciliation */}
+          {formData.ciderBrandyReconciliation && (
+            <>
+              <div className="bg-gray-200 text-xs font-semibold px-3 py-1 uppercase border-t border-gray-400">
+                Cider / Brandy Reconciliation
+              </div>
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className={cellHeader} style={{ minWidth: 200 }}>CATEGORY</th>
+                    <th className={cellHeader} style={{ width: 100 }}>EXPECTED</th>
+                    <th className={cellHeader} style={{ width: 100 }}>ACTUAL</th>
+                    <th className={cellHeader} style={{ width: 100 }}>DISCREPANCY</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className={`${cellLeft} font-medium`}>Cider</td>
+                    <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.cider.expectedEnding)}</td>
+                    <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.cider.actualEnding)}</td>
+                    <td className={`${cellRight} ${formData.ciderBrandyReconciliation.cider.discrepancy !== 0 ? "text-red-600 font-semibold" : "text-green-700"}`}>
+                      {fmtAlways(formData.ciderBrandyReconciliation.cider.discrepancy)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className={`${cellLeft} font-medium`}>Brandy</td>
+                    <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.brandy.expectedEnding)}</td>
+                    <td className={cellRight}>{fmtAlways(formData.ciderBrandyReconciliation.brandy.actualEnding)}</td>
+                    <td className={`${cellRight} ${formData.ciderBrandyReconciliation.brandy.discrepancy !== 0 ? "text-red-600 font-semibold" : "text-green-700"}`}>
+                      {fmtAlways(formData.ciderBrandyReconciliation.brandy.discrepancy)}
+                    </td>
+                  </tr>
+                  <tr className={totalRow}>
+                    <td className={`${cellLeft} font-bold`}>TOTAL</td>
+                    <td className={`${cellRight} font-bold`}>{fmtAlways(formData.ciderBrandyReconciliation.total.expectedEnding)}</td>
+                    <td className={`${cellRight} font-bold`}>{fmtAlways(formData.ciderBrandyReconciliation.total.actualEnding)}</td>
+                    <td className={`${cellRight} font-bold ${formData.ciderBrandyReconciliation.total.discrepancy !== 0 ? "text-red-600" : "text-green-700"}`}>
+                      {fmtAlways(formData.ciderBrandyReconciliation.total.discrepancy)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {/* Brandy Transfer Details */}
+          {formData.distilleryOperations.brandyTransfers.length > 0 && (
+            <>
+              <div className="bg-gray-200 text-xs font-semibold px-3 py-1 uppercase border-t border-gray-400">
+                Brandy Transfer Details
+              </div>
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className={cellHeader}>DATE</th>
+                    <th className={cellHeader}>SOURCE BATCH</th>
+                    <th className={cellHeader}>DESTINATION BATCH</th>
+                    <th className={cellHeader} style={{ width: 100 }}>GALLONS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formData.distilleryOperations.brandyTransfers.map((t, i) => (
+                    <tr key={i}>
+                      <td className={cellLeft}>{formatDate(typeof t.transferredAt === "string" ? new Date(t.transferredAt) : t.transferredAt)}</td>
+                      <td className={cellLeft}>{t.sourceBatch}</td>
+                      <td className={cellLeft}>{t.destinationBatch}</td>
+                      <td className={cellRight}>{fmt(t.volumeGallons)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ============================================================ */}
       {/* PART IV — MATERIALS RECEIVED AND USED                        */}
       {/* ============================================================ */}
       <div className="border-x-2 border-b-2 border-gray-600">

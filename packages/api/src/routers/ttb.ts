@@ -3072,6 +3072,88 @@ export const ttbRouter = router({
     }),
 
   /**
+   * Get the latest un-finalized period based on org settings.
+   * Returns the periodType from settings and the next period that needs filing.
+   */
+  getLatestNeededPeriod: protectedProcedure.query(async (): Promise<{
+    periodType: "monthly" | "quarterly" | "annual";
+    year: number;
+    periodNumber: number | undefined;
+  }> => {
+    try {
+      // 1. Get org settings for frequency and opening balance date
+      const [settings] = await db
+        .select({
+          ttbReportingFrequency: organizationSettings.ttbReportingFrequency,
+          ttbOpeningBalanceDate: organizationSettings.ttbOpeningBalanceDate,
+        })
+        .from(organizationSettings)
+        .limit(1);
+
+      const periodType = (settings?.ttbReportingFrequency ?? "quarterly") as "monthly" | "quarterly" | "annual";
+
+      // 2. Find the latest finalized snapshot for this frequency
+      const [latestFinalized] = await db
+        .select({
+          year: ttbPeriodSnapshots.year,
+          periodNumber: ttbPeriodSnapshots.periodNumber,
+        })
+        .from(ttbPeriodSnapshots)
+        .where(
+          and(
+            eq(ttbPeriodSnapshots.status, "finalized"),
+            eq(ttbPeriodSnapshots.periodType, periodType)
+          )
+        )
+        .orderBy(desc(ttbPeriodSnapshots.year), desc(ttbPeriodSnapshots.periodNumber))
+        .limit(1);
+
+      // 3. Compute the next period after the latest finalized one
+      if (latestFinalized) {
+        const lastYear = latestFinalized.year;
+        const lastPeriod = latestFinalized.periodNumber;
+
+        if (periodType === "annual") {
+          return { periodType, year: lastYear + 1, periodNumber: undefined };
+        } else if (periodType === "quarterly") {
+          const maxPeriod = 4;
+          if (lastPeriod && lastPeriod < maxPeriod) {
+            return { periodType, year: lastYear, periodNumber: lastPeriod + 1 };
+          } else {
+            return { periodType, year: lastYear + 1, periodNumber: 1 };
+          }
+        } else {
+          // monthly
+          const maxPeriod = 12;
+          if (lastPeriod && lastPeriod < maxPeriod) {
+            return { periodType, year: lastYear, periodNumber: lastPeriod + 1 };
+          } else {
+            return { periodType, year: lastYear + 1, periodNumber: 1 };
+          }
+        }
+      }
+
+      // 4. No finalized periods — use opening balance date year + 1
+      const openingBalanceDate = settings?.ttbOpeningBalanceDate;
+      const baseYear = openingBalanceDate
+        ? new Date(openingBalanceDate).getFullYear() + 1
+        : new Date().getFullYear();
+
+      if (periodType === "annual") {
+        return { periodType, year: baseYear, periodNumber: undefined };
+      } else {
+        return { periodType, year: baseYear, periodNumber: 1 };
+      }
+    } catch (error) {
+      console.error("Error getting latest needed TTB period:", error);
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to determine latest needed TTB period",
+      });
+    }
+  }),
+
+  /**
    * Get saved TTB report history.
    */
   getReportHistory: protectedProcedure
