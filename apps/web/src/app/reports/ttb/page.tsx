@@ -399,6 +399,12 @@ export default function TTBReportsPage() {
                 <TTBFormPreview
                   formData={formData.formData}
                   periodLabel={formData.periodLabel}
+                  orgInfo={orgSettings ? {
+                    name: orgSettings.name,
+                    address: orgSettings.address,
+                    einNumber: orgSettings.einNumber,
+                    ttbPermitNumber: orgSettings.ttbPermitNumber,
+                  } : undefined}
                 />
                 <TTBPeriodFinalization
                   periodType={periodType}
