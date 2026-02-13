@@ -147,7 +147,12 @@ async function buildBatchTaxClassMap(): Promise<{
     const carb = carbonationMap.get(b.id);
     const taxClass = classifyBatchTaxClass({
       productType: b.productType,
-      abv: b.actualAbv ? parseFloat(String(b.actualAbv)) : b.estimatedAbv ? parseFloat(String(b.estimatedAbv)) : null,
+      // Treat ABV of 0 as null (unmeasured) — 0% ABV is not a real wine/cider measurement
+      abv: (b.actualAbv && parseFloat(String(b.actualAbv)) > 0)
+        ? parseFloat(String(b.actualAbv))
+        : (b.estimatedAbv && parseFloat(String(b.estimatedAbv)) > 0)
+          ? parseFloat(String(b.estimatedAbv))
+          : null,
       co2Volumes: carb?.co2Volumes ?? null,
       carbonationMethod: carb?.process ?? null,
     }, config);
@@ -2604,174 +2609,259 @@ export const ttbRouter = router({
         const bottledLiters = Number(bottledDuringPeriod[0]?.totalLiters || 0);
         const bottledGallons = roundGallons(litersToWineGallons(bottledLiters));
 
-        // Build bulk wines section
-        // Bulk tax-paid = keg distributions (kegs leave bulk as tax-paid)
-        // Bottled tax-paid = bottle/can distributions (from packaged inventory)
-        const line11_total = beginningInventory.bulk + wineProducedGallons;
-        const line27_total = bottledGallons + kegTaxPaidGallons + otherRemovals.total;
+        // Build bulk wines section (TOTAL column)
+        // Official TTB F 5120.17 line structure:
+        //   Lines 1-12: Available (beginning + production + receipts + gains)
+        //   Lines 13-31: Removals + ending inventory
+        //   Line 32: TOTAL (must equal Line 12)
+        //
+        // Data mapping for a cidery:
+        //   Line 2: Cider production (fermentation)
+        //   Line 7: Brandy received from DSP (received in bond)
+        //   Line 9: Positive volume adjustments (inventory gains)
+        //   Line 13: Volume bottled (bulk → bottled transfer)
+        //   Line 14: Keg tax-paid removals
+        //   Line 16: Cider sent to DSP (distilling material)
+        //   Line 29: Process losses (racking, fermentation, etc.)
+        //   Line 31: Ending bulk inventory
+        //
+        // Note: Pommeau "blending" production goes in line 5 of the pommeau column only,
+        // NOT in the total column line 5, because the juice component is already counted
+        // in wineProducedGallons (line 2) — adding it would double-count.
+        const bulkLine12 = roundGallons(
+          beginningInventory.bulk + wineProducedGallons +
+          brandyReceivedGallons + positiveAdjustmentGallons
+        );
+        const bulkLine32 = roundGallons(
+          bottledGallons + kegTaxPaidGallons + ciderSentToDspGallons +
+          otherRemovals.processLosses + endingInventory.bulk
+        );
 
         const bulkWines: BulkWinesSection = {
-          line1_onHandFirst: beginningInventory.bulk,
+          line1_onHandBeginning: beginningInventory.bulk,
           line2_produced: wineProducedGallons,
-          line3_otherProduction: 0,
-          line4_receivedBonded: 0,
-          line5_receivedCustoms: 0,
-          line6_receivedReturned: 0,
-          line7_receivedTransfer: 0,
+          line3_sweetening: 0,
+          line4_wineSpirits: 0,
+          line5_blending: 0,
+          line6_amelioration: 0,
+          line7_receivedInBond: brandyReceivedGallons,
           line8_dumpedToBulk: 0,
-          line9_transferredIn: 0,
-          line10_withdrawnFermenters: 0,
-          line11_total: roundGallons(line11_total),
-          line12_bottled: bottledGallons,
-          line13_exportTransfer: 0,
-          line14_bondedTransfer: 0,
-          line15_customsTransfer: 0,
-          line16_ftzTransfer: 0,
-          line17_taxpaid: kegTaxPaidGallons,
-          line18_taxFreeUS: 0,
-          line19_taxFreeExport: 0,
-          line20_transferredOut: 0,
-          line21_distillingMaterial: 0,
-          line22_spiritsAdded: 0,
-          line23_inventoryLosses: otherRemovals.total,
-          line24_destroyed: 0,
-          line25_returnedToBond: 0,
-          line26_other: 0,
-          line27_total: roundGallons(line27_total),
-          line28_onHandFermenters: fermenters.gallonsInFermenters,
-          line29_onHandFinished: roundGallons(endingInventory.bulk - fermenters.gallonsInFermenters),
-          line30_onHandUnfinished: 0,
-          line31_inTransit: 0,
-          line32_totalOnHand: endingInventory.bulk,
+          line9_inventoryGains: positiveAdjustmentGallons,
+          line10_writeIn: 0,
+          line12_total: bulkLine12,
+          line13_bottled: bottledGallons,
+          line14_removedTaxpaid: kegTaxPaidGallons,
+          line15_transfersInBond: 0,
+          line16_distillingMaterial: ciderSentToDspGallons,
+          line17_vinegarPlant: 0,
+          line18_sweetening: 0,
+          line19_wineSpirits: 0,
+          line20_blending: 0,
+          line21_amelioration: 0,
+          line22_effervescent: 0,
+          line23_testing: 0,
+          line24_writeIn1: 0,
+          line25_writeIn2: 0,
+          line29_losses: otherRemovals.processLosses,
+          line30_inventoryLosses: 0,
+          line31_onHandEnd: endingInventory.bulk,
+          line32_total: bulkLine32,
         };
 
         // Build per-tax-class bulk wines columns
-        // Hard cider column: excludes pommeau and wineUnder16 volumes
+        // Hard cider column: excludes pommeau, wineUnder16, and brandy volumes
         const ciderBeginning = roundGallons(beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons);
-        const ciderLine11 = ciderBeginning + wineProducedGallons;
         const ciderKegTaxPaid = roundGallons(kegRemovalsByTaxClass["hardCider"] || 0);
+        const ciderLine12 = roundGallons(
+          ciderBeginning + wineProducedGallons +
+          brandyReceivedGallons + positiveAdjustmentGallons
+        );
+        const ciderLine32 = roundGallons(
+          bottledGallons + ciderKegTaxPaid + ciderSentToDspGallons +
+          otherRemovals.processLosses + endingCiderBulkGallons
+        );
         const ciderBulkWines: BulkWinesSection = {
-          ...bulkWines,
-          line1_onHandFirst: ciderBeginning,
+          line1_onHandBeginning: ciderBeginning,
           line2_produced: wineProducedGallons,
-          line3_otherProduction: 0,
-          line11_total: roundGallons(ciderLine11),
-          line17_taxpaid: ciderKegTaxPaid,
-          line29_onHandFinished: roundGallons(endingCiderBulkGallons - fermenters.gallonsInFermenters),
-          line32_totalOnHand: endingCiderBulkGallons,
+          line3_sweetening: 0,
+          line4_wineSpirits: 0,
+          line5_blending: 0,
+          line6_amelioration: 0,
+          line7_receivedInBond: brandyReceivedGallons,
+          line8_dumpedToBulk: 0,
+          line9_inventoryGains: positiveAdjustmentGallons,
+          line10_writeIn: 0,
+          line12_total: ciderLine12,
+          line13_bottled: bottledGallons,
+          line14_removedTaxpaid: ciderKegTaxPaid,
+          line15_transfersInBond: 0,
+          line16_distillingMaterial: ciderSentToDspGallons,
+          line17_vinegarPlant: 0,
+          line18_sweetening: 0,
+          line19_wineSpirits: 0,
+          line20_blending: 0,
+          line21_amelioration: 0,
+          line22_effervescent: 0,
+          line23_testing: 0,
+          line24_writeIn1: 0,
+          line25_writeIn2: 0,
+          line29_losses: otherRemovals.processLosses,
+          line30_inventoryLosses: 0,
+          line31_onHandEnd: endingCiderBulkGallons,
+          line32_total: ciderLine32,
         };
 
         // Wine ≤16% column (fruit wine): receives volume via tax class transfers
-        const wineUnder16Line11 = beginningWineUnder16BulkGallons;
         const wineUnder16KegTaxPaid = roundGallons(kegRemovalsByTaxClass["wineUnder16"] || 0);
+        const wineUnder16Line12 = beginningWineUnder16BulkGallons;
+        const wineUnder16Line32 = roundGallons(wineUnder16KegTaxPaid + endingWineUnder16BulkGallons);
         const wineUnder16BulkWines: BulkWinesSection = {
-          line1_onHandFirst: beginningWineUnder16BulkGallons,
+          line1_onHandBeginning: beginningWineUnder16BulkGallons,
           line2_produced: 0,
-          line3_otherProduction: 0,
-          line4_receivedBonded: 0,
-          line5_receivedCustoms: 0,
-          line6_receivedReturned: 0,
-          line7_receivedTransfer: 0,
+          line3_sweetening: 0,
+          line4_wineSpirits: 0,
+          line5_blending: 0,
+          line6_amelioration: 0,
+          line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_transferredIn: 0,
-          line10_withdrawnFermenters: 0,
-          line11_total: roundGallons(wineUnder16Line11),
-          line12_bottled: 0,
-          line13_exportTransfer: 0,
-          line14_bondedTransfer: 0,
-          line15_customsTransfer: 0,
-          line16_ftzTransfer: 0,
-          line17_taxpaid: wineUnder16KegTaxPaid,
-          line18_taxFreeUS: 0,
-          line19_taxFreeExport: 0,
-          line20_transferredOut: 0,
-          line21_distillingMaterial: 0,
-          line22_spiritsAdded: 0,
-          line23_inventoryLosses: 0,
-          line24_destroyed: 0,
-          line25_returnedToBond: 0,
-          line26_other: 0,
-          line27_total: wineUnder16KegTaxPaid,
-          line28_onHandFermenters: 0,
-          line29_onHandFinished: endingWineUnder16BulkGallons,
-          line30_onHandUnfinished: 0,
-          line31_inTransit: 0,
-          line32_totalOnHand: endingWineUnder16BulkGallons,
+          line9_inventoryGains: 0,
+          line10_writeIn: 0,
+          line12_total: roundGallons(wineUnder16Line12),
+          line13_bottled: 0,
+          line14_removedTaxpaid: wineUnder16KegTaxPaid,
+          line15_transfersInBond: 0,
+          line16_distillingMaterial: 0,
+          line17_vinegarPlant: 0,
+          line18_sweetening: 0,
+          line19_wineSpirits: 0,
+          line20_blending: 0,
+          line21_amelioration: 0,
+          line22_effervescent: 0,
+          line23_testing: 0,
+          line24_writeIn1: 0,
+          line25_writeIn2: 0,
+          line29_losses: 0,
+          line30_inventoryLosses: 0,
+          line31_onHandEnd: endingWineUnder16BulkGallons,
+          line32_total: wineUnder16Line32,
         };
 
-        // Wine 16-21% column (pommeau): production = blending, no fermentation
-        const pommeauLine11 = beginningPommeauBulkGallons + pommeauProducedGallons;
+        // Wine 16-21% column (pommeau): production = blending (line 5), no fermentation
         const pommeauKegTaxPaid = roundGallons(kegRemovalsByTaxClass["wine16To21"] || 0);
+        const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauProducedGallons);
+        const pommeauLine32 = roundGallons(pommeauKegTaxPaid + endingPommeauBulkGallons);
         const pommeauBulkWines: BulkWinesSection = {
-          line1_onHandFirst: beginningPommeauBulkGallons,
-          line2_produced: 0, // Pommeau is not fermented
-          line3_otherProduction: pommeauProducedGallons, // Blended production
-          line4_receivedBonded: 0,
-          line5_receivedCustoms: 0,
-          line6_receivedReturned: 0,
-          line7_receivedTransfer: 0,
+          line1_onHandBeginning: beginningPommeauBulkGallons,
+          line2_produced: 0,
+          line3_sweetening: 0,
+          line4_wineSpirits: 0,
+          line5_blending: pommeauProducedGallons,
+          line6_amelioration: 0,
+          line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_transferredIn: 0,
-          line10_withdrawnFermenters: 0,
-          line11_total: roundGallons(pommeauLine11),
-          line12_bottled: 0,
-          line13_exportTransfer: 0,
-          line14_bondedTransfer: 0,
-          line15_customsTransfer: 0,
-          line16_ftzTransfer: 0,
-          line17_taxpaid: pommeauKegTaxPaid,
-          line18_taxFreeUS: 0,
-          line19_taxFreeExport: 0,
-          line20_transferredOut: 0,
-          line21_distillingMaterial: 0,
-          line22_spiritsAdded: 0,
-          line23_inventoryLosses: 0,
-          line24_destroyed: 0,
-          line25_returnedToBond: 0,
-          line26_other: 0,
-          line27_total: pommeauKegTaxPaid,
-          line28_onHandFermenters: 0,
-          line29_onHandFinished: endingPommeauBulkGallons,
-          line30_onHandUnfinished: 0,
-          line31_inTransit: 0,
-          line32_totalOnHand: endingPommeauBulkGallons,
+          line9_inventoryGains: 0,
+          line10_writeIn: 0,
+          line12_total: pommeauLine12,
+          line13_bottled: 0,
+          line14_removedTaxpaid: pommeauKegTaxPaid,
+          line15_transfersInBond: 0,
+          line16_distillingMaterial: 0,
+          line17_vinegarPlant: 0,
+          line18_sweetening: 0,
+          line19_wineSpirits: 0,
+          line20_blending: 0,
+          line21_amelioration: 0,
+          line22_effervescent: 0,
+          line23_testing: 0,
+          line24_writeIn1: 0,
+          line25_writeIn2: 0,
+          line29_losses: 0,
+          line30_inventoryLosses: 0,
+          line31_onHandEnd: endingPommeauBulkGallons,
+          line32_total: pommeauLine32,
+        };
+
+        // Empty bulk wines section for tax classes with no activity
+        const emptyBulkWines: BulkWinesSection = {
+          line1_onHandBeginning: 0, line2_produced: 0, line3_sweetening: 0,
+          line4_wineSpirits: 0, line5_blending: 0, line6_amelioration: 0,
+          line7_receivedInBond: 0, line8_dumpedToBulk: 0, line9_inventoryGains: 0,
+          line10_writeIn: 0, line12_total: 0, line13_bottled: 0,
+          line14_removedTaxpaid: 0, line15_transfersInBond: 0, line16_distillingMaterial: 0,
+          line17_vinegarPlant: 0, line18_sweetening: 0, line19_wineSpirits: 0,
+          line20_blending: 0, line21_amelioration: 0, line22_effervescent: 0,
+          line23_testing: 0, line24_writeIn1: 0, line25_writeIn2: 0,
+          line29_losses: 0, line30_inventoryLosses: 0, line31_onHandEnd: 0,
+          line32_total: 0,
         };
 
         const bulkWinesByTaxClass: Record<string, BulkWinesSection> = {
           hardCider: ciderBulkWines,
           wineUnder16: wineUnder16BulkWines,
           wine16To21: pommeauBulkWines,
+          wine21To24: { ...emptyBulkWines },
+          carbonatedWine: { ...emptyBulkWines },
+          sparklingWine: { ...emptyBulkWines },
         };
 
         // ============================================
         // Part I Section B: Bottled Wines
         // ============================================
-
-        const bottledLine7_total = beginningInventory.bottled + bottledGallons;
-        const bottledLine19_total = bottleTaxPaidGallons + otherRemovals.breakage;
+        // Official TTB F 5120.17 Part I-B line structure:
+        //   Lines 1-7: Available (beginning + bottled + received)
+        //   Lines 8-20: Removals + ending inventory
+        //   Line 21: TOTAL (must equal Line 7)
+        //
+        // Data mapping for a cidery:
+        //   Line 2: Volume bottled (same as Bulk Line 13)
+        //   Line 8: Bottle/can tax-paid removals
+        //   Line 11: Tasting room samples
+        //   Line 18: Breakage
+        //   Line 20: Ending bottled inventory
+        const bottledLine7 = roundGallons(beginningInventory.bottled + bottledGallons);
+        const bottledLine21 = roundGallons(
+          bottleTaxPaidGallons + otherRemovals.samples +
+          otherRemovals.breakage + endingInventory.bottled
+        );
 
         const bottledWines: BottledWinesSection = {
-          line1_onHandFirst: beginningInventory.bottled,
+          line1_onHandBeginning: beginningInventory.bottled,
           line2_bottled: bottledGallons,
-          line3_receivedBonded: 0,
-          line4_receivedCustoms: 0,
-          line5_receivedReturned: 0,
-          line6_receivedTransfer: 0,
-          line7_total: roundGallons(bottledLine7_total),
-          line8_dumpedToBulk: 0,
-          line9_exportTransfer: 0,
-          line10_bondedTransfer: 0,
-          line11_customsTransfer: 0,
-          line12_ftzTransfer: 0,
-          line13_taxpaid: bottleTaxPaidGallons,
-          line14_taxFreeUS: 0,
-          line15_taxFreeExport: 0,
-          line16_inventoryLosses: otherRemovals.breakage,
-          line17_destroyed: 0,
-          line18_returnedToBond: 0,
-          line19_total: roundGallons(bottledLine19_total),
+          line3_receivedInBond: 0,
+          line4_taxpaidReturned: 0,
+          line5_writeIn: 0,
+          line7_total: bottledLine7,
+          line8_removedTaxpaid: bottleTaxPaidGallons,
+          line9_transferredInBond: 0,
+          line10_dumpedToBulk: 0,
+          line11_tasting: otherRemovals.samples,
+          line12_export: 0,
+          line13_familyUse: 0,
+          line14_testing: 0,
+          line15_writeIn: 0,
+          line18_breakage: otherRemovals.breakage,
+          line19_inventoryShortage: 0,
           line20_onHandEnd: endingInventory.bottled,
-          line21_inTransit: 0,
+          line21_total: bottledLine21,
+        };
+
+        const emptyBottledWines: BottledWinesSection = {
+          line1_onHandBeginning: 0, line2_bottled: 0, line3_receivedInBond: 0,
+          line4_taxpaidReturned: 0, line5_writeIn: 0, line7_total: 0,
+          line8_removedTaxpaid: 0, line9_transferredInBond: 0, line10_dumpedToBulk: 0,
+          line11_tasting: 0, line12_export: 0, line13_familyUse: 0,
+          line14_testing: 0, line15_writeIn: 0, line18_breakage: 0,
+          line19_inventoryShortage: 0, line20_onHandEnd: 0, line21_total: 0,
+        };
+
+        // For a cidery, all bottled wine is hard cider
+        const bottledWinesByTaxClass: Record<string, BottledWinesSection> = {
+          hardCider: { ...bottledWines },
+          wineUnder16: { ...emptyBottledWines },
+          wine16To21: { ...emptyBottledWines },
+          wine21To24: { ...emptyBottledWines },
+          carbonatedWine: { ...emptyBottledWines },
+          sparklingWine: { ...emptyBottledWines },
         };
 
         // ============================================
@@ -2909,10 +2999,13 @@ export const ttbRouter = router({
         };
 
         // 6. Calculate cider/brandy reconciliation
-        // Cider: Beginning + Produced - TaxPaid - Losses - ToDistillery = Expected
+        // Cider: Beginning + Produced + Adjustments + BrandyUsedInCider - TaxPaid - Losses - ToDistillery = Expected
+        // brandyUsedInCider = brandy transferred to cider batches (fortification), increases cider inventory
         const expectedCiderEnding = roundGallons(
           beginningInventory.total +
-            wineProducedGallons -
+            wineProducedGallons +
+            positiveAdjustmentGallons +
+            brandyUsedInCiderGallons -
             taxPaidRemovals.total -
             otherRemovals.total -
             ciderSentToDspGallons
@@ -2949,12 +3042,8 @@ export const ttbRouter = router({
           },
         };
 
-        // Update bulkWines line21 and line27 to include distilling material
-        bulkWines.line21_distillingMaterial = ciderSentToDspGallons;
-        bulkWines.line27_total = roundGallons(bulkWines.line27_total + ciderSentToDspGallons);
-        // Also update the cider-specific column (was spread before distillation was computed)
-        ciderBulkWines.line21_distillingMaterial = ciderSentToDspGallons;
-        ciderBulkWines.line27_total = roundGallons(ciderBulkWines.line27_total + ciderSentToDspGallons);
+        // Note: ciderSentToDspGallons is already included in bulkWines.line16_distillingMaterial
+        // and line32_total during initial construction above — no post-hoc update needed.
 
         // ============================================
         // Build Response
@@ -2989,6 +3078,7 @@ export const ttbRouter = router({
           ciderBrandyInventory,
           ciderBrandyReconciliation,
           bulkWinesByTaxClass,
+          bottledWinesByTaxClass,
           taxComputationByClass,
         };
 

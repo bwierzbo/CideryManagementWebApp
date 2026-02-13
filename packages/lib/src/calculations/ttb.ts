@@ -222,9 +222,29 @@ export function classifyBatchTaxClass(
 
   // Convert CO2 volumes to g/100ml (missing data = 0, i.e. still/uncarbonated)
   const co2GramsPer100ml = co2Volumes != null ? co2VolumesToGramsPer100ml(co2Volumes) : 0;
+
+  // 3a. Hard cider shortcut: eligible fruit + null ABV + CO2 within limit
+  // Null ABV means unmeasured (not zero alcohol). A cidery's cider/perry batch
+  // without an ABV reading is almost certainly hard cider, not sparkling wine.
+  // Without this, null ABV → effectiveAbv=0 → fails minAbv (0.5%) → falls through
+  // to carbonated/sparkling wine at 14.6x the hard cider tax rate.
+  if (
+    abv == null &&
+    isHardCiderFruit &&
+    co2GramsPer100ml <= config.thresholds.hardCider.maxCo2GramsPer100ml
+  ) {
+    return "hardCider";
+  }
+
+  // 3a-ii. Pommeau shortcut: pommeau is always fortified wine (16-21%) by definition.
+  // If ABV is null/missing, default to wine16To21 rather than wineUnder16 (effectiveAbv=0).
+  if (abv == null && productType === "pommeau") {
+    return "wine16To21";
+  }
+
   const effectiveAbv = abv ?? 0;
 
-  // 3. Hard cider: eligible fruit + ABV in range + CO2 within limit
+  // 3b. Hard cider: eligible fruit + ABV in range + CO2 within limit
   if (
     isHardCiderFruit &&
     effectiveAbv >= config.thresholds.hardCider.minAbv &&
@@ -544,122 +564,136 @@ export interface CiderBrandyReconciliation {
 
 /**
  * Part I Section A - Bulk Wines (lines 1-32)
- * Hard Cider column (f) values in wine gallons
+ * Matches official TTB F 5120.17 line structure exactly.
+ * Column values in wine gallons.
+ *
+ * Balance equation: Line 12 (total available) = Line 32 (total accounted for)
+ * where Line 32 = sum of removals (lines 13-30) + ending inventory (line 31)
  */
 export interface BulkWinesSection {
-  /** Line 1: On hand first of period */
-  line1_onHandFirst: number;
-  /** Line 2: Produced by fermentation */
+  // --- AVAILABLE (lines 1-12) ---
+  /** Line 1: ON HAND BEGINNING OF PERIOD */
+  line1_onHandBeginning: number;
+  /** Line 2: PRODUCED BY FERMENTATION */
   line2_produced: number;
-  /** Line 3: Produced by other processes */
-  line3_otherProduction: number;
-  /** Line 4: Received - bonded wine premises */
-  line4_receivedBonded: number;
-  /** Line 5: Received - customs custody */
-  line5_receivedCustoms: number;
-  /** Line 6: Received - returned after removal */
-  line6_receivedReturned: number;
-  /** Line 7: Received - by transfer in bond */
-  line7_receivedTransfer: number;
-  /** Line 8: Bottled wine dumped to bulk */
+  /** Line 3: PRODUCED BY SWEETENING */
+  line3_sweetening: number;
+  /** Line 4: PRODUCED BY ADDITION OF WINE SPIRITS */
+  line4_wineSpirits: number;
+  /** Line 5: PRODUCED BY BLENDING */
+  line5_blending: number;
+  /** Line 6: PRODUCED BY AMELIORATION */
+  line6_amelioration: number;
+  /** Line 7: RECEIVED IN BOND */
+  line7_receivedInBond: number;
+  /** Line 8: BOTTLED WINE DUMPED TO BULK */
   line8_dumpedToBulk: number;
-  /** Line 9: Wine transferred - from other wine classes */
-  line9_transferredIn: number;
-  /** Line 10: Withdrawn from fermenters */
-  line10_withdrawnFermenters: number;
-  /** Line 11: TOTAL (lines 1-10) */
-  line11_total: number;
-  /** Line 12: Bottled or packed (transferred to bottled wine storage) */
-  line12_bottled: number;
-  /** Line 13: Transferred - for export */
-  line13_exportTransfer: number;
-  /** Line 14: Transferred - to bonded wine premises */
-  line14_bondedTransfer: number;
-  /** Line 15: Transferred - to customs bonded warehouse */
-  line15_customsTransfer: number;
-  /** Line 16: Transferred - to foreign trade zone */
-  line16_ftzTransfer: number;
-  /** Line 17: Taxpaid removals */
-  line17_taxpaid: number;
-  /** Line 18: Tax-free removals - for use US */
-  line18_taxFreeUS: number;
-  /** Line 19: Tax-free removals - for export use */
-  line19_taxFreeExport: number;
-  /** Line 20: Wine transferred - to other wine tax classes */
-  line20_transferredOut: number;
-  /** Line 21: Used for distilling material or vinegar stock */
-  line21_distillingMaterial: number;
-  /** Line 22: Wine spirits added (winemaking) */
-  line22_spiritsAdded: number;
-  /** Line 23: Inventory losses */
-  line23_inventoryLosses: number;
-  /** Line 24: Destroyed */
-  line24_destroyed: number;
-  /** Line 25: Returned to bond */
-  line25_returnedToBond: number;
-  /** Line 26: Other (describe in remarks) */
-  line26_other: number;
-  /** Line 27: TOTAL (lines 12-26) */
-  line27_total: number;
-  /** Line 28: On hand - in fermenters */
-  line28_onHandFermenters: number;
-  /** Line 29: On hand - finished (not bottled) */
-  line29_onHandFinished: number;
-  /** Line 30: On hand - unfinished (other) */
-  line30_onHandUnfinished: number;
-  /** Line 31: In transit */
-  line31_inTransit: number;
-  /** Line 32: TOTAL on hand end of period (lines 28-31) */
-  line32_totalOnHand: number;
+  /** Line 9: INVENTORY GAINS */
+  line9_inventoryGains: number;
+  /** Line 10: (Write-in) */
+  line10_writeIn: number;
+  /** Line 10 write-in description */
+  line10_writeInDesc?: string;
+  // Line 11: blank/reserved
+  /** Line 12: TOTAL (lines 1 through 11) */
+  line12_total: number;
+
+  // --- REMOVALS + ENDING (lines 13-32) ---
+  /** Line 13: BOTTLED */
+  line13_bottled: number;
+  /** Line 14: REMOVED TAXPAID */
+  line14_removedTaxpaid: number;
+  /** Line 15: TRANSFERS IN BOND */
+  line15_transfersInBond: number;
+  /** Line 16: REMOVED FOR DISTILLING MATERIAL */
+  line16_distillingMaterial: number;
+  /** Line 17: REMOVED TO VINEGAR PLANT */
+  line17_vinegarPlant: number;
+  /** Line 18: USED FOR SWEETENING */
+  line18_sweetening: number;
+  /** Line 19: USED FOR ADDITION OF WINE SPIRITS */
+  line19_wineSpirits: number;
+  /** Line 20: USED FOR BLENDING */
+  line20_blending: number;
+  /** Line 21: USED FOR AMELIORATION */
+  line21_amelioration: number;
+  /** Line 22: USED FOR EFFERVESCENT WINE */
+  line22_effervescent: number;
+  /** Line 23: USED FOR TESTING */
+  line23_testing: number;
+  /** Line 24: (Write-in) */
+  line24_writeIn1: number;
+  /** Line 24 write-in description */
+  line24_writeIn1Desc?: string;
+  /** Line 25: (Write-in) */
+  line25_writeIn2: number;
+  /** Line 25 write-in description */
+  line25_writeIn2Desc?: string;
+  // Lines 26-28: blank/reserved
+  /** Line 29: LOSSES (OTHER THAN INVENTORY) */
+  line29_losses: number;
+  /** Line 30: INVENTORY LOSSES */
+  line30_inventoryLosses: number;
+  /** Line 31: ON HAND END OF PERIOD */
+  line31_onHandEnd: number;
+  /** Line 32: TOTAL (lines 13 through 31) — must equal Line 12 */
+  line32_total: number;
 }
 
 /**
  * Part I Section B - Bottled Wines (lines 1-21)
- * Hard Cider column values in wine gallons
+ * Matches official TTB F 5120.17 line structure exactly.
+ * Column values in wine gallons.
+ *
+ * Balance equation: Line 7 (total available) = Line 21 (total accounted for)
+ * where Line 21 = sum of removals (lines 8-19) + ending inventory (line 20)
  */
 export interface BottledWinesSection {
-  /** Line 1: On hand first of period */
-  line1_onHandFirst: number;
-  /** Line 2: Bottled or packed (from bulk) */
+  // --- AVAILABLE (lines 1-7) ---
+  /** Line 1: ON HAND BEGINNING OF PERIOD */
+  line1_onHandBeginning: number;
+  /** Line 2: BOTTLED */
   line2_bottled: number;
-  /** Line 3: Received - bonded wine premises */
-  line3_receivedBonded: number;
-  /** Line 4: Received - customs custody */
-  line4_receivedCustoms: number;
-  /** Line 5: Received - returned after removal */
-  line5_receivedReturned: number;
-  /** Line 6: Received - by transfer in bond */
-  line6_receivedTransfer: number;
-  /** Line 7: TOTAL (lines 1-6) */
+  /** Line 3: RECEIVED IN BOND */
+  line3_receivedInBond: number;
+  /** Line 4: TAXPAID WINE RETURNED TO BOND */
+  line4_taxpaidReturned: number;
+  /** Line 5: (Write-in) */
+  line5_writeIn: number;
+  /** Line 5 write-in description */
+  line5_writeInDesc?: string;
+  // Line 6: blank/reserved
+  /** Line 7: TOTAL (lines 1 through 6) */
   line7_total: number;
-  /** Line 8: Dumped to bulk */
-  line8_dumpedToBulk: number;
-  /** Line 9: Transferred - for export */
-  line9_exportTransfer: number;
-  /** Line 10: Transferred - to bonded wine premises */
-  line10_bondedTransfer: number;
-  /** Line 11: Transferred - to customs bonded warehouse */
-  line11_customsTransfer: number;
-  /** Line 12: Transferred - to foreign trade zone */
-  line12_ftzTransfer: number;
-  /** Line 13: Taxpaid removals */
-  line13_taxpaid: number;
-  /** Line 14: Tax-free removals - for use US */
-  line14_taxFreeUS: number;
-  /** Line 15: Tax-free removals - for export use */
-  line15_taxFreeExport: number;
-  /** Line 16: Inventory losses or shortages */
-  line16_inventoryLosses: number;
-  /** Line 17: Destroyed */
-  line17_destroyed: number;
-  /** Line 18: Returned to bond */
-  line18_returnedToBond: number;
-  /** Line 19: TOTAL (lines 8-18) */
-  line19_total: number;
-  /** Line 20: On hand end of period */
+
+  // --- REMOVALS + ENDING (lines 8-21) ---
+  /** Line 8: REMOVED TAXPAID */
+  line8_removedTaxpaid: number;
+  /** Line 9: TRANSFERRED IN BOND */
+  line9_transferredInBond: number;
+  /** Line 10: DUMPED TO BULK */
+  line10_dumpedToBulk: number;
+  /** Line 11: USED FOR TASTING */
+  line11_tasting: number;
+  /** Line 12: REMOVED FOR EXPORT */
+  line12_export: number;
+  /** Line 13: REMOVED FOR FAMILY USE */
+  line13_familyUse: number;
+  /** Line 14: USED FOR TESTING */
+  line14_testing: number;
+  /** Line 15: (Write-in) */
+  line15_writeIn: number;
+  /** Line 15 write-in description */
+  line15_writeInDesc?: string;
+  // Lines 16-17: blank/reserved
+  /** Line 18: BREAKAGE */
+  line18_breakage: number;
+  /** Line 19: INVENTORY SHORTAGE */
+  line19_inventoryShortage: number;
+  /** Line 20: ON HAND END OF PERIOD */
   line20_onHandEnd: number;
-  /** Line 21: In transit */
-  line21_inTransit: number;
+  /** Line 21: TOTAL (lines 8 through 20) — must equal Line 7 */
+  line21_total: number;
 }
 
 /**

@@ -44,17 +44,18 @@ const fmtAlways = (v: number) => v.toLocaleString("en-US", { minimumFractionDigi
 const fmtCurrency = (v: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
 const fmtLbs = (v: number) => (v === 0 ? "" : v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }));
 
-// Official TTB column order and labels
-const TTB_COLUMNS = [
-  { key: "wineUnder16", label: "NOT OVER 16%", letter: "(a)" },
-  { key: "wine16To21", label: "OVER 16 TO 21%", letter: "(b)" },
-  { key: "wine21To24", label: "OVER 21 TO 24%", letter: "(c)" },
-  { key: "carbonatedWine", label: "ARTIFICIALLY CARBONATED", letter: "(d)" },
-  { key: "sparklingWine", label: "SPARKLING WINE", letter: "(e)" },
+// Official TTB F 5120.17 column order:
+// (a) TOTAL  (b) ≤16%  (c) 16-21%  (d) 21-24%  (e) Carbonated+Sparkling  (f) Hard Cider
+const TTB_TAX_COLUMNS = [
+  { key: "wineUnder16", label: "NOT OVER 16%", letter: "(b)" },
+  { key: "wine16To21", label: "OVER 16% TO 21%", letter: "(c)" },
+  { key: "wine21To24", label: "OVER 21% TO 24%", letter: "(d)" },
+  { key: "effervescent", label: "ARTIFICIALLY CARBONATED & SPARKLING", letter: "(e)" },
   { key: "hardCider", label: "HARD CIDER", letter: "(f)" },
 ] as const;
 
-type BulkField = keyof NonNullable<TTBForm512017Data["bulkWinesByTaxClass"]>[string];
+type BulkField = keyof import("lib").BulkWinesSection;
+type BottledField = keyof import("lib").BottledWinesSection;
 
 // Shared cell styles
 const cellBase = "border border-gray-400 px-2 py-1 text-xs";
@@ -76,53 +77,87 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
     ? new Date(formData.reportingPeriod.endDate)
     : formData.reportingPeriod.endDate;
 
-  // Determine which columns have data
   const byClass = formData.bulkWinesByTaxClass || {};
-  const activeColumns = TTB_COLUMNS.filter(
-    (col) => col.key === "hardCider" || (byClass[col.key] && (
-      byClass[col.key].line1_onHandFirst !== 0 ||
-      byClass[col.key].line2_produced !== 0 ||
-      byClass[col.key].line32_totalOnHand !== 0 ||
-      byClass[col.key].line17_taxpaid !== 0 ||
-      byClass[col.key].line3_otherProduction !== 0
-    ))
-  );
-  const showTotal = activeColumns.length > 1;
+  const byBottledClass = formData.bottledWinesByTaxClass || {};
 
-  // Bulk wine rows
-  const bulkRows: Array<{ line: number; desc: string; field: BulkField; isTotal?: boolean; isEnding?: boolean }> = [
-    { line: 1, desc: "ON HAND FIRST OF PERIOD", field: "line1_onHandFirst", isEnding: true },
+  // Helper: get bulk value for a column. Column (a)=TOTAL reads from formData.bulkWines.
+  // Column (e)=effervescent sums carbonatedWine + sparklingWine.
+  const getBulkVal = (col: typeof TTB_TAX_COLUMNS[number], field: BulkField): number => {
+    if (col.key === "effervescent") {
+      return ((byClass["carbonatedWine"]?.[field] as number) ?? 0) +
+             ((byClass["sparklingWine"]?.[field] as number) ?? 0);
+    }
+    return (byClass[col.key]?.[field] as number) ?? 0;
+  };
+
+  // Helper: get bottled value for a column.
+  const getBottledVal = (col: typeof TTB_TAX_COLUMNS[number], field: BottledField): number => {
+    if (col.key === "effervescent") {
+      return ((byBottledClass["carbonatedWine"]?.[field] as number) ?? 0) +
+             ((byBottledClass["sparklingWine"]?.[field] as number) ?? 0);
+    }
+    return (byBottledClass[col.key]?.[field] as number) ?? 0;
+  };
+
+  // Official TTB Part I-A: Bulk Wines (32 lines)
+  const bulkRows: Array<{ line: number; desc: string; field: BulkField | null; isTotal?: boolean; isEnding?: boolean }> = [
+    { line: 1, desc: "ON HAND FIRST OF PERIOD", field: "line1_onHandBeginning", isEnding: true },
     { line: 2, desc: "PRODUCED BY FERMENTATION", field: "line2_produced" },
-    { line: 3, desc: "PRODUCED BY OTHER PROCESSES", field: "line3_otherProduction" },
-    { line: 4, desc: "RECEIVED—BONDED WINE PREMISES", field: "line4_receivedBonded" },
-    { line: 5, desc: "RECEIVED—CUSTOMS CUSTODY", field: "line5_receivedCustoms" },
-    { line: 6, desc: "RECEIVED—RETURNED AFTER REMOVAL", field: "line6_receivedReturned" },
-    { line: 7, desc: "RECEIVED—BY TRANSFER IN BOND", field: "line7_receivedTransfer" },
+    { line: 3, desc: "PRODUCED BY SWEETENING", field: "line3_sweetening" },
+    { line: 4, desc: "PRODUCED BY ADDITION OF WINE SPIRITS", field: "line4_wineSpirits" },
+    { line: 5, desc: "PRODUCED BY BLENDING", field: "line5_blending" },
+    { line: 6, desc: "PRODUCED BY AMELIORATION", field: "line6_amelioration" },
+    { line: 7, desc: "RECEIVED IN BOND", field: "line7_receivedInBond" },
     { line: 8, desc: "BOTTLED WINE DUMPED TO BULK", field: "line8_dumpedToBulk" },
-    { line: 9, desc: "WINE TRANSFERRED—FROM OTHER TAX CLASSES", field: "line9_transferredIn" },
-    { line: 10, desc: "WITHDRAWN FROM FERMENTERS", field: "line10_withdrawnFermenters" },
-    { line: 11, desc: "TOTAL (lines 1 through 10)", field: "line11_total", isTotal: true },
-    { line: 12, desc: "BOTTLED OR PACKED", field: "line12_bottled" },
-    { line: 13, desc: "TRANSFERRED—FOR EXPORT", field: "line13_exportTransfer" },
-    { line: 14, desc: "TRANSFERRED—TO BONDED WINE PREMISES", field: "line14_bondedTransfer" },
-    { line: 15, desc: "TRANSFERRED—TO CUSTOMS BONDED WAREHOUSE", field: "line15_customsTransfer" },
-    { line: 16, desc: "TRANSFERRED—TO FOREIGN TRADE ZONE", field: "line16_ftzTransfer" },
-    { line: 17, desc: "TAXPAID REMOVALS", field: "line17_taxpaid" },
-    { line: 18, desc: "TAX-FREE REMOVALS—FOR USE U.S.", field: "line18_taxFreeUS" },
-    { line: 19, desc: "TAX-FREE REMOVALS—FOR EXPORT USE", field: "line19_taxFreeExport" },
-    { line: 20, desc: "WINE TRANSFERRED—TO OTHER TAX CLASSES", field: "line20_transferredOut" },
-    { line: 21, desc: "USED FOR DISTILLING MATERIAL OR VINEGAR STOCK", field: "line21_distillingMaterial" },
-    { line: 22, desc: "WINE SPIRITS ADDED", field: "line22_spiritsAdded" },
-    { line: 23, desc: "INVENTORY LOSSES", field: "line23_inventoryLosses" },
-    { line: 24, desc: "DESTROYED", field: "line24_destroyed" },
-    { line: 25, desc: "RETURNED TO BOND", field: "line25_returnedToBond" },
-    { line: 26, desc: "OTHER (describe in remarks)", field: "line26_other" },
-    { line: 27, desc: "TOTAL (lines 12 through 26)", field: "line27_total", isTotal: true },
-    { line: 28, desc: "ON HAND END—IN FERMENTERS", field: "line28_onHandFermenters", isEnding: true },
-    { line: 29, desc: "ON HAND END—FINISHED (not bottled)", field: "line29_onHandFinished", isEnding: true },
-    { line: 30, desc: "ON HAND END—UNFINISHED (other)", field: "line30_onHandUnfinished", isEnding: true },
-    { line: 31, desc: "IN TRANSIT", field: "line31_inTransit", isEnding: true },
-    { line: 32, desc: "TOTAL ON HAND END OF PERIOD (lines 28-31)", field: "line32_totalOnHand", isTotal: true, isEnding: true },
+    { line: 9, desc: "INVENTORY GAINS", field: "line9_inventoryGains" },
+    { line: 10, desc: "(Write-in)", field: "line10_writeIn" },
+    { line: 11, desc: "", field: null },
+    { line: 12, desc: "TOTAL (lines 1 through 11)", field: "line12_total", isTotal: true },
+    { line: 13, desc: "BOTTLED", field: "line13_bottled" },
+    { line: 14, desc: "REMOVED TAXPAID", field: "line14_removedTaxpaid" },
+    { line: 15, desc: "TRANSFERS IN BOND", field: "line15_transfersInBond" },
+    { line: 16, desc: "REMOVED FOR DISTILLING MATERIAL", field: "line16_distillingMaterial" },
+    { line: 17, desc: "REMOVED TO VINEGAR PLANT", field: "line17_vinegarPlant" },
+    { line: 18, desc: "USED FOR SWEETENING", field: "line18_sweetening" },
+    { line: 19, desc: "USED FOR ADDITION OF WINE SPIRITS", field: "line19_wineSpirits" },
+    { line: 20, desc: "USED FOR BLENDING", field: "line20_blending" },
+    { line: 21, desc: "USED FOR AMELIORATION", field: "line21_amelioration" },
+    { line: 22, desc: "USED FOR EFFERVESCENT WINE", field: "line22_effervescent" },
+    { line: 23, desc: "USED FOR TESTING", field: "line23_testing" },
+    { line: 24, desc: "(Write-in)", field: "line24_writeIn1" },
+    { line: 25, desc: "(Write-in)", field: "line25_writeIn2" },
+    { line: 26, desc: "", field: null },
+    { line: 27, desc: "", field: null },
+    { line: 28, desc: "", field: null },
+    { line: 29, desc: "LOSSES (OTHER THAN INVENTORY)", field: "line29_losses" },
+    { line: 30, desc: "INVENTORY LOSSES", field: "line30_inventoryLosses" },
+    { line: 31, desc: "ON HAND END OF PERIOD", field: "line31_onHandEnd", isEnding: true },
+    { line: 32, desc: "TOTAL (lines 13 through 31)", field: "line32_total", isTotal: true },
+  ];
+
+  // Official TTB Part I-B: Bottled Wines (21 lines)
+  const bottledRows: Array<{ line: number; desc: string; field: BottledField | null; isTotal?: boolean; isEnding?: boolean }> = [
+    { line: 1, desc: "ON HAND FIRST OF PERIOD", field: "line1_onHandBeginning", isEnding: true },
+    { line: 2, desc: "BOTTLED", field: "line2_bottled" },
+    { line: 3, desc: "RECEIVED IN BOND", field: "line3_receivedInBond" },
+    { line: 4, desc: "TAXPAID WINE RETURNED TO BOND", field: "line4_taxpaidReturned" },
+    { line: 5, desc: "(Write-in)", field: "line5_writeIn" },
+    { line: 6, desc: "", field: null },
+    { line: 7, desc: "TOTAL (lines 1 through 6)", field: "line7_total", isTotal: true },
+    { line: 8, desc: "REMOVED TAXPAID", field: "line8_removedTaxpaid" },
+    { line: 9, desc: "TRANSFERRED IN BOND", field: "line9_transferredInBond" },
+    { line: 10, desc: "DUMPED TO BULK", field: "line10_dumpedToBulk" },
+    { line: 11, desc: "USED FOR TASTING", field: "line11_tasting" },
+    { line: 12, desc: "REMOVED FOR EXPORT", field: "line12_export" },
+    { line: 13, desc: "REMOVED FOR FAMILY USE", field: "line13_familyUse" },
+    { line: 14, desc: "USED FOR TESTING", field: "line14_testing" },
+    { line: 15, desc: "(Write-in)", field: "line15_writeIn" },
+    { line: 16, desc: "", field: null },
+    { line: 17, desc: "", field: null },
+    { line: 18, desc: "BREAKAGE", field: "line18_breakage" },
+    { line: 19, desc: "INVENTORY SHORTAGE", field: "line19_inventoryShortage" },
+    { line: 20, desc: "ON HAND END OF PERIOD", field: "line20_onHandEnd", isEnding: true },
+    { line: 21, desc: "TOTAL (lines 8 through 20)", field: "line21_total", isTotal: true },
   ];
 
   // Format month ranges for form header
@@ -215,21 +250,21 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
             <tr>
               <th className={cellHeader} rowSpan={2} style={{ width: 32 }}>LINE</th>
               <th className={cellHeader} rowSpan={2} style={{ minWidth: 200 }}>DESCRIPTION</th>
-              {activeColumns.map((col) => (
+              <th className={cellHeader} style={{ minWidth: 80 }}>(a)</th>
+              {TTB_TAX_COLUMNS.map((col) => (
                 <th key={col.key} className={cellHeader} style={{ minWidth: 80 }}>
                   {col.letter}
                 </th>
               ))}
-              {showTotal && <th className={cellHeader} style={{ minWidth: 80 }}>(g)</th>}
             </tr>
             {/* Column description row */}
             <tr>
-              {activeColumns.map((col) => (
+              <th className={`${cellHeader} text-[9px]`}>TOTAL</th>
+              {TTB_TAX_COLUMNS.map((col) => (
                 <th key={col.key} className={`${cellHeader} text-[9px]`}>
                   {col.label}
                 </th>
               ))}
-              {showTotal && <th className={`${cellHeader} text-[9px]`}>TOTAL</th>}
             </tr>
           </thead>
           <tbody>
@@ -237,16 +272,16 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
               <tr key={line} className={isTotal ? totalRow : isEnding ? "bg-blue-50/50" : ""}>
                 <td className={cellLineNo}>{line}</td>
                 <td className={`${cellLeft} ${isTotal ? "font-bold" : ""}`}>{desc}</td>
-                {activeColumns.map((col) => (
+                {/* Column (a): TOTAL */}
+                <td className={`${cellRight} font-semibold`}>
+                  {field ? fmt(formData.bulkWines[field] as number) : ""}
+                </td>
+                {/* Columns (b)-(f): per tax class */}
+                {TTB_TAX_COLUMNS.map((col) => (
                   <td key={col.key} className={`${cellRight} ${isTotal ? "font-bold" : ""}`}>
-                    {fmt(byClass[col.key]?.[field] as number ?? 0)}
+                    {field ? fmt(getBulkVal(col, field)) : ""}
                   </td>
                 ))}
-                {showTotal && (
-                  <td className={`${cellRight} font-semibold`}>
-                    {fmt(formData.bulkWines[field] as number)}
-                  </td>
-                )}
               </tr>
             ))}
           </tbody>
@@ -265,54 +300,39 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
         <table className="w-full border-collapse text-xs">
           <thead>
             <tr>
-              <th className={cellHeader} style={{ width: 32 }}>LINE</th>
-              <th className={cellHeader} style={{ minWidth: 260 }}>DESCRIPTION</th>
-              {activeColumns.map((col) => (
+              <th className={cellHeader} rowSpan={2} style={{ width: 32 }}>LINE</th>
+              <th className={cellHeader} rowSpan={2} style={{ minWidth: 260 }}>DESCRIPTION</th>
+              <th className={cellHeader} style={{ minWidth: 80 }}>(a)</th>
+              {TTB_TAX_COLUMNS.map((col) => (
                 <th key={col.key} className={cellHeader} style={{ minWidth: 80 }}>
-                  {col.letter}<br /><span className="text-[9px] font-normal">{col.label}</span>
+                  {col.letter}
                 </th>
               ))}
-              {showTotal && (
-                <th className={cellHeader} style={{ minWidth: 80 }}>(g)<br /><span className="text-[9px] font-normal">TOTAL</span></th>
-              )}
+            </tr>
+            <tr>
+              <th className={`${cellHeader} text-[9px]`}>TOTAL</th>
+              {TTB_TAX_COLUMNS.map((col) => (
+                <th key={col.key} className={`${cellHeader} text-[9px]`}>
+                  {col.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {/* For now, bottled wines only has hard cider data — show in the (f) column, blank for others */}
-            {([
-              { line: 1, desc: "ON HAND FIRST OF PERIOD", val: formData.bottledWines.line1_onHandFirst, isEnding: true },
-              { line: 2, desc: "BOTTLED OR PACKED (from bulk)", val: formData.bottledWines.line2_bottled },
-              { line: 3, desc: "RECEIVED—BONDED WINE PREMISES", val: formData.bottledWines.line3_receivedBonded },
-              { line: 4, desc: "RECEIVED—CUSTOMS CUSTODY", val: formData.bottledWines.line4_receivedCustoms },
-              { line: 5, desc: "RECEIVED—RETURNED AFTER REMOVAL", val: formData.bottledWines.line5_receivedReturned },
-              { line: 6, desc: "RECEIVED—BY TRANSFER IN BOND", val: formData.bottledWines.line6_receivedTransfer },
-              { line: 7, desc: "TOTAL (lines 1 through 6)", val: formData.bottledWines.line7_total, isTotal: true },
-              { line: 8, desc: "DUMPED TO BULK", val: formData.bottledWines.line8_dumpedToBulk },
-              { line: 9, desc: "TRANSFERRED—FOR EXPORT", val: formData.bottledWines.line9_exportTransfer },
-              { line: 10, desc: "TRANSFERRED—TO BONDED WINE PREMISES", val: formData.bottledWines.line10_bondedTransfer },
-              { line: 11, desc: "TRANSFERRED—TO CUSTOMS BONDED WAREHOUSE", val: formData.bottledWines.line11_customsTransfer },
-              { line: 12, desc: "TRANSFERRED—TO FOREIGN TRADE ZONE", val: formData.bottledWines.line12_ftzTransfer },
-              { line: 13, desc: "TAXPAID REMOVALS", val: formData.bottledWines.line13_taxpaid },
-              { line: 14, desc: "TAX-FREE REMOVALS—FOR USE U.S.", val: formData.bottledWines.line14_taxFreeUS },
-              { line: 15, desc: "TAX-FREE REMOVALS—FOR EXPORT USE", val: formData.bottledWines.line15_taxFreeExport },
-              { line: 16, desc: "INVENTORY LOSSES OR SHORTAGES", val: formData.bottledWines.line16_inventoryLosses },
-              { line: 17, desc: "DESTROYED", val: formData.bottledWines.line17_destroyed },
-              { line: 18, desc: "RETURNED TO BOND", val: formData.bottledWines.line18_returnedToBond },
-              { line: 19, desc: "TOTAL (lines 8 through 18)", val: formData.bottledWines.line19_total, isTotal: true },
-              { line: 20, desc: "ON HAND END OF PERIOD", val: formData.bottledWines.line20_onHandEnd, isEnding: true },
-              { line: 21, desc: "IN TRANSIT", val: formData.bottledWines.line21_inTransit },
-            ] as Array<{ line: number; desc: string; val: number; isTotal?: boolean; isEnding?: boolean }>).map(({ line, desc, val, isTotal, isEnding }) => (
+            {bottledRows.map(({ line, desc, field, isTotal, isEnding }) => (
               <tr key={line} className={isTotal ? totalRow : isEnding ? "bg-blue-50/50" : ""}>
                 <td className={cellLineNo}>{line}</td>
                 <td className={`${cellLeft} ${isTotal ? "font-bold" : ""}`}>{desc}</td>
-                {activeColumns.map((col) => (
+                {/* Column (a): TOTAL */}
+                <td className={`${cellRight} font-semibold`}>
+                  {field ? fmt(formData.bottledWines[field] as number) : ""}
+                </td>
+                {/* Columns (b)-(f): per tax class */}
+                {TTB_TAX_COLUMNS.map((col) => (
                   <td key={col.key} className={`${cellRight} ${isTotal ? "font-bold" : ""}`}>
-                    {col.key === "hardCider" ? fmt(val) : ""}
+                    {field ? fmt(getBottledVal(col, field)) : ""}
                   </td>
                 ))}
-                {showTotal && (
-                  <td className={`${cellRight} font-semibold`}>{fmt(val)}</td>
-                )}
               </tr>
             ))}
           </tbody>
@@ -320,7 +340,17 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       </div>
 
       {/* ============================================================ */}
-      {/* PART II — SPIRITS                                            */}
+      {/* PART II — RESERVED                                           */}
+      {/* ============================================================ */}
+      <div className="border-x-2 border-b-2 border-gray-600">
+        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
+          Part II — Reserved
+        </div>
+        <div className="px-3 py-2 text-xs text-gray-400 italic">Reserved</div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PART III — DISTILLED SPIRITS (supplemental)                  */}
       {/* ============================================================ */}
       {formData.distilleryOperations && (
         formData.distilleryOperations.ciderSentToDsp > 0 ||
@@ -330,7 +360,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       ) && (
         <div className="border-x-2 border-b-2 border-gray-600">
           <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-            Part II — Spirits
+            Part III — Summary of Distilled Spirits
             <span className="font-normal ml-2 text-gray-300">(in wine gallons)</span>
           </div>
 

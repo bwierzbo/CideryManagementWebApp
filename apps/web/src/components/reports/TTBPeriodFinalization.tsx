@@ -118,12 +118,12 @@ export function TTBPeriodFinalization({
       periodEnd,
       data: {
         // Bulk wines by tax class
-        bulkHardCider: formData.bulkWinesByTaxClass?.hardCider?.line32_totalOnHand ?? formData.endingInventory.bulk,
-        bulkWineUnder16: formData.bulkWinesByTaxClass?.wineUnder16?.line32_totalOnHand ?? 0,
-        bulkWine16To21: formData.bulkWinesByTaxClass?.wine16To21?.line32_totalOnHand ?? 0,
-        bulkWine21To24: formData.bulkWinesByTaxClass?.wine21To24?.line32_totalOnHand ?? 0,
-        bulkSparklingWine: formData.bulkWinesByTaxClass?.sparklingWine?.line32_totalOnHand ?? 0,
-        bulkCarbonatedWine: formData.bulkWinesByTaxClass?.carbonatedWine?.line32_totalOnHand ?? 0,
+        bulkHardCider: formData.bulkWinesByTaxClass?.hardCider?.line31_onHandEnd ?? formData.endingInventory.bulk,
+        bulkWineUnder16: formData.bulkWinesByTaxClass?.wineUnder16?.line31_onHandEnd ?? 0,
+        bulkWine16To21: formData.bulkWinesByTaxClass?.wine16To21?.line31_onHandEnd ?? 0,
+        bulkWine21To24: formData.bulkWinesByTaxClass?.wine21To24?.line31_onHandEnd ?? 0,
+        bulkSparklingWine: formData.bulkWinesByTaxClass?.sparklingWine?.line31_onHandEnd ?? 0,
+        bulkCarbonatedWine: formData.bulkWinesByTaxClass?.carbonatedWine?.line31_onHandEnd ?? 0,
         // Bottled wines
         bottledHardCider: formData.endingInventory.bottled,
         bottledWineUnder16: 0,

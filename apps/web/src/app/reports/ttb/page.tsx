@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,11 +22,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   FileText,
-  Download,
   Save,
   CheckCircle,
   AlertCircle,
-  Calculator,
   History,
   Loader2,
 } from "lucide-react";
@@ -35,6 +32,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { TTBFormPreview } from "@/components/reports/TTBFormPreview";
 import { TTBPeriodFinalization } from "@/components/reports/TTBPeriodFinalization";
+import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
 import { downloadTTBFormPDF, type TTBFormPDFData } from "@/utils/pdf/ttbForm512017";
 import { downloadTTBFormExcel } from "@/utils/excel/ttbForm512017";
 
@@ -229,143 +227,112 @@ export default function TTBReportsPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                <FileText className="w-8 h-8 text-amber-600 mr-3" />
-                TTB Form 5120.17
-              </h1>
-              <p className="text-gray-600 mt-2">
-                Report of Wine Premises Operations - Hard Cider
-              </p>
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleSaveSnapshot}
-                disabled={!formData || saveSnapshotMutation.isPending}
-              >
-                <Save className="w-4 h-4 mr-2" />
-                {saveSnapshotMutation.isPending ? "Saving..." : "Save Snapshot"}
-              </Button>
-              <Button variant="outline" disabled={!formData} onClick={handleExportPDF}>
-                <Download className="w-4 h-4 mr-2" />
-                Export PDF
-              </Button>
-              <Button variant="outline" disabled={!formData} onClick={handleExportExcel}>
-                <Download className="w-4 h-4 mr-2" />
-                Export Excel
-              </Button>
-            </div>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+            <FileText className="w-8 h-8 text-amber-600 mr-3" />
+            TTB Form 5120.17
+          </h1>
+          <p className="text-gray-600 mt-1">
+            Report of Wine Premises Operations
+          </p>
         </div>
 
-        {/* Period Selector */}
-        <Card className="mb-8">
-          <CardContent className="p-6">
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="lg:w-48">
-                <Label>Period Type</Label>
-                <Select
-                  value={periodType}
-                  onValueChange={(v) => {
-                    setPeriodType(v as "monthly" | "quarterly" | "annual");
-                    if (v === "quarterly") {
-                      setSelectedPeriod(Math.ceil((new Date().getMonth() + 1) / 3));
-                    } else if (v === "monthly") {
-                      setSelectedPeriod(new Date().getMonth() + 1);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                    <SelectItem value="quarterly">Quarterly</SelectItem>
-                    <SelectItem value="annual">Annual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+        {/* Compact Period Selector */}
+        <Card className="mb-4">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex flex-wrap gap-3 items-center">
+              <Select
+                value={periodType}
+                onValueChange={(v) => {
+                  setPeriodType(v as "monthly" | "quarterly" | "annual");
+                  if (v === "quarterly") {
+                    setSelectedPeriod(Math.ceil((new Date().getMonth() + 1) / 3));
+                  } else if (v === "monthly") {
+                    setSelectedPeriod(new Date().getMonth() + 1);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                  <SelectItem value="annual">Annual</SelectItem>
+                </SelectContent>
+              </Select>
 
-              <div className="lg:w-32">
-                <Label>Year</Label>
+              <Select
+                value={selectedYear.toString()}
+                onValueChange={(v) => setSelectedYear(parseInt(v))}
+              >
+                <SelectTrigger className="w-[100px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {periodType === "monthly" && (
                 <Select
-                  value={selectedYear.toString()}
-                  onValueChange={(v) => setSelectedYear(parseInt(v))}
+                  value={selectedPeriod.toString()}
+                  onValueChange={(v) => setSelectedPeriod(parseInt(v))}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className="w-[130px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {years.map((year) => (
-                      <SelectItem key={year} value={year.toString()}>
-                        {year}
+                    {months.map((month) => (
+                      <SelectItem key={month.value} value={month.value.toString()}>
+                        {month.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              {periodType === "monthly" && (
-                <div className="lg:w-48">
-                  <Label>Month</Label>
-                  <Select
-                    value={selectedPeriod.toString()}
-                    onValueChange={(v) => setSelectedPeriod(parseInt(v))}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map((month) => (
-                        <SelectItem key={month.value} value={month.value.toString()}>
-                          {month.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
               )}
 
               {periodType === "quarterly" && (
-                <div className="lg:w-48">
-                  <Label>Quarter</Label>
-                  <Select
-                    value={selectedPeriod.toString()}
-                    onValueChange={(v) => setSelectedPeriod(parseInt(v))}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {quarters.map((quarter) => (
-                        <SelectItem key={quarter.value} value={quarter.value.toString()}>
-                          {quarter.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select
+                  value={selectedPeriod.toString()}
+                  onValueChange={(v) => setSelectedPeriod(parseInt(v))}
+                >
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {quarters.map((quarter) => (
+                      <SelectItem key={quarter.value} value={quarter.value.toString()}>
+                        {quarter.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
 
-              <div className="flex items-end">
-                <Button onClick={() => refetchForm()} disabled={isLoadingForm}>
-                  {isLoadingForm ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Loading...
-                    </>
-                  ) : (
-                    <>
-                      <Calculator className="w-4 h-4 mr-2" />
-                      Generate Report
-                    </>
-                  )}
-                </Button>
-              </div>
+              <Button size="sm" onClick={() => refetchForm()} disabled={isLoadingForm}>
+                {isLoadingForm ? <Loader2 className="w-4 h-4 animate-spin" /> : "Go"}
+              </Button>
+
+              <ReportExportDropdown
+                onExportPDF={formData ? handleExportPDF : undefined}
+                onExportExcel={formData ? handleExportExcel : undefined}
+                disabled={!formData}
+              />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveSnapshot}
+                disabled={!formData || saveSnapshotMutation.isPending}
+              >
+                <Save className="w-4 h-4 mr-1" />
+                {saveSnapshotMutation.isPending ? "Saving..." : "Save Snapshot"}
+              </Button>
             </div>
           </CardContent>
         </Card>
