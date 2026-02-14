@@ -193,7 +193,10 @@ export interface BatchClassificationData {
  * Classification priority (per 27 CFR 24.10, §24.331):
  * 1. brandy → appleBrandy
  * 2. juice → null (non-taxable)
- * 3. apple/pear fruit + ABV 0.5-8.5% + CO2 ≤ 0.64 g/100ml → hardCider
+ * 3a. null ABV + eligible fruit + CO2 ≤ 0.64 → hardCider
+ * 3a-ii. null ABV + pommeau → wine16To21
+ * 3b. eligible fruit + ABV 0.5-8.5% + CO2 ≤ 0.64 → hardCider
+ * 3c. eligible fruit + CO2 ≤ 0.64 (ABV outside range) → hardCider (safeguard)
  * 4. CO2 > 0.392 g/100ml + natural fermentation → sparklingWine
  * 5. CO2 > 0.392 g/100ml + artificial injection → carbonatedWine
  * 6. ABV ≤ 16% → wineUnder16
@@ -249,6 +252,19 @@ export function classifyBatchTaxClass(
     isHardCiderFruit &&
     effectiveAbv >= config.thresholds.hardCider.minAbv &&
     effectiveAbv <= config.thresholds.hardCider.maxAbv &&
+    co2GramsPer100ml <= config.thresholds.hardCider.maxCo2GramsPer100ml
+  ) {
+    return "hardCider";
+  }
+
+  // 3c. Cidery safeguard: cider/perry product with CO2 within hard cider limit
+  // but ABV outside 0.5-8.5% range (typically from estimated ABV measurement error).
+  // Estimated ABV from hydrometer/refractometer has ±0.5-1% inherent error.
+  // A cidery's cider/perry batch within the CO2 limit is hard cider — prevent it
+  // from being classified as carbonated/sparkling wine ($3.30-3.40/gal) or table
+  // wine ($1.07/gal) instead of hard cider ($0.226/gal).
+  if (
+    isHardCiderFruit &&
     co2GramsPer100ml <= config.thresholds.hardCider.maxCo2GramsPer100ml
   ) {
     return "hardCider";
