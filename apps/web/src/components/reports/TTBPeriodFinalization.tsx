@@ -124,21 +124,21 @@ export function TTBPeriodFinalization({
         bulkWine21To24: formData.bulkWinesByTaxClass?.wine21To24?.line31_onHandEnd ?? 0,
         bulkSparklingWine: formData.bulkWinesByTaxClass?.sparklingWine?.line31_onHandEnd ?? 0,
         bulkCarbonatedWine: formData.bulkWinesByTaxClass?.carbonatedWine?.line31_onHandEnd ?? 0,
-        // Bottled wines
-        bottledHardCider: formData.endingInventory.bottled,
-        bottledWineUnder16: 0,
-        bottledWine16To21: 0,
-        bottledWine21To24: 0,
-        bottledSparklingWine: 0,
-        bottledCarbonatedWine: 0,
+        // Bottled wines by tax class
+        bottledHardCider: formData.bottledWinesByTaxClass?.hardCider?.line20_onHandEnd ?? formData.endingInventory.bottled,
+        bottledWineUnder16: formData.bottledWinesByTaxClass?.wineUnder16?.line20_onHandEnd ?? 0,
+        bottledWine16To21: formData.bottledWinesByTaxClass?.wine16To21?.line20_onHandEnd ?? 0,
+        bottledWine21To24: formData.bottledWinesByTaxClass?.wine21To24?.line20_onHandEnd ?? 0,
+        bottledSparklingWine: formData.bottledWinesByTaxClass?.sparklingWine?.line20_onHandEnd ?? 0,
+        bottledCarbonatedWine: formData.bottledWinesByTaxClass?.carbonatedWine?.line20_onHandEnd ?? 0,
         // Spirits
         spiritsAppleBrandy: formData.ciderBrandyInventory?.brandy?.total ?? 0,
         spiritsGrape: 0,
         spiritsOther: 0,
-        // Production
-        producedHardCider: formData.wineProduced.total,
-        producedWineUnder16: 0,
-        producedWine16To21: 0,
+        // Production by tax class
+        producedHardCider: formData.bulkWinesByTaxClass?.hardCider?.line2_produced ?? formData.wineProduced.total,
+        producedWineUnder16: formData.bulkWinesByTaxClass?.wineUnder16?.line2_produced ?? 0,
+        producedWine16To21: formData.bulkWinesByTaxClass?.wine16To21?.line2_produced ?? 0,
         // Tax-paid removals
         taxpaidTastingRoom: formData.taxPaidRemovals.tastingRoom,
         taxpaidWholesale: formData.taxPaidRemovals.wholesale,
@@ -173,8 +173,8 @@ export function TTBPeriodFinalization({
 
   const formatGallons = (gallons: number) => {
     return gallons.toLocaleString("en-US", {
-      minimumFractionDigits: 3,
-      maximumFractionDigits: 3,
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
     });
   };
 

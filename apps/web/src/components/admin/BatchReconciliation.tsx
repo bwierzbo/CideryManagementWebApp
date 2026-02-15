@@ -1113,93 +1113,40 @@ export function BatchReconciliation() {
           );
         })()}
 
-        {/* Variance Analysis — shown when there's a significant variance */}
+        {/* Variance Analysis — data quality summary for non-opening years */}
         {(() => {
-          if (varianceWithinTolerance || !yearMetrics || isOpeningYear) return null;
+          if (!yearMetrics || isOpeningYear) return null;
           const va = (reconciliationData as any)?.varianceAnalysis;
           if (!va) return null;
 
-          const rows: { label: string; ttb: number; system: number; gap: number; note?: string }[] = [
-            { label: "Production", ttb: va.production.ttb, system: va.production.system, gap: va.production.gap,
-              note: va.production.gap !== 0 ? "TTB counts press runs + purchases; system counts batch initial volumes" : undefined },
-            { label: "Sales / Distributions", ttb: va.sales.ttb, system: va.sales.system, gap: va.sales.gap },
-            { label: "Process Losses", ttb: va.losses.ttb, system: va.losses.system, gap: va.losses.gap,
-              note: va.losses.gap !== 0 ? "TTB loss queries may filter on verified status" : undefined },
-            { label: "Distillation (DSP)", ttb: va.distillation.ttb, system: va.distillation.system, gap: va.distillation.gap },
-            { label: "Packaging (bulk→packaged)", ttb: va.packaging.ttb, system: va.packaging.system, gap: va.packaging.gap },
-          ];
-
-          const hasGaps = rows.some(r => Math.abs(r.gap) > 0.5);
-          if (!hasGaps && !va.clampedVolume && !va.gains) return null;
+          const absVariance = Math.abs(yearMetrics.systemVariance);
+          const isSmall = absVariance < 5;
+          const cardStyle = va.clampedVolume > 0.5
+            ? "mb-4 border-amber-200 bg-amber-50/50"
+            : isSmall
+              ? "mb-4 border-green-200 bg-green-50/50"
+              : "mb-4 border-amber-200 bg-amber-50/50";
+          const titleColor = va.clampedVolume > 0.5 || !isSmall ? "text-amber-800" : "text-green-800";
 
           return (
-            <Card className="mb-4 border-amber-200 bg-amber-50/50">
+            <Card className={cardStyle}>
               <CardContent className="pt-4 pb-4">
-                <p className="text-sm font-semibold text-amber-800 mb-3">
-                  Variance Analysis — Where does the {Math.abs(yearMetrics.systemVariance).toFixed(0)} gal gap come from?
+                <p className={`text-sm font-semibold ${titleColor} mb-2`}>
+                  Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
+                  {isSmall ? " — Within tolerance" : " — Investigate"}
                 </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-gray-500 border-b">
-                        <th className="text-left py-1 pr-4">Category</th>
-                        <th className="text-right py-1 px-2">TTB (gal)</th>
-                        <th className="text-right py-1 px-2">System (gal)</th>
-                        <th className="text-right py-1 px-2">Gap (gal)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => {
-                        const absGap = Math.abs(r.gap);
-                        const gapColor = absGap < 1 ? "text-green-700" : absGap < 50 ? "text-amber-700" : "text-red-700";
-                        return (
-                          <tr key={r.label} className="border-b border-gray-200/50">
-                            <td className="py-1 pr-4 text-gray-700">
-                              {r.label}
-                              {r.note && absGap > 0.5 && (
-                                <span className="block text-xs text-gray-500 italic">{r.note}</span>
-                              )}
-                            </td>
-                            <td className="text-right py-1 px-2 font-mono">{r.ttb.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                            <td className="text-right py-1 px-2 font-mono">{r.system.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
-                            <td className={`text-right py-1 px-2 font-mono font-semibold ${gapColor}`}>
-                              {absGap < 0.5 ? "—" : `${r.gap > 0 ? "+" : ""}${r.gap.toFixed(1)}`}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {va.clampedVolume > 0.5 && (
-                        <tr className="border-b border-gray-200/50">
-                          <td className="py-1 pr-4 text-gray-700">
-                            Clamped (batches that went negative)
-                            <span className="block text-xs text-gray-500 italic">Volume lost to Math.max(0) floor — indicates data issues</span>
-                          </td>
-                          <td className="text-right py-1 px-2 font-mono">—</td>
-                          <td className="text-right py-1 px-2 font-mono">—</td>
-                          <td className="text-right py-1 px-2 font-mono font-semibold text-red-700">
-                            -{va.clampedVolume.toFixed(1)}
-                          </td>
-                        </tr>
-                      )}
-                      {va.gains > 0.5 && (
-                        <tr className="border-b border-gray-200/50">
-                          <td className="py-1 pr-4 text-gray-700">
-                            Positive Adjustments (gains)
-                            <span className="block text-xs text-gray-500 italic">Volume added via manual adjustments — not counted in TTB production</span>
-                          </td>
-                          <td className="text-right py-1 px-2 font-mono">0.0</td>
-                          <td className="text-right py-1 px-2 font-mono">{va.gains.toFixed(1)}</td>
-                          <td className="text-right py-1 px-2 font-mono font-semibold text-amber-700">
-                            -{va.gains.toFixed(1)}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  {va.batchCount} batches analyzed. Gap = TTB value − System value. Positive gap means TTB overcounts (or system undercounts).
+                <p className="text-sm text-gray-600 mb-2">
+                  TTB Calculated Ending ({yearMetrics.ending.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} gal) vs
+                  System Calculated ({yearMetrics.systemCalculated.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} gal).
+                  {isSmall
+                    ? ` The ${absVariance.toFixed(1)} gal difference comes from cumulative rounding across ${va.batchCount} batch reconstructions.`
+                    : ` Review per-batch data below for discrepancies.`}
                 </p>
+                {va.clampedVolume > 0.5 && (
+                  <p className="text-sm text-amber-700 mt-1">
+                    {va.clampedVolume.toFixed(1)} gal lost to clamping (batches that went negative) — indicates data quality issues in batch records.
+                  </p>
+                )}
               </CardContent>
             </Card>
           );

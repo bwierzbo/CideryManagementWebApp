@@ -45,11 +45,17 @@ const fmtCurrency = (v: number) => new Intl.NumberFormat("en-US", { style: "curr
 const fmtLbs = (v: number) => (v === 0 ? "" : v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }));
 
 // Official TTB F 5120.17 column order:
-// (a) TOTAL  (b) ≤16%  (c) 16-21%  (d) 21-24%  (e) Carbonated+Sparkling  (f) Hard Cider
-const TTB_TAX_COLUMNS = [
-  { key: "wineUnder16", label: "NOT OVER 16%", letter: "(b)" },
-  { key: "wine16To21", label: "OVER 16% TO 21%", letter: "(c)" },
-  { key: "wine21To24", label: "OVER 21% TO 24%", letter: "(d)" },
+// (a) Total (wine gallons)
+// (b) Table wines not over 16%
+// (c) Table wines over 16% to 21%
+// (d) Table wines over 21% to 24%
+// (e) Artificially carbonated & sparkling wines (combined)
+// (f) Hard cider
+const TTB_COLUMNS = [
+  { key: "total", label: "TOTAL (WINE GALLONS)", letter: "(a)" },
+  { key: "wineUnder16", label: "TABLE WINES NOT OVER 16%", letter: "(b)" },
+  { key: "wine16To21", label: "TABLE WINES OVER 16% TO 21%", letter: "(c)" },
+  { key: "wine21To24", label: "TABLE WINES OVER 21% TO 24%", letter: "(d)" },
   { key: "effervescent", label: "ARTIFICIALLY CARBONATED & SPARKLING", letter: "(e)" },
   { key: "hardCider", label: "HARD CIDER", letter: "(f)" },
 ] as const;
@@ -64,6 +70,11 @@ const cellLeft = `${cellBase} text-left`;
 const cellHeader = `${cellBase} text-center font-bold bg-gray-200 text-[10px] leading-tight`;
 const cellLineNo = `${cellBase} text-center w-8 font-semibold`;
 const totalRow = "bg-gray-100 font-bold";
+
+// Section header bar
+const sectionHeader = "bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide";
+const sectionBorder = "border-x-2 border-b-2 border-gray-600";
+const reservedText = "px-3 py-2 text-xs text-gray-400 italic";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -80,9 +91,9 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
   const byClass = formData.bulkWinesByTaxClass || {};
   const byBottledClass = formData.bottledWinesByTaxClass || {};
 
-  // Helper: get bulk value for a column. Column (a)=TOTAL reads from formData.bulkWines.
-  // Column (e)=effervescent sums carbonatedWine + sparklingWine.
-  const getBulkVal = (col: typeof TTB_TAX_COLUMNS[number], field: BulkField): number => {
+  // Helper: get bulk value for a column
+  const getBulkVal = (col: typeof TTB_COLUMNS[number], field: BulkField): number => {
+    if (col.key === "total") return (formData.bulkWines[field] as number) ?? 0;
     if (col.key === "effervescent") {
       return ((byClass["carbonatedWine"]?.[field] as number) ?? 0) +
              ((byClass["sparklingWine"]?.[field] as number) ?? 0);
@@ -90,8 +101,9 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
     return (byClass[col.key]?.[field] as number) ?? 0;
   };
 
-  // Helper: get bottled value for a column.
-  const getBottledVal = (col: typeof TTB_TAX_COLUMNS[number], field: BottledField): number => {
+  // Helper: get bottled value for a column
+  const getBottledVal = (col: typeof TTB_COLUMNS[number], field: BottledField): number => {
+    if (col.key === "total") return (formData.bottledWines[field] as number) ?? 0;
     if (col.key === "effervescent") {
       return ((byBottledClass["carbonatedWine"]?.[field] as number) ?? 0) +
              ((byBottledClass["sparklingWine"]?.[field] as number) ?? 0);
@@ -160,6 +172,23 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
     { line: 21, desc: "TOTAL (lines 8 through 20)", field: "line21_total", isTotal: true },
   ];
 
+  // Distillery operations data
+  const distOps = formData.distilleryOperations;
+  const hasDistillery = distOps && (
+    distOps.ciderSentToDsp > 0 ||
+    distOps.brandyReceived > 0 ||
+    distOps.brandyUsedInCider > 0 ||
+    (formData.ciderBrandyInventory?.brandy?.total ?? 0) > 0
+  );
+
+  // Compute brandy opening from reconciliation: opening = expectedEnding - received + used
+  const brandyOpening = formData.ciderBrandyReconciliation
+    ? Math.max(0, formData.ciderBrandyReconciliation.brandy.expectedEnding -
+        (distOps?.brandyReceived ?? 0) + (distOps?.brandyUsedInCider ?? 0))
+    : 0;
+  const brandyTotal = brandyOpening + (distOps?.brandyReceived ?? 0);
+  const brandyEnding = formData.ciderBrandyReconciliation?.brandy.expectedEnding ?? 0;
+
   // Format month ranges for form header
   const periodFrom = `${(startDate.getMonth() + 1).toString().padStart(2, "0")}/${startDate.getFullYear()}`;
   const periodTo = `${(endDate.getMonth() + 1).toString().padStart(2, "0")}/${endDate.getFullYear()}`;
@@ -172,7 +201,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       <div className="border-2 border-gray-600 p-4 print:p-2">
         {/* Top line: form number + OMB */}
         <div className="flex justify-between items-start text-[10px] text-gray-600 mb-1">
-          <span>TTB F 5120.17 (01/2018)</span>
+          <span>TTB F 5120.17 (09/2025)</span>
           <span>OMB No. 1513-0053</span>
         </div>
 
@@ -238,8 +267,8 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       {/* ============================================================ */}
       {/* PART I — SECTION A: BULK WINES                               */}
       {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600 overflow-x-auto">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
+      <div className={`${sectionBorder} overflow-x-auto`}>
+        <div className={sectionHeader}>
           Part I — Section A: Bulk Wines
           <span className="font-normal ml-2 text-gray-300">(in wine gallons)</span>
         </div>
@@ -250,8 +279,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
             <tr>
               <th className={cellHeader} rowSpan={2} style={{ width: 32 }}>LINE</th>
               <th className={cellHeader} rowSpan={2} style={{ minWidth: 200 }}>DESCRIPTION</th>
-              <th className={cellHeader} style={{ minWidth: 80 }}>(a)</th>
-              {TTB_TAX_COLUMNS.map((col) => (
+              {TTB_COLUMNS.map((col) => (
                 <th key={col.key} className={cellHeader} style={{ minWidth: 80 }}>
                   {col.letter}
                 </th>
@@ -259,8 +287,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
             </tr>
             {/* Column description row */}
             <tr>
-              <th className={`${cellHeader} text-[9px]`}>TOTAL</th>
-              {TTB_TAX_COLUMNS.map((col) => (
+              {TTB_COLUMNS.map((col) => (
                 <th key={col.key} className={`${cellHeader} text-[9px]`}>
                   {col.label}
                 </th>
@@ -272,12 +299,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
               <tr key={line} className={isTotal ? totalRow : isEnding ? "bg-blue-50/50" : ""}>
                 <td className={cellLineNo}>{line}</td>
                 <td className={`${cellLeft} ${isTotal ? "font-bold" : ""}`}>{desc}</td>
-                {/* Column (a): TOTAL */}
-                <td className={`${cellRight} font-semibold`}>
-                  {field ? fmt(formData.bulkWines[field] as number) : ""}
-                </td>
-                {/* Columns (b)-(f): per tax class */}
-                {TTB_TAX_COLUMNS.map((col) => (
+                {TTB_COLUMNS.map((col) => (
                   <td key={col.key} className={`${cellRight} ${isTotal ? "font-bold" : ""}`}>
                     {field ? fmt(getBulkVal(col, field)) : ""}
                   </td>
@@ -291,8 +313,8 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       {/* ============================================================ */}
       {/* PART I — SECTION B: BOTTLED WINES                            */}
       {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600 overflow-x-auto">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
+      <div className={`${sectionBorder} overflow-x-auto`}>
+        <div className={sectionHeader}>
           Part I — Section B: Bottled Wines
           <span className="font-normal ml-2 text-gray-300">(in wine gallons)</span>
         </div>
@@ -302,16 +324,14 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
             <tr>
               <th className={cellHeader} rowSpan={2} style={{ width: 32 }}>LINE</th>
               <th className={cellHeader} rowSpan={2} style={{ minWidth: 260 }}>DESCRIPTION</th>
-              <th className={cellHeader} style={{ minWidth: 80 }}>(a)</th>
-              {TTB_TAX_COLUMNS.map((col) => (
+              {TTB_COLUMNS.map((col) => (
                 <th key={col.key} className={cellHeader} style={{ minWidth: 80 }}>
                   {col.letter}
                 </th>
               ))}
             </tr>
             <tr>
-              <th className={`${cellHeader} text-[9px]`}>TOTAL</th>
-              {TTB_TAX_COLUMNS.map((col) => (
+              {TTB_COLUMNS.map((col) => (
                 <th key={col.key} className={`${cellHeader} text-[9px]`}>
                   {col.label}
                 </th>
@@ -323,12 +343,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
               <tr key={line} className={isTotal ? totalRow : isEnding ? "bg-blue-50/50" : ""}>
                 <td className={cellLineNo}>{line}</td>
                 <td className={`${cellLeft} ${isTotal ? "font-bold" : ""}`}>{desc}</td>
-                {/* Column (a): TOTAL */}
-                <td className={`${cellRight} font-semibold`}>
-                  {field ? fmt(formData.bottledWines[field] as number) : ""}
-                </td>
-                {/* Columns (b)-(f): per tax class */}
-                {TTB_TAX_COLUMNS.map((col) => (
+                {TTB_COLUMNS.map((col) => (
                   <td key={col.key} className={`${cellRight} ${isTotal ? "font-bold" : ""}`}>
                     {field ? fmt(getBottledVal(col, field)) : ""}
                   </td>
@@ -342,104 +357,315 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       {/* ============================================================ */}
       {/* PART II — RESERVED                                           */}
       {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-          Part II — Reserved
-        </div>
-        <div className="px-3 py-2 text-xs text-gray-400 italic">Reserved</div>
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Part II — Reserved</div>
+        <div className={reservedText}>Reserved</div>
       </div>
 
       {/* ============================================================ */}
-      {/* PART III — DISTILLED SPIRITS (supplemental)                  */}
+      {/* PART III — SUMMARY OF DISTILLED SPIRITS                      */}
       {/* ============================================================ */}
-      {formData.distilleryOperations && (
-        formData.distilleryOperations.ciderSentToDsp > 0 ||
-        formData.distilleryOperations.brandyReceived > 0 ||
-        formData.distilleryOperations.brandyUsedInCider > 0 ||
-        (formData.ciderBrandyInventory?.brandy?.total ?? 0) > 0
-      ) && (
-        <div className="border-x-2 border-b-2 border-gray-600">
-          <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-            Part III — Summary of Distilled Spirits
-            <span className="font-normal ml-2 text-gray-300">(in wine gallons)</span>
-          </div>
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>
+          Part III — Summary of Distilled Spirits
+          <span className="font-normal ml-2 text-gray-300">(in proof gallons)</span>
+        </div>
 
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr>
-                <th className={cellHeader} style={{ width: 32 }}>LINE</th>
-                <th className={cellHeader} style={{ minWidth: 260 }}>DESCRIPTION</th>
-                <th className={cellHeader} style={{ width: 100 }}>GALLONS</th>
-                <th className={cellHeader} style={{ width: 80 }}>COUNT</th>
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className={cellHeader} style={{ width: 32 }}>LINE</th>
+              <th className={cellHeader} style={{ minWidth: 260 }}>DESCRIPTION</th>
+              <th className={cellHeader} style={{ width: 90 }}>(a) WINE SPIRITS 190&deg;+</th>
+              <th className={cellHeader} style={{ width: 90 }}>(b) WINE SPIRITS &lt;190&deg;</th>
+              <th className={cellHeader} style={{ width: 90 }}>(c) BRANDY 190&deg;+</th>
+              <th className={cellHeader} style={{ width: 90 }}>(d) BRANDY &lt;190&deg;</th>
+              <th className={cellHeader} style={{ width: 90 }}>(e) BRANDY RESIDUE</th>
+              <th className={cellHeader} style={{ width: 90 }}>(f) SPIRITS</th>
+              <th className={cellHeader} style={{ width: 70 }}>(g) OTHER</th>
+              <th className={cellHeader} style={{ width: 80 }}>(h) TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { line: 1, desc: "ON HAND FIRST OF PERIOD", val: brandyOpening },
+              { line: 2, desc: "RECEIVED FOR FORTIFICATION/WINE TREATMENT", val: distOps?.brandyReceived ?? 0 },
+              { line: 3, desc: "RECEIVED FOR OTHER PURPOSES", val: 0 },
+              { line: 4, desc: "", val: 0 },
+              { line: 5, desc: "TOTAL (lines 1 through 4)", val: brandyTotal, isTotal: true },
+              { line: 6, desc: "USED FOR FORTIFICATION", val: distOps?.brandyUsedInCider ?? 0 },
+              { line: 7, desc: "USED FOR WINE TREATMENT", val: 0 },
+              { line: 8, desc: "REMOVED/TRANSFERRED", val: 0 },
+              { line: 9, desc: "LOSSES", val: 0 },
+              { line: 10, desc: "ON HAND END OF PERIOD", val: brandyEnding, isEnding: true },
+            ].map(({ line, desc, val, isTotal, isEnding }) => (
+              <tr key={line} className={isTotal ? totalRow : isEnding ? "bg-blue-50/50" : ""}>
+                <td className={cellLineNo}>{line}</td>
+                <td className={`${cellLeft} ${isTotal ? "font-bold" : ""}`}>{desc}</td>
+                {/* Columns (a)-(c), (e)-(g): empty for cidery */}
+                <td className={cellRight} />
+                <td className={cellRight} />
+                <td className={cellRight} />
+                {/* Column (d): Brandy Under 190° — where our apple brandy goes */}
+                <td className={`${cellRight} ${isTotal ? "font-bold" : ""}`}>{fmt(val)}</td>
+                <td className={cellRight} />
+                <td className={cellRight} />
+                <td className={cellRight} />
+                {/* Column (h): Total */}
+                <td className={`${cellRight} ${isTotal ? "font-bold" : ""}`}>{fmt(val)}</td>
               </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className={cellLineNo}>1</td>
-                <td className={cellLeft}>CIDER SENT TO DISTILLERY (DSP)</td>
-                <td className={cellRight}>{fmt(formData.distilleryOperations.ciderSentToDsp)}</td>
-                <td className={`${cellRight} text-gray-500`}>{formData.distilleryOperations.ciderSentShipments || ""}</td>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PART IV — MATERIALS RECEIVED AND USED                        */}
+      {/* ============================================================ */}
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>
+          Part IV — Materials Received and Used
+          <span className="font-normal ml-2 text-gray-300">(in pounds unless noted)</span>
+        </div>
+
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className={cellHeader} style={{ width: 32 }}>LINE</th>
+              <th className={cellHeader} style={{ minWidth: 160 }}>DESCRIPTION</th>
+              <th className={cellHeader} style={{ width: 80 }}>(a) APPLES</th>
+              <th className={cellHeader} style={{ width: 80 }}>(b) GRAPES</th>
+              <th className={cellHeader} style={{ width: 80 }}>(c) OTHER FRUIT</th>
+              <th className={cellHeader} style={{ width: 80 }}>(d) HONEY</th>
+              <th className={cellHeader} style={{ width: 80 }}>(e) CONC./JUICE (Std. Gal)</th>
+              <th className={cellHeader} style={{ width: 80 }}>(f) SUGAR (Lbs)</th>
+              <th className={cellHeader} style={{ width: 80 }}>(g) BRANDY (Pr. Gal)</th>
+              <th className={cellHeader} style={{ width: 80 }}>(h) WINE SPIRITS (Pr. Gal)</th>
+              <th className={cellHeader} style={{ width: 80 }}>(i) OTHER</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { line: 1, desc: "ON HAND FIRST OF PERIOD" },
+              {
+                line: 2, desc: "RECEIVED",
+                apples: formData.materials.applesReceivedLbs,
+                otherFruit: formData.materials.otherFruitReceivedLbs,
+                honey: formData.materials.honeyReceivedLbs,
+                juice: formData.materials.appleJuiceGallons,
+                sugar: formData.materials.sugarReceivedLbs,
+              },
+              {
+                line: 3, desc: "TOTAL",
+                apples: formData.materials.applesReceivedLbs,
+                otherFruit: formData.materials.otherFruitReceivedLbs,
+                honey: formData.materials.honeyReceivedLbs,
+                juice: formData.materials.appleJuiceGallons,
+                sugar: formData.materials.sugarReceivedLbs,
+                isTotal: true,
+              },
+              {
+                line: 4, desc: "USED — WINE",
+                apples: formData.materials.applesUsedLbs,
+                otherFruit: formData.materials.otherFruitUsedLbs,
+                honey: formData.materials.honeyUsedLbs,
+                sugar: formData.materials.sugarUsedLbs,
+              },
+              { line: 5, desc: "USED — EFFERVESCENT WINE" },
+              { line: 6, desc: "USED — SPECIAL NATURAL WINE" },
+              { line: 7, desc: "USED — NONBEVERAGE WINE" },
+              { line: 8, desc: "USED — DISTILLING MATERIAL" },
+              { line: 9, desc: "USED — OTHER" },
+              { line: 10, desc: "ON HAND END OF PERIOD" },
+            ].map(({ line, desc, apples, otherFruit, honey, juice, sugar, isTotal }) => (
+              <tr key={line} className={isTotal ? totalRow : ""}>
+                <td className={cellLineNo}>{line}</td>
+                <td className={`${cellLeft} ${isTotal ? "font-bold" : ""}`}>{desc}</td>
+                <td className={cellRight}>{fmtLbs(apples ?? 0)}</td>
+                <td className={cellRight} />{/* Grapes */}
+                <td className={cellRight}>{fmtLbs(otherFruit ?? 0)}</td>
+                <td className={cellRight}>{fmtLbs(honey ?? 0)}</td>
+                <td className={cellRight}>{juice ? fmt(juice) : ""}</td>
+                <td className={cellRight}>{fmtLbs(sugar ?? 0)}</td>
+                <td className={cellRight} />{/* Brandy proof gal */}
+                <td className={cellRight} />{/* Wine spirits proof gal */}
+                <td className={cellRight} />{/* Other */}
               </tr>
-              <tr>
-                <td className={cellLineNo}>2</td>
-                <td className={cellLeft}>BRANDY RECEIVED FROM DSP</td>
-                <td className={cellRight}>{fmt(formData.distilleryOperations.brandyReceived)}</td>
-                <td className={`${cellRight} text-gray-500`}>{formData.distilleryOperations.brandyReceivedReturns || ""}</td>
-              </tr>
-              <tr>
-                <td className={cellLineNo}>3</td>
-                <td className={cellLeft}>BRANDY USED IN CIDER PRODUCTION (FORTIFICATION)</td>
-                <td className={cellRight}>{fmt(formData.distilleryOperations.brandyUsedInCider)}</td>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PART V — RESERVED                                            */}
+      {/* ============================================================ */}
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Part V — Reserved</div>
+        <div className={reservedText}>Reserved</div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PART VI — DISTILLING MATERIAL AND VINEGAR STOCK              */}
+      {/* ============================================================ */}
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>
+          Part VI — Distilling Material and Vinegar Stock
+          <span className="font-normal ml-2 text-gray-300">(in wine gallons)</span>
+        </div>
+
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className={cellHeader} style={{ width: 32 }}>LINE</th>
+              <th className={cellHeader} style={{ minWidth: 260 }}>DESCRIPTION</th>
+              <th className={cellHeader} style={{ width: 120 }}>DISTILLING MATERIAL</th>
+              <th className={cellHeader} style={{ width: 120 }}>VINEGAR STOCK</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { line: 1, desc: "ON HAND FIRST OF PERIOD" },
+              { line: 2, desc: "PRODUCED" },
+              { line: 3, desc: "RECEIVED" },
+              { line: 4, desc: "TOTAL (lines 1 through 3)", isTotal: true },
+              { line: 5, desc: "REMOVED FOR DISTILLING", distilling: distOps?.ciderSentToDsp ?? 0 },
+              { line: 6, desc: "REMOVED TO VINEGAR PLANT" },
+              { line: 7, desc: "REMOVED OTHER" },
+              { line: 8, desc: "" },
+              { line: 9, desc: "LOSSES" },
+              { line: 10, desc: "ON HAND END OF PERIOD" },
+              { line: 11, desc: "TOTAL (lines 5 through 10)", isTotal: true, distilling: distOps?.ciderSentToDsp ?? 0 },
+            ].map(({ line, desc, isTotal, distilling }) => (
+              <tr key={line} className={isTotal ? totalRow : ""}>
+                <td className={cellLineNo}>{line}</td>
+                <td className={`${cellLeft} ${isTotal ? "font-bold" : ""}`}>{desc}</td>
+                <td className={`${cellRight} ${isTotal ? "font-bold" : ""}`}>{fmt(distilling ?? 0)}</td>
                 <td className={cellRight} />
               </tr>
-            </tbody>
-          </table>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-          {/* Cider/Brandy Inventory Breakdown */}
-          {formData.ciderBrandyInventory && (
-            <>
-              <div className="bg-gray-200 text-xs font-semibold px-3 py-1 uppercase border-t border-gray-400">
-                Inventory Breakdown — End of Period
-              </div>
-              <table className="w-full border-collapse text-xs">
-                <thead>
-                  <tr>
-                    <th className={cellHeader} style={{ minWidth: 200 }}>CATEGORY</th>
-                    <th className={cellHeader} style={{ width: 100 }}>BULK</th>
-                    <th className={cellHeader} style={{ width: 100 }}>BOTTLED/KEGS</th>
-                    <th className={cellHeader} style={{ width: 100 }}>TOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className={`${cellLeft} font-medium`}>Cider</td>
-                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.cider.bulk)}</td>
-                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.cider.bottled + formData.ciderBrandyInventory.cider.kegs)}</td>
-                    <td className={`${cellRight} font-semibold`}>{fmt(formData.ciderBrandyInventory.cider.total)}</td>
-                  </tr>
-                  <tr>
-                    <td className={`${cellLeft} font-medium`}>Brandy (Apple)</td>
-                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.brandy.bulk)}</td>
-                    <td className={cellRight} />
-                    <td className={`${cellRight} font-semibold`}>{fmt(formData.ciderBrandyInventory.brandy.total)}</td>
-                  </tr>
-                  <tr className={totalRow}>
-                    <td className={`${cellLeft} font-bold`}>TOTAL</td>
-                    <td className={cellRight} />
-                    <td className={cellRight} />
-                    <td className={`${cellRight} font-bold`}>{fmt(formData.ciderBrandyInventory.total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </>
-          )}
+      {/* ============================================================ */}
+      {/* PART VII — WINE IN FERMENTERS END OF PERIOD                  */}
+      {/* ============================================================ */}
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Part VII — Wine in Fermenters End of Period</div>
+
+        <table className="w-full border-collapse text-xs">
+          <tbody>
+            <tr>
+              <td className={`${cellLeft} font-semibold`}>Gallons of wine in fermenters</td>
+              <td className={`${cellRight} w-32 font-bold text-sm`}>
+                {fmtAlways(formData.fermenters.gallonsInFermenters)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PART VIII — NONBEVERAGE WINES                                 */}
+      {/* ============================================================ */}
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Part VIII — Nonbeverage Wines</div>
+
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className={cellHeader} style={{ width: 32 }}>LINE</th>
+              <th className={cellHeader} style={{ minWidth: 260 }}>DESCRIPTION</th>
+              <th className={cellHeader} style={{ width: 120 }}>GALLONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { line: 1, desc: "ON HAND FIRST OF PERIOD" },
+              { line: 2, desc: "PRODUCED/RECEIVED" },
+              { line: 3, desc: "REMOVED" },
+              { line: 4, desc: "ON HAND END OF PERIOD" },
+            ].map(({ line, desc }) => (
+              <tr key={line}>
+                <td className={cellLineNo}>{line}</td>
+                <td className={cellLeft}>{desc}</td>
+                <td className={cellRight} />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PART IX — SPECIAL NATURAL WINES                               */}
+      {/* ============================================================ */}
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Part IX — Special Natural Wines</div>
+
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className={cellHeader} style={{ width: 32 }}>LINE</th>
+              <th className={cellHeader} style={{ minWidth: 260 }}>DESCRIPTION</th>
+              <th className={cellHeader} style={{ width: 120 }}>GALLONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              { line: 1, desc: "ON HAND FIRST OF PERIOD" },
+              { line: 2, desc: "PRODUCED/RECEIVED" },
+              { line: 3, desc: "REMOVED" },
+              { line: 4, desc: "ON HAND END OF PERIOD" },
+            ].map(({ line, desc }) => (
+              <tr key={line}>
+                <td className={cellLineNo}>{line}</td>
+                <td className={cellLeft}>{desc}</td>
+                <td className={cellRight} />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PART X — REMARKS                                              */}
+      {/* ============================================================ */}
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Part X — Remarks</div>
+
+        <div className="p-3 space-y-3 text-xs">
+          {/* Inventory Reconciliation */}
+          <div>
+            <p className="font-semibold text-gray-700 uppercase text-[10px] mb-1">Inventory Reconciliation (Wine)</p>
+            <table className="w-full border-collapse text-xs">
+              <tbody>
+                <tr>
+                  <td className={`${cellLeft} font-medium`}>Total Available (Beginning + Production + Receipts)</td>
+                  <td className={`${cellRight} w-32 font-semibold`}>{fmtAlways(formData.reconciliation.totalAvailable)}</td>
+                </tr>
+                <tr>
+                  <td className={`${cellLeft} font-medium`}>Total Accounted For (Removals + Ending Inventory)</td>
+                  <td className={`${cellRight} w-32 font-semibold`}>{fmtAlways(formData.reconciliation.totalAccountedFor)}</td>
+                </tr>
+                <tr className={formData.reconciliation.balanced ? "bg-green-50" : "bg-red-50"}>
+                  <td className={`${cellLeft} font-bold`}>
+                    VARIANCE
+                    {formData.reconciliation.balanced && (
+                      <span className="ml-2 text-green-700 font-normal">(Books balance)</span>
+                    )}
+                  </td>
+                  <td className={`${cellRight} w-32 font-bold ${formData.reconciliation.balanced ? "text-green-700" : "text-red-700"}`}>
+                    {fmtAlways(formData.reconciliation.variance)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           {/* Cider/Brandy Reconciliation */}
-          {formData.ciderBrandyReconciliation && (
-            <>
-              <div className="bg-gray-200 text-xs font-semibold px-3 py-1 uppercase border-t border-gray-400">
-                Cider / Brandy Reconciliation
-              </div>
+          {formData.ciderBrandyReconciliation && hasDistillery && (
+            <div>
+              <p className="font-semibold text-gray-700 uppercase text-[10px] mb-1">Cider / Brandy Reconciliation</p>
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
@@ -476,15 +702,50 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                   </tr>
                 </tbody>
               </table>
-            </>
+            </div>
+          )}
+
+          {/* Cider/Brandy Inventory Breakdown */}
+          {formData.ciderBrandyInventory && hasDistillery && (
+            <div>
+              <p className="font-semibold text-gray-700 uppercase text-[10px] mb-1">Inventory Breakdown — End of Period</p>
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className={cellHeader} style={{ minWidth: 200 }}>CATEGORY</th>
+                    <th className={cellHeader} style={{ width: 100 }}>BULK</th>
+                    <th className={cellHeader} style={{ width: 100 }}>BOTTLED/KEGS</th>
+                    <th className={cellHeader} style={{ width: 100 }}>TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td className={`${cellLeft} font-medium`}>Cider</td>
+                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.cider.bulk)}</td>
+                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.cider.bottled + formData.ciderBrandyInventory.cider.kegs)}</td>
+                    <td className={`${cellRight} font-semibold`}>{fmt(formData.ciderBrandyInventory.cider.total)}</td>
+                  </tr>
+                  <tr>
+                    <td className={`${cellLeft} font-medium`}>Brandy (Apple)</td>
+                    <td className={cellRight}>{fmt(formData.ciderBrandyInventory.brandy.bulk)}</td>
+                    <td className={cellRight} />
+                    <td className={`${cellRight} font-semibold`}>{fmt(formData.ciderBrandyInventory.brandy.total)}</td>
+                  </tr>
+                  <tr className={totalRow}>
+                    <td className={`${cellLeft} font-bold`}>TOTAL</td>
+                    <td className={cellRight} />
+                    <td className={cellRight} />
+                    <td className={`${cellRight} font-bold`}>{fmt(formData.ciderBrandyInventory.total)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           )}
 
           {/* Brandy Transfer Details */}
-          {formData.distilleryOperations.brandyTransfers.length > 0 && (
-            <>
-              <div className="bg-gray-200 text-xs font-semibold px-3 py-1 uppercase border-t border-gray-400">
-                Brandy Transfer Details
-              </div>
+          {distOps && distOps.brandyTransfers.length > 0 && (
+            <div>
+              <p className="font-semibold text-gray-700 uppercase text-[10px] mb-1">Brandy Transfer Details</p>
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
@@ -495,7 +756,7 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                   </tr>
                 </thead>
                 <tbody>
-                  {formData.distilleryOperations.brandyTransfers.map((t, i) => (
+                  {distOps.brandyTransfers.map((t, i) => (
                     <tr key={i}>
                       <td className={cellLeft}>{formatDate(typeof t.transferredAt === "string" ? new Date(t.transferredAt) : t.transferredAt)}</td>
                       <td className={cellLeft}>{t.sourceBatch}</td>
@@ -505,83 +766,16 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
                   ))}
                 </tbody>
               </table>
-            </>
+            </div>
           )}
         </div>
-      )}
-
-      {/* ============================================================ */}
-      {/* PART IV — MATERIALS RECEIVED AND USED                        */}
-      {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-          Part IV — Materials Received and Used
-        </div>
-
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr>
-              <th className={cellHeader} style={{ minWidth: 200 }}>MATERIAL</th>
-              <th className={cellHeader} style={{ width: 120 }}>RECEIVED</th>
-              <th className={cellHeader} style={{ width: 120 }}>USED</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className={cellLeft}>Apples (pounds)</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.applesReceivedLbs)}</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.applesUsedLbs)}</td>
-            </tr>
-            <tr className="bg-blue-50/50">
-              <td className={`${cellLeft} pl-6 text-gray-600 italic`}>Juice produced (gallons)</td>
-              <td className={cellRight} colSpan={2}>{fmt(formData.materials.appleJuiceGallons)}</td>
-            </tr>
-            <tr>
-              <td className={cellLeft}>Other fruit/berries (pounds)</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.otherFruitReceivedLbs)}</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.otherFruitUsedLbs)}</td>
-            </tr>
-            <tr>
-              <td className={cellLeft}>Sugar (pounds)</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.sugarReceivedLbs)}</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.sugarUsedLbs)}</td>
-            </tr>
-            <tr>
-              <td className={cellLeft}>Honey (pounds)</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.honeyReceivedLbs)}</td>
-              <td className={cellRight}>{fmtLbs(formData.materials.honeyUsedLbs)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* ============================================================ */}
-      {/* PART VII — WINE IN FERMENTERS END OF PERIOD                  */}
-      {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-          Part VII — Wine in Fermenters End of Period
-        </div>
-
-        <table className="w-full border-collapse text-xs">
-          <tbody>
-            <tr>
-              <td className={`${cellLeft} font-semibold`}>Gallons of wine in fermenters</td>
-              <td className={`${cellRight} w-32 font-bold text-sm`}>
-                {fmtAlways(formData.fermenters.gallonsInFermenters)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
       </div>
 
       {/* ============================================================ */}
       {/* TAX COMPUTATION                                              */}
       {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-          Tax Computation
-        </div>
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Tax Computation</div>
 
         {formData.taxComputationByClass && formData.taxComputationByClass.length > 0 ? (
           <table className="w-full border-collapse text-xs">
@@ -654,52 +848,17 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
       </div>
 
       {/* ============================================================ */}
-      {/* INVENTORY RECONCILIATION                                     */}
+      {/* CERTIFICATION                                                */}
       {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-          Inventory Reconciliation
-        </div>
-
-        <table className="w-full border-collapse text-xs">
-          <tbody>
-            <tr>
-              <td className={`${cellLeft} font-medium`}>Total Available (Beginning + Production + Receipts)</td>
-              <td className={`${cellRight} w-32 font-semibold`}>{fmtAlways(formData.reconciliation.totalAvailable)}</td>
-            </tr>
-            <tr>
-              <td className={`${cellLeft} font-medium`}>Total Accounted For (Removals + Ending Inventory)</td>
-              <td className={`${cellRight} w-32 font-semibold`}>{fmtAlways(formData.reconciliation.totalAccountedFor)}</td>
-            </tr>
-            <tr className={formData.reconciliation.balanced ? "bg-green-50" : "bg-red-50"}>
-              <td className={`${cellLeft} font-bold`}>
-                VARIANCE
-                {formData.reconciliation.balanced && (
-                  <span className="ml-2 text-green-700 font-normal">(Books balance)</span>
-                )}
-              </td>
-              <td className={`${cellRight} w-32 font-bold ${formData.reconciliation.balanced ? "text-green-700" : "text-red-700"}`}>
-                {fmtAlways(formData.reconciliation.variance)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      {/* ============================================================ */}
-      {/* CERTIFICATION (informational)                                */}
-      {/* ============================================================ */}
-      <div className="border-x-2 border-b-2 border-gray-600">
-        <div className="bg-gray-800 text-white text-xs font-bold px-3 py-1.5 uppercase tracking-wide">
-          Certification
-        </div>
+      <div className={sectionBorder}>
+        <div className={sectionHeader}>Certification</div>
 
         <div className="p-3 text-[10px] text-gray-600 leading-relaxed">
           <p className="italic">
             Under the penalties of perjury, I declare that I have examined this return (including any accompanying
             schedules and statements) and to the best of my knowledge and belief, it is true, correct, and complete.
           </p>
-          <div className="grid grid-cols-3 gap-4 mt-3 text-xs">
+          <div className="grid grid-cols-4 gap-4 mt-3 text-xs">
             <div>
               <span className="text-gray-500 text-[10px]">SIGNATURE OF PROPRIETOR OR AUTHORIZED PERSON</span>
               <div className="border-b border-gray-400 h-6 mt-1" />
@@ -712,13 +871,17 @@ export function TTBFormPreview({ formData, periodLabel, orgInfo }: TTBFormPrevie
               <span className="text-gray-500 text-[10px]">DATE</span>
               <div className="border-b border-gray-400 h-6 mt-1" />
             </div>
+            <div>
+              <span className="text-gray-500 text-[10px]">TELEPHONE NUMBER</span>
+              <div className="border-b border-gray-400 h-6 mt-1" />
+            </div>
           </div>
         </div>
       </div>
 
       {/* Bottom form reference */}
       <div className="text-[9px] text-gray-400 text-center py-1">
-        TTB F 5120.17 (01/2018) — Generated by CideryManagement System
+        TTB F 5120.17 (09/2025) — Generated by CideryManagement System
       </div>
     </div>
   );

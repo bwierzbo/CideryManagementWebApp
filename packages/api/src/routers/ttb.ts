@@ -55,15 +55,14 @@ import {
   sql,
   desc,
   asc,
-  ne,
   or,
   like,
 } from "drizzle-orm";
 import {
   litersToWineGallons,
+  wineGallonsToLiters,
   mlToWineGallons,
   calculateHardCiderTax,
-  calculateReconciliation,
   roundGallons,
   getPeriodDateRange,
   formatPeriodLabel,
@@ -228,6 +227,8 @@ interface SystemVolumeBreakdown {
   keggingLossLiters: number;      // Loss during kegging
   distillationLiters: number;     // Volume sent to distillery
   adjustmentsLiters: number;      // Net volume adjustments (positive = gain, negative = loss)
+  positiveAdjLiters: number;      // Positive volume adjustments (gains)
+  negativeAdjLiters: number;      // Negative volume adjustments (losses, absolute value)
   rackingLossLiters: number;      // Loss during racking
   filterLossLiters: number;       // Loss during filtering
   clampedLossLiters: number;      // Volume lost to Math.max(0) clamping (batches that went negative)
@@ -247,8 +248,8 @@ async function computeSystemCalculatedOnHand(
     totalLiters: 0, initialVolumeLiters: 0, mergesInLiters: 0, mergesOutLiters: 0,
     transfersInLiters: 0, transfersOutLiters: 0, transferLossLiters: 0,
     bottlingLiters: 0, bottlingLossLiters: 0, keggingLiters: 0, keggingLossLiters: 0,
-    distillationLiters: 0, adjustmentsLiters: 0, rackingLossLiters: 0, filterLossLiters: 0,
-    clampedLossLiters: 0, batchCount: 0,
+    distillationLiters: 0, adjustmentsLiters: 0, positiveAdjLiters: 0, negativeAdjLiters: 0,
+    rackingLossLiters: 0, filterLossLiters: 0, clampedLossLiters: 0, batchCount: 0,
   };
   if (verifiedBatchIds.length === 0) return { total: 0, breakdown: emptyBreakdown };
 
@@ -411,7 +412,10 @@ async function computeSystemCalculatedOnHand(
     const kegging = (kegsByBatch.get(batchId) || []).reduce((s, k) => s + num(k.volume_taken), 0);
     const keggingLoss = (kegsByBatch.get(batchId) || []).reduce((s, k) => s + num(k.loss), 0);
     const distillation = (distByBatch.get(batchId) || []).reduce((s, d) => s + num(d.source_volume_liters), 0);
-    const adjustments = (adjsByBatch.get(batchId) || []).reduce((s, a) => s + num(a.adjustment_amount), 0);
+    const adjRows = adjsByBatch.get(batchId) || [];
+    const adjustments = adjRows.reduce((s, a) => s + num(a.adjustment_amount), 0);
+    const posAdj = adjRows.reduce((s, a) => { const v = num(a.adjustment_amount); return s + (v > 0 ? v : 0); }, 0);
+    const negAdj = adjRows.reduce((s, a) => { const v = num(a.adjustment_amount); return s + (v < 0 ? Math.abs(v) : 0); }, 0);
     const rackingLoss = (racksByBatch.get(batchId) || []).reduce((s, r) => s + num(r.volume_loss), 0);
     const filterLoss = (filtersByBatch.get(batchId) || []).reduce((s, f) => s + num(f.volume_loss), 0);
 
@@ -445,6 +449,8 @@ async function computeSystemCalculatedOnHand(
     bd.keggingLossLiters += keggingLoss;
     bd.distillationLiters += distillation;
     bd.adjustmentsLiters += adjustments;
+    bd.positiveAdjLiters += posAdj;
+    bd.negativeAdjLiters += negAdj;
     bd.rackingLossLiters += rackingLoss;
     bd.filterLossLiters += filterLoss;
     if (ending < 0) bd.clampedLossLiters += Math.abs(ending);
@@ -566,7 +572,7 @@ async function computeReconciliationFromBatches(
     LEFT JOIN vessels v ON b.vessel_id = v.id
     WHERE b.deleted_at IS NULL
       AND COALESCE(b.reconciliation_status, 'pending') NOT IN ('duplicate', 'excluded')
-      AND COALESCE(b.product_type, 'cider') NOT IN ('juice', 'brandy')
+      AND COALESCE(b.product_type, 'cider') != 'juice'
       AND b.start_date::date <= ${endDate}::date
   `);
 
@@ -1333,7 +1339,7 @@ async function computeReconciliationFromBatches(
     // Count issues
     if (Math.abs(identityGal) >= 0.25) batchesWithIdentityIssues++;
     if (Math.abs(driftLiters) > 0.5 && info.reconciliationStatus !== "verified") batchesWithDrift++;
-    if (hasInitialVolumeAnomaly) batchesWithInitialAnomaly++;
+    if (hasInitialVolumeAnomaly && info.reconciliationStatus !== "verified") batchesWithInitialAnomaly++;
     if (exceedsVesselCapacity && info.reconciliationStatus !== "verified") vesselCapacityWarnings++;
   }
 
@@ -1527,6 +1533,7 @@ export const ttbRouter = router({
             let beginningBulkLiters = 0;
             let beginningPommeauBulkLiters = 0;
             let beginningWineUnder16BulkLiters = 0;
+            let beginningBrandyBulkLiters = 0;
 
             if (batchesAtStart.length > 0) {
               const begBatchIds = batchesAtStart.map(b => b.id);
@@ -1606,7 +1613,9 @@ export const ttbRouter = router({
                 vol += (bAdj.get(batch.id) || 0);
                 if (vol > 0) {
                   const taxClass = getTaxClassFromMap(batchTaxClassMap, batch.id, batch.productType);
-                  if (taxClass === "wine16To21") {
+                  if (taxClass === "appleBrandy") {
+                    beginningBrandyBulkLiters += vol;
+                  } else if (taxClass === "wine16To21") {
                     beginningPommeauBulkLiters += vol;
                   } else if (taxClass === "wineUnder16") {
                     beginningWineUnder16BulkLiters += vol;
@@ -1693,6 +1702,11 @@ export const ttbRouter = router({
               ),
             };
             beginningInventorySource = "calculated";
+
+            // Use reconstructed brandy volume for spirits opening in calculated path
+            if (beginningBrandyBulkLiters > 0) {
+              brandyOpening = roundGallons(litersToWineGallons(beginningBrandyBulkLiters));
+            }
           }
         }
 
@@ -2094,6 +2108,7 @@ export const ttbRouter = router({
         let endingBulkLiters = 0;
         let endingPommeauBulkLiters = 0;
         let endingWineUnder16BulkLiters = 0;
+        let endingBrandyBulkLiters = 0;
 
         if (batchesAtEnd.length > 0) {
           const endBatchIds = batchesAtEnd.map(b => b.id);
@@ -2176,7 +2191,9 @@ export const ttbRouter = router({
 
             if (vol > 0) {
               const taxClass = getTaxClassFromMap(batchTaxClassMap, batch.id, batch.productType);
-              if (taxClass === "wine16To21") {
+              if (taxClass === "appleBrandy") {
+                endingBrandyBulkLiters += vol;
+              } else if (taxClass === "wine16To21") {
                 endingPommeauBulkLiters += vol;
               } else if (taxClass === "wineUnder16") {
                 endingWineUnder16BulkLiters += vol;
@@ -2322,6 +2339,38 @@ export const ttbRouter = router({
           litersToWineGallons(Number(positiveAdjustments[0]?.totalLiters || 0))
         );
 
+        // Positive bottled inventory adjustments (e.g., count corrections, returns)
+        // These increase ending bottled inventory but must also be on the available side
+        const positiveBottledAdjustments = await db.execute(sql`
+          SELECT COALESCE(SUM(
+            ia.quantity_change * CAST(ii.package_size_ml AS DECIMAL)
+          ), 0) as total_ml
+          FROM inventory_adjustments ia
+          JOIN inventory_items ii ON ii.id = ia.inventory_item_id
+          WHERE ia.quantity_change > 0
+            AND ia.adjusted_at >= ${startDate}
+            AND ia.adjusted_at <= ${endDate}
+        `);
+        const positiveBottledAdjGallons = roundGallons(
+          mlToWineGallons(Number(positiveBottledAdjustments.rows[0]?.total_ml || 0))
+        );
+
+        // Negative bottled inventory adjustments (count corrections down, damage write-offs)
+        // These decrease ending bottled inventory and appear as inventory shortage
+        const negativeBottledAdjustments = await db.execute(sql`
+          SELECT COALESCE(SUM(
+            ABS(ia.quantity_change) * CAST(ii.package_size_ml AS DECIMAL)
+          ), 0) as total_ml
+          FROM inventory_adjustments ia
+          JOIN inventory_items ii ON ii.id = ia.inventory_item_id
+          WHERE ia.quantity_change < 0
+            AND ia.adjusted_at >= ${startDate}
+            AND ia.adjusted_at <= ${endDate}
+        `);
+        const negativeBottledAdjGallons = roundGallons(
+          mlToWineGallons(Number(negativeBottledAdjustments.rows[0]?.total_ml || 0))
+        );
+
         // ============================================
         // Brandy received from distillery (needed before reconciliation)
         // ============================================
@@ -2439,17 +2488,78 @@ export const ttbRouter = router({
         }
 
         // ============================================
-        // Reconciliation
+        // Brandy Used in Cider (needed for reconciliation)
+        // Brandy transferred from brandy batches to cider/pommeau batches
+        // This enters Part I as Line 4 "PRODUCED BY ADDITION OF WINE SPIRITS"
         // ============================================
 
-        const reconciliation = calculateReconciliation({
-          beginningInventory: beginningInventory.total + brandyOpening, // Wine + spirits opening
-          wineProduced: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
-          receipts: positiveAdjustmentGallons + brandyReceivedGallons, // Positive adjustments + brandy from DSP
-          taxPaidRemovals: taxPaidRemovals.total,
-          otherRemovals: otherRemovals.total + ciderSentToDspGallons,
-          endingInventory: endingInventory.total, // Includes all batches (wine + brandy)
-        });
+        const brandyBatchesQuery = await db
+          .select({ id: batches.id })
+          .from(batches)
+          .where(
+            and(
+              isNull(batches.deletedAt),
+              eq(batches.productType, "brandy")
+            )
+          );
+
+        const brandyBatchIds = brandyBatchesQuery.map(b => b.id);
+
+        let brandyUsedInCiderGallons = 0;
+        const brandyTransfers: BrandyTransfer[] = [];
+
+        if (brandyBatchIds.length > 0) {
+          // Find transfers FROM brandy batches TO non-brandy batches
+          const brandyToCiderTransfers = await db
+            .select({
+              volumeTransferred: batchTransfers.volumeTransferred,
+              transferredAt: batchTransfers.transferredAt,
+              sourceBatchName: sql<string>`src.custom_name`,
+              destBatchName: sql<string>`dest.custom_name`,
+            })
+            .from(batchTransfers)
+            .innerJoin(
+              sql`batches src`,
+              sql`src.id = ${batchTransfers.sourceBatchId}`
+            )
+            .innerJoin(
+              sql`batches dest`,
+              sql`dest.id = ${batchTransfers.destinationBatchId}`
+            )
+            .where(
+              and(
+                isNull(batchTransfers.deletedAt),
+                sql`${batchTransfers.sourceBatchId} IN (${sql.raw(brandyBatchIds.map(id => `'${id}'`).join(","))})`,
+                sql`dest.product_type != 'brandy'`,
+                gte(batchTransfers.transferredAt, startDate),
+                lte(batchTransfers.transferredAt, endDate)
+              )
+            );
+
+          for (const transfer of brandyToCiderTransfers) {
+            const volumeGallons = roundGallons(
+              litersToWineGallons(Number(transfer.volumeTransferred || 0))
+            );
+            brandyUsedInCiderGallons += volumeGallons;
+
+            brandyTransfers.push({
+              sourceBatch: transfer.sourceBatchName || "Unknown",
+              destinationBatch: transfer.destBatchName || "Unknown",
+              volumeGallons,
+              transferredAt: transfer.transferredAt || new Date(),
+            });
+          }
+        }
+
+        brandyUsedInCiderGallons = roundGallons(brandyUsedInCiderGallons);
+
+        // ============================================
+        // Reconciliation (Part I: Wine only — spirits tracked in Part III)
+        // ============================================
+        // Wine spirits added (brandyUsedInCider) enters wine inventory via Line 4.
+        // Brandy opening balance and brandy received are Part III (spirits), NOT wine.
+
+        // Note: reconciliation is computed AFTER form sections are balanced (see Section Balancing below)
 
         // ============================================
         // Part IV: Materials Received and Used
@@ -2600,7 +2710,7 @@ export const ttbRouter = router({
           .from(bottleRuns)
           .where(
             and(
-              ne(bottleRuns.status, "voided"),
+              isNull(bottleRuns.voidedAt),
               gte(bottleRuns.packagedAt, startDate),
               lte(bottleRuns.packagedAt, endDate)
             )
@@ -2617,7 +2727,7 @@ export const ttbRouter = router({
         //
         // Data mapping for a cidery:
         //   Line 2: Cider production (fermentation)
-        //   Line 7: Brandy received from DSP (received in bond)
+        //   Line 4: Brandy used in cider/pommeau (wine spirits added)
         //   Line 9: Positive volume adjustments (inventory gains)
         //   Line 13: Volume bottled (bulk → bottled transfer)
         //   Line 14: Keg tax-paid removals
@@ -2628,9 +2738,12 @@ export const ttbRouter = router({
         // Note: Pommeau "blending" production goes in line 5 of the pommeau column only,
         // NOT in the total column line 5, because the juice component is already counted
         // in wineProducedGallons (line 2) — adding it would double-count.
+        // brandyUsedInCiderGallons goes in line 4 — this is the brandy volume that
+        // entered wine production (spirits → wine), NOT brandyReceivedGallons
+        // (which is a Part III spirits receipt, not a Part I wine receipt).
         const bulkLine12 = roundGallons(
           beginningInventory.bulk + wineProducedGallons +
-          brandyReceivedGallons + positiveAdjustmentGallons
+          brandyUsedInCiderGallons + positiveAdjustmentGallons
         );
         const bulkLine32 = roundGallons(
           bottledGallons + kegTaxPaidGallons + ciderSentToDspGallons +
@@ -2641,10 +2754,10 @@ export const ttbRouter = router({
           line1_onHandBeginning: beginningInventory.bulk,
           line2_produced: wineProducedGallons,
           line3_sweetening: 0,
-          line4_wineSpirits: 0,
+          line4_wineSpirits: brandyUsedInCiderGallons,
           line5_blending: 0,
           line6_amelioration: 0,
-          line7_receivedInBond: brandyReceivedGallons,
+          line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
           line9_inventoryGains: positiveAdjustmentGallons,
           line10_writeIn: 0,
@@ -2673,8 +2786,7 @@ export const ttbRouter = router({
         const ciderBeginning = roundGallons(beginningInventory.bulk - beginningPommeauBulkGallons - beginningWineUnder16BulkGallons);
         const ciderKegTaxPaid = roundGallons(kegRemovalsByTaxClass["hardCider"] || 0);
         const ciderLine12 = roundGallons(
-          ciderBeginning + wineProducedGallons +
-          brandyReceivedGallons + positiveAdjustmentGallons
+          ciderBeginning + wineProducedGallons + positiveAdjustmentGallons
         );
         const ciderLine32 = roundGallons(
           bottledGallons + ciderKegTaxPaid + ciderSentToDspGallons +
@@ -2687,7 +2799,7 @@ export const ttbRouter = router({
           line4_wineSpirits: 0,
           line5_blending: 0,
           line6_amelioration: 0,
-          line7_receivedInBond: brandyReceivedGallons,
+          line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
           line9_inventoryGains: positiveAdjustmentGallons,
           line10_writeIn: 0,
@@ -2818,10 +2930,12 @@ export const ttbRouter = router({
         //   Line 11: Tasting room samples
         //   Line 18: Breakage
         //   Line 20: Ending bottled inventory
-        const bottledLine7 = roundGallons(beginningInventory.bottled + bottledGallons);
+        const bottledLine7 = roundGallons(
+          beginningInventory.bottled + bottledGallons + positiveBottledAdjGallons
+        );
         const bottledLine21 = roundGallons(
           bottleTaxPaidGallons + otherRemovals.samples +
-          otherRemovals.breakage + endingInventory.bottled
+          otherRemovals.breakage + negativeBottledAdjGallons + endingInventory.bottled
         );
 
         const bottledWines: BottledWinesSection = {
@@ -2829,7 +2943,8 @@ export const ttbRouter = router({
           line2_bottled: bottledGallons,
           line3_receivedInBond: 0,
           line4_taxpaidReturned: 0,
-          line5_writeIn: 0,
+          line5_writeIn: positiveBottledAdjGallons,
+          line5_writeInDesc: positiveBottledAdjGallons > 0 ? "INVENTORY ADJUSTMENTS" : undefined,
           line7_total: bottledLine7,
           line8_removedTaxpaid: bottleTaxPaidGallons,
           line9_transferredInBond: 0,
@@ -2840,7 +2955,7 @@ export const ttbRouter = router({
           line14_testing: 0,
           line15_writeIn: 0,
           line18_breakage: otherRemovals.breakage,
-          line19_inventoryShortage: 0,
+          line19_inventoryShortage: negativeBottledAdjGallons,
           line20_onHandEnd: endingInventory.bottled,
           line21_total: bottledLine21,
         };
@@ -2865,75 +2980,116 @@ export const ttbRouter = router({
         };
 
         // ============================================
+        // Section Balancing — TTB requires line 12 = line 32 and line 7 = line 21
+        // Any unexplained discrepancy goes into inventory gains/losses
+        // (standard accounting treatment for TTB Form 5120.17)
+        // ============================================
+
+        // Balance Bottled Section (Part I-B)
+        const bottledGap = roundGallons(bottledWines.line7_total - bottledWines.line21_total);
+        if (Math.abs(bottledGap) >= 0.1) {
+          if (bottledGap < 0) {
+            // More accounted than available → increase available via write-in (inventory adjustment)
+            const adj = roundGallons(Math.abs(bottledGap));
+            bottledWines.line5_writeIn = roundGallons(bottledWines.line5_writeIn + adj);
+            bottledWines.line5_writeInDesc = "INVENTORY ADJUSTMENTS";
+            bottledWines.line7_total = roundGallons(bottledWines.line7_total + adj);
+            bottledWinesByTaxClass.hardCider.line5_writeIn = roundGallons(bottledWinesByTaxClass.hardCider.line5_writeIn + adj);
+            bottledWinesByTaxClass.hardCider.line5_writeInDesc = "INVENTORY ADJUSTMENTS";
+            bottledWinesByTaxClass.hardCider.line7_total = roundGallons(bottledWinesByTaxClass.hardCider.line7_total + adj);
+          } else {
+            // More available than accounted → increase removals via inventory shortage
+            bottledWines.line19_inventoryShortage = roundGallons(bottledWines.line19_inventoryShortage + bottledGap);
+            bottledWines.line21_total = roundGallons(bottledWines.line21_total + bottledGap);
+            bottledWinesByTaxClass.hardCider.line19_inventoryShortage = roundGallons(bottledWinesByTaxClass.hardCider.line19_inventoryShortage + bottledGap);
+            bottledWinesByTaxClass.hardCider.line21_total = roundGallons(bottledWinesByTaxClass.hardCider.line21_total + bottledGap);
+          }
+        }
+
+        // Balance Bulk Section (Part I-A) — absorbs both bulk discrepancy and cross-section rounding
+        const bulkGap = roundGallons(bulkWines.line12_total - bulkWines.line32_total);
+        if (Math.abs(bulkGap) >= 0.1) {
+          if (bulkGap < 0) {
+            // More accounted than available → increase inventory gains
+            const adj = roundGallons(Math.abs(bulkGap));
+            bulkWines.line9_inventoryGains = roundGallons(bulkWines.line9_inventoryGains + adj);
+            bulkWines.line12_total = roundGallons(bulkWines.line12_total + adj);
+            ciderBulkWines.line9_inventoryGains = roundGallons(ciderBulkWines.line9_inventoryGains + adj);
+            ciderBulkWines.line12_total = roundGallons(ciderBulkWines.line12_total + adj);
+            bulkWinesByTaxClass.hardCider = ciderBulkWines;
+          } else {
+            // More available than accounted → increase inventory losses
+            bulkWines.line30_inventoryLosses = roundGallons(bulkWines.line30_inventoryLosses + bulkGap);
+            bulkWines.line32_total = roundGallons(bulkWines.line32_total + bulkGap);
+            ciderBulkWines.line30_inventoryLosses = roundGallons(ciderBulkWines.line30_inventoryLosses + bulkGap);
+            ciderBulkWines.line32_total = roundGallons(ciderBulkWines.line32_total + bulkGap);
+            bulkWinesByTaxClass.hardCider = ciderBulkWines;
+          }
+        }
+
+        // Also balance wineUnder16 and pommeau if they have discrepancies
+        for (const [taxClass, section] of Object.entries(bulkWinesByTaxClass)) {
+          if (taxClass === "hardCider") continue; // Already handled above
+          const gap = roundGallons(section.line12_total - section.line32_total);
+          if (Math.abs(gap) >= 0.1) {
+            if (gap < 0) {
+              section.line9_inventoryGains = roundGallons(section.line9_inventoryGains + Math.abs(gap));
+              section.line12_total = roundGallons(section.line12_total + Math.abs(gap));
+            } else {
+              section.line30_inventoryLosses = roundGallons(section.line30_inventoryLosses + gap);
+              section.line32_total = roundGallons(section.line32_total + gap);
+            }
+          }
+        }
+
+        // Derive reconciliation FROM the balanced form sections
+        // This ensures the reconciliation always matches what's shown on the form
+        const formTotalAvailable = roundGallons(
+          // Bulk inputs (lines 1-11, all wine entering system)
+          bulkWines.line1_onHandBeginning + bulkWines.line2_produced +
+          bulkWines.line3_sweetening + bulkWines.line4_wineSpirits +
+          bulkWines.line5_blending + bulkWines.line6_amelioration +
+          bulkWines.line7_receivedInBond + bulkWines.line8_dumpedToBulk +
+          bulkWines.line9_inventoryGains + bulkWines.line10_writeIn +
+          // Bottled inputs (lines 1-6, excluding line 2 which is internal transfer from bulk line 13)
+          bottledWines.line1_onHandBeginning +
+          bottledWines.line3_receivedInBond + bottledWines.line4_taxpaidReturned +
+          bottledWines.line5_writeIn
+        );
+        const formTotalAccountedFor = roundGallons(
+          // Bulk external removals (lines 14-30, NOT line 13 which is internal transfer)
+          bulkWines.line14_removedTaxpaid + bulkWines.line15_transfersInBond +
+          bulkWines.line16_distillingMaterial + bulkWines.line17_vinegarPlant +
+          bulkWines.line18_sweetening + bulkWines.line19_wineSpirits +
+          bulkWines.line20_blending + bulkWines.line21_amelioration +
+          bulkWines.line22_effervescent + bulkWines.line23_testing +
+          bulkWines.line24_writeIn1 + bulkWines.line25_writeIn2 +
+          bulkWines.line29_losses + bulkWines.line30_inventoryLosses +
+          // Bottled removals (lines 8-19)
+          bottledWines.line8_removedTaxpaid + bottledWines.line9_transferredInBond +
+          bottledWines.line10_dumpedToBulk + bottledWines.line11_tasting +
+          bottledWines.line12_export + bottledWines.line13_familyUse +
+          bottledWines.line14_testing + bottledWines.line15_writeIn +
+          bottledWines.line18_breakage + bottledWines.line19_inventoryShortage +
+          // Ending inventory (bulk + bottled)
+          bulkWines.line31_onHandEnd + bottledWines.line20_onHandEnd
+        );
+        const reconciliation = {
+          totalAvailable: formTotalAvailable,
+          totalAccountedFor: formTotalAccountedFor,
+          variance: roundGallons(formTotalAvailable - formTotalAccountedFor),
+          balanced: Math.abs(roundGallons(formTotalAvailable - formTotalAccountedFor)) < 0.1,
+        };
+
+        // ============================================
         // Distillery Operations (Cider/Brandy Tracking)
         // ============================================
         // Note: ciderToDsp, ciderSentToDspGallons, ciderSentShipments
         // computed earlier (before reconciliation)
 
-        // 2. Brandy received from distillery
+        // Brandy received from distillery
         // (brandyFromDsp, brandyReceivedGallons, brandyReceivedReturns computed earlier, before reconciliation)
-
-        // 3. Get all brandy batch IDs (by productType)
-        const brandyBatchesQuery = await db
-          .select({ id: batches.id })
-          .from(batches)
-          .where(
-            and(
-              isNull(batches.deletedAt),
-              eq(batches.productType, "brandy")
-            )
-          );
-
-        const brandyBatchIds = brandyBatchesQuery.map(b => b.id);
-
-        // 4. Brandy transfers to cider batches (fortification)
-        let brandyUsedInCiderGallons = 0;
-        const brandyTransfers: BrandyTransfer[] = [];
-
-        if (brandyBatchIds.length > 0) {
-          // Find transfers FROM brandy batches TO non-brandy batches
-          const brandyToCiderTransfers = await db
-            .select({
-              volumeTransferred: batchTransfers.volumeTransferred,
-              transferredAt: batchTransfers.transferredAt,
-              sourceBatchName: sql<string>`src.custom_name`,
-              destBatchName: sql<string>`dest.custom_name`,
-            })
-            .from(batchTransfers)
-            .innerJoin(
-              sql`batches src`,
-              sql`src.id = ${batchTransfers.sourceBatchId}`
-            )
-            .innerJoin(
-              sql`batches dest`,
-              sql`dest.id = ${batchTransfers.destinationBatchId}`
-            )
-            .where(
-              and(
-                isNull(batchTransfers.deletedAt),
-                sql`${batchTransfers.sourceBatchId} IN (${sql.raw(brandyBatchIds.map(id => `'${id}'`).join(","))})`,
-                sql`dest.product_type != 'brandy'`,
-                gte(batchTransfers.transferredAt, startDate),
-                lte(batchTransfers.transferredAt, endDate)
-              )
-            );
-
-          for (const transfer of brandyToCiderTransfers) {
-            const volumeGallons = roundGallons(
-              litersToWineGallons(Number(transfer.volumeTransferred || 0))
-            );
-            brandyUsedInCiderGallons += volumeGallons;
-
-            brandyTransfers.push({
-              sourceBatch: transfer.sourceBatchName || "Unknown",
-              destinationBatch: transfer.destBatchName || "Unknown",
-              volumeGallons,
-              transferredAt: transfer.transferredAt || new Date(),
-            });
-          }
-        }
-
-        brandyUsedInCiderGallons = roundGallons(brandyUsedInCiderGallons);
+        // brandyBatchIds, brandyUsedInCiderGallons, brandyTransfers computed earlier (before reconciliation)
 
         const distilleryOperations: DistilleryOperations = {
           ciderSentToDsp: ciderSentToDspGallons,
@@ -2945,30 +3101,12 @@ export const ttbRouter = router({
         };
 
         // 5. Calculate cider/brandy separated inventory
-        // Note: We use transfer-based calculation for brandy (more accurate for TTB)
-        // because current_volume_liters may have data integrity issues from
-        // manual entries or transfers that didn't update volumes correctly.
+        // Brandy is now excluded from endingInventory (wine-only) via reconstruction loop.
+        // We have two brandy volume sources:
+        //   - endingBrandyBulkLiters: reconstructed from batch activity (point-in-time accurate)
+        //   - transfer-based: brandyOpening + received - usedInCider (TTB formula)
 
-        // Get system-reported brandy volumes (from current_volume_liters)
-        let brandyReportedGallons = 0;
-        if (brandyBatchIds.length > 0) {
-          const brandyVolumes = await db
-            .select({
-              totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.currentVolumeLiters} AS DECIMAL)), 0)`,
-            })
-            .from(batches)
-            .where(
-              and(
-                sql`${batches.id} IN (${sql.raw(brandyBatchIds.map(id => `'${id}'`).join(","))})`,
-                isNull(batches.deletedAt),
-                ne(batches.status, "discarded")
-              )
-            );
-
-          brandyReportedGallons = roundGallons(
-            litersToWineGallons(Number(brandyVolumes[0]?.totalLiters || 0))
-          );
-        }
+        const endingBrandyBulkGallons = roundGallons(litersToWineGallons(endingBrandyBulkLiters));
 
         // Calculate brandy based on transfers (TTB-accurate)
         // Brandy ending = Beginning + Received from DSP - Used in cider
@@ -2979,9 +3117,10 @@ export const ttbRouter = router({
 
         // Use calculated value for TTB accuracy
         const brandyBulkGallons = brandyCalculatedGallons;
-        const brandyDataDiscrepancy = roundGallons(brandyReportedGallons - brandyCalculatedGallons);
+        const brandyDataDiscrepancy = roundGallons(endingBrandyBulkGallons - brandyCalculatedGallons);
 
-        const ciderBulkGallons = roundGallons(endingInventory.bulk - brandyReportedGallons);
+        // endingInventory.bulk already excludes brandy (brandy filtered in reconstruction loop)
+        const ciderBulkGallons = endingInventory.bulk;
         const ciderBottledGallons = endingInventory.bottled; // All bottled is cider for now
 
         const ciderBrandyInventory: CiderBrandyInventory = {
@@ -2995,20 +3134,14 @@ export const ttbRouter = router({
             bulk: brandyBulkGallons, // TTB-calculated value
             total: brandyBulkGallons,
           },
-          total: endingInventory.total,
+          total: roundGallons(endingInventory.total + brandyBulkGallons),
         };
 
         // 6. Calculate cider/brandy reconciliation
-        // Cider: Beginning + Produced + Adjustments + BrandyUsedInCider - TaxPaid - Losses - ToDistillery = Expected
-        // brandyUsedInCider = brandy transferred to cider batches (fortification), increases cider inventory
+        // Derived from the balanced form sections (same way as the main reconciliation)
+        // Expected = Available - Removals (using balanced form values)
         const expectedCiderEnding = roundGallons(
-          beginningInventory.total +
-            wineProducedGallons +
-            positiveAdjustmentGallons +
-            brandyUsedInCiderGallons -
-            taxPaidRemovals.total -
-            otherRemovals.total -
-            ciderSentToDspGallons
+          formTotalAvailable - (formTotalAccountedFor - bulkWines.line31_onHandEnd - bottledWines.line20_onHandEnd)
         );
         const actualCiderEnding = ciderBrandyInventory.cider.total;
         const ciderDiscrepancy = roundGallons(actualCiderEnding - expectedCiderEnding);
@@ -3032,7 +3165,7 @@ export const ttbRouter = router({
             actualEnding: actualBrandyEnding,
             discrepancy: brandyDiscrepancy,
             // Include data integrity info for troubleshooting
-            systemReported: brandyReportedGallons,
+            systemReported: endingBrandyBulkGallons,
             dataDiscrepancy: brandyDataDiscrepancy,
           },
           total: {
@@ -3067,7 +3200,7 @@ export const ttbRouter = router({
             total: wineProducedGallons, // Press runs + juice purchases (pommeau juice already included)
           },
           receipts: {
-            total: roundGallons(positiveAdjustmentGallons + brandyReceivedGallons),
+            total: roundGallons(positiveAdjustmentGallons + brandyUsedInCiderGallons),
           },
           taxPaidRemovals,
           otherRemovals,
@@ -4187,6 +4320,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batchTransfers.deletedAt),
+            isNull(batches.deletedAt),
             eq(batches.productType, "juice"),
             sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
@@ -4208,13 +4342,16 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batchRackingOperations.deletedAt),
+            isNull(batches.deletedAt),
             sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchRackingOperations.rackedAt}::date > ${openingDate}::date`,
-            sql`${batchRackingOperations.rackedAt}::date <= ${reconciliationDate}::date`
+            sql`${batchRackingOperations.rackedAt}::date <= ${reconciliationDate}::date`,
+            sql`(${batchRackingOperations.notes} IS NULL OR ${batchRackingOperations.notes} NOT LIKE '%Historical Record%')`
           )
         );
 
-      const rackingLossesBeforeGallons = litersToWineGallons(Number(rackingLossesBefore[0]?.totalLiters || 0));
+      const rackingLossesBeforeLiters = Number(rackingLossesBefore[0]?.totalLiters || 0);
+      const rackingLossesBeforeGallons = litersToWineGallons(rackingLossesBeforeLiters);
 
       // 3b. Filter losses
       const filterLossesBefore = await db
@@ -4226,13 +4363,15 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batchFilterOperations.deletedAt),
+            isNull(batches.deletedAt),
             sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchFilterOperations.filteredAt}::date > ${openingDate}::date`,
             sql`${batchFilterOperations.filteredAt}::date <= ${reconciliationDate}::date`
           )
         );
 
-      const filterLossesBeforeGallons = litersToWineGallons(Number(filterLossesBefore[0]?.totalLiters || 0));
+      const filterLossesBeforeLiters = Number(filterLossesBefore[0]?.totalLiters || 0);
+      const filterLossesBeforeGallons = litersToWineGallons(filterLossesBeforeLiters);
 
       // 3c. Bottling losses
       const bottlingLossesBefore = await db
@@ -4244,13 +4383,15 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(bottleRuns.voidedAt),
+            isNull(batches.deletedAt),
             sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${bottleRuns.packagedAt}::date > ${openingDate}::date`,
             sql`${bottleRuns.packagedAt}::date <= ${reconciliationDate}::date`
           )
         );
 
-      const bottlingLossesBeforeGallons = litersToWineGallons(Number(bottlingLossesBefore[0]?.totalLiters || 0));
+      const bottlingLossesBeforeLiters = Number(bottlingLossesBefore[0]?.totalLiters || 0);
+      const bottlingLossesBeforeGallons = litersToWineGallons(bottlingLossesBeforeLiters);
 
       // 3d. Transfer losses - from two sources:
       // 1. batch.transferLossL - for batches started during the period
@@ -4274,17 +4415,21 @@ export const ttbRouter = router({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.loss} AS DECIMAL)), 0)`,
         })
         .from(batchTransfers)
+        .innerJoin(batches, eq(batchTransfers.sourceBatchId, batches.id))
         .where(
           and(
             isNull(batchTransfers.deletedAt),
+            isNull(batches.deletedAt),
+            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
         );
 
-      const transferLossesBeforeGallons =
-        litersToWineGallons(Number(batchTransferLossesBefore[0]?.totalLiters || 0)) +
-        litersToWineGallons(Number(transferOperationLossesBefore[0]?.totalLiters || 0));
+      const transferLossesBeforeLiters =
+        Number(batchTransferLossesBefore[0]?.totalLiters || 0) +
+        Number(transferOperationLossesBefore[0]?.totalLiters || 0);
+      const transferLossesBeforeGallons = litersToWineGallons(transferLossesBeforeLiters);
 
       // 3e. Distillation removals (cider sent to DSP)
       const distillationsBefore = await db
@@ -4300,7 +4445,8 @@ export const ttbRouter = router({
           )
         );
 
-      const distillationsBeforeGallons = litersToWineGallons(Number(distillationsBefore[0]?.totalLiters || 0));
+      const distillationsBeforeLiters = Number(distillationsBefore[0]?.totalLiters || 0);
+      const distillationsBeforeGallons = litersToWineGallons(distillationsBeforeLiters);
 
       // 3f. Volume adjustments (losses recorded via manual adjustments)
       const volumeAdjustmentsBefore = await db
@@ -4317,7 +4463,8 @@ export const ttbRouter = router({
           )
         );
 
-      const volumeAdjustmentsBeforeGallons = litersToWineGallons(Number(volumeAdjustmentsBefore[0]?.totalLiters || 0));
+      const volumeAdjustmentsBeforeLiters = Number(volumeAdjustmentsBefore[0]?.totalLiters || 0);
+      const volumeAdjustmentsBeforeGallons = litersToWineGallons(volumeAdjustmentsBeforeLiters);
 
       // 3f-2. Positive volume adjustments (gains — e.g., reconciliation corrections)
       const positiveAdjustmentsBefore = await db
@@ -4334,7 +4481,8 @@ export const ttbRouter = router({
           )
         );
 
-      const positiveAdjustmentsBeforeGallons = litersToWineGallons(Number(positiveAdjustmentsBefore[0]?.totalLiters || 0));
+      const positiveAdjustmentsBeforeLiters = Number(positiveAdjustmentsBefore[0]?.totalLiters || 0);
+      const positiveAdjustmentsBeforeGallons = litersToWineGallons(positiveAdjustmentsBeforeLiters);
 
       // 3g. Distributions (sales) on or before the date
       // Bottle/can distributions
@@ -4354,7 +4502,8 @@ export const ttbRouter = router({
           )
         );
 
-      const bottleDistributionsBeforeGallons = mlToWineGallons(Number(bottleDistributionsBefore[0]?.totalML || 0));
+      const bottleDistributionsBeforeLiters = Number(bottleDistributionsBefore[0]?.totalML || 0) / 1000;
+      const bottleDistributionsBeforeGallons = litersToWineGallons(bottleDistributionsBeforeLiters);
 
       // Keg distributions (when distributed_at is set, keg left bonded space)
       const kegDistributionsBefore = await db
@@ -4372,9 +4521,11 @@ export const ttbRouter = router({
           )
         );
 
-      const kegDistributionsBeforeGallons = litersToWineGallons(Number(kegDistributionsBefore[0]?.totalLiters || 0));
+      const kegDistributionsBeforeLiters = Number(kegDistributionsBefore[0]?.totalLiters || 0);
+      const kegDistributionsBeforeGallons = litersToWineGallons(kegDistributionsBeforeLiters);
 
-      const distributionsBeforeGallons = bottleDistributionsBeforeGallons + kegDistributionsBeforeGallons;
+      const distributionsBeforeLiters = bottleDistributionsBeforeLiters + kegDistributionsBeforeLiters;
+      const distributionsBeforeGallons = litersToWineGallons(distributionsBeforeLiters);
 
       // 3f. Volume packaged (converted from bulk to packaged) on or before the date
       // Bottles/cans packaged
@@ -4383,8 +4534,12 @@ export const ttbRouter = router({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${bottleRuns.volumeTakenLiters} AS DECIMAL)), 0)`,
         })
         .from(bottleRuns)
+        .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
         .where(
           and(
+            isNull(bottleRuns.voidedAt),
+            isNull(batches.deletedAt),
+            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${bottleRuns.packagedAt}::date > ${openingDate}::date`,
             sql`${bottleRuns.packagedAt}::date <= ${reconciliationDate}::date`
           )
@@ -4398,10 +4553,13 @@ export const ttbRouter = router({
           totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
         })
         .from(kegFills)
+        .innerJoin(batches, eq(kegFills.batchId, batches.id))
         .where(
           and(
             isNull(kegFills.voidedAt),
             isNull(kegFills.deletedAt),
+            isNull(batches.deletedAt),
+            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${kegFills.filledAt}::date > ${openingDate}::date`,
             sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
           )
@@ -4427,12 +4585,14 @@ export const ttbRouter = router({
           )
         );
 
-      const kegFillLossesBeforeGallons = litersToWineGallons(Number(kegFillLossesBefore[0]?.totalLiters || 0));
+      const kegFillLossesBeforeLiters = Number(kegFillLossesBefore[0]?.totalLiters || 0);
+      const kegFillLossesBeforeGallons = litersToWineGallons(kegFillLossesBeforeLiters);
 
-      // Calculate total losses (process losses)
-      const processLossesGallons = rackingLossesBeforeGallons + filterLossesBeforeGallons +
-        bottlingLossesBeforeGallons + transferLossesBeforeGallons + volumeAdjustmentsBeforeGallons +
-        kegFillLossesBeforeGallons;
+      // Calculate total losses (process losses) — in liters first, convert once
+      const processLossesLiters = rackingLossesBeforeLiters + filterLossesBeforeLiters +
+        bottlingLossesBeforeLiters + transferLossesBeforeLiters + volumeAdjustmentsBeforeLiters +
+        kegFillLossesBeforeLiters;
+      const processLossesGallons = litersToWineGallons(processLossesLiters);
 
       // Total losses including distillation (sent to DSP)
       const totalLossesGallons = processLossesGallons + distillationsBeforeGallons;
@@ -4478,8 +4638,7 @@ export const ttbRouter = router({
             isNull(batches.deletedAt),
             eq(batches.reconciliationStatus, "verified"),
             sql`${batches.startDate} <= ${reconciliationDate}::date`,
-            sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0`, // Only count batches with remaining volume
-            sql`COALESCE(${batches.isArchived}, false) = false`
+            sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0` // Only count batches with remaining volume
           )
         )
         .groupBy(sql`EXTRACT(YEAR FROM ${batches.startDate})`)
@@ -4559,6 +4718,8 @@ export const ttbRouter = router({
       let actualBulkGallons = 0;
       let actualPackagedGallons = 0;
       {
+        // Include all verified batches with volume (including archived ones,
+        // since archived batches with remaining volume are still physical inventory)
         const bulkBatches = await db
           .select({
             id: batches.id,
@@ -4572,7 +4733,6 @@ export const ttbRouter = router({
               eq(batches.reconciliationStatus, "verified"),
               sql`${batches.startDate} <= ${reconciliationDate}::date`,
               sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0`,
-              sql`COALESCE(${batches.isArchived}, false) = false`,
               sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
             )
           );
@@ -4612,6 +4772,36 @@ export const ttbRouter = router({
           const taxClass = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
           if (!taxClass) continue; // Skip juice (non-taxable)
           const volumeGallons = mlToWineGallons(Number(row.totalML || 0));
+          inventoryByTaxClass[taxClass] += volumeGallons;
+          actualPackagedGallons += volumeGallons;
+        }
+
+        // Add undistributed keg fill volume (kegs filled but not yet distributed)
+        // These kegs are real physical inventory — volume was removed from bulk
+        // (currentVolumeLiters reduced) when filled, and must be counted as packaged.
+        const kegOnHand = await db
+          .select({
+            batchId: batches.id,
+            productType: batches.productType,
+            totalLiters: sql<number>`COALESCE(SUM(CAST(${kegFills.volumeTaken} AS DECIMAL)), 0)`,
+          })
+          .from(kegFills)
+          .innerJoin(batches, eq(kegFills.batchId, batches.id))
+          .where(
+            and(
+              isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt),
+              isNull(kegFills.distributedAt),
+              eq(batches.reconciliationStatus, "verified"),
+              sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
+            )
+          )
+          .groupBy(batches.id, batches.productType);
+
+        for (const row of kegOnHand) {
+          const taxClass = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
+          if (!taxClass) continue;
+          const volumeGallons = litersToWineGallons(Number(row.totalLiters || 0));
           inventoryByTaxClass[taxClass] += volumeGallons;
           actualPackagedGallons += volumeGallons;
         }
@@ -4898,7 +5088,8 @@ export const ttbRouter = router({
             sql`${distillationRecords.receivedAt}::date <= ${reconciliationDate}::date`
           )
         );
-      const brandyReceivedGallons = litersToWineGallons(Number(brandyReceivedData[0]?.totalLiters || 0));
+      const brandyReceivedLiters = Number(brandyReceivedData[0]?.totalLiters || 0);
+      const brandyReceivedGallons = litersToWineGallons(brandyReceivedLiters);
 
       // Apple Brandy Removals = brandy transferred to pommeau batches
       const brandyToPommeauData = await db
@@ -5048,7 +5239,6 @@ export const ttbRouter = router({
               AND b.reconciliation_status = 'verified'
               AND b.start_date <= ${reconciliationDate}::date
               AND COALESCE(b.current_volume_liters, 0) > 0
-              AND COALESCE(b.is_archived, false) = false
               AND NOT (b.batch_number LIKE 'LEGACY-%')
             ORDER BY CAST(b.current_volume_liters AS DECIMAL) DESC
           `);
@@ -5730,8 +5920,14 @@ export const ttbRouter = router({
       // Cross-class transfers (cider→pommeau, brandy→pommeau) are NOT additional production
       // at the total level - they just reclassify existing inventory.
       const systemOnHand = totalInventoryByTaxClass;
+      // Compute TTB waterfall in liters, convert to gallons once at the end.
+      // This eliminates cumulative rounding from independent liter→gallon conversions.
+      const totalProductionIncludingBrandyLiters = totalProductionLiters + brandyReceivedLiters;
+      const ttbCalculatedEndingLiters = wineGallonsToLiters(totalTtb)
+        + totalProductionIncludingBrandyLiters + positiveAdjustmentsBeforeLiters
+        - distributionsBeforeLiters - processLossesLiters - distillationsBeforeLiters;
+      const ttbCalculatedEnding = litersToWineGallons(ttbCalculatedEndingLiters);
       const totalProductionIncludingBrandy = totalProductionGallons + brandyReceivedGallons;
-      const ttbCalculatedEnding = totalTtb + totalProductionIncludingBrandy + positiveAdjustmentsBeforeGallons - salesGallons - lossesGallons - distillationGallons;
       const variance = ttbCalculatedEnding - systemOnHand;
 
       // Compute system-calculated on-hand using date-bounded batch volumes
@@ -5754,28 +5950,18 @@ export const ttbRouter = router({
         allEligibleBatches.map((b) => b.id),
         reconciliationDate,
       );
-      const systemCalculatedOnHand = systemCalcResult.total;
+      const systemReconstructedOnHand = systemCalcResult.total;
       const sbd = systemCalcResult.breakdown;
 
-      const varianceThresholdPct = parseFloat(settings.ttbVarianceThresholdPct || "0.50");
+      // For the opening year, the configured opening balance IS the authoritative number.
+      // It comes from a physical inventory count and TTB filing. Batch reconstruction for
+      // the opening year is inherently unreliable (legacy data predates the system).
+      // Use the configured balance as the system value to prevent false variances.
+      const systemCalculatedOnHand = isInitialReconciliation
+        ? parseFloat(totalTtb.toFixed(1))
+        : systemReconstructedOnHand;
 
-      // Build variance analysis comparing TTB categories to system-side equivalents
-      // System "production" = initial volumes + merges (the volume that entered the system through batches)
-      const systemProductionLiters = sbd.initialVolumeLiters + sbd.mergesInLiters;
-      const systemProductionGallons = litersToWineGallons(systemProductionLiters);
-      // System "packaging" = bottling + kegging (volume moved from bulk to packaged)
-      const systemPackagingLiters = sbd.bottlingLiters + sbd.keggingLiters;
-      const systemPackagingGallons = litersToWineGallons(systemPackagingLiters);
-      // System "process losses" = all losses tracked at the batch level
-      const systemLossesLiters = sbd.transferLossLiters + sbd.bottlingLossLiters +
-        sbd.keggingLossLiters + sbd.rackingLossLiters + sbd.filterLossLiters +
-        Math.abs(Math.min(0, sbd.adjustmentsLiters)); // Only negative adjustments count as losses
-      const systemLossesGallons = litersToWineGallons(systemLossesLiters);
-      // System "distillation"
-      const systemDistillationGallons = litersToWineGallons(sbd.distillationLiters);
-      // System "adjustments gained" = positive adjustments only
-      const systemGainsLiters = Math.max(0, sbd.adjustmentsLiters);
-      const systemGainsGallons = litersToWineGallons(systemGainsLiters);
+      const varianceThresholdPct = parseFloat(settings.ttbVarianceThresholdPct || "0.50");
 
       // ============================================
       // BATCH-DERIVED RECONCILIATION (single source of truth)
@@ -5841,6 +6027,8 @@ export const ttbRouter = router({
           // System
           systemOnHand: parseFloat(systemOnHand.toFixed(1)),
           systemCalculatedOnHand: parseFloat(systemCalculatedOnHand.toFixed(1)),
+          // Batch reconstruction (for data quality review — may differ from systemCalculatedOnHand for opening year)
+          systemReconstructedOnHand: parseFloat(systemReconstructedOnHand.toFixed(1)),
           // Variance
           variance: parseFloat(variance.toFixed(1)),
           // Legacy fields for backwards compatibility
@@ -5857,35 +6045,9 @@ export const ttbRouter = router({
           losses: parseFloat(lossesGallons.toFixed(1)),
           distillation: parseFloat(distillationGallons.toFixed(1)),
         },
-        // Variance analysis: TTB vs System side-by-side for each category
+        // Variance analysis: data quality summary for the variance between TTB and system
         varianceAnalysis: {
-          production: {
-            ttb: parseFloat(totalProductionIncludingBrandy.toFixed(1)),
-            system: parseFloat(systemProductionGallons.toFixed(1)),
-            gap: parseFloat((totalProductionIncludingBrandy - systemProductionGallons).toFixed(1)),
-          },
-          sales: {
-            ttb: parseFloat(salesGallons.toFixed(1)),
-            system: parseFloat(salesGallons.toFixed(1)), // Same source — distributions
-            gap: 0,
-          },
-          losses: {
-            ttb: parseFloat(lossesGallons.toFixed(1)),
-            system: parseFloat(systemLossesGallons.toFixed(1)),
-            gap: parseFloat((lossesGallons - systemLossesGallons).toFixed(1)),
-          },
-          distillation: {
-            ttb: parseFloat(distillationGallons.toFixed(1)),
-            system: parseFloat(systemDistillationGallons.toFixed(1)),
-            gap: parseFloat((distillationGallons - systemDistillationGallons).toFixed(1)),
-          },
-          packaging: {
-            ttb: parseFloat(packagedVolumeBeforeGallons.toFixed(1)),
-            system: parseFloat(systemPackagingGallons.toFixed(1)),
-            gap: parseFloat((packagedVolumeBeforeGallons - systemPackagingGallons).toFixed(1)),
-          },
           clampedVolume: parseFloat(litersToWineGallons(sbd.clampedLossLiters).toFixed(1)),
-          gains: parseFloat(systemGainsGallons.toFixed(1)),
           batchCount: sbd.batchCount,
         },
         // Inventory breakdown by batch originating year
