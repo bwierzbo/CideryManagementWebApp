@@ -691,10 +691,11 @@ export function BatchReconciliation() {
   );
 
   // Compute year-specific metrics from cumulative TTB data
+  // All values are date-bounded to the reconciliation period — no live/current data in reports.
   type TtbTotals = {
     ttbOpeningBalance: number; production: number; removals: number;
     losses: number; distillation: number; ttbCalculatedEnding: number;
-    systemOnHand: number; systemCalculatedOnHand: number; variance: number;
+    systemCalculatedOnHand: number; variance: number;
     pressRunsProduction?: number; juicePurchasesProduction?: number;
     bottleDistributions?: number; kegDistributions?: number;
   };
@@ -704,6 +705,7 @@ export function BatchReconciliation() {
     }
     const t = reconciliationData.totals as TtbTotals;
     if (isOpeningYear) {
+      // For opening year, systemCalculatedOnHand equals the configured opening balance
       return {
         opening: t.ttbOpeningBalance,
         production: 0,
@@ -711,17 +713,18 @@ export function BatchReconciliation() {
         losses: 0,
         distillation: 0,
         ending: t.ttbOpeningBalance,
-        onHand: t.systemOnHand,
-        systemCalculated: t.systemCalculatedOnHand ?? t.systemOnHand,
+        systemCalculated: t.systemCalculatedOnHand,
         variance: 0,
-        systemVariance: parseFloat(((t.systemCalculatedOnHand ?? t.systemOnHand) - t.ttbOpeningBalance).toFixed(1)),
+        systemVariance: parseFloat((t.systemCalculatedOnHand - t.ttbOpeningBalance).toFixed(1)),
         isConfigured: true,
       };
     }
     if (!priorYearData || !("totals" in priorYearData)) return null;
     const prior = priorYearData.totals as TtbTotals;
     const ending = parseFloat(t.ttbCalculatedEnding.toFixed(1));
-    const systemCalc = t.systemCalculatedOnHand ?? t.systemOnHand;
+    // systemCalculatedOnHand: date-bounded reconstruction of bulk + undistributed packaged
+    // inventory at the reconciliation date — same basis as ttbCalculatedEnding.
+    const systemCalc = parseFloat(t.systemCalculatedOnHand.toFixed(1));
     return {
       opening: parseFloat(prior.ttbCalculatedEnding.toFixed(1)),
       production: parseFloat((t.production - prior.production).toFixed(1)),
@@ -729,10 +732,9 @@ export function BatchReconciliation() {
       losses: parseFloat((t.losses - prior.losses).toFixed(1)),
       distillation: parseFloat((t.distillation - prior.distillation).toFixed(1)),
       ending,
-      onHand: parseFloat(t.systemOnHand.toFixed(1)),
-      systemCalculated: parseFloat(systemCalc.toFixed(1)),
-      variance: parseFloat((t.ttbCalculatedEnding - t.systemOnHand).toFixed(1)),
-      systemVariance: parseFloat((systemCalc - ending).toFixed(1)),
+      systemCalculated: systemCalc,
+      variance: parseFloat((ending - systemCalc).toFixed(1)),
+      systemVariance: parseFloat((ending - systemCalc).toFixed(1)),
       isConfigured: false,
       // Breakdowns
       pressRuns: parseFloat(((t.pressRunsProduction || 0) - (prior.pressRunsProduction || 0)).toFixed(1)),
@@ -1054,7 +1056,7 @@ export function BatchReconciliation() {
       if (yearMetrics.losses > 0) lines.push(`  Process Losses,${yearMetrics.losses.toFixed(1)}`);
       if (yearMetrics.distillation > 0) lines.push(`  Sent to DSP,${yearMetrics.distillation.toFixed(1)}`);
       lines.push(`Calculated Ending,${yearMetrics.ending}`);
-      lines.push(`System Calculated,${yearMetrics.systemCalculated}`);
+      lines.push(`System Total,${yearMetrics.systemCalculated}`);
       if (Math.abs(yearMetrics.systemVariance) > 0.1) {
         lines.push(`Variance,${yearMetrics.systemVariance.toFixed(1)}`);
       }
@@ -1489,7 +1491,7 @@ export function BatchReconciliation() {
             icon = <CheckCircle className="w-5 h-5 text-green-600" />;
             title = `${yearFilter} — Opening Balance Configured`;
           } else if (allPassing && !varianceWithinTolerance && yearMetrics) {
-            // All batch-level checks pass but aggregate doesn't reconcile
+            // All batch-level checks pass but aggregate variance doesn't reconcile
             const variancePct = yearMetrics.ending !== 0
               ? Math.abs(yearMetrics.systemVariance / yearMetrics.ending * 100).toFixed(1)
               : "?";
@@ -1540,7 +1542,7 @@ export function BatchReconciliation() {
                         <p className="font-medium text-gray-700">TTB Ending Balance</p>
                         <p className="font-semibold text-gray-800">{yearMetrics.opening.toLocaleString()} gal</p>
                         <p className="text-xs text-gray-500 mt-1">Configured from physical inventory</p>
-                        <p className="text-gray-600 mt-2">System Calculated: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
+                        <p className="text-gray-600 mt-2">System Total: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
                         {Math.abs(yearMetrics.systemVariance) > 0.1 && (
                           <p className={`${Math.abs(yearMetrics.systemVariance) < 10 ? "text-green-700" : Math.abs(yearMetrics.systemVariance) < 100 ? "text-amber-700" : "text-red-700"}`}>
                             Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
@@ -1549,37 +1551,45 @@ export function BatchReconciliation() {
                       </>
                     ) : (
                       <>
-                        <p className="font-medium text-gray-700">TTB Balance ({yearFilter})</p>
-                        <p className="text-gray-600">Opening: {yearMetrics.opening.toLocaleString()} gal</p>
-                        {yearMetrics.production > 0 && (
-                          <div>
-                            <p className="text-gray-600">+ Production: {yearMetrics.production.toLocaleString()} gal</p>
-                            <div className="ml-4 text-xs text-gray-400">
-                              {(yearMetrics as any).pressRuns > 0 && <p>Pressed: {(yearMetrics as any).pressRuns.toLocaleString()} gal</p>}
-                              {(yearMetrics as any).juicePurchases > 0 && <p>Purchased: {(yearMetrics as any).juicePurchases.toLocaleString()} gal</p>}
-                            </div>
-                          </div>
-                        )}
-                        {(yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation) > 0 && (
-                          <div>
-                            <p className="text-gray-600">- Removals: {(yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation).toFixed(1)} gal</p>
-                            <div className="ml-4 text-xs text-gray-400">
-                              {(yearMetrics as any).bottleSales > 0 && <p>Bottled: {(yearMetrics as any).bottleSales.toLocaleString()} gal</p>}
-                              {(yearMetrics as any).kegSales > 0 && <p>Kegged: {(yearMetrics as any).kegSales.toLocaleString()} gal</p>}
-                              {yearMetrics.losses > 0 && <p>Process Losses: {yearMetrics.losses.toFixed(1)} gal</p>}
-                              {yearMetrics.distillation > 0 && <p>Sent to DSP: {yearMetrics.distillation.toFixed(1)} gal</p>}
-                            </div>
-                          </div>
-                        )}
-                        <p className="font-semibold text-gray-800 border-t border-gray-300 mt-1 pt-1">
-                          Calculated Ending: {yearMetrics.ending.toLocaleString()} gal
-                        </p>
-                        <p className="text-gray-600">System Calculated: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
-                        {Math.abs(yearMetrics.systemVariance) > 0.1 && (
-                          <p className={`${Math.abs(yearMetrics.systemVariance) < 10 ? "text-green-700" : Math.abs(yearMetrics.systemVariance) < 100 ? "text-amber-700" : "text-red-700"}`}>
-                            Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
-                          </p>
-                        )}
+                        <p className="font-medium text-gray-700 mb-1">TTB Balance ({yearFilter})</p>
+                        <table className="text-xs w-full">
+                          <tbody className="text-gray-700">
+                            <tr>
+                              <td className="pr-2">Opening</td>
+                              <td className="text-right">{yearMetrics.opening.toLocaleString()} gal</td>
+                            </tr>
+                            <tr>
+                              <td className="pr-2">+ Production</td>
+                              <td className="text-right">{yearMetrics.production.toLocaleString()} gal</td>
+                            </tr>
+                            <tr>
+                              <td className="pr-2">- Distributions</td>
+                              <td className="text-right">{yearMetrics.removals.toLocaleString()} gal</td>
+                            </tr>
+                            <tr>
+                              <td className="pr-2">- Losses</td>
+                              <td className="text-right">{yearMetrics.losses.toLocaleString()} gal</td>
+                            </tr>
+                            <tr>
+                              <td className="pr-2">- Distillation</td>
+                              <td className="text-right">{yearMetrics.distillation.toLocaleString()} gal</td>
+                            </tr>
+                            <tr className="border-t border-gray-300 font-semibold">
+                              <td className="pr-2 pt-1">= Ending</td>
+                              <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <div className="mt-2 pt-2 border-t border-gray-200">
+                          <p className="text-gray-600">System Total: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
+                          {Math.abs(yearMetrics.systemVariance) <= 0.1 ? (
+                            <p className="text-green-700 font-medium">Variance: 0.0 gal</p>
+                          ) : (
+                            <p className={`font-medium ${Math.abs(yearMetrics.systemVariance) < 10 ? "text-green-700" : Math.abs(yearMetrics.systemVariance) < 100 ? "text-amber-700" : "text-red-700"}`}>
+                              Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
+                            </p>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -1589,40 +1599,16 @@ export function BatchReconciliation() {
           );
         })()}
 
-        {/* Variance Analysis — data quality summary for non-opening years */}
+        {/* Clamped volume warning */}
         {(() => {
-          if (!yearMetrics || isOpeningYear) return null;
-          const va = (reconciliationData as any)?.varianceAnalysis;
-          if (!va) return null;
-
-          const absVariance = Math.abs(yearMetrics.systemVariance);
-          const isSmall = absVariance < 5;
-          const cardStyle = va.clampedVolume > 0.5
-            ? "mb-4 border-amber-200 bg-amber-50/50"
-            : isSmall
-              ? "mb-4 border-green-200 bg-green-50/50"
-              : "mb-4 border-amber-200 bg-amber-50/50";
-          const titleColor = va.clampedVolume > 0.5 || !isSmall ? "text-amber-800" : "text-green-800";
-
+          const clampedVol = (reconciliationData as any)?.clampedVolume ?? 0;
+          if (clampedVol <= 0.5 || isOpeningYear) return null;
           return (
-            <Card className={cardStyle}>
+            <Card className="mb-4 border-amber-200 bg-amber-50/50">
               <CardContent className="pt-4 pb-4">
-                <p className={`text-sm font-semibold ${titleColor} mb-2`}>
-                  Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
-                  {isSmall ? " — Within tolerance" : " — Investigate"}
+                <p className="text-xs text-amber-700">
+                  {clampedVol.toFixed(1)} gal lost to clamping (batches that went negative during volume reconstruction) — indicates data quality issues.
                 </p>
-                <p className="text-sm text-gray-600 mb-2">
-                  TTB Calculated Ending ({yearMetrics.ending.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} gal) vs
-                  System Calculated ({yearMetrics.systemCalculated.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} gal).
-                  {isSmall
-                    ? ` The ${absVariance.toFixed(1)} gal difference comes from cumulative rounding across ${va.batchCount} batch reconstructions.`
-                    : ` Review per-batch data below for discrepancies.`}
-                </p>
-                {va.clampedVolume > 0.5 && (
-                  <p className="text-sm text-amber-700 mt-1">
-                    {va.clampedVolume.toFixed(1)} gal lost to clamping (batches that went negative) — indicates data quality issues in batch records.
-                  </p>
-                )}
               </CardContent>
             </Card>
           );
@@ -1775,10 +1761,10 @@ export function BatchReconciliation() {
                       <TableHead className="text-center">
                         <span>Checks</span>
                         <div className="flex items-center justify-center gap-0.5 text-[9px] text-gray-400 font-normal mt-0.5">
-                          <span className="w-3.5 text-center">ID</span>
-                          <span className="w-3.5 text-center">DR</span>
-                          <span className="w-3.5 text-center">IV</span>
-                          <span className="w-3.5 text-center">VC</span>
+                          <span className="w-3.5 text-center" title="Identity Check">ID</span>
+                          <span className="w-3.5 text-center" title="Drift">DR</span>
+                          <span className="w-3.5 text-center" title="Initial Volume">IV</span>
+                          <span className="w-3.5 text-center" title="Vessel Capacity">VC</span>
                         </div>
                       </TableHead>
                       <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("validation")}>
@@ -1877,7 +1863,7 @@ export function BatchReconciliation() {
                           <p className="text-lg font-bold">{yearMetrics.ending} gal</p>
                         </div>
                         <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">System Calculated</p>
+                          <p className="text-xs text-gray-500 uppercase">System Total</p>
                           <p className="text-lg font-bold">{yearMetrics.systemCalculated} gal</p>
                         </div>
                         <div className={`p-3 rounded-lg col-span-2 ${
