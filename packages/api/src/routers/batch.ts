@@ -2089,7 +2089,8 @@ export const batchRouter = router({
         // Auto-exclude racking derivatives (tracked under parent batch)
         sql`${batches.isRackingDerivative} IS NOT TRUE`,
         // Auto-exclude transfer-destination batches with 0 initial volume
-        sql`NOT (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0)`,
+        // (but NOT pommeau — they're first-class products built entirely via blending transfers)
+        sql`NOT (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0 AND COALESCE(${batches.productType}, 'cider') != 'pommeau')`,
       ];
 
       if (input.year) {
@@ -2225,7 +2226,7 @@ export const batchRouter = router({
           .where(and(
             isNull(batches.deletedAt),
             inArray(batches.parentBatchId, parentIds),
-            sql`(${batches.isRackingDerivative} IS TRUE OR (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0) OR COALESCE(${batches.reconciliationStatus}, 'pending') IN ('duplicate', 'excluded'))`,
+            sql`(${batches.isRackingDerivative} IS TRUE OR (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0 AND COALESCE(${batches.productType}, 'cider') != 'pommeau') OR COALESCE(${batches.reconciliationStatus}, 'pending') IN ('duplicate', 'excluded'))`,
           ))
           .orderBy(asc(batches.startDate));
       }
