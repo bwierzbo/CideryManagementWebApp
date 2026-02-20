@@ -756,11 +756,19 @@ export function BatchReconciliation() {
     ).toFixed(1));
     // Packaged (Bonded) = net volume moved from bulk to packaged form, minus what was distributed.
     const packagedBonded = parseFloat(((br.packaging ?? 0) - (br.sales ?? 0)).toFixed(1));
+    // Opening balance delta: SBD-reconstructed opening vs configured TTB opening.
+    // The configured opening (physical inventory count) is the official TTB number.
+    // SBD reconstruction of legacy data may differ because legacy batches (e.g., child
+    // batches injecting pre-existing inventory) inflate the reconstructed total.
+    // This delta absorbs that discrepancy so the waterfall identity holds.
+    const openingDelta = parseFloat((sbdOpening - opening).toFixed(1));
     // Sum waterfall adjustments from the database (explicit, auditable corrections).
     const waterfallAdjs = (reconciliationData as any)?.waterfallAdjustments ?? [];
-    const adjustments = parseFloat(
+    const manualAdjustments = parseFloat(
       waterfallAdjs.reduce((sum: number, a: any) => sum + parseFloat(a.amountGallons ?? 0), 0).toFixed(1)
     );
+    // Total adjustments = manual waterfall adjustments + opening balance delta
+    const adjustments = parseFloat((manualAdjustments + openingDelta).toFixed(1));
     // Clamped volume: batches that went negative are clamped to 0, inflating the ending total.
     // We add it back as a positive term so the waterfall identity holds.
     const clampedVolume = parseFloat(((reconciliationData as any)?.clampedVolume ?? 0).toFixed(1));
@@ -783,6 +791,7 @@ export function BatchReconciliation() {
       variance,
       systemVariance: 0,
       isConfigured: false,
+      openingDelta,
       waterfallAdjustments: waterfallAdjs,
     };
   }, [reconciliationData, isOpeningYear]);
@@ -1627,9 +1636,14 @@ export function BatchReconciliation() {
                             {yearMetrics.adjustments !== 0 && (
                               <tr className="text-blue-700">
                                 <td className="pr-2" title={
-                                  (yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
-                                    `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
-                                  ).join('\n') || 'No adjustments'
+                                  [
+                                    ...(yearMetrics.openingDelta && Math.abs(yearMetrics.openingDelta) > 0.1
+                                      ? [`Opening balance correction: ${yearMetrics.openingDelta > 0 ? '+' : ''}${yearMetrics.openingDelta.toFixed(1)} gal (SBD reconstruction vs physical inventory)`]
+                                      : []),
+                                    ...(yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
+                                      `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
+                                    ),
+                                  ].join('\n') || 'No adjustments'
                                 }>
                                   {yearMetrics.adjustments >= 0 ? "+" : "-"} Reconciliation Adj.
                                 </td>
