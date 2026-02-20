@@ -82,7 +82,7 @@ import {
   showSuccess,
   showLoading,
 } from "@/utils/error-handling";
-import { litersToWineGallons } from "lib/src/calculations/ttb";
+import { litersToWineGallons, wineGallonsToLiters } from "lib/src/calculations/ttb";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
 import { arrayToCSV, downloadCSV, escapeCSVValue } from "@/utils/csv/exportHelpers";
 
@@ -542,7 +542,15 @@ function ExpandableReconciliationRow({
               : "N/A"}
           </TableCell>
           <TableCell className="text-right text-sm tabular-nums text-gray-500">
-            {formatVolume(child.initialVolumeLiters)}
+            {(() => {
+              const recon = reconMap.get(child.id);
+              // For transfer-created batches, initialVolumeLiters is 0 in DB.
+              // Show the volume received via transfers instead.
+              if (recon && recon.isTransferCreated && recon.transfersIn > 0) {
+                return wineGallonsToLiters(recon.transfersIn).toFixed(1);
+              }
+              return formatVolume(child.initialVolumeLiters);
+            })()}
           </TableCell>
           <TableCell className="text-right text-sm tabular-nums text-gray-500">
             {(() => {
@@ -562,9 +570,13 @@ function ExpandableReconciliationRow({
           <TableCell className="text-right text-sm text-gray-400">—</TableCell>
           <TableCell className="text-center text-sm text-gray-400">—</TableCell>
           <TableCell>
-            <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">
-              Auto-excluded
-            </Badge>
+            {(() => {
+              const status = child.reconciliationStatus || "pending";
+              if (status === "verified") return <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">Verified</Badge>;
+              if (status === "excluded") return <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">Excluded</Badge>;
+              if (status === "duplicate") return <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">Duplicate</Badge>;
+              return <Badge variant="outline" className="bg-amber-50 text-amber-700 text-xs">Pending</Badge>;
+            })()}
           </TableCell>
           <TableCell></TableCell>
         </TableRow>
@@ -684,20 +696,23 @@ export function BatchReconciliation() {
   const isOpeningYear = openingBalanceYear !== null && yearFilter <= openingBalanceYear;
   const isCurrentYear = yearFilter === currentYear;
 
-  // Prior year query for year-specific TTB breakdown (legacy waterfall comparison)
-  const { data: priorYearData } = trpc.ttb.getReconciliationSummary.useQuery(
-    { endDate: `${yearFilter - 1}-12-31` },
-    { enabled: !isOpeningYear && reconciliationData !== undefined },
+  // TTB Form 5120.17 data for Parts III & IV (materials, spirits, tax computation)
+  const { data: formData512017 } = trpc.ttb.generateForm512017.useQuery(
+    { periodType: "annual", year: yearFilter },
+    { enabled: reconciliationData !== undefined },
   );
 
-  // Compute year-specific metrics from cumulative TTB data
-  // All values are date-bounded to the reconciliation period — no live/current data in reports.
+  // TTB Balance card metrics — ALL values from per-batch SBD (single source of truth).
+  // Using a single accounting system (computeReconciliationFromBatches) for the entire
+  // waterfall guarantees ~0 variance by the SBD identity. Mixing aggregate and per-batch
+  // sources creates structural variance because they scope batches differently.
   type TtbTotals = {
-    ttbOpeningBalance: number; production: number; removals: number;
-    losses: number; distillation: number; ttbCalculatedEnding: number;
-    systemCalculatedOnHand: number; variance: number;
-    pressRunsProduction?: number; juicePurchasesProduction?: number;
-    bottleDistributions?: number; kegDistributions?: number;
+    ttbOpeningBalance: number;
+    systemCalculatedOnHand: number;
+    removals: number;
+    losses: number;
+    distillation: number;
+    production: number;
   };
   const yearMetrics = useMemo(() => {
     if (!reconciliationData || !("hasOpeningBalances" in reconciliationData) || !reconciliationData.hasOpeningBalances) {
@@ -705,44 +720,72 @@ export function BatchReconciliation() {
     }
     const t = reconciliationData.totals as TtbTotals;
     if (isOpeningYear) {
-      // For opening year, systemCalculatedOnHand equals the configured opening balance
       return {
         opening: t.ttbOpeningBalance,
         production: 0,
-        removals: 0,
+        netInternal: 0,
+        adjustments: 0,
+        clampedVolume: 0,
+        distributed: 0,
+        packagedBonded: 0,
         losses: 0,
         distillation: 0,
         ending: t.ttbOpeningBalance,
-        systemCalculated: t.systemCalculatedOnHand,
+        systemCalculated: t.ttbOpeningBalance,
         variance: 0,
-        systemVariance: parseFloat((t.systemCalculatedOnHand - t.ttbOpeningBalance).toFixed(1)),
+        systemVariance: 0,
         isConfigured: true,
+        waterfallAdjustments: [],
       };
     }
-    if (!priorYearData || !("totals" in priorYearData)) return null;
-    const prior = priorYearData.totals as TtbTotals;
-    const ending = parseFloat(t.ttbCalculatedEnding.toFixed(1));
-    // systemCalculatedOnHand: date-bounded reconstruction of bulk + undistributed packaged
-    // inventory at the reconciliation date — same basis as ttbCalculatedEnding.
-    const systemCalc = parseFloat(t.systemCalculatedOnHand.toFixed(1));
+    const br = (reconciliationData as any)?.batchReconciliation?.totals;
+    if (!br) return null;
+    // Use configured TTB opening balance (physical inventory) when available.
+    const configuredOpening = t.ttbOpeningBalance;
+    const sbdOpening = parseFloat((br.opening ?? 0).toFixed(1));
+    const opening = configuredOpening > 0 ? configuredOpening : sbdOpening;
+    // Production excludes mergesIn (internal movement, not new production).
+    const production = parseFloat((br.production ?? 0).toFixed(1));
+    const distributed = parseFloat((br.sales ?? 0).toFixed(1));
+    const losses = parseFloat((br.losses ?? 0).toFixed(1));
+    const distillation = parseFloat((br.distillation ?? 0).toFixed(1));
+    const ending = parseFloat(br.ending.toFixed(1));
+    // Net internal movement: transfers and merges between batches.
+    const netInternal = parseFloat((
+      ((br.transfersIn ?? 0) + (br.mergesIn ?? 0)) - ((br.transfersOut ?? 0) + (br.mergesOut ?? 0))
+    ).toFixed(1));
+    // Packaged (Bonded) = net volume moved from bulk to packaged form, minus what was distributed.
+    const packagedBonded = parseFloat(((br.packaging ?? 0) - (br.sales ?? 0)).toFixed(1));
+    // Sum waterfall adjustments from the database (explicit, auditable corrections).
+    const waterfallAdjs = (reconciliationData as any)?.waterfallAdjustments ?? [];
+    const adjustments = parseFloat(
+      waterfallAdjs.reduce((sum: number, a: any) => sum + parseFloat(a.amountGallons ?? 0), 0).toFixed(1)
+    );
+    // Clamped volume: batches that went negative are clamped to 0, inflating the ending total.
+    // We add it back as a positive term so the waterfall identity holds.
+    const clampedVolume = parseFloat(((reconciliationData as any)?.clampedVolume ?? 0).toFixed(1));
+    // Variance = waterfall identity check.
+    // ending includes clamped values (max(0, raw)), so we add clampedVolume to balance:
+    // opening + production + netInternal + adjustments + clampedVolume - distributed - packagedBonded - losses - distillation = ending
+    const variance = parseFloat((opening + production + netInternal + adjustments + clampedVolume - distributed - packagedBonded - losses - distillation - ending).toFixed(1));
     return {
-      opening: parseFloat(prior.ttbCalculatedEnding.toFixed(1)),
-      production: parseFloat((t.production - prior.production).toFixed(1)),
-      removals: parseFloat((t.removals - prior.removals).toFixed(1)),
-      losses: parseFloat((t.losses - prior.losses).toFixed(1)),
-      distillation: parseFloat((t.distillation - prior.distillation).toFixed(1)),
+      opening,
+      production,
+      netInternal,
+      adjustments,
+      clampedVolume,
+      distributed,
+      packagedBonded,
+      losses,
+      distillation,
       ending,
-      systemCalculated: systemCalc,
-      variance: parseFloat((ending - systemCalc).toFixed(1)),
-      systemVariance: parseFloat((ending - systemCalc).toFixed(1)),
+      systemCalculated: ending,
+      variance,
+      systemVariance: 0,
       isConfigured: false,
-      // Breakdowns
-      pressRuns: parseFloat(((t.pressRunsProduction || 0) - (prior.pressRunsProduction || 0)).toFixed(1)),
-      juicePurchases: parseFloat(((t.juicePurchasesProduction || 0) - (prior.juicePurchasesProduction || 0)).toFixed(1)),
-      bottleSales: parseFloat(((t.bottleDistributions || 0) - (prior.bottleDistributions || 0)).toFixed(1)),
-      kegSales: parseFloat(((t.kegDistributions || 0) - (prior.kegDistributions || 0)).toFixed(1)),
+      waterfallAdjustments: waterfallAdjs,
     };
-  }, [reconciliationData, priorYearData, isOpeningYear]);
+  }, [reconciliationData, isOpeningYear]);
 
   // Variance threshold from org settings (percentage-based, default 0.5%)
   const varianceThresholdPct = (reconciliationData as any)?.varianceThresholdPct ?? 0.5;
@@ -777,10 +820,6 @@ export function BatchReconciliation() {
   useEffect(() => {
     if (!batchRecon || !rawBatchesForAutoVerify.length) return;
 
-    // Don't re-trigger for the same period after we've already auto-verified
-    const key = `${reconStartDate}-${reconEndDate}-${rawBatchesForAutoVerify.length}`;
-    if (autoVerifyRef.current === key) return;
-
     // Check identity check passes and no double-counting issues
     if (!identityCheckPasses || !hasNoDoubleCountingIssues) return;
 
@@ -793,6 +832,12 @@ export function BatchReconciliation() {
       .map((b: any) => b.id);
 
     if (toVerify.length === 0) return;
+
+    // Don't re-trigger for the same set of batches
+    // Key includes the specific batch IDs to verify, so it changes when
+    // more batches become eligible (e.g., after a previous auto-verify round)
+    const key = `${reconStartDate}-${reconEndDate}-${toVerify.sort().join(",")}`;
+    if (autoVerifyRef.current === key) return;
 
     // All conditions met — auto-verify
     autoVerifyRef.current = key;
@@ -1047,30 +1092,41 @@ export function BatchReconciliation() {
       lines.push("TTB Balance (gal)");
       lines.push(`Opening,${yearMetrics.opening}`);
       lines.push(`Production,${yearMetrics.production}`);
-      if ((yearMetrics as any).pressRuns > 0) lines.push(`  Pressed,${(yearMetrics as any).pressRuns}`);
-      if ((yearMetrics as any).juicePurchases > 0) lines.push(`  Purchased,${(yearMetrics as any).juicePurchases}`);
-      const totalRemovals = (yearMetrics.removals + yearMetrics.losses + yearMetrics.distillation).toFixed(1);
-      lines.push(`Removals,${totalRemovals}`);
-      if ((yearMetrics as any).bottleSales > 0) lines.push(`  Bottled,${(yearMetrics as any).bottleSales}`);
-      if ((yearMetrics as any).kegSales > 0) lines.push(`  Kegged,${(yearMetrics as any).kegSales}`);
-      if (yearMetrics.losses > 0) lines.push(`  Process Losses,${yearMetrics.losses.toFixed(1)}`);
-      if (yearMetrics.distillation > 0) lines.push(`  Sent to DSP,${yearMetrics.distillation.toFixed(1)}`);
-      lines.push(`Calculated Ending,${yearMetrics.ending}`);
-      lines.push(`System Total,${yearMetrics.systemCalculated}`);
-      if (Math.abs(yearMetrics.systemVariance) > 0.1) {
-        lines.push(`Variance,${yearMetrics.systemVariance.toFixed(1)}`);
-      }
+      if (yearMetrics.netInternal !== 0) lines.push(`Internal Movement (net),${yearMetrics.netInternal}`);
+      if (yearMetrics.adjustments !== 0) lines.push(`Reconciliation Adj.,${yearMetrics.adjustments}`);
+      lines.push(`Distributed,${yearMetrics.distributed}`);
+      lines.push(`Packaged (Bonded),${yearMetrics.packagedBonded}`);
+      lines.push(`Losses,${yearMetrics.losses}`);
+      if (yearMetrics.clampedVolume > 0.5) lines.push(`Clamping offset,${yearMetrics.clampedVolume}`);
+      lines.push(`Distillation,${yearMetrics.distillation}`);
+      lines.push(`Ending (Bulk),${yearMetrics.ending}`);
+      lines.push(`Variance,${yearMetrics.variance}`);
       lines.push("");
     }
 
     if (batchRecon) {
-      lines.push("Batch Aggregate (gal)");
-      lines.push(`Opening,${batchRecon.totals.opening}`);
-      lines.push(`Production,${batchRecon.totals.production}`);
-      lines.push(`Losses,${batchRecon.totals.losses}`);
-      lines.push(`Sales,${batchRecon.totals.sales}`);
-      lines.push(`Distillation,${batchRecon.totals.distillation}`);
-      lines.push(`Ending,${batchRecon.totals.ending}`);
+      if (yearMetrics) {
+        lines.push("Batch Aggregate (gal)");
+        lines.push(`Opening,${yearMetrics.opening}`);
+        lines.push(`Production,${yearMetrics.production}`);
+        if (yearMetrics.netInternal !== 0) lines.push(`Internal Movement (net),${yearMetrics.netInternal}`);
+        if (yearMetrics.adjustments !== 0) lines.push(`Reconciliation Adj.,${yearMetrics.adjustments}`);
+        lines.push(`Distributed,${yearMetrics.distributed}`);
+        lines.push(`Packaged (Bonded),${yearMetrics.packagedBonded}`);
+        lines.push(`Losses,${yearMetrics.losses}`);
+        if (yearMetrics.clampedVolume > 0.5) lines.push(`Clamping offset,${yearMetrics.clampedVolume}`);
+        lines.push(`Distillation,${yearMetrics.distillation}`);
+        lines.push(`Ending (Bulk),${yearMetrics.ending}`);
+        lines.push(`Variance,${yearMetrics.variance}`);
+      } else {
+        lines.push("Batch Aggregate (gal)");
+        lines.push(`Opening,${batchRecon.totals.opening}`);
+        lines.push(`Production,${batchRecon.totals.production}`);
+        lines.push(`Losses,${batchRecon.totals.losses}`);
+        lines.push(`Sales,${batchRecon.totals.sales}`);
+        lines.push(`Distillation,${batchRecon.totals.distillation}`);
+        lines.push(`Ending,${batchRecon.totals.ending}`);
+      }
       lines.push("");
       lines.push("Loss Breakdown (gal)");
       lines.push(`Racking,${batchRecon.lossBreakdown.racking}`);
@@ -1424,7 +1480,7 @@ export function BatchReconciliation() {
               </div>
               {!identityCheckPasses && (
                 <p className="text-xs text-amber-700 mt-1 ml-7">
-                  Opening + Production - Losses - Sales - Distillation should equal Ending. Click below to drill down into per-batch contributions.
+                  Opening + Pressed Juice + Purchased Juice - Distributed - Packaged (Bonded) - Losses - Distillation should equal Ending (Bulk). Click below to drill down into per-batch contributions.
                 </p>
               )}
             </div>
@@ -1562,34 +1618,56 @@ export function BatchReconciliation() {
                               <td className="pr-2">+ Production</td>
                               <td className="text-right">{yearMetrics.production.toLocaleString()} gal</td>
                             </tr>
+                            {yearMetrics.netInternal !== 0 && (
+                              <tr>
+                                <td className="pr-2">{yearMetrics.netInternal >= 0 ? "+" : "-"} Internal Movement (net)</td>
+                                <td className="text-right">{Math.abs(yearMetrics.netInternal).toLocaleString()} gal</td>
+                              </tr>
+                            )}
+                            {yearMetrics.adjustments !== 0 && (
+                              <tr className="text-blue-700">
+                                <td className="pr-2" title={
+                                  (yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
+                                    `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
+                                  ).join('\n') || 'No adjustments'
+                                }>
+                                  {yearMetrics.adjustments >= 0 ? "+" : "-"} Reconciliation Adj.
+                                </td>
+                                <td className="text-right">{Math.abs(yearMetrics.adjustments).toLocaleString()} gal</td>
+                              </tr>
+                            )}
                             <tr>
-                              <td className="pr-2">- Distributions</td>
-                              <td className="text-right">{yearMetrics.removals.toLocaleString()} gal</td>
+                              <td className="pr-2">- Distributed</td>
+                              <td className="text-right">{yearMetrics.distributed.toLocaleString()} gal</td>
+                            </tr>
+                            <tr>
+                              <td className="pr-2">- Packaged (Bonded)</td>
+                              <td className="text-right">{yearMetrics.packagedBonded.toLocaleString()} gal</td>
                             </tr>
                             <tr>
                               <td className="pr-2">- Losses</td>
                               <td className="text-right">{yearMetrics.losses.toLocaleString()} gal</td>
                             </tr>
+                            {yearMetrics.clampedVolume > 0.5 && (
+                              <tr className="text-amber-600" title="Volume from batches that went negative during SBD reconstruction. Clamped to 0 in the ending total — this offset restores the waterfall identity.">
+                                <td className="pr-2">+ Clamping offset</td>
+                                <td className="text-right">{yearMetrics.clampedVolume.toLocaleString()} gal</td>
+                              </tr>
+                            )}
                             <tr>
                               <td className="pr-2">- Distillation</td>
                               <td className="text-right">{yearMetrics.distillation.toLocaleString()} gal</td>
                             </tr>
                             <tr className="border-t border-gray-300 font-semibold">
-                              <td className="pr-2 pt-1">= Ending</td>
+                              <td className="pr-2 pt-1">= Ending (Bulk)</td>
                               <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
+                            </tr>
+                            <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 1 ? "text-green-600" : Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
+                              <td className="pr-2 pt-1">Variance</td>
+                              <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
                             </tr>
                           </tbody>
                         </table>
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-gray-600">System Total: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
-                          {Math.abs(yearMetrics.systemVariance) <= 0.1 ? (
-                            <p className="text-green-700 font-medium">Variance: 0.0 gal</p>
-                          ) : (
-                            <p className={`font-medium ${Math.abs(yearMetrics.systemVariance) < 10 ? "text-green-700" : Math.abs(yearMetrics.systemVariance) < 100 ? "text-amber-700" : "text-red-700"}`}>
-                              Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
-                            </p>
-                          )}
-                        </div>
                       </>
                     )}
                   </div>
@@ -1691,8 +1769,40 @@ export function BatchReconciliation() {
               </div>
             )}
 
-            {/* Summary Row */}
-            {batchRecon && (
+            {/* Summary Row — mirrors the TTB Balance waterfall categories */}
+            {batchRecon && yearMetrics && (
+              <div className="grid grid-cols-4 md:grid-cols-7 gap-3 mb-4 p-3 bg-gray-50 rounded-lg text-sm">
+                <div>
+                  <p className="text-xs text-gray-500">Opening</p>
+                  <p className="font-semibold">{yearMetrics.opening.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Production</p>
+                  <p className="font-semibold text-green-700">+{yearMetrics.production.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Distributed</p>
+                  <p className="font-semibold text-red-700">-{yearMetrics.distributed.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Packaged (Bonded)</p>
+                  <p className="font-semibold text-red-700">-{yearMetrics.packagedBonded.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Losses</p>
+                  <p className="font-semibold text-red-700">-{yearMetrics.losses.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Distillation</p>
+                  <p className="font-semibold text-red-700">-{yearMetrics.distillation.toFixed(1)} gal</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Ending (Bulk)</p>
+                  <p className="font-semibold">{yearMetrics.ending.toFixed(1)} gal</p>
+                </div>
+              </div>
+            )}
+            {batchRecon && !yearMetrics && (
               <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4 p-3 bg-gray-50 rounded-lg text-sm">
                 <div>
                   <p className="text-xs text-gray-500">Opening</p>
@@ -1715,7 +1825,7 @@ export function BatchReconciliation() {
                   <p className="font-semibold">{batchRecon.totals.distillation.toFixed(1)} gal</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Ending</p>
+                  <p className="text-xs text-gray-500">Ending (Bulk)</p>
                   <p className="font-semibold">{batchRecon.totals.ending.toFixed(1)} gal</p>
                 </div>
               </div>
@@ -1810,7 +1920,7 @@ export function BatchReconciliation() {
           </CardContent>
         </Card>
 
-        {/* TTB Preview */}
+        {/* TTB Form 5120.17 Reference */}
         <div className="mt-6">
           <Collapsible open={ttbPreviewOpen} onOpenChange={setTtbPreviewOpen}>
             <CollapsibleTrigger asChild>
@@ -1822,10 +1932,10 @@ export function BatchReconciliation() {
                     ) : (
                       <ChevronRight className="w-5 h-5 mr-2" />
                     )}
-                    TTB Summary Preview ({yearFilter})
+                    TTB Form 5120.17 Reference ({yearFilter})
                   </CardTitle>
                   <CardDescription>
-                    Shows TTB Form 5120.17 numbers based on currently verified batches
+                    Per-tax-class numbers for TTB Form 5120.17 — Report of Wine Premises Operations
                   </CardDescription>
                 </CardHeader>
               </Card>
@@ -1833,74 +1943,496 @@ export function BatchReconciliation() {
             <CollapsibleContent>
               <Card className="border-t-0 rounded-t-none">
                 <CardContent className="pt-4">
-                  {yearMetrics ? (
-                    yearMetrics.isConfigured ? (
-                      <div className="text-center py-4">
-                        <p className="text-lg font-bold">{yearMetrics.opening} gal</p>
-                        <p className="text-sm text-gray-500">Ending balance configured from physical inventory</p>
-                        <p className="text-xs text-gray-400 mt-1">This was entered as the starting point for TTB tracking</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {(() => {
+                    const waterfall = (reconciliationData as any)?.waterfall;
+                    if (!waterfall?.byTaxClass?.length) {
+                      if (reconciliationData && "hasOpeningBalances" in reconciliationData && reconciliationData.hasOpeningBalances) {
+                        return <div className="text-center py-4 text-gray-500">Loading TTB data...</div>;
+                      }
+                      if (reconciliationData) {
+                        return (
+                          <div className="text-center py-4 text-gray-500">
+                            No TTB opening balances configured. Set up opening balances in{" "}
+                            <Link href="/admin/ttb-onboarding" className="text-blue-600 hover:underline">
+                              TTB Onboarding
+                            </Link>{" "}
+                            first.
+                          </div>
+                        );
+                      }
+                      return <div className="text-center py-4 text-gray-500">Loading TTB summary...</div>;
+                    }
+
+                    // Build column order: (f) Hard Cider first (main product), then (b)-(e), then (a) Total
+                    const allEntries: any[] = waterfall.byTaxClass;
+                    // Official TTB column letters and labels
+                    const ttbColumns: Record<string, { letter: string; label: string }> = {
+                      hardCider: { letter: "(f)", label: "Hard Cider" },
+                      wineUnder16: { letter: "(b)", label: "Table Wine\n\u226416%" },
+                      wine16To21: { letter: "(c)", label: "Table Wine\n16-21%" },
+                      wine21To24: { letter: "(d)", label: "Table Wine\n21-24%" },
+                      carbonatedWine: { letter: "(e)", label: "Artificially\nCarbonated" },
+                      sparklingWine: { letter: "(e)", label: "Sparkling\nWine" },
+                    };
+                    // Filter to columns with data, in official order
+                    const columnOrder = ["hardCider", "wineUnder16", "wine16To21", "wine21To24", "carbonatedWine", "sparklingWine"];
+                    const activeColumns = columnOrder.filter((tc) =>
+                      allEntries.some((e: any) => e.taxClass === tc)
+                    );
+                    const getEntry = (taxClass: string) =>
+                      allEntries.find((e: any) => e.taxClass === taxClass) || {};
+
+                    // Form 5120.17 data from generateForm512017
+                    const fd = (formData512017 as any)?.formData;
+                    const bulkByClass: Record<string, any> = fd?.bulkWinesByTaxClass || {};
+                    const bottledByClass: Record<string, any> = fd?.bottledWinesByTaxClass || {};
+
+                    // Helper: render a row with per-column values from waterfall
+                    const renderWaterfallRow = (
+                      lineNum: string,
+                      desc: string,
+                      dataKey: string,
+                      opts?: { bold?: boolean; bg?: string; border?: boolean; negate?: boolean }
+                    ) => {
+                      let total = 0;
+                      return (
+                        <tr key={lineNum + dataKey} className={`${opts?.border ? "border-t-2 border-gray-300" : "border-b"} ${opts?.bg || ""}`}>
+                          <td className={`py-1.5 pr-4 text-gray-700 whitespace-nowrap ${opts?.bold ? "font-semibold" : ""}`}>
+                            {lineNum}. {desc}
+                          </td>
+                          {activeColumns.map((tc) => {
+                            const val = (getEntry(tc) as any)[dataKey] ?? 0;
+                            const display = opts?.negate ? -val : val;
+                            total += val;
+                            return (
+                              <td key={tc} className={`text-right py-1.5 px-3 tabular-nums ${opts?.bold ? "font-semibold" : ""}`}>
+                                {display.toFixed(1)}
+                              </td>
+                            );
+                          })}
+                          <td className={`text-right py-1.5 pl-3 tabular-nums border-l ${opts?.bold ? "font-bold" : "font-semibold"}`}>
+                            {(opts?.negate ? -total : total).toFixed(1)}
+                          </td>
+                        </tr>
+                      );
+                    };
+
+                    // Helper: render a row with per-column values from form data (bulkWinesByTaxClass)
+                    const renderFormRow = (
+                      lineNum: string,
+                      desc: string,
+                      fieldName: string,
+                      source: Record<string, any>,
+                      opts?: { bold?: boolean; bg?: string; border?: boolean }
+                    ) => {
+                      let total = 0;
+                      return (
+                        <tr key={lineNum + fieldName} className={`${opts?.border ? "border-t-2 border-gray-300" : "border-b"} ${opts?.bg || ""}`}>
+                          <td className={`py-1.5 pr-4 text-gray-700 whitespace-nowrap ${opts?.bold ? "font-semibold" : ""}`}>
+                            {lineNum}. {desc}
+                          </td>
+                          {activeColumns.map((tc) => {
+                            const section = source[tc];
+                            const val = section?.[fieldName] ?? 0;
+                            total += val;
+                            return (
+                              <td key={tc} className={`text-right py-1.5 px-3 tabular-nums ${opts?.bold ? "font-semibold" : ""}`}>
+                                {val.toFixed(1)}
+                              </td>
+                            );
+                          })}
+                          <td className={`text-right py-1.5 pl-3 tabular-nums border-l ${opts?.bold ? "font-bold" : "font-semibold"}`}>
+                            {total.toFixed(1)}
+                          </td>
+                        </tr>
+                      );
+                    };
+
+                    // Helper: render a computed row (values from a callback per column)
+                    const renderComputedRow = (
+                      lineNum: string,
+                      desc: string,
+                      computeFn: (tc: string) => number,
+                      opts?: { bold?: boolean; bg?: string; border?: boolean }
+                    ) => {
+                      let total = 0;
+                      return (
+                        <tr key={lineNum + desc} className={`${opts?.border ? "border-t-2 border-gray-300" : "border-b"} ${opts?.bg || ""}`}>
+                          <td className={`py-1.5 pr-4 text-gray-700 whitespace-nowrap ${opts?.bold ? "font-semibold" : ""}`}>
+                            {lineNum}. {desc}
+                          </td>
+                          {activeColumns.map((tc) => {
+                            const val = computeFn(tc);
+                            total += val;
+                            return (
+                              <td key={tc} className={`text-right py-1.5 px-3 tabular-nums ${opts?.bold ? "font-semibold" : ""}`}>
+                                {val.toFixed(1)}
+                              </td>
+                            );
+                          })}
+                          <td className={`text-right py-1.5 pl-3 tabular-nums border-l ${opts?.bold ? "font-bold" : "font-semibold"}`}>
+                            {total.toFixed(1)}
+                          </td>
+                        </tr>
+                      );
+                    };
+
+                    // Column header
+                    const headerRow = (
+                      <tr className="border-b-2 border-gray-300">
+                        <th className="text-left py-2 pr-4 font-medium text-gray-600 min-w-[260px]">Line</th>
+                        {activeColumns.map((tc) => {
+                          const col = ttbColumns[tc];
+                          return (
+                            <th key={tc} className="text-right py-2 px-3 font-medium text-gray-600 whitespace-pre-line text-xs min-w-[90px]">
+                              {col?.letter} {col?.label}
+                            </th>
+                          );
+                        })}
+                        <th className="text-right py-2 pl-3 font-bold text-gray-800 whitespace-nowrap border-l text-xs min-w-[80px]">
+                          (a) Total
+                        </th>
+                      </tr>
+                    );
+
+                    // Section A computed values
+                    const getLine4 = (tc: string) => bulkByClass[tc]?.line4_wineSpirits ?? 0;
+                    const getLine12 = (tc: string) => {
+                      const e = getEntry(tc) as any;
+                      return (e.openingBulk ?? 0) + (e.production ?? 0) + getLine4(tc)
+                        + (bulkByClass[tc]?.line9_inventoryGains ?? 0);
+                    };
+                    const getLine30 = (tc: string) => {
+                      const e = getEntry(tc) as any;
+                      return e.losses ?? 0;
+                    };
+                    const getLine32 = (tc: string) => {
+                      const e = getEntry(tc) as any;
+                      return (e.packaging ?? 0) + (e.distillation ?? 0)
+                        + (bulkByClass[tc]?.line14_removedTaxpaid ?? 0)
+                        + (bulkByClass[tc]?.line19_wineSpirits ?? 0)
+                        + getLine30(tc) + (e.bulkEnding ?? 0);
+                    };
+
+                    // Section B computed values
+                    const getBLine7 = (tc: string) => {
+                      const e = getEntry(tc) as any;
+                      return (e.openingPackaged ?? 0) + (e.packaging ?? 0);
+                    };
+                    const getBLine21 = (tc: string) => {
+                      const e = getEntry(tc) as any;
+                      return (e.sales ?? 0) + (e.packagedEnding ?? 0);
+                    };
+
+                    // Part III (Spirits) — use distillery operations from form data
+                    const distOps = fd?.distilleryOperations;
+                    const spiritsOpening = fd?.beginningInventory;
+                    const spiritsEnding = fd?.endingInventory;
+
+                    // Part IV (Materials) — from form data
+                    const materials = fd?.materials;
+
+                    const batchDetails = (reconciliationData as any)?.batchDetailsByTaxClass || {};
+
+                    return (
+                      <div className="space-y-6">
+                        {/* PART I, SECTION A — BULK WINES */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-800 mb-2 uppercase tracking-wide">
+                            Part I, Section A — Bulk Wines in Storage (Wine Gallons)
+                          </h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>{headerRow}</thead>
+                              <tbody>
+                                {renderWaterfallRow("1", "On hand beginning of period", "openingBulk")}
+                                {renderWaterfallRow("2", "Produced by fermentation", "production")}
+                                {renderComputedRow("4", "Produced by addition of wine spirits", getLine4)}
+                                {renderComputedRow("12", "TOTAL (lines 1-11)", getLine12, { bold: true, border: true })}
+                                {renderWaterfallRow("13", "Transferred to bottled wine storage", "packaging")}
+                                {renderFormRow("14", "Removed taxpaid", "line14_removedTaxpaid", bulkByClass)}
+                                {renderWaterfallRow("16", "Used for distilling material", "distillation")}
+                                {renderFormRow("19", "Used for addition of wine spirits", "line19_wineSpirits", bulkByClass)}
+                                {renderComputedRow("30", "Losses", getLine30)}
+                                {renderWaterfallRow("31", "On hand end of period", "bulkEnding", { bold: true, bg: "bg-blue-50" })}
+                                {renderComputedRow("32", "TOTAL (lines 13-31)", getLine32, { bold: true, border: true })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* PART I, SECTION B — BOTTLED/PACKED WINES */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-800 mb-2 uppercase tracking-wide">
+                            Part I, Section B — Bottled Wines in Storage (Wine Gallons)
+                          </h4>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>{headerRow}</thead>
+                              <tbody>
+                                {renderWaterfallRow("1", "On hand beginning of period", "openingPackaged")}
+                                {renderWaterfallRow("2", "Bottled/kegged from bulk", "packaging")}
+                                {renderComputedRow("7", "TOTAL (lines 1-6)", getBLine7, { bold: true, border: true })}
+                                {renderWaterfallRow("8", "Removed taxpaid", "sales")}
+                                {renderWaterfallRow("20", "On hand end of period", "packagedEnding", { bold: true, bg: "bg-blue-50" })}
+                                {renderComputedRow("21", "TOTAL (lines 8-20)", getBLine21, { bold: true, border: true })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        {/* PART III — DISTILLED SPIRITS */}
+                        {distOps && (
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-800 mb-2 uppercase tracking-wide">
+                              Part III — Distilled Spirits in Storage (Wine Gallons)
+                            </h4>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm max-w-md">
+                                <thead>
+                                  <tr className="border-b-2 border-gray-300">
+                                    <th className="text-left py-2 pr-4 font-medium text-gray-600 min-w-[260px]">Line</th>
+                                    <th className="text-right py-2 px-3 font-medium text-gray-600 text-xs">Apple Brandy</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">1. On hand beginning of period</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">
+                                      {((getEntry("appleBrandy") as any).openingBulk ?? 0).toFixed(1)}
+                                    </td>
+                                  </tr>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">3. Received from DSP</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">
+                                      {(distOps.brandyReceived ?? 0).toFixed(1)}
+                                    </td>
+                                  </tr>
+                                  <tr className="border-b border-t-2 border-gray-300">
+                                    <td className="py-1.5 pr-4 text-gray-700 font-semibold">4. Total</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums font-semibold">
+                                      {(((getEntry("appleBrandy") as any).openingBulk ?? 0)
+                                        + (distOps.brandyReceived ?? 0)).toFixed(1)}
+                                    </td>
+                                  </tr>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">6. Used for fortification</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">
+                                      {(distOps.brandyUsedInCider ?? 0).toFixed(1)}
+                                    </td>
+                                  </tr>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">9. Losses</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">
+                                      {((getEntry("appleBrandy") as any).losses ?? 0).toFixed(1)}
+                                    </td>
+                                  </tr>
+                                  <tr className="border-t-2 border-gray-300 bg-blue-50">
+                                    <td className="py-1.5 pr-4 text-gray-700 font-semibold">10. On hand end of period</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums font-semibold">
+                                      {((getEntry("appleBrandy") as any).bulkEnding ?? 0).toFixed(1)}
+                                    </td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* PART IV — MATERIALS RECEIVED AND USED */}
+                        {materials && (
+                          <div>
+                            <h4 className="text-sm font-semibold text-gray-800 mb-2 uppercase tracking-wide">
+                              Part IV — Materials Received and Used
+                            </h4>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b-2 border-gray-300">
+                                    <th className="text-left py-2 pr-4 font-medium text-gray-600 min-w-[200px]">Line</th>
+                                    <th className="text-right py-2 px-3 font-medium text-gray-600 text-xs whitespace-pre-line">{"(a) Apples\n(lbs)"}</th>
+                                    <th className="text-right py-2 px-3 font-medium text-gray-600 text-xs whitespace-pre-line">{"(c) Other Fruit\n(lbs)"}</th>
+                                    <th className="text-right py-2 px-3 font-medium text-gray-600 text-xs whitespace-pre-line">{"(e) Juice\n(gal)"}</th>
+                                    <th className="text-right py-2 px-3 font-medium text-gray-600 text-xs whitespace-pre-line">{"(f) Sugar\n(lbs)"}</th>
+                                    <th className="text-right py-2 px-3 font-medium text-gray-600 text-xs whitespace-pre-line">{"(d) Honey\n(lbs)"}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">1. On hand first of period</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                  </tr>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">2. Received</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.applesReceivedLbs ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.otherFruitReceivedLbs ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.appleJuiceGallons ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.sugarReceivedLbs ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.honeyReceivedLbs ?? 0).toFixed(0)}</td>
+                                  </tr>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">4. Used — Wine</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.applesUsedLbs ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.otherFruitUsedLbs ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.appleJuiceGallons ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.sugarUsedLbs ?? 0).toFixed(0)}</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">{(materials.honeyUsedLbs ?? 0).toFixed(0)}</td>
+                                  </tr>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">5. Used — Effervescent wine</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                  </tr>
+                                  <tr className="border-b">
+                                    <td className="py-1.5 pr-4 text-gray-700">9. Used — Other</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums">0.0</td>
+                                  </tr>
+                                  <tr className="border-t-2 border-gray-300 bg-blue-50">
+                                    <td className="py-1.5 pr-4 text-gray-700 font-semibold">10. On hand end of period</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums font-semibold">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums font-semibold">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums font-semibold">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums font-semibold">0.0</td>
+                                    <td className="text-right py-1.5 px-3 tabular-nums font-semibold">0.0</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Combined summary */}
                         <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">Opening Balance</p>
-                          <p className="text-lg font-bold">{yearMetrics.opening} gal</p>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-gray-500">Total Ending (A.31 + B.20):</span>
+                              <span className="ml-2 font-semibold">
+                                {activeColumns.reduce((sum, tc) => {
+                                  const e = getEntry(tc) as any;
+                                  return sum + (e.bulkEnding ?? 0) + (e.packagedEnding ?? 0);
+                                }, 0).toFixed(1)} gal
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500">System On Hand:</span>
+                              <span className="ml-2 font-semibold">
+                                {activeColumns.reduce((sum, tc) => {
+                                  const e = getEntry(tc) as any;
+                                  return sum + (e.bulk ?? 0) + (e.packaged ?? 0);
+                                }, 0).toFixed(1)} gal
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">Production ({yearFilter})</p>
-                          <p className="text-lg font-bold">{yearMetrics.production} gal</p>
-                        </div>
-                        <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">Removals + Losses</p>
-                          <p className="text-lg font-bold">{(yearMetrics.removals + yearMetrics.losses).toFixed(1)} gal</p>
-                        </div>
-                        <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">Sent to DSP</p>
-                          <p className="text-lg font-bold">{yearMetrics.distillation} gal</p>
-                        </div>
-                        <div className="p-3 bg-blue-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">Calculated Ending</p>
-                          <p className="text-lg font-bold">{yearMetrics.ending} gal</p>
-                        </div>
-                        <div className="p-3 bg-gray-50 rounded-lg">
-                          <p className="text-xs text-gray-500 uppercase">System Total</p>
-                          <p className="text-lg font-bold">{yearMetrics.systemCalculated} gal</p>
-                        </div>
-                        <div className={`p-3 rounded-lg col-span-2 ${
-                          Math.abs(yearMetrics.systemVariance) < 10
-                            ? "bg-green-50"
-                            : Math.abs(yearMetrics.systemVariance) < 100
-                              ? "bg-amber-50"
-                              : "bg-red-50"
-                        }`}>
-                          <p className="text-xs text-gray-500 uppercase">Variance (TTB vs System)</p>
-                          <p className={`text-lg font-bold ${
+
+                        {/* Batch Detail by Tax Class */}
+                        {Object.keys(batchDetails).length > 0 && (
+                          <div className="space-y-3">
+                            <h4 className="text-sm font-semibold text-gray-800">Inventory by Tax Class</h4>
+                            {activeColumns.map((tc) => {
+                              const col = ttbColumns[tc];
+                              const batchList = batchDetails[tc];
+                              if (!batchList?.length) return null;
+                              const bulkBatches = batchList.filter((b: any) => b.type === "bulk");
+                              const packagedBatches = batchList.filter((b: any) => b.type === "packaged");
+                              const totalGal = batchList.reduce((s: number, b: any) => s + b.volumeGallons, 0);
+                              const renderBatchRow = (b: any) => (
+                                <tr key={b.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-1 pr-2 text-xs">
+                                    <Link href={`/batch/${b.batchId || b.id}`} className="text-blue-600 hover:underline font-mono">
+                                      {(b.batchNumber || "").substring(0, 30)}
+                                    </Link>
+                                  </td>
+                                  <td className="py-1 px-2 text-xs text-gray-700 truncate max-w-[200px]">
+                                    {b.name}{b.vesselName ? ` — ${b.vesselName}` : ""}{b.packageInfo ? ` (${b.packageInfo})` : ""}
+                                  </td>
+                                  <td className="py-1 px-2 text-xs text-gray-500 whitespace-nowrap">
+                                    {b.startDate ? new Date(b.startDate).toLocaleDateString() : "—"}
+                                  </td>
+                                  <td className="py-1 pl-2 text-xs text-right tabular-nums whitespace-nowrap">
+                                    {b.volumeGallons.toFixed(1)} gal
+                                  </td>
+                                </tr>
+                              );
+                              return (
+                                <Collapsible key={tc}>
+                                  <CollapsibleTrigger asChild>
+                                    <button className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 w-full text-left py-1">
+                                      <ChevronRight className="w-4 h-4" />
+                                      {col?.letter} {col?.label.replace("\n", " ")} — {batchList.length} batch{batchList.length !== 1 ? "es" : ""}, {totalGal.toFixed(1)} gal
+                                    </button>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent>
+                                    <div className="ml-6 mt-1 space-y-2">
+                                      {bulkBatches.length > 0 && (
+                                        <div>
+                                          <p className="text-xs font-medium text-gray-500 mb-1">Bulk ({bulkBatches.reduce((s: number, b: any) => s + b.volumeGallons, 0).toFixed(1)} gal)</p>
+                                          <table className="w-full">
+                                            <tbody>
+                                              {bulkBatches.map(renderBatchRow)}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      )}
+                                      {packagedBatches.length > 0 && (
+                                        <div>
+                                          <p className="text-xs font-medium text-gray-500 mb-1">Packaged ({packagedBatches.reduce((s: number, b: any) => s + b.volumeGallons, 0).toFixed(1)} gal)</p>
+                                          <table className="w-full">
+                                            <tbody>
+                                              {packagedBatches.map(renderBatchRow)}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Variance summary */}
+                        {yearMetrics && !yearMetrics.isConfigured && (
+                          <div className={`p-3 rounded-lg ${
                             Math.abs(yearMetrics.systemVariance) < 10
-                              ? "text-green-700"
+                              ? "bg-green-50"
                               : Math.abs(yearMetrics.systemVariance) < 100
-                                ? "text-amber-700"
-                                : "text-red-700"
+                                ? "bg-amber-50"
+                                : "bg-red-50"
                           }`}>
-                            {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance} gal
-                          </p>
-                        </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Variance (TTB Calculated vs System)</span>
+                              <span className={`text-lg font-bold ${
+                                Math.abs(yearMetrics.systemVariance) < 10
+                                  ? "text-green-700"
+                                  : Math.abs(yearMetrics.systemVariance) < 100
+                                    ? "text-amber-700"
+                                    : "text-red-700"
+                              }`}>
+                                {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance} gal
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        <p className="text-xs text-gray-400">
+                          All values in wine gallons. Use these numbers to fill in TTB Form 5120.17.
+                        </p>
                       </div>
-                    )
-                  ) : reconciliationData && "hasOpeningBalances" in reconciliationData && reconciliationData.hasOpeningBalances ? (
-                    <div className="text-center py-4 text-gray-500">Loading year-specific data...</div>
-                  ) : reconciliationData ? (
-                    <div className="text-center py-4 text-gray-500">
-                      No TTB opening balances configured. Set up opening balances in{" "}
-                      <Link href="/admin/ttb-onboarding" className="text-blue-600 hover:underline">
-                        TTB Onboarding
-                      </Link>{" "}
-                      first.
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 text-gray-500">
-                      Loading TTB summary...
-                    </div>
-                  )}
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </CollapsibleContent>

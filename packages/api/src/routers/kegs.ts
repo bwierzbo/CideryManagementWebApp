@@ -1670,4 +1670,46 @@ export const kegsRouter = router({
         });
       }
     }),
+
+  /**
+   * Update keg fill dates (filledAt, distributedAt)
+   */
+  updateKegFillDates: createRbacProcedure("update", "package")
+    .input(z.object({
+      kegFillId: z.string().uuid(),
+      filledAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+      distributedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        const [existing] = await db
+          .select({ id: kegFills.id })
+          .from(kegFills)
+          .where(and(eq(kegFills.id, input.kegFillId), isNull(kegFills.voidedAt), isNull(kegFills.deletedAt)))
+          .limit(1);
+
+        if (!existing) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Keg fill not found" });
+        }
+
+        const updateData: Record<string, unknown> = { updatedAt: new Date() };
+        if (input.filledAt) updateData.filledAt = input.filledAt;
+        if (input.distributedAt !== undefined) updateData.distributedAt = input.distributedAt;
+
+        const [updated] = await db
+          .update(kegFills)
+          .set(updateData)
+          .where(eq(kegFills.id, input.kegFillId))
+          .returning();
+
+        return { success: true, kegFill: updated };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error updating keg fill dates:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update keg fill dates",
+        });
+      }
+    }),
 });

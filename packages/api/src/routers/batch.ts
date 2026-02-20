@@ -132,6 +132,8 @@ const addAdditiveSchema = z.object({
   // Cost tracking - link to purchase item for COGS
   additivePurchaseItemId: z.string().uuid().optional(),
   costPerUnit: z.number().min(0).optional(),
+  // Fruit additive classification (TTB IC 17-2)
+  isApplePearFruit: z.boolean().default(false).optional(),
   notes: z.string().optional(),
   addedBy: z.string().optional(),
   addedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
@@ -1443,12 +1445,29 @@ export const batchRouter = router({
           fermentationStarted = true;
         }
 
+        // If non-apple/pear fruit is added to a cider/perry batch, reclassify as wine (TTB IC 17-2)
+        let reclassifiedAsWine = false;
+        if (
+          input.additiveType === "Fruit / Fruit Product" &&
+          !input.isApplePearFruit &&
+          (batchData[0].productType === "cider" || batchData[0].productType === "perry")
+        ) {
+          await db
+            .update(batches)
+            .set({ productType: "wine", updatedAt: new Date() })
+            .where(eq(batches.id, input.batchId));
+          reclassifiedAsWine = true;
+        }
+
         return {
           success: true,
           additive: newAdditive[0],
           estimatedMeasurement,
           fermentationStarted,
-          message: fermentationStarted
+          reclassifiedAsWine,
+          message: reclassifiedAsWine
+            ? "Additive added - batch reclassified as wine for TTB"
+            : fermentationStarted
             ? "Additive added - fermentation started"
             : estimatedMeasurement
             ? "Additive added successfully with estimated SG/ABV"
@@ -2219,6 +2238,7 @@ export const batchRouter = router({
             vesselName: vessels.name,
             initialVolumeLiters: batches.initialVolumeLiters,
             currentVolumeLiters: batches.currentVolumeLiters,
+            reconciliationStatus: batches.reconciliationStatus,
             parentBatchId: batches.parentBatchId,
           })
           .from(batches)
@@ -4369,6 +4389,25 @@ export const batchRouter = router({
 
             newChildBatch = newBatch[0];
 
+            // Create batch_transfers record so SBD can track volume movement
+            // (batchRackingOperations captures the loss; batch_transfers captures the transfer)
+            await tx.insert(batchTransfers).values({
+              sourceBatchId: input.batchId,
+              sourceVesselId: sourceVesselId,
+              destinationBatchId: newChildBatch.id,
+              destinationVesselId: input.destinationVesselId,
+              volumeTransferred: volumeRackedL.toString(),
+              volumeTransferredUnit: 'L',
+              loss: '0', // racking loss already in batchRackingOperations — don't double-count
+              lossUnit: 'L',
+              totalVolumeProcessed: volumeRackedL.toString(),
+              totalVolumeProcessedUnit: 'L',
+              remainingVolume: volumeRemainingInSourceL.toString(),
+              remainingVolumeUnit: 'L',
+              transferredAt: input.rackedAt || new Date(),
+              transferredBy: ctx.session?.user?.id,
+            });
+
             // Copy composition from parent batch to child batch
             const parentComposition = await tx
               .select()
@@ -4482,8 +4521,8 @@ export const batchRouter = router({
               .where(eq(batches.id, input.batchId))
               .returning();
 
-            // Note: batchRackingOperations record (created earlier) captures all transfer info
-            // No separate batchTransfers record needed - avoids duplicate activity entries
+            // Note: batch_transfers record created above enables SBD volume reconstruction.
+            // batchRackingOperations captures the loss; batch_transfers captures the volume movement.
 
             resultMessage = `Partial rack complete: ${volumeRackedL.toFixed(1)}L transferred to ${destinationVessel[0].name}, ${volumeRemainingInSourceL.toFixed(1)}L remaining in source vessel`;
             }

@@ -17,6 +17,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Search, Package, AlertTriangle, Calculator } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import {
@@ -56,6 +57,7 @@ const units = [
 const additiveTypes = [
   { value: "Fermentation Organisms", label: "Fermentation Organisms" },
   { value: "Sugar & Sweeteners", label: "Sugar & Sweeteners" },
+  { value: "Fruit / Fruit Product", label: "Fruit / Fruit Product" },
   { value: "Flavorings & Adjuncts", label: "Flavorings & Adjuncts" },
   { value: "Enzymes", label: "Enzymes" },
   { value: "Nutrients", label: "Nutrients" },
@@ -82,6 +84,7 @@ export function AddBatchAdditiveForm({
   });
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [dosageRate, setDosageRate] = useState("");
+  const [isApplePearFruit, setIsApplePearFruit] = useState(false);
 
   // Date validation
   const { validateDate } = useBatchDateValidation(batchId);
@@ -137,13 +140,19 @@ export function AddBatchAdditiveForm({
     onSuccess: (data) => {
       toast({
         title: "Success",
-        description: data.estimatedMeasurement
+        description: data.reclassifiedAsWine
+          ? "Additive recorded — batch reclassified as wine for TTB purposes"
+          : data.estimatedMeasurement
           ? "Additive recorded with estimated SG and ABV measurement"
           : "Additive recorded successfully",
       });
       // Invalidate inventory queries to reflect the usage
       utils.additivePurchases.listInventory.invalidate();
       utils.additivePurchases.list.invalidate();
+      // Invalidate batch data if reclassified
+      if (data.reclassifiedAsWine) {
+        utils.batch.invalidate();
+      }
       onSuccess();
     },
     onError: (error) => {
@@ -161,6 +170,7 @@ export function AddBatchAdditiveForm({
     setSelectedInventoryItem(null);
     setUnit("");
     setSearchQuery("");
+    setIsApplePearFruit(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -212,6 +222,8 @@ export function AddBatchAdditiveForm({
       additivePurchaseItemId: selectedInventoryItem.id,
       // Also pass cost for COGS calculation
       costPerUnit: selectedInventoryItem.pricePerUnit ? parseFloat(selectedInventoryItem.pricePerUnit) : undefined,
+      // Fruit additive classification (TTB IC 17-2)
+      ...(additiveType === "Fruit / Fruit Product" ? { isApplePearFruit } : {}),
     };
 
     addAdditive.mutate(additiveData);
@@ -284,6 +296,28 @@ export function AddBatchAdditiveForm({
             <p className="mt-1 text-xs text-blue-700">
               The calculation assumes full fermentation of the added sugar.
             </p>
+          </div>
+        )}
+        {selectedAdditiveType === "Fruit / Fruit Product" && (
+          <div className="mt-2 space-y-3">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="isApplePearFruit"
+                checked={isApplePearFruit}
+                onCheckedChange={(checked) => setIsApplePearFruit(checked === true)}
+              />
+              <Label htmlFor="isApplePearFruit" className="text-sm font-normal cursor-pointer">
+                Apple or pear fruit only
+              </Label>
+            </div>
+            {!isApplePearFruit && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-900">
+                <p className="font-medium">TTB Reclassification</p>
+                <p className="mt-1 text-amber-800">
+                  Adding non-apple/pear fruit to a cider or perry batch will reclassify it as wine for TTB purposes (per Industry Circular 17-2). The ABV and carbonation will determine the specific tax class.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

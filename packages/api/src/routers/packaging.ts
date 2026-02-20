@@ -37,7 +37,7 @@ import {
   organizationSettings,
   inventoryDistributions,
 } from "db";
-import { eq, and, desc, isNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
+import { eq, and, desc, isNull, isNotNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { publishCreateEvent, publishUpdateEvent } from "lib";
 import { syncInventoryToSquare } from "../lib/square-inventory-sync";
@@ -83,14 +83,14 @@ const createFromCellarSchema = z.object({
 });
 
 const listPackagingRunsSchema = z.object({
-  dateFrom: z.date().optional(),
-  dateTo: z.date().optional(),
+  dateFrom: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  dateTo: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   batchId: z.string().uuid().optional(),
   batchSearch: z.string().optional(),
   packageType: z.string().optional(),
   packageSizeML: z.number().optional(),
   status: z.enum(["active", "ready", "distributed", "completed"]).optional(),
-  limit: z.number().max(100).default(50), // Cap at 100 for performance
+  limit: z.number().max(500).default(50), // Cap at 500 for overview, 50 default
   offset: z.number().default(0),
   // Cursor-based pagination (preferred for performance)
   cursor: z.string().optional(),
@@ -102,6 +102,7 @@ const updateBottleRunDatesSchema = z.object({
   packagedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   pasteurizedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   labeledAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+  distributedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
 });
 
 /**
@@ -2075,6 +2076,7 @@ export const packagingRouter = router({
         if (input.packagedAt) updateData.packagedAt = input.packagedAt;
         if (input.pasteurizedAt !== undefined) updateData.pasteurizedAt = input.pasteurizedAt;
         if (input.labeledAt !== undefined) updateData.labeledAt = input.labeledAt;
+        if (input.distributedAt !== undefined) updateData.distributedAt = input.distributedAt;
 
         // Update bottle run
         const updatedRun = await db
@@ -2495,6 +2497,235 @@ export const packagingRouter = router({
           message: "Failed to fetch enhanced bottle details",
         });
       }
+    }),
+
+  /**
+   * Aggregate stats for packaging overview (bottles + kegs combined).
+   * Accepts optional year filter for cross-referencing with TTB reconciliation.
+   * dateMode: "packaged" filters by packagedAt/filledAt (when run was created);
+   *           "distributed" filters by distributedAt (when product left bond).
+   */
+  getStats: createRbacProcedure("list", "package")
+    .input(
+      z
+        .object({
+          year: z.number().optional(),
+          dateMode: z.enum(["packaged", "distributed"]).optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ input }) => {
+      const year = input?.year;
+      const dateMode = input?.dateMode ?? "packaged";
+
+      // Date boundaries for year filter
+      const dateFrom = year ? new Date(`${year}-01-01T00:00:00Z`) : undefined;
+      const dateTo = year ? new Date(`${year}-12-31T23:59:59Z`) : undefined;
+
+      // Loss normalization: convert gal→L, keep L as-is
+      const bottleLossLiters = sql<number>`CASE WHEN ${bottleRuns.lossUnit} = 'gal' THEN ${bottleRuns.loss}::numeric * 3.78541 ELSE ${bottleRuns.loss}::numeric END`;
+      const kegLossLiters = sql<number>`CASE WHEN ${kegFills.lossUnit} = 'gal' THEN COALESCE(${kegFills.loss}::numeric, 0) * 3.78541 ELSE COALESCE(${kegFills.loss}::numeric, 0) END`;
+
+      // Net volume per run = volumeTaken - loss (in liters)
+      const bottleNetL = sql<number>`${bottleRuns.volumeTakenLiters}::numeric - ${bottleLossLiters}`;
+      const kegNetL = sql<number>`${kegFills.volumeTaken}::numeric - ${kegLossLiters}`;
+
+      // Bottle runs — voidedAt IS NULL only (no deletedAt column)
+      const bottleDateCol = dateMode === "distributed" ? bottleRuns.distributedAt : bottleRuns.packagedAt;
+      const bottleConditions = [isNull(bottleRuns.voidedAt)];
+      if (dateFrom) bottleConditions.push(gte(bottleDateCol, dateFrom));
+      if (dateTo) bottleConditions.push(lte(bottleDateCol, dateTo));
+
+      const [bottleStats] = await db
+        .select({
+          total: sql<number>`COUNT(*)::int`,
+          inProgress: sql<number>`COUNT(*) FILTER (WHERE ${bottleRuns.status} = 'active')::int`,
+          ready: sql<number>`COUNT(*) FILTER (WHERE ${bottleRuns.status} = 'ready')::int`,
+          distributed: sql<number>`COUNT(*) FILTER (WHERE ${bottleRuns.status} IN ('distributed', 'completed'))::int`,
+          totalUnits: sql<number>`COALESCE(SUM(${bottleRuns.unitsProduced}), 0)::int`,
+          // Gross volume (volumeTaken)
+          totalVolumeL: sql<number>`COALESCE(SUM(${bottleRuns.volumeTakenLiters}::numeric), 0)::float`,
+          // Net volume per status (volumeTaken - loss)
+          inProgressVolumeL: sql<number>`COALESCE(SUM(${bottleNetL}) FILTER (WHERE ${bottleRuns.status} = 'active'), 0)::float`,
+          readyVolumeL: sql<number>`COALESCE(SUM(${bottleNetL}) FILTER (WHERE ${bottleRuns.status} = 'ready'), 0)::float`,
+          distributedVolumeL: sql<number>`COALESCE(SUM(${bottleNetL}) FILTER (WHERE ${bottleRuns.status} IN ('distributed', 'completed')), 0)::float`,
+          lossL: sql<number>`COALESCE(SUM(${bottleLossLiters}), 0)::float`,
+        })
+        .from(bottleRuns)
+        .where(and(...bottleConditions));
+
+      // Keg fills — voidedAt IS NULL AND deletedAt IS NULL
+      const kegDateCol = dateMode === "distributed" ? kegFills.distributedAt : kegFills.filledAt;
+      const kegConditions = [isNull(kegFills.voidedAt), isNull(kegFills.deletedAt)];
+      if (dateFrom) kegConditions.push(gte(kegDateCol, dateFrom));
+      if (dateTo) kegConditions.push(lte(kegDateCol, dateTo));
+
+      const [kegStats] = await db
+        .select({
+          total: sql<number>`COUNT(*)::int`,
+          inProgress: sql<number>`COUNT(*) FILTER (WHERE ${kegFills.status} = 'filled')::int`,
+          ready: sql<number>`COUNT(*) FILTER (WHERE ${kegFills.status} = 'ready')::int`,
+          distributed: sql<number>`COUNT(*) FILTER (WHERE ${kegFills.status} IN ('distributed', 'returned'))::int`,
+          // Gross volume (volumeTaken)
+          totalVolumeL: sql<number>`COALESCE(SUM(${kegFills.volumeTaken}::numeric), 0)::float`,
+          // Net volume per status (volumeTaken - loss)
+          inProgressVolumeL: sql<number>`COALESCE(SUM(${kegNetL}) FILTER (WHERE ${kegFills.status} = 'filled'), 0)::float`,
+          readyVolumeL: sql<number>`COALESCE(SUM(${kegNetL}) FILTER (WHERE ${kegFills.status} = 'ready'), 0)::float`,
+          distributedVolumeL: sql<number>`COALESCE(SUM(${kegNetL}) FILTER (WHERE ${kegFills.status} IN ('distributed', 'returned')), 0)::float`,
+          lossL: sql<number>`COALESCE(SUM(${kegLossLiters}), 0)::float`,
+        })
+        .from(kegFills)
+        .where(and(...kegConditions));
+
+      const b = bottleStats ?? { total: 0, inProgress: 0, ready: 0, distributed: 0, totalUnits: 0, totalVolumeL: 0, inProgressVolumeL: 0, readyVolumeL: 0, distributedVolumeL: 0, lossL: 0 };
+      const k = kegStats ?? { total: 0, inProgress: 0, ready: 0, distributed: 0, totalVolumeL: 0, inProgressVolumeL: 0, readyVolumeL: 0, distributedVolumeL: 0, lossL: 0 };
+
+      // Canonical distribution totals — uses SAME data sources and date-filtering
+      // approach as TTB reconciliation (inventory_distributions for bottles,
+      // keg_fills.distributedAt for kegs).  Uses ::date casting to match reconciliation SQL.
+      let canonicalDistributedLiters = 0;
+      let priorYearDistributedLiters = 0;
+      if (year) {
+        const openingDate = `${year - 1}-12-31`;
+        const endingDate = `${year}-12-31`;
+        const yearStartDate = `${year}-01-01`;
+
+        // ALL bottle distributions in the year (from bottle_runs with distributed status)
+        const [allBottleDist] = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(
+              ${bottleRuns.volumeTakenLiters}::numeric -
+              CASE WHEN ${bottleRuns.lossUnit} = 'gal'
+                THEN COALESCE(${bottleRuns.loss}::numeric, 0) * 3.78541
+                ELSE COALESCE(${bottleRuns.loss}::numeric, 0) END
+            ), 0)`,
+          })
+          .from(bottleRuns)
+          .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+          .where(
+            and(
+              isNull(bottleRuns.voidedAt),
+              isNull(batches.deletedAt),
+              // NOTE: Do NOT filter by reconciliationStatus — distributions from
+              // duplicate/excluded batches are physically real (product was sold).
+              sql`${bottleRuns.status} IN ('distributed', 'completed')`,
+              sql`${bottleRuns.distributedAt}::date > ${openingDate}::date`,
+              sql`${bottleRuns.distributedAt}::date <= ${endingDate}::date`,
+            )
+          );
+        const allBottleLiters = Number(allBottleDist?.totalLiters) || 0;
+
+        // Prior-year bottle distributions (packaged before the year, distributed in the year)
+        const [priorBottleDist] = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(
+              ${bottleRuns.volumeTakenLiters}::numeric -
+              CASE WHEN ${bottleRuns.lossUnit} = 'gal'
+                THEN COALESCE(${bottleRuns.loss}::numeric, 0) * 3.78541
+                ELSE COALESCE(${bottleRuns.loss}::numeric, 0) END
+            ), 0)`,
+          })
+          .from(bottleRuns)
+          .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+          .where(
+            and(
+              isNull(bottleRuns.voidedAt),
+              isNull(batches.deletedAt),
+              sql`${bottleRuns.status} IN ('distributed', 'completed')`,
+              sql`${bottleRuns.distributedAt}::date > ${openingDate}::date`,
+              sql`${bottleRuns.distributedAt}::date <= ${endingDate}::date`,
+              sql`${bottleRuns.packagedAt}::date < ${yearStartDate}::date`,
+            )
+          );
+        const priorBottleLiters = Number(priorBottleDist?.totalLiters) || 0;
+
+        // ALL keg distributions in the year (net volume = volumeTaken - loss)
+        const [allKegDist] = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(
+              CAST(${kegFills.volumeTaken} AS DECIMAL) -
+              COALESCE(CAST(${kegFills.loss} AS DECIMAL), 0)
+            ), 0)`,
+          })
+          .from(kegFills)
+          .innerJoin(batches, eq(kegFills.batchId, batches.id))
+          .where(
+            and(
+              isNotNull(kegFills.distributedAt),
+              isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt),
+              isNull(batches.deletedAt),
+              sql`${kegFills.distributedAt}::date > ${openingDate}::date`,
+              sql`${kegFills.distributedAt}::date <= ${endingDate}::date`,
+            )
+          );
+        const allKegLiters = Number(allKegDist?.totalLiters) || 0;
+
+        // Prior-year keg distributions (filled before the year, distributed in the year)
+        const [priorKegDist] = await db
+          .select({
+            totalLiters: sql<number>`COALESCE(SUM(
+              CAST(${kegFills.volumeTaken} AS DECIMAL) -
+              COALESCE(CAST(${kegFills.loss} AS DECIMAL), 0)
+            ), 0)`,
+          })
+          .from(kegFills)
+          .innerJoin(batches, eq(kegFills.batchId, batches.id))
+          .where(
+            and(
+              isNotNull(kegFills.distributedAt),
+              isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt),
+              isNull(batches.deletedAt),
+              sql`${kegFills.distributedAt}::date > ${openingDate}::date`,
+              sql`${kegFills.distributedAt}::date <= ${endingDate}::date`,
+              sql`${kegFills.filledAt}::date < ${yearStartDate}::date`,
+            )
+          );
+        const priorKegLiters = Number(priorKegDist?.totalLiters) || 0;
+
+        canonicalDistributedLiters = allBottleLiters + allKegLiters;
+        priorYearDistributedLiters = priorBottleLiters + priorKegLiters;
+      }
+
+      return {
+        // Counts
+        inProgress: b.inProgress + k.inProgress,
+        ready: b.ready + k.ready,
+        distributed: b.distributed + k.distributed,
+        totalUnits: b.totalUnits,
+        bottleRunCount: b.total,
+        kegFillCount: k.total,
+        // Combined volumes (liters)
+        totalVolumeLiters: b.totalVolumeL + k.totalVolumeL,
+        inProgressVolumeLiters: b.inProgressVolumeL + k.inProgressVolumeL,
+        readyVolumeLiters: b.readyVolumeL + k.readyVolumeL,
+        distributedVolumeLiters: b.distributedVolumeL + k.distributedVolumeL,
+        totalLossLiters: b.lossL + k.lossL,
+        // Per-type breakdown (liters)
+        bottles: {
+          count: b.total,
+          units: b.totalUnits,
+          totalVolumeL: b.totalVolumeL,
+          inProgressVolumeL: b.inProgressVolumeL,
+          readyVolumeL: b.readyVolumeL,
+          distributedVolumeL: b.distributedVolumeL,
+          lossL: b.lossL,
+        },
+        kegs: {
+          count: k.total,
+          totalVolumeL: k.totalVolumeL,
+          inProgressVolumeL: k.inProgressVolumeL,
+          readyVolumeL: k.readyVolumeL,
+          distributedVolumeL: k.distributedVolumeL,
+          lossL: k.lossL,
+        },
+        // Total distributed in the year — canonical source (inventory_distributions + keg_fills).
+        // Matches TTB reconciliation "Distributed" exactly.
+        canonicalDistributedLiters,
+        // Portion of canonical distributed that came from pre-year packaged inventory.
+        priorYearDistributedLiters,
+      };
     }),
 
   /**

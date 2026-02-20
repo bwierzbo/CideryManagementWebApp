@@ -25,7 +25,9 @@ type EventType =
   | "bottling"
   | "pasteurize"
   | "label"
-  | "merge";
+  | "merge"
+  | "distribute"
+  | "distribute_keg";
 
 interface EditDateDialogProps {
   open: boolean;
@@ -65,6 +67,7 @@ export function EditDateDialog({
   const updateFilter = trpc.batch.updateFilter.useMutation();
   const updateMerge = trpc.batch.updateMerge.useMutation();
   const updateBottleRunDates = trpc.packaging.updateBottleRunDates.useMutation();
+  const updateKegFillDates = trpc.packaging.kegs.updateKegFillDates.useMutation();
   const updateCarbonation = trpc.carbonation.updateCarbonation.useMutation();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -132,6 +135,20 @@ export function EditDateDialog({
           });
           break;
 
+        case "distribute":
+          await updateBottleRunDates.mutateAsync({
+            runId: eventId,
+            distributedAt: dateValue,
+          });
+          break;
+
+        case "distribute_keg":
+          await updateKegFillDates.mutateAsync({
+            kegFillId: eventId,
+            distributedAt: dateValue,
+          });
+          break;
+
         case "carbonation_start":
           await updateCarbonation.mutateAsync({
             carbonationId: eventId,
@@ -171,6 +188,7 @@ export function EditDateDialog({
     updateFilter.isPending ||
     updateMerge.isPending ||
     updateBottleRunDates.isPending ||
+    updateKegFillDates.isPending ||
     updateCarbonation.isPending;
 
   return (

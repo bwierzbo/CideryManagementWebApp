@@ -35,7 +35,7 @@ export async function getUnifiedPackagingRuns(
   filters: PackagingRunFilters = {},
   pagination: CursorPaginationParams = {},
 ): Promise<PaginatedResult<PackagingRunListItem>> {
-  const limit = Math.min(pagination.limit || 50, 100);
+  const limit = Math.min(pagination.limit || 50, 500);
 
   // Determine which sources to query based on packageType filter
   const shouldQueryBottles = !filters.packageType || filters.packageType !== 'keg';

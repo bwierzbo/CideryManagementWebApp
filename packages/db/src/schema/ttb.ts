@@ -684,7 +684,68 @@ export const reconciliationAdjustmentsRelations = relations(
   }),
 );
 
+/**
+ * Waterfall Adjustment Line Enum
+ *
+ * Which waterfall line a reconciliation adjustment applies to.
+ */
+export const waterfallAdjustmentLineEnum = pgEnum(
+  "waterfall_adjustment_line",
+  ["opening", "production", "losses", "distillation", "other"],
+);
+
+/**
+ * TTB Waterfall Adjustments
+ *
+ * Summary-level adjustments to the TTB waterfall with full audit trail.
+ * Used for:
+ *   - Opening balance corrections (SBD vs physical inventory gaps)
+ *   - Physical inventory true-ups
+ *   - Loss corrections
+ *   - Any other reconciliation-level adjustment
+ *
+ * Each adjustment has a signed amount in wine gallons that is applied
+ * to the specified waterfall line. Positive increases the line value,
+ * negative decreases it.
+ */
+export const ttbWaterfallAdjustments = pgTable(
+  "ttb_waterfall_adjustments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    periodYear: integer("period_year").notNull(),
+    waterfallLine: waterfallAdjustmentLineEnum("waterfall_line").notNull(),
+    amountGallons: numeric("amount_gallons", {
+      precision: 12,
+      scale: 3,
+    }).notNull(),
+    reason: text("reason").notNull(),
+    notes: text("notes"),
+    adjustedBy: uuid("adjusted_by").references(() => users.id),
+    adjustedAt: timestamp("adjusted_at").notNull().defaultNow(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    periodYearIdx: index("ttb_waterfall_adj_period_year_idx").on(
+      table.periodYear,
+    ),
+  }),
+);
+
+export const ttbWaterfallAdjustmentsRelations = relations(
+  ttbWaterfallAdjustments,
+  ({ one }) => ({
+    adjustedByUser: one(users, {
+      fields: [ttbWaterfallAdjustments.adjustedBy],
+      references: [users.id],
+      relationName: "waterfall_adjustment_user",
+    }),
+  }),
+);
+
 // Type inference helpers
+export type TTBWaterfallAdjustment = typeof ttbWaterfallAdjustments.$inferSelect;
+export type NewTTBWaterfallAdjustment = typeof ttbWaterfallAdjustments.$inferInsert;
 export type SalesChannel = typeof salesChannels.$inferSelect;
 export type NewSalesChannel = typeof salesChannels.$inferInsert;
 export type TTBReportingPeriod = typeof ttbReportingPeriods.$inferSelect;

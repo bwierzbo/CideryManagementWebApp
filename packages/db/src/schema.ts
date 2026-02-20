@@ -89,6 +89,7 @@ export const productTypeEnum = pgEnum("product_type", [
   "juice",    // Unfermented juice (0% ABV)
   "cider",    // Standard cider (fermented)
   "perry",    // Pear cider (fermented)
+  "wine",     // Cider/perry with non-apple/pear fruit (TTB IC 17-2)
   "brandy",   // Distilled spirit
   "pommeau",  // Juice + brandy blend
   "other",
