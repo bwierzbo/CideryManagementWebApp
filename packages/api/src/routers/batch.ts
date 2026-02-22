@@ -2110,6 +2110,28 @@ export const batchRouter = router({
         // Auto-exclude transfer-destination batches with 0 initial volume
         // (but NOT pommeau — they're first-class products built entirely via blending transfers)
         sql`NOT (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0 AND COALESCE(${batches.productType}, 'cider') != 'pommeau')`,
+        // Auto-exclude fully-transferred source batches: depleted batches that transferred all
+        // volume to other batches with no packaging and no children. These are intermediate staging
+        // batches (e.g., pressed juice immediately transferred to a blending tank). They remain in
+        // the SBD computation for transfer matching but are hidden from the UI list.
+        sql`NOT (
+          CAST(COALESCE(${batches.currentVolumeLiters}, '0') AS DECIMAL) = 0
+          AND CAST(COALESCE(${batches.initialVolumeLiters}, '0') AS DECIMAL) > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM bottle_runs br2 WHERE br2.batch_id = ${batches.id} AND br2.voided_at IS NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM keg_fills kf2 WHERE kf2.batch_id = ${batches.id} AND kf2.voided_at IS NULL AND kf2.deleted_at IS NULL
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM batches child WHERE child.parent_batch_id = ${batches.id} AND child.deleted_at IS NULL
+          )
+          AND (
+            SELECT COALESCE(SUM(bt2.volume_transferred), 0)
+            FROM batch_transfers bt2
+            WHERE bt2.source_batch_id = ${batches.id} AND bt2.deleted_at IS NULL
+          ) >= CAST(COALESCE(${batches.initialVolumeLiters}, '0') AS DECIMAL) * 0.9
+        )`,
       ];
 
       if (input.year) {

@@ -424,6 +424,7 @@ function ExpandableReconciliationRow({
                   {recon.lossBreakdown?.bottling > 0 && <p>Bottling: {recon.lossBreakdown.bottling.toFixed(1)}</p>}
                   {recon.lossBreakdown?.kegging > 0 && <p>Kegging: {recon.lossBreakdown.kegging.toFixed(1)}</p>}
                   {recon.lossBreakdown?.transfer > 0 && <p>Transfer: {recon.lossBreakdown.transfer.toFixed(1)}</p>}
+                  {recon.lossBreakdown?.pressTransfer > 0 && <p>Press Transfer: {recon.lossBreakdown.pressTransfer.toFixed(1)}</p>}
                   {recon.lossBreakdown?.adjustments !== 0 && recon.lossBreakdown?.adjustments != null && <p>Adjustments: {recon.lossBreakdown.adjustments.toFixed(1)}</p>}
                   {recon.lossBreakdown && Object.values(recon.lossBreakdown).every((v: any) => Math.abs(v) < 0.05) && <p className="text-gray-400">No losses</p>}
                 </div>
@@ -723,9 +724,7 @@ export function BatchReconciliation() {
       return {
         opening: t.ttbOpeningBalance,
         production: 0,
-        netInternal: 0,
         adjustments: 0,
-        clampedVolume: 0,
         distributed: 0,
         packagedBonded: 0,
         losses: 0,
@@ -740,58 +739,51 @@ export function BatchReconciliation() {
     }
     const br = (reconciliationData as any)?.batchReconciliation?.totals;
     if (!br) return null;
-    // Use configured TTB opening balance (physical inventory) when available.
+
+    // Aggregate-based waterfall: sum per-tax-class entries (press-run-based production,
+    // aggregate losses/distributions/distillation). These match TTB Form 5120.17 values.
+    const wfEntries: any[] = (reconciliationData as any)?.waterfall?.byTaxClass ?? [];
+    const sumWF = (field: string) =>
+      parseFloat(wfEntries.reduce((s: number, e: any) => s + (e[field] ?? 0), 0).toFixed(1));
+
+    // Opening from configured TTB balance (physical inventory).
     const configuredOpening = t.ttbOpeningBalance;
-    const sbdOpening = parseFloat((br.opening ?? 0).toFixed(1));
-    const opening = configuredOpening > 0 ? configuredOpening : sbdOpening;
-    // Production excludes mergesIn (internal movement, not new production).
-    const production = parseFloat((br.production ?? 0).toFixed(1));
-    const distributed = parseFloat((br.sales ?? 0).toFixed(1));
-    const losses = parseFloat((br.losses ?? 0).toFixed(1));
-    const distillation = parseFloat((br.distillation ?? 0).toFixed(1));
-    const ending = parseFloat(br.ending.toFixed(1));
-    // Net internal movement: transfers and merges between batches.
-    const netInternal = parseFloat((
-      ((br.transfersIn ?? 0) + (br.mergesIn ?? 0)) - ((br.transfersOut ?? 0) + (br.mergesOut ?? 0))
-    ).toFixed(1));
-    // Packaged (Bonded) = net volume moved from bulk to packaged form, minus what was distributed.
-    const packagedBonded = parseFloat(((br.packaging ?? 0) - (br.sales ?? 0)).toFixed(1));
-    // Opening balance delta: SBD-reconstructed opening vs configured TTB opening.
-    // The configured opening (physical inventory count) is the official TTB number.
-    // SBD reconstruction of legacy data may differ because legacy batches (e.g., child
-    // batches injecting pre-existing inventory) inflate the reconstructed total.
-    // This delta absorbs that discrepancy so the waterfall identity holds.
-    const openingDelta = parseFloat((sbdOpening - opening).toFixed(1));
-    // Sum waterfall adjustments from the database (explicit, auditable corrections).
+    const opening = configuredOpening > 0 ? configuredOpening : sumWF("opening");
+
+    // All values from aggregate queries via per-tax-class waterfall.
+    const production = sumWF("production");        // press runs + juice purchases
+    const distributed = sumWF("sales");             // bottle_runs + keg_fills distributed
+    const losses = sumWF("losses");                 // 6 aggregate loss categories
+    const distillation = sumWF("distillation");     // distillation_records
+    const packaging = sumWF("packaging");           // bulk → packaged (TTB Section A line 13)
+    const calculatedEnding = sumWF("calculatedEnding");
+    const physicalEnding = sumWF("physical");
+
+    // Positive volume adjustments (TTB Form line 9: Inventory gains).
+    const positiveAdj = parseFloat((br.positiveAdj ?? 0).toFixed(1));
+    // Manual waterfall adjustments from the database.
     const waterfallAdjs = (reconciliationData as any)?.waterfallAdjustments ?? [];
     const manualAdjustments = parseFloat(
       waterfallAdjs.reduce((sum: number, a: any) => sum + parseFloat(a.amountGallons ?? 0), 0).toFixed(1)
     );
-    // Total adjustments = manual waterfall adjustments + opening balance delta
-    const adjustments = parseFloat((manualAdjustments + openingDelta).toFixed(1));
-    // Clamped volume: batches that went negative are clamped to 0, inflating the ending total.
-    // We add it back as a positive term so the waterfall identity holds.
-    const clampedVolume = parseFloat(((reconciliationData as any)?.clampedVolume ?? 0).toFixed(1));
-    // Variance = waterfall identity check.
-    // ending includes clamped values (max(0, raw)), so we add clampedVolume to balance:
-    // opening + production + netInternal + adjustments + clampedVolume - distributed - packagedBonded - losses - distillation = ending
-    const variance = parseFloat((opening + production + netInternal + adjustments + clampedVolume - distributed - packagedBonded - losses - distillation - ending).toFixed(1));
+    const adjustments = parseFloat((manualAdjustments + positiveAdj).toFixed(1));
+
+    // Variance = aggregate calculated ending vs physical inventory.
+    const variance = parseFloat((calculatedEnding - physicalEnding).toFixed(1));
+
     return {
       opening,
       production,
-      netInternal,
       adjustments,
-      clampedVolume,
       distributed,
-      packagedBonded,
+      packagedBonded: packaging,
       losses,
       distillation,
-      ending,
-      systemCalculated: ending,
+      ending: calculatedEnding,
+      systemCalculated: physicalEnding,
       variance,
       systemVariance: 0,
       isConfigured: false,
-      openingDelta,
       waterfallAdjustments: waterfallAdjs,
     };
   }, [reconciliationData, isOpeningYear]);
@@ -920,6 +912,19 @@ export function BatchReconciliation() {
     }
     return map;
   }, [batchRecon]);
+
+
+  // Batches contributing to clamping (negative SBD reconstruction, clamped to 0)
+  const clampingBatches = useMemo(() => {
+    const result: { name: string; gal: number }[] = [];
+    for (const [batchId, r] of reconMap) {
+      if (r.identityCheck < -0.1) {
+        const batch = rawBatches.find((b: any) => b.id === batchId);
+        result.push({ name: batch?.customName || batch?.name || batchId, gal: r.identityCheck });
+      }
+    }
+    return result.sort((a, b) => a.gal - b.gal);
+  }, [reconMap, rawBatches]);
 
   // Filter by validation status (client-side since data is already fetched)
   const validationFiltered = useMemo(() => {
@@ -1101,12 +1106,10 @@ export function BatchReconciliation() {
       lines.push("TTB Balance (gal)");
       lines.push(`Opening,${yearMetrics.opening}`);
       lines.push(`Production,${yearMetrics.production}`);
-      if (yearMetrics.netInternal !== 0) lines.push(`Internal Movement (net),${yearMetrics.netInternal}`);
-      if (yearMetrics.adjustments !== 0) lines.push(`Reconciliation Adj.,${yearMetrics.adjustments}`);
+      if (yearMetrics.adjustments !== 0) lines.push(`Inventory Gains,${yearMetrics.adjustments}`);
       lines.push(`Distributed,${yearMetrics.distributed}`);
-      lines.push(`Packaged (Bonded),${yearMetrics.packagedBonded}`);
+      lines.push(`Packaged,${yearMetrics.packagedBonded}`);
       lines.push(`Losses,${yearMetrics.losses}`);
-      if (yearMetrics.clampedVolume > 0.5) lines.push(`Clamping offset,${yearMetrics.clampedVolume}`);
       lines.push(`Distillation,${yearMetrics.distillation}`);
       lines.push(`Ending (Bulk),${yearMetrics.ending}`);
       lines.push(`Variance,${yearMetrics.variance}`);
@@ -1114,20 +1117,7 @@ export function BatchReconciliation() {
     }
 
     if (batchRecon) {
-      if (yearMetrics) {
-        lines.push("Batch Aggregate (gal)");
-        lines.push(`Opening,${yearMetrics.opening}`);
-        lines.push(`Production,${yearMetrics.production}`);
-        if (yearMetrics.netInternal !== 0) lines.push(`Internal Movement (net),${yearMetrics.netInternal}`);
-        if (yearMetrics.adjustments !== 0) lines.push(`Reconciliation Adj.,${yearMetrics.adjustments}`);
-        lines.push(`Distributed,${yearMetrics.distributed}`);
-        lines.push(`Packaged (Bonded),${yearMetrics.packagedBonded}`);
-        lines.push(`Losses,${yearMetrics.losses}`);
-        if (yearMetrics.clampedVolume > 0.5) lines.push(`Clamping offset,${yearMetrics.clampedVolume}`);
-        lines.push(`Distillation,${yearMetrics.distillation}`);
-        lines.push(`Ending (Bulk),${yearMetrics.ending}`);
-        lines.push(`Variance,${yearMetrics.variance}`);
-      } else {
+      if (!yearMetrics) {
         lines.push("Batch Aggregate (gal)");
         lines.push(`Opening,${batchRecon.totals.opening}`);
         lines.push(`Production,${batchRecon.totals.production}`);
@@ -1135,14 +1125,15 @@ export function BatchReconciliation() {
         lines.push(`Sales,${batchRecon.totals.sales}`);
         lines.push(`Distillation,${batchRecon.totals.distillation}`);
         lines.push(`Ending,${batchRecon.totals.ending}`);
+        lines.push("");
       }
-      lines.push("");
       lines.push("Loss Breakdown (gal)");
       lines.push(`Racking,${batchRecon.lossBreakdown.racking}`);
       lines.push(`Filter,${batchRecon.lossBreakdown.filter}`);
       lines.push(`Bottling,${batchRecon.lossBreakdown.bottling}`);
       lines.push(`Kegging,${batchRecon.lossBreakdown.kegging}`);
       lines.push(`Transfer,${batchRecon.lossBreakdown.transfer}`);
+      lines.push(`Press Transfer,${(batchRecon.lossBreakdown as any).pressTransfer ?? 0}`);
       lines.push(`Adjustments,${batchRecon.lossBreakdown.adjustments}`);
       lines.push("");
     }
@@ -1627,25 +1618,16 @@ export function BatchReconciliation() {
                               <td className="pr-2">+ Production</td>
                               <td className="text-right">{yearMetrics.production.toLocaleString()} gal</td>
                             </tr>
-                            {yearMetrics.netInternal !== 0 && (
-                              <tr>
-                                <td className="pr-2">{yearMetrics.netInternal >= 0 ? "+" : "-"} Internal Movement (net)</td>
-                                <td className="text-right">{Math.abs(yearMetrics.netInternal).toLocaleString()} gal</td>
-                              </tr>
-                            )}
                             {yearMetrics.adjustments !== 0 && (
                               <tr className="text-blue-700">
                                 <td className="pr-2" title={
                                   [
-                                    ...(yearMetrics.openingDelta && Math.abs(yearMetrics.openingDelta) > 0.1
-                                      ? [`Opening balance correction: ${yearMetrics.openingDelta > 0 ? '+' : ''}${yearMetrics.openingDelta.toFixed(1)} gal (SBD reconstruction vs physical inventory)`]
-                                      : []),
                                     ...(yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
                                       `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
                                     ),
-                                  ].join('\n') || 'No adjustments'
+                                  ].join('\n') || 'Inventory gains (TTB Form line 9)'
                                 }>
-                                  {yearMetrics.adjustments >= 0 ? "+" : "-"} Reconciliation Adj.
+                                  {yearMetrics.adjustments >= 0 ? "+" : "-"} Inventory Gains
                                 </td>
                                 <td className="text-right">{Math.abs(yearMetrics.adjustments).toLocaleString()} gal</td>
                               </tr>
@@ -1655,19 +1637,13 @@ export function BatchReconciliation() {
                               <td className="text-right">{yearMetrics.distributed.toLocaleString()} gal</td>
                             </tr>
                             <tr>
-                              <td className="pr-2">- Packaged (Bonded)</td>
+                              <td className="pr-2">- Packaged</td>
                               <td className="text-right">{yearMetrics.packagedBonded.toLocaleString()} gal</td>
                             </tr>
                             <tr>
                               <td className="pr-2">- Losses</td>
                               <td className="text-right">{yearMetrics.losses.toLocaleString()} gal</td>
                             </tr>
-                            {yearMetrics.clampedVolume > 0.5 && (
-                              <tr className="text-amber-600" title="Volume from batches that went negative during SBD reconstruction. Clamped to 0 in the ending total — this offset restores the waterfall identity.">
-                                <td className="pr-2">+ Clamping offset</td>
-                                <td className="text-right">{yearMetrics.clampedVolume.toLocaleString()} gal</td>
-                              </tr>
-                            )}
                             <tr>
                               <td className="pr-2">- Distillation</td>
                               <td className="text-right">{yearMetrics.distillation.toLocaleString()} gal</td>
@@ -1680,6 +1656,13 @@ export function BatchReconciliation() {
                               <td className="pr-2 pt-1">Variance</td>
                               <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
                             </tr>
+                            {Math.abs(yearMetrics.variance) >= 1 && clampingBatches.length > 0 && (
+                              <tr>
+                                <td colSpan={2} className="text-xs text-red-500 pt-1">
+                                  {clampingBatches.length} batch{clampingBatches.length !== 1 ? 'es' : ''} with identity issues — use &quot;Identity Issues&quot; filter to review
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
                       </>
@@ -1701,6 +1684,31 @@ export function BatchReconciliation() {
                 <p className="text-xs text-amber-700">
                   {clampedVol.toFixed(1)} gal lost to clamping (batches that went negative during volume reconstruction) — indicates data quality issues.
                 </p>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
+        {/* Parity diagnostics warnings */}
+        {(() => {
+          const diag = (reconciliationData as any)?.parityDiagnostics;
+          if (!diag || diag.passed) return null;
+          const errors = diag.warnings.filter((w: any) => w.level === "error");
+          const warnings = diag.warnings.filter((w: any) => w.level === "warning");
+          if (errors.length === 0 && warnings.length === 0) return null;
+          return (
+            <Card className={`mb-4 ${errors.length > 0 ? "border-red-200 bg-red-50/50" : "border-amber-200 bg-amber-50/50"}`}>
+              <CardContent className="pt-4 pb-4">
+                <p className={`text-xs font-medium ${errors.length > 0 ? "text-red-800" : "text-amber-800"} mb-1`}>
+                  Parity Check: {errors.length} error{errors.length !== 1 ? "s" : ""}, {warnings.length} warning{warnings.length !== 1 ? "s" : ""}
+                </p>
+                <ul className="text-xs space-y-0.5">
+                  {diag.warnings.map((w: any, i: number) => (
+                    <li key={i} className={w.level === "error" ? "text-red-700" : "text-amber-700"}>
+                      {w.message}
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
           );
@@ -1927,6 +1935,7 @@ export function BatchReconciliation() {
                   <div>Bottling: <span className="font-mono">{batchRecon.lossBreakdown.bottling.toFixed(1)}</span></div>
                   <div>Kegging: <span className="font-mono">{batchRecon.lossBreakdown.kegging.toFixed(1)}</span></div>
                   <div>Transfer: <span className="font-mono">{batchRecon.lossBreakdown.transfer.toFixed(1)}</span></div>
+                  <div>Press Transfer: <span className="font-mono">{(batchRecon.lossBreakdown as any).pressTransfer?.toFixed(1) ?? "0.0"}</span></div>
                   <div>Adjustments: <span className="font-mono">{batchRecon.lossBreakdown.adjustments.toFixed(1)}</span></div>
                 </div>
               </div>
