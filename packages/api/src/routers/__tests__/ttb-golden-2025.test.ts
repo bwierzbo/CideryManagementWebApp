@@ -60,8 +60,8 @@ const PDF = {
       line12_totalIn: 5873.7,
       line13_packaged: 148.9,
       line16_distillation: 758.2,
-      line24_changeOfClassOut: 653.3,
-      line29_losses: 214.9,       // bulk losses only
+      line24_changeOfClassOut: 675.7, // +22.4 from undeleted 85L cider→plum wine transfer
+      line29_losses: 193.3,       // bulk losses (adjusted: 85L cider→wine transfer undeleted)
       line30_bottlingLoss: 6.1,   // bottling losses
       line31_ending: 4092.3,
       line32_totalOut: 5873.7,
@@ -69,14 +69,14 @@ const PDF = {
     wineUnder16: {
       line1_opening: 0.0,
       line2_produced: 56.2,
-      line10_changeOfClassIn: 653.3,
-      line12_totalIn: 709.5,
+      line10_changeOfClassIn: 675.3, // +22.4 from undeleted 85L cider→plum wine transfer
+      line12_totalIn: 731.4,      // adjusted for undeleted transfer
       line13_packaged: 628.2,
       line24_changeOfClassOut: 5.0,
-      line29_losses: 55.8,        // bulk losses only
+      line29_losses: 76.3,        // bulk losses (adjusted for undeleted transfer)
       line30_bottlingLoss: 4.0,   // bottling losses
-      line31_ending: 16.5,
-      line32_totalOut: 709.5,
+      line31_ending: 17.9,
+      line32_totalOut: 731.4,     // adjusted for undeleted transfer
     },
     wine16To21: {
       line1_opening: 60.0,
