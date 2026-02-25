@@ -737,52 +737,52 @@ export function BatchReconciliation() {
         waterfallAdjustments: [],
       };
     }
-    const br = (reconciliationData as any)?.batchReconciliation?.totals;
-    if (!br) return null;
+    // Use aggregate waterfall totals (same source as TTB Form per-tax-class values).
+    // This ensures the waterfall header and TTB Form show identical numbers.
+    const wf = (reconciliationData as any)?.waterfall?.totals;
+    if (!wf) return null;
 
-    // Aggregate-based waterfall: sum per-tax-class entries (press-run-based production,
-    // aggregate losses/distributions/distillation). These match TTB Form 5120.17 values.
-    const wfEntries: any[] = (reconciliationData as any)?.waterfall?.byTaxClass ?? [];
-    const sumWF = (field: string) =>
-      parseFloat(wfEntries.reduce((s: number, e: any) => s + (e[field] ?? 0), 0).toFixed(1));
-
-    // Opening from configured TTB balance (physical inventory).
     const configuredOpening = t.ttbOpeningBalance;
-    const opening = configuredOpening > 0 ? configuredOpening : sumWF("opening");
 
-    // All values from aggregate queries via per-tax-class waterfall.
-    const production = sumWF("production");        // press runs + juice purchases
-    const distributed = sumWF("sales");             // bottle_runs + keg_fills distributed
-    const losses = sumWF("losses");                 // 6 aggregate loss categories
-    const distillation = sumWF("distillation");     // distillation_records
-    const packaging = sumWF("packaging");           // bulk → packaged (TTB Section A line 13)
-    const calculatedEnding = sumWF("calculatedEnding");
-    const physicalEnding = sumWF("physical");
-
-    // Positive volume adjustments (TTB Form line 9: Inventory gains).
-    const positiveAdj = parseFloat((br.positiveAdj ?? 0).toFixed(1));
     // Manual waterfall adjustments from the database.
     const waterfallAdjs = (reconciliationData as any)?.waterfallAdjustments ?? [];
     const manualAdjustments = parseFloat(
       waterfallAdjs.reduce((sum: number, a: any) => sum + parseFloat(a.amountGallons ?? 0), 0).toFixed(1)
     );
-    const adjustments = parseFloat((manualAdjustments + positiveAdj).toFixed(1));
+    const adjustments = parseFloat((manualAdjustments + (wf.positiveAdj ?? 0)).toFixed(1));
 
-    // Variance = aggregate calculated ending vs physical inventory.
-    const variance = parseFloat((calculatedEnding - physicalEnding).toFixed(1));
+    // All activity from aggregate queries (press runs, bottle_runs, etc.)
+    const production = wf.production ?? 0;
+    const distributed = wf.sales ?? 0;
+    const packaging = wf.packaging ?? 0;
+    const losses = wf.losses ?? 0;
+    const distillation = wf.distillation ?? 0;
+    const transfersIn = wf.transfersIn ?? 0;
+    const transfersOut = wf.transfersOut ?? 0;
+
+    // Ending = configured opening + period activity (total wine on premises).
+    // Packaging (bulk→bottled) is an internal transfer — doesn't remove wine from premises,
+    // so it's NOT subtracted here. Only actual removals (distributed, losses, distillation) count.
+    const ending = parseFloat((
+      configuredOpening + production + adjustments + transfersIn - transfersOut
+      - distributed - losses - distillation
+    ).toFixed(1));
+
+    // Variance = calculated ending vs physical on-hand
+    const variance = parseFloat((ending - (wf.physical ?? 0)).toFixed(1));
 
     return {
-      opening,
+      opening: configuredOpening,
       production,
       adjustments,
       distributed,
       packagedBonded: packaging,
       losses,
       distillation,
-      ending: calculatedEnding,
-      systemCalculated: physicalEnding,
+      ending,
+      systemCalculated: wf.physical ?? 0,
       variance,
-      systemVariance: 0,
+      systemVariance: variance,
       isConfigured: false,
       waterfallAdjustments: waterfallAdjs,
     };
@@ -1108,10 +1108,9 @@ export function BatchReconciliation() {
       lines.push(`Production,${yearMetrics.production}`);
       if (yearMetrics.adjustments !== 0) lines.push(`Inventory Gains,${yearMetrics.adjustments}`);
       lines.push(`Distributed,${yearMetrics.distributed}`);
-      lines.push(`Packaged,${yearMetrics.packagedBonded}`);
       lines.push(`Losses,${yearMetrics.losses}`);
       lines.push(`Distillation,${yearMetrics.distillation}`);
-      lines.push(`Ending (Bulk),${yearMetrics.ending}`);
+      lines.push(`Ending (On Premises),${yearMetrics.ending}`);
       lines.push(`Variance,${yearMetrics.variance}`);
       lines.push("");
     }
@@ -1637,10 +1636,6 @@ export function BatchReconciliation() {
                               <td className="text-right">{yearMetrics.distributed.toLocaleString()} gal</td>
                             </tr>
                             <tr>
-                              <td className="pr-2">- Packaged</td>
-                              <td className="text-right">{yearMetrics.packagedBonded.toLocaleString()} gal</td>
-                            </tr>
-                            <tr>
                               <td className="pr-2">- Losses</td>
                               <td className="text-right">{yearMetrics.losses.toLocaleString()} gal</td>
                             </tr>
@@ -1649,7 +1644,7 @@ export function BatchReconciliation() {
                               <td className="text-right">{yearMetrics.distillation.toLocaleString()} gal</td>
                             </tr>
                             <tr className="border-t border-gray-300 font-semibold">
-                              <td className="pr-2 pt-1">= Ending (Bulk)</td>
+                              <td className="pr-2 pt-1">= Ending (On Premises)</td>
                               <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
                             </tr>
                             <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 1 ? "text-green-600" : Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
@@ -1807,10 +1802,6 @@ export function BatchReconciliation() {
                   <p className="font-semibold text-red-700">-{yearMetrics.distributed.toFixed(1)} gal</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Packaged (Bonded)</p>
-                  <p className="font-semibold text-red-700">-{yearMetrics.packagedBonded.toFixed(1)} gal</p>
-                </div>
-                <div>
                   <p className="text-xs text-gray-500">Losses</p>
                   <p className="font-semibold text-red-700">-{yearMetrics.losses.toFixed(1)} gal</p>
                 </div>
@@ -1819,7 +1810,7 @@ export function BatchReconciliation() {
                   <p className="font-semibold text-red-700">-{yearMetrics.distillation.toFixed(1)} gal</p>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500">Ending (Bulk)</p>
+                  <p className="text-xs text-gray-500">Ending (On Premises)</p>
                   <p className="font-semibold">{yearMetrics.ending.toFixed(1)} gal</p>
                 </div>
               </div>
@@ -2118,24 +2109,22 @@ export function BatchReconciliation() {
                       </tr>
                     );
 
-                    // Section A computed values
+                    // Section A computed values — use form's balanced values
                     const getLine4 = (tc: string) => bulkByClass[tc]?.line4_wineSpirits ?? 0;
-                    const getLine12 = (tc: string) => {
+                    const getLine9 = (tc: string) => bulkByClass[tc]?.line9_inventoryGains ?? 0;
+                    const getLine12 = (tc: string) => bulkByClass[tc]?.line12_total ?? (() => {
                       const e = getEntry(tc) as any;
-                      return (e.openingBulk ?? 0) + (e.production ?? 0) + getLine4(tc)
-                        + (bulkByClass[tc]?.line9_inventoryGains ?? 0);
-                    };
-                    const getLine30 = (tc: string) => {
+                      return (e.openingBulk ?? 0) + (e.production ?? 0) + (e.transfersIn ?? 0)
+                        + getLine4(tc) + getLine9(tc);
+                    })();
+                    const getLine32 = (tc: string) => bulkByClass[tc]?.line32_total ?? (() => {
                       const e = getEntry(tc) as any;
-                      return e.losses ?? 0;
-                    };
-                    const getLine32 = (tc: string) => {
-                      const e = getEntry(tc) as any;
-                      return (e.packaging ?? 0) + (e.distillation ?? 0)
+                      const losses = (bulkByClass[tc]?.line29_losses ?? 0) + (bulkByClass[tc]?.line30_inventoryLosses ?? 0);
+                      return (e.packaging ?? 0) + (e.transfersOut ?? 0) + (e.distillation ?? 0)
                         + (bulkByClass[tc]?.line14_removedTaxpaid ?? 0)
                         + (bulkByClass[tc]?.line19_wineSpirits ?? 0)
-                        + getLine30(tc) + (e.bulkEnding ?? 0);
-                    };
+                        + losses + (e.bulkEnding ?? 0);
+                    })();
 
                     // Section B computed values
                     const getBLine7 = (tc: string) => {
@@ -2170,13 +2159,17 @@ export function BatchReconciliation() {
                               <tbody>
                                 {renderWaterfallRow("1", "On hand beginning of period", "openingBulk")}
                                 {renderWaterfallRow("2", "Produced by fermentation", "production")}
+                                {renderWaterfallRow("3", "Received from other classes", "transfersIn")}
                                 {renderComputedRow("4", "Produced by addition of wine spirits", getLine4)}
+                                {renderComputedRow("9", "Inventory gains", getLine9)}
                                 {renderComputedRow("12", "TOTAL (lines 1-11)", getLine12, { bold: true, border: true })}
                                 {renderWaterfallRow("13", "Transferred to bottled wine storage", "packaging")}
                                 {renderFormRow("14", "Removed taxpaid", "line14_removedTaxpaid", bulkByClass)}
+                                {renderWaterfallRow("15", "Transferred to other classes", "transfersOut")}
                                 {renderWaterfallRow("16", "Used for distilling material", "distillation")}
                                 {renderFormRow("19", "Used for addition of wine spirits", "line19_wineSpirits", bulkByClass)}
-                                {renderComputedRow("30", "Losses", getLine30)}
+                                {renderFormRow("29", "Losses", "line29_losses", bulkByClass)}
+                                {renderFormRow("30", "Inventory losses", "line30_inventoryLosses", bulkByClass)}
                                 {renderWaterfallRow("31", "On hand end of period", "bulkEnding", { bold: true, bg: "bg-blue-50" })}
                                 {renderComputedRow("32", "TOTAL (lines 13-31)", getLine32, { bold: true, border: true })}
                               </tbody>
@@ -2241,7 +2234,7 @@ export function BatchReconciliation() {
                                   <tr className="border-b">
                                     <td className="py-1.5 pr-4 text-gray-700">6. Used for fortification</td>
                                     <td className="text-right py-1.5 px-3 tabular-nums">
-                                      {(distOps.brandyUsedInCider ?? 0).toFixed(1)}
+                                      {((getEntry("appleBrandy") as any).transfersOut ?? distOps.brandyUsedInCider ?? 0).toFixed(1)}
                                     </td>
                                   </tr>
                                   <tr className="border-b">

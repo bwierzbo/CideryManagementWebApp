@@ -713,12 +713,12 @@ describe("TTB Parity Regression Tests", () => {
   // Fix #2 (P0-3): Waterfall identity check
   // ------------------------------------------
   describe("Fix #2 (P0-3): Waterfall uses raw losses and aggregate inventory", () => {
-    it("waterfall totals should satisfy identity: opening + production - transfers - sales - losses - distillation ≈ calculatedEnding", async () => {
+    it("waterfall totals should satisfy identity: opening + production + transfersIn - transfersOut + positiveAdj - sales - losses - distillation ≈ calculatedEnding", async () => {
       const result = await getReconciliation();
       const t = result.waterfall.totals;
 
-      const expected = t.opening + t.production - t.transfersOut
-        - t.sales - t.losses - t.distillation;
+      const expected = t.opening + t.production + (t.transfersIn ?? 0) - t.transfersOut
+        + (t.positiveAdj ?? 0) - t.sales - t.losses - t.distillation;
 
       const gap = Math.abs(expected - t.calculatedEnding);
       // Allow tolerance for floating-point arithmetic
@@ -729,8 +729,8 @@ describe("TTB Parity Regression Tests", () => {
       const result = await getReconciliation();
 
       for (const entry of result.waterfall.byTaxClass) {
-        const expected = entry.opening + entry.production - entry.transfersOut
-          - entry.sales - entry.losses - entry.distillation;
+        const expected = entry.opening + entry.production + (entry.transfersIn ?? 0)
+          - entry.transfersOut + (entry.positiveAdj ?? 0) - entry.sales - entry.losses - entry.distillation;
         const gap = Math.abs(expected - entry.calculatedEnding);
 
         expect(gap).toBeLessThan(0.05);

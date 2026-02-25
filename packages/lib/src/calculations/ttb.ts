@@ -239,8 +239,9 @@ export function classifyBatchTaxClass(
     return "hardCider";
   }
 
-  // 3a-ii. Pommeau shortcut: pommeau is always fortified wine (16-21%) by definition.
+  // 3a-ii. Pommeau shortcut: pommeau is fortified wine, typically 16-21% ABV.
   // If ABV is null/missing, default to wine16To21 rather than wineUnder16 (effectiveAbv=0).
+  // If ABV is present, let it flow through the ABV brackets below for proper classification.
   if (abv == null && productType === "pommeau") {
     return "wine16To21";
   }
