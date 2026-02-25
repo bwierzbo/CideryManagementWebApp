@@ -5342,12 +5342,34 @@ export const ttbRouter = router({
         .sort((a, b) => a.year - b.year);
 
       // ============================================
-      // INVENTORY BY TAX CLASS (based on product_type)
-      // For initial reconciliation, use initial_volume of verified batches
-      // For ongoing reconciliation, use current_volume
+      // INVENTORY BY TAX CLASS — SBD-DERIVED (single source of truth)
+      // Uses computeSystemCalculatedOnHand to reconstruct per-batch volume
+      // at reconciliationDate from operations, never relies on LIVE currentVolumeLiters.
+      // This eliminates post-period drift and aggregate-vs-per-batch structural residual.
       // ============================================
 
-      // Build inventory by tax class
+      // Compute SBD per-batch volumes at reconciliationDate
+      const allEligibleBatchesForInventory = await db
+        .select({ id: batches.id, startDate: batches.startDate, productType: batches.productType })
+        .from(batches)
+        .where(
+          and(
+            isNull(batches.deletedAt),
+            sql`(COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded') OR ${batches.isRackingDerivative} IS TRUE OR ${batches.parentBatchId} IS NOT NULL)`,
+            sql`${batches.startDate} <= ${reconciliationDate}::date`,
+          )
+        );
+      const sbdResult = await computeSystemCalculatedOnHand(
+        allEligibleBatchesForInventory.map((b) => b.id),
+        reconciliationDate,
+      );
+
+      // Build per-tax-class bulk inventory from SBD reconstruction (in liters)
+      const sbdProductTypes = new Map<string, string | null>();
+      for (const b of allEligibleBatchesForInventory) sbdProductTypes.set(b.id, b.productType);
+      const sbdByClassLiters = computePerTaxClassBulkInventory(sbdResult.perBatch, batchTaxClassMap, sbdProductTypes);
+
+      // Build inventory by tax class (gallons)
       const inventoryByTaxClass: Record<string, number> = {
         hardCider: 0,
         wineUnder16: 0,
@@ -5359,7 +5381,6 @@ export const ttbRouter = router({
         grapeSpirits: 0,
       };
 
-      // Use current_volume of active batches for inventory by tax class
       let actualBulkGallons = 0;
       let actualPackagedGallons = 0;
       const bulkByTaxClass: Record<string, number> = {
@@ -5371,180 +5392,11 @@ export const ttbRouter = router({
         sparklingWine: 0, carbonatedWine: 0, appleBrandy: 0, grapeSpirits: 0,
       };
       {
-        // Include all eligible batches with volume (matching production/loss scope).
-        // Uses NOT IN ('duplicate','excluded') to match aggregate query filters —
-        // previously this was verified-only, which excluded pending batches' physical
-        // inventory while still counting their production/losses, creating false variance.
-        const bulkBatches = await db
-          .select({
-            id: batches.id,
-            productType: batches.productType,
-            currentVolumeLiters: batches.currentVolumeLiters,
-          })
-          .from(batches)
-          .where(
-            and(
-              isNull(batches.deletedAt),
-              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
-              sql`${batches.startDate} <= ${reconciliationDate}::date`,
-              sql`COALESCE(${batches.currentVolumeLiters}, 0) > 0`,
-              sql`NOT (${batches.batchNumber} LIKE 'LEGACY-%')`
-            )
-          );
-
-        // Rewind bulk volumes to reconciliationDate by computing post-period net changes.
-        // currentVolumeLiters is LIVE (reflects 2026 operations), but the waterfall only counts
-        // activity through reconciliationDate. We add back post-period removals and subtract
-        // post-period additions to get the volume as of reconciliationDate.
-        const bulkBatchIds = bulkBatches.map((b) => b.id);
-        const postPeriodRewind: Record<string, number> = {}; // batchId -> liters to ADD to current
-
-        if (bulkBatchIds.length > 0) {
-          const batchIdList = sql.join(bulkBatchIds.map((id) => sql`${id}`), sql`, `);
-
-          // Post-period transfers OUT (volume that left after reconciliationDate — add back)
-          const postTransfersOut = await db.execute(sql`
-            SELECT source_batch_id as batch_id,
-              COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total_l
-            FROM batch_transfers
-            WHERE source_batch_id IN (${batchIdList})
-              AND deleted_at IS NULL
-              AND transferred_at::date > ${reconciliationDate}::date
-            GROUP BY source_batch_id
-          `);
-          for (const r of postTransfersOut.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
-          }
-
-          // Post-period transfers IN (volume that arrived after reconciliationDate — subtract)
-          const postTransfersIn = await db.execute(sql`
-            SELECT destination_batch_id as batch_id,
-              COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total_l
-            FROM batch_transfers
-            WHERE destination_batch_id IN (${batchIdList})
-              AND deleted_at IS NULL
-              AND transferred_at::date > ${reconciliationDate}::date
-            GROUP BY destination_batch_id
-          `);
-          for (const r of postTransfersIn.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) - Number(r.total_l);
-          }
-
-          // Post-period merges OUT (volume merged out after reconciliationDate — add back)
-          const postMergesOut = await db.execute(sql`
-            SELECT source_batch_id as batch_id,
-              COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total_l
-            FROM batch_merge_history
-            WHERE source_batch_id IN (${batchIdList})
-              AND source_batch_id IS NOT NULL
-              AND deleted_at IS NULL
-              AND merged_at::date > ${reconciliationDate}::date
-            GROUP BY source_batch_id
-          `);
-          for (const r of postMergesOut.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
-          }
-
-          // Post-period merges IN (volume merged in after reconciliationDate — subtract)
-          const postMergesIn = await db.execute(sql`
-            SELECT target_batch_id as batch_id,
-              COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total_l
-            FROM batch_merge_history
-            WHERE target_batch_id IN (${batchIdList})
-              AND deleted_at IS NULL
-              AND merged_at::date > ${reconciliationDate}::date
-            GROUP BY target_batch_id
-          `);
-          for (const r of postMergesIn.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) - Number(r.total_l);
-          }
-
-          // Post-period racking losses (losses after reconciliationDate — add back)
-          const postRackingLosses = await db.execute(sql`
-            SELECT batch_id,
-              COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total_l
-            FROM batch_racking_operations
-            WHERE batch_id IN (${batchIdList})
-              AND deleted_at IS NULL
-              AND racked_at::date > ${reconciliationDate}::date
-            GROUP BY batch_id
-          `);
-          for (const r of postRackingLosses.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
-          }
-
-          // Post-period filter losses (losses after reconciliationDate — add back)
-          const postFilterLosses = await db.execute(sql`
-            SELECT batch_id,
-              COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total_l
-            FROM batch_filter_operations
-            WHERE batch_id IN (${batchIdList})
-              AND deleted_at IS NULL
-              AND filtered_at::date > ${reconciliationDate}::date
-            GROUP BY batch_id
-          `);
-          for (const r of postFilterLosses.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
-          }
-
-          // Post-period bottle runs (volume taken after reconciliationDate — add back)
-          const postBottleRuns = await db.execute(sql`
-            SELECT batch_id,
-              COALESCE(SUM(CAST(volume_taken_liters AS DECIMAL)), 0) as total_l
-            FROM bottle_runs
-            WHERE batch_id IN (${batchIdList})
-              AND voided_at IS NULL
-              AND packaged_at::date > ${reconciliationDate}::date
-            GROUP BY batch_id
-          `);
-          for (const r of postBottleRuns.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
-          }
-
-          // Post-period keg fills (volume taken after reconciliationDate — add back)
-          const postKegFills = await db.execute(sql`
-            SELECT batch_id,
-              COALESCE(SUM(
-                CASE WHEN volume_taken_unit = 'gal' THEN COALESCE(volume_taken::numeric, 0) * 3.78541
-                     ELSE COALESCE(volume_taken::numeric, 0) END
-              ), 0) as total_l
-            FROM keg_fills
-            WHERE batch_id IN (${batchIdList})
-              AND voided_at IS NULL
-              AND deleted_at IS NULL
-              AND filled_at::date > ${reconciliationDate}::date
-            GROUP BY batch_id
-          `);
-          for (const r of postKegFills.rows) {
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
-          }
-
-          // Post-period volume adjustments (add back negative, subtract positive)
-          const postAdjustments = await db.execute(sql`
-            SELECT batch_id,
-              COALESCE(SUM(CAST(adjustment_amount AS DECIMAL)), 0) as total_l
-            FROM batch_volume_adjustments
-            WHERE batch_id IN (${batchIdList})
-              AND deleted_at IS NULL
-              AND adjustment_date::date > ${reconciliationDate}::date
-            GROUP BY batch_id
-          `);
-          for (const r of postAdjustments.rows) {
-            // Adjustments are signed (positive = added, negative = removed)
-            // To rewind, we subtract what was added post-period
-            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) - Number(r.total_l);
-          }
-        }
-
-        for (const row of bulkBatches) {
-          const taxClass = getTaxClassFromMap(batchTaxClassMap, row.id, row.productType);
-          if (!taxClass) continue; // Skip juice (non-taxable)
-          const liveLiters = Number(row.currentVolumeLiters || 0);
-          const rewindLiters = postPeriodRewind[row.id] || 0;
-          const asOfLiters = Math.max(0, liveLiters + rewindLiters);
-          const volumeGallons = litersToWineGallons(asOfLiters);
-          inventoryByTaxClass[taxClass] += volumeGallons;
-          bulkByTaxClass[taxClass] += volumeGallons;
+        // Populate bulk inventory from SBD-derived per-tax-class values
+        for (const [taxClass, liters] of Object.entries(sbdByClassLiters)) {
+          const volumeGallons = litersToWineGallons(liters);
+          inventoryByTaxClass[taxClass] = (inventoryByTaxClass[taxClass] || 0) + volumeGallons;
+          bulkByTaxClass[taxClass] = (bulkByTaxClass[taxClass] || 0) + volumeGallons;
           actualBulkGallons += volumeGallons;
         }
 
@@ -5706,7 +5558,10 @@ export const ttbRouter = router({
         grapeSpirits: 0,
       };
 
-      // Racking losses by tax class — scoped to eligible batches
+      // Racking losses by tax class — includes ALL non-deleted batches
+      // Must be symmetric with cross-class transfers and distributions (which also
+      // include duplicate/excluded batches). Excluding losses from dup/excluded batches
+      // while counting their transfers/sales creates an asymmetric leak in the waterfall.
       // Excludes Historical Record rackings (matching aggregate query filter)
       const rackingLossesByBatch = await db
         .select({
@@ -5720,7 +5575,6 @@ export const ttbRouter = router({
           and(
             isNull(batchRackingOperations.deletedAt),
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchRackingOperations.rackedAt}::date > ${openingDate}::date`,
             sql`${batchRackingOperations.rackedAt}::date <= ${reconciliationDate}::date`,
             sql`(${batchRackingOperations.notes} IS NULL OR ${batchRackingOperations.notes} NOT LIKE '%Historical Record%')`
@@ -5734,7 +5588,7 @@ export const ttbRouter = router({
         lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
-      // Filter losses by tax class — scoped to eligible batches
+      // Filter losses by tax class — includes ALL non-deleted batches (symmetric with transfers/sales)
       const filterLossesByBatch = await db
         .select({
           batchId: batches.id,
@@ -5747,7 +5601,6 @@ export const ttbRouter = router({
           and(
             isNull(batchFilterOperations.deletedAt),
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchFilterOperations.filteredAt}::date > ${openingDate}::date`,
             sql`${batchFilterOperations.filteredAt}::date <= ${reconciliationDate}::date`
           )
@@ -5760,7 +5613,7 @@ export const ttbRouter = router({
         lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
-      // Bottling losses by tax class — scoped to eligible batches
+      // Bottling losses by tax class — includes ALL non-deleted batches (symmetric with transfers/sales)
       const bottlingLossesByBatch = await db
         .select({
           batchId: batches.id,
@@ -5773,7 +5626,6 @@ export const ttbRouter = router({
           and(
             isNull(bottleRuns.voidedAt),
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${bottleRuns.packagedAt}::date > ${openingDate}::date`,
             sql`${bottleRuns.packagedAt}::date <= ${reconciliationDate}::date`
           )
@@ -5797,7 +5649,6 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batches.startDate}::date > ${openingDate}::date`,
             sql`${batches.startDate}::date <= ${reconciliationDate}::date`
           )
@@ -5810,7 +5661,7 @@ export const ttbRouter = router({
         lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
-      // Transfer operation losses by source batch tax class — scoped to eligible batches
+      // Transfer operation losses by source batch tax class — includes ALL non-deleted batches
       const transferOpLossesByBatch = await db
         .select({
           batchId: batches.id,
@@ -5823,7 +5674,6 @@ export const ttbRouter = router({
           and(
             isNull(batchTransfers.deletedAt),
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
           )
@@ -5836,7 +5686,7 @@ export const ttbRouter = router({
         lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
-      // Volume adjustments (losses) by tax class — scoped to eligible batches
+      // Volume adjustments (losses) by tax class — includes ALL non-deleted batches
       const volumeAdjustmentsByBatch = await db
         .select({
           batchId: batches.id,
@@ -5849,7 +5699,6 @@ export const ttbRouter = router({
           and(
             isNull(batchVolumeAdjustments.deletedAt),
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchVolumeAdjustments.adjustmentDate}::date > ${openingDate}::date`,
             sql`${batchVolumeAdjustments.adjustmentDate}::date <= ${reconciliationDate}::date`,
             sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) < 0` // Only negative (loss) adjustments
@@ -5863,7 +5712,7 @@ export const ttbRouter = router({
         lossesByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
-      // Positive volume adjustments (inventory gains) by tax class — scoped to eligible batches
+      // Positive volume adjustments (inventory gains) by tax class — includes ALL non-deleted batches
       const positiveAdjByTaxClass: Record<string, number> = {
         hardCider: 0, wineUnder16: 0, wine16To21: 0, wine21To24: 0,
         sparklingWine: 0, carbonatedWine: 0, appleBrandy: 0, grapeSpirits: 0,
@@ -5880,7 +5729,6 @@ export const ttbRouter = router({
           and(
             isNull(batchVolumeAdjustments.deletedAt),
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             sql`${batchVolumeAdjustments.adjustmentDate}::date > ${openingDate}::date`,
             sql`${batchVolumeAdjustments.adjustmentDate}::date <= ${reconciliationDate}::date`,
             sql`CAST(${batchVolumeAdjustments.adjustmentAmount} AS DECIMAL) > 0` // Only positive (gain) adjustments
@@ -5894,7 +5742,7 @@ export const ttbRouter = router({
         positiveAdjByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
       }
 
-      // Keg fill losses by tax class — scoped to eligible batches
+      // Keg fill losses by tax class — includes ALL non-deleted batches (symmetric with transfers/sales)
       const kegFillLossesByBatch = await db
         .select({
           batchId: batches.id,
@@ -5908,7 +5756,6 @@ export const ttbRouter = router({
             isNull(kegFills.voidedAt),
             isNull(kegFills.deletedAt),
             isNull(batches.deletedAt),
-            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             isNotNull(kegFills.loss),
             sql`${kegFills.filledAt}::date > ${openingDate}::date`,
             sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
@@ -6908,34 +6755,18 @@ export const ttbRouter = router({
       // Primary variance: use live systemOnHand for current year display
       const variance = ttbCalculatedEnding - systemOnHand;
 
-      // Compute system-calculated on-hand using date-bounded batch volumes
-      // This reconstructs what each batch's volume would have been at reconciliationDate
-      // Include all reconciliation-eligible batches (verified + pending/passing),
-      // excluding only duplicates and excluded batches.
-      // This avoids circular dependency: system total is needed to determine
-      // whether batches CAN be verified, so it can't require verification first.
-      const allEligibleBatches = await db
-        .select({ id: batches.id, startDate: batches.startDate, productType: batches.productType })
-        .from(batches)
-        .where(
-          and(
-            isNull(batches.deletedAt),
-            sql`(COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded') OR ${batches.isRackingDerivative} IS TRUE OR ${batches.parentBatchId} IS NOT NULL)`,
-            sql`${batches.startDate} <= ${reconciliationDate}::date`,
-          )
-        );
-      const systemCalcResult = await computeSystemCalculatedOnHand(
-        allEligibleBatches.map((b) => b.id),
-        reconciliationDate,
-      );
+      // Re-use SBD results computed earlier for inventory (avoids duplicate DB queries).
+      // allEligibleBatchesForInventory, sbdResult, sbdProductTypes, sbdByClassLiters
+      // were computed in the INVENTORY BY TAX CLASS section above.
+      const allEligibleBatches = allEligibleBatchesForInventory;
+      const systemCalcResult = sbdResult;
       const systemReconstructedOnHand = systemCalcResult.total;
       const sbd = systemCalcResult.breakdown;
 
       // Compute brandy portion of SBD to exclude from wine reconciliation
       // TTB Form Part I is wine-only; brandy is tracked in Part III.
-      const reconProductTypes = new Map<string, string | null>();
-      for (const b of allEligibleBatches) reconProductTypes.set(b.id, b.productType);
-      const reconByClass = computePerTaxClassBulkInventory(systemCalcResult.perBatch, batchTaxClassMap, reconProductTypes);
+      const reconProductTypes = sbdProductTypes;
+      const reconByClass = sbdByClassLiters;
       const brandyBulkGallonsInRecon = litersToWineGallons(reconByClass["appleBrandy"] || 0);
       const wineOnlyReconstructedOnHand = systemReconstructedOnHand - brandyBulkGallonsInRecon;
 
