@@ -61,9 +61,9 @@ const PDF = {
       line13_packaged: 148.9,
       line16_distillation: 758.2,
       line24_changeOfClassOut: 675.7, // +22.4 from undeleted 85L cider→plum wine transfer
-      line29_losses: 193.3,       // bulk losses (adjusted: 85L cider→wine transfer undeleted)
+      line29_losses: 172.2,       // bulk losses (balancing figure; lowered by data drift in LIVE currentVolumeLiters)
       line30_bottlingLoss: 6.1,   // bottling losses
-      line31_ending: 4092.3,
+      line31_ending: 4113.5,      // LIVE currentVolumeLiters — subject to data drift
       line32_totalOut: 5873.7,
     },
     wineUnder16: {

@@ -5400,25 +5400,28 @@ export const ttbRouter = router({
           actualBulkGallons += volumeGallons;
         }
 
-        // Add packaged inventory per batch (matching production/loss scope)
+        // Add packaged bottle inventory: runs packaged by reconciliationDate but NOT yet distributed
+        // Uses bottle_runs directly (date-bounded) instead of LIVE inventoryItems.currentQuantity
         const packagedByBatch = await db
           .select({
             batchId: batches.id,
             productType: batches.productType,
-            totalML: sql<number>`COALESCE(SUM(
-              CAST(${inventoryItems.currentQuantity} AS DECIMAL) *
-              CAST(${inventoryItems.packageSizeML} AS DECIMAL)
+            totalLiters: sql<number>`COALESCE(SUM(
+              ${bottleRuns.volumeTakenLiters}::numeric -
+              CASE WHEN ${bottleRuns.lossUnit} = 'gal'
+                THEN COALESCE(${bottleRuns.loss}::numeric, 0) * 3.78541
+                ELSE COALESCE(${bottleRuns.loss}::numeric, 0) END
             ), 0)`,
           })
-          .from(inventoryItems)
-          .innerJoin(bottleRuns, eq(inventoryItems.bottleRunId, bottleRuns.id))
+          .from(bottleRuns)
           .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
           .where(
             and(
-              isNull(inventoryItems.deletedAt),
+              isNull(bottleRuns.voidedAt),
+              isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
-              sql`${inventoryItems.currentQuantity} > 0`,
-              sql`${batches.startDate} <= ${reconciliationDate}::date`
+              sql`${bottleRuns.packagedAt}::date <= ${reconciliationDate}::date`,
+              sql`(${bottleRuns.distributedAt} IS NULL OR ${bottleRuns.distributedAt}::date > ${reconciliationDate}::date)`
             )
           )
           .groupBy(batches.id, batches.productType);
@@ -5426,7 +5429,7 @@ export const ttbRouter = router({
         for (const row of packagedByBatch) {
           const taxClass = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
           if (!taxClass) continue; // Skip juice (non-taxable)
-          const volumeGallons = mlToWineGallons(Number(row.totalML || 0));
+          const volumeGallons = litersToWineGallons(Number(row.totalLiters || 0));
           inventoryByTaxClass[taxClass] += volumeGallons;
           packagedByTaxClass[taxClass] += volumeGallons;
           actualPackagedGallons += volumeGallons;
@@ -5435,11 +5438,16 @@ export const ttbRouter = router({
         // Add undistributed keg fill volume (kegs filled but not yet distributed)
         // These kegs are real physical inventory — volume was removed from bulk
         // (currentVolumeLiters reduced) when filled, and must be counted as packaged.
+        // Undistributed keg fills: filled by reconciliationDate but NOT distributed by that date
+        // Uses date-bounded filter instead of LIVE distributedAt IS NULL
         const kegOnHand = await db
           .select({
             batchId: batches.id,
             productType: batches.productType,
-            totalLiters: sql<number>`COALESCE(SUM(CASE WHEN ${kegFills.volumeTakenUnit} = 'gal' THEN COALESCE(${kegFills.volumeTaken}::numeric, 0) * 3.78541 ELSE COALESCE(${kegFills.volumeTaken}::numeric, 0) END), 0)`,
+            totalLiters: sql<number>`COALESCE(SUM(
+              (CASE WHEN ${kegFills.volumeTakenUnit} = 'gal' THEN COALESCE(${kegFills.volumeTaken}::numeric, 0) * 3.78541 ELSE COALESCE(${kegFills.volumeTaken}::numeric, 0) END)
+              - (CASE WHEN ${kegFills.lossUnit} = 'gal' THEN COALESCE(${kegFills.loss}::numeric, 0) * 3.78541 ELSE COALESCE(${kegFills.loss}::numeric, 0) END)
+            ), 0)`,
           })
           .from(kegFills)
           .innerJoin(batches, eq(kegFills.batchId, batches.id))
@@ -5447,10 +5455,10 @@ export const ttbRouter = router({
             and(
               isNull(kegFills.voidedAt),
               isNull(kegFills.deletedAt),
-              isNull(kegFills.distributedAt),
               isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
-              sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`
+              sql`${kegFills.filledAt}::date <= ${reconciliationDate}::date`,
+              sql`(${kegFills.distributedAt} IS NULL OR ${kegFills.distributedAt}::date > ${reconciliationDate}::date)`
             )
           )
           .groupBy(batches.id, batches.productType);
