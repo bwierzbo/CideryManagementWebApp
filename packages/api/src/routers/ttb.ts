@@ -5392,10 +5392,157 @@ export const ttbRouter = router({
             )
           );
 
+        // Rewind bulk volumes to reconciliationDate by computing post-period net changes.
+        // currentVolumeLiters is LIVE (reflects 2026 operations), but the waterfall only counts
+        // activity through reconciliationDate. We add back post-period removals and subtract
+        // post-period additions to get the volume as of reconciliationDate.
+        const bulkBatchIds = bulkBatches.map((b) => b.id);
+        const postPeriodRewind: Record<string, number> = {}; // batchId -> liters to ADD to current
+
+        if (bulkBatchIds.length > 0) {
+          const batchIdList = sql.join(bulkBatchIds.map((id) => sql`${id}`), sql`, `);
+
+          // Post-period transfers OUT (volume that left after reconciliationDate — add back)
+          const postTransfersOut = await db.execute(sql`
+            SELECT source_batch_id as batch_id,
+              COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total_l
+            FROM batch_transfers
+            WHERE source_batch_id IN (${batchIdList})
+              AND deleted_at IS NULL
+              AND transferred_at::date > ${reconciliationDate}::date
+            GROUP BY source_batch_id
+          `);
+          for (const r of postTransfersOut.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
+          }
+
+          // Post-period transfers IN (volume that arrived after reconciliationDate — subtract)
+          const postTransfersIn = await db.execute(sql`
+            SELECT destination_batch_id as batch_id,
+              COALESCE(SUM(CAST(volume_transferred AS DECIMAL)), 0) as total_l
+            FROM batch_transfers
+            WHERE destination_batch_id IN (${batchIdList})
+              AND deleted_at IS NULL
+              AND transferred_at::date > ${reconciliationDate}::date
+            GROUP BY destination_batch_id
+          `);
+          for (const r of postTransfersIn.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) - Number(r.total_l);
+          }
+
+          // Post-period merges OUT (volume merged out after reconciliationDate — add back)
+          const postMergesOut = await db.execute(sql`
+            SELECT source_batch_id as batch_id,
+              COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total_l
+            FROM batch_merge_history
+            WHERE source_batch_id IN (${batchIdList})
+              AND source_batch_id IS NOT NULL
+              AND deleted_at IS NULL
+              AND merged_at::date > ${reconciliationDate}::date
+            GROUP BY source_batch_id
+          `);
+          for (const r of postMergesOut.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
+          }
+
+          // Post-period merges IN (volume merged in after reconciliationDate — subtract)
+          const postMergesIn = await db.execute(sql`
+            SELECT target_batch_id as batch_id,
+              COALESCE(SUM(CAST(volume_added AS DECIMAL)), 0) as total_l
+            FROM batch_merge_history
+            WHERE target_batch_id IN (${batchIdList})
+              AND deleted_at IS NULL
+              AND merged_at::date > ${reconciliationDate}::date
+            GROUP BY target_batch_id
+          `);
+          for (const r of postMergesIn.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) - Number(r.total_l);
+          }
+
+          // Post-period racking losses (losses after reconciliationDate — add back)
+          const postRackingLosses = await db.execute(sql`
+            SELECT batch_id,
+              COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total_l
+            FROM batch_racking_operations
+            WHERE batch_id IN (${batchIdList})
+              AND deleted_at IS NULL
+              AND racked_at::date > ${reconciliationDate}::date
+            GROUP BY batch_id
+          `);
+          for (const r of postRackingLosses.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
+          }
+
+          // Post-period filter losses (losses after reconciliationDate — add back)
+          const postFilterLosses = await db.execute(sql`
+            SELECT batch_id,
+              COALESCE(SUM(CAST(volume_loss AS DECIMAL)), 0) as total_l
+            FROM batch_filter_operations
+            WHERE batch_id IN (${batchIdList})
+              AND deleted_at IS NULL
+              AND filtered_at::date > ${reconciliationDate}::date
+            GROUP BY batch_id
+          `);
+          for (const r of postFilterLosses.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
+          }
+
+          // Post-period bottle runs (volume taken after reconciliationDate — add back)
+          const postBottleRuns = await db.execute(sql`
+            SELECT batch_id,
+              COALESCE(SUM(CAST(volume_taken_liters AS DECIMAL)), 0) as total_l
+            FROM bottle_runs
+            WHERE batch_id IN (${batchIdList})
+              AND voided_at IS NULL
+              AND packaged_at::date > ${reconciliationDate}::date
+            GROUP BY batch_id
+          `);
+          for (const r of postBottleRuns.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
+          }
+
+          // Post-period keg fills (volume taken after reconciliationDate — add back)
+          const postKegFills = await db.execute(sql`
+            SELECT batch_id,
+              COALESCE(SUM(
+                CASE WHEN volume_taken_unit = 'gal' THEN COALESCE(volume_taken::numeric, 0) * 3.78541
+                     ELSE COALESCE(volume_taken::numeric, 0) END
+              ), 0) as total_l
+            FROM keg_fills
+            WHERE batch_id IN (${batchIdList})
+              AND voided_at IS NULL
+              AND deleted_at IS NULL
+              AND filled_at::date > ${reconciliationDate}::date
+            GROUP BY batch_id
+          `);
+          for (const r of postKegFills.rows) {
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) + Number(r.total_l);
+          }
+
+          // Post-period volume adjustments (add back negative, subtract positive)
+          const postAdjustments = await db.execute(sql`
+            SELECT batch_id,
+              COALESCE(SUM(CAST(adjustment_amount AS DECIMAL)), 0) as total_l
+            FROM batch_volume_adjustments
+            WHERE batch_id IN (${batchIdList})
+              AND deleted_at IS NULL
+              AND adjustment_date::date > ${reconciliationDate}::date
+            GROUP BY batch_id
+          `);
+          for (const r of postAdjustments.rows) {
+            // Adjustments are signed (positive = added, negative = removed)
+            // To rewind, we subtract what was added post-period
+            postPeriodRewind[r.batch_id as string] = (postPeriodRewind[r.batch_id as string] || 0) - Number(r.total_l);
+          }
+        }
+
         for (const row of bulkBatches) {
           const taxClass = getTaxClassFromMap(batchTaxClassMap, row.id, row.productType);
           if (!taxClass) continue; // Skip juice (non-taxable)
-          const volumeGallons = litersToWineGallons(Number(row.currentVolumeLiters || 0));
+          const liveLiters = Number(row.currentVolumeLiters || 0);
+          const rewindLiters = postPeriodRewind[row.id] || 0;
+          const asOfLiters = Math.max(0, liveLiters + rewindLiters);
+          const volumeGallons = litersToWineGallons(asOfLiters);
           inventoryByTaxClass[taxClass] += volumeGallons;
           bulkByTaxClass[taxClass] += volumeGallons;
           actualBulkGallons += volumeGallons;
