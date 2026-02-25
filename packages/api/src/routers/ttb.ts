@@ -4825,12 +4825,13 @@ export const ttbRouter = router({
       // TTB only tracks alcoholic beverages, not juice that stayed as juice
       const juiceOnlyBatches = await db
         .select({
-          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolume} AS DECIMAL)), 0)`,
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)`,
         })
         .from(batches)
         .where(
           and(
-            isNull(batches.deletedAt),
+            // Note: do NOT filter by deletedAt here — deleted juice batches (e.g. Melrose)
+            // still represent real juice diversions whose press run volume is in pressRunLiters
             sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
             eq(batches.productType, "juice"),
             sql`${batches.startDate}::date > ${openingDate}::date`,
@@ -4851,7 +4852,7 @@ export const ttbRouter = router({
         .where(
           and(
             isNull(batchTransfers.deletedAt),
-            isNull(batches.deletedAt),
+            // Note: do NOT filter by batches.deletedAt — deleted juice batches still diverted juice
             eq(batches.productType, "juice"),
             sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
             sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
@@ -4859,7 +4860,93 @@ export const ttbRouter = router({
         );
 
       const transfersIntoJuiceLiters = Number(transfersIntoJuiceBatches[0]?.totalLiters || 0);
-      const totalProductionLiters = pressRunLiters + juicePurchaseLiters - juiceOnlyLiters - transfersIntoJuiceLiters;
+
+      // 2e. EXCLUDE: Juice that went into pommeau (never fermented as cider)
+      // Same logic as generateForm512017: ABV-derived juice from pommeau batches composed at creation,
+      // plus non-brandy transfers into pommeau batches created in the period.
+      const BRANDY_ABV = 0.70;
+      const pommeauWithInitialDataRecon = await db
+        .select({
+          initialLiters: sql<number>`CAST(${batches.initialVolumeLiters} AS DECIMAL)`,
+          abv: sql<number>`COALESCE(${batches.actualAbv}, ${batches.estimatedAbv}, 0)`,
+        })
+        .from(batches)
+        .where(
+          and(
+            isNull(batches.deletedAt),
+            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
+            eq(batches.productType, "pommeau"),
+            sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
+            sql`${batches.startDate}::date > ${openingDate}::date`,
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`
+          )
+        );
+
+      let juiceToPommeauLiters = 0;
+      let brandyToPommeauLitersRecon = 0;
+      for (const row of pommeauWithInitialDataRecon) {
+        const initial = Number(row.initialLiters) || 0;
+        const abv = (Number(row.abv) || 0) / 100;
+        if (initial > 0 && abv > 0 && abv < BRANDY_ABV) {
+          juiceToPommeauLiters += initial * (1 - abv / BRANDY_ABV);
+          brandyToPommeauLitersRecon += initial * (abv / BRANDY_ABV);
+        }
+      }
+
+      // Non-brandy transfers into pommeau batches created in the period
+      const nonBrandyToPommeauRecon = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batchTransfers.volumeTransferred} AS DECIMAL)), 0)`,
+        })
+        .from(batchTransfers)
+        .innerJoin(
+          sql`${batches} AS dest_batch`,
+          sql`${batchTransfers.destinationBatchId} = dest_batch.id`
+        )
+        .innerJoin(
+          sql`${batches} AS source_batch`,
+          sql`${batchTransfers.sourceBatchId} = source_batch.id`
+        )
+        .where(
+          and(
+            isNull(batchTransfers.deletedAt),
+            sql`dest_batch.product_type = 'pommeau'`,
+            sql`source_batch.product_type NOT IN ('pommeau', 'brandy')`,
+            sql`dest_batch.start_date::date > ${openingDate}::date`,
+            sql`dest_batch.start_date::date <= ${reconciliationDate}::date`,
+            sql`${batchTransfers.transferredAt}::date > ${openingDate}::date`,
+            sql`${batchTransfers.transferredAt}::date <= ${reconciliationDate}::date`
+          )
+        );
+      juiceToPommeauLiters += Number(nonBrandyToPommeauRecon[0]?.totalLiters || 0);
+
+      // 2f. Wine production: batches fermented directly as wine (plum, quince),
+      // not created by transfer from cider. These are currently counted in pressRunLiters
+      // but should be moved from HC production to wine production.
+      const wineProductionData = await db
+        .select({
+          totalLiters: sql<number>`COALESCE(SUM(CAST(${batches.initialVolumeLiters} AS DECIMAL)), 0)`,
+        })
+        .from(batches)
+        .where(
+          and(
+            isNull(batches.deletedAt),
+            sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
+            eq(batches.productType, "wine"),
+            sql`CAST(${batches.initialVolumeLiters} AS DECIMAL) > 0`,
+            sql`${batches.startDate}::date > ${openingDate}::date`,
+            sql`${batches.startDate}::date <= ${reconciliationDate}::date`,
+            // Exclude transfer-derived wine batches (e.g., plum wine that received cider)
+            // Only count batches that were directly fermented as wine
+            or(
+              isNull(batches.parentBatchId),
+              eq(batches.isRackingDerivative, false)
+            )
+          )
+        );
+      const wineProductionLiters = Number(wineProductionData[0]?.totalLiters || 0);
+
+      const totalProductionLiters = pressRunLiters + juicePurchaseLiters - juiceOnlyLiters - transfersIntoJuiceLiters - juiceToPommeauLiters - wineProductionLiters;
 
       // 3. REMOVALS: Calculate all removals DURING THE PERIOD (after opening, on or before reconciliation)
       // Use NOT IN ('duplicate', 'excluded') to match production queries — all active batches' losses count
@@ -5757,9 +5844,10 @@ export const ttbRouter = router({
         );
       const transfersIntoPommeauGallons = litersToWineGallons(Number(transfersIntoPommeauData[0]?.totalLiters || 0));
 
+      const wineProductionGallons = litersToWineGallons(wineProductionLiters);
       const productionByTaxClass: Record<string, number> = {
-        hardCider: totalProductionGallons, // All juice production goes to cider
-        wineUnder16: 0,
+        hardCider: totalProductionGallons, // Juice production minus juice-to-pommeau and wine
+        wineUnder16: wineProductionGallons, // Plum wine, quince wine, etc.
         wine16To21: 0, // Pommeau "production" handled by transfersIn (cider+brandy→pommeau)
         wine21To24: 0,
         sparklingWine: 0,
@@ -6346,6 +6434,21 @@ export const ttbRouter = router({
           transfersOutByTaxClass[sourceClass] += volumeGallons;
           transfersInByTaxClass[destClass] += volumeGallons;
         }
+      }
+
+      // Supplement: pommeau batches composed at creation (e.g. Salish #1)
+      // These have soft-deleted transfers — ABV derivation captures brandy + juice volumes.
+      // Brandy portion: appleBrandy → wine16To21 cross-class transfer
+      const abvBrandySupplementGallons = litersToWineGallons(brandyToPommeauLitersRecon);
+      transfersOutByTaxClass["appleBrandy"] = (transfersOutByTaxClass["appleBrandy"] || 0) + abvBrandySupplementGallons;
+      transfersInByTaxClass["wine16To21"] = (transfersInByTaxClass["wine16To21"] || 0) + abvBrandySupplementGallons;
+      // Juice portion: added as wine16To21 production (matches form Line 4 treatment —
+      // pommeau is "produced by addition of wine spirits" from juice + brandy)
+      // juiceToPommeauLiters includes both ABV-derived juice (composed) and nonBrandy transfers.
+      // The ABV-derived juice portion for composed batches:
+      const composedJuiceLiters = juiceToPommeauLiters - Number(nonBrandyToPommeauRecon[0]?.totalLiters || 0);
+      if (composedJuiceLiters > 0) {
+        productionByTaxClass["wine16To21"] = (productionByTaxClass["wine16To21"] || 0) + litersToWineGallons(composedJuiceLiters);
       }
 
       // Build waterfall data per tax class
