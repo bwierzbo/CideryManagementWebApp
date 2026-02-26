@@ -9113,6 +9113,7 @@ export const batchRouter = router({
           "spillage",
           "theft",
           "sediment",
+          "donation",
           "correction_up",
           "correction_down",
           "other",

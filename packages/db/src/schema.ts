@@ -78,6 +78,7 @@ export const batchVolumeAdjustmentTypeEnum = pgEnum(
     "spillage", // Accidental spillage
     "theft", // Suspected theft
     "sediment", // Lees/sediment loss from racking or settling
+    "donation", // Volume donated or given away
     "correction_up", // Undercount correction (increases volume)
     "correction_down", // Overcount correction (decreases volume)
     "other", // Other reason (requires notes)
