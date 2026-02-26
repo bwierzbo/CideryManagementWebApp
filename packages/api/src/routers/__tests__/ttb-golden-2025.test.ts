@@ -61,9 +61,9 @@ const PDF = {
       line13_packaged: 148.9,
       line16_distillation: 758.2,
       line24_changeOfClassOut: 675.7, // +22.4 from undeleted 85L cider→plum wine transfer
-      line29_losses: 172.2,       // bulk losses (balancing figure; lowered by data drift in LIVE currentVolumeLiters)
+      line29_losses: 193.3,       // bulk losses (balancing figure; reflects data fixes: deleted bad sediment adjustments + zeroed Perry #1 transfer loss)
       line30_bottlingLoss: 6.1,   // bottling losses
-      line31_ending: 4113.5,      // LIVE currentVolumeLiters — subject to data drift
+      line31_ending: 4092.3,      // LIVE currentVolumeLiters — after data fixes
       line32_totalOut: 5873.7,
     },
     wineUnder16: {
@@ -412,7 +412,8 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
         (w.production ?? 0) +
         (w.transfersIn ?? 0) -
         (w.transfersOut ?? 0) +
-        (w.positiveAdj ?? 0) -
+        (w.positiveAdj ?? 0) +
+        (w.reconAdj ?? 0) -
         (w.losses ?? 0) -
         (w.distillation ?? 0) -
         (w.sales ?? 0);
@@ -421,7 +422,7 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
       const diff = Math.abs(expectedEnding - calculatedEnding);
 
       console.log(`[GOLDEN] Waterfall: opening=${w.opening}, production=${w.production}, ` +
-        `transfers=${w.transfersIn}-${w.transfersOut}, adj=${w.positiveAdj}, ` +
+        `transfers=${w.transfersIn}-${w.transfersOut}, adj=${w.positiveAdj}, reconAdj=${w.reconAdj}, ` +
         `losses=${w.losses}, distill=${w.distillation}, sales=${w.sales}, ` +
         `calcEnding=${calculatedEnding}, derived=${expectedEnding.toFixed(1)}, diff=${diff.toFixed(2)}`);
 
@@ -438,7 +439,8 @@ describe("TTB Golden 2025 — Reconciliation Summary", () => {
           (tc.production ?? 0) +
           (tc.transfersIn ?? 0) -
           (tc.transfersOut ?? 0) +
-          (tc.positiveAdj ?? 0) -
+          (tc.positiveAdj ?? 0) +
+          (tc.reconAdj ?? 0) -
           (tc.losses ?? 0) -
           (tc.distillation ?? 0) -
           (tc.sales ?? 0);
