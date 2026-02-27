@@ -3563,12 +3563,21 @@ export const ttbRouter = router({
           }
         }
 
-        // Recompute total column as sum of balanced per-column values
+        // Recompute ALL total column lines as sums of balanced per-class values.
+        // This ensures Total column = sum of per-class columns for every line,
+        // so Line 12 = sum of Lines 1-11 on the Total column.
         const allBulkCols = Object.values(bulkWinesByTaxClass);
-        bulkWines.line9_inventoryGains = roundGallons(allBulkCols.reduce((s, c) => s + c.line9_inventoryGains, 0));
-        bulkWines.line12_total = roundGallons(allBulkCols.reduce((s, c) => s + c.line12_total, 0));
-        bulkWines.line30_inventoryLosses = roundGallons(allBulkCols.reduce((s, c) => s + c.line30_inventoryLosses, 0));
-        bulkWines.line32_total = roundGallons(allBulkCols.reduce((s, c) => s + c.line32_total, 0));
+        for (const key of Object.keys(bulkWines) as (keyof BulkWinesSection)[]) {
+          const val = (bulkWines as any)[key];
+          if (typeof val === "number") {
+            (bulkWines as any)[key] = roundGallons(
+              allBulkCols.reduce((s, c) => s + ((c as any)[key] ?? 0), 0)
+            );
+          }
+        }
+        // Update write-in descriptions based on recomputed totals
+        bulkWines.line10_writeInDesc = bulkWines.line10_writeIn > 0 ? "CHANGE OF CLASS IN" : undefined;
+        bulkWines.line24_writeIn1Desc = bulkWines.line24_writeIn1 > 0 ? "CHANGE OF CLASS OUT" : undefined;
 
         // Derive reconciliation FROM the balanced form sections
         // This ensures the reconciliation always matches what's shown on the form

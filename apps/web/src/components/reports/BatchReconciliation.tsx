@@ -1977,37 +1977,7 @@ export function BatchReconciliation() {
                     const bulkByClass: Record<string, any> = fd?.bulkWinesByTaxClass || {};
                     const bottledByClass: Record<string, any> = fd?.bottledWinesByTaxClass || {};
 
-                    // Helper: render a row with per-column values from waterfall
-                    const renderWaterfallRow = (
-                      lineNum: string,
-                      desc: string,
-                      dataKey: string,
-                      opts?: { bold?: boolean; bg?: string; border?: boolean; negate?: boolean }
-                    ) => {
-                      let total = 0;
-                      return (
-                        <tr key={lineNum + dataKey} className={`${opts?.border ? "border-t-2 border-gray-300" : "border-b"} ${opts?.bg || ""}`}>
-                          <td className={`py-1.5 pr-4 text-gray-700 whitespace-nowrap ${opts?.bold ? "font-semibold" : ""}`}>
-                            {lineNum}. {desc}
-                          </td>
-                          {activeColumns.map((tc) => {
-                            const val = (getEntry(tc) as any)[dataKey] ?? 0;
-                            const display = opts?.negate ? -val : val;
-                            total += val;
-                            return (
-                              <td key={tc} className={`text-right py-1.5 px-3 tabular-nums ${opts?.bold ? "font-semibold" : ""}`}>
-                                {display.toFixed(1)}
-                              </td>
-                            );
-                          })}
-                          <td className={`text-right py-1.5 pl-3 tabular-nums border-l ${opts?.bold ? "font-bold" : "font-semibold"}`}>
-                            {(opts?.negate ? -total : total).toFixed(1)}
-                          </td>
-                        </tr>
-                      );
-                    };
-
-                    // Helper: render a row with per-column values from form data (bulkWinesByTaxClass)
+                    // Helper: render a row with per-column values from form data (bulkWinesByTaxClass / bottledWinesByTaxClass)
                     const renderFormRow = (
                       lineNum: string,
                       desc: string,
@@ -2024,35 +1994,6 @@ export function BatchReconciliation() {
                           {activeColumns.map((tc) => {
                             const section = source[tc];
                             const val = section?.[fieldName] ?? 0;
-                            total += val;
-                            return (
-                              <td key={tc} className={`text-right py-1.5 px-3 tabular-nums ${opts?.bold ? "font-semibold" : ""}`}>
-                                {val.toFixed(1)}
-                              </td>
-                            );
-                          })}
-                          <td className={`text-right py-1.5 pl-3 tabular-nums border-l ${opts?.bold ? "font-bold" : "font-semibold"}`}>
-                            {total.toFixed(1)}
-                          </td>
-                        </tr>
-                      );
-                    };
-
-                    // Helper: render a computed row (values from a callback per column)
-                    const renderComputedRow = (
-                      lineNum: string,
-                      desc: string,
-                      computeFn: (tc: string) => number,
-                      opts?: { bold?: boolean; bg?: string; border?: boolean }
-                    ) => {
-                      let total = 0;
-                      return (
-                        <tr key={lineNum + desc} className={`${opts?.border ? "border-t-2 border-gray-300" : "border-b"} ${opts?.bg || ""}`}>
-                          <td className={`py-1.5 pr-4 text-gray-700 whitespace-nowrap ${opts?.bold ? "font-semibold" : ""}`}>
-                            {lineNum}. {desc}
-                          </td>
-                          {activeColumns.map((tc) => {
-                            const val = computeFn(tc);
                             total += val;
                             return (
                               <td key={tc} className={`text-right py-1.5 px-3 tabular-nums ${opts?.bold ? "font-semibold" : ""}`}>
@@ -2085,32 +2026,8 @@ export function BatchReconciliation() {
                       </tr>
                     );
 
-                    // Section A computed values — use form's balanced values
-                    const getLine4 = (tc: string) => bulkByClass[tc]?.line4_wineSpirits ?? 0;
-                    const getLine9 = (tc: string) => bulkByClass[tc]?.line9_inventoryGains ?? 0;
-                    const getLine12 = (tc: string) => bulkByClass[tc]?.line12_total ?? (() => {
-                      const e = getEntry(tc) as any;
-                      return (e.openingBulk ?? 0) + (e.production ?? 0) + (e.transfersIn ?? 0)
-                        + getLine4(tc) + getLine9(tc);
-                    })();
-                    const getLine32 = (tc: string) => bulkByClass[tc]?.line32_total ?? (() => {
-                      const e = getEntry(tc) as any;
-                      const losses = (bulkByClass[tc]?.line29_losses ?? 0) + (bulkByClass[tc]?.line30_inventoryLosses ?? 0);
-                      return (e.packaging ?? 0) + (e.transfersOut ?? 0) + (e.distillation ?? 0)
-                        + (bulkByClass[tc]?.line14_removedTaxpaid ?? 0)
-                        + (bulkByClass[tc]?.line19_wineSpirits ?? 0)
-                        + losses + (e.bulkEnding ?? 0);
-                    })();
-
-                    // Section B computed values
-                    const getBLine7 = (tc: string) => {
-                      const e = getEntry(tc) as any;
-                      return (e.openingPackaged ?? 0) + (e.packaging ?? 0);
-                    };
-                    const getBLine21 = (tc: string) => {
-                      const e = getEntry(tc) as any;
-                      return (e.sales ?? 0) + (e.packagedEnding ?? 0);
-                    };
+                    // All Section A & B values come from generateForm512017 (single source of truth).
+                    // This ensures Line 12 = sum of Lines 1-11 and Line 32 = sum of Lines 13-31.
 
                     // Part III (Spirits) — use distillery operations from form data
                     const distOps = fd?.distilleryOperations;
@@ -2133,21 +2050,21 @@ export function BatchReconciliation() {
                             <table className="w-full text-sm">
                               <thead>{headerRow}</thead>
                               <tbody>
-                                {renderWaterfallRow("1", "On hand beginning of period", "openingBulk")}
-                                {renderWaterfallRow("2", "Produced by fermentation", "production")}
-                                {renderWaterfallRow("3", "Received from other classes", "transfersIn")}
-                                {renderComputedRow("4", "Produced by addition of wine spirits", getLine4)}
-                                {renderComputedRow("9", "Inventory gains", getLine9)}
-                                {renderComputedRow("12", "TOTAL (lines 1-11)", getLine12, { bold: true, border: true })}
-                                {renderWaterfallRow("13", "Transferred to bottled wine storage", "packaging")}
+                                {renderFormRow("1", "On hand beginning of period", "line1_onHandBeginning", bulkByClass)}
+                                {renderFormRow("2", "Produced by fermentation", "line2_produced", bulkByClass)}
+                                {renderFormRow("4", "Produced by addition of wine spirits", "line4_wineSpirits", bulkByClass)}
+                                {renderFormRow("9", "Inventory gains", "line9_inventoryGains", bulkByClass)}
+                                {renderFormRow("10", "Received from other classes", "line10_writeIn", bulkByClass)}
+                                {renderFormRow("12", "TOTAL (lines 1-11)", "line12_total", bulkByClass, { bold: true, border: true })}
+                                {renderFormRow("13", "Transferred to bottled wine storage", "line13_bottled", bulkByClass)}
                                 {renderFormRow("14", "Removed taxpaid", "line14_removedTaxpaid", bulkByClass)}
-                                {renderWaterfallRow("15", "Transferred to other classes", "transfersOut")}
-                                {renderWaterfallRow("16", "Used for distilling material", "distillation")}
+                                {renderFormRow("16", "Used for distilling material", "line16_distillingMaterial", bulkByClass)}
                                 {renderFormRow("19", "Used for addition of wine spirits", "line19_wineSpirits", bulkByClass)}
+                                {renderFormRow("24", "Transferred to other classes", "line24_writeIn1", bulkByClass)}
                                 {renderFormRow("29", "Losses", "line29_losses", bulkByClass)}
                                 {renderFormRow("30", "Inventory losses", "line30_inventoryLosses", bulkByClass)}
-                                {renderWaterfallRow("31", "On hand end of period", "bulkEnding", { bold: true, bg: "bg-blue-50" })}
-                                {renderComputedRow("32", "TOTAL (lines 13-31)", getLine32, { bold: true, border: true })}
+                                {renderFormRow("31", "On hand end of period", "line31_onHandEnd", bulkByClass, { bold: true, bg: "bg-blue-50" })}
+                                {renderFormRow("32", "TOTAL (lines 13-31)", "line32_total", bulkByClass, { bold: true, border: true })}
                               </tbody>
                             </table>
                           </div>
@@ -2162,12 +2079,12 @@ export function BatchReconciliation() {
                             <table className="w-full text-sm">
                               <thead>{headerRow}</thead>
                               <tbody>
-                                {renderWaterfallRow("1", "On hand beginning of period", "openingPackaged")}
-                                {renderWaterfallRow("2", "Bottled/kegged from bulk", "packaging")}
-                                {renderComputedRow("7", "TOTAL (lines 1-6)", getBLine7, { bold: true, border: true })}
-                                {renderWaterfallRow("8", "Removed taxpaid", "sales")}
-                                {renderWaterfallRow("20", "On hand end of period", "packagedEnding", { bold: true, bg: "bg-blue-50" })}
-                                {renderComputedRow("21", "TOTAL (lines 8-20)", getBLine21, { bold: true, border: true })}
+                                {renderFormRow("1", "On hand beginning of period", "line1_onHandBeginning", bottledByClass)}
+                                {renderFormRow("2", "Bottled/kegged from bulk", "line2_bottled", bottledByClass)}
+                                {renderFormRow("7", "TOTAL (lines 1-6)", "line7_total", bottledByClass, { bold: true, border: true })}
+                                {renderFormRow("8", "Removed taxpaid", "line8_removedTaxpaid", bottledByClass)}
+                                {renderFormRow("20", "On hand end of period", "line20_onHandEnd", bottledByClass, { bold: true, bg: "bg-blue-50" })}
+                                {renderFormRow("21", "TOTAL (lines 8-20)", "line21_total", bottledByClass, { bold: true, border: true })}
                               </tbody>
                             </table>
                           </div>
