@@ -61,8 +61,7 @@ const PDF = {
       line13_packaged: 148.9,
       line16_distillation: 758.2,
       line24_changeOfClassOut: 675.7, // +22.4 from undeleted 85L cider→plum wine transfer
-      line29_losses: 193.3,       // bulk losses (balancing figure; reflects data fixes: deleted bad sediment adjustments + zeroed Perry #1 transfer loss)
-      line30_bottlingLoss: 6.1,   // bottling losses
+      line29_losses: 199.4,       // all losses: bulk (193.3) + bottling (6.1). Line 30 reserved for physical inventory shortages only.
       line31_ending: 4092.3,      // LIVE currentVolumeLiters — after data fixes
       line32_totalOut: 5873.7,
     },
@@ -73,8 +72,7 @@ const PDF = {
       line12_totalIn: 731.4,      // adjusted for undeleted transfer
       line13_packaged: 628.2,
       line24_changeOfClassOut: 5.0,
-      line29_losses: 76.3,        // bulk losses (adjusted for undeleted transfer)
-      line30_bottlingLoss: 4.0,   // bottling losses
+      line29_losses: 80.3,        // all losses: bulk (76.3) + bottling (4.0). Line 30 reserved for physical inventory shortages only.
       line31_ending: 17.9,
       line32_totalOut: 731.4,     // adjusted for undeleted transfer
     },
@@ -83,8 +81,7 @@ const PDF = {
       line4_wineSpirits: 119.0,
       line12_totalIn: 179.0,
       line13_packaged: 55.2,
-      line29_losses: 1.3,         // bulk losses only
-      line30_bottlingLoss: 0.2,   // bottling losses
+      line29_losses: 1.5,         // all losses: bulk (1.3) + bottling (0.2). Line 30 reserved for physical inventory shortages only.
       line31_ending: 122.3,
       line32_totalOut: 179.0,
     },

@@ -3270,9 +3270,9 @@ export const ttbRouter = router({
         const ciderLine12 = roundGallons(
           ciderBeginning + ciderProducedGallons + ciderChangeIn + ciderGains
         );
-        // Line 29 = balancing figure for HC column
+        // Line 29 = all losses (bulk + bottling). Line 30 reserved for physical inventory shortages only.
         const ciderLosses = roundGallons(
-          ciderLine12 - ciderPacked - ciderDistillation - ciderChangeOut - ciderBottlingLoss - endingCiderBulkGallons
+          ciderLine12 - ciderPacked - ciderDistillation - ciderChangeOut - endingCiderBulkGallons
         );
         const ciderLine32 = ciderLine12;
         const ciderBulkWines: BulkWinesSection = {
@@ -3303,7 +3303,7 @@ export const ttbRouter = router({
           line24_writeIn1Desc: ciderChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
           line29_losses: ciderLosses,
-          line30_inventoryLosses: ciderBottlingLoss,
+          line30_inventoryLosses: 0,
           line31_onHandEnd: endingCiderBulkGallons,
           line32_total: ciderLine32,
         };
@@ -3318,9 +3318,9 @@ export const ttbRouter = router({
         const wineUnder16Packed = roundGallons(wineUnder16Bottled + wineUnder16KegFilled - wineUnder16BottlingLoss);
         const wineUnder16RecordedLosses = roundGallons((lossesByTaxClass["wineUnder16"] || 0) - (clampedByTaxClass["wineUnder16"] || 0));
         const wineUnder16Line12 = roundGallons(beginningWineUnder16BulkGallons + fruitWineProducedGallons + wineUnder16ChangeIn + wineUnder16Gains);
-        // Line 29 = balancing figure for W<16 column
+        // Line 29 = all losses (bulk + bottling). Line 30 reserved for physical inventory shortages only.
         const wineUnder16Losses = roundGallons(
-          wineUnder16Line12 - wineUnder16Packed - wineUnder16ChangeOut - wineUnder16BottlingLoss - endingWineUnder16BulkGallons
+          wineUnder16Line12 - wineUnder16Packed - wineUnder16ChangeOut - endingWineUnder16BulkGallons
         );
         const wineUnder16Line32 = wineUnder16Line12;
         const wineUnder16BulkWines: BulkWinesSection = {
@@ -3351,7 +3351,7 @@ export const ttbRouter = router({
           line24_writeIn1Desc: wineUnder16ChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
           line29_losses: wineUnder16Losses,
-          line30_inventoryLosses: wineUnder16BottlingLoss,
+          line30_inventoryLosses: 0,
           line31_onHandEnd: endingWineUnder16BulkGallons,
           line32_total: wineUnder16Line32,
         };
@@ -3370,9 +3370,9 @@ export const ttbRouter = router({
         const pommeauDistillation = roundGallons(distillationByTaxClass["wine16To21"] || 0);
         const pommeauRecordedLosses = roundGallons((lossesByTaxClass["wine16To21"] || 0) - (clampedByTaxClass["wine16To21"] || 0));
         const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauProducedGallons + pommeauChangeIn + pommeauGains);
-        // Line 29 = balancing figure for W16-21 column
+        // Line 29 = all losses (bulk + bottling). Line 30 reserved for physical inventory shortages only.
         const pommeauLosses = roundGallons(
-          pommeauLine12 - pommeauPacked - pommeauDistillation - pommeauChangeOut - pommeauBottlingLoss - endingPommeauBulkGallons
+          pommeauLine12 - pommeauPacked - pommeauDistillation - pommeauChangeOut - endingPommeauBulkGallons
         );
         const pommeauLine32 = pommeauLine12;
         const pommeauBulkWines: BulkWinesSection = {
@@ -3403,7 +3403,7 @@ export const ttbRouter = router({
           line24_writeIn1Desc: pommeauChangeOut > 0 ? "CHANGE OF CLASS OUT" : undefined,
           line25_writeIn2: 0,
           line29_losses: pommeauLosses,
-          line30_inventoryLosses: pommeauBottlingLoss,
+          line30_inventoryLosses: 0,
           line31_onHandEnd: endingPommeauBulkGallons,
           line32_total: pommeauLine32,
         };
@@ -3549,7 +3549,7 @@ export const ttbRouter = router({
         bottledWines.line21_total = roundGallons(balancedBottledCols.reduce((s, c) => s + c.line21_total, 0));
 
         // Balance Bulk Section (Part I-A) — each tax class column balanced independently
-        // TTB requires line 12 = line 32; any gap goes to inventory gains (line 9) or losses (line 30)
+        // TTB requires line 12 = line 32; any gap goes to inventory gains (line 9) or losses (line 29)
         for (const [taxClass, section] of Object.entries(bulkWinesByTaxClass)) {
           const gap = roundGallons(section.line12_total - section.line32_total);
           if (Math.abs(gap) >= 0.1) {
@@ -3557,7 +3557,7 @@ export const ttbRouter = router({
               section.line9_inventoryGains = roundGallons(section.line9_inventoryGains + Math.abs(gap));
               section.line12_total = roundGallons(section.line12_total + Math.abs(gap));
             } else {
-              section.line30_inventoryLosses = roundGallons(section.line30_inventoryLosses + gap);
+              section.line29_losses = roundGallons(section.line29_losses + gap);
               section.line32_total = roundGallons(section.line32_total + gap);
             }
           }

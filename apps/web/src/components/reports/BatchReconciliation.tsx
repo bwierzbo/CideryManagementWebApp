@@ -1997,12 +1997,12 @@ export function BatchReconciliation() {
                             total += val;
                             return (
                               <td key={tc} className={`text-right py-1.5 px-3 tabular-nums ${opts?.bold ? "font-semibold" : ""}`}>
-                                {val.toFixed(1)}
+                                {Math.round(val)}
                               </td>
                             );
                           })}
                           <td className={`text-right py-1.5 pl-3 tabular-nums border-l ${opts?.bold ? "font-bold" : "font-semibold"}`}>
-                            {total.toFixed(1)}
+                            {Math.round(total)}
                           </td>
                         </tr>
                       );
