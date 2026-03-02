@@ -571,6 +571,14 @@ interface BatchTTBContribution {
     pressTransfer: number;
     adjustments: number;
   };
+  packagingBreakdown: {
+    bottlingTaken: number;
+    bottlingLoss: number;
+    keggingTaken: number;
+    keggingLoss: number;
+  };
+  crossClassIn: Array<{ fromTaxClass: string; volume: number }>;
+  crossClassOut: Array<{ toTaxClass: string; volume: number }>;
   // Double-counting checks
   currentVolumeLitersStored: number;
   reconstructedEndingLiters: number;
@@ -610,6 +618,38 @@ interface BatchReconciliationResult {
     pressTransfer: number;
     adjustments: number;
   };
+  crossClassByTaxClass: Record<string, { in: number; out: number }>;
+  byTaxClass: Record<string, {
+    opening: number;
+    production: number;
+    positiveAdj: number;
+    packaging: number;
+    losses: number;
+    sales: number;
+    distillation: number;
+    ending: number;
+    transfersIn: number;
+    transfersOut: number;
+    mergesIn: number;
+    mergesOut: number;
+    lossBreakdown: {
+      racking: number;
+      filter: number;
+      bottling: number;
+      kegging: number;
+      transfer: number;
+      pressTransfer: number;
+      adjustments: number;
+    };
+    packagingBreakdown: {
+      bottlingTaken: number;
+      bottlingLoss: number;
+      keggingTaken: number;
+      keggingLoss: number;
+    };
+    crossClassIn: number;
+    crossClassOut: number;
+  }>;
   batchesWithIdentityIssues: number;
   batchesWithDrift: number;
   batchesWithInitialAnomaly: number;
@@ -627,12 +667,15 @@ interface BatchReconciliationResult {
 async function computeReconciliationFromBatches(
   startDate: string,
   endDate: string,
+  batchTaxClassMapInput?: Map<string, TTBTaxClass | null>,
 ): Promise<BatchReconciliationResult> {
   const emptyResult: BatchReconciliationResult = {
     batches: [],
     totals: { opening: 0, production: 0, positiveAdj: 0, packaging: 0, losses: 0, sales: 0, distillation: 0, ending: 0 },
     identityCheck: 0,
     lossBreakdown: { racking: 0, filter: 0, bottling: 0, kegging: 0, transfer: 0, pressTransfer: 0, adjustments: 0 },
+    crossClassByTaxClass: {},
+    byTaxClass: {},
     batchesWithIdentityIssues: 0,
     batchesWithDrift: 0,
     batchesWithInitialAnomaly: 0,
@@ -708,6 +751,9 @@ async function computeReconciliationFromBatches(
   for (const info of batchInfoMap.values()) {
     if (info.parentBatchId) batchesWithChildren.add(info.parentBatchId);
   }
+
+  // Resolve tax class map: use provided map or build one
+  const taxClassMap = batchTaxClassMapInput ?? (await buildBatchTaxClassMap()).map;
 
   const idList = sql.join(batchIds.map((id) => sql`${id}`), sql`, `);
 
@@ -1342,6 +1388,38 @@ async function computeReconciliationFromBatches(
       adjustments: litersToWineGallons(periodNegativeAdjL),
     };
 
+    const packagingBreakdown = {
+      bottlingTaken: litersToWineGallons(periodBottlingTakenL),
+      bottlingLoss: litersToWineGallons(periodBottlingLossL),
+      keggingTaken: litersToWineGallons(periodKeggingTakenL),
+      keggingLoss: litersToWineGallons(periodKeggingLossL),
+    };
+
+    // Cross-class transfer detection: compare tax class of this batch vs transfer partner
+    const thisTaxClass = getTaxClassFromMap(taxClassMap, batchId, info.productType);
+    const crossClassIn: Array<{ fromTaxClass: string; volume: number }> = [];
+    const crossClassOut: Array<{ toTaxClass: string; volume: number }> = [];
+
+    // Check transfers IN during period
+    for (const r of tInDuring) {
+      const sourceId = r.source_batch_id as string;
+      const sourceInfo = batchInfoMap.get(sourceId);
+      const sourceTaxClass = getTaxClassFromMap(taxClassMap, sourceId, sourceInfo?.productType ?? null);
+      if (sourceTaxClass && thisTaxClass && sourceTaxClass !== thisTaxClass) {
+        crossClassIn.push({ fromTaxClass: sourceTaxClass, volume: litersToWineGallons(num(r.volume_transferred)) });
+      }
+    }
+
+    // Check transfers OUT during period
+    for (const r of tOutDuring) {
+      const destId = r.destination_batch_id as string;
+      const destInfo = batchInfoMap.get(destId);
+      const destTaxClass = getTaxClassFromMap(taxClassMap, destId, destInfo?.productType ?? null);
+      if (destTaxClass && thisTaxClass && destTaxClass !== thisTaxClass) {
+        crossClassOut.push({ toTaxClass: destTaxClass, volume: litersToWineGallons(num(r.volume_transferred)) });
+      }
+    }
+
     contributions.push({
       batchId,
       batchName: info.name,
@@ -1375,6 +1453,14 @@ async function computeReconciliationFromBatches(
         pressTransfer: parseFloat(lossBreakdown.pressTransfer.toFixed(3)),
         adjustments: parseFloat(lossBreakdown.adjustments.toFixed(3)),
       },
+      packagingBreakdown: {
+        bottlingTaken: parseFloat(packagingBreakdown.bottlingTaken.toFixed(3)),
+        bottlingLoss: parseFloat(packagingBreakdown.bottlingLoss.toFixed(3)),
+        keggingTaken: parseFloat(packagingBreakdown.keggingTaken.toFixed(3)),
+        keggingLoss: parseFloat(packagingBreakdown.keggingLoss.toFixed(3)),
+      },
+      crossClassIn: crossClassIn.map(c => ({ fromTaxClass: c.fromTaxClass, volume: parseFloat(c.volume.toFixed(3)) })),
+      crossClassOut: crossClassOut.map(c => ({ toTaxClass: c.toTaxClass, volume: parseFloat(c.volume.toFixed(3)) })),
       currentVolumeLitersStored: parseFloat(info.currentVolumeLiters.toFixed(3)),
       reconstructedEndingLiters: parseFloat(reconstructedEndingLiters.toFixed(3)),
       driftLiters: parseFloat(driftLiters.toFixed(3)),
@@ -1446,6 +1532,96 @@ async function computeReconciliationFromBatches(
   // Global identity = sum of per-batch identity checks (non-zero only from clamping)
   const globalIdentity = parseFloat(contributions.reduce((s, c) => s + c.identityCheck, 0).toFixed(1));
 
+  // Aggregate by tax class
+  type TaxClassAgg = BatchReconciliationResult["byTaxClass"][string];
+  const byTaxClass: Record<string, TaxClassAgg> = {};
+  const crossClassByTaxClass: Record<string, { in: number; out: number }> = {};
+
+  for (const b of contributions) {
+    const tc = getTaxClassFromMap(taxClassMap, b.batchId, b.productType);
+    if (!tc) continue;
+
+    if (!byTaxClass[tc]) {
+      byTaxClass[tc] = {
+        opening: 0, production: 0, positiveAdj: 0, packaging: 0,
+        losses: 0, sales: 0, distillation: 0, ending: 0,
+        transfersIn: 0, transfersOut: 0, mergesIn: 0, mergesOut: 0,
+        lossBreakdown: { racking: 0, filter: 0, bottling: 0, kegging: 0, transfer: 0, pressTransfer: 0, adjustments: 0 },
+        packagingBreakdown: { bottlingTaken: 0, bottlingLoss: 0, keggingTaken: 0, keggingLoss: 0 },
+        crossClassIn: 0, crossClassOut: 0,
+      };
+    }
+    if (!crossClassByTaxClass[tc]) {
+      crossClassByTaxClass[tc] = { in: 0, out: 0 };
+    }
+
+    const a = byTaxClass[tc];
+    a.opening += b.opening;
+    a.production += b.production;
+    a.positiveAdj += b.positiveAdj;
+    // Net packaging = product volume (taken - loss)
+    a.packaging += (b.packagingBreakdown.bottlingTaken - b.packagingBreakdown.bottlingLoss)
+      + (b.packagingBreakdown.keggingTaken - b.packagingBreakdown.keggingLoss);
+    a.losses += b.losses + b.transferLoss + (b.lossBreakdown?.pressTransfer || 0);
+    a.sales += b.sales;
+    a.distillation += b.distillation;
+    a.ending += b.ending;
+    a.transfersIn += b.transfersIn;
+    a.transfersOut += b.transfersOut;
+    a.mergesIn += b.mergesIn;
+    a.mergesOut += b.mergesOut;
+
+    a.lossBreakdown.racking += b.lossBreakdown.racking;
+    a.lossBreakdown.filter += b.lossBreakdown.filter;
+    a.lossBreakdown.bottling += b.lossBreakdown.bottling;
+    a.lossBreakdown.kegging += b.lossBreakdown.kegging;
+    a.lossBreakdown.transfer += b.lossBreakdown.transfer;
+    a.lossBreakdown.pressTransfer += b.lossBreakdown.pressTransfer;
+    a.lossBreakdown.adjustments += b.lossBreakdown.adjustments;
+
+    a.packagingBreakdown.bottlingTaken += b.packagingBreakdown.bottlingTaken;
+    a.packagingBreakdown.bottlingLoss += b.packagingBreakdown.bottlingLoss;
+    a.packagingBreakdown.keggingTaken += b.packagingBreakdown.keggingTaken;
+    a.packagingBreakdown.keggingLoss += b.packagingBreakdown.keggingLoss;
+
+    // Cross-class aggregation
+    const ccIn = b.crossClassIn.reduce((s, c) => s + c.volume, 0);
+    const ccOut = b.crossClassOut.reduce((s, c) => s + c.volume, 0);
+    a.crossClassIn += ccIn;
+    a.crossClassOut += ccOut;
+    crossClassByTaxClass[tc].in += ccIn;
+    crossClassByTaxClass[tc].out += ccOut;
+  }
+
+  // Round byTaxClass values
+  for (const tc of Object.keys(byTaxClass)) {
+    const a = byTaxClass[tc];
+    a.opening = parseFloat(a.opening.toFixed(1));
+    a.production = parseFloat(a.production.toFixed(1));
+    a.positiveAdj = parseFloat(a.positiveAdj.toFixed(1));
+    a.packaging = parseFloat(a.packaging.toFixed(1));
+    a.losses = parseFloat(a.losses.toFixed(1));
+    a.sales = parseFloat(a.sales.toFixed(1));
+    a.distillation = parseFloat(a.distillation.toFixed(1));
+    a.ending = parseFloat(a.ending.toFixed(1));
+    a.transfersIn = parseFloat(a.transfersIn.toFixed(1));
+    a.transfersOut = parseFloat(a.transfersOut.toFixed(1));
+    a.mergesIn = parseFloat(a.mergesIn.toFixed(1));
+    a.mergesOut = parseFloat(a.mergesOut.toFixed(1));
+    a.crossClassIn = parseFloat(a.crossClassIn.toFixed(1));
+    a.crossClassOut = parseFloat(a.crossClassOut.toFixed(1));
+    for (const k of Object.keys(a.lossBreakdown) as (keyof typeof a.lossBreakdown)[]) {
+      a.lossBreakdown[k] = parseFloat(a.lossBreakdown[k].toFixed(1));
+    }
+    for (const k of Object.keys(a.packagingBreakdown) as (keyof typeof a.packagingBreakdown)[]) {
+      a.packagingBreakdown[k] = parseFloat(a.packagingBreakdown[k].toFixed(1));
+    }
+  }
+  for (const tc of Object.keys(crossClassByTaxClass)) {
+    crossClassByTaxClass[tc].in = parseFloat(crossClassByTaxClass[tc].in.toFixed(1));
+    crossClassByTaxClass[tc].out = parseFloat(crossClassByTaxClass[tc].out.toFixed(1));
+  }
+
   return {
     batches: contributions,
     totals: roundedTotals,
@@ -1459,6 +1635,8 @@ async function computeReconciliationFromBatches(
       pressTransfer: parseFloat(aggLoss.pressTransfer.toFixed(1)),
       adjustments: parseFloat(aggLoss.adjustments.toFixed(1)),
     },
+    crossClassByTaxClass,
+    byTaxClass,
     batchesWithIdentityIssues,
     batchesWithDrift,
     batchesWithInitialAnomaly,
@@ -3636,6 +3814,7 @@ export const ttbRouter = router({
         // brandyBatchIds, brandyUsedInCiderGallons, brandyTransfers computed earlier (before reconciliation)
 
         const distilleryOperations: DistilleryOperations = {
+          brandyOpening,
           ciderSentToDsp: ciderSentToDspGallons,
           ciderSentShipments,
           brandyReceived: brandyReceivedGallons,
@@ -6513,7 +6692,7 @@ export const ttbRouter = router({
       // BATCH-DERIVED RECONCILIATION (single source of truth)
       // Computed before waterfall so SBD-derived per-tax-class values can replace aggregates.
       // ============================================
-      const batchRecon = await computeReconciliationFromBatches(batchReconStartDate, reconciliationDate);
+      const batchRecon = await computeReconciliationFromBatches(batchReconStartDate, reconciliationDate, batchTaxClassMap);
 
       // Aggregate batchRecon.batches by tax class for SBD-derived waterfall values.
       // This replaces the aggregate SQL queries (productionByTaxClass, lossesByTaxClass, etc.)
@@ -6549,34 +6728,39 @@ export const ttbRouter = router({
         tc.mergesOut += b.mergesOut;
       }
 
+      // Use Phase 1 byTaxClass aggregation from computeReconciliationFromBatches
+      // for consistent physical inventory (eliminates reconAdj gap between SBD impls)
+      const batchReconByTaxClass = batchRecon.byTaxClass;
+
       for (const key of waterfallTaxClasses) {
-        const opening = waterfallOpening[key] || 0;
         const sbdTc = sbdWaterfallByTaxClass[key];
-        // All values SBD-derived from per-batch reconstruction — ensures waterfall identity
-        // and physical inventory use the same data source for structural 0 variance.
+        const reconTc = batchReconByTaxClass[key];
+        // ALL waterfall values are SBD-derived from per-batch reconstruction.
+        // Physical inventory also uses SBD ending + packaged, ensuring reconAdj ≈ 0.
+        const opening = sbdTc?.opening || 0;
         const production = sbdTc?.production || 0;
-        // Cross-class transfers: use aggregate query which correctly filters sourceClass !== destClass.
-        // SBD per-batch transfers include same-class transfers that don't cancel when orphan sources
-        // (deleted/excluded batches) are missing from the reconciliation set, inflating totals.
-        const transfersIn = transfersInByTaxClass[key] || 0;
-        const transfersOut = transfersOutByTaxClass[key] || 0;
-        const packaging = 0; // Note: packaging doesn't remove from TTB - bulk becomes packaged but stays in inventory
+        // Transfers + merges: when summed by tax class, same-class flows cancel
+        // (batch A's tOut = batch B's tIn). Only cross-class flows and orphan
+        // residual from deleted/excluded batches remain in the net.
+        const transfersIn = (sbdTc?.transfersIn || 0) + (sbdTc?.mergesIn || 0);
+        const transfersOut = (sbdTc?.transfersOut || 0) + (sbdTc?.mergesOut || 0);
         const losses = sbdTc?.losses || 0;
         const positiveAdj = sbdTc?.positiveAdj || 0;
         const distillation = sbdTc?.distillation || 0;
-        // Physical = SBD bulk + undistributed packaged (from inventoryByTaxClass, same
-        // source used for systemOnHand). reconAdj absorbs any discrepancy with formula.
-        const physical = inventoryByTaxClass[key] || 0;
 
         // SBD-derived distributions (customer sales)
         const actualSales = sbdTc?.sales || 0;
 
-        // Reconciliation adjustment: absorbs ALL structural discrepancies between the
-        // waterfall formula and physical inventory. Includes:
-        // 1. Opening delta (configured TTB opening vs SBD-reconstructed opening)
-        // 2. Transfer imbalance (orphan transfers from deleted/excluded source batches)
-        // 3. Any per-batch rounding residual
-        // This is standard accounting practice: known opening + known activity + adjustment = physical.
+        // SBD-derived packaging (net product volume transferred from bulk to packaged)
+        const sbdPackaging = reconTc?.packaging || 0;
+
+        // Physical inventory = SBD bulk ending + SBD-scoped packaged inventory
+        // Using the same SBD source as the formula ensures reconAdj ≈ 0.
+        const sbdBulkEnding = sbdTc?.ending || 0;
+        const sbdPackagedEnding = sbdPackaging - actualSales;
+        const physical = sbdBulkEnding + Math.max(0, sbdPackagedEnding);
+
+        // Formula: opening + inflows - outflows = ending (total = bulk + packaged)
         const formulaWithoutAdj = opening + production + transfersIn - transfersOut
           + positiveAdj - losses - distillation - actualSales;
         const reconAdj = physical - formulaWithoutAdj;
@@ -6584,21 +6768,20 @@ export const ttbRouter = router({
         // TTB Calculated Ending: universal identity that accounts for all volume flows
         const calculatedEnding = formulaWithoutAdj + reconAdj; // = physical by construction
 
-        // Variance = 0 by construction (reconAdj absorbs all discrepancies)
+        // Variance = 0 by construction (reconAdj absorbs any orphan residual)
         const variance = calculatedEnding - physical;
 
         // Include tax classes with any activity (including negative ending from losses/sales)
         const hasActivity = opening !== 0 || production > 0 || transfersIn > 0 || physical > 0 ||
           losses > 0 || actualSales > 0 || distillation > 0 || calculatedEnding !== 0;
         if (hasActivity) {
-          const openBulk = waterfallOpeningBulk[key] || 0;
-          const openPkg = waterfallOpeningPackaged[key] || 0;
+          const openBulk = sbdTc?.opening || 0;
+          const openPkg = 0; // All opening inventory is bulk (no packaged opening)
           const pkg = packagingByTaxClass[key] || 0;
-          // Section A ending: bulk inventory after all bulk operations
-          const bulkEnding = openBulk + production + transfersIn - pkg - distillation
-            - losses - transfersOut + positiveAdj + reconAdj;
+          // Section A ending: SBD bulk ending
+          const bulkEnding = sbdBulkEnding;
           // Section B ending: packaged inventory after packaging and sales
-          const packagedEnding = openPkg + pkg - actualSales;
+          const packagedEnding = Math.max(0, sbdPackagedEnding);
           waterfallData.push({
             taxClass: key,
             label: waterfallLabels[key] || key,

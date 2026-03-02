@@ -503,6 +503,8 @@ export interface OtherRemovals {
  * Distillery operations tracking for cider/brandy separation
  */
 export interface DistilleryOperations {
+  /** Spirits on hand beginning of period in wine gallons */
+  brandyOpening: number;
   /** Cider sent to distillery (DSP) in wine gallons */
   ciderSentToDsp: number;
   /** Number of shipments to DSP */

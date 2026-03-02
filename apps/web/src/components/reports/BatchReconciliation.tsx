@@ -322,7 +322,7 @@ function ExpandableReconciliationRow({
             <span className="text-xs text-gray-500">{batch.batchNumber}</span>
             {hasChildren && !expanded && (
               <span className="text-xs text-gray-400 mt-0.5">
-                ({batch.children.length} transfer-derived batch{batch.children.length !== 1 ? "es" : ""})
+                ({batch.children.length} nested batch{batch.children.length !== 1 ? "es" : ""})
               </span>
             )}
           </div>
@@ -524,7 +524,7 @@ function ExpandableReconciliationRow({
         <TableRow key={child.id} className="bg-muted/30">
           <TableCell></TableCell>
           <TableCell>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2" style={{ paddingLeft: `${((child.depth || 1) - 1) * 16}px` }}>
               <CornerDownRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
               <div className="flex flex-col">
                 <Link
@@ -1953,8 +1953,12 @@ export function BatchReconciliation() {
                       return <div className="text-center py-4 text-gray-500">Loading TTB summary...</div>;
                     }
 
-                    // Build column order: (f) Hard Cider first (main product), then (b)-(e), then (a) Total
-                    const allEntries: any[] = waterfall.byTaxClass;
+                    // Form 5120.17 data from generateForm512017
+                    const fd = (formData512017 as any)?.formData;
+                    const bulkByClass: Record<string, any> = fd?.bulkWinesByTaxClass || {};
+                    const bottledByClass: Record<string, any> = fd?.bottledWinesByTaxClass || {};
+
+                    // Build column order: (f) Hard Cider first (main product), then (b)-(e)
                     // Official TTB column letters and labels
                     const ttbColumns: Record<string, { letter: string; label: string }> = {
                       hardCider: { letter: "(f)", label: "Hard Cider" },
@@ -1967,15 +1971,8 @@ export function BatchReconciliation() {
                     // Filter to columns with data, in official order
                     const columnOrder = ["hardCider", "wineUnder16", "wine16To21", "wine21To24", "carbonatedWine", "sparklingWine"];
                     const activeColumns = columnOrder.filter((tc) =>
-                      allEntries.some((e: any) => e.taxClass === tc)
+                      tc in bulkByClass
                     );
-                    const getEntry = (taxClass: string) =>
-                      allEntries.find((e: any) => e.taxClass === taxClass) || {};
-
-                    // Form 5120.17 data from generateForm512017
-                    const fd = (formData512017 as any)?.formData;
-                    const bulkByClass: Record<string, any> = fd?.bulkWinesByTaxClass || {};
-                    const bottledByClass: Record<string, any> = fd?.bottledWinesByTaxClass || {};
 
                     // Helper: render a row with per-column values from form data (bulkWinesByTaxClass / bottledWinesByTaxClass)
                     const renderFormRow = (
@@ -2031,8 +2028,7 @@ export function BatchReconciliation() {
 
                     // Part III (Spirits) — use distillery operations from form data
                     const distOps = fd?.distilleryOperations;
-                    const spiritsOpening = fd?.beginningInventory;
-                    const spiritsEnding = fd?.endingInventory;
+                    const brandyInventory = fd?.ciderBrandyInventory;
 
                     // Part IV (Materials) — from form data
                     const materials = fd?.materials;
@@ -2108,7 +2104,7 @@ export function BatchReconciliation() {
                                   <tr className="border-b">
                                     <td className="py-1.5 pr-4 text-gray-700">1. On hand beginning of period</td>
                                     <td className="text-right py-1.5 px-3 tabular-nums">
-                                      {((getEntry("appleBrandy") as any).openingBulk ?? 0).toFixed(1)}
+                                      {(distOps.brandyOpening ?? 0).toFixed(1)}
                                     </td>
                                   </tr>
                                   <tr className="border-b">
@@ -2120,26 +2116,25 @@ export function BatchReconciliation() {
                                   <tr className="border-b border-t-2 border-gray-300">
                                     <td className="py-1.5 pr-4 text-gray-700 font-semibold">4. Total</td>
                                     <td className="text-right py-1.5 px-3 tabular-nums font-semibold">
-                                      {(((getEntry("appleBrandy") as any).openingBulk ?? 0)
-                                        + (distOps.brandyReceived ?? 0)).toFixed(1)}
+                                      {((distOps.brandyOpening ?? 0) + (distOps.brandyReceived ?? 0)).toFixed(1)}
                                     </td>
                                   </tr>
                                   <tr className="border-b">
                                     <td className="py-1.5 pr-4 text-gray-700">6. Used for fortification</td>
                                     <td className="text-right py-1.5 px-3 tabular-nums">
-                                      {((getEntry("appleBrandy") as any).transfersOut ?? distOps.brandyUsedInCider ?? 0).toFixed(1)}
+                                      {(distOps.brandyUsedInCider ?? 0).toFixed(1)}
                                     </td>
                                   </tr>
                                   <tr className="border-b">
                                     <td className="py-1.5 pr-4 text-gray-700">9. Losses</td>
                                     <td className="text-right py-1.5 px-3 tabular-nums">
-                                      {((getEntry("appleBrandy") as any).losses ?? 0).toFixed(1)}
+                                      0.0
                                     </td>
                                   </tr>
                                   <tr className="border-t-2 border-gray-300 bg-blue-50">
                                     <td className="py-1.5 pr-4 text-gray-700 font-semibold">10. On hand end of period</td>
                                     <td className="text-right py-1.5 px-3 tabular-nums font-semibold">
-                                      {((getEntry("appleBrandy") as any).bulkEnding ?? 0).toFixed(1)}
+                                      {(brandyInventory?.brandy?.bulk ?? 0).toFixed(1)}
                                     </td>
                                   </tr>
                                 </tbody>
@@ -2228,8 +2223,9 @@ export function BatchReconciliation() {
                               <span className="text-gray-500">Total Ending (A.31 + B.20):</span>
                               <span className="ml-2 font-semibold">
                                 {activeColumns.reduce((sum, tc) => {
-                                  const e = getEntry(tc) as any;
-                                  return sum + (e.bulkEnding ?? 0) + (e.packagedEnding ?? 0);
+                                  const bulk = bulkByClass[tc]?.line31_onHandEnd ?? 0;
+                                  const bottled = bottledByClass[tc]?.line20_onHandEnd ?? 0;
+                                  return sum + bulk + bottled;
                                 }, 0).toFixed(1)} gal
                               </span>
                             </div>
@@ -2237,8 +2233,9 @@ export function BatchReconciliation() {
                               <span className="text-gray-500">System On Hand:</span>
                               <span className="ml-2 font-semibold">
                                 {activeColumns.reduce((sum, tc) => {
-                                  const e = getEntry(tc) as any;
-                                  return sum + (e.bulk ?? 0) + (e.packaged ?? 0);
+                                  const bulk = bulkByClass[tc]?.line31_onHandEnd ?? 0;
+                                  const bottled = bottledByClass[tc]?.line20_onHandEnd ?? 0;
+                                  return sum + bulk + bottled;
                                 }, 0).toFixed(1)} gal
                               </span>
                             </div>
