@@ -2225,6 +2225,49 @@ function VesselMap() {
                   </div>
                 </div>
 
+                {/* Filter & Carbonation Status */}
+                {liquidMapVessel?.batchId && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500 mb-2">
+                    <span>
+                      Filter:{" "}
+                      {liquidMapVessel.filterType ? (
+                        <span className="text-gray-700 font-medium">
+                          {String(liquidMapVessel.filterType).charAt(0).toUpperCase() + String(liquidMapVessel.filterType).slice(1)}
+                        </span>
+                      ) : (
+                        "None"
+                      )}
+                    </span>
+                    <span>
+                      Carb:{" "}
+                      {liquidMapVessel.carbonationId ? (
+                        liquidMapVessel.carbonationProcess === "bottle_conditioning" ? (
+                          <span className="text-gray-700 font-medium">
+                            Primed
+                            {liquidMapVessel.primingSugarAmount && liquidMapVessel.carbonationStartingVolume
+                              ? ` ${(parseFloat(String(liquidMapVessel.primingSugarAmount)) / parseFloat(String(liquidMapVessel.carbonationStartingVolume))).toFixed(1)} g/L`
+                              : ""}
+                            {liquidMapVessel.carbonationTargetCo2
+                              ? ` (${parseFloat(String(liquidMapVessel.carbonationTargetCo2)).toFixed(1)} vol)`
+                              : ""}
+                          </span>
+                        ) : (
+                          <span className="text-gray-700 font-medium">
+                            Forced
+                            {liquidMapVessel.carbonationFinalCo2
+                              ? ` ${parseFloat(String(liquidMapVessel.carbonationFinalCo2)).toFixed(1)} vol`
+                              : liquidMapVessel.carbonationTargetCo2
+                                ? ` → ${parseFloat(String(liquidMapVessel.carbonationTargetCo2)).toFixed(1)} vol`
+                                : ""}
+                          </span>
+                        )
+                      ) : (
+                        "None"
+                      )}
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex space-x-2">
                   {/* Batch Actions */}
                   <DropdownMenu>

@@ -3142,6 +3142,13 @@ export const appRouter = router({
             carbonationQuality: batchCarbonationOperations.qualityCheck,
             carbonationStartedAt: batchCarbonationOperations.startedAt,
             carbonationCompletedAt: batchCarbonationOperations.completedAt,
+            carbonationProcess: batchCarbonationOperations.carbonationProcess,
+            carbonationStartingVolume: batchCarbonationOperations.startingVolume,
+            primingSugarAmount: batchCarbonationOperations.primingSugarAmount,
+            primingSugarType: batchCarbonationOperations.primingSugarType,
+            // Filter tracking (latest operation)
+            filterType: batchFilterOperations.filterType,
+            filteredAt: batchFilterOperations.filteredAt,
           })
           .from(vessels)
           .leftJoin(
@@ -3190,6 +3197,21 @@ export const appRouter = router({
                 WHERE bco.batch_id = batches.id
                   AND bco.deleted_at IS NULL
                 ORDER BY bco.created_at DESC
+                LIMIT 1
+              )`,
+            ),
+          )
+          .leftJoin(
+            batchFilterOperations,
+            and(
+              eq(batchFilterOperations.batchId, batches.id),
+              isNull(batchFilterOperations.deletedAt),
+              // Get the latest filter operation
+              sql`batch_filter_operations.id = (
+                SELECT id FROM batch_filter_operations bfo
+                WHERE bfo.batch_id = batches.id
+                  AND bfo.deleted_at IS NULL
+                ORDER BY bfo.filtered_at DESC
                 LIMIT 1
               )`,
             ),
