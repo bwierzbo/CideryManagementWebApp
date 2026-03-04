@@ -20,6 +20,9 @@ import {
   isPressureSafe,
   isTemperatureSafe,
   validateTemperature,
+  estimateResidualCO2,
+  calculatePrimingSugar,
+  calculateCO2FromSugar,
 } from "../carbonation-calculations";
 
 describe("calculateCO2Volumes", () => {
@@ -451,5 +454,91 @@ describe("validateTemperature", () => {
     const suboptimal = validateTemperature(15);
     expect(suboptimal.message).toContain('optimal');
     expect(suboptimal.message).toContain('0-10');
+  });
+});
+
+describe("estimateResidualCO2", () => {
+  it("should return higher residual CO2 at lower temperatures", () => {
+    const co2At0 = estimateResidualCO2(0);
+    const co2At10 = estimateResidualCO2(10);
+    const co2At20 = estimateResidualCO2(20);
+
+    expect(co2At0).toBeGreaterThan(co2At10);
+    expect(co2At10).toBeGreaterThan(co2At20);
+  });
+
+  it("should return ~1.39 volumes at 4°C", () => {
+    const co2 = estimateResidualCO2(4);
+    expect(co2).toBeGreaterThan(1.3);
+    expect(co2).toBeLessThan(1.5);
+  });
+
+  it("should return ~0.87 volumes at 20°C", () => {
+    const co2 = estimateResidualCO2(20);
+    expect(co2).toBeGreaterThan(0.8);
+    expect(co2).toBeLessThan(1.0);
+  });
+
+  it("should equal calculateCO2Volumes(0, temp)", () => {
+    const temps = [0, 4, 10, 15, 20];
+    temps.forEach((temp) => {
+      expect(estimateResidualCO2(temp)).toBe(calculateCO2Volumes(0, temp));
+    });
+  });
+});
+
+describe("calculatePrimingSugar", () => {
+  it("should calculate sugar for typical bottle conditioning", () => {
+    // 2.5 target - 0.7 residual = 1.8 CO2 delta, sucrose factor 4.0
+    // 1.8 * 4.0 = 7.2 g/L, * 20L = 144.0 grams
+    const sugar = calculatePrimingSugar(2.5, 0.7, 20, "sucrose");
+    expect(sugar).toBeCloseTo(144.0, 0);
+  });
+
+  it("should require less dextrose than sucrose for same CO2", () => {
+    const sucrose = calculatePrimingSugar(2.5, 0, 20, "sucrose");
+    const dextrose = calculatePrimingSugar(2.5, 0, 20, "dextrose");
+    expect(dextrose).toBeLessThan(sucrose);
+  });
+
+  it("should require less honey than sucrose for same CO2", () => {
+    const sucrose = calculatePrimingSugar(2.5, 0, 20, "sucrose");
+    const honey = calculatePrimingSugar(2.5, 0, 20, "honey");
+    expect(honey).toBeLessThan(sucrose);
+  });
+
+  it("should return 0 when target equals residual", () => {
+    expect(calculatePrimingSugar(1.0, 1.0, 20, "sucrose")).toBe(0);
+  });
+
+  it("should return 0 when target is below residual", () => {
+    expect(calculatePrimingSugar(0.5, 1.0, 20, "sucrose")).toBe(0);
+  });
+});
+
+describe("calculateCO2FromSugar", () => {
+  it("should be inverse of calculatePrimingSugar", () => {
+    const targetCO2 = 2.5;
+    const residual = 0.7;
+    const volume = 20;
+    const sugarType = "sucrose" as const;
+
+    const sugar = calculatePrimingSugar(targetCO2, residual, volume, sugarType);
+    const sugarPerLiter = sugar / volume;
+    const computedCO2 = calculateCO2FromSugar(sugarPerLiter, residual, sugarType);
+
+    expect(computedCO2).toBeCloseTo(targetCO2, 1);
+  });
+
+  it("should round-trip for all sugar types", () => {
+    const types = ["sucrose", "dextrose", "honey"] as const;
+    types.forEach((sugarType) => {
+      const target = 2.0;
+      const residual = 0.5;
+      const volume = 100;
+      const sugar = calculatePrimingSugar(target, residual, volume, sugarType);
+      const co2 = calculateCO2FromSugar(sugar / volume, residual, sugarType);
+      expect(co2).toBeCloseTo(target, 1);
+    });
   });
 });

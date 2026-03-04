@@ -569,10 +569,10 @@ export default function BatchDetailsPage() {
               onClick={() => setShowCarbonateModal(true)}
               disabled={
                 !(
-                  (batch.status === "conditioning" ||
-                    batch.status === "aging" ||
-                    batch.status === "completed") &&
-                  batch.vesselId
+                  batch.status === "fermentation" ||
+                  batch.status === "conditioning" ||
+                  batch.status === "aging" ||
+                  batch.status === "completed"
                 )
               }
             >
@@ -1414,7 +1414,7 @@ export default function BatchDetailsPage() {
       )}
 
       {/* Carbonate Modal */}
-      {showCarbonateModal && batch.vesselId && (
+      {showCarbonateModal && (
         <CarbonateModal
           open={showCarbonateModal}
           onOpenChange={setShowCarbonateModal}
@@ -1426,12 +1426,12 @@ export default function BatchDetailsPage() {
             currentVolumeUnit: "L",
             status: batch.status,
           }}
-          vessel={{
+          vessel={batch.vesselId ? {
             id: batch.vesselId,
             name: batch.vesselName || "",
             isPressureVessel: batch.vesselIsPressureVessel || "no",
             maxPressure: parseFloat(batch.vesselMaxPressure || "30"),
-          }}
+          } : null}
           onSuccess={() => {
             toast({
               title: "Success",

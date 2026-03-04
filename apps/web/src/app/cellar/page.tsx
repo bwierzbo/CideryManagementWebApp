@@ -2273,6 +2273,15 @@ function VesselMap() {
                                 Set to Aging
                               </DropdownMenuItem>
                               <DropdownMenuItem
+                                onClick={() => handleCarbonate(vessel.id)}
+                                disabled={
+                                  !liquidMapVessel?.batchId || currentVolume <= 0
+                                }
+                              >
+                                <Waves className="w-3 h-3 mr-2" />
+                                Carbonate
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
                                 onClick={() => handleFilter(vessel.id)}
                                 disabled={
                                   !liquidMapVessel?.batchId || currentVolume <= 0

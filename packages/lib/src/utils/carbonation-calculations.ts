@@ -411,3 +411,21 @@ export function calculateCO2FromSugar(
 
   return Math.round(targetCO2 * 100) / 100; // Round to 2 decimal places
 }
+
+/**
+ * Estimates residual CO2 dissolved in cider at a given temperature and atmospheric pressure.
+ *
+ * Uses Henry's Law: at 0 PSI gauge (atmospheric only), CO2 dissolved = calculateCO2Volumes(0, temp).
+ * This represents the equilibrium CO2 in a still cider at the given temperature.
+ *
+ * @param temperatureCelsius - Temperature in °C
+ * @returns Estimated residual CO2 in volumes, rounded to 2 decimal places
+ *
+ * @example
+ * estimateResidualCO2(4);  // ~1.39 volumes (cold cellar)
+ * estimateResidualCO2(10); // ~1.18 volumes
+ * estimateResidualCO2(20); // ~0.87 volumes (room temp)
+ */
+export function estimateResidualCO2(temperatureCelsius: number): number {
+  return calculateCO2Volumes(0, temperatureCelsius);
+}

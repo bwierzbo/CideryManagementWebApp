@@ -13,16 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/utils/trpc";
 import { formatDate } from "@/utils/date-format";
@@ -36,7 +28,6 @@ import {
   AlertTriangle,
   Info,
   Clock,
-  Droplets,
   Beaker,
   CheckCircle2,
 } from "lucide-react";
@@ -44,11 +35,17 @@ import {
   calculateCO2Volumes,
   calculateRequiredPressure,
   estimateCarbonationDuration,
-  isPressureSafe,
   isTemperatureSafe,
   calculatePrimingSugar,
   calculateCO2FromSugar,
+  estimateResidualCO2,
 } from "lib";
+
+const SUGAR_TYPE_LABELS: Record<string, string> = {
+  sucrose: "Sucrose (Table Sugar)",
+  dextrose: "Dextrose (Corn Sugar)",
+  honey: "Honey",
+};
 
 // Schema for forced carbonation
 const forcedCarbonationSchema = z.object({
@@ -56,16 +53,10 @@ const forcedCarbonationSchema = z.object({
   startedAt: z.date(),
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
-  startingTemperature: z.number().min(-5, "Temperature must be at least -5°C").max(25, "Temperature must be at most 25°C").optional(),
-  startingCo2Volumes: z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional(),
-  targetCo2Volumes: z
-    .number()
-    .min(0.1, "Target must be at least 0.1 volumes")
-    .max(5, "Target must be at most 5 volumes"),
-  pressureApplied: z
-    .number()
-    .min(1, "Pressure must be at least 1 PSI")
-    .max(50, "Pressure must be at most 50 PSI"),
+  startingTemperature: z.number().min(-5).max(25).optional(),
+  residualCo2Volumes: z.number().min(0).max(1.5).optional(),
+  targetCo2Volumes: z.number().min(0.1).max(5),
+  pressureApplied: z.number().min(1).max(50),
   notes: z.string().optional(),
 });
 
@@ -75,17 +66,14 @@ const bottleConditioningSchema = z.object({
   startedAt: z.date(),
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
-  residualCo2Volumes: z.number().min(0, "CO2 volumes cannot be negative").max(5, "CO2 volumes must be at most 5").optional(),
-  targetCo2Volumes: z
-    .number()
-    .min(0.1, "Target must be at least 0.1 volumes")
-    .max(5, "Target must be at most 5 volumes"),
-  sugarPerLiter: z.number().min(0, "Sugar amount cannot be negative").optional(),
-  additivePurchaseItemId: z.string().uuid("Please select a sugar source").optional(),
+  startingTemperature: z.number().min(-5).max(25).optional(),
+  residualCo2Volumes: z.number().min(0).max(1.5).optional(),
+  targetCo2Volumes: z.number().min(0.1).max(5),
+  sugarPerLiter: z.number().min(0).optional(),
+  additivePurchaseItemId: z.string().uuid().optional(),
   notes: z.string().optional(),
 });
 
-// Union schema
 const carbonationSchema = z.discriminatedUnion("carbonationMethod", [
   forcedCarbonationSchema,
   bottleConditioningSchema,
@@ -125,18 +113,14 @@ export function CarbonateModal({
   const [carbonationMethod, setCarbonationMethod] = React.useState<"forced" | "bottle_conditioning">("forced");
   const [lastEditedField, setLastEditedField] = React.useState<"co2" | "sugar">("co2");
   const [dateWarning, setDateWarning] = React.useState<string | null>(null);
+  const [sugarType, setSugarType] = React.useState<"sucrose" | "dextrose" | "honey">("sucrose");
 
-  // Date validation
   const { validateDate } = useBatchDateValidation(batch.id);
 
   // Query for available sweetener additives (for bottle conditioning)
   const { data: sweetenerInventory, isLoading: isLoadingInventory } =
     trpc.additivePurchases.list.useQuery(
-      {
-        limit: 100,
-        offset: 0,
-        itemType: "Sugar & Sweeteners", // Only show sweeteners for bottle conditioning
-      },
+      { limit: 100, offset: 0, itemType: "Sugar & Sweeteners" },
       { enabled: open && carbonationMethod === "bottle_conditioning" }
     );
 
@@ -154,11 +138,10 @@ export function CarbonateModal({
       startedAt: new Date(),
       startingVolume: batch.currentVolume,
       startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
-      startingTemperature: 4, // Default to optimal carbonation temp
-      targetCo2Volumes: 2.5, // Default to medium carbonation
-      carbonationProcess: "headspace",
+      startingTemperature: 10,
+      residualCo2Volumes: 0.7,
+      targetCo2Volumes: 2.5,
       pressureApplied: 0,
-      residualCo2Volumes: 0,
       sugarPerLiter: undefined,
     } as any,
   });
@@ -168,8 +151,7 @@ export function CarbonateModal({
   const startingTemperature = watch("startingTemperature" as any);
   const targetCo2Volumes = watch("targetCo2Volumes");
   const pressureApplied = watch("pressureApplied" as any);
-  const startingCo2Volumes = watch("startingCo2Volumes" as any);
-  const residualCo2Volumes = watch("residualCo2Volumes" as any) || 0;
+  const residualCo2Volumes = watch("residualCo2Volumes" as any) ?? 0.7;
   const startingVolume = watch("startingVolume");
   const startingVolumeUnit = watch("startingVolumeUnit");
   const sugarPerLiter = watch("sugarPerLiter" as any);
@@ -189,60 +171,51 @@ export function CarbonateModal({
     }
   }, [startedAt, validateDate]);
 
-  // Reset form with current date when modal opens
+  // Reset form when modal opens
   useEffect(() => {
     if (open) {
+      const defaultMethod = vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning";
       reset({
-        carbonationMethod: "forced",
+        carbonationMethod: defaultMethod,
         startedAt: new Date(),
         startingVolume: batch.currentVolume,
         startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
-        startingTemperature: 4,
+        startingTemperature: 10,
+        residualCo2Volumes: 0.7,
         targetCo2Volumes: 2.5,
-        carbonationProcess: "headspace",
         pressureApplied: 0,
-        residualCo2Volumes: 0,
         sugarPerLiter: undefined,
       } as any);
+      setCarbonationMethod(defaultMethod);
+      setLastEditedField("co2");
+      setSugarType("sucrose");
       setDateWarning(null);
     }
-  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit]);
+  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel]);
 
   // Convert volume to liters for calculations
   const volumeInLiters = useMemo(() => {
-    if (startingVolumeUnit === "gal") {
-      return startingVolume * 3.78541; // gallons to liters
-    }
+    if (startingVolumeUnit === "gal") return startingVolume * 3.78541;
     return startingVolume;
   }, [startingVolume, startingVolumeUnit]);
 
   // Bidirectional calculation: CO2 <-> Sugar
-  // Calculate sugar from CO2 or CO2 from sugar depending on last edited field
   const calculatedSugarPerLiter = useMemo(() => {
     if (carbonationMethod === "bottle_conditioning" && lastEditedField === "co2" && targetCo2Volumes) {
-      const totalGrams = calculatePrimingSugar(
-        targetCo2Volumes,
-        residualCo2Volumes,
-        volumeInLiters,
-        "sucrose"
-      );
+      const totalGrams = calculatePrimingSugar(targetCo2Volumes, residualCo2Volumes, volumeInLiters, sugarType);
       return totalGrams / volumeInLiters;
     }
     return sugarPerLiter || 0;
-  }, [carbonationMethod, lastEditedField, targetCo2Volumes, residualCo2Volumes, volumeInLiters, sugarPerLiter]);
+  }, [carbonationMethod, lastEditedField, targetCo2Volumes, residualCo2Volumes, volumeInLiters, sugarPerLiter, sugarType]);
 
   const calculatedCo2Volumes = useMemo(() => {
     if (carbonationMethod === "bottle_conditioning" && lastEditedField === "sugar" && sugarPerLiter) {
-      return calculateCO2FromSugar(
-        sugarPerLiter,
-        residualCo2Volumes,
-        "sucrose"
-      );
+      return calculateCO2FromSugar(sugarPerLiter, residualCo2Volumes, sugarType);
     }
     return targetCo2Volumes || 0;
-  }, [carbonationMethod, lastEditedField, sugarPerLiter, residualCo2Volumes, targetCo2Volumes]);
+  }, [carbonationMethod, lastEditedField, sugarPerLiter, residualCo2Volumes, targetCo2Volumes, sugarType]);
 
-  // Calculate required priming sugar for display
+  // Total priming sugar in grams
   const requiredSugarGrams = useMemo(() => {
     if (carbonationMethod === "bottle_conditioning") {
       return calculatedSugarPerLiter * volumeInLiters;
@@ -250,28 +223,15 @@ export function CarbonateModal({
     return 0;
   }, [carbonationMethod, calculatedSugarPerLiter, volumeInLiters]);
 
-  // Reset form when modal opens
-  useEffect(() => {
-    if (open) {
-      // Default to bottle conditioning if not a pressure vessel
-      const defaultMethod = vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning";
-      reset({
-        carbonationMethod: defaultMethod,
-        startingVolume: batch.currentVolume,
-        startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
-        startingTemperature: 4,
-        targetCo2Volumes: 2.5,
-        carbonationProcess: "headspace",
-        pressureApplied: 0,
-        residualCo2Volumes: 0,
-        sugarPerLiter: undefined,
-      } as any);
-      setCarbonationMethod(defaultMethod);
-      setLastEditedField("co2");
+  // Expected final CO2 in bottle = residual + CO2 from sugar
+  const expectedFinalCo2 = useMemo(() => {
+    if (carbonationMethod === "bottle_conditioning" && calculatedSugarPerLiter > 0) {
+      return calculateCO2FromSugar(calculatedSugarPerLiter, residualCo2Volumes, sugarType);
     }
-  }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel]);
+    return calculatedCo2Volumes;
+  }, [carbonationMethod, calculatedSugarPerLiter, residualCo2Volumes, sugarType, calculatedCo2Volumes]);
 
-  // Calculate suggested pressure
+  // Forced carbonation calculations
   const suggestedPressure = useMemo(() => {
     if (targetCo2Volumes && startingTemperature != null) {
       return calculateRequiredPressure(targetCo2Volumes, startingTemperature);
@@ -279,7 +239,6 @@ export function CarbonateModal({
     return null;
   }, [targetCo2Volumes, startingTemperature]);
 
-  // Calculate expected CO2 volumes from applied pressure
   const expectedCo2Volumes = useMemo(() => {
     if (pressureApplied && startingTemperature != null) {
       return calculateCO2Volumes(pressureApplied, startingTemperature);
@@ -287,86 +246,45 @@ export function CarbonateModal({
     return null;
   }, [pressureApplied, startingTemperature]);
 
-  // Estimate carbonation duration
   const estimatedDuration = useMemo(() => {
-    // Validate that values are actual numbers (not NaN or null/undefined)
     const isValidNumber = (val: any) => typeof val === 'number' && !isNaN(val) && val > 0;
-
-    if (
-      startingCo2Volumes != null &&
-      !isNaN(startingCo2Volumes) &&
-      isValidNumber(targetCo2Volumes) &&
-      isValidNumber(pressureApplied)
-    ) {
-      return estimateCarbonationDuration(
-        startingCo2Volumes,
-        targetCo2Volumes,
-        pressureApplied,
-      );
-    } else if (isValidNumber(targetCo2Volumes) && isValidNumber(pressureApplied)) {
-      // If no starting CO2, assume from 0
-      return estimateCarbonationDuration(0, targetCo2Volumes, pressureApplied);
+    if (isValidNumber(targetCo2Volumes) && isValidNumber(pressureApplied)) {
+      const startCo2 = (typeof residualCo2Volumes === 'number' && !isNaN(residualCo2Volumes)) ? residualCo2Volumes : 0;
+      return estimateCarbonationDuration(startCo2, targetCo2Volumes, pressureApplied);
     }
     return null;
-  }, [startingCo2Volumes, targetCo2Volumes, pressureApplied]);
+  }, [residualCo2Volumes, targetCo2Volumes, pressureApplied]);
 
-  // Validation checks
+  // Validation
   const validationErrors = useMemo(() => {
-    const errors: string[] = [];
-
-    if (
-      startingTemperature != null &&
-      !isTemperatureSafe(startingTemperature)
-    ) {
-      errors.push(
-        `Temperature ${startingTemperature}°C is outside safe range (-5°C to 25°C)`,
-      );
+    const errs: string[] = [];
+    if (startingTemperature != null && !isTemperatureSafe(startingTemperature)) {
+      errs.push(`Temperature ${startingTemperature}°C is outside safe range (-5°C to 25°C)`);
     }
-
-    return errors;
+    return errs;
   }, [startingTemperature]);
 
-  // Warnings (non-blocking)
   const warnings = useMemo(() => {
-    const warnings: string[] = [];
-
-    if (startingTemperature != null) {
-      if (startingTemperature < 0 || startingTemperature > 10) {
-        warnings.push(
-          `Temperature ${startingTemperature}°C is outside optimal range (0-10°C). Carbonation may be less efficient.`,
-        );
-      }
+    const w: string[] = [];
+    if (startingTemperature != null && (startingTemperature < 0 || startingTemperature > 10)) {
+      w.push(`Temperature ${startingTemperature}°C is outside optimal range (0-10°C). Carbonation may be less efficient.`);
     }
-
-    return warnings;
+    return w;
   }, [startingTemperature]);
 
   const startMutation = trpc.carbonation.start.useMutation({
-    onSuccess: (data) => {
-      toast({
-        title: "Carbonation Started",
-        description: `Carbonation operation started for ${batch.name}`,
-      });
-
-      // Invalidate relevant queries
+    onSuccess: () => {
+      toast({ title: "Carbonation Started", description: `Carbonation operation started for ${batch.name}` });
       utils.vessel.list.invalidate();
       utils.batch.list.invalidate();
       utils.batch.get.invalidate({ batchId: batch.id });
       utils.vessel.liquidMap.invalidate();
       utils.carbonation.listActive.invalidate();
-
       onSuccess?.();
       onOpenChange(false);
     },
     onError: (error) => {
-      console.error("❌ Carbonation mutation error:", error);
-      console.error("❌ Error data:", error.data);
-      console.error("❌ Error message:", error.message);
-      toast({
-        title: "Carbonation Failed",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Carbonation Failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -376,93 +294,67 @@ export function CarbonateModal({
         title: "Carbonation Recorded",
         description: `Carbonation recorded for ${batch.name} at ${data.carbonation.finalCo2Volumes} volumes CO2`,
       });
-
-      // Invalidate relevant queries
       utils.vessel.list.invalidate();
       utils.batch.list.invalidate();
       utils.batch.get.invalidate({ batchId: batch.id });
       utils.vessel.liquidMap.invalidate();
       utils.carbonation.list.invalidate();
-
       onSuccess?.();
       onOpenChange(false);
     },
     onError: (error) => {
-      console.error("❌ Carbonation record error:", error);
-      console.error("❌ Error data:", error.data);
-      console.error("❌ Error message:", error.message);
-      toast({
-        title: "Failed to Record Carbonation",
-        description: error.message,
-        variant: "destructive",
-      });
+      toast({ title: "Failed to Record Carbonation", description: error.message, variant: "destructive" });
     },
   });
 
   const onSubmit = (data: CarbonationForm) => {
     if (data.carbonationMethod === "forced") {
-      // Forced carbonation validation
       if (validationErrors.length > 0) {
-        toast({
-          title: "Validation Failed",
-          description: validationErrors[0],
-          variant: "destructive",
-        });
+        toast({ title: "Validation Failed", description: validationErrors[0], variant: "destructive" });
         return;
       }
-
-      // Use record mutation for forced carbonation (one-step complete)
-      const forcedData = {
+      recordMutation.mutate({
         batchId: batch.id,
         vesselId: vessel?.id ?? null,
         completedAt: (data as any).startedAt,
         carbonationProcess: "headspace" as const,
         targetCo2Volumes: data.targetCo2Volumes,
-        finalCo2Volumes: data.targetCo2Volumes, // Assume target was achieved
+        finalCo2Volumes: data.targetCo2Volumes,
         temperature: (data as any).startingTemperature ?? undefined,
         pressureApplied: (data as any).pressureApplied,
         startingVolume: data.startingVolume,
-        finalVolume: data.startingVolume, // Assume no volume loss for forced carb
+        finalVolume: data.startingVolume,
         volumeUnit: data.startingVolumeUnit,
         gasType: "CO2",
         notes: data.notes,
-      };
-      console.log("🚀 Recording completed forced carbonation:", forcedData);
-      recordMutation.mutate(forcedData);
+      });
     } else {
-      // Bottle conditioning
       const residualCo2 = (data as any).residualCo2Volumes;
       const additivePurchaseId = (data as any).additivePurchaseItemId;
 
-      const bottleConditioningData = {
+      startMutation.mutate({
         batchId: batch.id,
-        vesselId: null, // No vessel needed for bottle conditioning
+        vesselId: null,
         startedAt: (data as any).startedAt,
         startingVolume: data.startingVolume,
         startingVolumeUnit: data.startingVolumeUnit,
-        // Handle NaN properly - convert to undefined
         startingCo2Volumes: typeof residualCo2 === 'number' && !isNaN(residualCo2) ? residualCo2 : undefined,
         targetCo2Volumes: data.targetCo2Volumes,
         carbonationProcess: "bottle_conditioning" as const,
         pressureApplied: 0,
         gasType: "CO2",
         notes: data.notes,
-        // Additive tracking - only include if values are valid
         ...(additivePurchaseId && {
           additivePurchaseId,
           primingSugarAmount: typeof requiredSugarGrams === 'number' && !isNaN(requiredSugarGrams) ? requiredSugarGrams : undefined,
-          primingSugarType: "sucrose" as const, // Always use sucrose as the sugar type
+          primingSugarType: sugarType,
         }),
-      };
-      console.log("🍾 Bottle conditioning data:", bottleConditioningData);
-      console.log("🍬 Required sugar grams:", requiredSugarGrams);
-      console.log("🎯 Target CO2:", data.targetCo2Volumes);
-      console.log("💧 Volume:", data.startingVolume, data.startingVolumeUnit);
-      startMutation.mutate(bottleConditioningData);
+      });
     }
   };
 
   const hasErrors = validationErrors.length > 0;
+  const sugarTypeLabel = SUGAR_TYPE_LABELS[sugarType] || sugarType;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -521,22 +413,28 @@ export function CarbonateModal({
             </div>
             {vessel?.isPressureVessel !== "yes" && (
               <p className="text-sm text-muted-foreground">
-                This vessel is not pressure-rated. Only bottle conditioning is available.
+                {vessel === null
+                  ? "No vessel assigned. Bottle conditioning available."
+                  : "This vessel is not pressure-rated. Only bottle conditioning is available."}
               </p>
             )}
           </div>
 
-          {/* Starting Conditions */}
+          {/* Starting Conditions — shared for both methods */}
           <div className="space-y-4">
             <h3 className="font-semibold text-sm">Starting Conditions</h3>
 
             <div>
-              <Label htmlFor="startedAt">Started Date</Label>
+              <Label htmlFor="startedAt">Date</Label>
               <Input
                 id="startedAt"
                 type="datetime-local"
                 {...register("startedAt", {
-                  setValueAs: (value) => (value ? parseDateTimeFromInput(value) : new Date()),
+                  setValueAs: (value) => {
+                    if (!value) return new Date();
+                    if (value instanceof Date) return value;
+                    return parseDateTimeFromInput(value);
+                  },
                 })}
                 defaultValue={formatDateTimeForInput(new Date())}
               />
@@ -548,9 +446,9 @@ export function CarbonateModal({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label htmlFor="startingVolume">Starting Volume</Label>
+                <Label htmlFor="startingVolume">Volume</Label>
                 <Input
                   id="startingVolume"
                   type="text"
@@ -558,23 +456,17 @@ export function CarbonateModal({
                   readOnly
                   className="bg-muted cursor-not-allowed"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Current batch volume
-                </p>
               </div>
 
               <div>
                 <Label htmlFor="startingTemperature">
-                  Temperature (°C){" "}
-                  <span className="text-muted-foreground text-xs">
-                    optional
-                  </span>
+                  Temp (°C)
                 </Label>
                 <Input
                   id="startingTemperature"
                   type="number"
                   step="0.1"
-                  placeholder="4"
+                  placeholder="10"
                   {...register("startingTemperature", { valueAsNumber: true })}
                 />
                 {(errors as any).startingTemperature && (
@@ -583,29 +475,35 @@ export function CarbonateModal({
                   </p>
                 )}
               </div>
-            </div>
 
-            <div>
-              <Label htmlFor="startingCo2Volumes">
-                Starting CO2 Volumes{" "}
-                <span className="text-muted-foreground text-xs">optional</span>
-              </Label>
-              <Input
-                id="startingCo2Volumes"
-                type="number"
-                step="0.1"
-                placeholder="0"
-                {...register("startingCo2Volumes", { valueAsNumber: true })}
-              />
-              {(errors as any).startingCo2Volumes && (
-                <p className="text-sm text-destructive mt-1">
-                  {(errors as any).startingCo2Volumes.message}
+              <div>
+                <Label htmlFor="residualCo2Volumes">
+                  Residual CO₂
+                </Label>
+                <Input
+                  id="residualCo2Volumes"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  max="1.5"
+                  placeholder="0.7"
+                  {...register("residualCo2Volumes" as any, { valueAsNumber: true })}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {startingTemperature != null && !isNaN(startingTemperature)
+                    ? `Est. ~${estimateResidualCO2(startingTemperature).toFixed(2)} vol at ${startingTemperature}°C`
+                    : "CO₂ already in cider (0-1.5 vol)"}
                 </p>
-              )}
+                {(errors as any).residualCo2Volumes && (
+                  <p className="text-sm text-destructive mt-1">
+                    {(errors as any).residualCo2Volumes.message}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Target Carbonation */}
+          {/* Target Carbonation — shared */}
           <div className="space-y-4">
             <h3 className="font-semibold text-sm">Target Carbonation</h3>
 
@@ -620,11 +518,10 @@ export function CarbonateModal({
                 onChange={(e) => {
                   register("targetCo2Volumes", { valueAsNumber: true }).onChange(e);
                   setLastEditedField("co2");
-                  // Update sugar field with calculated value
                   if (carbonationMethod === "bottle_conditioning") {
                     const co2 = parseFloat(e.target.value);
                     if (co2 && volumeInLiters) {
-                      const totalGrams = calculatePrimingSugar(co2, residualCo2Volumes, volumeInLiters, "sucrose");
+                      const totalGrams = calculatePrimingSugar(co2, residualCo2Volumes, volumeInLiters, sugarType);
                       setValue("sugarPerLiter" as any, totalGrams / volumeInLiters);
                     }
                   }
@@ -638,11 +535,10 @@ export function CarbonateModal({
             </div>
           </div>
 
-          {/* Process Details - Forced Carbonation */}
+          {/* Forced Carbonation Details */}
           {carbonationMethod === "forced" && (
             <div className="space-y-4">
               <h3 className="font-semibold text-sm">Process Details</h3>
-
               <div>
                 <Label htmlFor="pressureApplied">Pressure to Apply (PSI)</Label>
                 <Input
@@ -661,24 +557,50 @@ export function CarbonateModal({
             </div>
           )}
 
-          {/* Priming Sugar - Bottle Conditioning */}
+          {/* Bottle Conditioning Details */}
           {carbonationMethod === "bottle_conditioning" && (
             <div className="space-y-4">
               <h3 className="font-semibold text-sm">Priming Sugar</h3>
 
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-                <div className="flex items-start gap-2">
-                  <Info className="h-5 w-5 text-blue-700 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm text-blue-900">
-                    <strong>Bottle Conditioning</strong> uses natural fermentation to create
-                    carbonation. Sugar is added before bottling, and yeast ferments it to produce
-                    CO2 trapped in the sealed bottle.
-                  </div>
+              {/* Sugar Type Selector */}
+              <div className="space-y-2">
+                <Label>Sugar Type</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  {([
+                    { value: "sucrose" as const, label: "Sucrose", desc: "Table Sugar (4.0 g/L per vol)" },
+                    { value: "dextrose" as const, label: "Dextrose", desc: "Corn Sugar (3.8 g/L per vol)" },
+                    { value: "honey" as const, label: "Honey", desc: "~3.5 g/L per vol" },
+                  ]).map((type) => (
+                    <Card
+                      key={type.value}
+                      className={`cursor-pointer transition-colors ${
+                        sugarType === type.value
+                          ? "border-primary ring-2 ring-primary"
+                          : "hover:border-primary/50"
+                      }`}
+                      onClick={() => {
+                        setSugarType(type.value);
+                        if (lastEditedField === "co2" && targetCo2Volumes && volumeInLiters) {
+                          const totalGrams = calculatePrimingSugar(targetCo2Volumes, residualCo2Volumes, volumeInLiters, type.value);
+                          setValue("sugarPerLiter" as any, totalGrams / volumeInLiters);
+                        } else if (lastEditedField === "sugar" && sugarPerLiter) {
+                          const co2 = calculateCO2FromSugar(sugarPerLiter, residualCo2Volumes, type.value);
+                          setValue("targetCo2Volumes", co2);
+                        }
+                      }}
+                    >
+                      <CardHeader className="p-3">
+                        <CardTitle className="text-sm">{type.label}</CardTitle>
+                        <CardDescription className="text-xs">{type.desc}</CardDescription>
+                      </CardHeader>
+                    </Card>
+                  ))}
                 </div>
               </div>
 
+              {/* Sugar Concentration */}
               <div>
-                <Label htmlFor="sugarPerLiter">Sugar Concentration (g/L)</Label>
+                <Label htmlFor="sugarPerLiter">{sugarTypeLabel} (g/L)</Label>
                 <Input
                   id="sugarPerLiter"
                   type="number"
@@ -688,16 +610,15 @@ export function CarbonateModal({
                   onChange={(e) => {
                     register("sugarPerLiter" as any, { valueAsNumber: true }).onChange(e);
                     setLastEditedField("sugar");
-                    // Update CO2 field with calculated value
                     const sugar = parseFloat(e.target.value);
                     if (sugar) {
-                      const co2 = calculateCO2FromSugar(sugar, residualCo2Volumes, "sucrose");
+                      const co2 = calculateCO2FromSugar(sugar, residualCo2Volumes, sugarType);
                       setValue("targetCo2Volumes", co2);
                     }
                   }}
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Enter either CO₂ target or sugar amount - they calculate each other
+                  Enter either CO₂ target or {sugarType} amount — they calculate each other
                 </p>
                 {(errors as any).sugarPerLiter && (
                   <p className="text-sm text-destructive mt-1">
@@ -706,35 +627,10 @@ export function CarbonateModal({
                 )}
               </div>
 
-              <div>
-                <Label htmlFor="residualCo2Volumes">
-                  Residual CO₂ Volumes{" "}
-                  <span className="text-muted-foreground text-xs">optional</span>
-                </Label>
-                <Input
-                  id="residualCo2Volumes"
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="5"
-                  placeholder="0"
-                  defaultValue={0}
-                  {...register("residualCo2Volumes" as any, { valueAsNumber: true })}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  CO₂ already dissolved in the cider (usually 0 for flat cider)
-                </p>
-                {(errors as any).residualCo2Volumes && (
-                  <p className="text-sm text-destructive mt-1">
-                    {(errors as any).residualCo2Volumes.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Sugar Source Selection */}
+              {/* Sugar Source from Inventory */}
               <div>
                 <Label htmlFor="additivePurchaseItemId">
-                  Select Priming Sugar from Inventory
+                  Select {sugarTypeLabel} from Inventory
                 </Label>
                 {isLoadingInventory ? (
                   <div className="rounded-lg border border-gray-200 p-4 text-center text-sm text-muted-foreground">
@@ -762,7 +658,7 @@ export function CarbonateModal({
                                     {item.productName || purchase.vendorName}
                                   </div>
                                   <div className="text-xs text-muted-foreground mt-1">
-                                    {item.brandManufacturer || "Table Sugar"}
+                                    {item.brandManufacturer || sugarTypeLabel}
                                   </div>
                                   {item.quantity && (
                                     <div className="text-xs font-semibold text-green-700 mt-1">
@@ -800,11 +696,11 @@ export function CarbonateModal({
                 )}
               </div>
 
-              {/* Calculated Sugar Amount */}
+              {/* Calculated Sugar + Expected CO2 Summary */}
               <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-2">
                 <div className="flex items-center gap-2 font-semibold text-green-900">
                   <Beaker className="h-4 w-4" />
-                  Required Priming Sugar
+                  Required {sugarTypeLabel}
                 </div>
                 <div className="text-2xl font-bold text-green-900">
                   {requiredSugarGrams.toFixed(1)} grams
@@ -813,15 +709,18 @@ export function CarbonateModal({
                   {(requiredSugarGrams / volumeInLiters).toFixed(2)} g/L •{" "}
                   {(requiredSugarGrams / 1000).toFixed(3)} kg total
                 </div>
+                <div className="text-sm font-semibold text-green-900 mt-1">
+                  Expected final CO₂ in bottle: {expectedFinalCo2.toFixed(2)} volumes
+                </div>
                 {requiredSugarGrams > 0 && (
                   <div className="text-xs text-green-700 mt-2">
-                    Dissolve sugar in a small amount of boiled water before adding to batch
+                    Dissolve {sugarType === "honey" ? "honey" : "sugar"} in a small amount of boiled water before adding to batch
                     to ensure even distribution.
                   </div>
                 )}
               </div>
 
-              {/* Warning about bottle strength */}
+              {/* Bottle safety warning */}
               <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="h-4 w-4 text-yellow-700 mt-0.5" />
@@ -835,11 +734,10 @@ export function CarbonateModal({
             </div>
           )}
 
-          {/* Notes (common to both methods) */}
+          {/* Notes */}
           <div>
             <Label htmlFor="notes">
-              Notes{" "}
-              <span className="text-muted-foreground text-xs">optional</span>
+              Notes <span className="text-muted-foreground text-xs">optional</span>
             </Label>
             <Textarea
               id="notes"
@@ -849,7 +747,7 @@ export function CarbonateModal({
             />
           </div>
 
-          {/* Calculator Section - Only for forced carbonation */}
+          {/* Forced Carbonation Calculator */}
           {carbonationMethod === "forced" && (suggestedPressure !== null ||
             expectedCo2Volumes !== null ||
             estimatedDuration !== null) && (
@@ -858,7 +756,6 @@ export function CarbonateModal({
                 <Info className="h-4 w-4" />
                 Calculated Suggestions
               </div>
-
               {suggestedPressure !== null && (
                 <div className="flex items-center gap-2 text-sm">
                   <Gauge className="h-4 w-4 text-blue-700" />
@@ -869,7 +766,6 @@ export function CarbonateModal({
                   </span>
                 </div>
               )}
-
               {expectedCo2Volumes !== null && (
                 <div className="flex items-center gap-2 text-sm">
                   <Thermometer className="h-4 w-4 text-blue-700" />
@@ -880,7 +776,6 @@ export function CarbonateModal({
                   </span>
                 </div>
               )}
-
               {estimatedDuration !== null && (
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4 text-blue-700" />
@@ -894,7 +789,7 @@ export function CarbonateModal({
             </div>
           )}
 
-          {/* Validation Errors - Only for forced carbonation */}
+          {/* Validation Errors — forced only */}
           {carbonationMethod === "forced" && validationErrors.length > 0 && (
             <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4 space-y-2">
               {validationErrors.map((error, index) => (
@@ -906,7 +801,7 @@ export function CarbonateModal({
             </div>
           )}
 
-          {/* Warnings - Only for forced carbonation */}
+          {/* Warnings — forced only */}
           {carbonationMethod === "forced" && warnings.length > 0 && validationErrors.length === 0 && (
             <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 space-y-2">
               {warnings.map((warning, index) => (
@@ -920,18 +815,14 @@ export function CarbonateModal({
 
           {/* Actions */}
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={(carbonationMethod === "forced" && hasErrors) || startMutation.isPending}
+              disabled={(carbonationMethod === "forced" && hasErrors) || startMutation.isPending || recordMutation.isPending}
             >
-              {startMutation.isPending
+              {(startMutation.isPending || recordMutation.isPending)
                 ? (carbonationMethod === "forced" ? "Logging..." : "Adding Sugar...")
                 : (carbonationMethod === "forced" ? "Log Forced Carbonation" : "Add Priming Sugar")
               }

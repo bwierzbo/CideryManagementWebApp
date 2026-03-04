@@ -3149,7 +3149,17 @@ export const appRouter = router({
             and(
               eq(batches.vesselId, vessels.id),
               isNull(batches.deletedAt),
-              ne(batches.status, "completed"),
+              // Pick most relevant batch per vessel: active > completed, then highest volume
+              sql`batches.id = (
+                SELECT b.id FROM batches b
+                WHERE b.vessel_id = vessels.id
+                  AND b.deleted_at IS NULL
+                ORDER BY
+                  CASE WHEN b.status != 'completed' THEN 0 ELSE 1 END,
+                  b.current_volume_liters DESC NULLS LAST,
+                  b.created_at DESC
+                LIMIT 1
+              )`,
             ),
           )
           .leftJoin(
