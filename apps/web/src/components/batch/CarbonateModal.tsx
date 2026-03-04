@@ -135,7 +135,7 @@ export function CarbonateModal({
     resolver: zodResolver(carbonationSchema),
     defaultValues: {
       carbonationMethod: "forced",
-      startedAt: new Date(),
+      startedAt: formatDateTimeForInput(new Date()),
       startingVolume: batch.currentVolume,
       startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
       startingTemperature: 10,
@@ -166,10 +166,13 @@ export function CarbonateModal({
   // Validate date when it changes
   useEffect(() => {
     if (startedAt) {
-      const result = validateDate(startedAt);
-      setDateWarning(result.warning);
+      const dateObj = startedAt instanceof Date ? startedAt : parseDateTimeFromInput(startedAt);
+      if (dateObj && !isNaN(dateObj.getTime())) {
+        const result = validateDate(dateObj);
+        setDateWarning(result.warning);
+      }
     }
-  }, [startedAt, validateDate]);
+  }, [startedAt, validateDate, parseDateTimeFromInput]);
 
   // Reset form when modal opens
   useEffect(() => {
@@ -177,7 +180,7 @@ export function CarbonateModal({
       const defaultMethod = vessel?.isPressureVessel === "yes" ? "forced" : "bottle_conditioning";
       reset({
         carbonationMethod: defaultMethod,
-        startedAt: new Date(),
+        startedAt: formatDateTimeForInput(new Date()) as any,
         startingVolume: batch.currentVolume,
         startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
         startingTemperature: 10,
@@ -308,6 +311,9 @@ export function CarbonateModal({
   });
 
   const onSubmit = (data: CarbonationForm) => {
+    const rawDate = (data as any).startedAt;
+    const dateValue = rawDate instanceof Date ? rawDate : parseDateTimeFromInput(rawDate);
+
     if (data.carbonationMethod === "forced") {
       if (validationErrors.length > 0) {
         toast({ title: "Validation Failed", description: validationErrors[0], variant: "destructive" });
@@ -316,7 +322,7 @@ export function CarbonateModal({
       recordMutation.mutate({
         batchId: batch.id,
         vesselId: vessel?.id ?? null,
-        completedAt: (data as any).startedAt,
+        completedAt: dateValue,
         carbonationProcess: "headspace" as const,
         targetCo2Volumes: data.targetCo2Volumes,
         finalCo2Volumes: data.targetCo2Volumes,
@@ -335,7 +341,7 @@ export function CarbonateModal({
       startMutation.mutate({
         batchId: batch.id,
         vesselId: null,
-        startedAt: (data as any).startedAt,
+        startedAt: dateValue,
         startingVolume: data.startingVolume,
         startingVolumeUnit: data.startingVolumeUnit,
         startingCo2Volumes: typeof residualCo2 === 'number' && !isNaN(residualCo2) ? residualCo2 : undefined,
@@ -429,14 +435,7 @@ export function CarbonateModal({
               <Input
                 id="startedAt"
                 type="datetime-local"
-                {...register("startedAt", {
-                  setValueAs: (value) => {
-                    if (!value) return new Date();
-                    if (value instanceof Date) return value;
-                    return parseDateTimeFromInput(value);
-                  },
-                })}
-                defaultValue={formatDateTimeForInput(new Date())}
+                {...register("startedAt" as any)}
               />
               <DateWarning warning={dateWarning} />
               {(errors as any).startedAt && (
