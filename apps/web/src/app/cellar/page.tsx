@@ -1218,6 +1218,13 @@ function VesselMap() {
     name: string;
     batchId: string;
     currentVolumeL: number;
+    preBottling?: {
+      filterType?: string | null;
+      carbonationProcess?: string | null;
+      primingSugarGPerL?: number | null;
+      targetCo2?: number | null;
+      finalCo2?: number | null;
+    };
   } | null>(null);
 
   // Filter modal state
@@ -1658,11 +1665,30 @@ function VesselMap() {
       return;
     }
 
+    // Compute pre-bottling summary from liquidMap data
+    const sugarAmount = liquidMapVessel.primingSugarAmount
+      ? parseFloat(String(liquidMapVessel.primingSugarAmount))
+      : null;
+    const startVol = liquidMapVessel.carbonationStartingVolume
+      ? parseFloat(String(liquidMapVessel.carbonationStartingVolume))
+      : null;
+
     setSelectedVesselForPackaging({
       id: vesselId,
       name: vessel.name || "Unnamed Vessel",
       batchId,
       currentVolumeL,
+      preBottling: {
+        filterType: liquidMapVessel.filterType || null,
+        carbonationProcess: liquidMapVessel.carbonationProcess || null,
+        primingSugarGPerL: sugarAmount && startVol ? sugarAmount / startVol : null,
+        targetCo2: liquidMapVessel.carbonationTargetCo2
+          ? parseFloat(String(liquidMapVessel.carbonationTargetCo2))
+          : null,
+        finalCo2: liquidMapVessel.carbonationFinalCo2
+          ? parseFloat(String(liquidMapVessel.carbonationFinalCo2))
+          : null,
+      },
     });
     setShowPackagingModal(true);
   };
@@ -2635,6 +2661,7 @@ function VesselMap() {
             vesselName={selectedVesselForPackaging.name}
             batchId={selectedVesselForPackaging.batchId}
             currentVolumeL={selectedVesselForPackaging.currentVolumeL}
+            preBottling={selectedVesselForPackaging.preBottling}
           />
         )}
 

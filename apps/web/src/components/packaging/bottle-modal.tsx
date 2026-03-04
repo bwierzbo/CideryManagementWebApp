@@ -28,7 +28,7 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Card } from "@/components/ui/card";
 import { PackageTypeSelector } from "./UnifiedPackagingModal";
-import { PreBottlingBanner } from "./PreBottlingBanner";
+import { PreBottlingBanner, type PreBottlingData } from "./PreBottlingBanner";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 // Form validation schema
@@ -70,6 +70,7 @@ interface BottleModalProps {
   kegFillId?: string; // Optional - when bottling from a keg
   showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
+  preBottling?: PreBottlingData;
 }
 
 export function BottleModal({
@@ -82,6 +83,7 @@ export function BottleModal({
   kegFillId,
   showTypeSelector = false,
   onTypeChange,
+  preBottling,
 }: BottleModalProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -381,7 +383,7 @@ export function BottleModal({
             Package contents from this vessel. Available volume:{" "}
             {currentVolumeL.toFixed(1)}L
           </DialogDescription>
-          <PreBottlingBanner batchId={batchId} open={open} />
+          <PreBottlingBanner data={preBottling} />
         </DialogHeader>
 
         {/* Package Type Selector (if enabled) */}

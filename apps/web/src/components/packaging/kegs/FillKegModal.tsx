@@ -24,7 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Wine, AlertTriangle, Loader2, Package } from "lucide-react";
-import { PreBottlingBanner } from "../PreBottlingBanner";
+import { PreBottlingBanner, type PreBottlingData } from "../PreBottlingBanner";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
@@ -51,6 +51,7 @@ interface FillKegModalProps {
   currentVolumeL: number;
   showTypeSelector?: boolean; // Show package type selector (bottles vs kegs)
   onTypeChange?: (type: "bottles" | "kegs") => void; // Callback when type changes
+  preBottling?: PreBottlingData;
 }
 
 // Memoized keg item component to prevent re-renders
@@ -110,6 +111,7 @@ export function FillKegModal({
   currentVolumeL,
   showTypeSelector = false,
   onTypeChange,
+  preBottling,
 }: FillKegModalProps) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [selectedKegIds, setSelectedKegIds] = useState<string[]>([]);
@@ -291,7 +293,7 @@ export function FillKegModal({
             Select available kegs and record fill details. Current vessel volume:{" "}
             {currentVolumeL.toFixed(1)}L
           </DialogDescription>
-          <PreBottlingBanner batchId={batchId} open={open} />
+          <PreBottlingBanner data={preBottling} />
         </DialogHeader>
 
         {/* Package Type Selector (if enabled) */}

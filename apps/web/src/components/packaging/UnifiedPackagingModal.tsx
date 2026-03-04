@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { BottleModal } from "./bottle-modal";
 import { FillKegModal } from "./kegs/FillKegModal";
+import type { PreBottlingData } from "./PreBottlingBanner";
 import { Wine, Beer } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ interface UnifiedPackagingModalProps {
   batchId: string;
   currentVolumeL: number;
   initialType?: PackagingType;
+  preBottling?: PreBottlingData;
 }
 
 /**
@@ -34,6 +36,7 @@ export function UnifiedPackagingModal({
   batchId,
   currentVolumeL,
   initialType = "bottles",
+  preBottling,
 }: UnifiedPackagingModalProps) {
   const [packagingType, setPackagingType] = useState<PackagingType>(initialType);
 
@@ -56,6 +59,7 @@ export function UnifiedPackagingModal({
         currentVolumeL={currentVolumeL}
         showTypeSelector={true}
         onTypeChange={setPackagingType}
+        preBottling={preBottling}
       />
     );
   }
@@ -70,6 +74,7 @@ export function UnifiedPackagingModal({
       currentVolumeL={currentVolumeL}
       showTypeSelector={true}
       onTypeChange={setPackagingType}
+      preBottling={preBottling}
     />
   );
 }
