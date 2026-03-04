@@ -49,7 +49,7 @@ const SUGAR_TYPE_LABELS: Record<string, string> = {
 // Schema for forced carbonation
 const forcedCarbonationSchema = z.object({
   carbonationMethod: z.literal("forced"),
-  startedAt: z.date(),
+  startedAt: z.union([z.date(), z.string().min(1)]),
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
   startingTemperature: z.number().min(-5).max(25).optional(),
@@ -62,13 +62,13 @@ const forcedCarbonationSchema = z.object({
 // Schema for bottle conditioning
 const bottleConditioningSchema = z.object({
   carbonationMethod: z.literal("bottle_conditioning"),
-  startedAt: z.date(),
+  startedAt: z.union([z.date(), z.string().min(1)]),
   startingVolume: z.number().positive("Starting volume must be positive"),
   startingVolumeUnit: z.enum(["L", "gal"]),
   startingTemperature: z.number().min(-5).max(25).optional(),
   residualCo2Volumes: z.number().min(0).max(1.5).optional(),
   targetCo2Volumes: z.number().min(0.1).max(5),
-  sugarPerLiter: z.number().min(0).optional(),
+  sugarPerLiter: z.preprocess((v) => (v === "" || Number.isNaN(v) ? undefined : v), z.number().min(0).optional()),
   additivePurchaseItemId: z.string().uuid().optional(),
   notes: z.string().optional(),
 });
@@ -115,6 +115,13 @@ export function CarbonateModal({
   const [sugarType, setSugarType] = React.useState<"sucrose" | "dextrose" | "honey">("sucrose");
 
   const { validateDate } = useBatchDateValidation(batch.id);
+
+  // Check for existing carbonation operation on this batch
+  const { data: existingCarbonation } = trpc.carbonation.list.useQuery(
+    { batchId: batch.id, limit: 1 },
+    { enabled: open }
+  );
+  const hasExistingCarbonation = (existingCarbonation?.length ?? 0) > 0;
 
   // Query for available sweetener additives (for bottle conditioning)
   const { data: sweetenerInventory } =
@@ -163,7 +170,7 @@ export function CarbonateModal({
     setValue,
     reset,
   } = useForm<CarbonationForm>({
-    resolver: zodResolver(carbonationSchema),
+    resolver: zodResolver(carbonationSchema) as any,
     defaultValues: {
       carbonationMethod: "forced",
       startedAt: formatDateTimeForInput(new Date()),
@@ -171,7 +178,7 @@ export function CarbonateModal({
       startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
       startingTemperature: 10,
       residualCo2Volumes: 0.7,
-      targetCo2Volumes: 2.5,
+      targetCo2Volumes: 2.0,
       pressureApplied: 0,
       sugarPerLiter: undefined,
     } as any,
@@ -216,7 +223,7 @@ export function CarbonateModal({
         startingVolumeUnit: (batch.currentVolumeUnit as "L" | "gal") || "L",
         startingTemperature: 10,
         residualCo2Volumes: 0.7,
-        targetCo2Volumes: 2.5,
+        targetCo2Volumes: 2.0,
         pressureApplied: 0,
         sugarPerLiter: undefined,
       } as any);
@@ -318,6 +325,7 @@ export function CarbonateModal({
       onOpenChange(false);
     },
     onError: (error) => {
+      console.error("Carbonation start error:", error.message);
       toast({ title: "Carbonation Failed", description: error.message, variant: "destructive" });
     },
   });
@@ -343,7 +351,9 @@ export function CarbonateModal({
 
   const onSubmit = (data: CarbonationForm) => {
     const rawDate = (data as any).startedAt;
-    const dateValue = rawDate instanceof Date ? rawDate : parseDateTimeFromInput(rawDate);
+    const dateValue = rawDate instanceof Date
+      ? rawDate
+      : typeof rawDate === "string" ? parseDateTimeFromInput(rawDate) : new Date();
 
     if (data.carbonationMethod === "forced") {
       if (validationErrors.length > 0) {
@@ -403,7 +413,19 @@ export function CarbonateModal({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {hasExistingCarbonation && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-4">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-destructive">
+                <strong>This batch already has a carbonation operation.</strong>{" "}
+                Edit the existing one from the batch detail page instead of creating a new one.
+              </div>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit(onSubmit as any)} className="space-y-6">
           {/* Carbonation Method Selector */}
           <div className="space-y-3">
             <Label>Carbonation Method</Label>
@@ -595,9 +617,9 @@ export function CarbonateModal({
               {/* Sugar Type Cards — merged with inventory */}
               <div className="grid grid-cols-3 gap-3">
                 {([
-                  { value: "sucrose" as const, label: "Cane Sugar", subtitle: "Sucrose", rate: "4.0 g/L per vol" },
-                  { value: "dextrose" as const, label: "Corn Sugar", subtitle: "Dextrose", rate: "3.8 g/L per vol" },
-                  { value: "honey" as const, label: "Honey", subtitle: "", rate: "3.5 g/L per vol" },
+                  { value: "sucrose" as const, label: "Cane Sugar", subtitle: "Sucrose" },
+                  { value: "dextrose" as const, label: "Corn Sugar", subtitle: "Dextrose" },
+                  { value: "honey" as const, label: "Honey", subtitle: "" },
                 ]).map((type) => {
                   const inv = inventoryByType[type.value];
                   const isSelected = sugarType === type.value;
@@ -639,7 +661,6 @@ export function CarbonateModal({
                         )}
                       </CardHeader>
                       <CardContent className="p-3 pt-0">
-                        <div className="text-xs text-muted-foreground">{type.rate}</div>
                         {isAvailable ? (
                           <div className="text-xs font-semibold text-green-700 mt-1">
                             {parseFloat(inv.quantity).toFixed(0)} {inv.unit} available
@@ -811,7 +832,7 @@ export function CarbonateModal({
             </Button>
             <Button
               type="submit"
-              disabled={(carbonationMethod === "forced" && hasErrors) || startMutation.isPending || recordMutation.isPending}
+              disabled={hasExistingCarbonation || (carbonationMethod === "forced" && hasErrors) || startMutation.isPending || recordMutation.isPending}
             >
               {(startMutation.isPending || recordMutation.isPending)
                 ? (carbonationMethod === "forced" ? "Logging..." : "Adding Sugar...")
