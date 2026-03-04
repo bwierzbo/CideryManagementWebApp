@@ -3157,10 +3157,12 @@ export const appRouter = router({
               eq(batches.vesselId, vessels.id),
               isNull(batches.deletedAt),
               // Pick most relevant batch per vessel: active > completed, then highest volume
+              // Exclude completed batches with no volume (ghost assignments from past packaging)
               sql`batches.id = (
                 SELECT b.id FROM batches b
                 WHERE b.vessel_id = vessels.id
                   AND b.deleted_at IS NULL
+                  AND NOT (b.status = 'completed' AND COALESCE(b.current_volume_liters, 0) <= 0.01)
                 ORDER BY
                   CASE WHEN b.status != 'completed' THEN 0 ELSE 1 END,
                   b.current_volume_liters DESC NULLS LAST,
