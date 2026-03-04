@@ -24,6 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Wine, AlertTriangle, Loader2, Package } from "lucide-react";
+import { PreBottlingBanner } from "../PreBottlingBanner";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
@@ -290,6 +291,7 @@ export function FillKegModal({
             Select available kegs and record fill details. Current vessel volume:{" "}
             {currentVolumeL.toFixed(1)}L
           </DialogDescription>
+          <PreBottlingBanner batchId={batchId} open={open} />
         </DialogHeader>
 
         {/* Package Type Selector (if enabled) */}

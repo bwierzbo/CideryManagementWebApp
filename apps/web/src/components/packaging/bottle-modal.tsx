@@ -28,6 +28,7 @@ import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { Card } from "@/components/ui/card";
 import { PackageTypeSelector } from "./UnifiedPackagingModal";
+import { PreBottlingBanner } from "./PreBottlingBanner";
 import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 // Form validation schema
@@ -380,6 +381,7 @@ export function BottleModal({
             Package contents from this vessel. Available volume:{" "}
             {currentVolumeL.toFixed(1)}L
           </DialogDescription>
+          <PreBottlingBanner batchId={batchId} open={open} />
         </DialogHeader>
 
         {/* Package Type Selector (if enabled) */}
