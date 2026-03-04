@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/utils/trpc";
-import { formatDate } from "@/utils/date-format";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
@@ -118,11 +117,43 @@ export function CarbonateModal({
   const { validateDate } = useBatchDateValidation(batch.id);
 
   // Query for available sweetener additives (for bottle conditioning)
-  const { data: sweetenerInventory, isLoading: isLoadingInventory } =
+  const { data: sweetenerInventory } =
     trpc.additivePurchases.list.useQuery(
       { limit: 100, offset: 0, itemType: "Sugar & Sweeteners" },
       { enabled: open && carbonationMethod === "bottle_conditioning" }
     );
+
+  // Categorize inventory items by sugar type
+  const inventoryByType = useMemo(() => {
+    const result: Record<"sucrose" | "dextrose" | "honey", { purchaseId: string; productName: string; vendor: string; quantity: string; unit: string; purchaseDate: string } | null> = {
+      sucrose: null,
+      dextrose: null,
+      honey: null,
+    };
+    if (!sweetenerInventory?.purchases) return result;
+
+    for (const purchase of sweetenerInventory.purchases) {
+      for (const item of (purchase as any).items || []) {
+        const name = ((item.productName || "") as string).toLowerCase();
+        let type: "sucrose" | "dextrose" | "honey" | null = null;
+        if (name.includes("honey")) type = "honey";
+        else if (name.includes("corn") || name.includes("dextrose")) type = "dextrose";
+        else if (name.includes("cane") || name.includes("table") || name.includes("sucrose") || name.includes("sugar")) type = "sucrose";
+
+        if (type && !result[type]) {
+          result[type] = {
+            purchaseId: purchase.id,
+            productName: item.productName || (purchase as any).vendorName,
+            vendor: item.brandManufacturer || (purchase as any).vendorName || "",
+            quantity: item.quantity || "0",
+            unit: item.unit || "lb",
+            purchaseDate: (purchase as any).purchaseDate,
+          };
+        }
+      }
+    }
+    return result;
+  }, [sweetenerInventory]);
 
   const {
     register,
@@ -561,24 +592,32 @@ export function CarbonateModal({
             <div className="space-y-4">
               <h3 className="font-semibold text-sm">Priming Sugar</h3>
 
-              {/* Sugar Type Selector */}
-              <div className="space-y-2">
-                <Label>Sugar Type</Label>
-                <div className="grid grid-cols-3 gap-3">
-                  {([
-                    { value: "sucrose" as const, label: "Sucrose", desc: "Table Sugar (4.0 g/L per vol)" },
-                    { value: "dextrose" as const, label: "Dextrose", desc: "Corn Sugar (3.8 g/L per vol)" },
-                    { value: "honey" as const, label: "Honey", desc: "~3.5 g/L per vol" },
-                  ]).map((type) => (
+              {/* Sugar Type Cards — merged with inventory */}
+              <div className="grid grid-cols-3 gap-3">
+                {([
+                  { value: "sucrose" as const, label: "Cane Sugar", subtitle: "Sucrose", rate: "4.0 g/L per vol" },
+                  { value: "dextrose" as const, label: "Corn Sugar", subtitle: "Dextrose", rate: "3.8 g/L per vol" },
+                  { value: "honey" as const, label: "Honey", subtitle: "", rate: "3.5 g/L per vol" },
+                ]).map((type) => {
+                  const inv = inventoryByType[type.value];
+                  const isSelected = sugarType === type.value;
+                  const isAvailable = !!inv;
+
+                  return (
                     <Card
                       key={type.value}
-                      className={`cursor-pointer transition-colors ${
-                        sugarType === type.value
+                      className={`transition-colors ${
+                        isAvailable ? "cursor-pointer" : "opacity-50 cursor-not-allowed"
+                      } ${
+                        isSelected
                           ? "border-primary ring-2 ring-primary"
-                          : "hover:border-primary/50"
+                          : isAvailable ? "hover:border-primary/50" : ""
                       }`}
                       onClick={() => {
+                        if (!isAvailable) return;
                         setSugarType(type.value);
+                        setValue("additivePurchaseItemId" as any, inv.purchaseId);
+                        // Recalculate
                         if (lastEditedField === "co2" && targetCo2Volumes && volumeInLiters) {
                           const totalGrams = calculatePrimingSugar(targetCo2Volumes, residualCo2Volumes, volumeInLiters, type.value);
                           setValue("sugarPerLiter" as any, totalGrams / volumeInLiters);
@@ -588,133 +627,87 @@ export function CarbonateModal({
                         }
                       }}
                     >
-                      <CardHeader className="p-3">
-                        <CardTitle className="text-sm">{type.label}</CardTitle>
-                        <CardDescription className="text-xs">{type.desc}</CardDescription>
+                      <CardHeader className="p-3 pb-1">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="text-sm">{type.label}</CardTitle>
+                          {isSelected && isAvailable && (
+                            <CheckCircle2 className="h-4 w-4 text-primary flex-shrink-0" />
+                          )}
+                        </div>
+                        {type.subtitle && (
+                          <CardDescription className="text-xs">{type.subtitle}</CardDescription>
+                        )}
                       </CardHeader>
+                      <CardContent className="p-3 pt-0">
+                        <div className="text-xs text-muted-foreground">{type.rate}</div>
+                        {isAvailable ? (
+                          <div className="text-xs font-semibold text-green-700 mt-1">
+                            {parseFloat(inv.quantity).toFixed(0)} {inv.unit} available
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            Not in inventory
+                          </div>
+                        )}
+                      </CardContent>
                     </Card>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
 
-              {/* Sugar Concentration */}
-              <div>
-                <Label htmlFor="sugarPerLiter">{sugarTypeLabel} (g/L)</Label>
-                <Input
-                  id="sugarPerLiter"
-                  type="number"
-                  step="0.1"
-                  placeholder="10.0"
-                  {...register("sugarPerLiter" as any, { valueAsNumber: true })}
-                  onChange={(e) => {
-                    register("sugarPerLiter" as any, { valueAsNumber: true }).onChange(e);
-                    setLastEditedField("sugar");
-                    const sugar = parseFloat(e.target.value);
-                    if (sugar) {
-                      const co2 = calculateCO2FromSugar(sugar, residualCo2Volumes, sugarType);
-                      setValue("targetCo2Volumes", co2);
-                    }
-                  }}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Enter either CO₂ target or {sugarType} amount — they calculate each other
-                </p>
-                {(errors as any).sugarPerLiter && (
-                  <p className="text-sm text-destructive mt-1">
-                    {(errors as any).sugarPerLiter.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Sugar Source from Inventory */}
-              <div>
-                <Label htmlFor="additivePurchaseItemId">
-                  Select {sugarTypeLabel} from Inventory
-                </Label>
-                {isLoadingInventory ? (
-                  <div className="rounded-lg border border-gray-200 p-4 text-center text-sm text-muted-foreground">
-                    Loading sugar inventory...
-                  </div>
-                ) : sweetenerInventory?.purchases && sweetenerInventory.purchases.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                    {sweetenerInventory.purchases.flatMap((purchase: any) =>
-                      purchase.items?.map((item: any) => {
-                        const isSelected = watch("additivePurchaseItemId" as any) === purchase.id;
-                        return (
-                          <Card
-                            key={item.id}
-                            className={`cursor-pointer transition-all ${
-                              isSelected
-                                ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                : "hover:border-primary/50 hover:bg-accent"
-                            }`}
-                            onClick={() => setValue("additivePurchaseItemId" as any, purchase.id)}
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="font-semibold text-sm">
-                                    {item.productName || purchase.vendorName}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    {item.brandManufacturer || sugarTypeLabel}
-                                  </div>
-                                  {item.quantity && (
-                                    <div className="text-xs font-semibold text-green-700 mt-1">
-                                      {parseFloat(item.quantity).toFixed(0)} {item.unit} remaining
-                                    </div>
-                                  )}
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    Purchased: {formatDate(purchase.purchaseDate)}
-                                  </div>
-                                </div>
-                                {isSelected && (
-                                  <CheckCircle2 className="h-5 w-5 text-primary flex-shrink-0" />
-                                )}
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      }) || []
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 mt-2">
-                    <div className="flex items-start gap-2">
-                      <AlertTriangle className="h-4 w-4 text-yellow-700 mt-0.5" />
-                      <div className="text-sm text-yellow-900">
-                        No sugar inventory found. Please add sweeteners to your inventory first.
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {(errors as any).additivePurchaseItemId && (
-                  <p className="text-sm text-destructive mt-1">
-                    {(errors as any).additivePurchaseItemId.message}
-                  </p>
-                )}
-              </div>
-
-              {/* Calculated Sugar + Expected CO2 Summary */}
-              <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-2">
+              {/* Required Sugar Summary */}
+              <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-3">
                 <div className="flex items-center gap-2 font-semibold text-green-900">
                   <Beaker className="h-4 w-4" />
                   Required {sugarTypeLabel}
                 </div>
-                <div className="text-2xl font-bold text-green-900">
-                  {requiredSugarGrams.toFixed(1)} grams
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-lg font-bold text-green-900">
+                      {calculatedSugarPerLiter.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-green-700">g/L</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-green-900">
+                      {requiredSugarGrams.toFixed(0)}
+                    </div>
+                    <div className="text-xs text-green-700">grams total</div>
+                  </div>
+                  <div>
+                    <div className="text-lg font-bold text-green-900">
+                      {expectedFinalCo2.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-green-700">vol CO₂ expected</div>
+                  </div>
                 </div>
-                <div className="text-sm text-green-800">
-                  {(requiredSugarGrams / volumeInLiters).toFixed(2)} g/L •{" "}
-                  {(requiredSugarGrams / 1000).toFixed(3)} kg total
-                </div>
-                <div className="text-sm font-semibold text-green-900 mt-1">
-                  Expected final CO₂ in bottle: {expectedFinalCo2.toFixed(2)} volumes
+                <p className="text-xs text-muted-foreground">
+                  Enter CO₂ target above or sugar g/L below — they calculate each other
+                </p>
+                {/* Optional manual sugar g/L override */}
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="sugarPerLiter" className="text-xs text-green-800 whitespace-nowrap">Override g/L:</Label>
+                  <Input
+                    id="sugarPerLiter"
+                    type="number"
+                    step="0.1"
+                    placeholder={calculatedSugarPerLiter.toFixed(2)}
+                    className="h-8 text-sm"
+                    {...register("sugarPerLiter" as any, { valueAsNumber: true })}
+                    onChange={(e) => {
+                      register("sugarPerLiter" as any, { valueAsNumber: true }).onChange(e);
+                      setLastEditedField("sugar");
+                      const sugar = parseFloat(e.target.value);
+                      if (sugar) {
+                        const co2 = calculateCO2FromSugar(sugar, residualCo2Volumes, sugarType);
+                        setValue("targetCo2Volumes", co2);
+                      }
+                    }}
+                  />
                 </div>
                 {requiredSugarGrams > 0 && (
-                  <div className="text-xs text-green-700 mt-2">
-                    Dissolve {sugarType === "honey" ? "honey" : "sugar"} in a small amount of boiled water before adding to batch
-                    to ensure even distribution.
+                  <div className="text-xs text-green-700">
+                    Dissolve {sugarType === "honey" ? "honey" : "sugar"} in a small amount of boiled water before adding to ensure even distribution.
                   </div>
                 )}
               </div>
@@ -725,8 +718,7 @@ export function CarbonateModal({
                   <AlertTriangle className="h-4 w-4 text-yellow-700 mt-0.5" />
                   <div className="text-sm text-yellow-900">
                     <strong>Important:</strong> Ensure bottles are rated for carbonated beverages.
-                    Over-priming can cause bottles to explode. Always use proper bottle conditioning
-                    bottles and crown caps.
+                    Over-priming can cause bottles to explode.
                   </div>
                 </div>
               </div>
