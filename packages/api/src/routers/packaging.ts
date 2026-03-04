@@ -36,6 +36,7 @@ import {
   activityLaborAssignments,
   organizationSettings,
   inventoryDistributions,
+  batchFilterOperations,
 } from "db";
 import { eq, and, desc, isNull, isNotNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -988,6 +989,109 @@ export const packagingRouter = router({
         }> };
         const compiledNotes = compiledNotesResult.rows;
 
+        // Pre-bottling summary: filtration operations
+        const filtrationResult = await db.execute(sql`
+          WITH RECURSIVE batch_chain AS (
+            SELECT id, 1 as depth FROM batches WHERE id = ${run.batchId}
+            UNION ALL
+            SELECT b.id, bc.depth + 1
+            FROM batches b
+            JOIN batch_transfers bt ON bt.source_batch_id = b.id
+            JOIN batch_chain bc ON bt.destination_batch_id = bc.id
+            WHERE b.deleted_at IS NULL
+              AND bt.source_batch_id != bt.destination_batch_id
+              AND bc.depth < 10
+          )
+          SELECT
+            bfo.filter_type,
+            bfo.filtered_at,
+            bfo.volume_before,
+            bfo.volume_before_unit,
+            bfo.volume_after,
+            bfo.volume_after_unit,
+            bfo.volume_loss,
+            bfo.filtered_by
+          FROM batch_chain bc
+          JOIN batch_filter_operations bfo ON bfo.batch_id = bc.id
+          WHERE bfo.deleted_at IS NULL
+          ORDER BY bfo.filtered_at DESC
+        `) as { rows: Array<{
+          filter_type: string;
+          filtered_at: Date;
+          volume_before: string;
+          volume_before_unit: string;
+          volume_after: string;
+          volume_after_unit: string;
+          volume_loss: string;
+          filtered_by: string | null;
+        }> };
+
+        const filtrationOps = filtrationResult.rows.map(f => ({
+          filterType: f.filter_type,
+          filteredAt: f.filtered_at,
+          volumeBefore: parseFloat(f.volume_before || "0"),
+          volumeBeforeUnit: f.volume_before_unit,
+          volumeAfter: parseFloat(f.volume_after || "0"),
+          volumeAfterUnit: f.volume_after_unit,
+          volumeLoss: parseFloat(f.volume_loss || "0"),
+          filteredBy: f.filtered_by,
+        }));
+
+        // Pre-bottling summary: carbonation operation details
+        const carbonationDetailResult = await db.execute(sql`
+          SELECT
+            carbonation_process,
+            target_co2_volumes,
+            priming_sugar_amount,
+            priming_sugar_type,
+            yeast_strain_name,
+            yeast_amount,
+            yeast_amount_unit,
+            started_at,
+            completed_at,
+            starting_volume,
+            starting_volume_unit,
+            notes
+          FROM batch_carbonation_operations
+          WHERE batch_id = ${run.batchId} AND deleted_at IS NULL
+          ORDER BY started_at DESC
+          LIMIT 1
+        `) as { rows: Array<{
+          carbonation_process: string;
+          target_co2_volumes: string;
+          priming_sugar_amount: string | null;
+          priming_sugar_type: string | null;
+          yeast_strain_name: string | null;
+          yeast_amount: string | null;
+          yeast_amount_unit: string | null;
+          started_at: Date;
+          completed_at: Date | null;
+          starting_volume: string;
+          starting_volume_unit: string;
+          notes: string | null;
+        }> };
+
+        const carbonationDetail = carbonationDetailResult.rows[0]
+          ? {
+              process: carbonationDetailResult.rows[0].carbonation_process,
+              targetCo2: parseFloat(carbonationDetailResult.rows[0].target_co2_volumes || "0"),
+              primingSugarAmount: carbonationDetailResult.rows[0].priming_sugar_amount
+                ? parseFloat(carbonationDetailResult.rows[0].priming_sugar_amount)
+                : null,
+              primingSugarType: carbonationDetailResult.rows[0].priming_sugar_type,
+              yeastStrainName: carbonationDetailResult.rows[0].yeast_strain_name,
+              yeastAmount: carbonationDetailResult.rows[0].yeast_amount
+                ? parseFloat(carbonationDetailResult.rows[0].yeast_amount)
+                : null,
+              yeastAmountUnit: carbonationDetailResult.rows[0].yeast_amount_unit,
+              startedAt: carbonationDetailResult.rows[0].started_at,
+              completedAt: carbonationDetailResult.rows[0].completed_at,
+              startingVolume: parseFloat(carbonationDetailResult.rows[0].starting_volume || "0"),
+              startingVolumeUnit: carbonationDetailResult.rows[0].starting_volume_unit,
+              notes: carbonationDetailResult.rows[0].notes,
+            }
+          : null;
+
         return {
           ...run,
           batch: {
@@ -1089,6 +1193,10 @@ export const packagingRouter = router({
           fillVarianceML: run.fillVarianceML
             ? parseFloat(run.fillVarianceML.toString())
             : undefined,
+          preBottlingSummary: {
+            filtration: filtrationOps.length > 0 ? filtrationOps : null,
+            carbonation: carbonationDetail,
+          },
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;

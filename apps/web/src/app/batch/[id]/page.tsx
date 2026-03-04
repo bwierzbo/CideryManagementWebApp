@@ -883,6 +883,83 @@ export default function BatchDetailsPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Bottling Readiness Summary */}
+          {(() => {
+            // Extract filter activities from history
+            const filterActivities = (history as any)?.filter?.((a: any) => a.type === "filter") || [];
+            // Use carbonation operations already loaded
+            const latestCarbonation = carbonationOperations[0]?.carbonation;
+            const hasAnyData = filterActivities.length > 0 || latestCarbonation;
+
+            if (!hasAnyData) return null;
+
+            return (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    Bottling Readiness
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Filtration */}
+                    <div className="flex items-start gap-2">
+                      <Droplets className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">Filtration</p>
+                        {filterActivities.length > 0 ? (
+                          <p className="text-sm text-green-600">
+                            Filtered ({filterActivities[0]?.details?.filterType || "unknown"})
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Not yet filtered</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Carbonation/Priming */}
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">Carbonation</p>
+                        {latestCarbonation ? (
+                          <div className="text-sm text-green-600">
+                            {latestCarbonation.carbonationProcess === "bottle_conditioning" ? (
+                              <>
+                                Primed
+                                {latestCarbonation.primingSugarType && (
+                                  <span> with {latestCarbonation.primingSugarType}</span>
+                                )}
+                                {latestCarbonation.primingSugarAmount && latestCarbonation.startingVolume && (
+                                  <span className="text-muted-foreground">
+                                    {" "}({(parseFloat(latestCarbonation.primingSugarAmount) / parseFloat(latestCarbonation.startingVolume)).toFixed(2)} g/L)
+                                  </span>
+                                )}
+                                {latestCarbonation.yeastStrainName && (
+                                  <span> + {latestCarbonation.yeastStrainName}</span>
+                                )}
+                                <div className="text-muted-foreground">
+                                  Target: {parseFloat(latestCarbonation.targetCo2Volumes).toFixed(2)} vol CO₂
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                {latestCarbonation.carbonationProcess} — {parseFloat(latestCarbonation.targetCo2Volumes).toFixed(2)} vol CO₂
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Not yet primed</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </TabsContent>
 
         {/* Activity History Tab */}

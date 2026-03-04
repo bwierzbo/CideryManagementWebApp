@@ -530,6 +530,110 @@ export default function PackagingDetailPage() {
               </CardContent>
             </Card>
 
+            {/* Pre-Bottling Preparation */}
+            {runData.preBottlingSummary && (runData.preBottlingSummary.filtration || runData.preBottlingSummary.carbonation) && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                    <Beaker className="w-4 h-4 md:w-5 md:h-5" />
+                    Pre-Bottling Preparation
+                  </CardTitle>
+                  <CardDescription className="text-xs md:text-sm">
+                    Filtration and carbonation steps applied before packaging
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Filtration */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Droplets className="w-4 h-4 text-gray-500" />
+                      <span className="font-medium text-sm">Filtration</span>
+                      {runData.preBottlingSummary.filtration ? (
+                        <Badge className="bg-green-100 text-green-800 text-xs">Filtered</Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">Unfiltered</Badge>
+                      )}
+                    </div>
+                    {runData.preBottlingSummary.filtration && (
+                      <div className="pl-6 space-y-1">
+                        {runData.preBottlingSummary.filtration.map((f: any, i: number) => (
+                          <div key={i} className="text-sm text-gray-600">
+                            <span className="capitalize font-medium">{f.filterType}</span> filter
+                            {f.filteredAt && ` on ${formatDateTime(new Date(f.filteredAt))}`}
+                            {f.volumeLoss > 0 && ` — ${f.volumeLoss.toFixed(1)}L loss`}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <Separator />
+
+                  {/* Carbonation / Priming */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Droplets className="w-4 h-4 text-gray-500" />
+                      <span className="font-medium text-sm">Carbonation</span>
+                      {runData.preBottlingSummary.carbonation ? (
+                        <Badge className="bg-green-100 text-green-800 text-xs">
+                          {runData.preBottlingSummary.carbonation.process === "bottle_conditioning"
+                            ? "Bottle Conditioned"
+                            : "Forced"}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">None</Badge>
+                      )}
+                    </div>
+                    {runData.preBottlingSummary.carbonation && (
+                      <div className="pl-6 space-y-1 text-sm text-gray-600">
+                        {runData.preBottlingSummary.carbonation.process === "bottle_conditioning" ? (
+                          <>
+                            {runData.preBottlingSummary.carbonation.primingSugarAmount != null && (
+                              <div>
+                                <span className="font-medium capitalize">
+                                  {runData.preBottlingSummary.carbonation.primingSugarType || "Sugar"}
+                                </span>
+                                : {runData.preBottlingSummary.carbonation.primingSugarAmount.toFixed(1)}g total
+                                {runData.preBottlingSummary.carbonation.startingVolume > 0 && (
+                                  <span className="text-gray-400">
+                                    {" "}({(runData.preBottlingSummary.carbonation.primingSugarAmount / runData.preBottlingSummary.carbonation.startingVolume).toFixed(2)} g/L)
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {runData.preBottlingSummary.carbonation.yeastStrainName && (
+                              <div>
+                                <span className="font-medium">Yeast</span>
+                                : {runData.preBottlingSummary.carbonation.yeastStrainName}
+                                {runData.preBottlingSummary.carbonation.yeastAmount != null && (
+                                  <span>
+                                    {" "}— {runData.preBottlingSummary.carbonation.yeastAmount.toFixed(1)}
+                                    {runData.preBottlingSummary.carbonation.yeastAmountUnit || "g"}
+                                    {runData.preBottlingSummary.carbonation.startingVolume > 0 && (
+                                      <span className="text-gray-400">
+                                        {" "}({(runData.preBottlingSummary.carbonation.yeastAmount / runData.preBottlingSummary.carbonation.startingVolume).toFixed(2)} g/L)
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            <div>
+                              Target CO₂: {runData.preBottlingSummary.carbonation.targetCo2.toFixed(2)} volumes
+                            </div>
+                          </>
+                        ) : (
+                          <div>
+                            {runData.preBottlingSummary.carbonation.process} — Target: {runData.preBottlingSummary.carbonation.targetCo2.toFixed(2)} CO₂ volumes
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Quality Assurance Data */}
             <Card>
               <CardHeader className="pb-3">

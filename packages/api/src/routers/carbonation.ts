@@ -37,10 +37,15 @@ export const carbonationRouter = router({
         startingVolumeUnit: z.enum(["L", "gal"]).default("L"),
         gasType: z.string().default("CO2"),
         notes: z.string().optional(),
-        // For bottle conditioning
+        // For bottle conditioning — sugar
         additivePurchaseId: z.string().uuid().optional(),
         primingSugarAmount: z.number().positive().optional(),
         primingSugarType: z.enum(["sucrose", "dextrose", "honey"]).optional(),
+        // For bottle conditioning — yeast
+        yeastAdditivePurchaseId: z.string().uuid().optional(),
+        yeastStrainName: z.string().optional(),
+        yeastAmount: z.number().positive().optional(),
+        yeastAmountUnit: z.string().default("g").optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -163,10 +168,15 @@ export const carbonationRouter = router({
           gasType: input.gasType,
           performedBy: null, // TODO: Add user ID to session type
           notes: input.notes,
-          // Additive tracking
+          // Additive tracking — sugar
           additivePurchaseId: input.additivePurchaseId,
           primingSugarAmount: input.primingSugarAmount?.toString(),
           primingSugarType: input.primingSugarType,
+          // Additive tracking — yeast
+          yeastAdditivePurchaseId: input.yeastAdditivePurchaseId,
+          yeastStrainName: input.yeastStrainName,
+          yeastAmount: input.yeastAmount?.toString(),
+          yeastAmountUnit: input.yeastAmountUnit,
         })
         .returning();
 
@@ -456,10 +466,15 @@ export const carbonationRouter = router({
         volumeUnit: z.enum(["L", "gal"]).default("L"),
         gasType: z.string().default("CO2"),
         notes: z.string().optional(),
-        // For bottle conditioning
+        // For bottle conditioning — sugar
         additivePurchaseId: z.string().uuid().optional(),
         primingSugarAmount: z.number().positive().optional(),
         primingSugarType: z.enum(["sucrose", "dextrose", "honey"]).optional(),
+        // For bottle conditioning — yeast
+        yeastAdditivePurchaseId: z.string().uuid().optional(),
+        yeastStrainName: z.string().optional(),
+        yeastAmount: z.number().positive().optional(),
+        yeastAmountUnit: z.string().default("g").optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -574,10 +589,15 @@ export const carbonationRouter = router({
           performedBy: null, // TODO: Add user ID to session type
           completedBy: null, // TODO: Add user ID to session type
           notes: input.notes,
-          // Additive tracking
+          // Additive tracking — sugar
           additivePurchaseId: input.additivePurchaseId,
           primingSugarAmount: input.primingSugarAmount?.toString(),
           primingSugarType: input.primingSugarType,
+          // Additive tracking — yeast
+          yeastAdditivePurchaseId: input.yeastAdditivePurchaseId,
+          yeastStrainName: input.yeastStrainName,
+          yeastAmount: input.yeastAmount?.toString(),
+          yeastAmountUnit: input.yeastAmountUnit,
         })
         .returning();
 

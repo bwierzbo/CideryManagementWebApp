@@ -161,6 +161,29 @@ export const batchCarbonationOperations = pgTable(
      */
     primingSugarType: text("priming_sugar_type"),
 
+    // Yeast tracking (for bottle conditioning)
+    /**
+     * Reference to the additive purchase used for yeast (bottle conditioning only)
+     */
+    yeastAdditivePurchaseId: uuid("yeast_additive_purchase_id").references(
+      () => additivePurchases.id,
+    ),
+    /**
+     * Name of the yeast strain used (captured for display)
+     */
+    yeastStrainName: text("yeast_strain_name"),
+    /**
+     * Amount of yeast used
+     */
+    yeastAmount: numeric("yeast_amount", {
+      precision: 10,
+      scale: 2,
+    }),
+    /**
+     * Unit for yeast amount (g, tsp, packet, etc.)
+     */
+    yeastAmountUnit: text("yeast_amount_unit").default("g"),
+
     // Final conditions
     finalPressure: numeric("final_pressure", { precision: 5, scale: 1 }),
     finalTemperature: numeric("final_temperature", { precision: 4, scale: 1 }),
@@ -229,6 +252,12 @@ export const batchCarbonationOperationsRelations = relations(
     additivePurchase: one(additivePurchases, {
       fields: [batchCarbonationOperations.additivePurchaseId],
       references: [additivePurchases.id],
+      relationName: "carbonation_sugar_purchase",
+    }),
+    yeastAdditivePurchase: one(additivePurchases, {
+      fields: [batchCarbonationOperations.yeastAdditivePurchaseId],
+      references: [additivePurchases.id],
+      relationName: "carbonation_yeast_purchase",
     }),
     performedByUser: one(users, {
       fields: [batchCarbonationOperations.performedBy],

@@ -70,6 +70,10 @@ const bottleConditioningSchema = z.object({
   targetCo2Volumes: z.number().min(0.1).max(5),
   sugarPerLiter: z.preprocess((v) => (v === "" || Number.isNaN(v) ? undefined : v), z.number().min(0).optional()),
   additivePurchaseItemId: z.string().uuid().optional(),
+  // Yeast
+  yeastAdditivePurchaseId: z.string().uuid().optional(),
+  yeastStrainName: z.string().optional(),
+  yeastPerLiter: z.preprocess((v) => (v === "" || Number.isNaN(v) ? undefined : v), z.number().min(0).optional()),
   notes: z.string().optional(),
 });
 
@@ -113,6 +117,9 @@ export function CarbonateModal({
   const [lastEditedField, setLastEditedField] = React.useState<"co2" | "sugar">("co2");
   const [dateWarning, setDateWarning] = React.useState<string | null>(null);
   const [sugarType, setSugarType] = React.useState<"sucrose" | "dextrose" | "honey">("sucrose");
+  const [yeastPurchaseId, setYeastPurchaseId] = React.useState<string | null>(null);
+  const [yeastStrainName, setYeastStrainName] = React.useState<string>("");
+  const [yeastPerLiter, setYeastPerLiter] = React.useState<number>(0.5);
 
   const { validateDate } = useBatchDateValidation(batch.id);
 
@@ -129,6 +136,32 @@ export function CarbonateModal({
       { limit: 100, offset: 0, itemType: "Sugar & Sweeteners" },
       { enabled: open && carbonationMethod === "bottle_conditioning" }
     );
+
+  // Query for available yeast (for bottle conditioning)
+  const { data: yeastInventory } =
+    trpc.additivePurchases.list.useQuery(
+      { limit: 100, offset: 0, itemType: "Fermentation Organisms" },
+      { enabled: open && carbonationMethod === "bottle_conditioning" }
+    );
+
+  // Flatten yeast inventory into selectable options
+  const yeastOptions = useMemo(() => {
+    if (!yeastInventory?.purchases) return [];
+    const options: { purchaseId: string; itemId: string; productName: string; vendor: string; quantity: string; unit: string }[] = [];
+    for (const purchase of yeastInventory.purchases) {
+      for (const item of (purchase as any).items || []) {
+        options.push({
+          purchaseId: purchase.id,
+          itemId: item.id || purchase.id,
+          productName: item.productName || (purchase as any).vendorName || "Unknown Yeast",
+          vendor: item.brandManufacturer || (purchase as any).vendorName || "",
+          quantity: item.quantity || "0",
+          unit: item.unit || "g",
+        });
+      }
+    }
+    return options;
+  }, [yeastInventory]);
 
   // Categorize inventory items by sugar type
   const inventoryByType = useMemo(() => {
@@ -230,6 +263,9 @@ export function CarbonateModal({
       setCarbonationMethod(defaultMethod);
       setLastEditedField("co2");
       setSugarType("sucrose");
+      setYeastPurchaseId(null);
+      setYeastStrainName("");
+      setYeastPerLiter(0.5);
       setDateWarning(null);
     }
   }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel]);
@@ -395,6 +431,13 @@ export function CarbonateModal({
           additivePurchaseId,
           primingSugarAmount: typeof requiredSugarGrams === 'number' && !isNaN(requiredSugarGrams) ? requiredSugarGrams : undefined,
           primingSugarType: sugarType,
+        }),
+        // Yeast
+        ...(yeastPurchaseId && {
+          yeastAdditivePurchaseId: yeastPurchaseId,
+          yeastStrainName: yeastStrainName || undefined,
+          yeastAmount: yeastPerLiter > 0 ? yeastPerLiter * volumeInLiters : undefined,
+          yeastAmountUnit: "g",
         }),
       });
     }
@@ -729,6 +772,78 @@ export function CarbonateModal({
                 {requiredSugarGrams > 0 && (
                   <div className="text-xs text-green-700">
                     Dissolve {sugarType === "honey" ? "honey" : "sugar"} in a small amount of boiled water before adding to ensure even distribution.
+                  </div>
+                )}
+              </div>
+
+              {/* Yeast Section */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-sm">Yeast for Bottle Conditioning</h3>
+
+                {yeastOptions.length > 0 ? (
+                  <>
+                    <div>
+                      <Label htmlFor="yeastSelect">Yeast Strain</Label>
+                      <select
+                        id="yeastSelect"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={yeastPurchaseId || ""}
+                        onChange={(e) => {
+                          const selected = yeastOptions.find((y) => y.purchaseId === e.target.value);
+                          if (selected) {
+                            setYeastPurchaseId(selected.purchaseId);
+                            setYeastStrainName(selected.productName);
+                          } else {
+                            setYeastPurchaseId(null);
+                            setYeastStrainName("");
+                          }
+                        }}
+                      >
+                        <option value="">Select yeast...</option>
+                        {yeastOptions.map((y) => (
+                          <option key={y.purchaseId} value={y.purchaseId}>
+                            {y.productName}{y.vendor ? ` (${y.vendor})` : ""} — {parseFloat(y.quantity).toFixed(0)} {y.unit} available
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {yeastPurchaseId && (
+                      <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-3">
+                        <div className="flex items-center gap-2 font-semibold text-blue-900">
+                          <Beaker className="h-4 w-4" />
+                          Required {yeastStrainName || "Yeast"}
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 text-center">
+                          <div>
+                            <div className="flex items-center justify-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={yeastPerLiter}
+                                onChange={(e) => setYeastPerLiter(parseFloat(e.target.value) || 0)}
+                                className="h-8 w-20 text-center text-sm"
+                              />
+                            </div>
+                            <div className="text-xs text-blue-700 mt-1">g/L</div>
+                          </div>
+                          <div>
+                            <div className="text-lg font-bold text-blue-900">
+                              {(yeastPerLiter * volumeInLiters).toFixed(1)}
+                            </div>
+                            <div className="text-xs text-blue-700">grams total</div>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Default: 0.5 g/L for rehydrated yeast. Adjust based on strain recommendations.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-lg bg-muted/50 border border-muted p-4 text-sm text-muted-foreground">
+                    No yeast in inventory. Add yeast under Additives → Fermentation Organisms to select here.
                   </div>
                 )}
               </div>
