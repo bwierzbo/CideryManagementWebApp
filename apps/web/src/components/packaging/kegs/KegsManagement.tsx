@@ -93,6 +93,10 @@ interface Keg {
   latestFillRemainingVolume: string | null;
   latestFillVolumeTaken: string | null;
   latestFillVolumeUnit: string | null;
+  latestFillFilterType: string | null;
+  latestFillCarbProcess: string | null;
+  latestFillCarbCo2: string | null;
+  latestFillPrimingSugar: string | null;
 }
 
 const KEG_STATUS_CONFIG = {
@@ -506,6 +510,34 @@ export function KegsManagement() {
                           >
                             Filled: {formatDate(keg.latestFillDate)}
                           </button>
+                        )}
+
+                        {/* Filter & Carbonation status for filled kegs */}
+                        {keg.status === "filled" && keg.latestFillId && (
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-gray-500">
+                            <span>
+                              Filter:{" "}
+                              {keg.latestFillFilterType ? (
+                                <span className="text-gray-700 font-medium">
+                                  {keg.latestFillFilterType.charAt(0).toUpperCase() + keg.latestFillFilterType.slice(1)}
+                                </span>
+                              ) : (
+                                "None"
+                              )}
+                            </span>
+                            <span>
+                              Carb:{" "}
+                              {keg.latestFillCarbProcess ? (
+                                <span className="text-gray-700 font-medium">
+                                  {keg.latestFillCarbProcess === "bottle_conditioning"
+                                    ? `Primed${keg.latestFillPrimingSugar ? ` ${parseFloat(keg.latestFillPrimingSugar).toFixed(1)} g/L` : ""}${keg.latestFillCarbCo2 ? ` (${parseFloat(keg.latestFillCarbCo2).toFixed(1)} vol)` : ""}`
+                                    : `Forced${keg.latestFillCarbCo2 ? ` ${parseFloat(keg.latestFillCarbCo2).toFixed(1)} vol` : ""}`}
+                                </span>
+                              ) : (
+                                "None"
+                              )}
+                            </span>
+                          </div>
                         )}
                       </div>
 

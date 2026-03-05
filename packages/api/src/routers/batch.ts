@@ -2233,8 +2233,9 @@ export const batchRouter = router({
         console.error("Batch validation failed:", err);
       }
 
-      // Fetch transfer-derived children for expandable rows
+      // Fetch ALL descendant batches recursively for expandable rows
       const parentIds = batchesList.map(b => b.id);
+      const parentIdSet = new Set(parentIds);
       let childBatches: Array<{
         id: string;
         name: string | null;
@@ -2245,32 +2246,60 @@ export const batchRouter = router({
         vesselName: string | null;
         initialVolumeLiters: string | null;
         currentVolumeLiters: string | null;
+        reconciliationStatus: string | null;
         parentBatchId: string | null;
+        depth: number;
       }> = [];
 
       if (parentIds.length > 0) {
-        childBatches = await db
-          .select({
-            id: batches.id,
-            name: batches.name,
-            customName: batches.customName,
-            batchNumber: batches.batchNumber,
-            productType: batches.productType,
-            startDate: batches.startDate,
-            vesselName: vessels.name,
-            initialVolumeLiters: batches.initialVolumeLiters,
-            currentVolumeLiters: batches.currentVolumeLiters,
-            reconciliationStatus: batches.reconciliationStatus,
-            parentBatchId: batches.parentBatchId,
-          })
-          .from(batches)
-          .leftJoin(vessels, eq(batches.vesselId, vessels.id))
-          .where(and(
-            isNull(batches.deletedAt),
-            inArray(batches.parentBatchId, parentIds),
-            sql`(${batches.isRackingDerivative} IS TRUE OR (${batches.parentBatchId} IS NOT NULL AND CAST(COALESCE(${batches.initialVolumeLiters}, '1') AS DECIMAL) = 0 AND COALESCE(${batches.productType}, 'cider') != 'pommeau') OR COALESCE(${batches.reconciliationStatus}, 'pending') IN ('duplicate', 'excluded'))`,
-          ))
-          .orderBy(asc(batches.startDate));
+        const parentIdParams = parentIds.map(id => sql`${id}::uuid`);
+        // Only include children whose start_date falls within the selected year
+        // (or all children if no year filter is applied)
+        const childYearFilter = input.year
+          ? sql`AND EXTRACT(YEAR FROM b.start_date) <= ${input.year}`
+          : sql``;
+        const childResult = await db.execute(sql`
+          WITH RECURSIVE batch_tree AS (
+            SELECT b.id, b.name, b.custom_name, b.batch_number, b.product_type, b.start_date,
+                   b.initial_volume_liters, b.current_volume_liters, b.reconciliation_status,
+                   b.parent_batch_id, b.vessel_id,
+                   b.parent_batch_id as root_parent_id, 1 as depth
+            FROM batches b
+            WHERE b.deleted_at IS NULL
+              AND b.parent_batch_id IN (${sql.join(parentIdParams, sql`, `)})
+              ${childYearFilter}
+            UNION ALL
+            SELECT b.id, b.name, b.custom_name, b.batch_number, b.product_type, b.start_date,
+                   b.initial_volume_liters, b.current_volume_liters, b.reconciliation_status,
+                   b.parent_batch_id, b.vessel_id,
+                   bt.root_parent_id, bt.depth + 1
+            FROM batches b
+            INNER JOIN batch_tree bt ON b.parent_batch_id = bt.id
+            WHERE b.deleted_at IS NULL AND bt.depth < 10
+              ${childYearFilter}
+          )
+          SELECT bt.*, v.name as vessel_name
+          FROM batch_tree bt
+          LEFT JOIN vessels v ON bt.vessel_id = v.id
+          ORDER BY bt.root_parent_id, bt.depth, bt.start_date
+        `);
+
+        childBatches = (childResult.rows as any[])
+          .filter(r => !parentIdSet.has(r.id as string))
+          .map(r => ({
+            id: r.id as string,
+            name: r.name as string | null,
+            customName: r.custom_name as string | null,
+            batchNumber: r.batch_number as string | null,
+            productType: r.product_type as string | null,
+            startDate: r.start_date as Date | null,
+            vesselName: r.vessel_name as string | null,
+            initialVolumeLiters: r.initial_volume_liters as string | null,
+            currentVolumeLiters: r.current_volume_liters as string | null,
+            reconciliationStatus: r.reconciliation_status as string | null,
+            parentBatchId: r.root_parent_id as string | null,
+            depth: Number(r.depth),
+          }));
       }
 
       // Group children by parent
@@ -2974,47 +3003,17 @@ export const batchRouter = router({
           originDescription = `${juiceLabel}${vendorLabel}`;
         }
 
-        // If this batch has ancestors (was created via transfer), use the oldest ancestor's start date
-        // Otherwise use this batch's creation date (which is actually startDate per the query alias)
+        // For transfer-derived batches, use the batch's own start date (= transfer date)
+        // so the creation event appears AFTER the transfer, in "Current Batch" section.
+        // For non-transfer batches, use the batch's start date as normal.
         let creationTimestamp = batch[0].createdAt;
         let creationDescription = `Batch created from ${originDescription}`;
 
         if (ancestorChain.length > 0) {
-          // Find the ancestor with the earliest start_date (true origin of lineage)
-          // This is more accurate than highest depth, especially for blended batches
-          const ancestorsWithDates = ancestorChain.filter(a => a.start_date !== null);
-
-          if (ancestorsWithDates.length > 0) {
-            const earliestAncestor = ancestorsWithDates.reduce((earliest, current) => {
-              const earliestDate = new Date(earliest.start_date!).getTime();
-              const currentDate = new Date(current.start_date!).getTime();
-              return currentDate < earliestDate ? current : earliest;
-            }, ancestorsWithDates[0]);
-
-            creationTimestamp = earliestAncestor.start_date!;
-          } else {
-            // Fallback to highest depth if no start_dates available
-            const oldestAncestor = ancestorChain.reduce((oldest, current) =>
-              current.depth > oldest.depth ? current : oldest
-            , ancestorChain[0]);
-
-            // Query the oldest ancestor's start date
-            const [oldestAncestorBatch] = await db
-              .select({
-                startDate: batches.startDate,
-                createdAt: batches.createdAt,
-              })
-              .from(batches)
-              .where(eq(batches.id, oldestAncestor.batch_id))
-              .limit(1);
-
-            if (oldestAncestorBatch) {
-              creationTimestamp = oldestAncestorBatch.startDate || oldestAncestorBatch.createdAt;
-            }
-          }
-
-          // Update description to mention the parent batch
-          creationDescription = `Batch lineage started from ${originDescription}`;
+          // This batch was created via transfer — use its own start date (transfer date)
+          // The parent's lineage origin is already visible in "Parent History"
+          const parentBatch = ancestorChain[0]; // Direct parent (depth=1)
+          creationDescription = `Transferred from ${parentBatch.batch_name}`;
         }
 
         activities.push({
@@ -3432,6 +3431,27 @@ export const batchRouter = router({
             metadata: { id: adj.id, adjustmentDate: adj.adjustmentDate },
           });
         });
+
+        // Deduplicate activities copied during full transfers.
+        // When a batch is fully racked/transferred, the system copies measurements, additives,
+        // racking ops, filter ops, and carbonation ops to the new batch. The ancestor chain also
+        // includes the originals (marked inherited). Remove the copies (on current batch) when
+        // a matching inherited activity exists, so they only appear once in "Parent History".
+        if (ancestorChain.length > 0) {
+          const COPIED_TYPES = new Set(["measurement", "additive", "rack", "filter", "carbonation"]);
+          const inheritedFingerprints = new Set<string>();
+          for (const a of activities) {
+            if (a.inherited && COPIED_TYPES.has(a.type)) {
+              inheritedFingerprints.add(`${a.type}-${new Date(a.timestamp).getTime()}`);
+            }
+          }
+          if (inheritedFingerprints.size > 0) {
+            activities = activities.filter(a => {
+              if (a.inherited || !COPIED_TYPES.has(a.type)) return true;
+              return !inheritedFingerprints.has(`${a.type}-${new Date(a.timestamp).getTime()}`);
+            });
+          }
+        }
 
         // In lineage mode for blended batches, filter out inherited activities that are
         // redundant or not relevant to this batch's story (unless showSourceHistory is enabled)

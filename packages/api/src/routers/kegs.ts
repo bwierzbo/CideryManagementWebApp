@@ -286,6 +286,52 @@ export const kegsRouter = router({
               ORDER BY keg_fills.filled_at DESC
               LIMIT 1
             )`,
+            // Filter and carbonation info from the latest fill's batch
+            latestFillFilterType: sql<string>`(
+              SELECT bfo.filter_type FROM batch_filter_operations bfo
+              WHERE bfo.batch_id = (
+                SELECT kf.batch_id FROM keg_fills kf
+                WHERE kf.keg_id = kegs.id
+                  AND kf.status NOT IN ('voided', 'returned')
+                  AND kf.deleted_at IS NULL
+                ORDER BY kf.filled_at DESC LIMIT 1
+              ) AND bfo.deleted_at IS NULL
+              ORDER BY bfo.filtered_at DESC LIMIT 1
+            )`,
+            latestFillCarbProcess: sql<string>`(
+              SELECT bco.carbonation_process FROM batch_carbonation_operations bco
+              WHERE bco.batch_id = (
+                SELECT kf.batch_id FROM keg_fills kf
+                WHERE kf.keg_id = kegs.id
+                  AND kf.status NOT IN ('voided', 'returned')
+                  AND kf.deleted_at IS NULL
+                ORDER BY kf.filled_at DESC LIMIT 1
+              ) AND bco.deleted_at IS NULL
+              ORDER BY bco.started_at DESC LIMIT 1
+            )`,
+            latestFillCarbCo2: sql<string>`(
+              SELECT COALESCE(bco.final_co2_volumes, bco.target_co2_volumes)
+              FROM batch_carbonation_operations bco
+              WHERE bco.batch_id = (
+                SELECT kf.batch_id FROM keg_fills kf
+                WHERE kf.keg_id = kegs.id
+                  AND kf.status NOT IN ('voided', 'returned')
+                  AND kf.deleted_at IS NULL
+                ORDER BY kf.filled_at DESC LIMIT 1
+              ) AND bco.deleted_at IS NULL
+              ORDER BY bco.started_at DESC LIMIT 1
+            )`,
+            latestFillPrimingSugar: sql<string>`(
+              SELECT bco.priming_sugar_amount FROM batch_carbonation_operations bco
+              WHERE bco.batch_id = (
+                SELECT kf.batch_id FROM keg_fills kf
+                WHERE kf.keg_id = kegs.id
+                  AND kf.status NOT IN ('voided', 'returned')
+                  AND kf.deleted_at IS NULL
+                ORDER BY kf.filled_at DESC LIMIT 1
+              ) AND bco.deleted_at IS NULL
+              ORDER BY bco.started_at DESC LIMIT 1
+            )`,
           })
           .from(kegs)
           .where(and(...conditions))
