@@ -544,6 +544,7 @@ interface BatchTTBContribution {
   productType: string | null;
   vesselName: string | null;
   startDate: string;
+  reconciliationStatus: string;
   isCarriedForward: boolean;
   isNewInPeriod: boolean;
   isTransferCreated: boolean;
@@ -1427,6 +1428,7 @@ async function computeReconciliationFromBatches(
       productType: info.productType,
       vesselName: info.vesselName,
       startDate: info.startDate,
+      reconciliationStatus: info.reconciliationStatus,
       isCarriedForward,
       isNewInPeriod,
       isTransferCreated,
@@ -3338,18 +3340,13 @@ export const ttbRouter = router({
           if (srcType === "brandy" || dstType === "brandy") continue;
           if (dstType === "pommeau" || srcType === "pommeau") continue;
 
-          // Use product_type (not just tax class) to determine cross-class:
-          // e.g., cider→perry is a change of type even though both map to hardCider.
           if (srcType === dstType) continue;
 
           const sourceClass = getTaxClassFromMap(batchTaxClassMap, row.sourceBatchId, srcType || "cider");
-          // For perry destinations, route to wineUnder16 — perry is a different product
-          // type from cider and is reported separately on the TTB form even though
-          // it would normally classify as hardCider by ABV.
-          const destClass = dstType === "perry"
-            ? "wineUnder16" as TTBTaxClass
-            : getTaxClassFromMap(batchTaxClassMap, row.destBatchId, dstType || "cider");
+          const destClass = getTaxClassFromMap(batchTaxClassMap, row.destBatchId, dstType || "cider");
           if (!sourceClass || !destClass) continue;
+          // Skip same tax class (e.g., cider→perry are both hardCider)
+          if (sourceClass === destClass) continue;
 
           const volumeGallons = litersToWineGallons(Number(row.volumeTransferred || 0));
           changeOfClassOut[sourceClass] = (changeOfClassOut[sourceClass] || 0) + volumeGallons;
@@ -5543,7 +5540,12 @@ export const ttbRouter = router({
 
       // Compute SBD per-batch volumes at reconciliationDate
       const allEligibleBatchesForInventory = await db
-        .select({ id: batches.id, startDate: batches.startDate, productType: batches.productType })
+        .select({
+          id: batches.id,
+          startDate: batches.startDate,
+          productType: batches.productType,
+          reconciliationStatus: batches.reconciliationStatus,
+        })
         .from(batches)
         .where(
           and(
@@ -5557,10 +5559,22 @@ export const ttbRouter = router({
         reconciliationDate,
       );
 
+      // Filter dup/excluded batches from bulk inventory (same filter as waterfall aggregation).
+      // The eligible batch query includes them via parentBatchId IS NOT NULL for SBD reconstruction,
+      // but they must NOT count toward bulk inventory totals.
+      const dupExcludedInventoryIds = new Set(
+        allEligibleBatchesForInventory
+          .filter(b => (b.reconciliationStatus === 'duplicate' || b.reconciliationStatus === 'excluded'))
+          .map(b => b.id)
+      );
+      const filteredPerBatch = new Map(
+        [...sbdResult.perBatch].filter(([batchId]) => !dupExcludedInventoryIds.has(batchId))
+      );
+
       // Build per-tax-class bulk inventory from SBD reconstruction (in liters)
       const sbdProductTypes = new Map<string, string | null>();
       for (const b of allEligibleBatchesForInventory) sbdProductTypes.set(b.id, b.productType);
-      const sbdByClassLiters = computePerTaxClassBulkInventory(sbdResult.perBatch, batchTaxClassMap, sbdProductTypes);
+      const sbdByClassLiters = computePerTaxClassBulkInventory(filteredPerBatch, batchTaxClassMap, sbdProductTypes);
 
       // Build inventory by tax class (gallons)
       const inventoryByTaxClass: Record<string, number> = {
@@ -6703,6 +6717,8 @@ export const ttbRouter = router({
         transfersIn: number; transfersOut: number; mergesIn: number; mergesOut: number;
       }> = {};
       for (const b of batchRecon.batches) {
+        // Skip duplicate/excluded batches from waterfall aggregation (they don't count in bulk inventory)
+        if (b.reconciliationStatus === 'duplicate' || b.reconciliationStatus === 'excluded') continue;
         const taxClass = getTaxClassFromMap(batchTaxClassMap, b.batchId, b.productType);
         if (!taxClass) continue;
         if (!sbdWaterfallByTaxClass[taxClass]) {
@@ -7093,11 +7109,8 @@ export const ttbRouter = router({
       // during SBD reconstruction. NOT subtracted from losses in the waterfall identity.
       const clampedLossGallons = litersToWineGallons(sbd.clampedLossLiters);
 
-      // For the opening year, use the SBD-derived opening (same source as the waterfall)
-      // to prevent false variances between the waterfall and system on-hand.
-      const systemCalculatedOnHand = isInitialReconciliation
-        ? parseFloat(totalTtb.toFixed(1))
-        : systemTotalOnHand;
+      // SBD-derived system on-hand (same algorithm for all years — no opening year special case)
+      const systemCalculatedOnHand = systemTotalOnHand;
 
       const varianceThresholdPct = parseFloat(settings.ttbVarianceThresholdPct || "0.50");
 

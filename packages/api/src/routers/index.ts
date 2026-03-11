@@ -4028,7 +4028,25 @@ export const appRouter = router({
                   : `🍎🥃 Pommeau blend created! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${otherVolumeL.toFixed(1)}L ${otherLabel} @ ${otherAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`;
               }
 
-              // Update destination batch with combined volume (and product type/ABV if Pommeau)
+              // For non-pommeau blends, compute volume-weighted ABV from batch values
+              if (!isPommeauBlend) {
+                const srcAbv = parseFloat(sourceBatch[0].actualAbv || sourceBatch[0].estimatedAbv || "0");
+                const dstAbv = parseFloat(destBatch[0].actualAbv || destBatch[0].estimatedAbv || "0");
+                if (srcAbv > 0 || dstAbv > 0) {
+                  const blendedAbv = ((input.volumeL * srcAbv) + (destCurrentVolumeL * dstAbv)) / newVolumeL;
+                  newEstimatedAbv = blendedAbv.toFixed(2);
+                }
+              }
+
+              // Compute volume-weighted OG so cellar page ABV calc uses blended OG
+              const srcOG = sourceBatch[0].originalGravity ? parseFloat(sourceBatch[0].originalGravity) : null;
+              const dstOG = destBatch[0].originalGravity ? parseFloat(destBatch[0].originalGravity) : null;
+              let blendedOG: string | null = null;
+              if (srcOG !== null && dstOG !== null) {
+                blendedOG = (((input.volumeL * srcOG) + (destCurrentVolumeL * dstOG)) / newVolumeL).toFixed(4);
+              }
+
+              // Update destination batch with combined volume and blended ABV
               const updateData: Record<string, unknown> = {
                 currentVolume: newVolumeL.toString(),
                 currentVolumeUnit: "L",
@@ -4037,7 +4055,12 @@ export const appRouter = router({
 
               if (isPommeauBlend) {
                 updateData.productType = newProductType;
+              }
+              if (newEstimatedAbv !== null) {
                 updateData.estimatedAbv = newEstimatedAbv;
+              }
+              if (blendedOG !== null) {
+                updateData.originalGravity = blendedOG;
               }
 
               updatedBatch = await tx

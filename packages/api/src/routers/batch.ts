@@ -4113,6 +4113,9 @@ export const batchRouter = router({
               status: batches.status,
               fermentationStage: batches.fermentationStage,
               productType: batches.productType,
+              actualAbv: batches.actualAbv,
+              estimatedAbv: batches.estimatedAbv,
+              originalGravity: batches.originalGravity,
             })
             .from(batches)
             .where(
@@ -4221,6 +4224,9 @@ export const batchRouter = router({
                 currentVolume: batches.currentVolume,
                 fermentationStage: batches.fermentationStage,
                 productType: batches.productType,
+                actualAbv: batches.actualAbv,
+                estimatedAbv: batches.estimatedAbv,
+                originalGravity: batches.originalGravity,
               })
               .from(batches)
               .where(
@@ -4237,14 +4243,27 @@ export const batchRouter = router({
               const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
               const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
 
-              // Update destination batch with merged volume
+              // Compute volume-weighted ABV and OG for the blended batch
+              const rackMergeUpdateData: Record<string, unknown> = {
+                currentVolume: mergedVolumeL.toString(),
+                currentVolumeUnit: 'L',
+                updatedAt: new Date(),
+              };
+              const srcAbvVal = parseFloat(batch[0].actualAbv || batch[0].estimatedAbv || "0");
+              const dstAbvVal = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
+              if (srcAbvVal > 0 || dstAbvVal > 0) {
+                rackMergeUpdateData.estimatedAbv = (((volumeRackedL * srcAbvVal) + (destCurrentVolumeL * dstAbvVal)) / mergedVolumeL).toFixed(2);
+              }
+              const srcOGVal = batch[0].originalGravity ? parseFloat(batch[0].originalGravity) : null;
+              const dstOGVal = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
+              if (srcOGVal !== null && dstOGVal !== null) {
+                rackMergeUpdateData.originalGravity = (((volumeRackedL * srcOGVal) + (destCurrentVolumeL * dstOGVal)) / mergedVolumeL).toFixed(4);
+              }
+
+              // Update destination batch with merged volume and blended ABV
               updatedBatch = await tx
                 .update(batches)
-                .set({
-                  currentVolume: mergedVolumeL.toString(),
-                  currentVolumeUnit: 'L',
-                  updatedAt: new Date(),
-                })
+                .set(rackMergeUpdateData)
                 .where(eq(batches.id, destBatch.id))
                 .returning();
 
@@ -4604,14 +4623,27 @@ export const batchRouter = router({
             const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
             const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
 
-            // Update destination batch with merged volume
+            // Compute volume-weighted ABV and OG for the blended batch
+            const mergeUpdateData5b: Record<string, unknown> = {
+              currentVolume: mergedVolumeL.toString(),
+              currentVolumeUnit: 'L',
+              updatedAt: new Date(),
+            };
+            const srcAbv5b = parseFloat(batch[0].actualAbv || batch[0].estimatedAbv || "0");
+            const dstAbv5b = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
+            if (srcAbv5b > 0 || dstAbv5b > 0) {
+              mergeUpdateData5b.estimatedAbv = (((volumeRackedL * srcAbv5b) + (destCurrentVolumeL * dstAbv5b)) / mergedVolumeL).toFixed(2);
+            }
+            const srcOG5b = batch[0].originalGravity ? parseFloat(batch[0].originalGravity) : null;
+            const dstOG5b = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
+            if (srcOG5b !== null && dstOG5b !== null) {
+              mergeUpdateData5b.originalGravity = (((volumeRackedL * srcOG5b) + (destCurrentVolumeL * dstOG5b)) / mergedVolumeL).toFixed(4);
+            }
+
+            // Update destination batch with merged volume and blended ABV
             updatedBatch = await tx
               .update(batches)
-              .set({
-                currentVolume: mergedVolumeL.toString(),
-                currentVolumeUnit: 'L',
-                updatedAt: new Date(),
-              })
+              .set(mergeUpdateData5b)
               .where(eq(batches.id, destBatch.id))
               .returning();
 
@@ -4772,6 +4804,9 @@ export const batchRouter = router({
                 currentVolume: batches.currentVolume,
                 fermentationStage: batches.fermentationStage,
                 productType: batches.productType,
+                actualAbv: batches.actualAbv,
+                estimatedAbv: batches.estimatedAbv,
+                originalGravity: batches.originalGravity,
               })
               .from(batches)
               .where(
@@ -4788,14 +4823,27 @@ export const batchRouter = router({
               const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
               const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
 
-              // Update destination batch with merged volume
+              // Compute volume-weighted ABV and OG for the blended batch
+              const safetyMergeData: Record<string, unknown> = {
+                currentVolume: mergedVolumeL.toString(),
+                currentVolumeUnit: 'L',
+                updatedAt: new Date(),
+              };
+              const srcAbvSafe = parseFloat(batch[0].actualAbv || batch[0].estimatedAbv || "0");
+              const dstAbvSafe = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
+              if (srcAbvSafe > 0 || dstAbvSafe > 0) {
+                safetyMergeData.estimatedAbv = (((volumeRackedL * srcAbvSafe) + (destCurrentVolumeL * dstAbvSafe)) / mergedVolumeL).toFixed(2);
+              }
+              const srcOGSafe = batch[0].originalGravity ? parseFloat(batch[0].originalGravity) : null;
+              const dstOGSafe = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
+              if (srcOGSafe !== null && dstOGSafe !== null) {
+                safetyMergeData.originalGravity = (((volumeRackedL * srcOGSafe) + (destCurrentVolumeL * dstOGSafe)) / mergedVolumeL).toFixed(4);
+              }
+
+              // Update destination batch with merged volume and blended ABV
               updatedBatch = await tx
                 .update(batches)
-                .set({
-                  currentVolume: mergedVolumeL.toString(),
-                  currentVolumeUnit: 'L',
-                  updatedAt: new Date(),
-                })
+                .set(safetyMergeData)
                 .where(eq(batches.id, destBatch.id))
                 .returning();
 

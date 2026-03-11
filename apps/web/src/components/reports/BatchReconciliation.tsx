@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
@@ -84,7 +84,7 @@ import {
 } from "@/utils/error-handling";
 import { litersToWineGallons, wineGallonsToLiters } from "lib/src/calculations/ttb";
 import { ReportExportDropdown } from "@/components/reports/ReportExportDropdown";
-import { arrayToCSV, downloadCSV, escapeCSVValue } from "@/utils/csv/exportHelpers";
+import { arrayToCSV, downloadCSV } from "@/utils/csv/exportHelpers";
 
 const PRODUCT_TYPES = [
   { value: "cider", label: "Cider" },
@@ -95,7 +95,23 @@ const PRODUCT_TYPES = [
   { value: "other", label: "Other" },
 ] as const;
 
-type SortField = "name" | "productType" | "startDate" | "initialVolumeLiters" | "endingVolume" | "gallons" | "vesselName" | "validation";
+type VolumeUnit = "gal" | "L";
+
+function formatVol(gal: number, unit: VolumeUnit): string {
+  if (unit === "L") return wineGallonsToLiters(gal).toFixed(1);
+  return gal.toFixed(1);
+}
+
+function formatVolFromLiters(liters: number, unit: VolumeUnit): string {
+  if (unit === "L") return liters.toFixed(1);
+  return litersToWineGallons(liters).toFixed(1);
+}
+
+function volumeLabel(unit: VolumeUnit): string {
+  return unit === "L" ? "L" : "gal";
+}
+
+type SortField = "name" | "productType" | "startDate" | "initialVolume" | "endingVolume" | "vesselName" | "validation";
 type SortDirection = "asc" | "desc";
 
 function getProductTypeBadge(productType: string) {
@@ -233,6 +249,140 @@ function ValidationStatusMenu({
   );
 }
 
+function VolumeFlowCard({ recon, unit }: { recon: any; unit: VolumeUnit }) {
+  const initial = (recon.opening ?? 0) + (recon.production ?? 0);
+  const transfersIn = (recon.transfersIn ?? 0) + (recon.mergesIn ?? 0);
+  const transfersOut = (recon.transfersOut ?? 0) + (recon.mergesOut ?? 0) + (recon.distillation ?? 0);
+  const packaging = (recon.packagingBreakdown?.bottlingTaken ?? 0) + (recon.packagingBreakdown?.keggingTaken ?? 0);
+  const losses = recon.losses ?? 0;
+  const ending = recon.ending ?? 0;
+  const lb = recon.lossBreakdown;
+  const pb = recon.packagingBreakdown;
+  const u = volumeLabel(unit);
+  const fv = (gal: number) => formatVol(gal, unit);
+
+  return (
+    <div className="py-2 space-y-3">
+      {/* Volume Flow — 3x2 grid */}
+      <div>
+        <p className="text-xs font-semibold text-gray-600 mb-1.5">Volume Flow ({u})</p>
+        <div className="grid grid-cols-3 gap-x-6 gap-y-1 text-xs">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Initial:</span>
+            <span className="font-mono font-medium text-gray-700">{fv(initial)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Transfers In:</span>
+            <span className="font-mono font-medium text-gray-700">{fv(transfersIn)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Transfers Out:</span>
+            <span className="font-mono font-medium text-gray-700">-{fv(transfersOut)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Packaging:</span>
+            <span className="font-mono font-medium text-gray-700">-{fv(packaging)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Losses:</span>
+            <span className="font-mono font-medium text-gray-700">-{fv(losses)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Ending:</span>
+            <span className="font-mono font-semibold text-gray-900">{fv(ending)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Detail panels — 4-column grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+        {/* Loss Breakdown */}
+        <div>
+          <p className="font-semibold text-gray-600 mb-1">Loss Breakdown ({u})</p>
+          <div className="space-y-0.5 text-gray-500">
+            {lb?.racking > 0 && <p>Racking: {fv(lb.racking)}</p>}
+            {lb?.filter > 0 && <p>Filter: {fv(lb.filter)}</p>}
+            {lb?.bottling > 0 && <p>Bottling: {fv(lb.bottling)}</p>}
+            {lb?.kegging > 0 && <p>Kegging: {fv(lb.kegging)}</p>}
+            {lb?.transfer > 0 && <p>Transfer: {fv(lb.transfer)}</p>}
+            {lb?.pressTransfer > 0 && <p>Press Transfer: {fv(lb.pressTransfer)}</p>}
+            {lb?.adjustments !== 0 && lb?.adjustments != null && <p>Adjustments: {fv(lb.adjustments)}</p>}
+            {lb && Object.values(lb).every((v: any) => Math.abs(v) < 0.05) && <p className="text-gray-400">No losses</p>}
+          </div>
+        </div>
+
+        {/* Packaging Detail */}
+        <div>
+          <p className="font-semibold text-gray-600 mb-1">Packaging Detail ({u})</p>
+          <div className="space-y-0.5 text-gray-500">
+            {(pb?.bottlingTaken > 0 || pb?.bottlingLoss > 0) && (
+              <p>Bottled: {fv(pb.bottlingTaken)}{pb.bottlingLoss > 0 ? ` (loss: ${fv(pb.bottlingLoss)})` : ""}</p>
+            )}
+            {(pb?.keggingTaken > 0 || pb?.keggingLoss > 0) && (
+              <p>Kegged: {fv(pb.keggingTaken)}{pb.keggingLoss > 0 ? ` (loss: ${fv(pb.keggingLoss)})` : ""}</p>
+            )}
+            {(!pb || (pb.bottlingTaken === 0 && pb.keggingTaken === 0)) && <p className="text-gray-400">No packaging</p>}
+          </div>
+        </div>
+
+        {/* Check Details — always in gal (TTB diagnostic) */}
+        <div>
+          <p className="font-semibold text-gray-600 mb-1">Check Details</p>
+          <div className="space-y-0.5 text-gray-500">
+            <p className={Math.abs(recon.identityCheck) >= 0.25 ? "text-red-700" : ""}>
+              Identity: {recon.identityCheck.toFixed(2)} gal {Math.abs(recon.identityCheck) >= 0.25 ? "FAIL" : "OK"}
+            </p>
+            <p className={Math.abs(recon.driftLiters) >= 0.5 ? "text-red-700" : ""}>
+              Drift: {recon.driftLiters < 0 ? "−" : ""}{litersToWineGallons(Math.abs(recon.driftLiters)).toFixed(2)} gal {Math.abs(recon.driftLiters) >= 0.5 ? "FAIL" : "OK"}
+            </p>
+            <p className={recon.hasInitialVolumeAnomaly ? "text-orange-700" : ""}>
+              Initial: {recon.hasInitialVolumeAnomaly ? "ANOMALY — transfer-created with non-zero initial" : "OK"}
+            </p>
+          </div>
+        </div>
+
+        {/* Volume Comparison — respects unit toggle */}
+        <div>
+          <p className="font-semibold text-gray-600 mb-1">Volume Comparison</p>
+          <div className="space-y-0.5 text-gray-500">
+            <p>Stored: {formatVolFromLiters(recon.currentVolumeLitersStored, unit)} {u}</p>
+            <p>Reconstructed: {formatVolFromLiters(recon.reconstructedEndingLiters, unit)} {u}</p>
+            <p className={Math.abs(recon.driftLiters) >= 0.5 ? "text-red-700" : ""}>
+              Delta: {recon.driftLiters < 0 ? "−" : "+"}{formatVolFromLiters(Math.abs(recon.driftLiters), unit)} {u}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Vessel Capacity */}
+      {(recon.vesselCapacityHistory?.length > 0 || recon.vesselCapacityGal) && (
+        <div className="text-xs">
+          <p className="font-semibold text-gray-600 mb-1">Vessel Capacity</p>
+          <div className="space-y-0.5 text-gray-500">
+            {recon.vesselCapacityHistory?.length > 0 ? (
+              <div className="space-y-1">
+                {recon.vesselCapacityHistory.map((vh: any, idx: number) => (
+                  <div key={idx} className={vh.exceeds ? "text-purple-700" : ""}>
+                    <p className="font-medium text-xs">{vh.vesselName}</p>
+                    <p className="text-xs">Cap: {vh.vesselCapacityGal.toFixed(1)} / Peak: {vh.peakVolumeGal.toFixed(1)} gal</p>
+                    {vh.exceeds && <p className="text-xs font-semibold">EXCEEDS — peak on {vh.peakDate}</p>}
+                  </div>
+                ))}
+              </div>
+            ) : recon.vesselCapacityGal ? (
+              <>
+                <p>Capacity: {recon.vesselCapacityGal.toFixed(1)} gal</p>
+                <p>Peak: {recon.maxVolumeReceivedGal.toFixed(1)} gal</p>
+                <p className={recon.exceedsVesselCapacity ? "text-purple-700" : ""}>{recon.exceedsVesselCapacity ? "EXCEEDS" : "OK"}</p>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExpandableReconciliationRow({
   batch,
   selectedIds,
@@ -243,6 +393,7 @@ function ExpandableReconciliationRow({
   onSetStatus,
   isVerifying,
   reconMap,
+  volumeUnit,
 }: {
   batch: any;
   selectedIds: Set<string>;
@@ -253,8 +404,10 @@ function ExpandableReconciliationRow({
   onSetStatus: (batchId: string, status: ReconciliationStatus) => void;
   isVerifying: boolean;
   reconMap: Map<string, any>;
+  volumeUnit: VolumeUnit;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
   const hasChildren = batch.children && batch.children.length > 0;
   const validation = batch.validation;
   const hasIssues = validation && validation.status !== "pass";
@@ -334,13 +487,18 @@ function ExpandableReconciliationRow({
             : "N/A"}
         </TableCell>
         <TableCell className="text-right text-sm tabular-nums">
-          {formatVolume(batch.initialVolumeLiters)}
+          {volumeUnit === "L"
+            ? formatVolume(batch.initialVolumeLiters)
+            : formatGallons(batch.initialVolumeLiters)}
         </TableCell>
         <TableCell className="text-right text-sm tabular-nums">
-          {recon ? (recon.reconstructedEndingLiters ?? 0).toFixed(1) : formatVolume(batch.currentVolumeLiters)}
-        </TableCell>
-        <TableCell className="text-right text-sm tabular-nums">
-          {recon ? (recon.ending ?? 0).toFixed(2) : formatGallons(batch.currentVolumeLiters)}
+          {recon
+            ? (volumeUnit === "L"
+              ? (recon.reconstructedEndingLiters ?? 0).toFixed(1)
+              : (recon.ending ?? 0).toFixed(1))
+            : (volumeUnit === "L"
+              ? formatVolume(batch.currentVolumeLiters)
+              : formatGallons(batch.currentVolumeLiters))}
         </TableCell>
         <TableCell className="text-sm text-gray-600">
           {batch.vesselName || "—"}
@@ -405,82 +563,9 @@ function ExpandableReconciliationRow({
       {expanded && recon && (
         <TableRow className="bg-gray-50/30">
           <TableCell></TableCell>
-          <TableCell colSpan={11}>
-            {/* TTB Volume Flow */}
-            <div className="flex flex-wrap gap-4 py-2 text-xs">
-              <span className="text-gray-500">Opening: <span className="font-mono font-medium text-gray-700">{recon.opening.toFixed(1)}</span></span>
-              {recon.production > 0 && <span className="text-gray-500">+Prod: <span className="font-mono font-medium text-gray-700">{recon.production.toFixed(1)}</span></span>}
-              {recon.losses > 0 && <span className="text-gray-500">-Loss: <span className="font-mono font-medium text-gray-700">{recon.losses.toFixed(1)}</span></span>}
-              {recon.sales > 0 && <span className="text-gray-500">-Sales: <span className="font-mono font-medium text-gray-700">{recon.sales.toFixed(1)}</span></span>}
-              {recon.distillation > 0 && <span className="text-gray-500">-DSP: <span className="font-mono font-medium text-gray-700">{recon.distillation.toFixed(1)}</span></span>}
-              <span className="text-gray-500">=Ending: <span className="font-mono font-semibold text-gray-900">{recon.ending.toFixed(1)}</span> gal</span>
-            </div>
-            {/* Detail grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs pb-2">
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Loss Breakdown (gal)</p>
-                <div className="space-y-0.5 text-gray-500">
-                  {recon.lossBreakdown?.racking > 0 && <p>Racking: {recon.lossBreakdown.racking.toFixed(1)}</p>}
-                  {recon.lossBreakdown?.filter > 0 && <p>Filter: {recon.lossBreakdown.filter.toFixed(1)}</p>}
-                  {recon.lossBreakdown?.bottling > 0 && <p>Bottling: {recon.lossBreakdown.bottling.toFixed(1)}</p>}
-                  {recon.lossBreakdown?.kegging > 0 && <p>Kegging: {recon.lossBreakdown.kegging.toFixed(1)}</p>}
-                  {recon.lossBreakdown?.transfer > 0 && <p>Transfer: {recon.lossBreakdown.transfer.toFixed(1)}</p>}
-                  {recon.lossBreakdown?.pressTransfer > 0 && <p>Press Transfer: {recon.lossBreakdown.pressTransfer.toFixed(1)}</p>}
-                  {recon.lossBreakdown?.adjustments !== 0 && recon.lossBreakdown?.adjustments != null && <p>Adjustments: {recon.lossBreakdown.adjustments.toFixed(1)}</p>}
-                  {recon.lossBreakdown && Object.values(recon.lossBreakdown).every((v: any) => Math.abs(v) < 0.05) && <p className="text-gray-400">No losses</p>}
-                </div>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Check Details</p>
-                <div className="space-y-0.5 text-gray-500">
-                  <p className={Math.abs(recon.identityCheck) >= 0.25 ? "text-red-700" : ""}>
-                    Identity: {recon.identityCheck.toFixed(2)} gal {Math.abs(recon.identityCheck) >= 0.25 ? "FAIL" : "OK"}
-                  </p>
-                  <p className={Math.abs(recon.driftLiters) >= 0.5 ? "text-red-700" : ""}>
-                    Drift: {recon.driftLiters < 0 ? "−" : ""}{litersToWineGallons(Math.abs(recon.driftLiters)).toFixed(2)} gal {Math.abs(recon.driftLiters) >= 0.5 ? "FAIL" : "OK"}
-                  </p>
-                  <p className={recon.hasInitialVolumeAnomaly ? "text-orange-700" : ""}>
-                    Initial: {recon.hasInitialVolumeAnomaly ? "ANOMALY — transfer-created with non-zero initial" : "OK"}
-                  </p>
-                </div>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Vessel Capacity</p>
-                <div className="space-y-0.5 text-gray-500">
-                  {recon.vesselCapacityHistory?.length > 0 ? (
-                    <div className="space-y-1">
-                      {recon.vesselCapacityHistory.map((vh: any, idx: number) => (
-                        <div key={idx} className={vh.exceeds ? "text-purple-700" : ""}>
-                          <p className="font-medium text-xs">{vh.vesselName}</p>
-                          <p className="text-xs">Cap: {vh.vesselCapacityGal.toFixed(1)} / Peak: {vh.peakVolumeGal.toFixed(1)} gal</p>
-                          {vh.exceeds && <p className="text-xs font-semibold">EXCEEDS — peak on {vh.peakDate}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  ) : recon.vesselCapacityGal ? (
-                    <>
-                      <p>Capacity: {recon.vesselCapacityGal.toFixed(1)} gal</p>
-                      <p>Peak: {recon.maxVolumeReceivedGal.toFixed(1)} gal</p>
-                      <p className={recon.exceedsVesselCapacity ? "text-purple-700" : ""}>{recon.exceedsVesselCapacity ? "EXCEEDS" : "OK"}</p>
-                    </>
-                  ) : (
-                    <p className="text-gray-400">No vessel assigned</p>
-                  )}
-                </div>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-600 mb-1">Volume Comparison</p>
-                <div className="space-y-0.5 text-gray-500">
-                  <p>Stored: {litersToWineGallons(recon.currentVolumeLitersStored).toFixed(2)} gal</p>
-                  <p>Reconstructed: {litersToWineGallons(recon.reconstructedEndingLiters).toFixed(2)} gal</p>
-                  <p className={Math.abs(recon.driftLiters) >= 0.5 ? "text-red-700" : ""}>
-                    Delta: {recon.driftLiters < 0 ? "−" : "+"}{litersToWineGallons(Math.abs(recon.driftLiters)).toFixed(2)} gal
-                  </p>
-                </div>
-              </div>
-            </div>
+          <TableCell colSpan={10}>
+            <VolumeFlowCard recon={recon} unit={volumeUnit} />
           </TableCell>
-          <TableCell></TableCell>
         </TableRow>
       )}
 
@@ -488,7 +573,7 @@ function ExpandableReconciliationRow({
       {expanded && nonPassChecks.length > 0 && (
         <TableRow className={validation.status === "fail" ? "bg-red-50/30" : "bg-amber-50/30"}>
           <TableCell></TableCell>
-          <TableCell colSpan={11}>
+          <TableCell colSpan={10}>
             <div className="py-2 space-y-1.5">
               {nonPassChecks.map((check: any) => (
                 <div key={check.id} className="flex items-start gap-2 text-sm">
@@ -515,74 +600,98 @@ function ExpandableReconciliationRow({
               ))}
             </div>
           </TableCell>
-          <TableCell></TableCell>
         </TableRow>
       )}
 
       {/* Child batches */}
-      {expanded && batch.children?.map((child: any) => (
-        <TableRow key={child.id} className="bg-muted/30">
-          <TableCell></TableCell>
-          <TableCell>
-            <div className="flex items-center gap-2" style={{ paddingLeft: `${((child.depth || 1) - 1) * 16}px` }}>
-              <CornerDownRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <div className="flex flex-col">
-                <Link
-                  href={`/batch/${child.id}`}
-                  className="font-medium text-sm text-gray-600 hover:text-gray-900 hover:underline"
-                >
-                  {child.customName || child.name}
-                </Link>
-                <span className="text-xs text-gray-400">{child.batchNumber}</span>
-              </div>
-            </div>
-          </TableCell>
-          <TableCell>{child.productType ? getProductTypeBadge(child.productType) : "—"}</TableCell>
-          <TableCell className="text-sm text-gray-500">
-            {child.startDate
-              ? new Date(child.startDate).toLocaleDateString()
-              : "N/A"}
-          </TableCell>
-          <TableCell className="text-right text-sm tabular-nums text-gray-500">
-            {(() => {
-              const recon = reconMap.get(child.id);
-              // For transfer-created batches, initialVolumeLiters is 0 in DB.
-              // Show the volume received via transfers instead.
-              if (recon && recon.isTransferCreated && recon.transfersIn > 0) {
-                return wineGallonsToLiters(recon.transfersIn).toFixed(1);
-              }
-              return formatVolume(child.initialVolumeLiters);
-            })()}
-          </TableCell>
-          <TableCell className="text-right text-sm tabular-nums text-gray-500">
-            {(() => {
-              const recon = reconMap.get(child.id);
-              return recon ? recon.reconstructedEndingLiters.toFixed(1) : formatVolume(child.currentVolumeLiters);
-            })()}
-          </TableCell>
-          <TableCell className="text-right text-sm tabular-nums text-gray-500">
-            {(() => {
-              const recon = reconMap.get(child.id);
-              return recon ? recon.ending.toFixed(2) : formatGallons(child.currentVolumeLiters);
-            })()}
-          </TableCell>
-          <TableCell className="text-sm text-gray-400">
-            {child.vesselName || "—"}
-          </TableCell>
-          <TableCell className="text-right text-sm text-gray-400">—</TableCell>
-          <TableCell className="text-center text-sm text-gray-400">—</TableCell>
-          <TableCell>
-            {(() => {
-              const status = child.reconciliationStatus || "pending";
-              if (status === "verified") return <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">Verified</Badge>;
-              if (status === "excluded") return <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">Excluded</Badge>;
-              if (status === "duplicate") return <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">Duplicate</Badge>;
-              return <Badge variant="outline" className="bg-amber-50 text-amber-700 text-xs">Pending</Badge>;
-            })()}
-          </TableCell>
-          <TableCell></TableCell>
-        </TableRow>
-      ))}
+      {expanded && batch.children?.map((child: any) => {
+        const childRecon = reconMap.get(child.id);
+        const childExpandable = !!childRecon;
+        const childExpanded = expandedChildren.has(child.id);
+        const toggleChildExpand = (e: React.MouseEvent) => {
+          e.stopPropagation();
+          setExpandedChildren(prev => {
+            const next = new Set(prev);
+            if (next.has(child.id)) next.delete(child.id);
+            else next.add(child.id);
+            return next;
+          });
+        };
+        return (
+          <React.Fragment key={child.id}>
+            <TableRow
+              className={childExpandable ? "bg-muted/30 cursor-pointer hover:bg-muted/50" : "bg-muted/30"}
+              onClick={childExpandable ? toggleChildExpand : undefined}
+            >
+              <TableCell>
+                {childExpandable && (
+                  childExpanded
+                    ? <ChevronDown className="w-3.5 h-3.5 text-gray-400 ml-4" />
+                    : <ChevronRight className="w-3.5 h-3.5 text-gray-400 ml-4" />
+                )}
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center gap-2" style={{ paddingLeft: `${((child.depth || 1) - 1) * 16}px` }}>
+                  <CornerDownRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <div className="flex flex-col">
+                    <Link
+                      href={`/batch/${child.id}`}
+                      className="font-medium text-sm text-gray-600 hover:text-gray-900 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {child.customName || child.name}
+                    </Link>
+                    <span className="text-xs text-gray-400">{child.batchNumber}</span>
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell>{child.productType ? getProductTypeBadge(child.productType) : "—"}</TableCell>
+              <TableCell className="text-sm text-gray-500">
+                {child.startDate
+                  ? new Date(child.startDate).toLocaleDateString()
+                  : "N/A"}
+              </TableCell>
+              <TableCell className="text-right text-sm tabular-nums text-gray-500">
+                {volumeUnit === "L"
+                  ? formatVolume(child.initialVolumeLiters)
+                  : formatGallons(child.initialVolumeLiters)}
+              </TableCell>
+              <TableCell className="text-right text-sm tabular-nums text-gray-500">
+                {childRecon
+                  ? (volumeUnit === "L"
+                    ? (childRecon.reconstructedEndingLiters ?? 0).toFixed(1)
+                    : (childRecon.ending ?? 0).toFixed(1))
+                  : (volumeUnit === "L"
+                    ? formatVolume(child.currentVolumeLiters)
+                    : formatGallons(child.currentVolumeLiters))}
+              </TableCell>
+              <TableCell className="text-sm text-gray-400">
+                {child.vesselName || "—"}
+              </TableCell>
+              <TableCell className="text-right text-sm text-gray-400">—</TableCell>
+              <TableCell className="text-center text-sm text-gray-400">—</TableCell>
+              <TableCell>
+                {(() => {
+                  const status = child.reconciliationStatus || "pending";
+                  if (status === "verified") return <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">Verified</Badge>;
+                  if (status === "excluded") return <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">Excluded</Badge>;
+                  if (status === "duplicate") return <Badge variant="outline" className="bg-gray-50 text-gray-500 text-xs">Duplicate</Badge>;
+                  return <Badge variant="outline" className="bg-amber-50 text-amber-700 text-xs">Pending</Badge>;
+                })()}
+              </TableCell>
+              <TableCell></TableCell>
+            </TableRow>
+            {childExpanded && childRecon && (
+              <TableRow className="bg-gray-50/30">
+                <TableCell></TableCell>
+                <TableCell colSpan={10}>
+                  <VolumeFlowCard recon={childRecon} unit={volumeUnit} />
+                </TableCell>
+              </TableRow>
+            )}
+          </React.Fragment>
+        );
+      })}
     </>
   );
 }
@@ -635,6 +744,9 @@ export function BatchReconciliation() {
 
   // TTB issue filter
   const [ttbFilter, setTtbFilter] = useState<string>("all");
+
+  // Volume unit toggle
+  const [volumeUnit, setVolumeUnit] = useState<VolumeUnit>("gal");
 
   // Compute date range from year + period preset
   const { reconStartDate, reconEndDate } = useMemo(() => {
@@ -692,16 +804,18 @@ export function BatchReconciliation() {
   );
 
   // Year classification
-  const openingBalanceYear = reconciliationData?.openingBalanceDate
-    ? new Date(reconciliationData.openingBalanceDate as string).getFullYear()
-    : null;
-  const isOpeningYear = openingBalanceYear !== null && yearFilter <= openingBalanceYear;
   const isCurrentYear = yearFilter === currentYear;
+  // Opening year = year of the configured TTB opening balance date (no real TTB form for this year)
+  const openingBalanceYear = reconciliationData?.openingBalanceDate
+    ? parseInt((reconciliationData as any).openingBalanceDate.split('-')[0])
+    : null;
+  const isOpeningYear = openingBalanceYear !== null && yearFilter === openingBalanceYear;
 
-  // TTB Form 5120.17 data for Parts III & IV (materials, spirits, tax computation)
+  // TTB Form 5120.17 data — skip for opening year (no valid form, uses live currentVolumeLiters
+  // which doesn't reflect point-in-time values for past batches)
   const { data: formData512017 } = trpc.ttb.generateForm512017.useQuery(
     { periodType: "annual", year: yearFilter },
-    { enabled: reconciliationData !== undefined },
+    { enabled: reconciliationData !== undefined && !isOpeningYear },
   );
 
   // TTB Balance card metrics — ALL values from per-batch SBD (single source of truth).
@@ -721,41 +835,25 @@ export function BatchReconciliation() {
       return null;
     }
     const t = reconciliationData.totals as TtbTotals;
-    if (isOpeningYear) {
-      return {
-        opening: t.ttbOpeningBalance,
-        production: 0,
-        adjustments: 0,
-        distributed: 0,
-        packagedBonded: 0,
-        losses: 0,
-        distillation: 0,
-        ending: t.ttbOpeningBalance,
-        systemCalculated: t.ttbOpeningBalance,
-        variance: 0,
-        systemVariance: 0,
-        isConfigured: true,
-        waterfallAdjustments: [],
-      };
-    }
-    // Use aggregate waterfall totals (same source as TTB Form per-tax-class values).
-    // This ensures the waterfall header and TTB Form show identical numbers.
+    // All years use the same SBD-derived per-tax-class totals (no special opening year case).
+    // The "waterfall" object is the per-tax-class aggregation of SBD per-batch reconstruction.
     const wf = (reconciliationData as any)?.waterfall?.totals;
     if (!wf) return null;
 
-    const configuredOpening = t.ttbOpeningBalance;
-
     const waterfallAdjs = (reconciliationData as any)?.waterfallAdjustments ?? [];
 
-    // All values from waterfall totals (per-tax-class sums from API).
+    // ALL values from SBD-derived per-tax-class totals — same algorithm for every year.
+    const opening = wf.opening ?? 0;
     const production = wf.production ?? 0;
     const distributed = wf.sales ?? 0;
     const packaging = wf.packaging ?? 0;
     const losses = wf.losses ?? 0;
     const distillation = wf.distillation ?? 0;
-    // reconAdj absorbs structural discrepancies (opening delta, orphan transfers, rounding)
-    // Combined with positiveAdj for display as "Adjustments"
-    const adjustments = parseFloat(((wf.positiveAdj ?? 0) + (wf.reconAdj ?? 0)).toFixed(1));
+    // The waterfall display omits transfersIn/transfersOut (cross-class transfers + dup/excluded
+    // transfer imbalance). Include net transfers in the adjustments line so the visible math
+    // always adds up: opening + production + adjustments - distributed - losses - distillation = ending.
+    const adjustments = parseFloat(((wf.positiveAdj ?? 0) + (wf.reconAdj ?? 0)
+      + (wf.transfersIn ?? 0) - (wf.transfersOut ?? 0)).toFixed(1));
 
     // Use API-computed values directly — these are guaranteed to satisfy the identity
     // (calculatedEnding = physical, so variance = 0 by construction per tax class).
@@ -763,7 +861,7 @@ export function BatchReconciliation() {
     const variance = wf.variance ?? 0;
 
     return {
-      opening: configuredOpening,
+      opening,
       production,
       adjustments,
       distributed,
@@ -774,10 +872,9 @@ export function BatchReconciliation() {
       systemCalculated: wf.physical ?? 0,
       variance,
       systemVariance: variance,
-      isConfigured: false,
       waterfallAdjustments: waterfallAdjs,
     };
-  }, [reconciliationData, isOpeningYear]);
+  }, [reconciliationData]);
 
   // Variance threshold from org settings (percentage-based, default 0.5%)
   const varianceThresholdPct = (reconciliationData as any)?.varianceThresholdPct ?? 0.5;
@@ -958,16 +1055,12 @@ export function BatchReconciliation() {
         case "startDate":
           cmp = (a.startDate ?? "").localeCompare(b.startDate ?? "");
           break;
-        case "initialVolumeLiters":
+        case "initialVolume":
           cmp = (parseFloat(a.initialVolumeLiters || "0")) - (parseFloat(b.initialVolumeLiters || "0"));
           break;
         case "endingVolume":
           cmp = (reconMap.get(a.id)?.reconstructedEndingLiters ?? parseFloat(a.currentVolumeLiters || "0"))
               - (reconMap.get(b.id)?.reconstructedEndingLiters ?? parseFloat(b.currentVolumeLiters || "0"));
-          break;
-        case "gallons":
-          cmp = (reconMap.get(a.id)?.ending ?? parseFloat(a.currentVolumeLiters || "0") * 0.2642)
-              - (reconMap.get(b.id)?.ending ?? parseFloat(b.currentVolumeLiters || "0") * 0.2642);
           break;
         case "vesselName":
           cmp = (a.vesselName || "").localeCompare(b.vesselName || "");
@@ -1128,16 +1221,18 @@ export function BatchReconciliation() {
       lines.push("");
     }
 
+    const u = volumeLabel(volumeUnit);
     const batchRows = batches.map((b: any) => {
       const recon = reconMap.get(b.id);
+      const initL = parseFloat(b.initialVolumeLiters || 0);
+      const endL = recon ? (recon.reconstructedEndingLiters ?? 0) : parseFloat(b.currentVolumeLiters || 0);
       return {
         name: b.customName || b.name || b.batchNumber,
         batchNumber: b.batchNumber,
         type: b.productType || "cider",
         startDate: b.startDate ? new Date(b.startDate).toLocaleDateString() : "",
-        initialL: parseFloat(b.initialVolumeLiters || 0).toFixed(1),
-        endingL: recon ? (recon.reconstructedEndingLiters ?? 0).toFixed(1) : parseFloat(b.currentVolumeLiters || 0).toFixed(1),
-        endingGal: recon ? (recon.ending ?? 0).toFixed(2) : "",
+        initial: formatVolFromLiters(initL, volumeUnit),
+        ending: volumeUnit === "L" ? endL.toFixed(1) : (recon ? (recon.ending ?? 0).toFixed(1) : litersToWineGallons(endL).toFixed(1)),
         vessel: b.vesselName || "",
         driftL: recon ? recon.driftLiters.toFixed(2) : "",
         identity: recon ? (Math.abs(recon.identityCheck) >= 0.25 ? "FAIL" : "OK") : "",
@@ -1153,9 +1248,8 @@ export function BatchReconciliation() {
       { key: "batchNumber", header: "Batch Number" },
       { key: "type", header: "Type" },
       { key: "startDate", header: "Start Date" },
-      { key: "initialL", header: "Initial (L)" },
-      { key: "endingL", header: "Ending (L)" },
-      { key: "endingGal", header: "Ending (gal)" },
+      { key: "initial", header: `Initial (${u})` },
+      { key: "ending", header: `Ending (${u})` },
       { key: "vessel", header: "Vessel" },
       { key: "driftL", header: "Drift (L)" },
       { key: "identity", header: "Identity" },
@@ -1167,7 +1261,7 @@ export function BatchReconciliation() {
 
     const fullCSV = lines.join("\n") + "Batch Detail\n" + batchCSV;
     downloadCSV(fullCSV, `batch-reconciliation-${yearFilter}.csv`);
-  }, [yearFilter, reconStartDate, reconEndDate, yearMetrics, batchRecon, batches, reconMap]);
+  }, [yearFilter, reconStartDate, reconEndDate, yearMetrics, batchRecon, batches, reconMap, volumeUnit]);
 
   // Derived counts for bulk actions
   const selectedHasWarnings = Array.from(selectedIds).some((id) => {
@@ -1291,6 +1385,16 @@ export function BatchReconciliation() {
                 onExportCSV={handleExportCSV}
                 disabled={isLoading || !data?.batches?.length}
               />
+
+              {/* Unit toggle */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVolumeUnit(u => u === "gal" ? "L" : "gal")}
+                className="text-xs px-2"
+              >
+                {volumeUnit === "gal" ? "gal → L" : "L → gal"}
+              </Button>
 
               {/* Divider */}
               <div className="h-8 w-px bg-gray-200" />
@@ -1532,10 +1636,6 @@ export function BatchReconciliation() {
             bannerStyle = "bg-amber-50 border-amber-200";
             icon = <AlertTriangle className="w-5 h-5 text-amber-600" />;
             title = `${yearFilter} — ${statusCounts.warnings} batch${statusCounts.warnings !== 1 ? "es" : ""} with warnings`;
-          } else if (isOpeningYear) {
-            bannerStyle = "bg-green-50 border-green-200";
-            icon = <CheckCircle className="w-5 h-5 text-green-600" />;
-            title = `${yearFilter} — Opening Balance Configured`;
           } else if (allPassing && !varianceWithinTolerance && yearMetrics) {
             // All batch-level checks pass but aggregate variance doesn't reconcile
             const variancePct = yearMetrics.ending !== 0
@@ -1583,76 +1683,60 @@ export function BatchReconciliation() {
                 </div>
                 {yearMetrics && (
                   <div className="text-right text-sm">
-                    {yearMetrics.isConfigured ? (
-                      <>
-                        <p className="font-medium text-gray-700">TTB Ending Balance</p>
-                        <p className="font-semibold text-gray-800">{yearMetrics.opening.toLocaleString()} gal</p>
-                        <p className="text-xs text-gray-500 mt-1">Configured from physical inventory</p>
-                        <p className="text-gray-600 mt-2">System Total: {yearMetrics.systemCalculated.toLocaleString()} gal</p>
-                        {Math.abs(yearMetrics.systemVariance) > 0.1 && (
-                          <p className={`${Math.abs(yearMetrics.systemVariance) < 10 ? "text-green-700" : Math.abs(yearMetrics.systemVariance) < 100 ? "text-amber-700" : "text-red-700"}`}>
-                            Variance: {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance.toFixed(1)} gal
-                          </p>
+                    <p className="font-medium text-gray-700 mb-1">TTB Balance ({yearFilter})</p>
+                    <table className="text-xs w-full">
+                      <tbody className="text-gray-700">
+                        <tr>
+                          <td className="pr-2">Opening</td>
+                          <td className="text-right">{yearMetrics.opening.toLocaleString()} gal</td>
+                        </tr>
+                        <tr>
+                          <td className="pr-2">+ Production</td>
+                          <td className="text-right">{yearMetrics.production.toLocaleString()} gal</td>
+                        </tr>
+                        {yearMetrics.adjustments !== 0 && (
+                          <tr className="text-blue-700">
+                            <td className="pr-2" title={
+                              [
+                                ...(yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
+                                  `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
+                                ),
+                              ].join('\n') || 'Inventory gains (TTB Form line 9)'
+                            }>
+                              {yearMetrics.adjustments >= 0 ? "+" : "-"} Reconciliation Adj.
+                            </td>
+                            <td className="text-right">{Math.abs(yearMetrics.adjustments).toLocaleString()} gal</td>
+                          </tr>
                         )}
-                      </>
-                    ) : (
-                      <>
-                        <p className="font-medium text-gray-700 mb-1">TTB Balance ({yearFilter})</p>
-                        <table className="text-xs w-full">
-                          <tbody className="text-gray-700">
-                            <tr>
-                              <td className="pr-2">Opening</td>
-                              <td className="text-right">{yearMetrics.opening.toLocaleString()} gal</td>
-                            </tr>
-                            <tr>
-                              <td className="pr-2">+ Production</td>
-                              <td className="text-right">{yearMetrics.production.toLocaleString()} gal</td>
-                            </tr>
-                            {yearMetrics.adjustments !== 0 && (
-                              <tr className="text-blue-700">
-                                <td className="pr-2" title={
-                                  [
-                                    ...(yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
-                                      `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
-                                    ),
-                                  ].join('\n') || 'Inventory gains (TTB Form line 9)'
-                                }>
-                                  {yearMetrics.adjustments >= 0 ? "+" : "-"} Reconciliation Adj.
-                                </td>
-                                <td className="text-right">{Math.abs(yearMetrics.adjustments).toLocaleString()} gal</td>
-                              </tr>
-                            )}
-                            <tr>
-                              <td className="pr-2">- Distributed</td>
-                              <td className="text-right">{yearMetrics.distributed.toLocaleString()} gal</td>
-                            </tr>
-                            <tr>
-                              <td className="pr-2">- Losses</td>
-                              <td className="text-right">{yearMetrics.losses.toLocaleString()} gal</td>
-                            </tr>
-                            <tr>
-                              <td className="pr-2">- Distillation</td>
-                              <td className="text-right">{yearMetrics.distillation.toLocaleString()} gal</td>
-                            </tr>
-                            <tr className="border-t border-gray-300 font-semibold">
-                              <td className="pr-2 pt-1">= Ending (On Premises)</td>
-                              <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
-                            </tr>
-                            <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 1 ? "text-green-600" : Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
-                              <td className="pr-2 pt-1">Variance</td>
-                              <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
-                            </tr>
-                            {Math.abs(yearMetrics.variance) >= 1 && clampingBatches.length > 0 && (
-                              <tr>
-                                <td colSpan={2} className="text-xs text-red-500 pt-1">
-                                  {clampingBatches.length} batch{clampingBatches.length !== 1 ? 'es' : ''} with identity issues — use &quot;Identity Issues&quot; filter to review
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </>
-                    )}
+                        <tr>
+                          <td className="pr-2">- Distributed</td>
+                          <td className="text-right">{yearMetrics.distributed.toLocaleString()} gal</td>
+                        </tr>
+                        <tr>
+                          <td className="pr-2">- Losses</td>
+                          <td className="text-right">{yearMetrics.losses.toLocaleString()} gal</td>
+                        </tr>
+                        <tr>
+                          <td className="pr-2">- Distillation</td>
+                          <td className="text-right">{yearMetrics.distillation.toLocaleString()} gal</td>
+                        </tr>
+                        <tr className="border-t border-gray-300 font-semibold">
+                          <td className="pr-2 pt-1">= Ending (On Premises)</td>
+                          <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
+                        </tr>
+                        <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 1 ? "text-green-600" : Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
+                          <td className="pr-2 pt-1">Variance</td>
+                          <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
+                        </tr>
+                        {Math.abs(yearMetrics.variance) >= 1 && clampingBatches.length > 0 && (
+                          <tr>
+                            <td colSpan={2} className="text-xs text-red-500 pt-1">
+                              {clampingBatches.length} batch{clampingBatches.length !== 1 ? 'es' : ''} with identity issues — use &quot;Identity Issues&quot; filter to review
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -1844,14 +1928,11 @@ export function BatchReconciliation() {
                       <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("startDate")}>
                         <span className="flex items-center">Date{sortIcon("startDate")}</span>
                       </TableHead>
-                      <TableHead className="cursor-pointer select-none hover:text-gray-900 text-right" onClick={() => handleSort("initialVolumeLiters")}>
-                        <span className="flex items-center justify-end">Initial (L){sortIcon("initialVolumeLiters")}</span>
+                      <TableHead className="cursor-pointer select-none hover:text-gray-900 text-right" onClick={() => handleSort("initialVolume")}>
+                        <span className="flex items-center justify-end">Initial ({volumeLabel(volumeUnit)}){sortIcon("initialVolume")}</span>
                       </TableHead>
                       <TableHead className="cursor-pointer select-none hover:text-gray-900 text-right" onClick={() => handleSort("endingVolume")}>
-                        <span className="flex items-center justify-end">Ending (L){sortIcon("endingVolume")}</span>
-                      </TableHead>
-                      <TableHead className="cursor-pointer select-none hover:text-gray-900 text-right" onClick={() => handleSort("gallons")}>
-                        <span className="flex items-center justify-end">Gallons{sortIcon("gallons")}</span>
+                        <span className="flex items-center justify-end">Ending ({volumeLabel(volumeUnit)}){sortIcon("endingVolume")}</span>
                       </TableHead>
                       <TableHead className="cursor-pointer select-none hover:text-gray-900" onClick={() => handleSort("vesselName")}>
                         <span className="flex items-center">Vessel{sortIcon("vesselName")}</span>
@@ -1885,6 +1966,7 @@ export function BatchReconciliation() {
                         onSetStatus={handleSetSingleStatus}
                         isVerifying={validateAndVerifyMutation.isPending || bulkUpdateMutation.isPending}
                         reconMap={reconMap}
+                        volumeUnit={volumeUnit}
                       />
                     ))}
                   </TableBody>
@@ -1910,7 +1992,8 @@ export function BatchReconciliation() {
           </CardContent>
         </Card>
 
-        {/* TTB Form 5120.17 Reference */}
+        {/* TTB Form 5120.17 Reference — hidden for opening year (no valid form data) */}
+        {!isOpeningYear && (
         <div className="mt-6">
           <Collapsible open={ttbPreviewOpen} onOpenChange={setTtbPreviewOpen}>
             <CollapsibleTrigger asChild>
@@ -2310,7 +2393,7 @@ export function BatchReconciliation() {
                         )}
 
                         {/* Variance summary */}
-                        {yearMetrics && !yearMetrics.isConfigured && (
+                        {yearMetrics && (
                           <div className={`p-3 rounded-lg ${
                             Math.abs(yearMetrics.systemVariance) < 10
                               ? "bg-green-50"
@@ -2344,6 +2427,7 @@ export function BatchReconciliation() {
             </CollapsibleContent>
           </Collapsible>
         </div>
+        )}
 
         {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
