@@ -1070,26 +1070,45 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                   </Badge>
                 </div>
                 <div>
-                  {batch.initialVolume && batch.currentVolume !== undefined && batch.currentVolume !== null ? (
-                    <>
-                      <span className="text-muted-foreground">Volume:</span>
-                      <span className="ml-2 font-medium">
-                        {parseFloat(String(batch.initialVolume)).toFixed(1)}L → {parseFloat(String(batch.currentVolume)).toFixed(1)}L
-                      </span>
-                      {parseFloat(String(batch.initialVolume)) > 0 && (
-                        <span className="ml-1 text-xs text-muted-foreground">
-                          ({((parseFloat(String(batch.currentVolume)) / parseFloat(String(batch.initialVolume))) * 100).toFixed(0)}% remaining)
+                  {(() => {
+                    const initial = parseFloat(String(batch.initialVolume || 0));
+                    const current = batch.currentVolume !== null && batch.currentVolume !== undefined
+                      ? parseFloat(String(batch.currentVolume))
+                      : null;
+                    // For transfer-derived batches, initialVolume may be 0; compute from first incoming transfer/merge
+                    const effectiveInitial = initial > 0 ? initial : (() => {
+                      const firstTransferIn = activities.find(
+                        (a: any) => a.type === "transfer" && a.details?.direction === "incoming"
+                      );
+                      if (firstTransferIn) {
+                        const vol = parseFloat(String(firstTransferIn.details?.volume || "0"));
+                        return vol > 0 ? vol : null;
+                      }
+                      return null;
+                    })();
+
+                    if (effectiveInitial && effectiveInitial > 0 && current !== null) {
+                      return (
+                        <>
+                          <span className="text-muted-foreground">Volume:</span>
+                          <span className="ml-2 font-medium">
+                            {effectiveInitial.toFixed(1)}L → {current.toFixed(1)}L
+                          </span>
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            ({((current / effectiveInitial) * 100).toFixed(0)}% remaining)
+                          </span>
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <span className="text-muted-foreground">Current Volume:</span>
+                        <span className="ml-2 font-medium">
+                          {current !== null ? `${current.toFixed(1)}L` : 'N/A'}
                         </span>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-muted-foreground">Current Volume:</span>
-                      <span className="ml-2 font-medium">
-                        {batch.currentVolume !== null ? `${parseFloat(String(batch.currentVolume)).toFixed(1)}L` : 'N/A'}
-                      </span>
-                    </>
-                  )}
+                      </>
+                    );
+                  })()}
                 </div>
                 <div>
                   <span className="text-muted-foreground">Total Events:</span>

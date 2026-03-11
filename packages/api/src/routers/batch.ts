@@ -2975,12 +2975,13 @@ export const batchRouter = router({
         let activities: any[] = [];
 
         // Helper function to check if an activity from an ancestor should be included
-        // Activities are only included if they occurred before the batch was split off
+        // Activities are only included if they occurred at or before the batch was split off.
+        // Use <= so the transfer event that created this batch (at exactly the split time) is included.
         const shouldIncludeAncestorActivity = (activityBatchId: string, activityTimestamp: Date): boolean => {
           if (activityBatchId === input.batchId) return true; // Own activity - always include
           const splitTime = splitTimestampMap.get(activityBatchId);
           if (!splitTime) return true; // No split time found, include by default
-          return new Date(activityTimestamp) < splitTime;
+          return new Date(activityTimestamp) <= splitTime;
         };
 
         // Helper function to get inherited info for an activity
@@ -3166,7 +3167,7 @@ export const batchRouter = router({
                 toVessel: t.destVesselName || null,
                 notes: t.notes || null,
               },
-              metadata: { id: t.id, transferredAt: t.transferredAt },
+              metadata: { id: t.id, transferredAt: t.transferredAt, destinationBatchId: t.destinationBatchId },
               ...inheritedInfo,
             });
           } else {
@@ -3183,9 +3184,13 @@ export const batchRouter = router({
               details: {
                 volume: `${t.volumeTransferred}${t.volumeTransferredUnit || 'L'}`,
                 direction: isSource ? "outgoing" : "incoming",
+                fromVessel: t.sourceVesselName || null,
+                toVessel: t.destVesselName || null,
+                sourceBatchName: !isSource ? (t.sourceBatchName || null) : null,
+                destBatchName: isSource ? (t.destBatchName || null) : null,
                 notes: t.notes || null,
               },
-              metadata: { id: t.id, transferredAt: t.transferredAt },
+              metadata: { id: t.id, transferredAt: t.transferredAt, destinationBatchId: t.destinationBatchId },
               ...inheritedInfo,
             });
           }
