@@ -51,6 +51,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 const ADDITIVE_TYPES = [
+  "Fruit/Fruit Product",
   "Fermentation Organisms",
   "Sugar & Sweeteners",
   "Flavorings & Adjuncts",

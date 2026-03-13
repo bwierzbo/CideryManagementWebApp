@@ -56,6 +56,7 @@ export const cogsItemTypeSchema = z.enum([
 // Additive type enum schema
 export const additiveTypeSchema = z.enum(
   [
+    "Fruit/Fruit Product",
     "Fermentation Organisms",
     "Sugar & Sweeteners",
     "Flavorings & Adjuncts",
