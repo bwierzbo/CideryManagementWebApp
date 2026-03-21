@@ -29,6 +29,7 @@ import {
   Target,
   Eye,
   FileText,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -238,6 +239,19 @@ export default function PackagingDetailPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               {/* Badges */}
               <div className="flex flex-wrap gap-2">
+                {(runData.carbonationCo2Volumes || (runData.carbonationLevel && runData.carbonationLevel !== "still")) && (
+                  <Badge
+                    className={cn(
+                      "text-xs gap-1",
+                      "bg-cyan-100 text-cyan-700 hover:bg-cyan-200",
+                    )}
+                  >
+                    <Sparkles className="h-3 w-3" />
+                    {runData.carbonationCo2Volumes
+                      ? `${parseFloat(String(runData.carbonationCo2Volumes)).toFixed(1)} vol CO₂`
+                      : runData.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
+                  </Badge>
+                )}
                 {runData.pasteurizedAt && (
                   <Badge
                     className={cn(
@@ -245,7 +259,7 @@ export default function PackagingDetailPage() {
                       "bg-orange-100 text-orange-800 hover:bg-orange-200",
                     )}
                   >
-                    Pasteurized
+                    Pasteurized{runData.pasteurizationUnits ? ` ${parseFloat(String(runData.pasteurizationUnits)).toFixed(1)} PU` : ""}
                   </Badge>
                 )}
                 {runData.labeledAt && (

@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
@@ -120,6 +121,8 @@ export function CarbonateModal({
   const [yeastPurchaseId, setYeastPurchaseId] = React.useState<string | null>(null);
   const [yeastStrainName, setYeastStrainName] = React.useState<string>("");
   const [yeastPerLiter, setYeastPerLiter] = React.useState<number>(0.5);
+  const [yeastInputMode, setYeastInputMode] = React.useState<"gPerL" | "totalG">("gPerL");
+  const [yeastTotalGrams, setYeastTotalGrams] = React.useState<number>(0);
 
   const { validateDate } = useBatchDateValidation(batch.id);
 
@@ -436,7 +439,9 @@ export function CarbonateModal({
         ...(yeastPurchaseId && {
           yeastAdditivePurchaseId: yeastPurchaseId,
           yeastStrainName: yeastStrainName || undefined,
-          yeastAmount: yeastPerLiter > 0 ? yeastPerLiter * volumeInLiters : undefined,
+          yeastAmount: yeastInputMode === "totalG"
+            ? (yeastTotalGrams > 0 ? yeastTotalGrams : undefined)
+            : (yeastPerLiter > 0 ? yeastPerLiter * volumeInLiters : undefined),
           yeastAmountUnit: "g",
         }),
       });
@@ -787,9 +792,9 @@ export function CarbonateModal({
                       <select
                         id="yeastSelect"
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        value={yeastPurchaseId || ""}
+                        value={yeastPurchaseId ? `${yeastPurchaseId}::${yeastStrainName}` : ""}
                         onChange={(e) => {
-                          const selected = yeastOptions.find((y) => y.purchaseId === e.target.value);
+                          const selected = yeastOptions.find((y) => `${y.purchaseId}::${y.productName}` === e.target.value);
                           if (selected) {
                             setYeastPurchaseId(selected.purchaseId);
                             setYeastStrainName(selected.productName);
@@ -801,7 +806,7 @@ export function CarbonateModal({
                       >
                         <option value="">Select yeast...</option>
                         {yeastOptions.map((y) => (
-                          <option key={y.purchaseId} value={y.purchaseId}>
+                          <option key={y.itemId} value={`${y.purchaseId}::${y.productName}`}>
                             {y.productName}{y.vendor ? ` (${y.vendor})` : ""} — {parseFloat(y.quantity).toFixed(0)} {y.unit} available
                           </option>
                         ))}
@@ -816,21 +821,20 @@ export function CarbonateModal({
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-center">
                           <div>
-                            <div className="flex items-center justify-center gap-2">
-                              <Input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                value={yeastPerLiter}
-                                onChange={(e) => setYeastPerLiter(parseFloat(e.target.value) || 0)}
-                                className="h-8 w-20 text-center text-sm"
-                              />
+                            <div className="text-lg font-bold text-blue-900">
+                              {yeastInputMode === "gPerL"
+                                ? yeastPerLiter.toFixed(1)
+                                : volumeInLiters > 0
+                                  ? (yeastTotalGrams / volumeInLiters).toFixed(2)
+                                  : "0"}
                             </div>
-                            <div className="text-xs text-blue-700 mt-1">g/L</div>
+                            <div className="text-xs text-blue-700">g/L</div>
                           </div>
                           <div>
                             <div className="text-lg font-bold text-blue-900">
-                              {(yeastPerLiter * volumeInLiters).toFixed(1)}
+                              {yeastInputMode === "gPerL"
+                                ? (yeastPerLiter * volumeInLiters).toFixed(1)
+                                : yeastTotalGrams.toFixed(1)}
                             </div>
                             <div className="text-xs text-blue-700">grams total</div>
                           </div>
@@ -838,6 +842,67 @@ export function CarbonateModal({
                         <p className="text-xs text-muted-foreground">
                           Default: 0.5 g/L for rehydrated yeast. Adjust based on strain recommendations.
                         </p>
+                        {/* Override controls */}
+                        <div className="space-y-2 pt-1 border-t border-blue-200">
+                          <div className="flex items-center gap-3">
+                            <Label className="text-xs text-blue-800 whitespace-nowrap">Override:</Label>
+                            <div className="flex rounded-md border border-blue-300 overflow-hidden text-xs">
+                              <button
+                                type="button"
+                                className={cn(
+                                  "px-2 py-1 transition-colors",
+                                  yeastInputMode === "gPerL"
+                                    ? "bg-blue-200 text-blue-900 font-medium"
+                                    : "bg-white text-blue-700 hover:bg-blue-50"
+                                )}
+                                onClick={() => {
+                                  setYeastInputMode("gPerL");
+                                  // Sync: convert current total back to g/L
+                                  if (volumeInLiters > 0 && yeastTotalGrams > 0) {
+                                    setYeastPerLiter(parseFloat((yeastTotalGrams / volumeInLiters).toFixed(2)));
+                                  }
+                                }}
+                              >
+                                g/L
+                              </button>
+                              <button
+                                type="button"
+                                className={cn(
+                                  "px-2 py-1 transition-colors",
+                                  yeastInputMode === "totalG"
+                                    ? "bg-blue-200 text-blue-900 font-medium"
+                                    : "bg-white text-blue-700 hover:bg-blue-50"
+                                )}
+                                onClick={() => {
+                                  setYeastInputMode("totalG");
+                                  // Sync: convert current g/L to total
+                                  setYeastTotalGrams(parseFloat((yeastPerLiter * volumeInLiters).toFixed(1)));
+                                }}
+                              >
+                                Total g
+                              </button>
+                            </div>
+                            <Input
+                              type="number"
+                              step={yeastInputMode === "gPerL" ? "0.1" : "1"}
+                              min="0"
+                              value={yeastInputMode === "gPerL" ? yeastPerLiter : yeastTotalGrams}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || 0;
+                                if (yeastInputMode === "gPerL") {
+                                  setYeastPerLiter(val);
+                                  setYeastTotalGrams(parseFloat((val * volumeInLiters).toFixed(1)));
+                                } else {
+                                  setYeastTotalGrams(val);
+                                  if (volumeInLiters > 0) {
+                                    setYeastPerLiter(parseFloat((val / volumeInLiters).toFixed(2)));
+                                  }
+                                }
+                              }}
+                              className="h-8 text-sm flex-1"
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
                   </>

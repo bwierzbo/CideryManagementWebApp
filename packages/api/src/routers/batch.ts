@@ -88,6 +88,269 @@ async function recalculateCompositionFractions(
   }
 }
 
+/**
+ * Shared helper for merging one batch into another.
+ * Handles: volume update, ABV/OG blending, merge history, estimated measurement,
+ * composition copying, fermentation stage propagation, and additive copying.
+ */
+type TransactionClient = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+interface MergeParams {
+  tx: TransactionClient;
+  sourceBatch: {
+    id: string;
+    name: string;
+    customName: string | null;
+    actualAbv: string | null;
+    estimatedAbv: string | null;
+    originalGravity: string | null;
+    fermentationStage: string | null;
+    currentVolume: string | null;
+  };
+  destBatch: {
+    id: string;
+    name: string;
+    customName: string | null;
+    actualAbv: string | null;
+    estimatedAbv: string | null;
+    originalGravity: string | null;
+    fermentationStage: string | null;
+    productType: string | null;
+    currentVolume: string | null;
+  };
+  volumeRackedL: number;
+  /** If true, scale compositions by volumeRackedL / sourceVolumeBeforeL (for partial racks) */
+  scaleCompositions: boolean;
+  /** Source batch volume before the rack (needed for scaling ratio) */
+  sourceVolumeBeforeL: number;
+  mergeDate: Date;
+  userId?: string;
+  userName?: string;
+  sourceVesselId: string;
+  destVesselId: string;
+}
+
+async function performBatchMerge(params: MergeParams): Promise<{
+  mergedVolumeL: number;
+  updatedBatch: typeof batches.$inferSelect[];
+}> {
+  const {
+    tx, sourceBatch, destBatch, volumeRackedL,
+    scaleCompositions, sourceVolumeBeforeL, mergeDate, userId, userName,
+    destVesselId,
+  } = params;
+
+  const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
+  const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
+
+  // 1. Compute volume-weighted ABV and OG
+  const mergeUpdateData: Record<string, unknown> = {
+    currentVolume: mergedVolumeL.toString(),
+    currentVolumeLiters: mergedVolumeL.toString(),
+    currentVolumeUnit: "L",
+    updatedAt: new Date(),
+  };
+
+  const srcAbv = parseFloat(sourceBatch.actualAbv || sourceBatch.estimatedAbv || "0");
+  const dstAbv = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
+  if (srcAbv > 0 || dstAbv > 0) {
+    mergeUpdateData.estimatedAbv = (((volumeRackedL * srcAbv) + (destCurrentVolumeL * dstAbv)) / mergedVolumeL).toFixed(2);
+  }
+
+  const srcOG = sourceBatch.originalGravity ? parseFloat(sourceBatch.originalGravity) : null;
+  const dstOG = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
+  if (srcOG !== null && dstOG !== null) {
+    mergeUpdateData.originalGravity = (((volumeRackedL * srcOG) + (destCurrentVolumeL * dstOG)) / mergedVolumeL).toFixed(4);
+  }
+
+  // 2. Update destination batch
+  const updatedBatch = await tx
+    .update(batches)
+    .set(mergeUpdateData)
+    .where(eq(batches.id, destBatch.id))
+    .returning();
+
+  // 3. Create merge history record
+  await tx.insert(batchMergeHistory).values({
+    targetBatchId: destBatch.id,
+    sourceBatchId: sourceBatch.id,
+    sourceType: "batch_transfer",
+    volumeAdded: volumeRackedL.toString(),
+    volumeAddedUnit: "L",
+    targetVolumeBefore: destCurrentVolumeL.toString(),
+    targetVolumeBeforeUnit: "L",
+    targetVolumeAfter: mergedVolumeL.toString(),
+    targetVolumeAfterUnit: "L",
+    mergedAt: mergeDate,
+    mergedBy: userId,
+    createdAt: new Date(),
+  });
+
+  // 4. Create batch transfer record (enables ancestor CTE lineage tracking)
+  await tx.insert(batchTransfers).values({
+    sourceBatchId: sourceBatch.id,
+    sourceVesselId: params.sourceVesselId,
+    destinationBatchId: destBatch.id,
+    destinationVesselId: destVesselId,
+    volumeTransferred: volumeRackedL.toString(),
+    volumeTransferredUnit: "L",
+    totalVolumeProcessed: volumeRackedL.toString(),
+    totalVolumeProcessedUnit: "L",
+    loss: "0",
+    lossUnit: "L",
+    transferredAt: mergeDate,
+    transferredBy: userId,
+    notes: `Merge: ${volumeRackedL.toFixed(1)}L from ${sourceBatch.customName || sourceBatch.name} into ${destBatch.customName || destBatch.name}`,
+    createdAt: new Date(),
+  });
+
+  // 5. Propagate fermentation stage
+  const fermentingStages = ["early", "mid", "approaching_dry", "terminal"];
+  if (
+    sourceBatch.fermentationStage &&
+    fermentingStages.includes(sourceBatch.fermentationStage) &&
+    (destBatch.fermentationStage === "not_started" || destBatch.fermentationStage === "unknown") &&
+    destBatch.productType !== "brandy" &&
+    destBatch.productType !== "pommeau"
+  ) {
+    await tx
+      .update(batches)
+      .set({ fermentationStage: sourceBatch.fermentationStage as "unknown" | "not_started" | "not_applicable" | "early" | "mid" | "approaching_dry" | "terminal", fermentationStageUpdatedAt: new Date() })
+      .where(eq(batches.id, destBatch.id));
+  }
+
+  // 6. Create estimated blended measurement
+  const [srcMeasurement] = await tx
+    .select()
+    .from(batchMeasurements)
+    .where(and(eq(batchMeasurements.batchId, sourceBatch.id), isNull(batchMeasurements.deletedAt)))
+    .orderBy(desc(batchMeasurements.measurementDate))
+    .limit(1);
+
+  const [dstMeasurement] = await tx
+    .select()
+    .from(batchMeasurements)
+    .where(and(eq(batchMeasurements.batchId, destBatch.id), isNull(batchMeasurements.deletedAt)))
+    .orderBy(desc(batchMeasurements.measurementDate))
+    .limit(1);
+
+  if (srcMeasurement || dstMeasurement) {
+    const blendVal = (sVal: string | null, dVal: string | null): string | null => {
+      const s = sVal ? parseFloat(sVal) : null;
+      const d = dVal ? parseFloat(dVal) : null;
+      if (s !== null && d !== null) return ((s * volumeRackedL + d * destCurrentVolumeL) / mergedVolumeL).toString();
+      if (s !== null) return s.toString();
+      if (d !== null) return d.toString();
+      return null;
+    };
+
+    const srcName = sourceBatch.customName || sourceBatch.name;
+    const dstName = destBatch.customName || destBatch.name;
+
+    await tx.insert(batchMeasurements).values({
+      batchId: destBatch.id,
+      measurementDate: mergeDate,
+      specificGravity: blendVal(srcMeasurement?.specificGravity, dstMeasurement?.specificGravity),
+      abv: blendVal(srcMeasurement?.abv, dstMeasurement?.abv),
+      ph: blendVal(srcMeasurement?.ph, dstMeasurement?.ph),
+      totalAcidity: blendVal(srcMeasurement?.totalAcidity, dstMeasurement?.totalAcidity),
+      temperature: blendVal(srcMeasurement?.temperature, dstMeasurement?.temperature),
+      volume: mergedVolumeL.toString(),
+      volumeUnit: "L",
+      volumeLiters: mergedVolumeL.toString(),
+      isEstimated: true,
+      estimateSource: `Volume-weighted blend: ${volumeRackedL.toFixed(1)}L from ${srcName} + ${destCurrentVolumeL.toFixed(1)}L from ${dstName}`,
+      notes: "Estimated values from rack merge",
+      takenBy: userName || "System",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  // 7. Copy compositions (scaled for partial racks, as-is for full racks)
+  const srcCompositions = await tx
+    .select()
+    .from(batchCompositions)
+    .where(and(eq(batchCompositions.batchId, sourceBatch.id), isNull(batchCompositions.deletedAt)));
+
+  const volumeRatio = scaleCompositions && sourceVolumeBeforeL > 0
+    ? volumeRackedL / sourceVolumeBeforeL
+    : 1;
+
+  for (const comp of srcCompositions) {
+    const scale = (val: string | null) => val && scaleCompositions
+      ? (parseFloat(val) * volumeRatio).toString()
+      : val;
+
+    await tx.insert(batchCompositions).values({
+      batchId: destBatch.id,
+      sourceType: comp.sourceType,
+      purchaseItemId: comp.purchaseItemId,
+      varietyId: comp.varietyId,
+      juicePurchaseItemId: comp.juicePurchaseItemId,
+      vendorId: comp.vendorId,
+      lotCode: comp.lotCode,
+      inputWeightKg: scale(comp.inputWeightKg),
+      juiceVolume: scale(comp.juiceVolume) ?? comp.juiceVolume,
+      juiceVolumeUnit: comp.juiceVolumeUnit,
+      fractionOfBatch: comp.fractionOfBatch,
+      materialCost: scale(comp.materialCost) ?? comp.materialCost,
+      avgBrix: comp.avgBrix,
+      estSugarKg: scale(comp.estSugarKg),
+      abv: comp.abv,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  await recalculateCompositionFractions(tx, destBatch.id);
+
+  // 8. Copy additives from source batch (up to merge date)
+  const sourceAdditives = await tx
+    .select()
+    .from(batchAdditives)
+    .where(
+      and(
+        eq(batchAdditives.batchId, sourceBatch.id),
+        isNull(batchAdditives.deletedAt),
+        sql`${batchAdditives.addedAt} <= ${mergeDate}`,
+      ),
+    );
+
+  const additiveVolumeRatio = scaleCompositions && sourceVolumeBeforeL > 0
+    ? volumeRackedL / sourceVolumeBeforeL
+    : 1;
+
+  for (const additive of sourceAdditives) {
+    // Scale cost and amount for partial racks
+    const scaledAmount = scaleCompositions
+      ? (parseFloat(additive.amount) * additiveVolumeRatio).toString()
+      : additive.amount;
+    const scaledTotalCost = additive.totalCost && scaleCompositions
+      ? (parseFloat(additive.totalCost) * additiveVolumeRatio).toString()
+      : additive.totalCost;
+
+    await tx.insert(batchAdditives).values({
+      batchId: destBatch.id,
+      vesselId: destVesselId,
+      additiveType: additive.additiveType,
+      additiveName: additive.additiveName,
+      amount: scaledAmount,
+      unit: additive.unit,
+      costPerUnit: additive.costPerUnit,
+      totalCost: scaledTotalCost,
+      additivePurchaseItemId: additive.additivePurchaseItemId,
+      notes: additive.notes ? `[From ${sourceBatch.customName || sourceBatch.name}] ${additive.notes}` : `[From ${sourceBatch.customName || sourceBatch.name}]`,
+      addedAt: additive.addedAt,
+      addedBy: additive.addedBy,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  return { mergedVolumeL, updatedBatch };
+}
+
 // Input validation schemas
 const batchIdSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
@@ -814,6 +1077,8 @@ export const batchRouter = router({
             volumeUnit: batchMeasurements.volumeUnit,
             notes: batchMeasurements.notes,
             takenBy: batchMeasurements.takenBy,
+            isEstimated: batchMeasurements.isEstimated,
+            estimateSource: batchMeasurements.estimateSource,
           })
           .from(batchMeasurements)
           .where(
@@ -868,6 +1133,7 @@ export const batchRouter = router({
         }
 
         // Get all contributing press runs from merge history (for blends)
+        // Includes both direct press run merges AND press runs from source batches blended in
         const mergeHistoryPressRuns = await db
           .select({
             id: batchMergeHistory.id,
@@ -888,9 +1154,80 @@ export const batchRouter = router({
           )
           .orderBy(asc(batchMergeHistory.mergedAt));
 
-        // Get batch-sourced composition (for brandy/transfers from other batches)
+        // Also get press runs from source batches that were blended in
+        // Check both batch_merge_history (new path) and batch_transfers (legacy path)
+        const srcBatchAlias = aliasedTable(batches, "src_batch");
+
+        // Via batch_merge_history (new merge path)
+        const mergeSourcePressRuns = await db
+          .select({
+            pressRunId: srcBatchAlias.originPressRunId,
+            pressRunName: pressRuns.pressRunName,
+            totalAppleWeightKg: pressRuns.totalAppleWeightKg,
+            totalJuiceVolume: pressRuns.totalJuiceVolume,
+            totalJuiceVolumeUnit: pressRuns.totalJuiceVolumeUnit,
+            sourceBatchName: srcBatchAlias.customName,
+            sourceBatchFallbackName: srcBatchAlias.name,
+            volumeAdded: batchMergeHistory.volumeAdded,
+            volumeAddedUnit: batchMergeHistory.volumeAddedUnit,
+            mergedAt: batchMergeHistory.mergedAt,
+          })
+          .from(batchMergeHistory)
+          .innerJoin(srcBatchAlias, eq(batchMergeHistory.sourceBatchId, srcBatchAlias.id))
+          .innerJoin(pressRuns, eq(srcBatchAlias.originPressRunId, pressRuns.id))
+          .where(
+            and(
+              eq(batchMergeHistory.targetBatchId, input.batchId),
+              eq(batchMergeHistory.sourceType, "batch_transfer"),
+              isNull(batchMergeHistory.deletedAt),
+            ),
+          )
+          .orderBy(asc(batchMergeHistory.mergedAt));
+
+        // Via batch_transfers (legacy path — blends created before performBatchMerge)
+        const transferBatchAlias = aliasedTable(batches, "transfer_src_batch");
+        const transferSourcePressRuns = await db
+          .select({
+            pressRunId: transferBatchAlias.originPressRunId,
+            pressRunName: pressRuns.pressRunName,
+            totalAppleWeightKg: pressRuns.totalAppleWeightKg,
+            totalJuiceVolume: pressRuns.totalJuiceVolume,
+            totalJuiceVolumeUnit: pressRuns.totalJuiceVolumeUnit,
+            sourceBatchName: transferBatchAlias.customName,
+            sourceBatchFallbackName: transferBatchAlias.name,
+            volumeAdded: batchTransfers.volumeTransferred,
+            volumeAddedUnit: batchTransfers.volumeTransferredUnit,
+            mergedAt: batchTransfers.transferredAt,
+          })
+          .from(batchTransfers)
+          .innerJoin(transferBatchAlias, eq(batchTransfers.sourceBatchId, transferBatchAlias.id))
+          .innerJoin(pressRuns, eq(transferBatchAlias.originPressRunId, pressRuns.id))
+          .where(
+            and(
+              eq(batchTransfers.destinationBatchId, input.batchId),
+              isNull(batchTransfers.deletedAt),
+            ),
+          )
+          .orderBy(asc(batchTransfers.transferredAt));
+
+        // Deduplicate by pressRunId — also exclude batch's own originPressRunId and mergeHistoryPressRuns
+        const seenPressRunIds = new Set<string>();
+        // Exclude the batch's own origin press run (shown separately in the UI)
+        if (batch.originPressRunId) seenPressRunIds.add(batch.originPressRunId);
+        // Exclude press runs already found via direct merge history
+        for (const m of mergeHistoryPressRuns) {
+          if (m.pressRunId) seenPressRunIds.add(m.pressRunId);
+        }
+        const sourceBatchPressRuns = [...mergeSourcePressRuns, ...transferSourcePressRuns].filter((row) => {
+          if (!row.pressRunId || seenPressRunIds.has(row.pressRunId)) return false;
+          seenPressRunIds.add(row.pressRunId);
+          return true;
+        });
+
+        // Get batch-sourced composition (for blends/brandy/transfers from other batches)
+        // Check both batch_merge_history (new) and batch_transfers (legacy)
         const sourceBatchAlias = aliasedTable(batches, "source_batch");
-        const batchSourcedComposition = await db
+        const mergeSourcedComp = await db
           .select({
             id: batchMergeHistory.id,
             sourceBatchId: batchMergeHistory.sourceBatchId,
@@ -915,18 +1252,116 @@ export const batchRouter = router({
           )
           .orderBy(asc(batchMergeHistory.mergedAt));
 
+        // Also check batch_transfers for legacy blend sources
+        const transferSourceAlias = aliasedTable(batches, "transfer_source");
+        const transferSourcedComp = await db
+          .select({
+            id: batchTransfers.id,
+            sourceBatchId: batchTransfers.sourceBatchId,
+            sourceBatchName: transferSourceAlias.name,
+            sourceBatchCustomName: transferSourceAlias.customName,
+            volumeAdded: batchTransfers.volumeTransferred,
+            volumeAddedUnit: batchTransfers.volumeTransferredUnit,
+            sourceAbv: transferSourceAlias.actualAbv,
+            resultingAbv: sql<string | null>`null`,
+            notes: batchTransfers.notes,
+            mergedAt: batchTransfers.transferredAt,
+            sourceType: sql<string>`'batch_transfer'`,
+          })
+          .from(batchTransfers)
+          .innerJoin(transferSourceAlias, eq(batchTransfers.sourceBatchId, transferSourceAlias.id))
+          .where(
+            and(
+              eq(batchTransfers.destinationBatchId, input.batchId),
+              isNull(batchTransfers.deletedAt),
+            ),
+          )
+          .orderBy(asc(batchTransfers.transferredAt));
+
+        // Deduplicate by sourceBatchId (same batch might appear in both)
+        const seenSourceBatchIds = new Set<string>();
+        const batchSourcedComposition = [...mergeSourcedComp, ...transferSourcedComp].filter((row) => {
+          if (!row.sourceBatchId || seenSourceBatchIds.has(row.sourceBatchId)) return false;
+          seenSourceBatchIds.add(row.sourceBatchId);
+          return true;
+        });
+
+        // Get additives from blend source batches (inherited via merge)
+        const sourceBatchIds = batchSourcedComposition.map((b) => b.sourceBatchId).filter((id): id is string => !!id);
+        let blendSourceAdditives: Array<{
+          id: string;
+          additiveType: string;
+          additiveName: string;
+          amount: number;
+          unit: string;
+          notes: string | null;
+          addedAt: Date;
+          addedBy: string | null;
+          sourceBatchName: string;
+        }> = [];
+        if (sourceBatchIds.length > 0) {
+          const sourceAdditivesRaw = await db
+            .select({
+              id: batchAdditives.id,
+              additiveType: batchAdditives.additiveType,
+              additiveName: batchAdditives.additiveName,
+              amount: batchAdditives.amount,
+              unit: batchAdditives.unit,
+              notes: batchAdditives.notes,
+              addedAt: batchAdditives.addedAt,
+              addedBy: batchAdditives.addedBy,
+              batchId: batchAdditives.batchId,
+              batchName: batches.customName,
+              batchFallbackName: batches.name,
+            })
+            .from(batchAdditives)
+            .innerJoin(batches, eq(batchAdditives.batchId, batches.id))
+            .where(
+              and(
+                inArray(batchAdditives.batchId, sourceBatchIds),
+                isNull(batchAdditives.deletedAt),
+              ),
+            )
+            .orderBy(desc(batchAdditives.addedAt));
+          blendSourceAdditives = sourceAdditivesRaw.map((a) => ({
+            id: a.id,
+            additiveType: a.additiveType,
+            additiveName: a.additiveName,
+            amount: parseFloat(a.amount.toString()),
+            unit: a.unit,
+            notes: a.notes,
+            addedAt: a.addedAt,
+            addedBy: a.addedBy,
+            sourceBatchName: a.batchName || a.batchFallbackName || "Unknown",
+          }));
+        }
+
         return {
           batch,
           origin: originDetails,
-          contributingPressRuns: mergeHistoryPressRuns.map((m) => ({
-            id: m.id,
-            pressRunId: m.pressRunId,
-            pressRunName: m.pressRunName,
-            totalAppleWeightKg: m.totalAppleWeightKg ? parseFloat(m.totalAppleWeightKg) : null,
-            volumeAdded: parseFloat(m.volumeAdded),
-            volumeAddedUnit: m.volumeAddedUnit,
-            mergedAt: m.mergedAt,
-          })),
+          contributingPressRuns: [
+            ...mergeHistoryPressRuns.map((m) => ({
+              id: m.id,
+              pressRunId: m.pressRunId,
+              pressRunName: m.pressRunName,
+              totalAppleWeightKg: m.totalAppleWeightKg ? parseFloat(m.totalAppleWeightKg) : null,
+              volumeAdded: parseFloat(m.volumeAdded),
+              volumeAddedUnit: m.volumeAddedUnit,
+              mergedAt: m.mergedAt,
+            })),
+            ...sourceBatchPressRuns
+              .filter((s) => s.pressRunId)
+              .map((s) => ({
+                id: s.pressRunId!,
+                pressRunId: s.pressRunId,
+                pressRunName: s.pressRunName,
+                totalAppleWeightKg: s.totalAppleWeightKg ? parseFloat(s.totalAppleWeightKg) : null,
+                volumeAdded: parseFloat(s.volumeAdded),
+                volumeAddedUnit: s.volumeAddedUnit,
+                mergedAt: s.mergedAt,
+                sourceBatchName: s.sourceBatchName || s.sourceBatchFallbackName || undefined,
+              })),
+          ],
           // Batch-sourced composition (e.g., brandy from distillation)
           batchSourcedComposition: batchSourcedComposition.map((b) => ({
             id: b.id,
@@ -970,6 +1405,7 @@ export const batchRouter = router({
             ...a,
             amount: parseFloat(a.amount.toString()),
           })),
+          blendSourceAdditives,
         };
       } catch (error) {
         if (error instanceof TRPCError) throw error;
@@ -1448,7 +1884,7 @@ export const batchRouter = router({
         // If non-apple/pear fruit is added to a cider/perry batch, reclassify as wine (TTB IC 17-2)
         let reclassifiedAsWine = false;
         if (
-          input.additiveType === "Fruit / Fruit Product" &&
+          input.additiveType === "Fruit/Fruit Product" &&
           !input.isApplePearFruit &&
           (batchData[0].productType === "cider" || batchData[0].productType === "perry")
         ) {
@@ -2555,7 +2991,7 @@ export const batchRouter = router({
             ),
           );
 
-        const isBlendedBatch = blendSources.length > 0;
+        let isBlendedBatch = blendSources.length > 0;
 
         // Find ancestor batches using recursive CTE
         // This traces the lineage back to the original batch through transfers
@@ -2568,7 +3004,7 @@ export const batchRouter = router({
           depth: number;
         }>(sql`
           WITH RECURSIVE ancestors AS (
-            -- Base case: find transfers that created this batch (via remaining_batch_id or destination_batch_id)
+            -- Non-recursive seed: find parents via batch_transfers
             SELECT
               bt.source_batch_id as batch_id,
               b.name as batch_name,
@@ -2581,20 +3017,41 @@ export const batchRouter = router({
               AND bt.source_batch_id != ${input.batchId}
               AND bt.deleted_at IS NULL
 
+            UNION
+
+            -- Non-recursive seed: find parents via batch_merge_history
+            SELECT
+              bmh.source_batch_id as batch_id,
+              b.name as batch_name,
+              bmh.merged_at as split_timestamp,
+              b.start_date as start_date,
+              1 as depth
+            FROM batch_merge_history bmh
+            JOIN batches b ON b.id = bmh.source_batch_id
+            WHERE bmh.target_batch_id = ${input.batchId}
+              AND bmh.source_batch_id != ${input.batchId}
+              AND bmh.source_type = 'batch_transfer'
+              AND bmh.deleted_at IS NULL
+
             UNION ALL
 
-            -- Recursive case: find transfers that created parent batches
+            -- Recursive: walk up through transfers and merges for ancestor batches
             SELECT
-              bt.source_batch_id,
+              COALESCE(bt.source_batch_id, bmh.source_batch_id) as batch_id,
               b.name,
-              bt.transferred_at,
+              COALESCE(bt.transferred_at, bmh.merged_at) as split_timestamp,
               b.start_date,
               a.depth + 1
-            FROM batch_transfers bt
-            JOIN batches b ON b.id = bt.source_batch_id
-            JOIN ancestors a ON (bt.remaining_batch_id = a.batch_id OR bt.destination_batch_id = a.batch_id)
-            WHERE bt.source_batch_id != a.batch_id
+            FROM ancestors a
+            LEFT JOIN batch_transfers bt ON (bt.remaining_batch_id = a.batch_id OR bt.destination_batch_id = a.batch_id)
+              AND bt.source_batch_id != a.batch_id
               AND bt.deleted_at IS NULL
+            LEFT JOIN batch_merge_history bmh ON bmh.target_batch_id = a.batch_id
+              AND bmh.source_batch_id != a.batch_id
+              AND bmh.source_type = 'batch_transfer'
+              AND bmh.deleted_at IS NULL
+            JOIN batches b ON b.id = COALESCE(bt.source_batch_id, bmh.source_batch_id)
+            WHERE COALESCE(bt.source_batch_id, bmh.source_batch_id) IS NOT NULL
               AND a.depth < 10
           )
           SELECT DISTINCT ON (batch_id) * FROM ancestors ORDER BY batch_id, depth DESC
@@ -2668,6 +3125,8 @@ export const batchRouter = router({
               volumeUnit: batchMeasurements.volumeUnit,
               notes: batchMeasurements.notes,
               takenBy: batchMeasurements.takenBy,
+              isEstimated: batchMeasurements.isEstimated,
+              estimateSource: batchMeasurements.estimateSource,
             })
             .from(batchMeasurements)
             .where(
@@ -3010,10 +3469,14 @@ export const batchRouter = router({
         let creationTimestamp = batch[0].createdAt;
         let creationDescription = `Batch created from ${originDescription}`;
 
-        if (ancestorChain.length > 0) {
-          // This batch was created via transfer — use its own start date (transfer date)
-          // The parent's lineage origin is already visible in "Parent History"
-          const parentBatch = ancestorChain[0]; // Direct parent (depth=1)
+        // Count direct parents (depth=1) to detect blends
+        const directParents = ancestorChain.filter(a => a.depth === 1);
+        if (directParents.length > 1) {
+          isBlendedBatch = true;
+          creationDescription = `Blend created from ${directParents.length} batches`;
+        } else if (ancestorChain.length > 0) {
+          // Single-parent transfer
+          const parentBatch = ancestorChain[0];
           creationDescription = `Transferred from ${parentBatch.batch_name}`;
         }
 
@@ -3044,16 +3507,20 @@ export const batchRouter = router({
           if (m.volume) details.push(`Volume: ${m.volume}${m.volumeUnit || 'L'}`);
 
           const inheritedInfo = getInheritedInfo(m.batchId);
+          const isEst = m.isEstimated === true;
           activities.push({
             id: `measurement-${m.id}`,
             type: "measurement",
             timestamp: m.measurementDate,
-            description: `Measurement taken${m.takenBy ? ` by ${m.takenBy}` : ""}`,
+            description: isEst
+              ? `Estimated measurement (blend)${m.estimateSource ? `: ${m.estimateSource}` : ""}`
+              : `Measurement taken${m.takenBy ? ` by ${m.takenBy}` : ""}`,
             details:
               details.length > 0 || m.notes
                 ? {
                     values: details.length > 0 ? details.join(", ") : null,
                     notes: m.notes || null,
+                    isEstimated: isEst || undefined,
                   }
                 : {},
             metadata: m, // Include full measurement object for editing
@@ -3144,9 +3611,12 @@ export const batchRouter = router({
           }
 
           // Determine which batch ID to use for filtering
-          const relevantBatchId = t.sourceBatchId === t.destinationBatchId
-            ? t.sourceBatchId
-            : (allBatchIds.includes(t.sourceBatchId) ? t.sourceBatchId : t.destinationBatchId);
+          // If this batch is the destination, it's a current-batch event (blend-in or receive)
+          const relevantBatchId = thisIsDestination
+            ? input.batchId
+            : t.sourceBatchId === t.destinationBatchId
+              ? t.sourceBatchId
+              : (allBatchIds.includes(t.sourceBatchId) ? t.sourceBatchId : t.destinationBatchId);
 
           if (!shouldIncludeAncestorActivity(relevantBatchId, t.transferredAt)) return;
 
@@ -3172,23 +3642,31 @@ export const batchRouter = router({
             });
           } else {
             // Traditional transfer: different batches involved
-            // For inherited transfers, check if this batch was the source
-            const isSource = thisIsSource || sourceIsAncestor;
+            // If this batch is the destination, it's always incoming (even if source is an ancestor)
+            const isSource = thisIsSource || (sourceIsAncestor && !thisIsDestination);
+            const sourceName = t.sourceBatchName || "unknown batch";
+            const vol = `${t.volumeTransferred}${t.volumeTransferredUnit || 'L'}`;
+
+            // For incoming blend transfers, show as "blend" type for clarity
+            const isBlendIn = thisIsDestination && sourceIsAncestor;
             activities.push({
               id: `transfer-${t.id}`,
-              type: "transfer",
+              type: isBlendIn ? "merge" : "transfer",
               timestamp: t.transferredAt,
-              description: isSource
-                ? `Transferred ${t.volumeTransferred}${t.volumeTransferredUnit || 'L'} to ${t.destVesselName || "vessel"}`
-                : `Received ${t.volumeTransferred}${t.volumeTransferredUnit || 'L'} from ${t.sourceVesselName || "vessel"}`,
+              description: isBlendIn
+                ? `Blended ${vol} from ${sourceName}`
+                : isSource
+                  ? `Transferred ${vol} to ${t.destVesselName || "vessel"}`
+                  : `Received ${vol} from ${t.sourceVesselName || "vessel"}`,
               details: {
-                volume: `${t.volumeTransferred}${t.volumeTransferredUnit || 'L'}`,
+                volume: vol,
                 direction: isSource ? "outgoing" : "incoming",
                 fromVessel: t.sourceVesselName || null,
                 toVessel: t.destVesselName || null,
-                sourceBatchName: !isSource ? (t.sourceBatchName || null) : null,
+                sourceBatchName: !isSource ? sourceName : null,
                 destBatchName: isSource ? (t.destBatchName || null) : null,
                 notes: t.notes || null,
+                ...(isBlendIn ? { volumeAdded: vol } : {}),
               },
               metadata: { id: t.id, transferredAt: t.transferredAt, destinationBatchId: t.destinationBatchId },
               ...inheritedInfo,
@@ -4226,6 +4704,7 @@ export const batchRouter = router({
               .select({
                 id: batches.id,
                 name: batches.name,
+                customName: batches.customName,
                 currentVolume: batches.currentVolume,
                 fermentationStage: batches.fermentationStage,
                 productType: batches.productType,
@@ -4245,32 +4724,21 @@ export const batchRouter = router({
             if (destCheckForPartial.length > 0) {
               // Destination has a batch - MERGE partial rack into it
               const destBatch = destCheckForPartial[0];
-              const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
-              const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
 
-              // Compute volume-weighted ABV and OG for the blended batch
-              const rackMergeUpdateData: Record<string, unknown> = {
-                currentVolume: mergedVolumeL.toString(),
-                currentVolumeUnit: 'L',
-                updatedAt: new Date(),
-              };
-              const srcAbvVal = parseFloat(batch[0].actualAbv || batch[0].estimatedAbv || "0");
-              const dstAbvVal = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
-              if (srcAbvVal > 0 || dstAbvVal > 0) {
-                rackMergeUpdateData.estimatedAbv = (((volumeRackedL * srcAbvVal) + (destCurrentVolumeL * dstAbvVal)) / mergedVolumeL).toFixed(2);
-              }
-              const srcOGVal = batch[0].originalGravity ? parseFloat(batch[0].originalGravity) : null;
-              const dstOGVal = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
-              if (srcOGVal !== null && dstOGVal !== null) {
-                rackMergeUpdateData.originalGravity = (((volumeRackedL * srcOGVal) + (destCurrentVolumeL * dstOGVal)) / mergedVolumeL).toFixed(4);
-              }
-
-              // Update destination batch with merged volume and blended ABV
-              updatedBatch = await tx
-                .update(batches)
-                .set(rackMergeUpdateData)
-                .where(eq(batches.id, destBatch.id))
-                .returning();
+              const mergeResult = await performBatchMerge({
+                tx,
+                sourceBatch: batch[0],
+                destBatch,
+                volumeRackedL,
+                scaleCompositions: true,
+                sourceVolumeBeforeL: volumeBeforeL,
+                mergeDate: input.rackedAt || new Date(),
+                userId: ctx.session?.user?.id,
+                userName: ctx.session?.user?.name || "System",
+                sourceVesselId: sourceVesselId,
+                destVesselId: input.destinationVesselId,
+              });
+              updatedBatch = mergeResult.updatedBatch;
 
               // Update source batch - reduce volume (partial rack keeps source active)
               await tx
@@ -4282,139 +4750,8 @@ export const batchRouter = router({
                 })
                 .where(eq(batches.id, input.batchId));
 
-              // Create merge history entry for partial batch-to-batch merge
-              await tx.insert(batchMergeHistory).values({
-                targetBatchId: destBatch.id,
-                sourceBatchId: input.batchId,
-                sourceType: "batch_transfer",
-                volumeAdded: volumeRackedL.toString(),
-                volumeAddedUnit: "L",
-                targetVolumeBefore: destCurrentVolumeL.toString(),
-                targetVolumeBeforeUnit: "L",
-                targetVolumeAfter: mergedVolumeL.toString(),
-                targetVolumeAfterUnit: "L",
-                mergedAt: input.rackedAt || new Date(),
-                mergedBy: ctx.session?.user?.id,
-                createdAt: new Date(),
-              });
-
-              // Propagate fermentation stage from source to destination if source is actively fermenting
-              // and destination is not_started or unknown (prevents yeast inheritance being missed)
-              const fermentingStages = ['early', 'mid', 'approaching_dry', 'terminal'];
-              const sourceFermentationStage = batch[0].fermentationStage;
-              const destFermentationStage = destBatch.fermentationStage;
-              const destProductType = destBatch.productType;
-
-              // Only propagate if:
-              // 1. Source batch has a fermenting stage
-              // 2. Destination batch is not_started or unknown
-              // 3. Destination is not brandy/pommeau (which don't ferment)
-              if (
-                sourceFermentationStage &&
-                fermentingStages.includes(sourceFermentationStage) &&
-                (destFermentationStage === 'not_started' || destFermentationStage === 'unknown') &&
-                destProductType !== 'brandy' &&
-                destProductType !== 'pommeau'
-              ) {
-                await tx
-                  .update(batches)
-                  .set({
-                    fermentationStage: sourceFermentationStage,
-                    fermentationStageUpdatedAt: new Date(),
-                  })
-                  .where(eq(batches.id, destBatch.id));
-              }
-
-              // Calculate and create estimated blended measurements for partial rack merge
-              const [srcMeasurement] = await tx
-                .select()
-                .from(batchMeasurements)
-                .where(and(eq(batchMeasurements.batchId, input.batchId), isNull(batchMeasurements.deletedAt)))
-                .orderBy(desc(batchMeasurements.measurementDate))
-                .limit(1);
-
-              const [dstMeasurement] = await tx
-                .select()
-                .from(batchMeasurements)
-                .where(and(eq(batchMeasurements.batchId, destBatch.id), isNull(batchMeasurements.deletedAt)))
-                .orderBy(desc(batchMeasurements.measurementDate))
-                .limit(1);
-
-              if (srcMeasurement || dstMeasurement) {
-                const srcVol = volumeRackedL;
-                const dstVol = destCurrentVolumeL;
-                const totVol = mergedVolumeL;
-
-                const blendVal = (sVal: string | null, dVal: string | null): string | null => {
-                  const s = sVal ? parseFloat(sVal) : null;
-                  const d = dVal ? parseFloat(dVal) : null;
-                  if (s !== null && d !== null) return ((s * srcVol + d * dstVol) / totVol).toString();
-                  if (s !== null) return s.toString();
-                  if (d !== null) return d.toString();
-                  return null;
-                };
-
-                const srcName = batch[0].customName || batch[0].name;
-                const dstName = destBatch.name;
-
-                await tx.insert(batchMeasurements).values({
-                  batchId: destBatch.id,
-                  measurementDate: input.rackedAt || new Date(),
-                  specificGravity: blendVal(srcMeasurement?.specificGravity, dstMeasurement?.specificGravity),
-                  abv: blendVal(srcMeasurement?.abv, dstMeasurement?.abv),
-                  ph: blendVal(srcMeasurement?.ph, dstMeasurement?.ph),
-                  totalAcidity: blendVal(srcMeasurement?.totalAcidity, dstMeasurement?.totalAcidity),
-                  temperature: blendVal(srcMeasurement?.temperature, dstMeasurement?.temperature),
-                  volume: mergedVolumeL.toString(),
-                  volumeUnit: "L",
-                  volumeLiters: mergedVolumeL.toString(),
-                  isEstimated: true,
-                  estimateSource: `Volume-weighted blend: ${srcVol.toFixed(1)}L from ${srcName} + ${dstVol.toFixed(1)}L from ${dstName}`,
-                  notes: `Estimated values from partial rack merge`,
-                  takenBy: ctx.session?.user?.name || "System",
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                });
-              }
-
-              // Copy compositions from source batch to destination
-              const srcCompositions = await tx
-                .select()
-                .from(batchCompositions)
-                .where(and(eq(batchCompositions.batchId, input.batchId), isNull(batchCompositions.deletedAt)));
-
-              for (const comp of srcCompositions) {
-                // Scale composition by volume ratio
-                const volumeRatio = volumeRackedL / volumeBeforeL;
-                const scaledInputWeight = comp.inputWeightKg ? (parseFloat(comp.inputWeightKg) * volumeRatio).toString() : comp.inputWeightKg;
-                const scaledJuiceVol = comp.juiceVolume ? (parseFloat(comp.juiceVolume) * volumeRatio).toString() : comp.juiceVolume;
-                const scaledMaterialCost = comp.materialCost ? (parseFloat(comp.materialCost) * volumeRatio).toString() : comp.materialCost;
-                const scaledEstSugar = comp.estSugarKg ? (parseFloat(comp.estSugarKg) * volumeRatio).toString() : comp.estSugarKg;
-                await tx.insert(batchCompositions).values({
-                  batchId: destBatch.id,
-                  sourceType: comp.sourceType,
-                  purchaseItemId: comp.purchaseItemId,
-                  varietyId: comp.varietyId,
-                  juicePurchaseItemId: comp.juicePurchaseItemId,
-                  vendorId: comp.vendorId,
-                  lotCode: comp.lotCode,
-                  inputWeightKg: scaledInputWeight,
-                  juiceVolume: scaledJuiceVol,
-                  juiceVolumeUnit: comp.juiceVolumeUnit,
-                  fractionOfBatch: comp.fractionOfBatch,
-                  materialCost: scaledMaterialCost,
-                  avgBrix: comp.avgBrix,
-                  estSugarKg: scaledEstSugar,
-                  abv: comp.abv, // Preserve ABV from source
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                });
-              }
-
-              // Recalculate fractions for all compositions on destination batch
-              await recalculateCompositionFractions(tx, destBatch.id);
-
-              resultMessage = `Partial rack merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L), ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`;
+              const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
+              resultMessage = `Partial rack merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergeResult.mergedVolumeL.toFixed(1)}L), ${volumeRemainingInSourceL.toFixed(1)}L remaining in source`;
             } else {
               // No batch in destination - proceed with normal partial rack (create child batch)
 
@@ -4625,38 +4962,27 @@ export const batchRouter = router({
           } else if (hasBatchInDestination) {
             // 5b. MERGE: Add volume to existing destination batch, then mark source batch as completed
             const destBatch = destinationBatch[0];
-            const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
-            const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
 
-            // Compute volume-weighted ABV and OG for the blended batch
-            const mergeUpdateData5b: Record<string, unknown> = {
-              currentVolume: mergedVolumeL.toString(),
-              currentVolumeUnit: 'L',
-              updatedAt: new Date(),
-            };
-            const srcAbv5b = parseFloat(batch[0].actualAbv || batch[0].estimatedAbv || "0");
-            const dstAbv5b = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
-            if (srcAbv5b > 0 || dstAbv5b > 0) {
-              mergeUpdateData5b.estimatedAbv = (((volumeRackedL * srcAbv5b) + (destCurrentVolumeL * dstAbv5b)) / mergedVolumeL).toFixed(2);
-            }
-            const srcOG5b = batch[0].originalGravity ? parseFloat(batch[0].originalGravity) : null;
-            const dstOG5b = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
-            if (srcOG5b !== null && dstOG5b !== null) {
-              mergeUpdateData5b.originalGravity = (((volumeRackedL * srcOG5b) + (destCurrentVolumeL * dstOG5b)) / mergedVolumeL).toFixed(4);
-            }
-
-            // Update destination batch with merged volume and blended ABV
-            updatedBatch = await tx
-              .update(batches)
-              .set(mergeUpdateData5b)
-              .where(eq(batches.id, destBatch.id))
-              .returning();
+            const mergeResult = await performBatchMerge({
+              tx,
+              sourceBatch: batch[0],
+              destBatch,
+              volumeRackedL,
+              scaleCompositions: false,
+              sourceVolumeBeforeL: volumeBeforeL,
+              mergeDate: input.rackedAt || new Date(),
+              userId: ctx.session?.user?.id,
+              userName: ctx.session?.user?.name || "System",
+              sourceVesselId: sourceVesselId,
+              destVesselId: input.destinationVesselId,
+            });
+            updatedBatch = mergeResult.updatedBatch;
 
             // Mark source batch as completed and archived (not deleted - preserve history)
             await tx
               .update(batches)
               .set({
-                vesselId: null, // Remove vessel assignment
+                vesselId: null,
                 status: "completed",
                 currentVolume: "0",
                 isArchived: true,
@@ -4666,138 +4992,6 @@ export const batchRouter = router({
               })
               .where(eq(batches.id, input.batchId));
 
-            // Create merge history entry for batch-to-batch merge
-            await tx.insert(batchMergeHistory).values({
-              targetBatchId: destBatch.id,
-              sourceBatchId: input.batchId,
-              sourceType: "batch_transfer",
-              volumeAdded: volumeRackedL.toString(),
-              volumeAddedUnit: "L",
-              targetVolumeBefore: destCurrentVolumeL.toString(),
-              targetVolumeBeforeUnit: "L",
-              targetVolumeAfter: mergedVolumeL.toString(),
-              targetVolumeAfterUnit: "L",
-              mergedAt: input.rackedAt || new Date(),
-              mergedBy: ctx.session?.user?.id,
-              createdAt: new Date(),
-            });
-
-            // Propagate fermentation stage from source to destination if source is actively fermenting
-            // and destination is not_started or unknown (prevents yeast inheritance being missed)
-            const fermentingStages = ['early', 'mid', 'approaching_dry', 'terminal'];
-            const sourceFermentationStage = batch[0].fermentationStage;
-            const destFermentationStage = destBatch.fermentationStage;
-            const destProductType = destBatch.productType;
-
-            // Only propagate if:
-            // 1. Source batch has a fermenting stage
-            // 2. Destination batch is not_started or unknown
-            // 3. Destination is not brandy/pommeau (which don't ferment)
-            if (
-              sourceFermentationStage &&
-              fermentingStages.includes(sourceFermentationStage) &&
-              (destFermentationStage === 'not_started' || destFermentationStage === 'unknown') &&
-              destProductType !== 'brandy' &&
-              destProductType !== 'pommeau'
-            ) {
-              await tx
-                .update(batches)
-                .set({
-                  fermentationStage: sourceFermentationStage,
-                  fermentationStageUpdatedAt: new Date(),
-                })
-                .where(eq(batches.id, destBatch.id));
-            }
-
-            // Calculate and create estimated blended measurements
-            const [sourceMeasurement] = await tx
-              .select()
-              .from(batchMeasurements)
-              .where(and(eq(batchMeasurements.batchId, input.batchId), isNull(batchMeasurements.deletedAt)))
-              .orderBy(desc(batchMeasurements.measurementDate))
-              .limit(1);
-
-            const [destMeasurement] = await tx
-              .select()
-              .from(batchMeasurements)
-              .where(and(eq(batchMeasurements.batchId, destBatch.id), isNull(batchMeasurements.deletedAt)))
-              .orderBy(desc(batchMeasurements.measurementDate))
-              .limit(1);
-
-            // Only create estimated measurement if at least one batch has measurements
-            if (sourceMeasurement || destMeasurement) {
-              const sourceVol = volumeRackedL;
-              const destVol = destCurrentVolumeL;
-              const totalVol = mergedVolumeL;
-
-              // Helper function for volume-weighted average
-              const blendValue = (sourceVal: string | null, destVal: string | null): string | null => {
-                const sVal = sourceVal ? parseFloat(sourceVal) : null;
-                const dVal = destVal ? parseFloat(destVal) : null;
-                if (sVal !== null && dVal !== null) {
-                  return ((sVal * sourceVol + dVal * destVol) / totalVol).toString();
-                } else if (sVal !== null) {
-                  return sVal.toString();
-                } else if (dVal !== null) {
-                  return dVal.toString();
-                }
-                return null;
-              };
-
-              const sourceBatchName = batch[0].customName || batch[0].name;
-              const destBatchName = destBatch.customName || destBatch.name;
-
-              await tx.insert(batchMeasurements).values({
-                batchId: destBatch.id,
-                measurementDate: input.rackedAt || new Date(),
-                specificGravity: blendValue(sourceMeasurement?.specificGravity, destMeasurement?.specificGravity),
-                abv: blendValue(sourceMeasurement?.abv, destMeasurement?.abv),
-                ph: blendValue(sourceMeasurement?.ph, destMeasurement?.ph),
-                totalAcidity: blendValue(sourceMeasurement?.totalAcidity, destMeasurement?.totalAcidity),
-                temperature: blendValue(sourceMeasurement?.temperature, destMeasurement?.temperature),
-                volume: mergedVolumeL.toString(),
-                volumeUnit: "L",
-                volumeLiters: mergedVolumeL.toString(),
-                isEstimated: true,
-                estimateSource: `Volume-weighted blend: ${sourceVol.toFixed(1)}L from ${sourceBatchName} + ${destVol.toFixed(1)}L from ${destBatchName}`,
-                notes: `Estimated values from merge of ${sourceBatchName} into ${destBatchName}`,
-                takenBy: ctx.session?.user?.name || "System",
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              });
-            }
-
-            // Copy compositions from source batch to destination (proportionally)
-            const sourceCompositions = await tx
-              .select()
-              .from(batchCompositions)
-              .where(and(eq(batchCompositions.batchId, input.batchId), isNull(batchCompositions.deletedAt)));
-
-            for (const comp of sourceCompositions) {
-              await tx.insert(batchCompositions).values({
-                batchId: destBatch.id,
-                sourceType: comp.sourceType,
-                purchaseItemId: comp.purchaseItemId,
-                varietyId: comp.varietyId,
-                juicePurchaseItemId: comp.juicePurchaseItemId,
-                vendorId: comp.vendorId,
-                lotCode: comp.lotCode,
-                inputWeightKg: comp.inputWeightKg,
-                juiceVolume: comp.juiceVolume,
-                juiceVolumeUnit: comp.juiceVolumeUnit,
-                fractionOfBatch: comp.fractionOfBatch,
-                materialCost: comp.materialCost,
-                avgBrix: comp.avgBrix,
-                estSugarKg: comp.estSugarKg,
-                abv: comp.abv, // Preserve ABV from source
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              });
-            }
-
-            // Recalculate fractions for all compositions on destination batch
-            await recalculateCompositionFractions(tx, destBatch.id);
-
             resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name}`;
           } else {
             // 5c. MOVE: Transfer batch to new empty vessel
@@ -4806,6 +5000,7 @@ export const batchRouter = router({
               .select({
                 id: batches.id,
                 name: batches.name,
+                customName: batches.customName,
                 currentVolume: batches.currentVolume,
                 fermentationStage: batches.fermentationStage,
                 productType: batches.productType,
@@ -4825,32 +5020,22 @@ export const batchRouter = router({
             if (destSafetyCheck.length > 0) {
               // Destination has a batch - MERGE instead of overwriting
               const destBatch = destSafetyCheck[0];
-              const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
-              const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
 
-              // Compute volume-weighted ABV and OG for the blended batch
-              const safetyMergeData: Record<string, unknown> = {
-                currentVolume: mergedVolumeL.toString(),
-                currentVolumeUnit: 'L',
-                updatedAt: new Date(),
-              };
-              const srcAbvSafe = parseFloat(batch[0].actualAbv || batch[0].estimatedAbv || "0");
-              const dstAbvSafe = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
-              if (srcAbvSafe > 0 || dstAbvSafe > 0) {
-                safetyMergeData.estimatedAbv = (((volumeRackedL * srcAbvSafe) + (destCurrentVolumeL * dstAbvSafe)) / mergedVolumeL).toFixed(2);
-              }
-              const srcOGSafe = batch[0].originalGravity ? parseFloat(batch[0].originalGravity) : null;
-              const dstOGSafe = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
-              if (srcOGSafe !== null && dstOGSafe !== null) {
-                safetyMergeData.originalGravity = (((volumeRackedL * srcOGSafe) + (destCurrentVolumeL * dstOGSafe)) / mergedVolumeL).toFixed(4);
-              }
-
-              // Update destination batch with merged volume and blended ABV
-              updatedBatch = await tx
-                .update(batches)
-                .set(safetyMergeData)
-                .where(eq(batches.id, destBatch.id))
-                .returning();
+              // Use shared merge helper (safety check path - full rack, no scaling)
+              const mergeResult = await performBatchMerge({
+                tx,
+                sourceBatch: batch[0],
+                destBatch,
+                volumeRackedL,
+                scaleCompositions: false,
+                sourceVolumeBeforeL: volumeBeforeL,
+                mergeDate: input.rackedAt || new Date(),
+                userId: ctx.session?.user?.id,
+                userName: ctx.session?.user?.name || "System",
+                sourceVesselId: sourceVesselId,
+                destVesselId: input.destinationVesselId,
+              });
+              updatedBatch = mergeResult.updatedBatch;
 
               // Mark source batch as completed and archived (not deleted - preserve history)
               await tx
@@ -4866,137 +5051,27 @@ export const batchRouter = router({
                 })
                 .where(eq(batches.id, input.batchId));
 
-              // Create merge history entry for batch-to-batch merge (safety check path)
-              await tx.insert(batchMergeHistory).values({
-                targetBatchId: destBatch.id,
-                sourceBatchId: input.batchId,
-                sourceType: "batch_transfer",
-                volumeAdded: volumeRackedL.toString(),
-                volumeAddedUnit: "L",
-                targetVolumeBefore: destCurrentVolumeL.toString(),
-                targetVolumeBeforeUnit: "L",
-                targetVolumeAfter: mergedVolumeL.toString(),
-                targetVolumeAfterUnit: "L",
-                mergedAt: input.rackedAt || new Date(),
-                mergedBy: ctx.session?.user?.id,
-                createdAt: new Date(),
-              });
-
-              // Propagate fermentation stage from source to destination if source is actively fermenting
-              // and destination is not_started or unknown (prevents yeast inheritance being missed)
-              const fermentingStagesSafety = ['early', 'mid', 'approaching_dry', 'terminal'];
-              const sourceFermentationStageSafety = batch[0].fermentationStage;
-              const destFermentationStageSafety = destBatch.fermentationStage;
-              const destProductTypeSafety = destBatch.productType;
-
-              if (
-                sourceFermentationStageSafety &&
-                fermentingStagesSafety.includes(sourceFermentationStageSafety) &&
-                (destFermentationStageSafety === 'not_started' || destFermentationStageSafety === 'unknown') &&
-                destProductTypeSafety !== 'brandy' &&
-                destProductTypeSafety !== 'pommeau'
-              ) {
-                await tx
-                  .update(batches)
-                  .set({
-                    fermentationStage: sourceFermentationStageSafety,
-                    fermentationStageUpdatedAt: new Date(),
-                  })
-                  .where(eq(batches.id, destBatch.id));
-              }
-
-              // Calculate and create estimated blended measurements (safety check path)
-              const [sourceMeasurementSafety] = await tx
-                .select()
-                .from(batchMeasurements)
-                .where(and(eq(batchMeasurements.batchId, input.batchId), isNull(batchMeasurements.deletedAt)))
-                .orderBy(desc(batchMeasurements.measurementDate))
-                .limit(1);
-
-              const [destMeasurementSafety] = await tx
-                .select()
-                .from(batchMeasurements)
-                .where(and(eq(batchMeasurements.batchId, destBatch.id), isNull(batchMeasurements.deletedAt)))
-                .orderBy(desc(batchMeasurements.measurementDate))
-                .limit(1);
-
-              // Only create estimated measurement if at least one batch has measurements
-              if (sourceMeasurementSafety || destMeasurementSafety) {
-                const sourceVol = volumeRackedL;
-                const destVol = destCurrentVolumeL;
-                const totalVol = mergedVolumeL;
-
-                // Helper function for volume-weighted average
-                const blendValueSafety = (sourceVal: string | null, destVal: string | null): string | null => {
-                  const sVal = sourceVal ? parseFloat(sourceVal) : null;
-                  const dVal = destVal ? parseFloat(destVal) : null;
-                  if (sVal !== null && dVal !== null) {
-                    return ((sVal * sourceVol + dVal * destVol) / totalVol).toString();
-                  } else if (sVal !== null) {
-                    return sVal.toString();
-                  } else if (dVal !== null) {
-                    return dVal.toString();
-                  }
-                  return null;
-                };
-
-                const sourceBatchNameSafety = batch[0].customName || batch[0].name;
-                const destBatchNameSafety = destBatch.name;
-
-                await tx.insert(batchMeasurements).values({
-                  batchId: destBatch.id,
-                  measurementDate: input.rackedAt || new Date(),
-                  specificGravity: blendValueSafety(sourceMeasurementSafety?.specificGravity, destMeasurementSafety?.specificGravity),
-                  abv: blendValueSafety(sourceMeasurementSafety?.abv, destMeasurementSafety?.abv),
-                  ph: blendValueSafety(sourceMeasurementSafety?.ph, destMeasurementSafety?.ph),
-                  totalAcidity: blendValueSafety(sourceMeasurementSafety?.totalAcidity, destMeasurementSafety?.totalAcidity),
-                  temperature: blendValueSafety(sourceMeasurementSafety?.temperature, destMeasurementSafety?.temperature),
-                  volume: mergedVolumeL.toString(),
-                  volumeUnit: "L",
-                  volumeLiters: mergedVolumeL.toString(),
-                  isEstimated: true,
-                  estimateSource: `Volume-weighted blend: ${sourceVol.toFixed(1)}L from ${sourceBatchNameSafety} + ${destVol.toFixed(1)}L from ${destBatchNameSafety}`,
-                  notes: `Estimated values from merge of ${sourceBatchNameSafety} into ${destBatchNameSafety}`,
-                  takenBy: ctx.session?.user?.name || "System",
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                });
-              }
-
-              // Copy compositions from source batch to destination (safety check path)
-              const sourceCompositionsSafety = await tx
-                .select()
-                .from(batchCompositions)
-                .where(and(eq(batchCompositions.batchId, input.batchId), isNull(batchCompositions.deletedAt)));
-
-              for (const comp of sourceCompositionsSafety) {
-                await tx.insert(batchCompositions).values({
-                  batchId: destBatch.id,
-                  sourceType: comp.sourceType,
-                  purchaseItemId: comp.purchaseItemId,
-                  varietyId: comp.varietyId,
-                  juicePurchaseItemId: comp.juicePurchaseItemId,
-                  vendorId: comp.vendorId,
-                  lotCode: comp.lotCode,
-                  inputWeightKg: comp.inputWeightKg,
-                  juiceVolume: comp.juiceVolume,
-                  juiceVolumeUnit: comp.juiceVolumeUnit,
-                  fractionOfBatch: comp.fractionOfBatch,
-                  materialCost: comp.materialCost,
-                  avgBrix: comp.avgBrix,
-                  estSugarKg: comp.estSugarKg,
-                  abv: comp.abv, // Preserve ABV from source
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                });
-              }
-
-              // Recalculate fractions for all compositions on destination batch
-              await recalculateCompositionFractions(tx, destBatch.id);
-
-              resultMessage = `Batch racked and merged into ${destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L)`;
+              const destCurrentVolumeL = parseFloat(destBatch.currentVolume || "0");
+              const mergedVolumeL = destCurrentVolumeL + volumeRackedL;
+              resultMessage = `Batch racked and merged into ${destBatch.customName || destBatch.name} in ${destinationVessel[0].name} (${destCurrentVolumeL.toFixed(1)}L + ${volumeRackedL.toFixed(1)}L = ${mergedVolumeL.toFixed(1)}L)`;
             } else {
               // Full rack: Move batch to destination vessel (preserves batch ID)
+              // First, clear any stale batch→vessel assignments on the destination
+              await tx
+                .update(batches)
+                .set({ vesselId: null, updatedAt: new Date() })
+                .where(
+                  and(
+                    eq(batches.vesselId, input.destinationVesselId),
+                    isNull(batches.deletedAt),
+                    ne(batches.id, input.batchId),
+                    or(
+                      eq(batches.status, "completed"),
+                      sql`COALESCE(${batches.currentVolumeLiters}::numeric, 0) <= 0.01`,
+                    ),
+                  )
+                );
+
               updatedBatch = await tx
                 .update(batches)
                 .set({
@@ -5049,6 +5124,22 @@ export const batchRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(pressRuns.vesselId, sourceVesselId));
+
+            // Clear stale batch→vessel assignments on the source vessel
+            // After a full rack out, no other batch should claim this vessel
+            await tx
+              .update(batches)
+              .set({
+                vesselId: null,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(batches.vesselId, sourceVesselId),
+                  isNull(batches.deletedAt),
+                  ne(batches.id, input.batchId),
+                )
+              );
           }
 
           // 7. Update destination vessel status (only if not rack-to-self and doesn't have batch already)
@@ -5518,7 +5609,7 @@ export const batchRouter = router({
 
         const batchData = batch[0];
 
-        // Get all measurements for the batch (newest first)
+        // Get all actual measurements for the batch (newest first, excluding estimated blend values)
         const measurements = await db
           .select({
             specificGravity: batchMeasurements.specificGravity,
@@ -5529,7 +5620,8 @@ export const batchRouter = router({
           .where(
             and(
               eq(batchMeasurements.batchId, input.batchId),
-              isNull(batchMeasurements.deletedAt)
+              isNull(batchMeasurements.deletedAt),
+              eq(batchMeasurements.isEstimated, false),
             )
           )
           .orderBy(desc(batchMeasurements.measurementDate));

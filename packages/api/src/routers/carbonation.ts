@@ -6,8 +6,9 @@ import {
   batches,
   vessels,
   additivePurchases,
+  organizationSettings,
 } from "db";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import {
   calculateCO2Volumes,
@@ -17,6 +18,63 @@ import {
   validateTemperature,
   getCarbonationLevel,
 } from "lib/src/utils/carbonation-calculations";
+
+/** Reference: at 20°C, bottle conditioning takes ~14 days */
+const REFERENCE_TEMP_C = 20;
+const REFERENCE_DAYS = 14;
+/** Q10 factor: yeast fermentation rate roughly doubles per 10°C rise */
+const Q10 = 2;
+
+/**
+ * Calculate bottle conditioning duration in hours based on warehouse temperature.
+ * Uses Q10 model: rate doubles every 10°C, so duration doubles every 10°C drop.
+ * At 20°C → 14 days, at 10°C → 28 days, at 15°C → ~20 days.
+ */
+function calculateBottleConditioningHours(warehouseTempCelsius: number): number {
+  const days = REFERENCE_DAYS * Math.pow(Q10, (REFERENCE_TEMP_C - warehouseTempCelsius) / 10);
+  return days * 24;
+}
+
+/**
+ * Fetch the warehouse temperature from organization settings.
+ * Falls back to 20°C if not configured.
+ */
+async function getWarehouseTemperature(): Promise<number> {
+  const [settings] = await db
+    .select({ warehouseTemperatureCelsius: organizationSettings.warehouseTemperatureCelsius })
+    .from(organizationSettings)
+    .limit(1);
+  return settings?.warehouseTemperatureCelsius
+    ? parseFloat(settings.warehouseTemperatureCelsius)
+    : REFERENCE_TEMP_C;
+}
+
+/**
+ * Check if a bottle conditioning operation should be auto-completed.
+ * If started_at + conditioning period (based on warehouse temp) is in the past,
+ * set final_co2_volumes = target and mark quality_check as 'pass'.
+ * Returns the extra fields to merge into the insert/update.
+ */
+async function getBottleConditioningAutoComplete(
+  carbonationProcess: string,
+  startedAt: Date,
+  targetCo2Volumes: string,
+): Promise<Record<string, unknown> | null> {
+  if (carbonationProcess !== "bottle_conditioning") return null;
+
+  const warehouseTemp = await getWarehouseTemperature();
+  const conditioningHours = calculateBottleConditioningHours(warehouseTemp);
+  const conditioningEnd = new Date(startedAt.getTime() + conditioningHours * 60 * 60 * 1000);
+  if (conditioningEnd > new Date()) return null;
+
+  return {
+    completedAt: conditioningEnd,
+    finalCo2Volumes: targetCo2Volumes,
+    qualityCheck: "pass",
+    durationHours: conditioningHours.toFixed(1),
+    completedBy: null,
+  };
+}
 
 export const carbonationRouter = router({
   /**
@@ -150,13 +208,21 @@ export const carbonationRouter = router({
         // - Depletion of inventory when used
       }
 
+      // Auto-complete bottle conditioning if conditioning period has elapsed
+      const effectiveStartedAt = input.startedAt ? new Date(input.startedAt) : new Date();
+      const autoComplete = await getBottleConditioningAutoComplete(
+        input.carbonationProcess,
+        effectiveStartedAt,
+        input.targetCo2Volumes.toString(),
+      );
+
       // Create carbonation operation
       const [carbonation] = await db
         .insert(batchCarbonationOperations)
         .values({
           batchId: input.batchId,
           vesselId: input.vesselId,
-          startedAt: input.startedAt || new Date(),
+          startedAt: effectiveStartedAt,
           carbonationProcess: input.carbonationProcess,
           targetCo2Volumes: input.targetCo2Volumes.toString(),
           startingTemperature: input.startingTemperature?.toString(),
@@ -177,6 +243,8 @@ export const carbonationRouter = router({
           yeastStrainName: input.yeastStrainName,
           yeastAmount: input.yeastAmount?.toString(),
           yeastAmountUnit: input.yeastAmountUnit,
+          // Auto-complete if conditioning period has elapsed
+          ...autoComplete,
         })
         .returning();
 
@@ -680,6 +748,21 @@ export const carbonationRouter = router({
           updateData.durationHours = durationHours;
         } else if (completedAt === null) {
           updateData.durationHours = null;
+        }
+
+        // Auto-complete bottle conditioning if conditioning period has elapsed
+        const effectiveProcess = (input.carbonationProcess ?? existingCarbonation[0].carbonationProcess) as string;
+        const effectiveStartedAt = startedAt ? new Date(startedAt) : null;
+        const effectiveTarget = input.targetCo2Volumes?.toString() ?? existingCarbonation[0].targetCo2Volumes;
+        if (effectiveStartedAt && effectiveTarget && !completedAt) {
+          const autoComplete = await getBottleConditioningAutoComplete(
+            effectiveProcess,
+            effectiveStartedAt,
+            effectiveTarget,
+          );
+          if (autoComplete) {
+            Object.assign(updateData, autoComplete);
+          }
         }
 
         const [updated] = await db

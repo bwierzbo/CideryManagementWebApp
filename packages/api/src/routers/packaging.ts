@@ -361,7 +361,8 @@ export const packagingRouter = router({
             });
           }
 
-          // Find most recent completed carbonation operation for this batch
+          // Find most recent carbonation operation for this batch
+          // Include in-progress ops (e.g. bottle conditioning starts at bottling time)
           const [latestCarbonation] = await tx
             .select({
               id: batchCarbonationOperations.id,
@@ -372,10 +373,9 @@ export const packagingRouter = router({
               and(
                 eq(batchCarbonationOperations.batchId, input.batchId),
                 isNull(batchCarbonationOperations.deletedAt),
-                sql`${batchCarbonationOperations.completedAt} IS NOT NULL`
               )
             )
-            .orderBy(desc(batchCarbonationOperations.completedAt))
+            .orderBy(desc(batchCarbonationOperations.startedAt))
             .limit(1);
 
           // Get overhead rate from organization settings
@@ -672,7 +672,7 @@ export const packagingRouter = router({
             lossPercentage: bottleRuns.lossPercentage,
             abvAtPackaging: bottleRuns.abvAtPackaging,
             carbonationLevel: bottleRuns.carbonationLevel,
-            carbonationCo2Volumes: sql<string>`carb_op.final_co2_volumes`.as("carbonationCo2Volumes"),
+            carbonationCo2Volumes: sql<string>`COALESCE(carb_op.final_co2_volumes, carb_op.target_co2_volumes)`.as("carbonationCo2Volumes"),
             fillCheck: bottleRuns.fillCheck,
             fillVarianceML: bottleRuns.fillVarianceML,
             testMethod: bottleRuns.testMethod,
@@ -685,6 +685,7 @@ export const packagingRouter = router({
             voidedAt: bottleRuns.voidedAt,
             voidedBy: bottleRuns.voidedBy,
             pasteurizedAt: bottleRuns.pasteurizedAt,
+            pasteurizationUnits: bottleRuns.pasteurizationUnits,
             labeledAt: bottleRuns.labeledAt,
             unitsLabeled: bottleRuns.unitsLabeled,
             createdBy: bottleRuns.createdBy,
@@ -2276,7 +2277,7 @@ export const packagingRouter = router({
           .from(batchCompositions)
           .leftJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
           .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
-          .where(eq(batchCompositions.batchId, bottleRun.batchId));
+          .where(and(eq(batchCompositions.batchId, bottleRun.batchId), isNull(batchCompositions.deletedAt)));
 
         // 3. Get apple loads - trace through purchase items used in this batch
         const appleLoadsData: any[] = [];

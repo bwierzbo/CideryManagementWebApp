@@ -126,6 +126,7 @@ export const settingsRouter = router({
         packageTypes: ["bottle", "keg"],
         carbonationMethods: ["forced"],
         defaultTargetCO2: "2.70",
+        warehouseTemperatureCelsius: "20.0",
         stalledBatchDays: 14,
         longAgingDays: 90,
         lowInventoryThreshold: 24,
@@ -220,6 +221,7 @@ export const settingsRouter = router({
         packageTypes: z.array(z.string()).optional(),
         carbonationMethods: z.array(z.string()).optional(),
         defaultTargetCO2: z.string().optional(),
+        warehouseTemperatureCelsius: z.string().optional(),
 
         // Alert Thresholds
         stalledBatchDays: z.number().int().positive().optional(),

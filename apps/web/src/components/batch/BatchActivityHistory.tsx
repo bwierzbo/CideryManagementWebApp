@@ -561,6 +561,11 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                             {activity.type}
                           </Badge>
                           {/* inherited badge removed — parent activities now shown in separate collapsible section */}
+                          {activity.details?.isEstimated && (
+                            <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                              estimated
+                            </Badge>
+                          )}
                           <span className="text-xs text-muted-foreground">
                             {formatDateTime(activity.timestamp)}
                           </span>

@@ -53,7 +53,7 @@ import { SimpleDropdown } from "./SimpleDropdown";
 interface FruitVariety {
   id: string;
   name: string;
-  fruitType: "apple" | "pear" | "plum";
+  fruitType: "apple" | "pear" | "plum" | "quince" | "berry";
   isActive: boolean;
   ciderCategory: "sweet" | "bittersweet" | "sharp" | "bittersharp" | null;
   tannin: "high" | "medium-high" | "medium" | "low-medium" | "low" | null;
@@ -215,6 +215,8 @@ function EditableCell({
     { value: "apple", label: "🍎 Apple" },
     { value: "pear", label: "🍐 Pear" },
     { value: "plum", label: "🟣 Plum" },
+    { value: "quince", label: "🟡 Quince" },
+    { value: "berry", label: "🫐 Berry" },
   ];
 
   const getFruitTypeLabel = (value: string) => {
@@ -735,6 +737,8 @@ export function FruitsGrid({ userRole }: FruitsGridProps) {
               <SelectItem value="apple">🍎 Apple</SelectItem>
               <SelectItem value="pear">🍐 Pear</SelectItem>
               <SelectItem value="plum">🟣 Plum</SelectItem>
+              <SelectItem value="quince">🟡 Quince</SelectItem>
+              <SelectItem value="berry">🫐 Berry</SelectItem>
             </SelectContent>
           </Select>
         </div>

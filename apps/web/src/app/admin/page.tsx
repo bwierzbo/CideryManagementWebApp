@@ -1340,6 +1340,7 @@ function SystemSettings() {
     lowInventoryThreshold: settings.lowInventoryThreshold,
     ttbReminderDays: settings.ttbReminderDays,
     defaultTargetCO2: settings.defaultTargetCO2,
+    warehouseTemperatureCelsius: settings.warehouseTemperatureCelsius,
     sgDecimalPlaces: settings.sgDecimalPlaces,
     phDecimalPlaces: settings.phDecimalPlaces,
     sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
@@ -1394,6 +1395,7 @@ function SystemSettings() {
         phDecimalPlaces: formData.phDecimalPlaces,
         sgTemperatureCorrectionEnabled: formData.sgTemperatureCorrectionEnabled,
         hydrometerCalibrationTempC: formData.hydrometerCalibrationTempC,
+        warehouseTemperatureCelsius: formData.warehouseTemperatureCelsius,
       });
 
       utils.invalidate();
@@ -1415,6 +1417,7 @@ function SystemSettings() {
         phDecimalPlaces: settings.phDecimalPlaces,
         sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
         hydrometerCalibrationTempC: settings.hydrometerCalibrationTempC,
+        warehouseTemperatureCelsius: settings.warehouseTemperatureCelsius,
       }));
     }
   }, [isLoadingSettings, settings]);
@@ -1775,6 +1778,51 @@ function SystemSettings() {
               </div>
             </div>
           </DisabledOverlay>
+        </CardContent>
+      </Card>
+
+      {/* Facility Environment */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Facility Environment"
+            description="Configure warehouse conditions that affect production calculations"
+            icon={Thermometer}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="warehouseTemp">Average Warehouse Temperature</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="warehouseTemp"
+                  type="number"
+                  step="0.5"
+                  min="-5"
+                  max="35"
+                  value={formData.warehouseTemperatureCelsius}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      warehouseTemperatureCelsius: e.target.value,
+                    }))
+                  }
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">°C</span>
+              </div>
+              <p className="text-xs text-gray-500">
+                Used to calculate bottle conditioning duration.
+                {(() => {
+                  const temp = parseFloat(formData.warehouseTemperatureCelsius || "20");
+                  const days = 14 * Math.pow(2, (20 - temp) / 10);
+                  return ` At ${temp}°C, estimated conditioning time is ~${Math.round(days)} days.`;
+                })()}
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

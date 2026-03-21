@@ -2015,9 +2015,16 @@ function VesselMap() {
                   {/* Batch Name - Always rendered with fixed height */}
                   <div className="pb-2 border-b h-[56px] flex flex-col justify-start">
                     {liquidMapVessel?.batchId ? (
-                      <p className="text-sm font-medium text-gray-900">
-                        {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-gray-900">
+                          {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
+                        </p>
+                        {liquidMapVessel.isBlend && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded shrink-0">
+                            Blend
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
                         {(() => {

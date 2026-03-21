@@ -296,7 +296,8 @@ export const dashboardRouter = router({
             .where(
               and(
                 eq(batchMeasurements.batchId, batch.id),
-                isNull(batchMeasurements.deletedAt)
+                isNull(batchMeasurements.deletedAt),
+                eq(batchMeasurements.isEstimated, false),
               )
             )
             .orderBy(desc(batchMeasurements.measurementDate));

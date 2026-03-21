@@ -339,23 +339,25 @@ async function computeSystemCalculatedOnHand(
   `);
   const transfersInByBatch = groupBy(tIn.rows as any[], "destination_batch_id");
 
-  // 3. Merges IN
+  // 3. Merges IN (excludes batch_transfer source_type — those are tracked via batch_transfers)
   const merges = await db.execute(sql`
     SELECT target_batch_id, volume_added
     FROM batch_merge_history
     WHERE target_batch_id IN (${idList})
       AND deleted_at IS NULL
       AND merged_at < ${endDate}
+      AND source_type != 'batch_transfer'
   `);
   const mergesByBatch = groupBy(merges.rows as any[], "target_batch_id");
 
-  // 3b. Merges OUT (source batch side)
+  // 3b. Merges OUT (source batch side — excludes batch_transfer, tracked via batch_transfers)
   const mOut = await db.execute(sql`
     SELECT source_batch_id, volume_added AS volume_merged_out
     FROM batch_merge_history
     WHERE source_batch_id IN (${idList})
       AND deleted_at IS NULL
       AND merged_at < ${endDate}
+      AND source_type != 'batch_transfer'
   `);
   const mergesOutByBatch = groupBy(mOut.rows as any[], "source_batch_id");
 
@@ -812,17 +814,19 @@ async function computeReconciliationFromBatches(
       FROM batch_transfers
       WHERE destination_batch_id IN (${idList}) AND deleted_at IS NULL
     `),
-    // 2c. Merges IN (volume received via merge)
+    // 2c. Merges IN (volume received via merge — excludes batch_transfer, tracked via batch_transfers)
     db.execute(sql`
       SELECT target_batch_id, volume_added, merged_at, source_type
       FROM batch_merge_history
       WHERE target_batch_id IN (${idList}) AND deleted_at IS NULL
+        AND source_type != 'batch_transfer'
     `),
-    // 2c2. Merges OUT (volume sent from source batch during merge/racking into occupied vessel)
+    // 2c2. Merges OUT (volume sent from source batch — excludes batch_transfer, tracked via batch_transfers)
     db.execute(sql`
       SELECT source_batch_id, volume_added AS volume_merged_out, merged_at
       FROM batch_merge_history
       WHERE source_batch_id IN (${idList}) AND deleted_at IS NULL
+        AND source_type != 'batch_transfer'
     `),
     // 2d. Bottle runs (convert loss using loss_unit)
     db.execute(sql`

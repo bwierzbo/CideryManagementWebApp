@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 import Link from "next/link";
 import { trpc } from "@/utils/trpc";
 import { Button } from "@/components/ui/button";
@@ -134,10 +135,11 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
 
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
+  const debouncedSearch = useDebounce(search, 300);
 
   // Fetch batches
   const { data, isLoading, error } = trpc.batch.list.useQuery({
-    search: search || undefined,
+    search: debouncedSearch || undefined,
     status: statusFilter !== "all" ? (statusFilter as any) : undefined,
     productType: productTypeFilter !== "all" ? (productTypeFilter as any) : undefined,
     unassigned: unassignedFilter || undefined,

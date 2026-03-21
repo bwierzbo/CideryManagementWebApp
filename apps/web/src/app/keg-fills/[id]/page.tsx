@@ -25,6 +25,7 @@ import {
   Wine,
   FileText,
   Trash2,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -176,6 +177,14 @@ export default function KegFillDetailPage() {
                 {fillData.status?.charAt(0).toUpperCase() +
                   fillData.status?.slice(1) || "Unknown"}
               </Badge>
+              {(fillData.carbonationCo2Volumes || (fillData.carbonationLevel && fillData.carbonationLevel !== "still")) && (
+                <Badge className={cn("text-xs md:text-sm gap-1", "bg-cyan-100 text-cyan-700 hover:bg-cyan-200")}>
+                  <Sparkles className="h-3 w-3" />
+                  {fillData.carbonationCo2Volumes
+                    ? `${parseFloat(String(fillData.carbonationCo2Volumes)).toFixed(1)} vol CO₂`
+                    : fillData.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
+                </Badge>
+              )}
               <Button
                 variant="destructive"
                 size="sm"

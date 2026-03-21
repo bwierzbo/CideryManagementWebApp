@@ -35,8 +35,9 @@ import {
   Search,
   CheckCircle2,
   Building2,
-  Calendar,
 } from "lucide-react";
+import { DateInput } from "@/components/ui/date-input";
+import { formatDateForInput } from "@/utils/date-format";
 import { trpc } from "@/utils/trpc";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -82,7 +83,7 @@ export function AppleTransactionForm({
 }: AppleTransactionFormProps) {
   const { data: session } = useSession();
   const [globalHarvestDate, setGlobalHarvestDate] = useState<Date | null>(null);
-  const [purchaseDate, setPurchaseDate] = useState<string>("");
+  const [purchaseDate, setPurchaseDate] = useState<string>(() => formatDateForInput(new Date()));
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [selectedVendorId, setSelectedVendorId] = useState<string>("");
   const [vendorSearchQuery, setVendorSearchQuery] = useState<string>("");
@@ -294,7 +295,7 @@ export function AppleTransactionForm({
           notes: undefined,
         },
       ]);
-      setPurchaseDate("");
+      setPurchaseDate(formatDateForInput(new Date()));
       setGlobalHarvestDate(null);
       // Call parent onSubmit if provided
       onSubmit?.(result);
@@ -550,46 +551,13 @@ export function AppleTransactionForm({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="purchaseDate">Purchase Date</Label>
-                  <div className="relative">
-                    <Input
-                      id="purchaseDateDisplay"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="MM/DD/YYYY"
-                      value={purchaseDate ? (() => {
-                        const d = new Date(purchaseDate + 'T12:00:00');
-                        if (isNaN(d.getTime())) return '';
-                        return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
-                      })() : ''}
-                      onChange={(e) => {
-                        const input = e.target.value.replace(/[^\d/]/g, '');
-                        // Auto-format with slashes
-                        let formatted = input;
-                        if (input.length === 2 && !input.includes('/')) {
-                          formatted = input + '/';
-                        } else if (input.length === 5 && input.split('/').length === 2) {
-                          formatted = input + '/';
-                        }
-                        if (formatted.length > 10) formatted = formatted.slice(0, 10);
-
-                        // Parse complete date
-                        const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                        if (match) {
-                          const [, month, day, year] = match;
-                          const dateStr = `${year}-${month}-${day}`;
-                          handlePurchaseDateChange(dateStr);
-                        }
-                      }}
-                      className="h-12 pr-10"
-                    />
-                    <input
-                      type="date"
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      value={purchaseDate || ''}
-                      onChange={(e) => handlePurchaseDateChange(e.target.value)}
-                    />
-                    <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                  </div>
+                  <DateInput
+                    id="purchaseDate"
+                    value={purchaseDate}
+                    onChange={(dateStr) => handlePurchaseDateChange(dateStr)}
+                    className="h-12"
+                    showClearButton={false}
+                  />
                   {errors.purchaseDate && (
                     <p className="text-sm text-red-600 mt-1">
                       {errors.purchaseDate.message}
@@ -598,77 +566,31 @@ export function AppleTransactionForm({
                 </div>
                 <div>
                   <Label htmlFor="globalHarvestDate">Harvest Date (All Varieties)</Label>
-                  <div className="relative">
-                    <Input
-                      id="globalHarvestDateDisplay"
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="MM/DD/YYYY"
-                      value={globalHarvestDate ? (() => {
-                        const d = globalHarvestDate instanceof Date ? globalHarvestDate : new Date(globalHarvestDate + 'T12:00:00');
-                        if (isNaN(d.getTime())) return '';
-                        return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
-                      })() : ''}
-                      onChange={(e) => {
-                        const input = e.target.value.replace(/[^\d/]/g, '');
-                        let formatted = input;
-                        if (input.length === 2 && !input.includes('/')) {
-                          formatted = input + '/';
-                        } else if (input.length === 5 && input.split('/').length === 2) {
-                          formatted = input + '/';
-                        }
-                        if (formatted.length > 10) formatted = formatted.slice(0, 10);
-
-                        const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                        if (match) {
-                          const [, month, day, year] = match;
-                          const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
-                          if (!isNaN(date.getTime())) {
-                            setGlobalHarvestDate(date);
-                            setValue("globalHarvestDate", date);
-                            setLines((prevLines) => {
-                              const newLines = prevLines.map((line) => ({
-                                ...line,
-                                harvestDate: date,
-                              }));
-                              newLines.forEach((_, index) => {
-                                setValue(`lines.${index}.harvestDate`, date);
-                              });
-                              return newLines;
-                            });
-                          }
-                        }
-                      }}
-                      className="h-12 pr-10"
-                    />
-                    <input
-                      type="date"
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      value={globalHarvestDate ? (() => {
-                        const d = globalHarvestDate instanceof Date ? globalHarvestDate : new Date(globalHarvestDate);
-                        if (isNaN(d.getTime())) return '';
-                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                      })() : ''}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          const date = new Date(e.target.value + 'T12:00:00');
-                          setGlobalHarvestDate(date);
-                          setValue("globalHarvestDate", date);
-                          setLines((prevLines) => {
-                            const newLines = prevLines.map((line) => ({
-                              ...line,
-                              harvestDate: date,
-                            }));
-                            newLines.forEach((_, index) => {
-                              setValue(`lines.${index}.harvestDate`, date);
-                            });
-                            return newLines;
+                  <DateInput
+                    id="globalHarvestDate"
+                    value={globalHarvestDate ? formatDateForInput(globalHarvestDate) : ""}
+                    onChange={(dateStr) => {
+                      if (dateStr) {
+                        const date = new Date(dateStr + 'T12:00:00');
+                        setGlobalHarvestDate(date);
+                        setValue("globalHarvestDate", date);
+                        setLines((prevLines) => {
+                          const newLines = prevLines.map((line) => ({
+                            ...line,
+                            harvestDate: date,
+                          }));
+                          newLines.forEach((_, index) => {
+                            setValue(`lines.${index}.harvestDate`, date);
                           });
-                        }
-                      }}
-                    />
-                    <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                  </div>
+                          return newLines;
+                        });
+                      } else {
+                        setGlobalHarvestDate(null);
+                        setValue("globalHarvestDate", null);
+                      }
+                    }}
+                    className="h-12"
+                  />
                 </div>
               </div>
             </div>
@@ -752,65 +674,29 @@ export function AppleTransactionForm({
                       {/* Harvest Date */}
                       <div>
                         <Label>Harvest Date</Label>
-                        <div className="relative">
-                          <Input
-                            id={`harvestDate-mobile-${index}`}
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="MM/DD/YYYY"
-                            value={line.harvestDate ? (() => {
-                              const d = line.harvestDate instanceof Date ? line.harvestDate : new Date(line.harvestDate + 'T12:00:00');
-                              if (isNaN(d.getTime())) return '';
-                              return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}/${d.getFullYear()}`;
-                            })() : ''}
-                            onChange={(e) => {
-                              const input = e.target.value.replace(/[^\d/]/g, '');
-                              let formatted = input;
-                              if (input.length === 2 && !input.includes('/')) {
-                                formatted = input + '/';
-                              } else if (input.length === 5 && input.split('/').length === 2) {
-                                formatted = input + '/';
-                              }
-                              if (formatted.length > 10) formatted = formatted.slice(0, 10);
-
-                              const match = formatted.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                              if (match) {
-                                const [, month, day, year] = match;
-                                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
-                                if (!isNaN(date.getTime())) {
-                                  setLines((prevLines) => {
-                                    const newLines = [...prevLines];
-                                    newLines[index].harvestDate = date;
-                                    setValue(`lines.${index}.harvestDate`, date);
-                                    return newLines;
-                                  });
-                                }
-                              }
-                            }}
-                            className="h-12 pr-10 w-full"
-                          />
-                          <input
-                            type="date"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            value={line.harvestDate ? (() => {
-                              const d = line.harvestDate instanceof Date ? line.harvestDate : new Date(line.harvestDate);
-                              if (isNaN(d.getTime())) return '';
-                              return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                            })() : ''}
-                            onChange={(e) => {
-                              if (e.target.value) {
-                                const date = new Date(e.target.value + 'T12:00:00');
-                                setLines((prevLines) => {
-                                  const newLines = [...prevLines];
-                                  newLines[index].harvestDate = date;
-                                  setValue(`lines.${index}.harvestDate`, date);
-                                  return newLines;
-                                });
-                              }
-                            }}
-                          />
-                          <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                        </div>
+                        <DateInput
+                          id={`harvestDate-${index}`}
+                          value={line.harvestDate ? formatDateForInput(line.harvestDate) : ""}
+                          onChange={(dateStr) => {
+                            if (dateStr) {
+                              const date = new Date(dateStr + 'T12:00:00');
+                              setLines((prevLines) => {
+                                const newLines = [...prevLines];
+                                newLines[index].harvestDate = date;
+                                setValue(`lines.${index}.harvestDate`, date);
+                                return newLines;
+                              });
+                            } else {
+                              setLines((prevLines) => {
+                                const newLines = [...prevLines];
+                                newLines[index].harvestDate = null;
+                                setValue(`lines.${index}.harvestDate`, null);
+                                return newLines;
+                              });
+                            }
+                          }}
+                          className="h-12"
+                        />
                       </div>
 
                       {/* Quantity and Unit in a grid */}

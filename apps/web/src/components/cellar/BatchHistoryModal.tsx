@@ -191,7 +191,7 @@ export function BatchHistoryModal({
       return <div className="text-center py-8">No data available</div>;
     }
 
-    const { batch, origin, contributingPressRuns, batchSourcedComposition, composition, measurements, additives } = data;
+    const { batch, origin, contributingPressRuns, batchSourcedComposition, composition, measurements, additives, blendSourceAdditives } = data;
 
     return (
       <Tabs defaultValue="overview" className="w-full">
@@ -292,52 +292,61 @@ export function BatchHistoryModal({
             </Card>
 
             {/* Latest Measurements */}
-            {measurements.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Beaker className="w-5 h-5" />
-                    Latest Measurements
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3 bg-white rounded-lg border">
-                    <div>
-                      <p className="text-xs text-gray-500">ABV</p>
-                      <p className="font-semibold text-lg">
-                        {measurements[0]?.abv !== null && measurements[0]?.abv !== undefined
-                          ? `${measurements[0].abv.toFixed(2)}%`
-                          : "Not measured"}
-                      </p>
+            {measurements.length > 0 && (() => {
+              const latestMeasurement = measurements[0];
+              const isEst = latestMeasurement?.isEstimated === true;
+              return (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Beaker className="w-5 h-5" />
+                      Latest Measurements
+                      {isEst && (
+                        <span className="text-xs font-normal text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
+                          Estimated (Blend)
+                        </span>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3 bg-white rounded-lg border">
+                      <div>
+                        <p className="text-xs text-gray-500">ABV</p>
+                        <p className={`font-semibold text-lg ${isEst ? "text-amber-700" : ""}`}>
+                          {latestMeasurement?.abv !== null && latestMeasurement?.abv !== undefined
+                            ? `${latestMeasurement.abv.toFixed(2)}%`
+                            : "Not measured"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">pH</p>
+                        <p className={`font-semibold text-lg ${isEst ? "text-amber-700" : ""}`}>
+                          {latestMeasurement?.ph !== null && latestMeasurement?.ph !== undefined
+                            ? latestMeasurement.ph.toFixed(2)
+                            : "Not measured"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">SG</p>
+                        <p className={`font-semibold text-lg ${isEst ? "text-amber-700" : ""}`}>
+                          {latestMeasurement?.specificGravity !== null && latestMeasurement?.specificGravity !== undefined
+                            ? latestMeasurement.specificGravity.toFixed(3)
+                            : "Not measured"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Temp (°C)</p>
+                        <p className={`font-semibold text-lg ${isEst ? "text-amber-700" : ""}`}>
+                          {latestMeasurement?.temperature !== null && latestMeasurement?.temperature !== undefined
+                            ? `${latestMeasurement.temperature.toFixed(1)}°C`
+                            : "Not measured"}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-gray-500">pH</p>
-                      <p className="font-semibold text-lg">
-                        {measurements[0]?.ph !== null && measurements[0]?.ph !== undefined
-                          ? measurements[0].ph.toFixed(2)
-                          : "Not measured"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">SG</p>
-                      <p className="font-semibold text-lg">
-                        {measurements[0]?.specificGravity !== null && measurements[0]?.specificGravity !== undefined
-                          ? measurements[0].specificGravity.toFixed(3)
-                          : "Not measured"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Temp (°C)</p>
-                      <p className="font-semibold text-lg">
-                        {measurements[0]?.temperature !== null && measurements[0]?.temperature !== undefined
-                          ? `${measurements[0].temperature.toFixed(1)}°C`
-                          : "Not measured"}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Origin Info - Show all contributing press runs */}
             {(origin || (contributingPressRuns && contributingPressRuns.length > 0)) && (
@@ -386,6 +395,11 @@ export function BatchHistoryModal({
                         <TableRow key={pr.id}>
                           <TableCell className="font-medium">
                             {pr.pressRunName || "N/A"}
+                            {"sourceBatchName" in pr && typeof pr.sourceBatchName === "string" && (
+                              <span className="block text-xs text-muted-foreground">
+                                via {pr.sourceBatchName}
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             {pr.totalAppleWeightKg ? (
@@ -759,6 +773,49 @@ export function BatchHistoryModal({
                 </Table>
               </CardContent>
             </Card>
+
+            {/* Blend Source Additives */}
+            {blendSourceAdditives && blendSourceAdditives.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Droplets className="w-5 h-5 text-purple-600" />
+                    Inherited from Blend Sources
+                    <span className="text-xs font-normal text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                      {blendSourceAdditives.length} additive{blendSourceAdditives.length !== 1 ? "s" : ""}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date Added</TableHead>
+                        <TableHead>Source Batch</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead>Unit</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {blendSourceAdditives.map((a: any) => (
+                        <TableRow key={a.id} className="bg-purple-50/30">
+                          <TableCell>{formatDateTime(a.addedAt)}</TableCell>
+                          <TableCell>
+                            <span className="text-purple-700 font-medium">{a.sourceBatchName}</span>
+                          </TableCell>
+                          <TableCell>{a.additiveType}</TableCell>
+                          <TableCell>{a.additiveName}</TableCell>
+                          <TableCell className="text-right">{a.amount.toFixed(2)}</TableCell>
+                          <TableCell>{a.unit}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </div>
       </Tabs>

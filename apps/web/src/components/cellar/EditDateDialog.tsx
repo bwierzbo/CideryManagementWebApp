@@ -53,12 +53,11 @@ export function EditDateDialog({
 
   useEffect(() => {
     if (currentDate && open) {
-      // Convert date to local date format
+      // Convert date to local datetime format for datetime-local input
       const d = new Date(currentDate);
-      const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-        .toISOString()
-        .split("T")[0];
-      setDate(localDate);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      // Format as YYYY-MM-DDTHH:MM for datetime-local input
+      setDate(local.toISOString().slice(0, 16));
     }
   }, [currentDate, open]);
 
@@ -83,7 +82,7 @@ export function EditDateDialog({
     }
 
     try {
-      const dateValue = new Date(date + "T00:00:00").toISOString();
+      const dateValue = new Date(date).toISOString();
 
       switch (eventType) {
         case "transfer":
@@ -197,7 +196,7 @@ export function EditDateDialog({
         <DialogHeader>
           <DialogTitle>Edit {dateFieldLabel}</DialogTitle>
           <DialogDescription>
-            Update the date for this event
+            Update the date and time for this event
           </DialogDescription>
         </DialogHeader>
 
@@ -206,7 +205,7 @@ export function EditDateDialog({
             <Label htmlFor="date">{dateFieldLabel}</Label>
             <Input
               id="date"
-              type="date"
+              type="datetime-local"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               required

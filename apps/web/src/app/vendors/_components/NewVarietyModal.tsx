@@ -43,7 +43,7 @@ import {
 
 const varietySchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
-  fruitType: z.enum(["apple", "pear", "plum"]),
+  fruitType: z.enum(["apple", "pear", "plum", "quince", "berry"]),
   ciderCategory: zCiderCategory.optional(),
   tannin: zIntensity.optional(),
   acid: zIntensity.optional(),
@@ -168,6 +168,8 @@ export function NewVarietyModal({ onSuccess }: NewVarietyModalProps) {
                       <SelectItem value="apple">🍎 Apple</SelectItem>
                       <SelectItem value="pear">🍐 Pear</SelectItem>
                       <SelectItem value="plum">🟣 Plum</SelectItem>
+                      <SelectItem value="quince">🟡 Quince</SelectItem>
+                      <SelectItem value="berry">🫐 Berry</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

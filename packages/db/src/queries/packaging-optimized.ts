@@ -66,6 +66,7 @@ export interface BottleRunListItem {
   qaTechnicianName: string | null;
   // Processing status fields
   pasteurizedAt?: Date | null;
+  pasteurizationUnits?: number | null;
   labeledAt?: Date | null;
   unitsLabeled?: number | null;
   // Carbonation fields

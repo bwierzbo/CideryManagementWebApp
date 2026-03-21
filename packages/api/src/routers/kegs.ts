@@ -954,6 +954,25 @@ export const kegsRouter = router({
           }
         }
 
+        // Auto-link to most recent carbonation operation if not provided
+        let carbonationOpId = input.sourceCarbonationOperationId ?? null;
+        if (!carbonationOpId) {
+          const [latestCarbOp] = await db
+            .select({ id: batchCarbonationOperations.id })
+            .from(batchCarbonationOperations)
+            .where(
+              and(
+                eq(batchCarbonationOperations.batchId, input.batchId),
+                isNull(batchCarbonationOperations.deletedAt),
+              )
+            )
+            .orderBy(desc(batchCarbonationOperations.startedAt))
+            .limit(1);
+          if (latestCarbOp) {
+            carbonationOpId = latestCarbOp.id;
+          }
+        }
+
         // Create keg fills and update keg status in a transaction
         const fillRecords = [];
 
@@ -973,7 +992,7 @@ export const kegsRouter = router({
               lossUnit: input.lossUnit,
               abvAtPackaging: null, // TODO: Calculate from batch measurements
               carbonationMethod: input.carbonationMethod,
-              sourceCarbonationOperationId: input.sourceCarbonationOperationId,
+              sourceCarbonationOperationId: carbonationOpId,
               productionNotes: input.productionNotes,
               status: "filled",
               createdBy: userId,
@@ -1650,6 +1669,10 @@ export const kegsRouter = router({
             vesselName: vessels.name,
             // User who filled
             createdByName: sql<string>`created_user.name`.as("createdByName"),
+            // Carbonation details
+            carbonationLevel: kegFills.carbonationLevel,
+            carbonationCo2Volumes: sql<string>`COALESCE(keg_carb_op.final_co2_volumes, keg_carb_op.target_co2_volumes)`.as("carbonationCo2Volumes"),
+            carbonationProcess: sql<string>`keg_carb_op.carbonation_process`.as("carbonationProcess"),
           })
           .from(kegFills)
           .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
@@ -1658,6 +1681,10 @@ export const kegsRouter = router({
           .leftJoin(
             sql`users AS created_user`,
             sql`created_user.id = ${kegFills.createdBy}`,
+          )
+          .leftJoin(
+            sql`batch_carbonation_operations AS keg_carb_op`,
+            sql`keg_carb_op.id = ${kegFills.sourceCarbonationOperationId}`,
           )
           .where(
             and(

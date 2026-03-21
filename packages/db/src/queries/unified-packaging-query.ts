@@ -123,10 +123,11 @@ export async function getUnifiedPackagingRuns(
         fillCheck: bottleRuns.fillCheck,
         abvAtPackaging: bottleRuns.abvAtPackaging,
         pasteurizedAt: bottleRuns.pasteurizedAt,
+        pasteurizationUnits: bottleRuns.pasteurizationUnits,
         labeledAt: bottleRuns.labeledAt,
         unitsLabeled: bottleRuns.unitsLabeled,
         carbonationLevel: bottleRuns.carbonationLevel,
-        carbonationCo2Volumes: batchCarbonationOperations.finalCo2Volumes,
+        carbonationCo2Volumes: sql<string>`COALESCE(${batchCarbonationOperations.finalCo2Volumes}, ${batchCarbonationOperations.targetCo2Volumes})`.as("carbonationCo2Volumes"),
         readyAt: bottleRuns.readyAt,
         distributedAt: bottleRuns.distributedAt,
         distributionLocation: bottleRuns.distributionLocation,
@@ -194,6 +195,9 @@ export async function getUnifiedPackagingRuns(
         : null,
       qaTechnicianName: item.qaTechnicianName,
       pasteurizedAt: item.pasteurizedAt,
+      pasteurizationUnits: item.pasteurizationUnits
+        ? parseFloat(item.pasteurizationUnits.toString())
+        : null,
       labeledAt: item.labeledAt,
       unitsLabeled: item.unitsLabeled,
       carbonationLevel: item.carbonationLevel,
@@ -283,11 +287,17 @@ export async function getUnifiedPackagingRuns(
         vesselName: vessels.name,
         kegNumber: kegs.kegNumber,
         kegCapacityML: kegs.capacityML,
+        carbonationLevel: kegFills.carbonationLevel,
+        carbonationCo2Volumes: sql<string>`COALESCE(keg_carb_op.final_co2_volumes, keg_carb_op.target_co2_volumes)`.as("kegCarbonationCo2Volumes"),
       })
       .from(kegFills)
       .leftJoin(batches, eq(kegFills.batchId, batches.id))
       .leftJoin(vessels, eq(kegFills.vesselId, vessels.id))
-      .leftJoin(kegs, eq(kegFills.kegId, kegs.id));
+      .leftJoin(kegs, eq(kegFills.kegId, kegs.id))
+      .leftJoin(
+        sql`batch_carbonation_operations AS keg_carb_op`,
+        sql`keg_carb_op.id = ${kegFills.sourceCarbonationOperationId}`,
+      );
 
     // Add batch search filter
     if (filters.batchSearch) {
@@ -345,8 +355,10 @@ export async function getUnifiedPackagingRuns(
       readyAt: item.readyAt,
       distributedAt: item.distributedAt,
       distributionLocation: item.distributionLocation,
-      carbonationLevel: null,
-      carbonationCo2Volumes: null,
+      carbonationLevel: item.carbonationLevel,
+      carbonationCo2Volumes: item.carbonationCo2Volumes
+        ? parseFloat(item.carbonationCo2Volumes.toString())
+        : null,
     }));
 
     // Get count (use same conditions as main query)

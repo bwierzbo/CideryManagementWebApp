@@ -80,6 +80,7 @@ interface PackagingRun {
   qaNotes?: string | null;
   productionNotes?: string | null;
   pasteurizedAt?: string | null;
+  pasteurizationUnits?: number | null;
   labeledAt?: string | null;
   // Keg-specific fields (only present when source === 'keg_fill')
   kegId?: string;
@@ -764,7 +765,7 @@ export function BottlesTable({
                             {item.pasteurizedAt && (
                               <Badge className="text-xs bg-orange-100 text-orange-700 hover:bg-orange-200 gap-1 px-1.5 py-0">
                                 <Flame className="h-3 w-3" />
-                                <span>Pasteurized</span>
+                                <span>Pasteurized{item.pasteurizationUnits ? ` ${item.pasteurizationUnits.toFixed(1)} PU` : ""}</span>
                               </Badge>
                             )}
                             {item.labeledAt && (

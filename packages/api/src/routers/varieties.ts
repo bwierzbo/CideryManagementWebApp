@@ -30,7 +30,7 @@ const varietyUpdateSchema = z.object({
       .min(1, "Name is required")
       .max(100, "Name too long")
       .optional(),
-    fruitType: z.enum(["apple", "pear", "plum"]).optional(),
+    fruitType: z.enum(["apple", "pear", "plum", "quince", "berry"]).optional(),
     ciderCategory: zCiderCategory.nullable().optional(),
     tannin: zIntensity.nullable().optional(),
     acid: zIntensity.nullable().optional(),

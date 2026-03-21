@@ -65,7 +65,7 @@ export const pressRunStatusEnum = pgEnum("press_run_status", [
   "completed", // Finished pressing, juice transferred to vessel
   "cancelled", // Cancelled press run, resources released
 ]);
-export const fruitTypeEnum = pgEnum("fruit_type", ["apple", "pear", "plum", "quince"]);
+export const fruitTypeEnum = pgEnum("fruit_type", ["apple", "pear", "plum", "quince", "berry"]);
 
 // Batch volume adjustment types (for physical inventory corrections)
 export const batchVolumeAdjustmentTypeEnum = pgEnum(

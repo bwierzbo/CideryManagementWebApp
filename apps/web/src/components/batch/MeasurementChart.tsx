@@ -26,6 +26,7 @@ interface MeasurementData {
   temperature?: number | null;
   volume?: number | null;
   volumeUnit?: string | null;
+  isEstimated?: boolean;
 }
 
 interface MeasurementChartProps {
@@ -40,6 +41,7 @@ interface ChartDataPoint {
   ph?: number;
   temperature?: number;
   totalAcidity?: number;
+  isEstimated?: boolean;
 }
 
 const CustomTooltip = ({
@@ -48,9 +50,14 @@ const CustomTooltip = ({
   label,
 }: any) => {
   if (active && payload && payload.length) {
+    const dataPoint = payload[0]?.payload;
+    const isEstimated = dataPoint?.isEstimated;
     return (
       <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-        <p className="font-semibold text-sm mb-2">{label}</p>
+        <p className="font-semibold text-sm mb-2">
+          {label}
+          {isEstimated && <span className="ml-2 text-xs text-amber-600 font-normal">(Estimated - Blend)</span>}
+        </p>
         {payload.map((entry: any, index: number) => (
           <p
             key={`item-${index}`}
@@ -74,6 +81,25 @@ const CustomTooltip = ({
   return null;
 };
 
+// Custom dot that renders differently for estimated measurements
+const EstimatedDot = ({ cx, cy, payload, stroke }: any) => {
+  if (!cx || !cy) return null;
+  if (payload?.isEstimated) {
+    // Diamond shape for estimated measurements
+    return (
+      <polygon
+        points={`${cx},${cy - 5} ${cx + 5},${cy} ${cx},${cy + 5} ${cx - 5},${cy}`}
+        fill="white"
+        stroke={stroke}
+        strokeWidth={2}
+        strokeDasharray="2 1"
+      />
+    );
+  }
+  // Standard circle for actual measurements
+  return <circle cx={cx} cy={cy} r={4} fill={stroke} stroke={stroke} />;
+};
+
 export function MeasurementChart({ measurements }: MeasurementChartProps) {
   // Prepare chart data - sort by date ascending for proper timeline
   const chartData: ChartDataPoint[] = measurements
@@ -87,6 +113,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
         ph: m.ph ?? undefined,
         temperature: m.temperature ?? undefined,
         totalAcidity: m.totalAcidity ?? undefined,
+        isEstimated: m.isEstimated,
       };
     })
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -168,7 +195,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
                     dataKey="sg"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    dot={{ r: 4 }}
+                    dot={<EstimatedDot stroke="#3b82f6" />}
                     activeDot={{ r: 6 }}
                     name="SG"
                     connectNulls
@@ -181,7 +208,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
                     dataKey="abv"
                     stroke="#10b981"
                     strokeWidth={2}
-                    dot={{ r: 4 }}
+                    dot={<EstimatedDot stroke="#10b981" />}
                     activeDot={{ r: 6 }}
                     name="ABV"
                     connectNulls
@@ -252,7 +279,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
                     dataKey="ph"
                     stroke="#8b5cf6"
                     strokeWidth={2}
-                    dot={{ r: 4 }}
+                    dot={<EstimatedDot stroke="#8b5cf6" />}
                     activeDot={{ r: 6 }}
                     name="pH"
                     connectNulls
@@ -265,7 +292,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
                     dataKey="temperature"
                     stroke="#f59e0b"
                     strokeWidth={2}
-                    dot={{ r: 4 }}
+                    dot={<EstimatedDot stroke="#f59e0b" />}
                     activeDot={{ r: 6 }}
                     name="Temp"
                     connectNulls
@@ -315,7 +342,7 @@ export function MeasurementChart({ measurements }: MeasurementChartProps) {
                   dataKey="totalAcidity"
                   stroke="#ef4444"
                   strokeWidth={2}
-                  dot={{ r: 4 }}
+                  dot={<EstimatedDot stroke="#ef4444" />}
                   activeDot={{ r: 6 }}
                   name="TA"
                   connectNulls

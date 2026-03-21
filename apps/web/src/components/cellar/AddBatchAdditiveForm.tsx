@@ -57,7 +57,7 @@ const units = [
 const additiveTypes = [
   { value: "Fermentation Organisms", label: "Fermentation Organisms" },
   { value: "Sugar & Sweeteners", label: "Sugar & Sweeteners" },
-  { value: "Fruit / Fruit Product", label: "Fruit / Fruit Product" },
+  { value: "Fruit/Fruit Product", label: "Fruit / Fruit Product" },
   { value: "Flavorings & Adjuncts", label: "Flavorings & Adjuncts" },
   { value: "Enzymes", label: "Enzymes" },
   { value: "Nutrients", label: "Nutrients" },
@@ -223,7 +223,7 @@ export function AddBatchAdditiveForm({
       // Also pass cost for COGS calculation
       costPerUnit: selectedInventoryItem.pricePerUnit ? parseFloat(selectedInventoryItem.pricePerUnit) : undefined,
       // Fruit additive classification (TTB IC 17-2)
-      ...(additiveType === "Fruit / Fruit Product" ? { isApplePearFruit } : {}),
+      ...(additiveType === "Fruit/Fruit Product" ? { isApplePearFruit } : {}),
     };
 
     addAdditive.mutate(additiveData);
@@ -298,7 +298,7 @@ export function AddBatchAdditiveForm({
             </p>
           </div>
         )}
-        {selectedAdditiveType === "Fruit / Fruit Product" && (
+        {selectedAdditiveType === "Fruit/Fruit Product" && (
           <div className="mt-2 space-y-3">
             <div className="flex items-center space-x-2">
               <Checkbox

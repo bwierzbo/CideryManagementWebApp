@@ -149,6 +149,11 @@ export const organizationSettings = pgTable(
     defaultTargetCO2: decimal("default_target_co2", { precision: 4, scale: 2 })
       .notNull()
       .default("2.70"),
+    // Average warehouse/conditioning temperature in Celsius
+    // Used to analytically calculate bottle conditioning duration
+    warehouseTemperatureCelsius: decimal("warehouse_temperature_celsius", { precision: 4, scale: 1 })
+      .notNull()
+      .default("20.0"),
 
     // ==========================================
     // Alert Thresholds

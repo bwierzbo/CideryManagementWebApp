@@ -71,6 +71,7 @@ import {
   batchAdditives,
   distillationRecords,
   barrelUsageHistory,
+  batchMergeHistory,
 } from "db";
 import {
   eq,
@@ -3296,6 +3297,41 @@ export const appRouter = router({
           }
         }
 
+        // Check which batches are blends (received transfers from other batches)
+        // A batch is a blend if multiple source batches transferred into it
+        let blendBatchIds = new Set<string>();
+        if (batchIds.length > 0) {
+          // Check batch_merge_history (new path)
+          const mergeBlendRows = await db
+            .selectDistinct({ targetBatchId: batchMergeHistory.targetBatchId })
+            .from(batchMergeHistory)
+            .where(
+              and(
+                inArray(batchMergeHistory.targetBatchId, batchIds),
+                eq(batchMergeHistory.sourceType, "batch_transfer"),
+                isNull(batchMergeHistory.deletedAt),
+              ),
+            );
+          for (const r of mergeBlendRows) blendBatchIds.add(r.targetBatchId);
+
+          // Check batch_transfers (legacy path — batches with 2+ incoming transfers are blends)
+          const transferBlendRows = await db
+            .select({
+              destinationBatchId: batchTransfers.destinationBatchId,
+              count: sql<number>`count(*)`,
+            })
+            .from(batchTransfers)
+            .where(
+              and(
+                inArray(batchTransfers.destinationBatchId, batchIds),
+                isNull(batchTransfers.deletedAt),
+              ),
+            )
+            .groupBy(batchTransfers.destinationBatchId)
+            .having(sql`count(*) >= 2`);
+          for (const r of transferBlendRows) blendBatchIds.add(r.destinationBatchId);
+        }
+
         // Get total packaged inventory
         // DROPPED TABLES: inventory and packages not yet implemented
         // const packagedInventory = await db
@@ -3415,6 +3451,7 @@ export const appRouter = router({
           lastActivity: !vessel.batchId
             ? lastActivityMap.get(vessel.vesselId) || null
             : null,
+          isBlend: vessel.batchId ? blendBatchIds.has(vessel.batchId) : false,
         }));
 
         return {

@@ -29,6 +29,7 @@ import {
   Beer,
   RotateCcw,
   CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -74,6 +75,9 @@ interface KegFill {
   };
   abvAtPackaging?: number | undefined;
   productionNotes?: string | null;
+  // Carbonation fields
+  carbonationLevel?: string | null;
+  carbonationCo2Volumes?: number | null;
 }
 
 // Table column configuration
@@ -180,7 +184,9 @@ export function KegsTable({
 
   const { data, isLoading, refetch } = trpc.packaging.list.useQuery(queryInput);
 
-  const kegFills = useMemo(() => (data?.runs || []) as KegFill[], [data?.runs]);
+  const kegFills = useMemo(() => {
+    return (data?.runs || []) as KegFill[];
+  }, [data?.runs]);
   const totalCount = data?.total || 0;
   const totalPages = Math.ceil(totalCount / itemsPerPage);
 
@@ -531,7 +537,19 @@ export function KegsTable({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(item.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(item.status)}
+                          {(item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
+                            <Badge className={cn("text-xs gap-1", "bg-cyan-100 text-cyan-700 hover:bg-cyan-200")}>
+                              <Sparkles className="h-3 w-3" />
+                              {item.carbonationCo2Volumes
+                                ? `${item.carbonationCo2Volumes.toFixed(1)} vol CO₂`
+                                : item.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -742,8 +760,16 @@ export function KegsTable({
                   </div>
                 </div>
 
-                <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2">
                   {getStatusBadge(item.status)}
+                  {(item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
+                    <Badge className={cn("text-xs gap-1", "bg-cyan-100 text-cyan-700 hover:bg-cyan-200")}>
+                      <Sparkles className="h-3 w-3" />
+                      {item.carbonationCo2Volumes
+                        ? `${item.carbonationCo2Volumes.toFixed(1)} vol CO₂`
+                        : item.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
+                    </Badge>
+                  )}
                 </div>
               </div>
             );
