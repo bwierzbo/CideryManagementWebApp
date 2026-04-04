@@ -460,8 +460,8 @@ export const additivePurchasesRouter = router({
           .filter((item) => {
             // Filter by itemType if specified
             if (itemType) {
-              const normalizedSearchType = itemType.trim().toLowerCase();
-              const normalizedItemType = item.varietyItemType?.trim().toLowerCase();
+              const normalizedSearchType = itemType.trim().toLowerCase().replace(/\s+/g, '');
+              const normalizedItemType = item.varietyItemType?.trim().toLowerCase().replace(/\s+/g, '');
               if (normalizedItemType !== normalizedSearchType) {
                 return false;
               }

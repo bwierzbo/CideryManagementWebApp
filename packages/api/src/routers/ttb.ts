@@ -1379,7 +1379,9 @@ async function computeReconciliationFromBatches(
     const packagingGal = litersToWineGallons(periodBottlingTakenL + periodKeggingTakenL - periodBottlingLossL - periodKeggingLossL);
     const salesGal = litersToWineGallons(periodSalesL);
     const distillationGal = litersToWineGallons(periodDistillationL);
-    const endingGal = litersToWineGallons(endingL);
+    // Use raw conversion to preserve negative endings (batches over-packaged/transferred);
+    // litersToWineGallons clamps negatives to 0 which inflates the waterfall total.
+    const endingGal = endingL * WINE_GALLONS_PER_LITER;
     // identityL is always <= 0 (clamping only removes); use raw conversion to preserve magnitude
     const identityGal = identityL * WINE_GALLONS_PER_LITER;
 
@@ -2556,29 +2558,45 @@ export const ttbRouter = router({
         for (const b of batchesAtEnd) endProductTypes.set(b.id, b.productType);
         const endDateStr = endDate.toISOString().split("T")[0];
 
-        // Use currentVolumeLiters for ending inventory — this reflects physical
-        // inventory at filing time and matches what was reported on the filed TTB form.
-        // SBD reconstruction can drift from live values due to accumulated rounding
-        // differences across hundreds of operations.
-        const endingLiveByClass: Record<string, number> = {};
-        for (const b of batchesAtEnd) {
-          const vol = Number(b.currentVolume) || 0;
-          if (vol <= 0) continue;
-          const taxClass = getTaxClassFromMap(batchTaxClassMap, b.id, b.productType ?? null);
-          if (!taxClass) continue;
-          endingLiveByClass[taxClass] = (endingLiveByClass[taxClass] || 0) + vol;
-        }
+        // For past years, use SBD reconstruction at period end date so that
+        // ending inventory matches the next year's opening inventory exactly.
+        // For the current year, use live currentVolumeLiters (reflects current state).
+        const isPastYear = endDate < new Date();
 
-        let endingBulkLiters = endingLiveByClass["hardCider"] || 0;
-        let endingPommeauBulkLiters = endingLiveByClass["wine16To21"] || 0;
-        let endingWineUnder16BulkLiters = endingLiveByClass["wineUnder16"] || 0;
-        let endingBrandyBulkLiters = endingLiveByClass["appleBrandy"] || 0;
+        let endingBulkLiters = 0;
+        let endingPommeauBulkLiters = 0;
+        let endingWineUnder16BulkLiters = 0;
+        let endingBrandyBulkLiters = 0;
 
-        // Still need SBD for clamped loss calculation (form balancing)
+        // SBD is always needed for clamped loss calculation (form balancing)
+        // and for past years it's also used for ending inventory
         let endClampedLossLiters = 0;
         const clampedByTaxClass: Record<string, number> = {};
         if (endBatchIds.length > 0) {
           const endSbdResult = await computeSystemCalculatedOnHand(endBatchIds, endDateStr);
+
+          if (isPastYear) {
+            // Past year: use SBD reconstruction at endDate for consistency with next year's opening
+            const endByClass = computePerTaxClassBulkInventory(endSbdResult.perBatch, batchTaxClassMap, endProductTypes);
+            endingBulkLiters = endByClass["hardCider"] || 0;
+            endingPommeauBulkLiters = endByClass["wine16To21"] || 0;
+            endingWineUnder16BulkLiters = endByClass["wineUnder16"] || 0;
+            endingBrandyBulkLiters = endByClass["appleBrandy"] || 0;
+          } else {
+            // Current year: use live currentVolumeLiters (reflects physical inventory now)
+            const endingLiveByClass: Record<string, number> = {};
+            for (const b of batchesAtEnd) {
+              const vol = Number(b.currentVolume) || 0;
+              if (vol <= 0) continue;
+              const taxClass = getTaxClassFromMap(batchTaxClassMap, b.id, b.productType ?? null);
+              if (!taxClass) continue;
+              endingLiveByClass[taxClass] = (endingLiveByClass[taxClass] || 0) + vol;
+            }
+            endingBulkLiters = endingLiveByClass["hardCider"] || 0;
+            endingPommeauBulkLiters = endingLiveByClass["wine16To21"] || 0;
+            endingWineUnder16BulkLiters = endingLiveByClass["wineUnder16"] || 0;
+            endingBrandyBulkLiters = endingLiveByClass["appleBrandy"] || 0;
+          }
           endClampedLossLiters = endSbdResult.breakdown.clampedLossLiters;
 
           // Compute per-tax-class clamped loss for per-column loss allocation
@@ -6543,6 +6561,78 @@ export const ttbRouter = router({
         waterfallOpening[key] = bulkVal + bottledVal + spiritsVal;
       }
 
+      // ============================================
+      // OPENING PACKAGED INVENTORY (at period start)
+      // Same logic as packagedByTaxClass but as of batchReconStartDate instead of reconciliationDate.
+      // Needed so the waterfall opening includes ALL on-premises inventory (bulk + packaged).
+      // ============================================
+      const openingPackagedByTaxClass: Record<string, number> = {
+        hardCider: 0, wineUnder16: 0, wine16To21: 0, wine21To24: 0,
+        sparklingWine: 0, carbonatedWine: 0, appleBrandy: 0, grapeSpirits: 0,
+      };
+      {
+        // Bottles packaged by period start that were NOT yet distributed by period start
+        const openingBottles = await db
+          .select({
+            batchId: batches.id,
+            productType: batches.productType,
+            totalLiters: sql<number>`COALESCE(SUM(
+              ${bottleRuns.volumeTakenLiters}::numeric -
+              CASE WHEN ${bottleRuns.lossUnit} = 'gal'
+                THEN COALESCE(${bottleRuns.loss}::numeric, 0) * 3.78541
+                ELSE COALESCE(${bottleRuns.loss}::numeric, 0) END
+            ), 0)`,
+          })
+          .from(bottleRuns)
+          .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+          .where(
+            and(
+              isNull(bottleRuns.voidedAt),
+              isNull(batches.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
+              sql`${bottleRuns.packagedAt}::date <= ${batchReconStartDate}::date`,
+              sql`(${bottleRuns.distributedAt} IS NULL OR ${bottleRuns.distributedAt}::date > ${batchReconStartDate}::date)`
+            )
+          )
+          .groupBy(batches.id, batches.productType);
+
+        for (const row of openingBottles) {
+          const taxClass = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
+          if (!taxClass) continue;
+          openingPackagedByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
+        }
+
+        // Kegs filled by period start that were NOT yet distributed by period start
+        const openingKegs = await db
+          .select({
+            batchId: batches.id,
+            productType: batches.productType,
+            totalLiters: sql<number>`COALESCE(SUM(
+              (CASE WHEN ${kegFills.volumeTakenUnit} = 'gal' THEN COALESCE(${kegFills.volumeTaken}::numeric, 0) * 3.78541 ELSE COALESCE(${kegFills.volumeTaken}::numeric, 0) END)
+              - (CASE WHEN ${kegFills.lossUnit} = 'gal' THEN COALESCE(${kegFills.loss}::numeric, 0) * 3.78541 ELSE COALESCE(${kegFills.loss}::numeric, 0) END)
+            ), 0)`,
+          })
+          .from(kegFills)
+          .innerJoin(batches, eq(kegFills.batchId, batches.id))
+          .where(
+            and(
+              isNull(kegFills.voidedAt),
+              isNull(kegFills.deletedAt),
+              isNull(batches.deletedAt),
+              sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
+              sql`${kegFills.filledAt}::date <= ${batchReconStartDate}::date`,
+              sql`(${kegFills.distributedAt} IS NULL OR ${kegFills.distributedAt}::date > ${batchReconStartDate}::date)`
+            )
+          )
+          .groupBy(batches.id, batches.productType);
+
+        for (const row of openingKegs) {
+          const taxClass = getTaxClassFromMap(batchTaxClassMap, row.batchId, row.productType);
+          if (!taxClass) continue;
+          openingPackagedByTaxClass[taxClass] += litersToWineGallons(Number(row.totalLiters || 0));
+        }
+      }
+
       // Calculate packaging by tax class (volume converted from bulk to packaged DURING period)
       // This includes bottling and kegging
       const packagingByBatchData = await db
@@ -6774,14 +6864,20 @@ export const ttbRouter = router({
         // SBD-derived packaging (net product volume transferred from bulk to packaged)
         const sbdPackaging = reconTc?.packaging || 0;
 
-        // Physical inventory = SBD bulk ending + SBD-scoped packaged inventory
-        // Using the same SBD source as the formula ensures reconAdj ≈ 0.
-        const sbdBulkEnding = sbdTc?.ending || 0;
-        const sbdPackagedEnding = sbdPackaging - actualSales;
-        const physical = sbdBulkEnding + Math.max(0, sbdPackagedEnding);
+        // Opening includes ALL on-premises inventory: bulk + packaged at period start.
+        // This ensures the TTB "On Premises" line reflects everything physically in bond.
+        const openBulk = sbdTc?.opening || 0;
+        const openPkg = openingPackagedByTaxClass[key] || 0;
+        const openingTotal = openBulk + openPkg;
 
-        // Formula: opening + inflows - outflows = ending (total = bulk + packaged)
-        const formulaWithoutAdj = opening + production + transfersIn - transfersOut
+        // Ending includes ALL on-premises inventory: bulk + packaged at period end.
+        const sbdBulkEnding = sbdTc?.ending || 0;
+        const endPkg = packagedByTaxClass[key] || 0;
+        const physical = sbdBulkEnding + Math.max(0, endPkg);
+
+        // Formula: opening(total) + inflows - outflows = ending(total)
+        // reconAdj absorbs any residual from rounding, cross-period packaging flows, etc.
+        const formulaWithoutAdj = openingTotal + production + transfersIn - transfersOut
           + positiveAdj - losses - distillation - actualSales;
         const reconAdj = physical - formulaWithoutAdj;
 
@@ -6792,20 +6888,18 @@ export const ttbRouter = router({
         const variance = calculatedEnding - physical;
 
         // Include tax classes with any activity (including negative ending from losses/sales)
-        const hasActivity = opening !== 0 || production > 0 || transfersIn > 0 || physical > 0 ||
+        const hasActivity = openingTotal !== 0 || production > 0 || transfersIn > 0 || physical > 0 ||
           losses > 0 || actualSales > 0 || distillation > 0 || calculatedEnding !== 0;
         if (hasActivity) {
-          const openBulk = sbdTc?.opening || 0;
-          const openPkg = 0; // All opening inventory is bulk (no packaged opening)
           const pkg = packagingByTaxClass[key] || 0;
           // Section A ending: SBD bulk ending
           const bulkEnding = sbdBulkEnding;
-          // Section B ending: packaged inventory after packaging and sales
-          const packagedEnding = Math.max(0, sbdPackagedEnding);
+          // Section B ending: all undistributed packaged inventory at period end
+          const packagedEnding = Math.max(0, endPkg);
           waterfallData.push({
             taxClass: key,
             label: waterfallLabels[key] || key,
-            opening: parseFloat(opening.toFixed(2)),
+            opening: parseFloat(openingTotal.toFixed(2)),
             openingBulk: parseFloat(openBulk.toFixed(2)),
             openingPackaged: parseFloat(openPkg.toFixed(2)),
             production: parseFloat(production.toFixed(2)),
@@ -6987,23 +7081,26 @@ export const ttbRouter = router({
       // Calculate total inventory from inventoryByTaxClass
       const totalInventoryByTaxClass = Object.values(inventoryByTaxClass).reduce((sum, val) => sum + val, 0);
 
-      // Cross-check: waterfall physical (batchRecon SBD + packaged) vs inventoryByTaxClass
-      // (computeSystemCalculatedOnHand SBD + packaged). Small gaps are expected since these
-      // use different SBD reconstruction functions. The waterfall is internally consistent
-      // (0 variance) regardless of this gap.
-      const waterfallPhysicalTotal = waterfallData.reduce((s, w) => s + w.physical, 0);
-      const physicalGap = Math.abs(waterfallPhysicalTotal - totalInventoryByTaxClass);
-      if (physicalGap > 5.0) {
-        const msg = `Physical inventory mismatch: waterfall sum ${waterfallPhysicalTotal.toFixed(1)} vs inventory ${totalInventoryByTaxClass.toFixed(1)} (gap ${physicalGap.toFixed(2)} gal)`;
+      // Cross-check: compare BULK portions only between the two SBD implementations.
+      // The waterfall uses computeReconciliationFromBatches for bulk ending;
+      // inventoryByTaxClass uses computeSystemCalculatedOnHand for bulk ending.
+      // Packaged inventory is computed differently (period-scoped vs all-time) so
+      // comparing total physical would always show pre-period packaged as a gap.
+      // Bulk-to-bulk comparison isolates genuine SBD reconstruction divergence.
+      const waterfallBulkTotal = waterfallData.reduce((s, w) => s + w.bulkEnding, 0);
+      const inventoryBulkTotal = Object.values(bulkByTaxClass).reduce((sum, val) => sum + val, 0);
+      const bulkGap = Math.abs(waterfallBulkTotal - inventoryBulkTotal);
+      if (bulkGap > 5.0) {
+        const msg = `Bulk inventory mismatch: waterfall bulk ${waterfallBulkTotal.toFixed(1)} vs SBD bulk ${inventoryBulkTotal.toFixed(1)} (gap ${bulkGap.toFixed(2)} gal)`;
         console.warn(`[TTB Parity] ${msg}`);
         parityWarnings.push({
-          level: physicalGap > 20 ? "error" : "warning",
+          level: bulkGap > 20 ? "error" : "warning",
           category: "physicalMismatch",
           message: msg,
           detail: {
-            waterfallPhysicalTotal: parseFloat(waterfallPhysicalTotal.toFixed(2)),
-            inventoryByTaxClassTotal: parseFloat(totalInventoryByTaxClass.toFixed(2)),
-            gap: parseFloat(physicalGap.toFixed(2)),
+            waterfallBulkTotal: parseFloat(waterfallBulkTotal.toFixed(2)),
+            inventoryBulkTotal: parseFloat(inventoryBulkTotal.toFixed(2)),
+            gap: parseFloat(bulkGap.toFixed(2)),
           },
         });
       }

@@ -64,7 +64,7 @@ export function AddBatchMeasurementForm({
   // Cider/Perry/Juice: SG-focused (traditional fermentation tracking)
   // Brandy: ABV-focused (spirits - no SG tracking)
   // Pommeau: Sensory/volume-focused (aging - no active fermentation)
-  const showSgFields = ["cider", "perry", "juice"].includes(productType);
+  const showSgFields = ["cider", "perry", "juice", "wine", "cyser"].includes(productType);
   const showAbvField = true; // Always show ABV as it can be useful
   const showSensoryFields = ["brandy", "pommeau"].includes(productType) || !showSgFields;
   const showVolumeField = ["brandy", "pommeau"].includes(productType);
@@ -93,6 +93,35 @@ export function AddBatchMeasurementForm({
       }
     );
 
+  // Map Zod field paths to friendly field names
+  const fieldLabels: Record<string, string> = {
+    specificGravity: "Specific Gravity",
+    abv: "ABV",
+    ph: "pH",
+    totalAcidity: "Total Acidity",
+    temperature: "Temperature",
+    volume: "Volume",
+    measurementDate: "Measurement Date",
+  };
+
+  const parseValidationError = (errorMessage: string): string => {
+    try {
+      const issues = JSON.parse(errorMessage);
+      if (Array.isArray(issues)) {
+        return issues
+          .map((issue: { path?: string[]; message?: string }) => {
+            const field = issue.path?.[0];
+            const label = field ? fieldLabels[field] || field : "Input";
+            return `${label}: ${issue.message}`;
+          })
+          .join("\n");
+      }
+    } catch {
+      // Not a JSON Zod error — return as-is
+    }
+    return errorMessage;
+  };
+
   const addMeasurement = trpc.batch.addMeasurement.useMutation({
     onSuccess: () => {
       toast({
@@ -103,8 +132,8 @@ export function AddBatchMeasurementForm({
     },
     onError: (error) => {
       toast({
-        title: "Error",
-        description: error.message,
+        title: "Measurement not saved",
+        description: parseValidationError(error.message),
         variant: "destructive",
       });
     },
@@ -261,16 +290,17 @@ export function AddBatchMeasurementForm({
               value={rawReading}
               onChange={(e) => setRawReading(e.target.value)}
             />
-            {measurementMethod !== "calculated" && (
-              <p className="text-xs text-muted-foreground">
-                Enter the reading directly from your {measurementMethod}
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {measurementMethod !== "calculated"
+                ? `Enter the reading directly from your ${measurementMethod}. `
+                : ""}
+              Range: 0.980–1.200
+            </p>
           </div>
 
           {/* Temperature */}
           <div className="space-y-2">
-            <Label htmlFor="temperature">Sample Temperature (C)</Label>
+            <Label htmlFor="temperature">Sample Temperature (°C)</Label>
             <Input
               id="temperature"
               type="number"
@@ -280,7 +310,7 @@ export function AddBatchMeasurementForm({
               onChange={(e) => setTemperature(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Temperature at time of measurement
+              Temperature at time of measurement. Range: -10–40°C
             </p>
           </div>
 
@@ -401,6 +431,7 @@ export function AddBatchMeasurementForm({
             value={abv}
             onChange={(e) => setAbv(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">Range: 0–25%</p>
         </div>
 
         <div className="space-y-2">
@@ -413,6 +444,7 @@ export function AddBatchMeasurementForm({
             value={ph}
             onChange={(e) => setPh(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">Range: 2.00–5.00</p>
         </div>
 
         <div className="space-y-2">
@@ -425,6 +457,7 @@ export function AddBatchMeasurementForm({
             value={totalAcidity}
             onChange={(e) => setTotalAcidity(e.target.value)}
           />
+          <p className="text-xs text-muted-foreground">Range: 0–20 g/L</p>
         </div>
       </div>
 

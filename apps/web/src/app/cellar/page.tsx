@@ -2024,6 +2024,18 @@ function VesselMap() {
                             Blend
                           </span>
                         )}
+                        {liquidMapVessel.productType && !["cider", "juice"].includes(liquidMapVessel.productType) && (
+                          <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded shrink-0 ${
+                            liquidMapVessel.productType === "cyser" ? "bg-amber-100 text-amber-700" :
+                            liquidMapVessel.productType === "pommeau" ? "bg-orange-100 text-orange-700" :
+                            liquidMapVessel.productType === "brandy" ? "bg-red-100 text-red-700" :
+                            liquidMapVessel.productType === "perry" ? "bg-green-100 text-green-700" :
+                            liquidMapVessel.productType === "wine" ? "bg-rose-100 text-rose-700" :
+                            "bg-gray-100 text-gray-700"
+                          }`}>
+                            {liquidMapVessel.productType.charAt(0).toUpperCase() + liquidMapVessel.productType.slice(1)}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
@@ -2052,7 +2064,9 @@ function VesselMap() {
                           const measurement = liquidMapVessel.latestMeasurement;
                           const og = liquidMapVessel.originalGravity;
                           const ASSUMED_FG = 1.000;
-                          const isNonFermenting = liquidMapVessel.fermentationStage === "not_applicable";
+                          const isNonFermenting = liquidMapVessel.fermentationStage === "not_applicable"
+                            || liquidMapVessel.productType === "pommeau"
+                            || liquidMapVessel.productType === "brandy";
                           const batchActualAbv = liquidMapVessel.actualAbv;
                           const batchEstimatedAbv = liquidMapVessel.estimatedAbv;
 
@@ -2322,8 +2336,8 @@ function VesselMap() {
                       <DropdownMenuLabel>Tank Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
 
-                      {/* When vessel is cleaning, only show Clean Tank action */}
-                      {vessel.status === "cleaning" ? (
+                      {/* Show Clean Tank when vessel is in cleaning status */}
+                      {vessel.status === "cleaning" && (
                         <DropdownMenuItem
                           onClick={() => handleCleanTank(vessel.id, vessel.name)}
                           className="text-green-600"
@@ -2331,7 +2345,10 @@ function VesselMap() {
                           <CheckCircle className="w-3 h-3 mr-2" />
                           Clean Tank (Mark as Available)
                         </DropdownMenuItem>
-                      ) : (
+                      )}
+
+                      {/* Show batch actions when not cleaning, OR when cleaning but still has liquid */}
+                      {(vessel.status !== "cleaning" || currentVolume > 0) && (
                         <>
                           {/* Batch-specific actions based on fermentation stage */}
                           {liquidMapVessel?.batchStatus === "fermentation" && (

@@ -91,6 +91,7 @@ const MEASUREMENT_TYPES = [
 const BUILT_IN_PRODUCT_TYPES = [
   { slug: "cider", name: "Cider", description: "Standard cider with SG-based fermentation tracking" },
   { slug: "perry", name: "Perry", description: "Pear cider with SG-based fermentation tracking" },
+  { slug: "cyser", name: "Cyser", description: "Apple juice co-fermented with honey (taxed as wine)" },
   { slug: "brandy", name: "Brandy", description: "Distilled spirit aged in barrels" },
   { slug: "pommeau", name: "Pommeau", description: "Fortified apple wine aged in barrels" },
   { slug: "juice", name: "Juice", description: "Non-fermented apple juice" },

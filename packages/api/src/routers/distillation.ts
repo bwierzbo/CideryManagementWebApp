@@ -808,7 +808,7 @@ export const distillationRouter = router({
         notes: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       // Get cider batch if provided to verify and get ABV
       let ciderBatch = null;
       let ciderAbv = input.juiceAbv;
@@ -982,6 +982,7 @@ export const distillationRouter = router({
           isEstimated: true,
           estimateSource: "blend_calculation",
           notes: `Estimated from blend components. Cider: ${input.juiceVolumeLiters}L${ciderSg ? ` (SG ${ciderSg.toFixed(4)})` : ""}${ciderPh ? ` (pH ${ciderPh.toFixed(2)})` : ""}, Brandy: ${input.brandyVolumeLiters}L (${brandyAbv}% ABV, est. SG ${brandySg.toFixed(2)}). For accurate ABV, use ebulliometer or lab analysis.`,
+          createdBy: ctx.session?.user?.id ?? null,
         });
       }
 

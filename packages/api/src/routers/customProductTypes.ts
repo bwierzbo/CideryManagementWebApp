@@ -139,7 +139,7 @@ export const customProductTypesRouter = router({
       }
 
       // Check if slug conflicts with built-in product types
-      const builtInSlugs = ["cider", "perry", "brandy", "pommeau", "juice"];
+      const builtInSlugs = ["cider", "perry", "cyser", "wine", "brandy", "pommeau", "juice"];
       if (builtInSlugs.includes(slug)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -250,7 +250,7 @@ export const customProductTypesRouter = router({
       }
 
       // Check if slug conflicts with built-in product types
-      const builtInSlugs = ["cider", "perry", "brandy", "pommeau", "juice"];
+      const builtInSlugs = ["cider", "perry", "cyser", "wine", "brandy", "pommeau", "juice"];
       if (builtInSlugs.includes(slug)) {
         throw new TRPCError({
           code: "BAD_REQUEST",

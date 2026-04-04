@@ -18,6 +18,7 @@ export * from "./calc/sg-calibration";
 export * from "./calculations/sugar";
 export * from "./calculations/pasteurization";
 export * from "./calculations/ttb";
+export * from "./calculations/so2";
 
 // Re-export apple-related constants and utilities (client-safe)
 export * from "./apples";

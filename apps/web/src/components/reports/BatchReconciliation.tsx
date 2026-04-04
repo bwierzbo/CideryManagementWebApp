@@ -89,6 +89,8 @@ import { arrayToCSV, downloadCSV } from "@/utils/csv/exportHelpers";
 const PRODUCT_TYPES = [
   { value: "cider", label: "Cider" },
   { value: "perry", label: "Perry" },
+  { value: "cyser", label: "Cyser" },
+  { value: "wine", label: "Wine" },
   { value: "brandy", label: "Brandy" },
   { value: "pommeau", label: "Pommeau" },
   { value: "juice", label: "Juice" },

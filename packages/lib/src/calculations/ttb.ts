@@ -159,6 +159,7 @@ export function productTypeToTaxClass(productType: string | null | undefined): T
     case "brandy":
       return "appleBrandy";
     case "wine":
+    case "cyser":
       return "wineUnder16";
     case "juice":
       return null;

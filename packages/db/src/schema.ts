@@ -91,6 +91,7 @@ export const productTypeEnum = pgEnum("product_type", [
   "cider",    // Standard cider (fermented)
   "perry",    // Pear cider (fermented)
   "wine",     // Cider/perry with non-apple/pear fruit (TTB IC 17-2)
+  "cyser",    // Apple juice co-fermented with honey (taxed as wine)
   "brandy",   // Distilled spirit
   "pommeau",  // Juice + brandy blend
   "other",
@@ -917,6 +918,7 @@ export const batchMeasurements = pgTable("batch_measurements", {
   notes: text("notes"),
   sensoryNotes: text("sensory_notes"), // Tasting notes for sensory checks (brandy, pommeau, etc.)
   takenBy: text("taken_by"),
+  createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
@@ -2070,6 +2072,10 @@ export const batchMeasurementsRelations = relations(
     calibration: one(instrumentCalibrations, {
       fields: [batchMeasurements.calibrationId],
       references: [instrumentCalibrations.id],
+    }),
+    creator: one(users, {
+      fields: [batchMeasurements.createdBy],
+      references: [users.id],
     }),
   }),
 );

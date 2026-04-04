@@ -404,8 +404,10 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                 <SelectItem value="all">All Types</SelectItem>
                 <SelectItem value="cider">Cider</SelectItem>
                 <SelectItem value="perry">Perry</SelectItem>
+                <SelectItem value="cyser">Cyser</SelectItem>
                 <SelectItem value="brandy">Brandy</SelectItem>
-                <SelectItem value="pommeau">Fortified</SelectItem>
+                <SelectItem value="pommeau">Pommeau</SelectItem>
+                <SelectItem value="wine">Wine</SelectItem>
               </SelectContent>
             </Select>
             <label className="flex items-center gap-2 cursor-pointer">

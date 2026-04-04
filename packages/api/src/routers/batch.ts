@@ -24,10 +24,11 @@ import {
   packagingPurchaseItems,
   additivePurchaseItems,
   organizationSettings,
+  vesselCleaningOperations,
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
-import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne, gte, lte } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, desc, asc, sql, or, like, ilike, inArray, aliasedTable, ne, gte, lte, gt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertToLiters } from "lib/src/units/conversions";
 import { validateBatches, type BatchValidation } from "../validation/batch-validation";
@@ -105,6 +106,7 @@ interface MergeParams {
     estimatedAbv: string | null;
     originalGravity: string | null;
     fermentationStage: string | null;
+    productType: string | null;
     currentVolume: string | null;
   };
   destBatch: {
@@ -151,8 +153,42 @@ async function performBatchMerge(params: MergeParams): Promise<{
     updatedAt: new Date(),
   };
 
-  const srcAbv = parseFloat(sourceBatch.actualAbv || sourceBatch.estimatedAbv || "0");
-  const dstAbv = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
+  // Resolve ABV: batch-level fields first, then fall back to latest measurement
+  let srcAbv = parseFloat(sourceBatch.actualAbv || sourceBatch.estimatedAbv || "0");
+  let dstAbv = parseFloat(destBatch.actualAbv || destBatch.estimatedAbv || "0");
+
+  if (srcAbv === 0) {
+    const [latestSrcMeasurement] = await tx
+      .select({ abv: batchMeasurements.abv })
+      .from(batchMeasurements)
+      .where(and(
+        eq(batchMeasurements.batchId, sourceBatch.id),
+        isNull(batchMeasurements.deletedAt),
+        isNotNull(batchMeasurements.abv),
+      ))
+      .orderBy(desc(batchMeasurements.measurementDate))
+      .limit(1);
+    if (latestSrcMeasurement?.abv) {
+      srcAbv = parseFloat(latestSrcMeasurement.abv);
+    }
+  }
+
+  if (dstAbv === 0) {
+    const [latestDstMeasurement] = await tx
+      .select({ abv: batchMeasurements.abv })
+      .from(batchMeasurements)
+      .where(and(
+        eq(batchMeasurements.batchId, destBatch.id),
+        isNull(batchMeasurements.deletedAt),
+        isNotNull(batchMeasurements.abv),
+      ))
+      .orderBy(desc(batchMeasurements.measurementDate))
+      .limit(1);
+    if (latestDstMeasurement?.abv) {
+      dstAbv = parseFloat(latestDstMeasurement.abv);
+    }
+  }
+
   if (srcAbv > 0 || dstAbv > 0) {
     mergeUpdateData.estimatedAbv = (((volumeRackedL * srcAbv) + (destCurrentVolumeL * dstAbv)) / mergedVolumeL).toFixed(2);
   }
@@ -161,6 +197,23 @@ async function performBatchMerge(params: MergeParams): Promise<{
   const dstOG = destBatch.originalGravity ? parseFloat(destBatch.originalGravity) : null;
   if (srcOG !== null && dstOG !== null) {
     mergeUpdateData.originalGravity = (((volumeRackedL * srcOG) + (destCurrentVolumeL * dstOG)) / mergedVolumeL).toFixed(4);
+  }
+
+  // Auto-reclassify as pommeau when brandy is merged into cider/perry/juice
+  const nonBrandyTypes = ["cider", "perry", "juice"];
+  const isBrandyIntoNonBrandy =
+    sourceBatch.productType === "brandy" &&
+    destBatch.productType !== null &&
+    nonBrandyTypes.includes(destBatch.productType);
+  const isNonBrandyIntoBrandy =
+    destBatch.productType === "brandy" &&
+    sourceBatch.productType !== null &&
+    nonBrandyTypes.includes(sourceBatch.productType);
+
+  if (isBrandyIntoNonBrandy || isNonBrandyIntoBrandy) {
+    mergeUpdateData.productType = "pommeau";
+    mergeUpdateData.fermentationStage = "not_applicable";
+    mergeUpdateData.status = "aging";
   }
 
   // 2. Update destination batch
@@ -262,6 +315,7 @@ async function performBatchMerge(params: MergeParams): Promise<{
       estimateSource: `Volume-weighted blend: ${volumeRackedL.toFixed(1)}L from ${srcName} + ${destCurrentVolumeL.toFixed(1)}L from ${dstName}`,
       notes: "Estimated values from rack merge",
       takenBy: userName || "System",
+      createdBy: userId || null,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -358,7 +412,7 @@ const batchIdSchema = z.object({
 
 const listBatchesSchema = z.object({
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
-  productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
+  productType: z.enum(["juice", "cider", "perry", "wine", "cyser", "brandy", "pommeau", "other"]).optional(),
   vesselId: z.string().uuid().optional(),
   unassigned: z.boolean().optional(), // Filter for batches without a vessel
   search: z.string().optional(),
@@ -373,11 +427,11 @@ const listBatchesSchema = z.object({
 const addMeasurementSchema = z.object({
   batchId: z.string().uuid("Invalid batch ID"),
   measurementDate: z.date().or(z.string().transform((val) => new Date(val))),
-  specificGravity: z.number().min(0.99).max(1.2).optional(),
-  abv: z.number().min(0).max(20).optional(),
-  ph: z.number().min(2).max(5).optional(),
-  totalAcidity: z.number().min(0).max(20).optional(),
-  temperature: z.number().min(0).max(40).optional(),
+  specificGravity: z.number().min(0.980, "SG must be at least 0.980").max(1.200, "SG must be at most 1.200").optional(),
+  abv: z.number().min(0, "ABV cannot be negative").max(25, "ABV must be at most 25%").optional(),
+  ph: z.number().min(2, "pH must be at least 2.00").max(5, "pH must be at most 5.00").optional(),
+  totalAcidity: z.number().min(0, "Total acidity cannot be negative").max(20, "Total acidity must be at most 20 g/L").optional(),
+  temperature: z.number().min(-10, "Temperature must be at least -10°C").max(40, "Temperature must be at most 40°C").optional(),
   volume: z.number().positive().optional(),
   volumeUnit: z.enum(['L', 'gal']).default('L'),
   measurementMethod: z.enum(['hydrometer', 'refractometer', 'calculated']).default('hydrometer'),
@@ -405,11 +459,11 @@ const addAdditiveSchema = z.object({
 const updateMeasurementSchema = z.object({
   measurementId: z.string().uuid("Invalid measurement ID"),
   measurementDate: z.date().or(z.string().transform((val) => new Date(val))).optional(),
-  specificGravity: z.number().min(0.99).max(1.2).optional(),
-  abv: z.number().min(0).max(20).optional(),
-  ph: z.number().min(2).max(5).optional(),
-  totalAcidity: z.number().min(0).max(20).optional(),
-  temperature: z.number().min(0).max(40).optional(),
+  specificGravity: z.number().min(0.980, "SG must be at least 0.980").max(1.200, "SG must be at most 1.200").optional(),
+  abv: z.number().min(0, "ABV cannot be negative").max(25, "ABV must be at most 25%").optional(),
+  ph: z.number().min(2, "pH must be at least 2.00").max(5, "pH must be at most 5.00").optional(),
+  totalAcidity: z.number().min(0, "Total acidity cannot be negative").max(20, "Total acidity must be at most 20 g/L").optional(),
+  temperature: z.number().min(-10, "Temperature must be at least -10°C").max(40, "Temperature must be at most 40°C").optional(),
   volume: z.number().positive().optional(),
   volumeUnit: z.enum(['L', 'gal']).optional(),
   notes: z.string().optional(),
@@ -476,7 +530,7 @@ const updateBatchSchema = z.object({
   name: z.string().optional(),
   batchNumber: z.string().optional(),
   status: z.enum(["fermentation", "aging", "conditioning", "completed", "discarded"]).optional(),
-  productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
+  productType: z.enum(["juice", "cider", "perry", "wine", "cyser", "brandy", "pommeau", "other"]).optional(),
   fermentationStage: z.enum(["not_started", "not_applicable", "early", "mid", "approaching_dry", "terminal", "unknown"]).optional(),
   customName: z.string().optional(),
   vesselId: z.string().uuid("Invalid vessel ID").optional().nullable(),
@@ -624,6 +678,8 @@ export const batchRouter = router({
             startDate: batches.startDate,
             endDate: batches.endDate,
             originPressRunId: batches.originPressRunId,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
             createdAt: batches.createdAt,
             updatedAt: batches.updatedAt,
           })
@@ -655,6 +711,8 @@ export const batchRouter = router({
           startDate: batch.startDate,
           endDate: batch.endDate,
           originPressRunId: batch.originPressRunId,
+          currentVolume: batch.currentVolume,
+          currentVolumeUnit: batch.currentVolumeUnit,
           createdAt: batch.createdAt,
           updatedAt: batch.updatedAt,
         };
@@ -999,11 +1057,15 @@ export const batchRouter = router({
             name: batches.name,
             customName: batches.customName,
             status: batches.status,
+            productType: batches.productType,
             vesselId: batches.vesselId,
             vesselName: vessels.name,
             startDate: batches.startDate,
             endDate: batches.endDate,
             originPressRunId: batches.originPressRunId,
+            originalGravity: batches.originalGravity,
+            estimatedAbv: batches.estimatedAbv,
+            actualAbv: batches.actualAbv,
           })
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
@@ -1422,7 +1484,7 @@ export const batchRouter = router({
    */
   addMeasurement: createRbacProcedure("create", "batch")
     .input(addMeasurementSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         // Verify batch exists and get current OG, fermentation stage
         const batchData = await db
@@ -1508,6 +1570,7 @@ export const batchRouter = router({
             notes: input.notes,
             sensoryNotes: input.sensoryNotes,
             takenBy: input.takenBy,
+            createdBy: ctx.session?.user?.id ?? null,
           })
           .returning();
 
@@ -1582,7 +1645,7 @@ export const batchRouter = router({
    */
   addAdditive: createRbacProcedure("create", "batch")
     .input(addAdditiveSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         // Verify batch exists and get vessel ID, original gravity, fermentation stage
         const batchData = await db
@@ -1592,6 +1655,8 @@ export const batchRouter = router({
             originalGravity: batches.originalGravity,
             fermentationStage: batches.fermentationStage,
             productType: batches.productType,
+            currentVolume: batches.currentVolume,
+            currentVolumeUnit: batches.currentVolumeUnit,
           })
           .from(batches)
           .where(and(eq(batches.id, input.batchId), isNull(batches.deletedAt)))
@@ -1793,15 +1858,19 @@ export const batchRouter = router({
             if (!recentMeasurement.length || !recentMeasurement[0].specificGravity) {
               console.warn("No recent SG measurement found, skipping estimated measurement");
             } else {
-              // Get volume - prefer volumeLiters, then convert from volume + unit
+              // Get volume - prefer measurement volumeLiters, then measurement volume+unit, then batch currentVolume
               let volumeL: number;
               if (recentMeasurement[0].volumeLiters) {
                 volumeL = parseFloat(recentMeasurement[0].volumeLiters);
               } else if (recentMeasurement[0].volume && recentMeasurement[0].volumeUnit) {
                 const vol = parseFloat(recentMeasurement[0].volume);
                 volumeL = recentMeasurement[0].volumeUnit === "gal" ? vol * 3.78541 : vol;
+              } else if (batchData[0].currentVolume) {
+                // Fall back to batch's current volume
+                const batchVol = parseFloat(batchData[0].currentVolume);
+                volumeL = batchData[0].currentVolumeUnit === "gal" ? batchVol * 3.78541 : batchVol;
               } else {
-                console.warn("No volume data found in recent measurement, skipping estimated measurement");
+                console.warn("No volume data found in measurement or batch, skipping estimated measurement");
                 volumeL = 0;
               }
 
@@ -1815,6 +1884,12 @@ export const batchRouter = router({
                   sugarGrams = input.amount * volumeL;
                 } else {
                   sugarGrams = convertSugarToGrams(input.amount, input.unit);
+                }
+
+                // Honey is ~80% fermentable sugar by weight (rest is water + other)
+                const isHoneyAddition = (input.additiveName || "").toLowerCase().includes("honey");
+                if (isHoneyAddition) {
+                  sugarGrams = sugarGrams * 0.80;
                 }
 
                 // Calculate estimated SG after sugar addition
@@ -1850,10 +1925,28 @@ export const batchRouter = router({
                     volumeLiters: volumeL.toString(),
                     notes: `Estimated after adding ${input.amount}${input.unit} of ${input.additiveName}. Assumes full fermentation.`,
                     takenBy: "System (auto-calculated)",
+                    isEstimated: true,
+                    estimateSource: "sugar_addition",
+                    createdBy: ctx.session?.user?.id ?? null,
                   })
                   .returning();
 
                 estimatedMeasurement = measurement[0];
+
+                // If sugar added pre-fermentation, update the batch OG and estimated ABV
+                const preFermentStages = ["not_started", "early", "unknown"];
+                if (preFermentStages.includes(batchData[0].fermentationStage || "")) {
+                  const newOG = estimatedSG;
+                  const newEstABV = (newOG - 1.0) * 131.25; // Assumes full fermentation to ~1.000
+                  await db
+                    .update(batches)
+                    .set({
+                      originalGravity: newOG.toString(),
+                      estimatedAbv: newEstABV.toString(),
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(batches.id, input.batchId));
+                }
               }
             }
           } catch (error) {
@@ -1883,6 +1976,7 @@ export const batchRouter = router({
 
         // If non-apple/pear fruit is added to a cider/perry batch, reclassify as wine (TTB IC 17-2)
         let reclassifiedAsWine = false;
+        let reclassifiedAsCyser = false;
         if (
           input.additiveType === "Fruit/Fruit Product" &&
           !input.isApplePearFruit &&
@@ -1895,16 +1989,50 @@ export const batchRouter = router({
           reclassifiedAsWine = true;
         }
 
+        // Honey added to cider/perry/juice → reclassify based on fermentation stage
+        // Co-fermented (pre/during fermentation) → cyser
+        // Back-sweetened (post-fermentation) → wine
+        if (!reclassifiedAsWine) {
+          const isHoney = (input.additiveName || "").toLowerCase().includes("honey");
+          const isCiderLike = batchData[0].productType === "cider" ||
+            batchData[0].productType === "perry" ||
+            batchData[0].productType === "juice";
+
+          if (isHoney && isCiderLike) {
+            const coFermentStages = ["not_started", "early", "mid", "unknown"];
+            const isCoFermented = coFermentStages.includes(batchData[0].fermentationStage || "unknown");
+
+            if (isCoFermented) {
+              // Co-fermented with honey → cyser
+              await db
+                .update(batches)
+                .set({ productType: "cyser", updatedAt: new Date() })
+                .where(eq(batches.id, input.batchId));
+              reclassifiedAsCyser = true;
+            } else {
+              // Back-sweetened with honey → wine (non-apple fermentable)
+              await db
+                .update(batches)
+                .set({ productType: "wine", updatedAt: new Date() })
+                .where(eq(batches.id, input.batchId));
+              reclassifiedAsWine = true;
+            }
+          }
+        }
+
         return {
           success: true,
           additive: newAdditive[0],
           estimatedMeasurement,
           fermentationStarted,
-          reclassifiedAsWine,
-          message: reclassifiedAsWine
-            ? "Additive added - batch reclassified as wine for TTB"
+          reclassifiedAsWine: reclassifiedAsWine || reclassifiedAsCyser,
+          reclassifiedAsCyser,
+          message: reclassifiedAsCyser
+            ? "Additive added — batch reclassified as cyser (co-fermented with honey)"
+            : reclassifiedAsWine
+            ? "Additive added — batch reclassified as wine for TTB"
             : fermentationStarted
-            ? "Additive added - fermentation started"
+            ? "Additive added — fermentation started"
             : estimatedMeasurement
             ? "Additive added successfully with estimated SG/ABV"
             : "Additive added successfully",
@@ -2532,7 +2660,7 @@ export const batchRouter = router({
   listForReconciliation: adminProcedure
     .input(z.object({
       year: z.number().int().min(2020).max(2100).optional(),
-      productType: z.enum(["juice", "cider", "perry", "brandy", "pommeau", "other"]).optional(),
+      productType: z.enum(["juice", "cider", "perry", "wine", "cyser", "brandy", "pommeau", "other"]).optional(),
       reconciliationStatus: z.enum(["verified", "pending"]).optional(),
       search: z.string().optional(),
     }).optional())
@@ -4880,6 +5008,7 @@ export const batchRouter = router({
                 volumeUnit: measurement.volumeUnit,
                 notes: measurement.notes,
                 takenBy: measurement.takenBy,
+                createdBy: ctx.session?.user?.id ?? null,
                 createdAt: new Date(),
                 updatedAt: new Date(),
               });
@@ -5107,6 +5236,18 @@ export const batchRouter = router({
           // 6. Update source vessel status to cleaning (only if full rack and not rack-to-self)
           // For partial racks, batch stays in source vessel, so don't update status
           if (!isRackToSelf && !isPartialRack) {
+            // Only set to cleaning if no subsequent cleaning exists (prevents backdated racks from overwriting)
+            const rackDate = input.rackedAt || new Date();
+            const subsequentCleaning = await tx
+              .select({ id: vesselCleaningOperations.id })
+              .from(vesselCleaningOperations)
+              .where(and(
+                eq(vesselCleaningOperations.vesselId, sourceVesselId),
+                gt(vesselCleaningOperations.cleanedAt, rackDate)
+              ))
+              .limit(1);
+
+            if (subsequentCleaning.length === 0) {
             await tx
               .update(vessels)
               .set({
@@ -5114,6 +5255,7 @@ export const batchRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, sourceVesselId));
+            }
 
             // Clear press runs pointing to the source vessel
             // This prevents the liquidMap query from showing stale press run volume
@@ -5363,6 +5505,7 @@ export const batchRouter = router({
                 specificGravity: juice.specificGravity?.toString(),
                 notes: "Initial measurements from juice purchase",
                 volumeUnit: "L",
+                createdBy: ctx.session?.user?.id ?? null,
                 createdAt: new Date(),
                 updatedAt: new Date(),
               });
@@ -5441,6 +5584,7 @@ export const batchRouter = router({
                 specificGravity: juice.specificGravity?.toString(),
                 notes: "Measurements from merged juice purchase",
                 volumeUnit: "L",
+                createdBy: ctx.session?.user?.id ?? null,
                 createdAt: new Date(),
                 updatedAt: new Date(),
               });
@@ -6342,6 +6486,7 @@ export const batchRouter = router({
           specificGravity: finalGravity?.toFixed(4) || originalGravity?.toFixed(4),
           notes: "Initial measurement from legacy batch import",
           takenBy: ctx.session?.user?.name || "Legacy Import",
+          createdBy: ctx.session?.user?.id ?? null,
         });
       }
 
@@ -8285,7 +8430,7 @@ export const batchRouter = router({
       endDate.setHours(23, 59, 59, 999);
 
       // Type definitions
-      type ProductType = "cider" | "perry" | "brandy" | "pommeau" | "juice" | "other";
+      type ProductType = "cider" | "perry" | "wine" | "cyser" | "brandy" | "pommeau" | "juice" | "other";
 
       type ProductTypeSummary = {
         productType: ProductType;
@@ -8434,6 +8579,8 @@ export const batchRouter = router({
           batchesByType: {
             cider: [],
             perry: [],
+            wine: [],
+            cyser: [],
             brandy: [],
             pommeau: [],
             juice: [],
@@ -8450,6 +8597,8 @@ export const batchRouter = router({
       const batchesByType: Record<ProductType, typeof allBatches> = {
         cider: [],
         perry: [],
+        wine: [],
+        cyser: [],
         brandy: [],
         pommeau: [],
         juice: [],
@@ -8965,6 +9114,8 @@ export const batchRouter = router({
       const summaries: Record<ProductType, ProductTypeSummary> = {
         cider: initSummary("cider"),
         perry: initSummary("perry"),
+        wine: initSummary("wine"),
+        cyser: initSummary("cyser"),
         brandy: initSummary("brandy"),
         pommeau: initSummary("pommeau"),
         juice: initSummary("juice"),
@@ -9352,6 +9503,25 @@ export const batchRouter = router({
               updatedAt: new Date(),
             })
             .where(eq(batches.id, input.batchId));
+
+          // 4. If volume hit 0, mark vessel for cleaning (mirrors transfer/racking behavior)
+          if (volumeAfterL <= 0.01 && batch.vesselId) {
+            await tx
+              .update(batches)
+              .set({
+                vesselId: null,
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, input.batchId));
+
+            await tx
+              .update(vessels)
+              .set({
+                status: "cleaning",
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, batch.vesselId));
+          }
 
           return {
             adjustment,

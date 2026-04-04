@@ -636,7 +636,9 @@ export default function BatchDetailsPage() {
             <div className="text-2xl font-bold">
               {latestMeasurement?.volume
                 ? `${latestMeasurement.volume.toFixed(1)}${latestMeasurement.volumeUnit || 'L'}`
-                : "No data"}
+                : batch?.currentVolume
+                  ? `${parseFloat(batch.currentVolume).toFixed(1)}${batch.currentVolumeUnit || 'L'}`
+                  : "No data"}
             </div>
           </CardContent>
         </Card>

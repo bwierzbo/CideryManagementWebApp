@@ -18,7 +18,9 @@ import { toast } from "@/hooks/use-toast";
 import { useBatchDateValidation } from "@/hooks/useBatchDateValidation";
 import { DateWarning } from "@/components/ui/DateWarning";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Search, Package, AlertTriangle, Calculator } from "lucide-react";
+import { Loader2, Package, AlertTriangle, Calculator } from "lucide-react";
+import { SO2Calculator } from "./SO2Calculator";
+import { AdditiveCalculatorPanel } from "./AdditiveCalculatorPanel";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import {
   Command,
@@ -66,6 +68,16 @@ const additiveTypes = [
   { value: "Preservatives", label: "Preservatives" },
 ];
 
+/** Types that commonly use dosage rate calculations */
+const DOSAGE_RATE_TYPES = new Set(["Enzymes", "Nutrients", "Acids"]);
+
+/** Available dosage rate units */
+const dosageRateUnits = [
+  { value: "mL/L", label: "mL/L", outputUnit: "ml" },
+  { value: "g/L", label: "g/L", outputUnit: "g" },
+  { value: "g/hL", label: "g/hL", outputUnit: "g" },
+];
+
 export function AddBatchAdditiveForm({
   batchId,
   onSuccess,
@@ -84,6 +96,7 @@ export function AddBatchAdditiveForm({
   });
   const [dateWarning, setDateWarning] = useState<string | null>(null);
   const [dosageRate, setDosageRate] = useState("");
+  const [dosageRateUnit, setDosageRateUnit] = useState("mL/L");
   const [isApplePearFruit, setIsApplePearFruit] = useState(false);
 
   // Date validation
@@ -118,6 +131,63 @@ export function AddBatchAdditiveForm({
         enabled: !!selectedAdditiveType,
       },
     );
+
+  // Detect if the selected inventory item is a sulfite product (KMS)
+  const isSulfiteProduct = useMemo(() => {
+    if (!selectedInventoryItem) return false;
+    const name = (
+      (selectedInventoryItem.varietyName || "") +
+      " " +
+      (selectedInventoryItem.productName || "")
+    ).toLowerCase();
+    return (
+      name.includes("metabisulfite") ||
+      name.includes("sulfite") ||
+      name.includes("kms") ||
+      name.includes("campden")
+    );
+  }, [selectedInventoryItem]);
+
+  // Show dosage calculator for enzyme/nutrient/acid types
+  const showDosageCalculator = useMemo(() => {
+    return DOSAGE_RATE_TYPES.has(selectedAdditiveType) && batchVolumeLiters;
+  }, [selectedAdditiveType, batchVolumeLiters]);
+
+  // Extract latest pH from batch measurements
+  const latestPH = useMemo(() => {
+    if (!batchHistory?.measurements?.length) return null;
+    const withPH = batchHistory.measurements.find(
+      (m: any) => m.ph != null,
+    );
+    if (!withPH?.ph) return null;
+    return parseFloat(String(withPH.ph));
+  }, [batchHistory]);
+
+  // Previous sulfite additions for running totals
+  const previousSulfiteAdditions = useMemo(() => {
+    if (!batchHistory) return [];
+    const allAdditives = [
+      ...(batchHistory.additives || []),
+      ...(batchHistory.blendSourceAdditives || []),
+    ];
+    return allAdditives.filter((a) => {
+      const name = (a.additiveName || "").toLowerCase();
+      return (
+        name.includes("metabisulfite") ||
+        name.includes("sulfite") ||
+        name.includes("kms") ||
+        name.includes("campden")
+      );
+    });
+  }, [batchHistory]);
+
+  // Handler for SO2 calculator "Use Calculated Amount" button
+  const handleUseSO2Calculation = (grams: number, calculatedUnit: string, calculatedNotes: string) => {
+    setAmount(String(grams));
+    setUnit(calculatedUnit);
+    setNotes(calculatedNotes);
+    setDosageRate("");
+  };
 
   // Filter inventory items by search query
   const filteredInventory = useMemo(() => {
@@ -171,6 +241,7 @@ export function AddBatchAdditiveForm({
     setUnit("");
     setSearchQuery("");
     setIsApplePearFruit(false);
+    setDosageRate("");
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -244,9 +315,37 @@ export function AddBatchAdditiveForm({
     setDosageRate(rate);
     const rateNum = parseFloat(rate);
     if (!isNaN(rateNum) && rateNum > 0 && batchVolumeLiters) {
-      const calculatedAmount = rateNum * batchVolumeLiters;
+      const rateConfig = dosageRateUnits.find((u) => u.value === dosageRateUnit);
+      if (!rateConfig) return;
+      let calculatedAmount: number;
+      if (dosageRateUnit === "g/hL") {
+        // g per hectoliter: amount = rate * (volume / 100)
+        calculatedAmount = rateNum * (batchVolumeLiters / 100);
+      } else {
+        // mL/L or g/L: amount = rate * volume
+        calculatedAmount = rateNum * batchVolumeLiters;
+      }
       setAmount(calculatedAmount.toFixed(1));
-      setUnit("ml");
+      setUnit(rateConfig.outputUnit);
+    }
+  };
+
+  // Recalculate when dosage rate unit changes
+  const handleDosageRateUnitChange = (newUnit: string) => {
+    setDosageRateUnit(newUnit);
+    // Recalculate with existing rate if set
+    const rateNum = parseFloat(dosageRate);
+    if (!isNaN(rateNum) && rateNum > 0 && batchVolumeLiters) {
+      const rateConfig = dosageRateUnits.find((u) => u.value === newUnit);
+      if (!rateConfig) return;
+      let calculatedAmount: number;
+      if (newUnit === "g/hL") {
+        calculatedAmount = rateNum * (batchVolumeLiters / 100);
+      } else {
+        calculatedAmount = rateNum * batchVolumeLiters;
+      }
+      setAmount(calculatedAmount.toFixed(1));
+      setUnit(rateConfig.outputUnit);
     }
   };
 
@@ -254,10 +353,17 @@ export function AddBatchAdditiveForm({
   const calculatedDosage = useMemo(() => {
     const rateNum = parseFloat(dosageRate);
     if (!isNaN(rateNum) && rateNum > 0 && batchVolumeLiters) {
+      if (dosageRateUnit === "g/hL") {
+        return rateNum * (batchVolumeLiters / 100);
+      }
       return rateNum * batchVolumeLiters;
     }
     return null;
-  }, [dosageRate, batchVolumeLiters]);
+  }, [dosageRate, dosageRateUnit, batchVolumeLiters]);
+
+  const dosageOutputUnit = useMemo(() => {
+    return dosageRateUnits.find((u) => u.value === dosageRateUnit)?.outputUnit ?? "ml";
+  }, [dosageRateUnit]);
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return null;
@@ -267,6 +373,14 @@ export function AddBatchAdditiveForm({
       return dateStr;
     }
   };
+
+  const dosageFormulaDisplay = useMemo(() => {
+    if (!batchVolumeLiters || calculatedDosage === null) return null;
+    if (dosageRateUnit === "g/hL") {
+      return `${dosageRate} g/hL × ${(batchVolumeLiters / 100).toFixed(2)} hL`;
+    }
+    return `${dosageRate} ${dosageRateUnit} × ${batchVolumeLiters.toLocaleString()} L`;
+  }, [dosageRate, dosageRateUnit, batchVolumeLiters, calculatedDosage]);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -289,7 +403,7 @@ export function AddBatchAdditiveForm({
         </Select>
         {selectedAdditiveType === "Sugar & Sweeteners" && (
           <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-900">
-            <p className="font-medium">📊 Auto-calculation enabled</p>
+            <p className="font-medium">Auto-calculation enabled</p>
             <p className="mt-1 text-blue-800">
               Adding sugar will automatically create an estimated SG and ABV measurement based on the current vessel volume and most recent measurement.
             </p>
@@ -477,6 +591,59 @@ export function AddBatchAdditiveForm({
         </div>
       )}
 
+      {/* SO2 Calculator - shown when a sulfite product is selected */}
+      {isSulfiteProduct && (
+        <SO2Calculator
+          batchVolumeLiters={batchVolumeLiters}
+          batchPH={latestPH}
+          previousAdditions={previousSulfiteAdditions}
+          onUseCalculatedAmount={handleUseSO2Calculation}
+        />
+      )}
+
+      {/* Dosage Rate Calculator - shown for enzymes, nutrients, acids */}
+      {showDosageCalculator && (
+        <AdditiveCalculatorPanel
+          title="Dosage Calculator"
+          icon={<Calculator className="h-4 w-4 text-blue-600" />}
+        >
+          <div className="space-y-3">
+            <div className="text-xs text-muted-foreground">
+              Batch volume: {batchVolumeLiters!.toLocaleString()} L
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="Enter rate"
+                  value={dosageRate}
+                  onChange={(e) => handleDosageRateChange(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+              <Select value={dosageRateUnit} onValueChange={handleDosageRateUnitChange}>
+                <SelectTrigger className="w-[100px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {dosageRateUnits.map((u) => (
+                    <SelectItem key={u.value} value={u.value}>
+                      {u.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {calculatedDosage !== null && dosageFormulaDisplay && (
+              <div className="text-sm text-blue-700 bg-blue-50 p-2 rounded">
+                {dosageFormulaDisplay} = <strong>{calculatedDosage.toFixed(1)} {dosageOutputUnit}</strong>
+              </div>
+            )}
+          </div>
+        </AdditiveCalculatorPanel>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="amount">Amount *</Label>
@@ -511,37 +678,6 @@ export function AddBatchAdditiveForm({
           </Select>
         </div>
       </div>
-
-      {/* Dosage Rate Calculator */}
-      {batchVolumeLiters && (
-        <div className="p-3 bg-muted/50 border rounded-md space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Calculator className="h-4 w-4" />
-            <span>Dosage Calculator</span>
-            <span className="text-muted-foreground font-normal">
-              (Batch volume: {batchVolumeLiters.toLocaleString()} L)
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1">
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="Enter rate"
-                value={dosageRate}
-                onChange={(e) => handleDosageRateChange(e.target.value)}
-                className="h-9"
-              />
-            </div>
-            <span className="text-sm text-muted-foreground whitespace-nowrap">mL/L</span>
-          </div>
-          {calculatedDosage !== null && (
-            <div className="text-sm text-blue-700 bg-blue-50 p-2 rounded">
-              {dosageRate} mL/L × {batchVolumeLiters.toLocaleString()} L = <strong>{calculatedDosage.toLocaleString()} mL</strong>
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="space-y-2">
         <Label htmlFor="addedDate">Date & Time Added *</Label>

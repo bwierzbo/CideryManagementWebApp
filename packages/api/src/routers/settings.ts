@@ -457,7 +457,7 @@ export const settingsRouter = router({
   updateMeasurementSchedule: adminProcedure
     .input(
       z.object({
-        productType: z.enum(["cider", "perry", "brandy", "pommeau", "juice"]),
+        productType: z.enum(["cider", "perry", "cyser", "wine", "brandy", "pommeau", "juice"]),
         config: z.object({
           initialMeasurementTypes: z.array(
             z.enum(["sg", "abv", "ph", "temperature", "sensory", "volume"])

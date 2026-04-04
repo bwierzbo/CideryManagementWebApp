@@ -67,6 +67,7 @@ import {
   users,
   batchCarbonationOperations,
   batchRackingOperations,
+  batchVolumeAdjustments,
   batchFilterOperations,
   batchAdditives,
   distillationRecords,
@@ -86,6 +87,7 @@ import {
   aliasedTable,
   inArray,
   gt,
+  lte,
 } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { convertVolume, roundToDecimals } from "lib/src/utils/volumeConversion";
@@ -2351,6 +2353,7 @@ export const appRouter = router({
                 input.takenBy ||
                 ctx.session?.user?.name ||
                 ctx.session?.user?.email,
+              createdBy: ctx.session?.user?.id ?? null,
               createdAt: new Date(),
               updatedAt: new Date(),
             })
@@ -2957,7 +2960,27 @@ export const appRouter = router({
             updateData.jacketed = input.jacketed;
           if (input.isPressureVessel !== undefined)
             updateData.isPressureVessel = input.isPressureVessel;
-          if (input.status !== undefined) updateData.status = input.status;
+          if (input.status !== undefined) {
+            // Guard: prevent setting to "cleaning" if vessel has active batches with volume
+            if (input.status === "cleaning") {
+              const activeBatches = await db
+                .select({ id: batches.id, currentVolume: batches.currentVolume })
+                .from(batches)
+                .where(and(
+                  eq(batches.vesselId, input.id),
+                  isNull(batches.deletedAt),
+                ))
+                .limit(1);
+              const hasLiquid = activeBatches.some(b => parseFloat(b.currentVolume || "0") > 0);
+              if (hasLiquid) {
+                throw new TRPCError({
+                  code: "BAD_REQUEST",
+                  message: "Cannot set vessel to cleaning — it still contains liquid. Transfer or discard the batch first.",
+                });
+              }
+            }
+            updateData.status = input.status;
+          }
           if (input.location !== undefined)
             updateData.location = input.location;
           if (input.notes !== undefined) updateData.notes = input.notes;
@@ -3124,7 +3147,8 @@ export const appRouter = router({
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
             batchCustomName: batches.customName,
-            // Fermentation tracking
+            // Product type and fermentation tracking
+            productType: batches.productType,
             fermentationStage: batches.fermentationStage,
             // ABV tracking
             originalGravity: batches.originalGravity,
@@ -3178,12 +3202,16 @@ export const appRouter = router({
               eq(pressRuns.vesselId, vessels.id),
               isNull(pressRuns.deletedAt),
               eq(pressRuns.status, "completed"),
-              // Only get the latest completed press run per vessel to avoid duplicate rows
+              // Only get the latest completed press run per vessel that hasn't been consumed by a batch
               sql`press_runs.id = (
-                SELECT id FROM press_runs pr
+                SELECT pr.id FROM press_runs pr
                 WHERE pr.vessel_id = vessels.id
                   AND pr.deleted_at IS NULL
                   AND pr.status = 'completed'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM batches b
+                    WHERE b.origin_press_run_id = pr.id
+                  )
                 ORDER BY pr.date_completed DESC NULLS LAST, pr.created_at DESC
                 LIMIT 1
               )`,
@@ -3618,11 +3646,207 @@ export const appRouter = router({
 
             // Allow small tolerance (0.1L) for rounding errors from unit conversions
             const tolerance = 0.1;
-            if (transferVolumeL > currentVolumeL + tolerance) {
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: `Transfer volume plus loss (${transferVolumeL.toFixed(2)}L) exceeds current batch volume (${currentVolumeL.toFixed(2)}L)`,
-              });
+
+            const transferDate = input.transferDate || new Date();
+            const isBackdated = input.transferDate && input.transferDate < new Date();
+
+            if (isBackdated) {
+              // For backdated transfers, reconstruct the historical volume at that point in time
+              // Start from the batch's initial volume in liters
+              const initialVolumeL = parseFloat(
+                sourceBatch[0].initialVolumeLiters?.toString() ||
+                sourceBatch[0].initialVolume?.toString() || "0",
+              );
+              let initialInLiters = initialVolumeL;
+              if (!sourceBatch[0].initialVolumeLiters && sourceBatch[0].initialVolumeUnit === "gal") {
+                initialInLiters = initialVolumeL * 3.78541;
+              }
+
+              // Get all transfers OUT from this batch that occurred on or before the backdated date
+              const transfersOut = await tx
+                .select({
+                  totalOut: sql<string>`COALESCE(SUM(${batchTransfers.totalVolumeProcessed}::decimal), 0)`,
+                })
+                .from(batchTransfers)
+                .where(
+                  and(
+                    eq(batchTransfers.sourceBatchId, sourceBatch[0].id),
+                    lte(batchTransfers.transferredAt, transferDate),
+                    isNull(batchTransfers.deletedAt),
+                  ),
+                );
+
+              // Get all transfers IN to this batch that occurred on or before the backdated date
+              const transfersIn = await tx
+                .select({
+                  totalIn: sql<string>`COALESCE(SUM(${batchTransfers.volumeTransferred}::decimal), 0)`,
+                })
+                .from(batchTransfers)
+                .where(
+                  and(
+                    eq(batchTransfers.destinationBatchId, sourceBatch[0].id),
+                    lte(batchTransfers.transferredAt, transferDate),
+                    isNull(batchTransfers.deletedAt),
+                  ),
+                );
+
+              // Get racking losses before the backdated date
+              const rackingLosses = await tx
+                .select({
+                  totalLoss: sql<string>`COALESCE(SUM(${batchRackingOperations.volumeLoss}::decimal), 0)`,
+                })
+                .from(batchRackingOperations)
+                .where(
+                  and(
+                    eq(batchRackingOperations.batchId, sourceBatch[0].id),
+                    lte(batchRackingOperations.rackedAt, transferDate),
+                    isNull(batchRackingOperations.deletedAt),
+                  ),
+                );
+
+              // Get volume adjustments before the backdated date
+              const volumeAdjustments = await tx
+                .select({
+                  totalAdjustment: sql<string>`COALESCE(SUM(${batchVolumeAdjustments.adjustmentAmount}::decimal), 0)`,
+                })
+                .from(batchVolumeAdjustments)
+                .where(
+                  and(
+                    eq(batchVolumeAdjustments.batchId, sourceBatch[0].id),
+                    lte(batchVolumeAdjustments.adjustmentDate, transferDate),
+                    isNull(batchVolumeAdjustments.deletedAt),
+                  ),
+                );
+
+              const totalOutL = parseFloat(transfersOut[0]?.totalOut || "0");
+              const totalInL = parseFloat(transfersIn[0]?.totalIn || "0");
+              const totalRackingLossL = parseFloat(rackingLosses[0]?.totalLoss || "0");
+              const totalAdjustmentL = parseFloat(volumeAdjustments[0]?.totalAdjustment || "0");
+
+              // Historical volume = initial + transfers in - transfers out - racking losses + adjustments
+              // (adjustmentAmount is signed: positive for additions, negative for reductions)
+              const historicalVolumeL = initialInLiters + totalInL - totalOutL - totalRackingLossL + totalAdjustmentL;
+
+              if (transferVolumeL > historicalVolumeL + tolerance) {
+                const overdrawL = transferVolumeL - historicalVolumeL;
+                const dateStr = transferDate.toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                });
+                throw new TRPCError({
+                  code: "BAD_REQUEST",
+                  message: `Cannot backdate this transfer: at ${dateStr}, this batch only had ${historicalVolumeL.toFixed(2)}L available (after accounting for other transfers around that time). Transferring ${transferVolumeL.toFixed(2)}L would overdraw by ${overdrawL.toFixed(2)}L.`,
+                });
+              }
+
+              // Also check that inserting this backdated transfer won't cause any subsequent
+              // point in time to go negative. Get all events AFTER the backdated date and
+              // simulate the running volume.
+              const futureTransfersOut = await tx
+                .select({
+                  volume: sql<string>`${batchTransfers.totalVolumeProcessed}::decimal`,
+                  eventDate: batchTransfers.transferredAt,
+                })
+                .from(batchTransfers)
+                .where(
+                  and(
+                    eq(batchTransfers.sourceBatchId, sourceBatch[0].id),
+                    gt(batchTransfers.transferredAt, transferDate),
+                    isNull(batchTransfers.deletedAt),
+                  ),
+                )
+                .orderBy(asc(batchTransfers.transferredAt));
+
+              const futureTransfersIn = await tx
+                .select({
+                  volume: sql<string>`${batchTransfers.volumeTransferred}::decimal`,
+                  eventDate: batchTransfers.transferredAt,
+                })
+                .from(batchTransfers)
+                .where(
+                  and(
+                    eq(batchTransfers.destinationBatchId, sourceBatch[0].id),
+                    gt(batchTransfers.transferredAt, transferDate),
+                    isNull(batchTransfers.deletedAt),
+                  ),
+                )
+                .orderBy(asc(batchTransfers.transferredAt));
+
+              const futureRackingLosses = await tx
+                .select({
+                  volume: sql<string>`${batchRackingOperations.volumeLoss}::decimal`,
+                  eventDate: batchRackingOperations.rackedAt,
+                })
+                .from(batchRackingOperations)
+                .where(
+                  and(
+                    eq(batchRackingOperations.batchId, sourceBatch[0].id),
+                    gt(batchRackingOperations.rackedAt, transferDate),
+                    isNull(batchRackingOperations.deletedAt),
+                  ),
+                )
+                .orderBy(asc(batchRackingOperations.rackedAt));
+
+              const futureAdjustments = await tx
+                .select({
+                  volume: sql<string>`${batchVolumeAdjustments.adjustmentAmount}::decimal`,
+                  eventDate: batchVolumeAdjustments.adjustmentDate,
+                })
+                .from(batchVolumeAdjustments)
+                .where(
+                  and(
+                    eq(batchVolumeAdjustments.batchId, sourceBatch[0].id),
+                    gt(batchVolumeAdjustments.adjustmentDate, transferDate),
+                    isNull(batchVolumeAdjustments.deletedAt),
+                  ),
+                )
+                .orderBy(asc(batchVolumeAdjustments.adjustmentDate));
+
+              // Merge all future events into a single timeline
+              type VolumeEvent = { date: Date; delta: number };
+              const futureEvents: VolumeEvent[] = [];
+
+              for (const t of futureTransfersOut) {
+                futureEvents.push({ date: t.eventDate, delta: -parseFloat(t.volume || "0") });
+              }
+              for (const t of futureTransfersIn) {
+                futureEvents.push({ date: t.eventDate, delta: parseFloat(t.volume || "0") });
+              }
+              for (const r of futureRackingLosses) {
+                futureEvents.push({ date: r.eventDate, delta: -parseFloat(r.volume || "0") });
+              }
+              for (const a of futureAdjustments) {
+                futureEvents.push({ date: a.eventDate, delta: parseFloat(a.volume || "0") });
+              }
+
+              // Sort by date
+              futureEvents.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+              // Simulate: start from historical volume minus this new transfer
+              let runningVolumeL = historicalVolumeL - transferVolumeL;
+              for (const event of futureEvents) {
+                runningVolumeL += event.delta;
+                if (runningVolumeL < -tolerance) {
+                  const eventDateStr = event.date.toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  });
+                  throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: `Cannot backdate this transfer: it would cause the batch volume to go negative (${runningVolumeL.toFixed(2)}L) at ${eventDateStr} due to a subsequent operation. Reduce the transfer amount or adjust later operations first.`,
+                  });
+                }
+              }
+            } else {
+              // Non-backdated: use current volume as before
+              if (transferVolumeL > currentVolumeL + tolerance) {
+                throw new TRPCError({
+                  code: "BAD_REQUEST",
+                  message: `Transfer volume plus loss (${transferVolumeL.toFixed(2)}L) exceeds current batch volume (${currentVolumeL.toFixed(2)}L)`,
+                });
+              }
             }
 
             // If within tolerance, clamp to exact volume and absorb difference into loss
@@ -3741,6 +3965,7 @@ export const appRouter = router({
                   volumeLiters: measurement.volumeLiters,
                   notes: measurement.notes,
                   takenBy: measurement.takenBy,
+                  createdBy: ctx.session?.user?.id ?? null,
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 });
@@ -3949,6 +4174,12 @@ export const appRouter = router({
                   .where(eq(vessels.id, input.fromVesselId));
               }
 
+              // Clear press runs pointing to the source vessel to prevent stale volume display
+              await tx
+                .update(pressRuns)
+                .set({ vesselId: null, updatedAt: new Date() })
+                .where(eq(pressRuns.vesselId, input.fromVesselId));
+
               // Audit logging for auto-empty
               await publishUpdateEvent(
                 "batches",
@@ -3986,6 +4217,12 @@ export const appRouter = router({
                   })
                   .where(eq(vessels.id, input.fromVesselId));
               }
+
+              // Clear press runs pointing to the source vessel to prevent stale volume display
+              await tx
+                .update(pressRuns)
+                .set({ vesselId: null, updatedAt: new Date() })
+                .where(eq(pressRuns.vesselId, input.fromVesselId));
             }
 
             let updatedBatch;
@@ -4152,6 +4389,12 @@ export const appRouter = router({
                     })
                     .where(eq(vessels.id, input.fromVesselId));
                 }
+
+                // Clear press runs pointing to the source vessel to prevent stale volume display
+                await tx
+                  .update(pressRuns)
+                  .set({ vesselId: null, updatedAt: new Date() })
+                  .where(eq(pressRuns.vesselId, input.fromVesselId));
               }
 
               // Copy composition from source batch to destination batch (for blend traceability)
@@ -4407,6 +4650,7 @@ export const appRouter = router({
                   notes: isPommeauBlend
                     ? "Estimated from Pommeau blend components. For accurate ABV, use ebulliometer or lab analysis."
                     : "Estimated from blend components based on volume-weighted averages.",
+                  createdBy: ctx.session?.user?.id ?? null,
                   createdAt: new Date(),
                   updatedAt: new Date(),
                 });
@@ -4578,6 +4822,7 @@ export const appRouter = router({
                     volumeLiters: measurement.volumeLiters,
                     notes: measurement.notes,
                     takenBy: measurement.takenBy,
+                    createdBy: ctx.session?.user?.id ?? null,
                     createdAt: new Date(),
                     updatedAt: new Date(),
                   });

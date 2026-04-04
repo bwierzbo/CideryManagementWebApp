@@ -295,6 +295,31 @@ export function BatchHistoryModal({
             {measurements.length > 0 && (() => {
               const latestMeasurement = measurements[0];
               const isEst = latestMeasurement?.isEstimated === true;
+              const isPommeau = data.batch.productType === "pommeau";
+              const isBrandy = data.batch.productType === "brandy";
+              const isNonFermenting = isPommeau || isBrandy;
+
+              // For pommeau/brandy, ABV comes from the batch record (not OG-based)
+              // For fermenting products, estimate ABV from OG and current SG
+              const batchAbv = data.batch.actualAbv
+                ? parseFloat(data.batch.actualAbv)
+                : data.batch.estimatedAbv
+                ? parseFloat(data.batch.estimatedAbv)
+                : null;
+              const og = data.batch.originalGravity ? parseFloat(data.batch.originalGravity) : null;
+              const currentSg = latestMeasurement?.specificGravity ?? null;
+              const directAbv = latestMeasurement?.abv ?? null;
+              const ogEstimatedAbv = !isNonFermenting && directAbv === null && og && currentSg
+                ? (og - currentSg) * 131.25
+                : null;
+
+              // Priority: batch actualAbv > measurement abv > OG estimate (fermenting only)
+              const displayAbv = isNonFermenting
+                ? (batchAbv ?? directAbv)
+                : (directAbv ?? ogEstimatedAbv);
+              const isAbvEstimated = isNonFermenting
+                ? (data.batch.actualAbv === null && data.batch.estimatedAbv !== null)
+                : (directAbv === null && ogEstimatedAbv !== null);
               return (
                 <Card>
                   <CardHeader>
@@ -312,11 +337,16 @@ export function BatchHistoryModal({
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-3 bg-white rounded-lg border">
                       <div>
                         <p className="text-xs text-gray-500">ABV</p>
-                        <p className={`font-semibold text-lg ${isEst ? "text-amber-700" : ""}`}>
-                          {latestMeasurement?.abv !== null && latestMeasurement?.abv !== undefined
-                            ? `${latestMeasurement.abv.toFixed(2)}%`
+                        <p className={`font-semibold text-lg ${isEst || isAbvEstimated ? "text-amber-700" : ""}`}>
+                          {displayAbv !== null
+                            ? `${displayAbv.toFixed(2)}%`
                             : "Not measured"}
                         </p>
+                        {isAbvEstimated && (
+                          <p className="text-xs text-amber-600">
+                            {isNonFermenting ? "est. from blend" : "est. from OG"}
+                          </p>
+                        )}
                       </div>
                       <div>
                         <p className="text-xs text-gray-500">pH</p>
@@ -655,7 +685,15 @@ export function BatchHistoryModal({
                             {m.specificGravity?.toFixed(3) || "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {m.abv?.toFixed(1) || "-"}
+                            {m.abv?.toFixed(1) || (() => {
+                              const og = data.batch.originalGravity ? parseFloat(data.batch.originalGravity) : null;
+                              const sg = m.specificGravity ?? null;
+                              if (og && sg) {
+                                const est = (og - sg) * 131.25;
+                                return <span className="text-amber-700" title="Estimated from OG">{est.toFixed(1)}*</span>;
+                              }
+                              return "-";
+                            })()}
                           </TableCell>
                           <TableCell className="text-right">
                             {m.ph?.toFixed(2) || "-"}
