@@ -584,7 +584,7 @@ export default function BatchDetailsPage() {
       </div>
 
       {/* Batch Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-600">
@@ -595,6 +595,40 @@ export default function BatchDetailsPage() {
             <Badge className={getStatusColor(batch.status)}>
               {batch.status}
             </Badge>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">
+              Product Type
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Select
+              value={batch.productType || "cider"}
+              onValueChange={(value) => {
+                updateBatchMutation.mutate({
+                  batchId,
+                  productType: value as any,
+                });
+              }}
+              disabled={updateBatchMutation.isPending}
+            >
+              <SelectTrigger className="h-8 w-full text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="juice">Juice</SelectItem>
+                <SelectItem value="cider">Cider</SelectItem>
+                <SelectItem value="perry">Perry</SelectItem>
+                <SelectItem value="wine">Wine</SelectItem>
+                <SelectItem value="cyser">Cyser</SelectItem>
+                <SelectItem value="brandy">Brandy</SelectItem>
+                <SelectItem value="pommeau">Pommeau</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
