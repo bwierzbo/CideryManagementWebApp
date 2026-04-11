@@ -284,9 +284,20 @@ export function VolumeAdjustmentModal({
 
           {/* New Physical Volume */}
           <div>
-            <Label htmlFor="volumeAfter">
-              New Physical Volume <span className="text-red-500">*</span>
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="volumeAfter">
+                New Physical Volume <span className="text-red-500">*</span>
+              </Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setValue("volumeAfter", 0)}
+                className="h-7 text-xs"
+              >
+                Set to 0 (empty)
+              </Button>
+            </div>
             <VolumeInput
               id="volumeAfter"
               value={volumeAfter}
