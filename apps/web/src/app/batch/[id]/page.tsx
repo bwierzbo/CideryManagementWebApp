@@ -835,6 +835,35 @@ export default function BatchDetailsPage() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-gray-600">
+                      Product Type
+                    </label>
+                    <Select
+                      value={batch.productType || "cider"}
+                      onValueChange={(value) => {
+                        updateBatchMutation.mutate({
+                          batchId,
+                          productType: value as any,
+                        });
+                      }}
+                      disabled={updateBatchMutation.isPending}
+                    >
+                      <SelectTrigger className="h-8 w-full text-sm mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="juice">Juice</SelectItem>
+                        <SelectItem value="cider">Cider</SelectItem>
+                        <SelectItem value="perry">Perry</SelectItem>
+                        <SelectItem value="wine">Wine</SelectItem>
+                        <SelectItem value="cyser">Cyser</SelectItem>
+                        <SelectItem value="brandy">Brandy</SelectItem>
+                        <SelectItem value="pommeau">Pommeau</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600">
                       Created
                     </label>
                     <div className="text-sm text-gray-700">
