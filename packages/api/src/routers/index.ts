@@ -3600,7 +3600,8 @@ export const appRouter = router({
               ? (destCapacityUnit === "gal" ? convertVolume(destMaxCapacityRaw, "gal", "L") : destMaxCapacityRaw)
               : destCapacityL;
             const totalVolumeAfterTransfer = destCurrentVolumeL + input.volumeL;
-            if (totalVolumeAfterTransfer > destMaxCapacityL) {
+            // Use small tolerance (100ml) for floating point comparison
+            if (totalVolumeAfterTransfer > destMaxCapacityL + 0.1) {
               // Show error with values in vessel's native unit for clarity
               const totalInUnit = destCapacityUnit === "gal"
                 ? convertVolume(totalVolumeAfterTransfer, "L", "gal").toFixed(1)
