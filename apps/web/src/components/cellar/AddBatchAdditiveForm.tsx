@@ -470,14 +470,14 @@ export function AddBatchAdditiveForm({
                 <Package className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[400px] p-0" align="start">
+            <PopoverContent className="w-[400px] p-0 z-[200]" align="start" side="bottom" sideOffset={4} avoidCollisions={true} collisionPadding={16}>
               <Command>
                 <CommandInput
                   placeholder={`Search ${selectedAdditiveType.toLowerCase()} inventory...`}
                   value={searchQuery}
                   onValueChange={setSearchQuery}
                 />
-                <CommandList className="max-h-[300px]">
+                <CommandList className="max-h-[200px] overflow-y-auto overscroll-contain">
                   {isLoadingInventory && (
                     <CommandEmpty>
                       <div className="flex items-center justify-center py-6">
