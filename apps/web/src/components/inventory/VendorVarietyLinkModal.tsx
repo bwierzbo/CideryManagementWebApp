@@ -526,11 +526,11 @@ function AddVarietyModal({
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [notes, setNotes] = useState("");
 
-  // Search varieties with debounced query based on variety type
+  // Load all varieties (filtered by search if provided)
   const getSearchQuery = () => {
     if (varietyConfig.type === "baseFruit") {
       return trpc.vendorVariety.search.useQuery(
-        { q: searchQuery, limit: 10 },
+        { q: searchQuery || "", limit: 50 },
         { enabled: searchQuery.length >= 2 },
       );
     } else {
@@ -541,11 +541,11 @@ function AddVarietyModal({
       }
       return apiRouter.list.useQuery(
         {
-          search: searchQuery,
-          limit: 10,
+          search: searchQuery || "",
+          limit: 50,
           offset: 0,
         },
-        { enabled: searchQuery.length >= 2 },
+        { enabled: true },
       );
     }
   };
@@ -615,7 +615,6 @@ function AddVarietyModal({
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    setSelectedVarieties([]);
     setIsCreatingNew(false);
   };
 
@@ -633,9 +632,8 @@ function AddVarietyModal({
 
   const canCreateNew =
     searchQuery.trim().length >= 2 &&
-    varieties.length === 0 &&
-    !varieties.some(
-      (v: any) => v.name.toLowerCase() === searchQuery.toLowerCase(),
+    !allVarieties.some(
+      (v: any) => v.name.toLowerCase() === searchQuery.trim().toLowerCase(),
     );
 
   const handleAttach = async () => {
@@ -759,8 +757,8 @@ function AddVarietyModal({
           />
         </div>
 
-        {/* Search Results */}
-        {searchQuery.length >= 2 && (
+        {/* Search Results — show immediately for non-baseFruit, require 2 chars for baseFruit */}
+        {(varietyConfig.type !== "baseFruit" || searchQuery.length >= 2) && (
           <div className="space-y-2">
             {varieties.length > 0 && (
               <div className="space-y-1">
@@ -830,7 +828,7 @@ function AddVarietyModal({
           </div>
         )}
 
-        {searchQuery.length > 0 && searchQuery.length < 2 && (
+        {varietyConfig.type === "baseFruit" && searchQuery.length > 0 && searchQuery.length < 2 && (
           <p className="text-sm text-gray-500">
             Type at least 2 characters to search
           </p>
