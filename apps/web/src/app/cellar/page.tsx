@@ -1325,6 +1325,15 @@ function VesselMap() {
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
 
+  // Computed batch info for the selected vessel (used in tank action dialog headers)
+  const selectedVesselInfo = selectedVesselId
+    ? liquidMapQuery.data?.vessels.find((v: any) => v.vesselId === selectedVesselId)
+    : null;
+  const selectedVesselBatchName = selectedVesselInfo?.batchCustomName || selectedVesselInfo?.batchNumber || null;
+  const selectedVesselBatchDate = selectedVesselInfo?.batchStartDate
+    ? new Date(selectedVesselInfo.batchStartDate).toLocaleDateString()
+    : null;
+
   const deleteMutation = trpc.vessel.delete.useMutation({
     onSuccess: () => {
       utils.vessel.list.invalidate();
@@ -2593,6 +2602,11 @@ function VesselMap() {
               <DialogTitle>Add Batch Measurement</DialogTitle>
               <DialogDescription>
                 Record measurement data for the batch in this vessel
+                {selectedVesselBatchName && selectedVesselBatchDate && (
+                  <span className="block text-xs mt-1">
+                    Batch: {selectedVesselBatchName} &middot; In vessel since {selectedVesselBatchDate}
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
             {selectedBatchIdForMeasurement && (
@@ -2615,6 +2629,11 @@ function VesselMap() {
               <DialogTitle>Add Tank Additive</DialogTitle>
               <DialogDescription>
                 Record additive addition for this tank
+                {selectedVesselBatchName && selectedVesselBatchDate && (
+                  <span className="block text-xs mt-1">
+                    Batch: {selectedVesselBatchName} &middot; In vessel since {selectedVesselBatchDate}
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
             <TankAdditiveForm
@@ -2631,6 +2650,11 @@ function VesselMap() {
               <DialogTitle>Transfer to Another Tank</DialogTitle>
               <DialogDescription>
                 Move liquid from this tank to another available tank
+                {selectedVesselBatchName && selectedVesselBatchDate && (
+                  <span className="block text-xs mt-1">
+                    Batch: {selectedVesselBatchName} &middot; In vessel since {selectedVesselBatchDate}
+                  </span>
+                )}
               </DialogDescription>
             </DialogHeader>
             <TankTransferForm
