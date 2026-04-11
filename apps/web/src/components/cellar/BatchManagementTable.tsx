@@ -316,7 +316,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
     setShowPommeauBlend(true);
   };
 
-  const handleChangeProductType = (batchId: string, newType: "cider" | "perry" | "brandy" | "pommeau" | "other") => {
+  const handleChangeProductType = (batchId: string, newType: "juice" | "cider" | "perry" | "wine" | "cyser" | "brandy" | "pommeau" | "other") => {
     updateMutation.mutate({
       batchId,
       productType: newType,
@@ -746,6 +746,18 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                                   Perry
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
+                                  onClick={() => handleChangeProductType(batch.id, "wine")}
+                                  disabled={batch.productType === "wine"}
+                                >
+                                  Wine
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleChangeProductType(batch.id, "cyser")}
+                                  disabled={batch.productType === "cyser"}
+                                >
+                                  Cyser
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
                                   onClick={() => handleChangeProductType(batch.id, "brandy")}
                                   disabled={batch.productType === "brandy"}
                                 >
@@ -755,7 +767,7 @@ export function BatchManagementTable({ className }: BatchManagementTableProps) {
                                   onClick={() => handleChangeProductType(batch.id, "pommeau")}
                                   disabled={batch.productType === "pommeau"}
                                 >
-                                  Fortified
+                                  Pommeau
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleChangeProductType(batch.id, "other")}
