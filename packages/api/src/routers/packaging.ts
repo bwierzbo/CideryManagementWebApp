@@ -37,6 +37,7 @@ import {
   organizationSettings,
   inventoryDistributions,
   batchFilterOperations,
+  batchVolumeAdjustments,
 } from "db";
 import { eq, and, desc, isNull, isNotNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -81,6 +82,13 @@ const createFromCellarSchema = z.object({
   kegFillId: z.string().uuid().optional(),
   // Worker-based labor tracking for COGS
   laborAssignments: z.array(laborAssignmentSchema).optional(),
+  // What to do with remaining volume after packaging
+  remainingAction: z.enum(["keep", "loss"]).optional(),
+  // If remainingAction is "loss", what type of loss
+  lossReason: z.enum([
+    "sediment", "evaporation", "spillage", "contamination", "other",
+  ]).optional(),
+  lossNotes: z.string().optional(),
 });
 
 const listPackagingRunsSchema = z.object({
@@ -477,11 +485,30 @@ export const packagingRouter = router({
             // Note: Do NOT update batch volume - it was already deducted when the keg was filled
           } else {
             // Original vessel bottling - update batch volume
-            if (newVolumeL <= MIN_WORKING_VOLUME_L) {
+            const shouldRecordLoss = input.remainingAction === "loss" && newVolumeL > 0;
+            const effectivelyEmpty = newVolumeL <= MIN_WORKING_VOLUME_L || shouldRecordLoss;
+
+            if (effectivelyEmpty) {
+              // Record remaining as volume adjustment if user chose "loss"
+              if (shouldRecordLoss) {
+                await tx.insert(batchVolumeAdjustments).values({
+                  batchId: input.batchId,
+                  vesselId: input.vesselId,
+                  adjustmentDate: input.packagedAt,
+                  adjustmentType: input.lossReason || "sediment",
+                  volumeBefore: newVolumeL.toString(),
+                  volumeAfter: "0",
+                  adjustmentAmount: (-newVolumeL).toString(),
+                  reason: input.lossNotes || `Packaging loss from ${vessel.name} (${newVolumeL.toFixed(3)}L remaining after bottling)`,
+                  adjustedBy: ctx.session.user.id,
+                });
+              }
+
               await tx
                 .update(batches)
                 .set({
                   currentVolume: "0",
+                  currentVolumeLiters: "0",
                   currentVolumeUnit: batch.currentVolumeUnit || "L",
                   status: "completed",
                   vesselId: null,
@@ -504,6 +531,7 @@ export const packagingRouter = router({
                 .update(batches)
                 .set({
                   currentVolume: newVolumeL.toString(),
+                  currentVolumeLiters: newVolumeL.toString(),
                   currentVolumeUnit: batch.currentVolumeUnit || "L",
                   updatedAt: new Date(),
                 })
@@ -511,7 +539,8 @@ export const packagingRouter = router({
             }
           }
 
-          let vesselStatus = (!isBottlingFromKeg && newVolumeL <= MIN_WORKING_VOLUME_L) ? ("cleaning" as any) : vessel.status;
+          const effectivelyEmptyCheck = newVolumeL <= MIN_WORKING_VOLUME_L || (input.remainingAction === "loss" && newVolumeL > 0);
+          let vesselStatus = (!isBottlingFromKeg && effectivelyEmptyCheck) ? ("cleaning" as any) : vessel.status;
 
           // 6. Generate lot code and create inventory item
           const lotCode = generateLotCode(

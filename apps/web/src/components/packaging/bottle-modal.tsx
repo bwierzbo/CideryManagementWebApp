@@ -73,6 +73,8 @@ interface BottleModalProps {
   preBottling?: PreBottlingData;
 }
 
+type InputMode = "volume" | "units";
+
 export function BottleModal({
   open,
   onClose,
@@ -91,6 +93,14 @@ export function BottleModal({
   const [currentMaterialId, setCurrentMaterialId] = useState<string>("");
   const [currentQuantity, setCurrentQuantity] = useState<number>(1);
   const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
+  const [inputMode, setInputMode] = useState<InputMode>("volume");
+  const [unitEntryMode, setUnitEntryMode] = useState<"bottles" | "cases">("bottles");
+  const [casesCount, setCasesCount] = useState<number>(0);
+  const [unitsPerCase, setUnitsPerCase] = useState<number>(12);
+  const [looseBottles, setLooseBottles] = useState<number>(0);
+  const [remainingAction, setRemainingAction] = useState<"keep" | "loss">("keep");
+  const [lossReason, setLossReason] = useState<string>("sediment");
+  const [lossNotes, setLossNotes] = useState<string>("");
 
   // tRPC queries for different packaging types
   const primaryPackagingQuery = trpc.packagingPurchases.listInventory.useQuery({
@@ -135,14 +145,36 @@ export function BottleModal({
   const packageSizeMl = watch("packageSizeMl");
   const unitsProduced = watch("unitsProduced");
 
-  // Auto-calculate units when volume and package size are set
-  // Always recalculate when either value changes
+  // Auto-calculate: volume → units (volume mode) or units → volume (units mode)
   useEffect(() => {
-    if (volumeTakenL && packageSizeMl && !isNaN(volumeTakenL) && !isNaN(packageSizeMl)) {
-      const calculatedUnits = Math.floor((volumeTakenL * 1000) / packageSizeMl);
-      setValue("unitsProduced", calculatedUnits);
+    if (inputMode === "volume") {
+      if (volumeTakenL && packageSizeMl && !isNaN(volumeTakenL) && !isNaN(packageSizeMl)) {
+        const calculatedUnits = Math.floor((volumeTakenL * 1000) / packageSizeMl);
+        setValue("unitsProduced", calculatedUnits);
+      }
     }
-  }, [volumeTakenL, packageSizeMl, setValue]);
+  }, [volumeTakenL, packageSizeMl, setValue, inputMode]);
+
+  // In units mode: calculate volume from units × package size
+  useEffect(() => {
+    if (inputMode === "units") {
+      if (unitsProduced && packageSizeMl && !isNaN(unitsProduced) && !isNaN(packageSizeMl)) {
+        const calculatedVolume = parseFloat(((unitsProduced * packageSizeMl) / 1000).toFixed(3));
+        setValue("volumeTakenL", calculatedVolume);
+      }
+    }
+  }, [unitsProduced, packageSizeMl, setValue, inputMode]);
+
+  // Cases + loose bottles: update total units (only in cases sub-mode)
+  useEffect(() => {
+    if (inputMode === "units" && unitEntryMode === "cases") {
+      const fromCases = (casesCount || 0) * (unitsPerCase || 0);
+      const totalUnits = fromCases + (looseBottles || 0);
+      if (totalUnits >= 0) {
+        setValue("unitsProduced", totalUnits);
+      }
+    }
+  }, [casesCount, unitsPerCase, looseBottles, inputMode, unitEntryMode, setValue]);
 
   // Combine all packaging inventory into one list (memoized to prevent infinite loops)
   const allPackagingItems = useMemo(() => [
@@ -239,6 +271,20 @@ export function BottleModal({
   const lossL = (volumeTakenL && !isNaN(volumeTakenL) ? volumeTakenL : 0) - expectedVolumeL;
   const lossPercentage = volumeTakenL && !isNaN(volumeTakenL) && volumeTakenL > 0 ? (lossL / volumeTakenL) * 100 : 0;
 
+  // Remaining volume in tank after this packaging run
+  const remainingVolumeL = volumeTakenL && !isNaN(volumeTakenL) ? currentVolumeL - volumeTakenL : currentVolumeL;
+  const remainingPercentage = currentVolumeL > 0 ? (remainingVolumeL / currentVolumeL) * 100 : 0;
+  const hasRemaining = remainingVolumeL > 0.01 && volumeTakenL && !isNaN(volumeTakenL) && volumeTakenL < currentVolumeL;
+  // Smart default: if remaining is < 10% of tank, it's probably loss (sediment/dead space)
+  const smartDefaultIsLoss = remainingPercentage < 10;
+
+  // Auto-set remaining action based on smart default when volume changes
+  useEffect(() => {
+    if (hasRemaining) {
+      setRemainingAction(smartDefaultIsLoss ? "loss" : "keep");
+    }
+  }, [hasRemaining, smartDefaultIsLoss]);
+
   // Determine loss status and styling
   const getLossStatus = () => {
     // Use a small epsilon for floating point comparison to handle -0.00 cases
@@ -293,6 +339,14 @@ export function BottleModal({
       setCurrentMaterialId("");
       setCurrentQuantity(1);
       setLaborAssignments([]);
+      setInputMode("volume");
+      setUnitEntryMode("bottles");
+      setCasesCount(0);
+      setUnitsPerCase(12);
+      setLooseBottles(0);
+      setRemainingAction("keep");
+      setLossReason("sediment");
+      setLossNotes("");
     }
   }, [open, reset]);
 
@@ -332,6 +386,14 @@ export function BottleModal({
         // Labor tracking - using worker-based assignments (only include if there are valid assignments)
         ...(validLaborAssignments.length > 0 && {
           laborAssignments: toApiLaborAssignments(validLaborAssignments),
+        }),
+        // Remaining volume handling
+        ...(hasRemaining && {
+          remainingAction,
+          ...(remainingAction === "loss" && {
+            lossReason: lossReason as any,
+            lossNotes: lossNotes || undefined,
+          }),
         }),
       });
 
@@ -380,75 +442,349 @@ export function BottleModal({
             Package from {vesselName}
           </DialogTitle>
           <DialogDescription className="text-sm md:text-base">
-            Package contents from this vessel. Available volume:{" "}
-            {currentVolumeL.toFixed(1)}L
+            Package contents from this vessel.
           </DialogDescription>
-          <PreBottlingBanner data={preBottling} />
         </DialogHeader>
-
-        {/* Package Type Selector (if enabled) */}
-        {showTypeSelector && onTypeChange && (
-          <PackageTypeSelector
-            value="bottles"
-            onChange={onTypeChange}
-            className="pb-4 border-b"
-          />
-        )}
 
         <form
           onSubmit={handleSubmit(handleFormSubmit)}
           className="space-y-4 md:space-y-6"
         >
-          {/* Available tank volume - display only */}
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <Label className="text-sm font-medium text-blue-900">
-              Available Volume in Tank
-            </Label>
-            <p className="text-2xl font-bold text-blue-700 mt-1">
-              {currentVolumeL.toFixed(1)}L
-            </p>
+          {/* 1. Available volume + Filter/Carb summary */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-1">
+            <div className="flex items-baseline justify-between">
+              <Label className="text-sm font-medium text-blue-900">
+                Available Volume
+              </Label>
+              <p className="text-2xl font-bold text-blue-700">
+                {currentVolumeL.toFixed(1)}L
+              </p>
+            </div>
+            <PreBottlingBanner data={preBottling} />
           </div>
 
-          {/* Volume taken */}
+          {/* 2. Date/time */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label
-                htmlFor="volumeTakenL"
-                className="text-sm md:text-base font-medium"
-              >
-                Volume to use for bottling (L) *
-              </Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setValue("volumeTakenL", currentVolumeL)}
-                className="h-7 text-xs"
-              >
-                Use All ({currentVolumeL.toFixed(3)}L)
-              </Button>
-            </div>
+            <Label
+              htmlFor="packagedAt"
+              className="text-sm md:text-base font-medium"
+            >
+              Date/time *
+            </Label>
             <Input
-              id="volumeTakenL"
-              type="text"
-              inputMode="decimal"
-              pattern="^\d*\.?\d+$"
-              max={currentVolumeL}
-              placeholder={`Max ${currentVolumeL.toFixed(1)}L available`}
+              id="packagedAt"
+              type="datetime-local"
               className="h-10 md:h-11 text-base"
-              {...register("volumeTakenL", { valueAsNumber: true })}
+              {...register("packagedAt")}
             />
-            {errors.volumeTakenL && (
+            {errors.packagedAt && (
               <p className="text-sm text-red-600 mt-1">
-                {errors.volumeTakenL.message}
+                {errors.packagedAt.message}
               </p>
             )}
-            <p className="text-xs text-gray-500 mt-1">
-              💡 Use the Use All button to bottle exact volume (avoids small remainders)
-            </p>
           </div>
 
-          {/* Packaging Materials Multi-Select */}
+          {/* 3. Package Type Selector (if enabled) */}
+          {showTypeSelector && onTypeChange && (
+            <PackageTypeSelector
+              value="bottles"
+              onChange={onTypeChange}
+              className="pb-4 border-b"
+            />
+          )}
+
+          {/* 4. Input Mode Toggle */}
+          <div>
+            <Label className="text-sm md:text-base font-medium">
+              How do you want to enter the quantity? *
+            </Label>
+            <div className="flex rounded-lg border overflow-hidden mt-2">
+              <button
+                type="button"
+                className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
+                  inputMode === "volume"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+                onClick={() => {
+                  setInputMode("volume");
+                }}
+              >
+                By Volume (L)
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-2 px-3 text-sm font-medium transition-colors border-l ${
+                  inputMode === "units"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white text-gray-700 hover:bg-gray-50"
+                }`}
+                onClick={() => setInputMode("units")}
+              >
+                By Unit Count
+              </button>
+            </div>
+          </div>
+
+          {/* 5. Volume / Unit Count Input Fields */}
+          <div className="space-y-3">
+            {inputMode === "volume" ? (
+              /* Volume input mode (original behavior) */
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label
+                    htmlFor="volumeTakenL"
+                    className="text-sm md:text-base font-medium"
+                  >
+                    Volume to use for bottling (L)
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setValue("volumeTakenL", currentVolumeL)}
+                    className="h-7 text-xs"
+                  >
+                    Use All ({currentVolumeL.toFixed(3)}L)
+                  </Button>
+                </div>
+                <Input
+                  id="volumeTakenL"
+                  type="text"
+                  inputMode="decimal"
+                  pattern="^\d*\.?\d+$"
+                  max={currentVolumeL}
+                  placeholder={`Max ${currentVolumeL.toFixed(1)}L available`}
+                  className="h-10 md:h-11 text-base"
+                  {...register("volumeTakenL", { valueAsNumber: true })}
+                />
+                {errors.volumeTakenL && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {errors.volumeTakenL.message}
+                  </p>
+                )}
+                {/* Auto-calculated units display */}
+                {unitsProduced !== undefined && !isNaN(unitsProduced) && packageSizeMl && (
+                  <p className="text-xs text-green-600 mt-1">
+                    = {unitsProduced} units ({packageSizeMl}ml each)
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* Unit count input mode */
+              <div className="space-y-3">
+                {!packageSizeMl && (
+                  <p className="text-xs text-amber-600">
+                    Select a primary packaging material below to set the package size
+                  </p>
+                )}
+
+                {/* Bottles vs Cases sub-toggle */}
+                <div className="flex rounded-md border overflow-hidden w-fit">
+                  <button
+                    type="button"
+                    className={`py-1.5 px-3 text-xs font-medium transition-colors ${
+                      unitEntryMode === "bottles"
+                        ? "bg-gray-800 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                    onClick={() => {
+                      setUnitEntryMode("bottles");
+                      setValue("unitsProduced", undefined as unknown as number);
+                      setValue("volumeTakenL", undefined as unknown as number);
+                    }}
+                  >
+                    Bottles
+                  </button>
+                  <button
+                    type="button"
+                    className={`py-1.5 px-3 text-xs font-medium transition-colors border-l ${
+                      unitEntryMode === "cases"
+                        ? "bg-gray-800 text-white"
+                        : "bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                    onClick={() => {
+                      setUnitEntryMode("cases");
+                      setValue("unitsProduced", undefined as unknown as number);
+                      setValue("volumeTakenL", undefined as unknown as number);
+                    }}
+                  >
+                    Cases
+                  </button>
+                </div>
+
+                {unitEntryMode === "bottles" ? (
+                  /* Direct bottle entry */
+                  <div>
+                    <Label
+                      htmlFor="unitsProduced"
+                      className="text-xs text-muted-foreground"
+                    >
+                      Number of bottles/cans
+                    </Label>
+                    <Input
+                      id="unitsProduced"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="^\d+$"
+                      min="0"
+                      placeholder="Number of packages to fill"
+                      className="h-10 md:h-11 text-base"
+                      {...register("unitsProduced", { valueAsNumber: true })}
+                    />
+                    {errors.unitsProduced && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {errors.unitsProduced.message}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  /* Cases + loose bottles entry */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <Label htmlFor="casesCount" className="text-xs text-muted-foreground">
+                          Cases
+                        </Label>
+                        <Input
+                          id="casesCount"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="^\d+$"
+                          value={casesCount || ""}
+                          onChange={(e) => setCasesCount(parseInt(e.target.value) || 0)}
+                          placeholder="0"
+                          className="h-10 md:h-11 text-base"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="unitsPerCase" className="text-xs text-muted-foreground">
+                          Per case
+                        </Label>
+                        <Input
+                          id="unitsPerCase"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="^\d+$"
+                          value={unitsPerCase || ""}
+                          onChange={(e) => setUnitsPerCase(parseInt(e.target.value) || 0)}
+                          placeholder="12"
+                          className="h-10 md:h-11 text-base"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="looseBottles" className="text-xs text-muted-foreground">
+                          + Extra bottles
+                        </Label>
+                        <Input
+                          id="looseBottles"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="^\d+$"
+                          value={looseBottles || ""}
+                          onChange={(e) => setLooseBottles(parseInt(e.target.value) || 0)}
+                          placeholder="0"
+                          className="h-10 md:h-11 text-base"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Totals summary — bottles + volume */}
+                {unitsProduced !== undefined && !isNaN(unitsProduced) && unitsProduced > 0 && (
+                  <div className="p-3 bg-gray-50 border rounded-lg space-y-1.5 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total bottles</span>
+                      <span className="font-medium">
+                        {unitsProduced}
+                        {unitEntryMode === "cases" && casesCount > 0 && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({casesCount} x {unitsPerCase}{looseBottles > 0 ? ` + ${looseBottles}` : ""})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {packageSizeMl && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Volume needed</span>
+                          <span className="font-medium">
+                            {volumeTakenL && !isNaN(volumeTakenL) ? volumeTakenL.toFixed(3) : "—"}L
+                          </span>
+                        </div>
+                        <div className="border-t pt-1.5 flex justify-between">
+                          <span className="text-muted-foreground">Available in tank</span>
+                          <span className="font-medium">{currentVolumeL.toFixed(1)}L</span>
+                        </div>
+                        {(() => {
+                          const remaining = volumeTakenL && !isNaN(volumeTakenL) ? currentVolumeL - volumeTakenL : null;
+                          if (remaining === null) return null;
+                          const isOver = remaining < -0.001;
+                          return (
+                            <>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Remaining</span>
+                                <span className={`font-medium ${isOver ? "text-red-600" : remaining < 0.001 ? "text-green-600" : "text-blue-600"}`}>
+                                  {isOver
+                                    ? `${remaining.toFixed(1)}L (not enough)`
+                                    : `${remaining.toFixed(1)}L`}
+                                </span>
+                              </div>
+                              {remaining > 0.1 && (
+                                <p className="text-xs text-muted-foreground pt-0.5">
+                                  Remaining can be a partial fill or packaging loss.
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Error: exceeds available */}
+                {volumeTakenL && !isNaN(volumeTakenL) && volumeTakenL > currentVolumeL && (
+                  <p className="text-sm text-red-600">
+                    Volume needed exceeds available volume in tank.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Computed loss display — only shown in volume mode since units mode calculates exact volume */}
+          {inputMode === "volume" && volumeTakenL && packageSizeMl && unitsProduced !== undefined && (
+            <div className={`p-3 md:p-4 rounded-lg border ${lossStatus.bg}`}>
+              <div className="flex items-center space-x-2 mb-2">
+                <lossStatus.icon
+                  className={`w-4 h-4 md:w-5 md:h-5 ${lossStatus.color} flex-shrink-0`}
+                />
+                <Label
+                  className={`font-medium ${lossStatus.color} text-sm md:text-base`}
+                >
+                  Computed Loss
+                </Label>
+              </div>
+              <div className="space-y-1">
+                <p
+                  className={`text-base md:text-lg font-semibold ${lossStatus.color}`}
+                >
+                  {isNaN(lossL) ? "0.00" : lossL.toFixed(2)}L ({isNaN(lossPercentage) ? "0.0" : lossPercentage.toFixed(1)}%)
+                </p>
+                <p className={`text-sm ${lossStatus.color}`}>
+                  {lossStatus.message}
+                </p>
+                <p className="text-xs text-gray-600 break-words">
+                  Formula: {isNaN(volumeTakenL) || !volumeTakenL ? "0.0" : volumeTakenL.toFixed(1)}L taken - ({unitsProduced || 0} ×{" "}
+                  {isNaN(unitSizeL) ? "0.000" : unitSizeL.toFixed(3)}L)
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 6. Packaging Materials */}
           <div className="space-y-3">
             <Label className="text-sm md:text-base font-medium">
               Packaging Materials *
@@ -594,99 +930,110 @@ export function BottleModal({
             )}
           </div>
 
-          {/* Units produced with auto-calculation hint */}
-          <div>
-            <Label
-              htmlFor="unitsProduced"
-              className="text-sm md:text-base font-medium"
-            >
-              Units produced *
-            </Label>
-            <Input
-              id="unitsProduced"
-              type="text"
-              inputMode="numeric"
-              pattern="^\d+$"
-              min="0"
-              placeholder={
-                volumeTakenL && packageSizeMl && !isNaN(volumeTakenL) && !isNaN(packageSizeMl)
-                  ? `~${Math.floor(volumeTakenL / (packageSizeMl / 1000))} calculated`
-                  : "Number of packages filled"
-              }
-              className="h-10 md:h-11 text-base"
-              {...register("unitsProduced", { valueAsNumber: true })}
-            />
-            {errors.unitsProduced && (
-              <p className="text-sm text-red-600 mt-1">
-                {errors.unitsProduced.message}
-              </p>
-            )}
-            {volumeTakenL && !isNaN(volumeTakenL) && packageSizeMl && !isNaN(packageSizeMl) && (
-              <p className="text-xs text-green-600 mt-1">
-                💡 Estimated based on volume and package size
-              </p>
-            )}
-          </div>
-
-          {/* Computed loss display */}
-          {volumeTakenL && packageSizeMl && unitsProduced !== undefined && (
-            <div className={`p-3 md:p-4 rounded-lg border ${lossStatus.bg}`}>
-              <div className="flex items-center space-x-2 mb-2">
-                <lossStatus.icon
-                  className={`w-4 h-4 md:w-5 md:h-5 ${lossStatus.color} flex-shrink-0`}
-                />
-                <Label
-                  className={`font-medium ${lossStatus.color} text-sm md:text-base`}
-                >
-                  Computed Loss
+          {/* 7. Remaining volume handling */}
+          {hasRemaining && (
+            <div className="p-3 border rounded-lg space-y-3">
+              <div className="flex items-baseline justify-between">
+                <Label className="text-sm md:text-base font-medium">
+                  Remaining Volume
                 </Label>
+                <span className="text-lg font-bold text-blue-700">
+                  {remainingVolumeL.toFixed(1)}L
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    ({remainingPercentage.toFixed(1)}% of tank)
+                  </span>
+                </span>
               </div>
-              <div className="space-y-1">
-                <p
-                  className={`text-base md:text-lg font-semibold ${lossStatus.color}`}
-                >
-                  {isNaN(lossL) ? "0.00" : lossL.toFixed(2)}L ({isNaN(lossPercentage) ? "0.0" : lossPercentage.toFixed(1)}%)
-                </p>
-                <p className={`text-sm ${lossStatus.color}`}>
-                  {lossStatus.message}
-                </p>
-                <p className="text-xs text-gray-600 break-words">
-                  Formula: {isNaN(volumeTakenL) || !volumeTakenL ? "0.0" : volumeTakenL.toFixed(1)}L taken - ({unitsProduced || 0} ×{" "}
-                  {isNaN(unitSizeL) ? "0.000" : unitSizeL.toFixed(3)}L)
-                </p>
+
+              <div>
+                <Label className="text-sm text-muted-foreground mb-2 block">
+                  What happens to the remaining {remainingVolumeL.toFixed(1)}L?
+                </Label>
+                <div className="flex rounded-lg border overflow-hidden">
+                  <button
+                    type="button"
+                    className={`flex-1 py-2 px-3 text-sm font-medium transition-colors ${
+                      remainingAction === "loss"
+                        ? "bg-amber-600 text-white"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                    onClick={() => setRemainingAction("loss")}
+                  >
+                    Record as Loss
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-2 px-3 text-sm font-medium transition-colors border-l ${
+                      remainingAction === "keep"
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                    onClick={() => setRemainingAction("keep")}
+                  >
+                    Keep in Tank
+                  </button>
+                </div>
+                {smartDefaultIsLoss && remainingAction === "loss" && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Auto-selected: remaining is less than 10% of tank volume
+                  </p>
+                )}
               </div>
+
+              {remainingAction === "loss" && (
+                <div className="space-y-2 pl-1">
+                  <div>
+                    <Label htmlFor="lossReason" className="text-xs text-muted-foreground">
+                      Loss type
+                    </Label>
+                    <Select value={lossReason} onValueChange={setLossReason}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="sediment">Sediment / Lees</SelectItem>
+                        <SelectItem value="evaporation">Evaporation</SelectItem>
+                        <SelectItem value="spillage">Spillage</SelectItem>
+                        <SelectItem value="contamination">Contamination</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="lossNotes" className="text-xs text-muted-foreground">
+                      Notes (optional)
+                    </Label>
+                    <Input
+                      id="lossNotes"
+                      type="text"
+                      value={lossNotes}
+                      onChange={(e) => setLossNotes(e.target.value)}
+                      placeholder="e.g., trub at bottom of tank"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded">
+                    This will record a {remainingVolumeL.toFixed(3)}L volume adjustment, mark the batch as completed, and set the vessel to cleaning.
+                  </p>
+                </div>
+              )}
+
+              {remainingAction === "keep" && (
+                <p className="text-xs text-blue-700 bg-blue-50 p-2 rounded">
+                  The remaining {remainingVolumeL.toFixed(1)}L will stay in the tank for another packaging run.
+                </p>
+              )}
             </div>
           )}
 
-          {/* Date/time */}
-          <div>
-            <Label
-              htmlFor="packagedAt"
-              className="text-sm md:text-base font-medium"
-            >
-              Date/time *
-            </Label>
-            <Input
-              id="packagedAt"
-              type="datetime-local"
-              className="h-10 md:h-11 text-base"
-              {...register("packagedAt")}
-            />
-            {errors.packagedAt && (
-              <p className="text-sm text-red-600 mt-1">
-                {errors.packagedAt.message}
-              </p>
-            )}
-          </div>
-
-          {/* Labor Tracking (optional) */}
+          {/* 8. Labor Tracking (optional) */}
           <WorkerLaborInput
             value={laborAssignments}
             onChange={setLaborAssignments}
             activityLabel="this packaging run"
           />
 
-          {/* Notes */}
+          {/* 8. Notes */}
           <div>
             <Label htmlFor="notes" className="text-sm md:text-base font-medium">
               Notes (optional)
@@ -721,7 +1068,8 @@ export function BottleModal({
                 !volumeTakenL ||
                 selectedMaterials.length === 0 ||
                 !packageSizeMl ||
-                unitsProduced === undefined
+                unitsProduced === undefined ||
+                (inputMode === "units" && volumeTakenL > currentVolumeL)
               }
               className="w-full sm:w-auto h-10 md:h-11"
             >
