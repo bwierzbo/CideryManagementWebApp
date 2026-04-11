@@ -1977,8 +1977,9 @@ export const batchRouter = router({
         // If non-apple/pear fruit is added to a cider/perry batch, reclassify as wine (TTB IC 17-2)
         let reclassifiedAsWine = false;
         let reclassifiedAsCyser = false;
+        const isFruitAdditive = input.additiveType === "Fruit/Fruit Product";
         if (
-          input.additiveType === "Fruit/Fruit Product" &&
+          isFruitAdditive &&
           !input.isApplePearFruit &&
           (batchData[0].productType === "cider" || batchData[0].productType === "perry")
         ) {

@@ -268,8 +268,9 @@ export function AddBatchAdditiveForm({
       return;
     }
 
-    // Use the selected type from dropdown as fallback if varietyItemType is null
-    const additiveType = selectedInventoryItem.varietyItemType || selectedAdditiveType;
+    // Use the user's dropdown selection as the authoritative type for classification purposes
+    // (varietyItemType from inventory can differ, e.g., "Flavorings & Adjuncts" for a fruit item)
+    const additiveType = selectedAdditiveType;
     const additiveName = selectedInventoryItem.varietyName || selectedInventoryItem.productName || "Unknown";
 
     if (!additiveType || !additiveName) {
