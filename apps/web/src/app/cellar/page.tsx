@@ -2028,12 +2028,7 @@ function VesselMap() {
                         <p className="text-sm font-medium text-gray-900">
                           {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
                         </p>
-                        {liquidMapVessel.isBlend && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded shrink-0">
-                            Blend
-                          </span>
-                        )}
-                        {liquidMapVessel.productType && !["cider", "juice"].includes(liquidMapVessel.productType) && (
+                        {liquidMapVessel.productType && !["cider", "juice"].includes(liquidMapVessel.productType) ? (
                           <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded shrink-0 ${
                             liquidMapVessel.productType === "cyser" ? "bg-amber-100 text-amber-700" :
                             liquidMapVessel.productType === "pommeau" ? "bg-orange-100 text-orange-700" :
@@ -2044,7 +2039,11 @@ function VesselMap() {
                           }`}>
                             {liquidMapVessel.productType.charAt(0).toUpperCase() + liquidMapVessel.productType.slice(1)}
                           </span>
-                        )}
+                        ) : liquidMapVessel.isBlend ? (
+                          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded shrink-0">
+                            Blend
+                          </span>
+                        ) : null}
                       </div>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
