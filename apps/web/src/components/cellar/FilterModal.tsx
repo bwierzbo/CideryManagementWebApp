@@ -195,7 +195,17 @@ export function FilterModal({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit, (errors) => {
+          // Surface validation errors that would otherwise be silent
+          const firstError = Object.values(errors)[0];
+          if (firstError?.message) {
+            toast({
+              title: "Validation Error",
+              description: String(firstError.message),
+              variant: "destructive",
+            });
+          }
+        })} className="space-y-4">
           <div>
             <Label htmlFor="filteredAt">
               Filter Date & Time <span className="text-red-500">*</span>
@@ -206,7 +216,7 @@ export function FilterModal({
               onChange={(e) => {
                 if (e.target.value) {
                   const dateValue = parseDateTimeFromInput(e.target.value);
-                  setValue("filteredAt", dateValue);
+                  setValue("filteredAt", dateValue, { shouldValidate: true });
                   const result = validateDate(dateValue);
                   setDateWarning(result.warning);
                 }
@@ -225,7 +235,7 @@ export function FilterModal({
             <Label htmlFor="filterType">Filter Type</Label>
             <Select
               value={filterType}
-              onValueChange={(value) => setValue("filterType", value as any)}
+              onValueChange={(value) => setValue("filterType", value as any, { shouldValidate: true })}
             >
               <SelectTrigger className="mt-1">
                 <SelectValue placeholder="Select filter type" />
