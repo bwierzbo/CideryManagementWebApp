@@ -352,13 +352,11 @@ export function FilterModal({
             <Button
               type="button"
               disabled={filterMutation.isPending}
-              onClick={() => {
-                window.alert(`Button clicked! filterType=${filterType}, volumeBefore=${volumeBefore}, volumeAfter=${volumeAfter}, filteredAt=${filteredAt}`);
-                // Bypass react-hook-form — call mutation directly with watched values
+              onClick={async () => {
                 if (!filterType || !volumeBefore || !volumeAfter || !filteredAt) {
                   toast({
                     title: "Missing Fields",
-                    description: `Please fill in all required fields. filterType=${filterType}, volumeBefore=${volumeBefore}, volumeAfter=${volumeAfter}, filteredAt=${filteredAt}`,
+                    description: "Please fill in all required fields",
                     variant: "destructive",
                   });
                   return;
@@ -371,20 +369,25 @@ export function FilterModal({
                   });
                   return;
                 }
-                const beforeL = volumeBeforeUnit === "gal" ? convertVolume(volumeBefore, "gal", "L") : volumeBefore;
-                const afterL = volumeAfterUnit === "gal" ? convertVolume(volumeAfter, "gal", "L") : volumeAfter;
-                filterMutation.mutate({
-                  batchId,
-                  vesselId,
-                  filterType,
-                  volumeBefore: beforeL,
-                  volumeBeforeUnit: "L",
-                  volumeAfter: afterL,
-                  volumeAfterUnit: "L",
-                  filteredAt,
-                  filteredBy: undefined,
-                  notes: watch("notes"),
-                });
+                try {
+                  const beforeL = volumeBeforeUnit === "gal" ? convertVolume(volumeBefore, "gal", "L") : volumeBefore;
+                  const afterL = volumeAfterUnit === "gal" ? convertVolume(volumeAfter, "gal", "L") : volumeAfter;
+                  await filterMutation.mutateAsync({
+                    batchId,
+                    vesselId,
+                    filterType,
+                    volumeBefore: beforeL,
+                    volumeBeforeUnit: "L",
+                    volumeAfter: afterL,
+                    volumeAfterUnit: "L",
+                    filteredAt,
+                    filteredBy: undefined,
+                    notes: watch("notes"),
+                  });
+                } catch (err: any) {
+                  console.error("Filter mutation error:", err);
+                  window.alert("Filter error: " + (err?.message || JSON.stringify(err)));
+                }
               }}
             >
               {filterMutation.isPending ? "Filtering..." : "Record Filter Operation"}
