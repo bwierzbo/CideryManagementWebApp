@@ -4303,6 +4303,22 @@ export const appRouter = router({
                   : `🍎🥃 Pommeau blend created! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${otherVolumeL.toFixed(1)}L ${otherLabel} @ ${otherAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`;
               }
 
+              // For non-pommeau blends: propagate wine/cyser classification
+              // If either source or destination is wine/cyser, the blend inherits that type
+              // (wine takes priority over cyser, which takes priority over cider/perry)
+              if (!isPommeauBlend) {
+                const typeRank: Record<string, number> = {
+                  juice: 0, cider: 1, perry: 2, cyser: 3, wine: 4, other: 5,
+                };
+                const sourceRank = typeRank[sourceProductType] ?? 1;
+                const destRank = typeRank[destProductType] ?? 1;
+                if (sourceRank > destRank) {
+                  newProductType = sourceProductType;
+                } else if (destRank > sourceRank) {
+                  newProductType = destProductType;
+                }
+              }
+
               // For non-pommeau blends, compute volume-weighted ABV from batch values
               if (!isPommeauBlend) {
                 const srcAbv = parseFloat(sourceBatch[0].actualAbv || sourceBatch[0].estimatedAbv || "0");

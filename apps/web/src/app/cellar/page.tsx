@@ -2028,22 +2028,24 @@ function VesselMap() {
                         <p className="text-sm font-medium text-gray-900">
                           {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
                         </p>
-                        {liquidMapVessel.productType && !["cider", "juice"].includes(liquidMapVessel.productType) ? (
-                          <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded shrink-0 ${
-                            liquidMapVessel.productType === "cyser" ? "bg-amber-100 text-amber-700" :
-                            liquidMapVessel.productType === "pommeau" ? "bg-orange-100 text-orange-700" :
-                            liquidMapVessel.productType === "brandy" ? "bg-red-100 text-red-700" :
-                            liquidMapVessel.productType === "perry" ? "bg-green-100 text-green-700" :
-                            liquidMapVessel.productType === "wine" ? "bg-rose-100 text-rose-700" :
-                            "bg-gray-100 text-gray-700"
-                          }`}>
-                            {liquidMapVessel.productType.charAt(0).toUpperCase() + liquidMapVessel.productType.slice(1)}
-                          </span>
-                        ) : liquidMapVessel.isBlend ? (
-                          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-purple-100 text-purple-700 rounded shrink-0">
-                            Blend
-                          </span>
-                        ) : null}
+                        {(() => {
+                          const pt = liquidMapVessel.productType || "cider";
+                          const badgeStyle =
+                            pt === "cider" ? "bg-yellow-100 text-yellow-800" :
+                            pt === "perry" ? "bg-green-100 text-green-700" :
+                            pt === "wine" ? "bg-rose-100 text-rose-700" :
+                            pt === "cyser" ? "bg-amber-100 text-amber-700" :
+                            pt === "pommeau" ? "bg-orange-100 text-orange-700" :
+                            pt === "brandy" ? "bg-red-100 text-red-700" :
+                            pt === "juice" ? "bg-blue-100 text-blue-700" :
+                            "bg-gray-100 text-gray-700";
+                          const label = pt.charAt(0).toUpperCase() + pt.slice(1);
+                          return (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded shrink-0 ${badgeStyle}`}>
+                              {label}
+                            </span>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <p className="text-xs text-gray-400 italic">
