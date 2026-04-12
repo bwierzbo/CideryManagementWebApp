@@ -351,17 +351,39 @@ export function FilterModal({
             </Button>
             <Button
               type="button"
-              disabled={filterMutation.isPending || !volumeAfter || volumeAfter > volumeBefore}
+              disabled={filterMutation.isPending || !volumeAfter || !filterType || volumeAfter > volumeBefore}
               onClick={() => {
-                handleSubmit(onSubmit, (errs) => {
-                  console.error("Filter form validation errors:", errs);
-                  const firstError = Object.values(errs)[0];
+                // Bypass react-hook-form — call mutation directly with watched values
+                if (!filterType || !volumeBefore || !volumeAfter || !filteredAt) {
                   toast({
-                    title: "Validation Error",
-                    description: firstError?.message ? String(firstError.message) : "Please check the form fields",
+                    title: "Missing Fields",
+                    description: `Please fill in all required fields. filterType=${filterType}, volumeBefore=${volumeBefore}, volumeAfter=${volumeAfter}, filteredAt=${filteredAt}`,
                     variant: "destructive",
                   });
-                })();
+                  return;
+                }
+                if (volumeAfter > volumeBefore) {
+                  toast({
+                    title: "Invalid Volumes",
+                    description: "Volume after filtering cannot exceed volume before",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                const beforeL = volumeBeforeUnit === "gal" ? convertVolume(volumeBefore, "gal", "L") : volumeBefore;
+                const afterL = volumeAfterUnit === "gal" ? convertVolume(volumeAfter, "gal", "L") : volumeAfter;
+                filterMutation.mutate({
+                  batchId,
+                  vesselId,
+                  filterType,
+                  volumeBefore: beforeL,
+                  volumeBeforeUnit: "L",
+                  volumeAfter: afterL,
+                  volumeAfterUnit: "L",
+                  filteredAt,
+                  filteredBy: undefined,
+                  notes: watch("notes"),
+                });
               }}
             >
               {filterMutation.isPending ? "Filtering..." : "Record Filter Operation"}
