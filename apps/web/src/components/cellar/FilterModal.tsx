@@ -82,6 +82,7 @@ export function FilterModal({
   } = useForm<FilterForm>({
     resolver: zodResolver(filterSchema),
     defaultValues: {
+      filterType: "fine" as const,
       volumeBeforeUnit: "L",
       volumeAfterUnit: "L",
       volumeBefore: currentVolumeL,
@@ -127,11 +128,13 @@ export function FilterModal({
   useEffect(() => {
     if (open) {
       reset({
+        filterType: "fine" as const,
         volumeBefore: currentVolumeL,
-        volumeAfter: currentVolumeL, // Default to 0 loss
+        volumeAfter: currentVolumeL,
         volumeBeforeUnit: "L",
         volumeAfterUnit: "L",
         filteredAt: new Date(),
+        notes: "",
       });
     }
   }, [open, currentVolumeL, reset]);
@@ -159,6 +162,7 @@ export function FilterModal({
   });
 
   const onSubmit = (data: FilterForm) => {
+    console.log("Filter form submitted with data:", data);
     if (data.volumeAfter > data.volumeBefore) {
       toast({
         title: "Invalid Volumes",
@@ -326,6 +330,18 @@ export function FilterModal({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Show any form errors */}
+          {Object.keys(errors).length > 0 && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              <p className="font-medium">Please fix the following:</p>
+              <ul className="list-disc pl-4 mt-1">
+                {Object.entries(errors).map(([key, err]) => (
+                  <li key={key}>{key}: {(err as any)?.message || "Invalid"}</li>
+                ))}
+              </ul>
             </div>
           )}
 
