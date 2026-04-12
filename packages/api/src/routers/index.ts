@@ -3470,6 +3470,27 @@ export const appRouter = router({
           }
         }
 
+        // Auto-fix: if a vessel has an active batch but status is not "available", correct it
+        const vesselStatusFixes: string[] = [];
+        for (const vessel of vesselsWithBatches) {
+          if (vessel.batchId && vessel.vesselStatus !== "available") {
+            vesselStatusFixes.push(vessel.vesselId);
+          }
+        }
+        if (vesselStatusFixes.length > 0) {
+          await db
+            .update(vessels)
+            .set({ status: "available" as any, updatedAt: new Date() })
+            .where(inArray(vessels.id, vesselStatusFixes));
+          // Update in-memory data to reflect the fix
+          for (const vessel of vesselsWithBatches) {
+            if (vesselStatusFixes.includes(vessel.vesselId)) {
+              (vessel as any).vesselStatus = "available";
+            }
+          }
+          console.log(`Auto-fixed vessel status for ${vesselStatusFixes.length} vessels with active batches`);
+        }
+
         // Combine vessel data with measurements and last activity
         const vesselsWithMeasurements = vesselsWithBatches.map((vessel) => ({
           ...vessel,
