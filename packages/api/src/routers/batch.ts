@@ -4564,17 +4564,17 @@ export const batchRouter = router({
           });
         }
 
-        // Verify vessel is in use
+        // Verify vessel exists
         const vesselData = await db
           .select({ status: vessels.status })
           .from(vessels)
           .where(eq(vessels.id, input.vesselId))
           .limit(1);
 
-        if (!vesselData.length || vesselData[0].status !== "available") {
+        if (!vesselData.length) {
           throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Filtering is only available when vessel is available (current status: ${vesselData[0]?.status || 'unknown'})`,
+            code: "NOT_FOUND",
+            message: "Vessel not found",
           });
         }
 

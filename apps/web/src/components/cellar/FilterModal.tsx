@@ -385,8 +385,7 @@ export function FilterModal({
                     notes: watch("notes"),
                   });
                 } catch (err: any) {
-                  console.error("Filter mutation error:", err);
-                  window.alert("Filter error: " + (err?.message || JSON.stringify(err)));
+                  // Error already handled by onError callback in mutation definition
                 }
               }}
             >
