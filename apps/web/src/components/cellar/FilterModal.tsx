@@ -351,8 +351,9 @@ export function FilterModal({
             </Button>
             <Button
               type="button"
-              disabled={filterMutation.isPending || !volumeAfter || !filterType || volumeAfter > volumeBefore}
+              disabled={filterMutation.isPending}
               onClick={() => {
+                window.alert(`Button clicked! filterType=${filterType}, volumeBefore=${volumeBefore}, volumeAfter=${volumeAfter}, filteredAt=${filteredAt}`);
                 // Bypass react-hook-form — call mutation directly with watched values
                 if (!filterType || !volumeBefore || !volumeAfter || !filteredAt) {
                   toast({
