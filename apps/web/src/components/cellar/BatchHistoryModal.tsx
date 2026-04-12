@@ -24,6 +24,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -286,6 +293,33 @@ export function BatchHistoryModal({
                     <p className="font-semibold">
                       {formatDate(batch.startDate)}
                     </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Product Type</p>
+                    <Select
+                      value={batch.productType || "cider"}
+                      onValueChange={(value) => {
+                        updateBatch.mutate({
+                          batchId: batch.id,
+                          productType: value as any,
+                        });
+                      }}
+                      disabled={updateBatch.isPending}
+                    >
+                      <SelectTrigger className="h-8 w-full text-sm mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="juice">Juice</SelectItem>
+                        <SelectItem value="cider">Cider</SelectItem>
+                        <SelectItem value="perry">Perry</SelectItem>
+                        <SelectItem value="wine">Wine</SelectItem>
+                        <SelectItem value="cyser">Cyser</SelectItem>
+                        <SelectItem value="brandy">Brandy</SelectItem>
+                        <SelectItem value="pommeau">Pommeau</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </CardContent>
