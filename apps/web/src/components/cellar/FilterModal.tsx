@@ -350,8 +350,19 @@ export function FilterModal({
               Cancel
             </Button>
             <Button
-              type="submit"
+              type="button"
               disabled={filterMutation.isPending || !volumeAfter || volumeAfter > volumeBefore}
+              onClick={() => {
+                handleSubmit(onSubmit, (errs) => {
+                  console.error("Filter form validation errors:", errs);
+                  const firstError = Object.values(errs)[0];
+                  toast({
+                    title: "Validation Error",
+                    description: firstError?.message ? String(firstError.message) : "Please check the form fields",
+                    variant: "destructive",
+                  });
+                })();
+              }}
             >
               {filterMutation.isPending ? "Filtering..." : "Record Filter Operation"}
             </Button>
