@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Plus,
   Trash2,
@@ -602,7 +603,11 @@ export function PackagingTransactionForm({
                       {/* Packaging Selection */}
                       <div>
                         <Label>Packaging</Label>
-                        <Select
+                        <SearchableSelect
+                          options={vendorPackaging.map((packaging: any) => ({
+                            value: packaging.id,
+                            label: packaging.name,
+                          }))}
                           value={line.packagingId}
                           onValueChange={(value) => {
                             const newLines = [...lines];
@@ -613,29 +618,16 @@ export function PackagingTransactionForm({
                           disabled={
                             !selectedVendorId || vendorPackaging.length === 0
                           }
-                        >
-                          <SelectTrigger className="h-12">
-                            <SelectValue
-                              placeholder={
-                                !selectedVendorId
-                                  ? "Select a vendor first"
-                                  : vendorPackaging.length === 0
-                                    ? "No packaging for this vendor"
-                                    : "Select packaging"
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-[300px] overflow-y-auto">
-                            {vendorPackaging.map((packaging: any) => (
-                              <SelectItem
-                                key={packaging.id}
-                                value={packaging.id}
-                              >
-                                {packaging.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          placeholder={
+                            !selectedVendorId
+                              ? "Select a vendor first"
+                              : vendorPackaging.length === 0
+                                ? "No packaging for this vendor"
+                                : "Select packaging"
+                          }
+                          searchPlaceholder="Type to search packaging..."
+                          emptyText="No matching packaging found"
+                        />
                         {line.validationError && (
                           <p className="text-sm text-red-600 mt-1">
                             {line.validationError}

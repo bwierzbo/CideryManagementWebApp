@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertTriangle, CheckCircle, Plus, X } from "lucide-react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { useDateFormat } from "@/hooks/useDateFormat";
@@ -797,75 +798,23 @@ export function BottleModal({
             <Card className="p-3 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <Select
+                  <SearchableSelect
+                    options={allPackagingItems.map((item) => ({
+                      value: item.id,
+                      label: `${item.varietyName || item.size} (${item.quantity} avail)`,
+                      description: item.type,
+                    }))}
                     value={currentMaterialId}
                     onValueChange={setCurrentMaterialId}
-                  >
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select packaging material" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {primaryPackagingQuery.isLoading || capsQuery.isLoading || labelsQuery.isLoading ? (
-                        <SelectItem value="loading" disabled>
-                          Loading materials...
-                        </SelectItem>
-                      ) : allPackagingItems.length > 0 ? (
-                        <>
-                          {/* Primary Packaging Group */}
-                          {allPackagingItems.filter(i => i.type === "Primary Packaging").length > 0 && (
-                            <>
-                              <SelectItem value="primary-header" disabled className="font-semibold">
-                                Primary Packaging
-                              </SelectItem>
-                              {allPackagingItems
-                                .filter(i => i.type === "Primary Packaging")
-                                .map((item) => (
-                                  <SelectItem key={item.id} value={item.id}>
-                                    {item.varietyName || item.size} - Available: {item.quantity}
-                                  </SelectItem>
-                                ))}
-                            </>
-                          )}
-
-                          {/* Caps Group */}
-                          {allPackagingItems.filter(i => i.type === "Caps").length > 0 && (
-                            <>
-                              <SelectItem value="caps-header" disabled className="font-semibold">
-                                Caps
-                              </SelectItem>
-                              {allPackagingItems
-                                .filter(i => i.type === "Caps")
-                                .map((item) => (
-                                  <SelectItem key={item.id} value={item.id}>
-                                    {item.varietyName || item.size} - Available: {item.quantity}
-                                  </SelectItem>
-                                ))}
-                            </>
-                          )}
-
-                          {/* Labels Group */}
-                          {allPackagingItems.filter(i => i.type === "Labels").length > 0 && (
-                            <>
-                              <SelectItem value="labels-header" disabled className="font-semibold">
-                                Labels
-                              </SelectItem>
-                              {allPackagingItems
-                                .filter(i => i.type === "Labels")
-                                .map((item) => (
-                                  <SelectItem key={item.id} value={item.id}>
-                                    {item.varietyName || item.size} - Available: {item.quantity}
-                                  </SelectItem>
-                                ))}
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <SelectItem value="none" disabled>
-                          No packaging materials available
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                    placeholder={
+                      primaryPackagingQuery.isLoading ? "Loading materials..." :
+                      allPackagingItems.length === 0 ? "No materials available" :
+                      "Select packaging material"
+                    }
+                    searchPlaceholder="Type to search materials..."
+                    emptyText="No matching materials"
+                    disabled={primaryPackagingQuery.isLoading}
+                  />
                 </div>
 
                 <div className="flex gap-2">
