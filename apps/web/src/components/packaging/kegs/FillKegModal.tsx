@@ -192,11 +192,17 @@ export function FillKegModal({
 
       // Handle volume auto-fill/removal based on current state
       if (!isCurrentlySelected) {
-        // About to select - auto-fill with keg capacity
+        // About to select - auto-fill with min(keg capacity, remaining available volume)
         const keg = availableKegs.find(k => k.id === kegId);
         if (keg) {
           const capacityL = keg.capacityML / 1000;
-          setKegVolumes(volumes => ({...volumes, [kegId]: capacityL}));
+          // Calculate how much volume is already allocated to other selected kegs
+          const alreadyAllocated = selectedKegIds.reduce(
+            (sum, id) => sum + (kegVolumes[id] || 0), 0
+          );
+          const remainingAvailable = currentVolumeL - alreadyAllocated;
+          const defaultVolume = Math.min(capacityL, Math.max(0, remainingAvailable));
+          setKegVolumes(volumes => ({...volumes, [kegId]: parseFloat(defaultVolume.toFixed(3))}));
         }
       } else {
         // About to deselect - remove volume
@@ -279,7 +285,7 @@ export function FillKegModal({
     (sum, kegId) => sum + (kegVolumes[kegId] || 0),
     0
   );
-  const exceedsCapacity = totalVolumeTaken > currentVolumeL;
+  const exceedsCapacity = totalVolumeTaken > currentVolumeL + 0.1;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

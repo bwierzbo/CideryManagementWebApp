@@ -597,14 +597,41 @@ export const packagingRouter = router({
           }
 
           // 7. Track packaging materials used and deduct from inventory (if provided)
+          const materialWarnings: string[] = [];
           if (input.materials && input.materials.length > 0) {
             for (const material of input.materials) {
-              // Insert material tracking record
+              // Look up cost per unit to snapshot at time of packaging
+              const [purchaseItem] = await tx
+                .select({
+                  pricePerUnit: packagingPurchaseItems.pricePerUnit,
+                  quantity: packagingPurchaseItems.quantity,
+                  quantityUsed: packagingPurchaseItems.quantityUsed,
+                })
+                .from(packagingPurchaseItems)
+                .where(eq(packagingPurchaseItems.id, material.packagingPurchaseItemId))
+                .limit(1);
+
+              const costPerUnit = purchaseItem?.pricePerUnit
+                ? parseFloat(purchaseItem.pricePerUnit.toString())
+                : null;
+
+              // Check available stock
+              const available = purchaseItem
+                ? (purchaseItem.quantity || 0) - (purchaseItem.quantityUsed || 0)
+                : 0;
+              if (available < material.quantityUsed) {
+                materialWarnings.push(
+                  `${material.materialType}: requested ${material.quantityUsed} but only ${available} available`
+                );
+              }
+
+              // Insert material tracking record with cost snapshot
               await tx.insert(bottleRunMaterials).values({
                 bottleRunId: packagingRun.id,
                 packagingPurchaseItemId: material.packagingPurchaseItemId,
                 quantityUsed: material.quantityUsed,
                 materialType: material.materialType,
+                costPerUnit: costPerUnit?.toString() ?? null,
                 createdBy: ctx.session.user.id,
               });
 
@@ -661,6 +688,7 @@ export const packagingRouter = router({
             vesselStatus: vesselStatus,
             inventoryItemId: inventoryItem.id,
             lotCode: lotCode,
+            materialWarnings,
           };
         });
       } catch (error) {

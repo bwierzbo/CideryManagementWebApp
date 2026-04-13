@@ -307,6 +307,8 @@ export const bottleRunMaterials = pgTable(
     quantityUsed: integer("quantity_used").notNull(),
     // Material type for reporting (bottles, caps, labels, etc.)
     materialType: text("material_type").notNull(), // e.g., "Primary Packaging", "Caps", "Labels"
+    // Cost snapshot at time of packaging (prevents retroactive COGS changes if purchase price is edited)
+    costPerUnit: decimal("cost_per_unit", { precision: 8, scale: 4 }),
     // Audit fields
     createdAt: timestamp("created_at").notNull().defaultNow(),
     createdBy: uuid("created_by")
