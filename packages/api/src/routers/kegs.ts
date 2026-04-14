@@ -56,6 +56,32 @@ const createKegSchema = z.object({
   notes: z.string().optional(),
 });
 
+const bulkCreateKegsSchema = z.object({
+  kegNumberPrefix: z.string().min(1, "Prefix is required"), // e.g., "KEG"
+  startNumber: z.number().int().positive("Start number must be positive"),
+  quantity: z.number().int().min(1).max(200, "Maximum 200 kegs per batch"),
+  kegType: z.enum([
+    "cornelius_5L",
+    "cornelius_9L",
+    "sanke_20L",
+    "sanke_30L",
+    "sanke_50L",
+    "other",
+  ]),
+  capacityML: z.number().positive("Capacity must be positive"),
+  capacityUnit: z.enum(["kg", "lb", "L", "gal", "bushel"]).default("L"),
+  purchaseDate: z
+    .date()
+    .or(z.string().transform((val) => new Date(val)))
+    .optional(),
+  purchaseCost: z.number().positive().optional(),
+  currentLocation: z.string().default("cellar"),
+  condition: z
+    .enum(["excellent", "good", "fair", "needs_repair", "retired"])
+    .optional(),
+  notes: z.string().optional(),
+});
+
 const updateKegSchema = z.object({
   kegId: z.string().uuid(),
   kegNumber: z.string().min(1).optional(),
@@ -713,6 +739,81 @@ export const kegsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to create keg",
+        });
+      }
+    }),
+
+  /**
+   * Bulk create kegs with sequential numbering
+   */
+  bulkCreateKegs: createRbacProcedure("create", "package")
+    .input(bulkCreateKegsSchema)
+    .mutation(async ({ input }) => {
+      try {
+        const kegsToCreate = [];
+        const skipped: string[] = [];
+
+        for (let i = 0; i < input.quantity; i++) {
+          const num = input.startNumber + i;
+          const kegNumber = `${input.kegNumberPrefix}-${String(num).padStart(3, "0")}`;
+
+          // Check for existing keg with this number
+          const existing = await db
+            .select({ id: kegs.id })
+            .from(kegs)
+            .where(and(eq(kegs.kegNumber, kegNumber), isNull(kegs.deletedAt)))
+            .limit(1);
+
+          if (existing.length > 0) {
+            skipped.push(kegNumber);
+            continue;
+          }
+
+          kegsToCreate.push({
+            kegNumber,
+            kegType: input.kegType,
+            capacityML: input.capacityML,
+            capacityUnit: input.capacityUnit,
+            purchaseDate: input.purchaseDate
+              ? input.purchaseDate instanceof Date
+                ? input.purchaseDate.toISOString().split("T")[0]
+                : String(input.purchaseDate)
+              : null,
+            purchaseCost: input.purchaseCost?.toString(),
+            currentLocation: input.currentLocation,
+            condition: input.condition,
+            notes: input.notes,
+            status: "available" as const,
+          });
+        }
+
+        if (kegsToCreate.length === 0) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: skipped.length > 0
+              ? `All ${input.quantity} keg numbers already exist (${skipped.join(", ")})`
+              : "No kegs to create",
+          });
+        }
+
+        const created = await db.insert(kegs).values(kegsToCreate).returning({
+          id: kegs.id,
+          kegNumber: kegs.kegNumber,
+        });
+
+        return {
+          created: created.length,
+          skipped: skipped.length,
+          skippedNumbers: skipped,
+          firstKeg: created[0]?.kegNumber,
+          lastKeg: created[created.length - 1]?.kegNumber,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        console.error("Error bulk creating kegs:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to bulk create kegs",
         });
       }
     }),
