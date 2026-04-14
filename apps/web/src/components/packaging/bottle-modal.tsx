@@ -407,9 +407,10 @@ export function BottleModal({
       }
 
       // Show success toast with option to view packaging run
+      const lossDisplay = typeof result.lossL === "number" ? `${result.lossL.toFixed(2)}L (${(result.lossPercentage ?? 0).toFixed(1)}%)` : "0L";
       toast({
         title: "Packaging Run Created",
-        description: `Successfully packaged ${data.unitsProduced} units from ${vesselName}. Loss: ${result.lossL.toFixed(2)}L (${result.lossPercentage.toFixed(1)}%)`,
+        description: `Successfully packaged ${data.unitsProduced} units from ${vesselName}. Loss: ${lossDisplay}`,
       });
 
       console.log("Packaging run created:", result);
@@ -448,7 +449,14 @@ export function BottleModal({
         </DialogHeader>
 
         <form
-          onSubmit={handleSubmit(handleFormSubmit)}
+          onSubmit={handleSubmit(handleFormSubmit, (validationErrors) => {
+            const firstError = Object.entries(validationErrors)[0];
+            toast({
+              title: "Validation Error",
+              description: firstError ? `${firstError[0]}: ${firstError[1]?.message}` : "Please check the form",
+              variant: "destructive",
+            });
+          })}
           className="space-y-4 md:space-y-6"
         >
           {/* 1. Available volume + Filter/Carb summary */}
