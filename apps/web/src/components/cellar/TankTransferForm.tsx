@@ -33,6 +33,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { VolumeDisplay } from "@/components/ui/volume-input";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 const transferSchema = z.object({
   fromVesselId: z.string().uuid("Select source vessel"),
@@ -96,6 +97,8 @@ export function TankTransferForm({
 
   // Unit selector state - default to source vessel's unit
   const [displayUnit, setDisplayUnit] = useState<"L" | "gal">("L");
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
+  const [lossType, setLossType] = useState<string>("sediment");
 
   // Update display unit when vessel data loads
   React.useEffect(() => {
@@ -134,10 +137,10 @@ export function TankTransferForm({
   // Convert current volume to display unit
   const currentVolume = fromLiters(currentVolumeL, displayUnit);
 
-  // Get available destination vessels (exclude current vessel, only available vessels)
+  // Get available destination vessels (include source vessel for rack-to-self)
   const availableVessels =
     vesselListQuery.data?.vessels?.filter(
-      (vessel) => vessel.id !== fromVesselId && vessel.status === "available",
+      (vessel) => vessel.status === "available",
     ) || [];
 
   // Filter vessels based on search query with natural sort
@@ -231,11 +234,16 @@ export function TankTransferForm({
     const lossInLiters = data.loss ? toLiters(data.loss, displayUnit) : 0;
 
     // Proceed with transfer (API expects liters)
+    const validLabor = laborAssignments.filter(a => a.workerId && a.hoursWorked > 0);
     transferMutation.mutate({
       ...data,
       volumeL: volumeInLiters,
       loss: lossInLiters,
+      lossType: lossInLiters > 0 ? lossType as any : undefined,
       transferDate: data.transferDate,
+      ...(validLabor.length > 0 && {
+        laborAssignments: toApiLaborAssignments(validLabor),
+      }),
     });
   };
 
@@ -436,6 +444,24 @@ export function TankTransferForm({
         </div>
       </div>
 
+      {/* Loss type selector — shown when loss > 0 */}
+      {watchedLoss > 0 && (
+        <div>
+          <Label>Loss Type</Label>
+          <Select value={lossType} onValueChange={setLossType}>
+            <SelectTrigger className="mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sediment">Sediment / Lees</SelectItem>
+              <SelectItem value="spillage">Spillage</SelectItem>
+              <SelectItem value="evaporation">Evaporation</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {(watchedVolumeL || watchedLoss) && (
         <div className="p-3 bg-gray-50 rounded-lg">
           <p className="text-sm">
@@ -457,6 +483,13 @@ export function TankTransferForm({
           )}
         </div>
       )}
+
+      {/* Labor Tracking */}
+      <WorkerLaborInput
+        value={laborAssignments}
+        onChange={setLaborAssignments}
+        activityLabel="this transfer"
+      />
 
       <div>
         <Label htmlFor="notes">Notes</Label>

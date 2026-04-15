@@ -73,6 +73,8 @@ import {
   distillationRecords,
   barrelUsageHistory,
   batchMergeHistory,
+  workers,
+  activityLaborAssignments,
 } from "db";
 import {
   eq,
@@ -3624,11 +3626,16 @@ export const appRouter = router({
           toVesselId: z.string().uuid("Invalid destination vessel ID"),
           volumeL: z.number().positive("Transfer volume must be positive"),
           loss: z.number().min(0, "Loss cannot be negative").optional(),
+          lossType: z.enum(["sediment", "spillage", "evaporation", "other"]).optional(),
           transferDate: z.preprocess(
             (val) => val === null || val === undefined ? undefined : val,
             z.date().or(z.string().transform((val) => new Date(val))).optional()
           ),
           notes: z.string().optional(),
+          laborAssignments: z.array(z.object({
+            workerId: z.string().uuid(),
+            hoursWorked: z.number().positive(),
+          })).optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
@@ -3651,6 +3658,91 @@ export const appRouter = router({
                 code: "NOT_FOUND",
                 message: "Source vessel not found",
               });
+            }
+
+            // === SELF-TRANSFER (Rack to self) ===
+            // When source = destination, this is a rack-to-self: record sediment loss without moving liquid
+            if (input.fromVesselId === input.toVesselId) {
+              const sourceBatch = await tx
+                .select()
+                .from(batches)
+                .where(
+                  and(
+                    eq(batches.vesselId, input.fromVesselId),
+                    inArray(batches.status, ["fermentation", "aging"]),
+                    isNull(batches.deletedAt),
+                  ),
+                )
+                .limit(1);
+
+              if (!sourceBatch.length) {
+                throw new TRPCError({
+                  code: "NOT_FOUND",
+                  message: "No active batch found in this vessel",
+                });
+              }
+
+              const totalLoss = input.loss || 0;
+              if (totalLoss <= 0) {
+                throw new TRPCError({
+                  code: "BAD_REQUEST",
+                  message: "Self-transfer (rack to self) requires a loss amount",
+                });
+              }
+
+              const currentVolumeL = parseFloat(sourceBatch[0].currentVolumeLiters?.toString() || sourceBatch[0].currentVolume?.toString() || "0");
+              const newVolumeL = currentVolumeL - totalLoss;
+
+              // Record volume adjustment for sediment loss
+              await tx.insert(batchVolumeAdjustments).values({
+                batchId: sourceBatch[0].id,
+                vesselId: input.fromVesselId,
+                adjustmentDate: input.transferDate || new Date(),
+                adjustmentType: input.lossType || "sediment",
+                volumeBefore: currentVolumeL.toString(),
+                volumeAfter: Math.max(0, newVolumeL).toString(),
+                adjustmentAmount: (-totalLoss).toString(),
+                reason: input.notes || `Racked to self — ${input.lossType || "sediment"} loss`,
+                adjustedBy: ctx.user.id,
+              });
+
+              // Update batch volume
+              await tx
+                .update(batches)
+                .set({
+                  currentVolume: Math.max(0, newVolumeL).toString(),
+                  currentVolumeLiters: Math.max(0, newVolumeL).toString(),
+                  currentVolumeUnit: "L",
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, sourceBatch[0].id));
+
+              // Labor assignments
+              if (input.laborAssignments && input.laborAssignments.length > 0) {
+                for (const assignment of input.laborAssignments) {
+                  const [worker] = await tx
+                    .select({ hourlyRate: workers.hourlyRate })
+                    .from(workers)
+                    .where(eq(workers.id, assignment.workerId))
+                    .limit(1);
+                  const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+                  const laborCost = assignment.hoursWorked * hourlyRate;
+                  await tx.insert(activityLaborAssignments).values({
+                    activityType: "racking",
+                    workerId: assignment.workerId,
+                    hoursWorked: assignment.hoursWorked.toString(),
+                    hourlyRateSnapshot: hourlyRate.toString(),
+                    laborCost: laborCost.toString(),
+                  });
+                }
+              }
+
+              return {
+                message: `Rack to self complete — ${totalLoss.toFixed(2)}L ${input.lossType || "sediment"} loss recorded`,
+                volumeTransferred: 0,
+                loss: totalLoss,
+                selfTransfer: true,
+              };
             }
 
             // Verify destination vessel exists and is available
@@ -4827,17 +4919,72 @@ export const appRouter = router({
                 `Batch blended into ${destBatch[0].name || destBatch[0].batchNumber} in ${destVessel[0].name || "Unknown Vessel"}`,
               );
             } else {
-              // NORMAL TRANSFER: For full transfers or partial transfers with blend,
-              // create transferred batch in destination and complete source batch
+              // NORMAL TRANSFER to empty vessel
               if (!isBlending) {
-                // Full transfer - move batch to destination vessel
+                // Full transfer — PRESERVE batch identity, just move to new vessel
+                await tx
+                  .update(batches)
+                  .set({
+                    vesselId: input.toVesselId,
+                    currentVolume: input.volumeL.toString(),
+                    currentVolumeLiters: input.volumeL.toString(),
+                    currentVolumeUnit: "L",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(batches.id, sourceBatch[0].id));
+
+                updatedBatch = [{
+                  ...sourceBatch[0],
+                  vesselId: input.toVesselId,
+                  currentVolume: input.volumeL.toString(),
+                  currentVolumeLiters: input.volumeL.toString(),
+                }];
+
+                // Set source vessel to cleaning
+                await tx
+                  .update(vessels)
+                  .set({
+                    status: "cleaning" as any,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(vessels.id, input.fromVesselId));
+
+                // Set destination vessel to available
+                await tx
+                  .update(vessels)
+                  .set({
+                    status: "available" as any,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(vessels.id, input.toVesselId));
+
+                // Record sediment loss as volume adjustment if specified
+                const totalLoss = input.loss || 0;
+                if (totalLoss > 0) {
+                  await tx.insert(batchVolumeAdjustments).values({
+                    batchId: sourceBatch[0].id,
+                    vesselId: input.fromVesselId,
+                    adjustmentDate: input.transferDate || new Date(),
+                    adjustmentType: input.lossType || "sediment",
+                    volumeBefore: currentVolumeL.toString(),
+                    volumeAfter: input.volumeL.toString(),
+                    adjustmentAmount: (-totalLoss).toString(),
+                    reason: input.notes || `Transfer loss (${input.lossType || "sediment"})`,
+                    adjustedBy: ctx.user.id,
+                  });
+                }
+
+                // Skip the old child-batch creation block that follows
+                // (Jump to transfer record + labor + audit below)
+              }
+
+              // Legacy block: only reached for edge cases not handled above
+              if (!updatedBatch && !isBlending) {
                 const transferDate = input.transferDate || new Date();
-                // Use current timestamp with milliseconds for unique suffix (not transferDate, to ensure uniqueness)
-                const uniqueSuffix = Date.now().toString(36); // Base36 timestamp for compact unique ID
+                const uniqueSuffix = Date.now().toString(36);
                 const transferredBatchNumber = `${sourceBatch[0].batchNumber}-T${uniqueSuffix}`;
                 const transferredBatchName = `Batch #${transferredBatchNumber}`;
 
-                // Note: initialVolume is 0 because the volume comes from a transfer, not as initial production
                 const newTransferredBatch = await tx
                   .insert(batches)
                   .values({
@@ -4845,14 +4992,14 @@ export const appRouter = router({
                     name: transferredBatchName,
                     batchNumber: transferredBatchNumber,
                     customName: sourceBatch[0].customName,
-                    initialVolume: "0", // Volume comes from transfer, not initial production
+                    initialVolume: "0",
                     initialVolumeUnit: "L",
                     initialVolumeLiters: "0",
                     currentVolume: input.volumeL.toString(),
                     currentVolumeUnit: "L",
                     currentVolumeLiters: input.volumeL.toString(),
                     status: sourceBatch[0].status || "fermentation",
-                    productType: sourceBatch[0].productType, // Inherit parent's product type
+                    productType: sourceBatch[0].productType,
                     originPressRunId: sourceBatch[0].originPressRunId,
                     originJuicePurchaseItemId: sourceBatch[0].originJuicePurchaseItemId,
                     originalGravity: sourceBatch[0].originalGravity,
@@ -5241,6 +5388,26 @@ export const appRouter = router({
                   updatedAt: new Date(),
                 })
                 .where(eq(vessels.id, input.fromVesselId));
+            }
+
+            // Labor tracking for transfer
+            if (input.laborAssignments && input.laborAssignments.length > 0) {
+              for (const assignment of input.laborAssignments) {
+                const [worker] = await tx
+                  .select({ hourlyRate: workers.hourlyRate })
+                  .from(workers)
+                  .where(eq(workers.id, assignment.workerId))
+                  .limit(1);
+                const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+                const laborCost = assignment.hoursWorked * hourlyRate;
+                await tx.insert(activityLaborAssignments).values({
+                  activityType: "racking",
+                  workerId: assignment.workerId,
+                  hoursWorked: assignment.hoursWorked.toString(),
+                  hourlyRateSnapshot: hourlyRate.toString(),
+                  laborCost: laborCost.toString(),
+                });
+              }
             }
 
             const message = isBlending

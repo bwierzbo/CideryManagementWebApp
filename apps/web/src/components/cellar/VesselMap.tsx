@@ -1362,12 +1362,6 @@ export function VesselMap() {
                           {liquidMapVessel?.batchStatus === "fermentation" && (
                             <>
                               <DropdownMenuItem
-                                onClick={() => handleRack(vessel.id)}
-                              >
-                                <FlaskConical className="w-3 h-3 mr-2" />
-                                Rack Batch
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
                                 onClick={() => handleSetToAging(vessel.id)}
                               >
                                 <Clock className="w-3 h-3 mr-2" />
