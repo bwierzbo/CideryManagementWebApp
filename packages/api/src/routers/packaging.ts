@@ -316,11 +316,11 @@ export const packagingRouter = router({
 
             batch = batchData[0];
 
-            // Check batch status - only "aging" batches can be bottled from vessel
-            if (batch.status !== "aging") {
+            // Check batch status - fermentation or aging batches can be packaged
+            if (batch.status !== "aging" && batch.status !== "fermentation") {
               throw new TRPCError({
                 code: "BAD_REQUEST",
-                message: `Batch must be in aging stage to package. Current status: ${batch.status}`,
+                message: `Batch must be in fermentation or aging stage to package. Current status: ${batch.status}`,
               });
             }
             currentVolumeL = parseFloat(

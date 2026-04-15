@@ -54,10 +54,10 @@ export function validateBatchReadyForPackaging(
     );
   }
 
-  if (batch.status !== "aging") {
+  if (batch.status !== "aging" && batch.status !== "fermentation") {
     throw new PackagingValidationError(
       `Batch ${batch.batchNumber} is not ready for packaging`,
-      `Batch "${batch.batchNumber}" must be in aging stage to be packaged. Current status: ${batch.status}`,
+      `Batch "${batch.batchNumber}" must be in fermentation or aging stage to be packaged. Current status: ${batch.status}`,
       {
         batchId: batch.id,
         batchNumber: batch.batchNumber,

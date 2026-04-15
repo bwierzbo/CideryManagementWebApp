@@ -1391,6 +1391,15 @@ export function VesselMap() {
                                 <FilterIcon className="w-3 h-3 mr-2" />
                                 Filter
                               </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handlePackage(vessel.id)}
+                                disabled={
+                                  !liquidMapVessel?.batchId || currentVolume <= 0
+                                }
+                              >
+                                <Package className="w-3 h-3 mr-2" />
+                                Package
+                              </DropdownMenuItem>
                             </>
                           )}
                           {liquidMapVessel?.batchStatus === "aging" && (
