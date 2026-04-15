@@ -65,9 +65,20 @@ export function ReceiveBrandyDialog({
 
   const pendingRecords = recordsData || [];
 
-  // Fetch available vessels
+  // Fetch available vessels with current volume info
   const { data: vesselsData } = trpc.vessel.list.useQuery();
-  const availableVessels = vesselsData?.vessels?.filter((v: { status: string }) => v.status !== "inactive") || [];
+  const { data: liquidMapData } = trpc.vessel.liquidMap.useQuery();
+  const availableVessels = useMemo(() => {
+    const vesselList = vesselsData?.vessels?.filter((v: { status: string }) => v.status !== "inactive") || [];
+    const liquidMap = liquidMapData?.vessels || [];
+    // Enrich vessel data with current volume from liquid map
+    return vesselList.map((v: any) => {
+      const lm = liquidMap.find((l: any) => l.vesselId === v.id);
+      const currentVolume = lm?.currentVolume ? parseFloat(lm.currentVolume) : 0;
+      const currentVolumeUnit = lm?.currentVolumeUnit || v.capacityUnit || "L";
+      return { ...v, currentVolume, currentVolumeUnit, batchName: lm?.batchCustomName || lm?.batchNumber || null };
+    });
+  }, [vesselsData, liquidMapData]);
 
   // Get selected records details
   const selectedRecords = useMemo(() => {
@@ -195,6 +206,23 @@ export function ReceiveBrandyDialog({
       brandyBatchName: brandyBatchName.trim() || undefined,
     });
   };
+
+  // Check if any vessel allocation would overflow
+  const hasOverflow = useMemo(() => {
+    const LITERS_PER_GAL = 3.785411784;
+    return destinationVessels.some((dv) => {
+      if (!dv.vesselId || !dv.volume) return false;
+      const vessel = availableVessels.find((v: any) => v.id === dv.vesselId);
+      if (!vessel) return false;
+      const capacityL = parseFloat(vessel.capacity || "0");
+      const currentFillL = vessel.currentVolume || 0;
+      const availableL = capacityL - currentFillL;
+      const enteredL = receivedVolumeUnit === "gal"
+        ? parseFloat(dv.volume) * LITERS_PER_GAL
+        : parseFloat(dv.volume);
+      return enteredL > availableL + 0.1;
+    });
+  }, [destinationVessels, availableVessels, receivedVolumeUnit]);
 
   // Update preselectedRecordId when prop changes
   React.useEffect(() => {
@@ -410,65 +438,102 @@ export function ReceiveBrandyDialog({
             )}
 
             {destinationVessels.map((dv, index) => {
+              const LITERS_PER_GAL = 3.785411784;
               const selectedIds = destinationVessels.map((v) => v.vesselId).filter(Boolean);
               const filteredVessels = availableVessels.filter(
                 (v: any) => !selectedIds.includes(v.id) || v.id === dv.vesselId
               );
 
+              // Get selected vessel info for capacity/fill display
+              const selectedVessel = dv.vesselId ? availableVessels.find((v: any) => v.id === dv.vesselId) : null;
+              const vesselCapacityL = selectedVessel ? parseFloat(selectedVessel.capacity || "0") : 0;
+              const vesselCapacityUnit = selectedVessel?.capacityUnit || "L";
+              const currentFillL = selectedVessel?.currentVolume || 0;
+              const availableSpaceL = vesselCapacityL - currentFillL;
+              // Convert available space to the user's unit for display
+              const availableSpaceDisplay = receivedVolumeUnit === "gal"
+                ? (availableSpaceL / LITERS_PER_GAL)
+                : availableSpaceL;
+              const enteredVolume = parseFloat(dv.volume || "0");
+              const enteredVolumeL = receivedVolumeUnit === "gal" ? enteredVolume * LITERS_PER_GAL : enteredVolume;
+              const wouldOverflow = selectedVessel && enteredVolumeL > availableSpaceL + 0.1;
+
               return (
-                <div key={index} className="flex items-end gap-2">
-                  <div className="flex-1">
-                    {index === 0 && (
-                      <Label className="text-xs text-muted-foreground">Vessel</Label>
-                    )}
-                    <Select
-                      value={dv.vesselId}
-                      onValueChange={(value) => {
-                        const updated = [...destinationVessels];
-                        updated[index].vesselId = value;
-                        setDestinationVessels(updated);
+                <div key={index} className="space-y-1">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      {index === 0 && (
+                        <Label className="text-xs text-muted-foreground">Vessel</Label>
+                      )}
+                      <Select
+                        value={dv.vesselId}
+                        onValueChange={(value) => {
+                          const updated = [...destinationVessels];
+                          updated[index].vesselId = value;
+                          setDestinationVessels(updated);
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Select vessel" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {filteredVessels.map((vessel: any) => {
+                            const capL = parseFloat(vessel.capacity || "0");
+                            const fillL = vessel.currentVolume || 0;
+                            const fillPct = capL > 0 ? Math.round((fillL / capL) * 100) : 0;
+                            return (
+                              <SelectItem key={vessel.id} value={vessel.id}>
+                                {vessel.name} — {fillPct > 0 ? `${fillPct}% full` : "empty"} ({vessel.capacity}L cap)
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="w-28">
+                      {index === 0 && (
+                        <Label className="text-xs text-muted-foreground">Volume ({receivedVolumeUnit})</Label>
+                      )}
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={dv.volume}
+                        onChange={(e) => {
+                          const updated = [...destinationVessels];
+                          updated[index].volume = e.target.value;
+                          setDestinationVessels(updated);
+                        }}
+                        placeholder="0.0"
+                        className={`h-9 ${wouldOverflow ? "border-red-400 bg-red-50" : ""}`}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 w-9 p-0 shrink-0"
+                      onClick={() => {
+                        setDestinationVessels(destinationVessels.filter((_, i) => i !== index));
                       }}
                     >
-                      <SelectTrigger className="h-9">
-                        <SelectValue placeholder="Select vessel" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredVessels.map((vessel: { id: string; name: string | null; material: string | null; capacity: string }) => (
-                          <SelectItem key={vessel.id} value={vessel.id}>
-                            {vessel.name} ({vessel.capacity}L)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <X className="w-4 h-4" />
+                    </Button>
                   </div>
-                  <div className="w-28">
-                    {index === 0 && (
-                      <Label className="text-xs text-muted-foreground">Volume ({receivedVolumeUnit})</Label>
-                    )}
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      value={dv.volume}
-                      onChange={(e) => {
-                        const updated = [...destinationVessels];
-                        updated[index].volume = e.target.value;
-                        setDestinationVessels(updated);
-                      }}
-                      placeholder="0.0"
-                      className="h-9"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 w-9 p-0 shrink-0"
-                    onClick={() => {
-                      setDestinationVessels(destinationVessels.filter((_, i) => i !== index));
-                    }}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+                  {selectedVessel && (
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground pl-1">
+                      <span>
+                        Current: {currentFillL > 0
+                          ? `${currentFillL.toFixed(1)}L${selectedVessel.batchName ? ` (${selectedVessel.batchName})` : ""}`
+                          : "Empty"}
+                      </span>
+                      <span>Available: {availableSpaceDisplay.toFixed(1)} {receivedVolumeUnit}</span>
+                    </div>
+                  )}
+                  {wouldOverflow && (
+                    <p className="text-xs text-red-600 pl-1">
+                      Exceeds available space by {(enteredVolumeL - availableSpaceL).toFixed(1)}L — reduce volume or choose a larger vessel
+                    </p>
+                  )}
                 </div>
               );
             })}
@@ -537,7 +602,7 @@ export function ReceiveBrandyDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={receiveMultipleBrandy.isPending}>
+            <Button type="submit" disabled={receiveMultipleBrandy.isPending || hasOverflow}>
               {receiveMultipleBrandy.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
