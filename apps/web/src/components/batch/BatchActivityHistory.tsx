@@ -39,6 +39,8 @@ import {
   BarChart3,
   List,
   History,
+  CheckCircle,
+  Send,
 } from "lucide-react";
 import {
   Collapsible,
@@ -70,8 +72,14 @@ const activityIcons = {
   filter: Filter,
   carbonation: Sparkles,
   pasteurize: Flame,
+  pasteurized: Flame,
   label: Tag,
+  labeled: Tag,
+  marked_ready: CheckCircle,
+  distributed: Send,
   adjustment: Scale,
+  status_change: Activity,
+  keg: Package,
 };
 
 const activityColors = {
@@ -85,8 +93,14 @@ const activityColors = {
   filter: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20",
   carbonation: "bg-blue-500/10 text-blue-700 border-blue-500/20",
   pasteurize: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+  pasteurized: "bg-orange-500/10 text-orange-700 border-orange-500/20",
   label: "bg-green-500/10 text-green-700 border-green-500/20",
+  labeled: "bg-green-500/10 text-green-700 border-green-500/20",
+  marked_ready: "bg-teal-500/10 text-teal-700 border-teal-500/20",
+  distributed: "bg-violet-500/10 text-violet-700 border-violet-500/20",
   adjustment: "bg-red-500/10 text-red-700 border-red-500/20",
+  status_change: "bg-gray-500/10 text-gray-700 border-gray-500/20",
+  keg: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
 };
 
 export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHistoryProps) {

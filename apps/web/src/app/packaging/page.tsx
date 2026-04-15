@@ -102,8 +102,11 @@ export default function PackagingPage() {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [bulkDistributeOpen, setBulkDistributeOpen] = useState(false);
   const [bulkReturnOpen, setBulkReturnOpen] = useState(false);
+  const [bulkMarkReadyOpen, setBulkMarkReadyOpen] = useState(false);
+  const [bulkMarkReadyDate, setBulkMarkReadyDate] = useState("");
   const [bulkBottleDistributeOpen, setBulkBottleDistributeOpen] = useState(false);
   const [bulkDistributeLocation, setBulkDistributeLocation] = useState("");
+  const [bulkDistributeDate, setBulkDistributeDate] = useState("");
   const [tableData, setTableData] = useState<{
     items: any[];
     count: number;
@@ -628,19 +631,9 @@ export default function PackagingPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={async () => {
-                        try {
-                          const result = await bulkMarkReadyMutation.mutateAsync({
-                            runIds: selectedItems,
-                          });
-                          toast({
-                            title: "Bulk Mark Ready",
-                            description: `${result.successCount} marked ready${result.skipCount > 0 ? `, ${result.skipCount} skipped (not active)` : ""}`,
-                          });
-                          handleClearSelection();
-                        } catch (err: any) {
-                          toast({ title: "Error", description: err.message, variant: "destructive" });
-                        }
+                      onClick={() => {
+                        setBulkMarkReadyDate(new Date().toISOString().split("T")[0]);
+                        setBulkMarkReadyOpen(true);
                       }}
                       disabled={bulkMarkReadyMutation.isPending}
                       className="border-green-300 bg-white text-green-700 hover:bg-green-50 h-9"
@@ -651,7 +644,10 @@ export default function PackagingPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setBulkBottleDistributeOpen(true)}
+                      onClick={() => {
+                        setBulkDistributeDate(new Date().toISOString().split("T")[0]);
+                        setBulkBottleDistributeOpen(true);
+                      }}
                       className="border-purple-300 bg-white text-purple-700 hover:bg-purple-50 h-9"
                     >
                       <Send className="w-3.5 h-3.5 mr-1.5" />
@@ -823,6 +819,55 @@ export default function PackagingPage() {
         </Tabs>
       </main>
 
+      {/* Bulk Mark Ready Dialog */}
+      <Dialog open={bulkMarkReadyOpen} onOpenChange={setBulkMarkReadyOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Bulk Mark Ready</DialogTitle>
+            <DialogDescription>
+              Mark {selectedItems.length} selected run{selectedItems.length !== 1 ? "s" : ""} as ready
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Ready Date <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={bulkMarkReadyDate}
+                onChange={(e) => setBulkMarkReadyDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBulkMarkReadyOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!bulkMarkReadyDate || bulkMarkReadyMutation.isPending}
+                onClick={async () => {
+                  try {
+                    const result = await bulkMarkReadyMutation.mutateAsync({
+                      runIds: selectedItems,
+                      readyAt: new Date(bulkMarkReadyDate + "T12:00:00"),
+                    });
+                    toast({
+                      title: "Bulk Mark Ready",
+                      description: `${result.successCount} marked ready${result.skipCount > 0 ? `, ${result.skipCount} skipped (not active)` : ""}`,
+                    });
+                    setBulkMarkReadyOpen(false);
+                    handleClearSelection();
+                  } catch (err: any) {
+                    toast({ title: "Error", description: err.message, variant: "destructive" });
+                  }
+                }}
+              >
+                {bulkMarkReadyMutation.isPending ? "Processing..." : `Mark ${selectedItems.length} Ready`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Bulk Bottle Distribute Dialog */}
       <Dialog open={bulkBottleDistributeOpen} onOpenChange={setBulkBottleDistributeOpen}>
         <DialogContent className="max-w-sm">
@@ -833,6 +878,15 @@ export default function PackagingPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div>
+              <Label>Distribution Date <span className="text-red-500">*</span></Label>
+              <Input
+                type="date"
+                value={bulkDistributeDate}
+                onChange={(e) => setBulkDistributeDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
             <div>
               <Label>Distribution Location <span className="text-red-500">*</span></Label>
               <Input
@@ -847,11 +901,12 @@ export default function PackagingPage() {
                 Cancel
               </Button>
               <Button
-                disabled={!bulkDistributeLocation.trim() || bulkDistributeMutation.isPending}
+                disabled={!bulkDistributeLocation.trim() || !bulkDistributeDate || bulkDistributeMutation.isPending}
                 onClick={async () => {
                   try {
                     const result = await bulkDistributeMutation.mutateAsync({
                       runIds: selectedItems,
+                      distributedAt: new Date(bulkDistributeDate + "T12:00:00"),
                       distributionLocation: bulkDistributeLocation.trim(),
                     });
                     toast({
@@ -860,6 +915,7 @@ export default function PackagingPage() {
                     });
                     setBulkBottleDistributeOpen(false);
                     setBulkDistributeLocation("");
+                    setBulkDistributeDate("");
                     handleClearSelection();
                   } catch (err: any) {
                     toast({ title: "Error", description: err.message, variant: "destructive" });

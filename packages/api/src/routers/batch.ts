@@ -3483,6 +3483,9 @@ export const batchRouter = router({
               pasteurizationTimeMinutes: bottleRuns.pasteurizationTimeMinutes,
               pasteurizationUnits: bottleRuns.pasteurizationUnits,
               labeledAt: bottleRuns.labeledAt,
+              readyAt: bottleRuns.readyAt,
+              distributedAt: bottleRuns.distributedAt,
+              distributionLocation: bottleRuns.distributionLocation,
             })
             .from(bottleRuns)
             .where(
@@ -3491,6 +3494,7 @@ export const batchRouter = router({
                 or(
                   eq(bottleRuns.status, "completed"),
                   eq(bottleRuns.status, "active"),
+                  eq(bottleRuns.status, "ready"),
                   eq(bottleRuns.status, "distributed"),
                   isNull(bottleRuns.status)
                 )
@@ -3922,6 +3926,33 @@ export const batchRouter = router({
               },
               metadata: { id: b.id, labeledAt: b.labeledAt },
               bottleRunId: b.id, // Temporary field for lookup
+            });
+          }
+
+          // Add marked ready event
+          if (b.readyAt) {
+            activities.push({
+              id: `ready-${b.id}`,
+              type: "marked_ready",
+              timestamp: b.readyAt,
+              description: `Marked ready for distribution (${b.unitsProduced} units)`,
+              details: { unitsProduced: b.unitsProduced },
+              metadata: { id: b.id, readyAt: b.readyAt },
+            });
+          }
+
+          // Add distributed event
+          if (b.distributedAt) {
+            activities.push({
+              id: `distributed-${b.id}`,
+              type: "distributed",
+              timestamp: b.distributedAt,
+              description: `Distributed to ${b.distributionLocation || "unknown location"} (${b.unitsProduced} units)`,
+              details: {
+                unitsProduced: b.unitsProduced,
+                location: b.distributionLocation,
+              },
+              metadata: { id: b.id, distributedAt: b.distributedAt },
             });
           }
         });
@@ -4368,7 +4399,7 @@ export const batchRouter = router({
             )
             .orderBy(desc(batchCarbonationOperations.startedAt)),
 
-          // Bottling
+          // Bottling (includes post-packaging dates for sub-events)
           db
             .select({
               id: bottleRuns.id,
@@ -4377,6 +4408,12 @@ export const batchRouter = router({
               unitsProduced: bottleRuns.unitsProduced,
               packageSizeML: bottleRuns.packageSizeML,
               volumeTaken: bottleRuns.volumeTaken,
+              status: bottleRuns.status,
+              labeledAt: bottleRuns.labeledAt,
+              pasteurizedAt: bottleRuns.pasteurizedAt,
+              readyAt: bottleRuns.readyAt,
+              distributedAt: bottleRuns.distributedAt,
+              distributionLocation: bottleRuns.distributionLocation,
             })
             .from(bottleRuns)
             .where(eq(bottleRuns.batchId, input.batchId))
@@ -4420,7 +4457,23 @@ export const batchRouter = router({
           ...rackings.map((r) => ({ ...r, activityType: "rack" as const })),
           ...filters.map((f) => ({ ...f, activityType: "filter" as const })),
           ...carbonations.map((c) => ({ ...c, activityType: "carbonation" as const })),
-          ...bottlings.map((b) => ({ ...b, activityType: "bottling" as const })),
+          ...bottlings.flatMap((b) => {
+            const events: any[] = [{ ...b, activityType: "bottling" as const }];
+            // Generate sub-events for post-packaging milestones
+            if ((b as any).labeledAt) {
+              events.push({ id: b.id + "-labeled", date: (b as any).labeledAt, activityType: "labeled" as const, unitsProduced: b.unitsProduced });
+            }
+            if ((b as any).pasteurizedAt) {
+              events.push({ id: b.id + "-pasteurized", date: (b as any).pasteurizedAt, activityType: "pasteurized" as const, unitsProduced: b.unitsProduced });
+            }
+            if ((b as any).readyAt) {
+              events.push({ id: b.id + "-ready", date: (b as any).readyAt, activityType: "marked_ready" as const, unitsProduced: b.unitsProduced });
+            }
+            if ((b as any).distributedAt) {
+              events.push({ id: b.id + "-distributed", date: (b as any).distributedAt, activityType: "distributed" as const, unitsProduced: b.unitsProduced, distributionLocation: (b as any).distributionLocation });
+            }
+            return events;
+          }),
           ...kegFillsData.map((k) => ({ ...k, activityType: "keg" as const })),
         ].sort((a, b) => {
           const dateA = a.date ? new Date(a.date).getTime() : 0;
