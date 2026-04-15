@@ -1717,6 +1717,114 @@ export const packagingRouter = router({
     }),
 
   /**
+   * Bulk mark multiple runs as ready
+   */
+  bulkMarkReady: createRbacProcedure("update", "package")
+    .input(z.object({
+      runIds: z.array(z.string().uuid()).min(1),
+      readyAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const readyAt = input.readyAt || new Date();
+      let successCount = 0;
+      let skipCount = 0;
+      const errors: string[] = [];
+
+      for (const runId of input.runIds) {
+        try {
+          const [run] = await db
+            .select({ status: bottleRuns.status })
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, runId));
+
+          if (!run) { skipCount++; continue; }
+          if (run.status !== "active") {
+            skipCount++;
+            continue;
+          }
+
+          await db
+            .update(bottleRuns)
+            .set({
+              status: "ready",
+              readyAt,
+              readyBy: ctx.user.id,
+              updatedAt: new Date(),
+              updatedBy: ctx.user.id,
+            })
+            .where(eq(bottleRuns.id, runId));
+          successCount++;
+        } catch (err) {
+          errors.push(runId);
+        }
+      }
+
+      return { successCount, skipCount, errorCount: errors.length };
+    }),
+
+  /**
+   * Bulk distribute multiple runs
+   */
+  bulkDistribute: createRbacProcedure("update", "package")
+    .input(z.object({
+      runIds: z.array(z.string().uuid()).min(1),
+      distributedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
+      distributionLocation: z.string().min(1, "Location is required"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const distributedAt = input.distributedAt || new Date();
+      let successCount = 0;
+      let skipCount = 0;
+
+      for (const runId of input.runIds) {
+        try {
+          const [run] = await db
+            .select({ status: bottleRuns.status })
+            .from(bottleRuns)
+            .where(eq(bottleRuns.id, runId));
+
+          if (!run || !run.status) { skipCount++; continue; }
+          if (!["active", "ready", "completed"].includes(run.status)) {
+            skipCount++;
+            continue;
+          }
+
+          const updateData: Record<string, unknown> = {
+            status: "distributed",
+            distributedAt,
+            distributedBy: ctx.user.id,
+            distributionLocation: input.distributionLocation,
+            updatedAt: new Date(),
+            updatedBy: ctx.user.id,
+          };
+
+          // Auto-set readyAt if skipping from active
+          if (run.status === "active") {
+            updateData.readyAt = distributedAt;
+            updateData.readyBy = ctx.user.id;
+          }
+
+          await db
+            .update(bottleRuns)
+            .set(updateData)
+            .where(eq(bottleRuns.id, runId));
+
+          // Zero out inventory quantities
+          await db
+            .update(inventoryItems)
+            .set({ currentQuantity: 0, updatedAt: new Date() })
+            .where(sql`${inventoryItems.bottleRunId} = ${runId}`);
+
+          successCount++;
+        } catch (err) {
+          // Skip individual failures
+        }
+      }
+
+      return { successCount, skipCount };
+    }),
+
+  /**
    * Distribute a bottle run
    */
   distribute: createRbacProcedure("update", "package")

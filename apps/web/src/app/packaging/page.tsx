@@ -23,6 +23,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "@/hooks/use-toast";
 import {
   Plus,
   Download,
@@ -92,6 +102,8 @@ export default function PackagingPage() {
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [bulkDistributeOpen, setBulkDistributeOpen] = useState(false);
   const [bulkReturnOpen, setBulkReturnOpen] = useState(false);
+  const [bulkBottleDistributeOpen, setBulkBottleDistributeOpen] = useState(false);
+  const [bulkDistributeLocation, setBulkDistributeLocation] = useState("");
   const [tableData, setTableData] = useState<{
     items: any[];
     count: number;
@@ -203,6 +215,21 @@ export default function PackagingPage() {
     setSelectedItems([]);
     setShowBulkActions(false);
   }, []);
+
+  // Bulk bottle mutations
+  const utils = trpc.useUtils();
+  const bulkMarkReadyMutation = trpc.packaging.bulkMarkReady.useMutation({
+    onSuccess: () => {
+      utils.packaging.list.invalidate();
+      utils.packaging.getStats.invalidate();
+    },
+  });
+  const bulkDistributeMutation = trpc.packaging.bulkDistribute.useMutation({
+    onSuccess: () => {
+      utils.packaging.list.invalidate();
+      utils.packaging.getStats.invalidate();
+    },
+  });
 
   // Get selected kegs data for bulk modals
   const selectedKegs = useMemo(() => {
@@ -597,38 +624,60 @@ export default function PackagingPage() {
                       </span>
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const result = await bulkMarkReadyMutation.mutateAsync({
+                            runIds: selectedItems,
+                          });
+                          toast({
+                            title: "Bulk Mark Ready",
+                            description: `${result.successCount} marked ready${result.skipCount > 0 ? `, ${result.skipCount} skipped (not active)` : ""}`,
+                          });
+                          handleClearSelection();
+                        } catch (err: any) {
+                          toast({ title: "Error", description: err.message, variant: "destructive" });
+                        }
+                      }}
+                      disabled={bulkMarkReadyMutation.isPending}
+                      className="border-green-300 bg-white text-green-700 hover:bg-green-50 h-9"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5 mr-1.5" />
+                      Mark Ready
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBulkBottleDistributeOpen(true)}
+                      className="border-purple-300 bg-white text-purple-700 hover:bg-purple-50 h-9"
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1.5" />
+                      Distribute
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleBulkExport}
                       disabled={isExporting}
-                      className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 flex-1 sm:flex-initial h-9"
+                      className="border-blue-300 bg-white text-blue-700 hover:bg-blue-50 h-9"
                     >
                       {isExporting ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                          <span className="hidden sm:inline">Exporting...</span>
-                          <span className="sm:hidden">...</span>
-                        </>
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                       ) : (
-                        <>
-                          <Download className="w-3.5 h-3.5 mr-2" />
-                          <span className="hidden sm:inline">
-                            Export Selected
-                          </span>
-                          <span className="sm:hidden">Export</span>
-                        </>
+                        <Download className="w-3.5 h-3.5 mr-1.5" />
                       )}
+                      Export
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={handleClearSelection}
-                      className="text-blue-700 hover:bg-blue-100 min-w-0 h-9"
+                      className="text-blue-700 hover:bg-blue-100 h-9"
                     >
-                      <X className="w-4 h-4 sm:mr-1" />
-                      <span className="hidden sm:inline">Clear</span>
+                      <X className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
@@ -773,6 +822,56 @@ export default function PackagingPage() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Bulk Bottle Distribute Dialog */}
+      <Dialog open={bulkBottleDistributeOpen} onOpenChange={setBulkBottleDistributeOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Bulk Distribute</DialogTitle>
+            <DialogDescription>
+              Distribute {selectedItems.length} selected run{selectedItems.length !== 1 ? "s" : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Distribution Location <span className="text-red-500">*</span></Label>
+              <Input
+                value={bulkDistributeLocation}
+                onChange={(e) => setBulkDistributeLocation(e.target.value)}
+                placeholder="e.g., Tasting Room, Farmers Market"
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBulkBottleDistributeOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={!bulkDistributeLocation.trim() || bulkDistributeMutation.isPending}
+                onClick={async () => {
+                  try {
+                    const result = await bulkDistributeMutation.mutateAsync({
+                      runIds: selectedItems,
+                      distributionLocation: bulkDistributeLocation.trim(),
+                    });
+                    toast({
+                      title: "Bulk Distribute",
+                      description: `${result.successCount} distributed${result.skipCount > 0 ? `, ${result.skipCount} skipped` : ""}`,
+                    });
+                    setBulkBottleDistributeOpen(false);
+                    setBulkDistributeLocation("");
+                    handleClearSelection();
+                  } catch (err: any) {
+                    toast({ title: "Error", description: err.message, variant: "destructive" });
+                  }
+                }}
+              >
+                {bulkDistributeMutation.isPending ? "Distributing..." : `Distribute ${selectedItems.length}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk Keg Modals */}
       <BulkDistributeKegsModal
