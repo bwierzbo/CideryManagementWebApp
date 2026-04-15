@@ -706,6 +706,7 @@ function TankTransferForm({
 }) {
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [showBlendConfirm, setShowBlendConfirm] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
   const [selectedDestVesselId, setSelectedDestVesselId] = useState<string | null>(null);
   const [vesselSearchQuery, setVesselSearchQuery] = useState("");
 
@@ -846,6 +847,7 @@ function TankTransferForm({
       utils.vessel.list.invalidate();
       utils.vessel.liquidMap.invalidate();
       setShowBlendConfirm(false);
+      setTransferError(null);
       onClose();
       toast({
         title: "Transfer successful",
@@ -854,6 +856,7 @@ function TankTransferForm({
     },
     onError: (error) => {
       setShowBlendConfirm(false);
+      setTransferError(error.message);
       toast({
         title: "Transfer failed",
         description: error.message,
@@ -1111,6 +1114,16 @@ function TankTransferForm({
           {...register("notes")}
         />
       </div>
+
+      {/* Inline error from failed submission */}
+      {transferError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-700 font-medium flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {transferError}
+          </p>
+        </div>
+      )}
 
       <div className="flex justify-end space-x-2">
         <Button type="button" variant="outline" onClick={onClose}>

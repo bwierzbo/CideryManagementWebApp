@@ -113,14 +113,40 @@ export const distillationRouter = router({
         // Deduct volume from source batch if requested
         if (input.deductFromBatch) {
           const newVolumeLiters = currentVolumeLiters - sourceVolumeLiters;
-          await db
-            .update(batches)
-            .set({
-              currentVolumeLiters: String(Math.max(0, newVolumeLiters)),
-              currentVolume: String(Math.max(0, newVolumeLiters)),
-              updatedAt: new Date(),
-            })
-            .where(eq(batches.id, batchInput.sourceBatchId));
+          const isEmpty = newVolumeLiters <= 1.0;
+
+          if (isEmpty) {
+            await db
+              .update(batches)
+              .set({
+                currentVolumeLiters: "0",
+                currentVolume: "0",
+                status: "completed",
+                vesselId: null,
+                endDate: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, batchInput.sourceBatchId));
+
+            if (sourceBatch.vesselId) {
+              await db
+                .update(vessels)
+                .set({
+                  status: "cleaning" as any,
+                  updatedAt: new Date(),
+                })
+                .where(eq(vessels.id, sourceBatch.vesselId));
+            }
+          } else {
+            await db
+              .update(batches)
+              .set({
+                currentVolumeLiters: String(Math.max(0, newVolumeLiters)),
+                currentVolume: String(Math.max(0, newVolumeLiters)),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, batchInput.sourceBatchId));
+          }
         }
       }
 
@@ -212,14 +238,42 @@ export const distillationRouter = router({
       // Deduct volume from source batch if requested
       if (input.deductFromBatch) {
         const newVolumeLiters = currentVolumeLiters - sourceVolumeLiters;
-        await db
-          .update(batches)
-          .set({
-            currentVolumeLiters: String(Math.max(0, newVolumeLiters)),
-            currentVolume: String(Math.max(0, newVolumeLiters)),
-            updatedAt: new Date(),
-          })
-          .where(eq(batches.id, input.sourceBatchId));
+        const isEmpty = newVolumeLiters <= 1.0; // MIN_WORKING_VOLUME_L
+
+        if (isEmpty) {
+          // Batch is empty — mark completed and set vessel to cleaning
+          await db
+            .update(batches)
+            .set({
+              currentVolumeLiters: "0",
+              currentVolume: "0",
+              status: "completed",
+              vesselId: null,
+              endDate: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.sourceBatchId));
+
+          // Set source vessel to cleaning if batch had a vessel
+          if (sourceBatch.vesselId) {
+            await db
+              .update(vessels)
+              .set({
+                status: "cleaning" as any,
+                updatedAt: new Date(),
+              })
+              .where(eq(vessels.id, sourceBatch.vesselId));
+          }
+        } else {
+          await db
+            .update(batches)
+            .set({
+              currentVolumeLiters: String(Math.max(0, newVolumeLiters)),
+              currentVolume: String(Math.max(0, newVolumeLiters)),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.sourceBatchId));
+        }
       }
 
       return record;
