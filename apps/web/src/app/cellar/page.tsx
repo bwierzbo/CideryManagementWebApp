@@ -1017,6 +1017,14 @@ function TankTransferForm({
             This tank contains liquid. Transferring will blend the contents.
           </p>
         )}
+        {destMaxCapacityL > 0 && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Available space: {formatVolume(
+              convertVolume(Math.max(0, destMaxCapacityL - destCurrentVolumeL), "L", destCapacityUnit),
+              destCapacityUnit
+            )} {destCapacityUnit}
+          </p>
+        )}
         {wouldExceedMaxCapacity && (
           <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
             <AlertTriangle className="h-4 w-4" />
@@ -1111,7 +1119,7 @@ function TankTransferForm({
         <Button
           type="submit"
           disabled={
-            !isVolumeValid || !watchedVolumeL || watchedVolumeL <= 0
+            !isVolumeValid || !watchedVolumeL || watchedVolumeL <= 0 || wouldExceedMaxCapacity
           }
         >
           Transfer Liquid
