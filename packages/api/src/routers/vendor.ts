@@ -9,7 +9,7 @@ import {
   vendorJuiceVarieties,
   vendorPackagingVarieties,
 } from "db";
-import { eq, ilike, or, and, asc, desc, sql, like, exists } from "drizzle-orm";
+import { eq, ilike, or, and, asc, desc, sql, like, exists, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 
 // Schema for vendor creation/update
@@ -91,6 +91,9 @@ export const vendorRouter = router({
       // Build where conditions array
       const whereConditions = [];
 
+      // Always exclude soft-deleted vendors
+      whereConditions.push(isNull(vendors.deletedAt));
+
       if (!includeInactive) {
         whereConditions.push(eq(vendors.isActive, true));
       }
@@ -168,7 +171,7 @@ export const vendorRouter = router({
       const vendor = await db
         .select()
         .from(vendors)
-        .where(eq(vendors.id, input.id))
+        .where(and(eq(vendors.id, input.id), isNull(vendors.deletedAt)))
         .limit(1);
 
       if (!vendor.length) {
@@ -227,11 +230,11 @@ export const vendorRouter = router({
       const { id, ...updateData } = input;
 
       try {
-        // Check if vendor exists
+        // Check if vendor exists and is not soft-deleted
         const existing = await db
           .select()
           .from(vendors)
-          .where(eq(vendors.id, id))
+          .where(and(eq(vendors.id, id), isNull(vendors.deletedAt)))
           .limit(1);
 
         if (!existing.length) {
@@ -282,11 +285,11 @@ export const vendorRouter = router({
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
       try {
-        // Check if vendor exists
+        // Check if vendor exists and is not already soft-deleted
         const existing = await db
           .select()
           .from(vendors)
-          .where(eq(vendors.id, input.id))
+          .where(and(eq(vendors.id, input.id), isNull(vendors.deletedAt)))
           .limit(1);
 
         if (!existing.length) {
@@ -416,6 +419,9 @@ export const vendorRouter = router({
 
       // Add variety type filter using EXISTS subqueries
       let whereConditions = [];
+
+      // Always exclude soft-deleted vendors
+      whereConditions.push(isNull(vendors.deletedAt));
 
       if (!includeInactive) {
         whereConditions.push(eq(vendors.isActive, true));

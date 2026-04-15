@@ -884,45 +884,54 @@ export const batchCompositions = pgTable(
   }),
 );
 
-export const batchMeasurements = pgTable("batch_measurements", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  batchId: uuid("batch_id")
-    .notNull()
-    .references(() => batches.id),
-  measurementDate: timestamp("measurement_date").notNull(),
-  specificGravity: decimal("specific_gravity", { precision: 5, scale: 4 }),
-  abv: decimal("abv", { precision: 4, scale: 2 }),
-  ph: decimal("ph", { precision: 3, scale: 2 }),
-  totalAcidity: decimal("total_acidity", { precision: 4, scale: 2 }),
-  temperature: decimal("temperature", { precision: 4, scale: 1 }),
-  volume: decimal("volume", { precision: 10, scale: 3 }),
-  volumeUnit: unitEnum("volume_unit").notNull().default("L"),
-  volumeLiters: decimal("volume_liters", { precision: 10, scale: 3 }), // Normalized volume in liters (auto-maintained by trigger)
-  // Estimated vs Measured tracking
-  isEstimated: boolean("is_estimated").notNull().default(false), // true = calculated estimate, false = actual measurement
-  estimateSource: text("estimate_source"), // Description of how estimate was calculated (e.g., "Merge from Batch #X", "Volume-weighted blend")
-  // Measurement method tracking for terminal confirmation
-  measurementMethod: text("measurement_method").$type<"hydrometer" | "refractometer" | "calculated">().default("hydrometer"),
-  // SG Calibration fields
-  rawReading: decimal("raw_reading", { precision: 5, scale: 4 }), // Original instrument reading before corrections
-  calibrationId: uuid("calibration_id").references(() => instrumentCalibrations.id), // Calibration used for correction
-  correctionsApplied: jsonb("corrections_applied").$type<{
-    temp?: number;
-    alcohol?: number;
-    baseline?: number;
-  }>(), // Details of corrections applied
-  originalGravityAtMeasurement: decimal("original_gravity_at_measurement", {
-    precision: 5,
-    scale: 3,
-  }), // OG used for refractometer alcohol correction
-  notes: text("notes"),
-  sensoryNotes: text("sensory_notes"), // Tasting notes for sensory checks (brandy, pommeau, etc.)
-  takenBy: text("taken_by"),
-  createdBy: uuid("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  deletedAt: timestamp("deleted_at"),
-});
+export const batchMeasurements = pgTable(
+  "batch_measurements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    batchId: uuid("batch_id")
+      .notNull()
+      .references(() => batches.id),
+    measurementDate: timestamp("measurement_date").notNull(),
+    specificGravity: decimal("specific_gravity", { precision: 5, scale: 4 }),
+    abv: decimal("abv", { precision: 4, scale: 2 }),
+    ph: decimal("ph", { precision: 3, scale: 2 }),
+    totalAcidity: decimal("total_acidity", { precision: 4, scale: 2 }),
+    temperature: decimal("temperature", { precision: 4, scale: 1 }),
+    volume: decimal("volume", { precision: 10, scale: 3 }),
+    volumeUnit: unitEnum("volume_unit").notNull().default("L"),
+    volumeLiters: decimal("volume_liters", { precision: 10, scale: 3 }), // Normalized volume in liters (auto-maintained by trigger)
+    // Estimated vs Measured tracking
+    isEstimated: boolean("is_estimated").notNull().default(false), // true = calculated estimate, false = actual measurement
+    estimateSource: text("estimate_source"), // Description of how estimate was calculated (e.g., "Merge from Batch #X", "Volume-weighted blend")
+    // Measurement method tracking for terminal confirmation
+    measurementMethod: text("measurement_method").$type<"hydrometer" | "refractometer" | "calculated">().default("hydrometer"),
+    // SG Calibration fields
+    rawReading: decimal("raw_reading", { precision: 5, scale: 4 }), // Original instrument reading before corrections
+    calibrationId: uuid("calibration_id").references(() => instrumentCalibrations.id), // Calibration used for correction
+    correctionsApplied: jsonb("corrections_applied").$type<{
+      temp?: number;
+      alcohol?: number;
+      baseline?: number;
+    }>(), // Details of corrections applied
+    originalGravityAtMeasurement: decimal("original_gravity_at_measurement", {
+      precision: 5,
+      scale: 3,
+    }), // OG used for refractometer alcohol correction
+    notes: text("notes"),
+    sensoryNotes: text("sensory_notes"), // Tasting notes for sensory checks (brandy, pommeau, etc.)
+    takenBy: text("taken_by"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at"),
+  },
+  (table) => ({
+    batchDateIdx: index("batch_measurements_batch_date_idx").on(
+      table.batchId,
+      table.measurementDate,
+    ),
+  }),
+);
 
 export const batchAdditives = pgTable("batch_additives", {
   id: uuid("id").primaryKey().defaultRandom(),

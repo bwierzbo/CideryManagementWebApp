@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc";
+import { router, publicProcedure, adminProcedure } from "../trpc";
 import { db } from "db";
 import { sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -27,7 +27,7 @@ export const healthRouter = router({
    * Database connectivity and performance check
    * Tests database connection and query performance
    */
-  database: publicProcedure.query(async () => {
+  database: adminProcedure.query(async () => {
     const startTime = Date.now();
 
     try {
@@ -104,7 +104,7 @@ export const healthRouter = router({
    * System resource monitoring
    * Basic memory and CPU usage indicators
    */
-  system: publicProcedure.query(() => {
+  system: adminProcedure.query(() => {
     const startTime = Date.now();
 
     try {
@@ -274,7 +274,7 @@ export const healthRouter = router({
    * Detailed diagnostics endpoint
    * Provides extensive system information for debugging
    */
-  diagnostics: publicProcedure.query(async () => {
+  diagnostics: adminProcedure.query(async () => {
     const startTime = Date.now();
 
     try {
