@@ -505,6 +505,7 @@ export const pressRunRouter = router({
 
               const updateData: Record<string, unknown> = {
                 currentVolume: newVolume.toString(),
+                currentVolumeLiters: newVolume.toString(),
                 currentVolumeUnit: existingBatch[0].currentVolumeUnit || "L",
                 updatedAt: new Date(),
               };
@@ -585,6 +586,7 @@ export const pressRunRouter = router({
                   initialVolume: netVolumeL.toString(),
                   initialVolumeUnit: "L",
                   currentVolume: netVolumeL.toString(),
+                  currentVolumeLiters: netVolumeL.toString(),
                   currentVolumeUnit: "L",
                   status: "fermentation",
                   productType: productType,
@@ -1250,6 +1252,7 @@ export const pressRunRouter = router({
               initialVolume: totalJuiceVolumeL.toString(),
               initialVolumeUnit: "L",
               currentVolume: totalJuiceVolumeL.toString(),
+              currentVolumeLiters: totalJuiceVolumeL.toString(),
               currentVolumeUnit: "L",
               status: "fermentation",
               productType: productType,
@@ -1718,6 +1721,7 @@ export const pressRunRouter = router({
               // Update existing batch volume (and add transfer loss info if this is the first loss recorded)
               const updateData: Record<string, unknown> = {
                 currentVolume: newVolume.toString(),
+                currentVolumeLiters: newVolume.toString(),
                 currentVolumeUnit: existingBatch[0].currentVolumeUnit || "L",
                 updatedAt: new Date(),
               };
@@ -1830,6 +1834,7 @@ export const pressRunRouter = router({
                   initialVolume: netVolumeL.toString(),
                   initialVolumeUnit: "L",
                   currentVolume: netVolumeL.toString(),
+                  currentVolumeLiters: netVolumeL.toString(),
                   currentVolumeUnit: "L",
                   status: "fermentation",
                   productType: productType,

@@ -137,43 +137,52 @@ export const dashboardRouter = router({
         .orderBy(desc(batches.startDate))
         .limit(10);
 
-      // Get latest measurements for each batch
-      const batchesWithMeasurements = await Promise.all(
-        recentBatches.map(async (batch) => {
-          const latestMeasurement = await db
+      // Get latest measurements for all batches in one query (instead of N queries)
+      const batchIds = recentBatches.map((b) => b.id);
+      const allMeasurements = batchIds.length > 0
+        ? await db
             .select({
+              batchId: batchMeasurements.batchId,
               abv: batchMeasurements.abv,
               specificGravity: batchMeasurements.specificGravity,
               measurementDate: batchMeasurements.measurementDate,
             })
             .from(batchMeasurements)
-            .where(eq(batchMeasurements.batchId, batch.id))
+            .where(inArray(batchMeasurements.batchId, batchIds))
             .orderBy(desc(batchMeasurements.measurementDate))
-            .limit(1);
+        : [];
 
-          const measurement = latestMeasurement[0];
-          const daysActive = batch.startDate
-            ? Math.floor(
-                (Date.now() - new Date(batch.startDate).getTime()) /
-                  (1000 * 60 * 60 * 24)
-              )
-            : 0;
+      // Pick latest measurement per batch
+      const measurementMap = new Map<string, (typeof allMeasurements)[0]>();
+      for (const m of allMeasurements) {
+        if (!measurementMap.has(m.batchId)) {
+          measurementMap.set(m.batchId, m);
+        }
+      }
 
-          return {
-            id: batch.id,
-            batchNumber: batch.batchNumber,
-            customName: batch.customName,
-            status: batch.status,
-            vesselName: batch.vesselName,
-            abv: measurement?.abv ? Number(measurement.abv).toFixed(1) : null,
-            specificGravity: measurement?.specificGravity
-              ? Number(measurement.specificGravity).toFixed(3)
-              : null,
-            daysActive,
-            startDate: batch.startDate,
-          };
-        })
-      );
+      const batchesWithMeasurements = recentBatches.map((batch) => {
+        const measurement = measurementMap.get(batch.id);
+        const daysActive = batch.startDate
+          ? Math.floor(
+              (Date.now() - new Date(batch.startDate).getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          : 0;
+
+        return {
+          id: batch.id,
+          batchNumber: batch.batchNumber,
+          customName: batch.customName,
+          status: batch.status,
+          vesselName: batch.vesselName,
+          abv: measurement?.abv ? Number(measurement.abv).toFixed(1) : null,
+          specificGravity: measurement?.specificGravity
+            ? Number(measurement.specificGravity).toFixed(3)
+            : null,
+          daysActive,
+          startDate: batch.startDate,
+        };
+      });
 
       return {
         batches: batchesWithMeasurements,

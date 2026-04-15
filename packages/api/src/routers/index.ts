@@ -1711,69 +1711,64 @@ export const appRouter = router({
               ),
             );
 
-          // Calculate inventory for each variety
-          const inventoryLevels = await Promise.all(
-            varieties.map(async (variety) => {
-              // Total purchased (in kg)
-              const purchasedResult = await db
-                .select({
-                  total: sql<string>`COALESCE(SUM(CAST(${basefruitPurchaseItems.quantityKg} AS NUMERIC)), 0)`,
-                })
-                .from(basefruitPurchaseItems)
-                .where(
-                  and(
-                    eq(basefruitPurchaseItems.fruitVarietyId, variety.varietyId),
-                    isNull(basefruitPurchaseItems.deletedAt),
-                  ),
-                );
+          // Batch query: total purchased and used per variety (2 queries instead of 2N)
+          const [purchasedByVariety, usedByVariety] = await Promise.all([
+            db
+              .select({
+                varietyId: basefruitPurchaseItems.fruitVarietyId,
+                total: sql<string>`COALESCE(SUM(CAST(${basefruitPurchaseItems.quantityKg} AS NUMERIC)), 0)`,
+              })
+              .from(basefruitPurchaseItems)
+              .where(isNull(basefruitPurchaseItems.deletedAt))
+              .groupBy(basefruitPurchaseItems.fruitVarietyId),
+            db
+              .select({
+                varietyId: batchCompositions.varietyId,
+                total: sql<string>`COALESCE(SUM(CAST(${batchCompositions.inputWeightKg} AS NUMERIC)), 0)`,
+              })
+              .from(batchCompositions)
+              .where(isNull(batchCompositions.deletedAt))
+              .groupBy(batchCompositions.varietyId),
+          ]);
 
-              // Total used in batch compositions (in kg)
-              const usedResult = await db
-                .select({
-                  total: sql<string>`COALESCE(SUM(CAST(${batchCompositions.inputWeightKg} AS NUMERIC)), 0)`,
-                })
-                .from(batchCompositions)
-                .where(
-                  and(
-                    eq(batchCompositions.varietyId, variety.varietyId),
-                    isNull(batchCompositions.deletedAt),
-                  ),
-                );
-
-              const totalPurchased = parseFloat(
-                purchasedResult[0]?.total || "0",
-              );
-              const totalUsed = parseFloat(usedResult[0]?.total || "0");
-              const remaining = totalPurchased - totalUsed;
-
-              // Determine stock status
-              let stockStatus: "healthy" | "low" | "out" = "healthy";
-              if (remaining <= 0) {
-                stockStatus = "out";
-              } else if (
-                variety.reorderThreshold &&
-                parseFloat(variety.reorderThreshold) > 0
-              ) {
-                if (remaining <= parseFloat(variety.reorderThreshold)) {
-                  stockStatus = "low";
-                }
-              }
-
-              return {
-                varietyId: variety.varietyId,
-                varietyName: variety.varietyName,
-                totalPurchased,
-                totalUsed,
-                remaining,
-                unit: "kg",
-                reorderThreshold: variety.reorderThreshold
-                  ? parseFloat(variety.reorderThreshold)
-                  : null,
-                reorderUnit: variety.reorderUnit,
-                stockStatus,
-              };
-            }),
+          const purchasedMap = new Map(
+            purchasedByVariety.map((r) => [r.varietyId, parseFloat(r.total || "0")])
           );
+          const usedMap = new Map(
+            usedByVariety.map((r) => [r.varietyId, parseFloat(r.total || "0")])
+          );
+
+          const inventoryLevels = varieties.map((variety) => {
+            const totalPurchased = purchasedMap.get(variety.varietyId) ?? 0;
+            const totalUsed = usedMap.get(variety.varietyId) ?? 0;
+            const remaining = totalPurchased - totalUsed;
+
+            let stockStatus: "healthy" | "low" | "out" = "healthy";
+            if (remaining <= 0) {
+              stockStatus = "out";
+            } else if (
+              variety.reorderThreshold &&
+              parseFloat(variety.reorderThreshold) > 0
+            ) {
+              if (remaining <= parseFloat(variety.reorderThreshold)) {
+                stockStatus = "low";
+              }
+            }
+
+            return {
+              varietyId: variety.varietyId,
+              varietyName: variety.varietyName,
+              totalPurchased,
+              totalUsed,
+              remaining,
+              unit: "kg",
+              reorderThreshold: variety.reorderThreshold
+                ? parseFloat(variety.reorderThreshold)
+                : null,
+              reorderUnit: variety.reorderUnit,
+              stockStatus,
+            };
+          });
 
           return inventoryLevels;
         }
@@ -2363,6 +2358,7 @@ export const appRouter = router({
           const updateData: any = { updatedAt: new Date() };
           if (input.volumeL) {
             updateData.currentVolume = input.volumeL.toString();
+            updateData.currentVolumeLiters = input.volumeL.toString();
             updateData.currentVolumeUnit = "L";
           }
           if (input.abv) {
@@ -2503,6 +2499,7 @@ export const appRouter = router({
               .set({
                 vesselId: input.newVesselId,
                 currentVolume: input.volumeTransferredL.toString(),
+                currentVolumeLiters: input.volumeTransferredL.toString(),
                 currentVolumeUnit: "L",
                 updatedAt: new Date(),
               })
@@ -4166,6 +4163,7 @@ export const appRouter = router({
                 .update(batches)
                 .set({
                   currentVolume: remainingVolumeL.toString(),
+                  currentVolumeLiters: remainingVolumeL.toString(),
                   currentVolumeUnit: "L",
                   updatedAt: new Date(),
                 })
@@ -4203,6 +4201,7 @@ export const appRouter = router({
                 .update(batches)
                 .set({
                   currentVolume: "0",
+                  currentVolumeLiters: "0",
                   status: "completed",
                   vesselId: null,
                   endDate: new Date(),
@@ -4397,6 +4396,7 @@ export const appRouter = router({
               // Update destination batch with combined volume and blended ABV
               const updateData: Record<string, unknown> = {
                 currentVolume: newVolumeL.toString(),
+                currentVolumeLiters: newVolumeL.toString(),
                 currentVolumeUnit: "L",
                 updatedAt: new Date(),
               };
@@ -4424,6 +4424,7 @@ export const appRouter = router({
                   .update(batches)
                   .set({
                     currentVolume: remainingVolumeL.toString(),
+                    currentVolumeLiters: remainingVolumeL.toString(),
                     currentVolumeUnit: "L",
                     updatedAt: new Date(),
                   })
@@ -4435,6 +4436,7 @@ export const appRouter = router({
                   .set({
                     status: "completed",
                     currentVolume: "0",
+                    currentVolumeLiters: "0",
                     currentVolumeUnit: "L",
                     vesselId: null,
                     deletedAt: new Date(),

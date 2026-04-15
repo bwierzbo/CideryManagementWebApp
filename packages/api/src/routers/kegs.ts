@@ -1027,6 +1027,7 @@ export const kegsRouter = router({
               .update(batches)
               .set({
                 currentVolume: "0",
+                currentVolumeLiters: "0",
                 currentVolumeUnit: currentBatch.currentVolumeUnit || "L",
                 status: "completed",
                 vesselId: null,
@@ -1049,6 +1050,7 @@ export const kegsRouter = router({
               .update(batches)
               .set({
                 currentVolume: newVolume.toString(),
+                currentVolumeLiters: newVolume.toString(),
                 updatedAt: new Date(),
               })
               .where(eq(batches.id, input.batchId));
