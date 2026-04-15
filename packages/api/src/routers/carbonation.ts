@@ -7,6 +7,8 @@ import {
   vessels,
   additivePurchases,
   organizationSettings,
+  workers,
+  activityLaborAssignments,
 } from "db";
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -76,6 +78,11 @@ async function getBottleConditioningAutoComplete(
   };
 }
 
+const laborAssignmentSchema = z.object({
+  workerId: z.string().uuid(),
+  hoursWorked: z.number().positive(),
+});
+
 export const carbonationRouter = router({
   /**
    * Start a new carbonation operation
@@ -104,6 +111,8 @@ export const carbonationRouter = router({
         yeastStrainName: z.string().optional(),
         yeastAmount: z.number().positive().optional(),
         yeastAmountUnit: z.string().default("g").optional(),
+        // Worker-based labor tracking
+        laborAssignments: z.array(laborAssignmentSchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -247,6 +256,29 @@ export const carbonationRouter = router({
           ...autoComplete,
         })
         .returning();
+
+      // Save labor assignments if provided
+      if (input.laborAssignments && input.laborAssignments.length > 0) {
+        for (const assignment of input.laborAssignments) {
+          const [worker] = await db
+            .select({ hourlyRate: workers.hourlyRate })
+            .from(workers)
+            .where(eq(workers.id, assignment.workerId))
+            .limit(1);
+
+          const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+          const laborCost = assignment.hoursWorked * hourlyRate;
+
+          await db.insert(activityLaborAssignments).values({
+            activityType: "carbonation",
+            carbonationOperationId: carbonation.id,
+            workerId: assignment.workerId,
+            hoursWorked: assignment.hoursWorked.toString(),
+            hourlyRateSnapshot: hourlyRate.toString(),
+            laborCost: laborCost.toString(),
+          });
+        }
+      }
 
       return {
         carbonation,
@@ -543,6 +575,8 @@ export const carbonationRouter = router({
         yeastStrainName: z.string().optional(),
         yeastAmount: z.number().positive().optional(),
         yeastAmountUnit: z.string().default("g").optional(),
+        // Worker-based labor tracking
+        laborAssignments: z.array(laborAssignmentSchema).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -668,6 +702,29 @@ export const carbonationRouter = router({
           yeastAmountUnit: input.yeastAmountUnit,
         })
         .returning();
+
+      // Save labor assignments if provided
+      if (input.laborAssignments && input.laborAssignments.length > 0) {
+        for (const assignment of input.laborAssignments) {
+          const [worker] = await db
+            .select({ hourlyRate: workers.hourlyRate })
+            .from(workers)
+            .where(eq(workers.id, assignment.workerId))
+            .limit(1);
+
+          const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+          const laborCost = assignment.hoursWorked * hourlyRate;
+
+          await db.insert(activityLaborAssignments).values({
+            activityType: "carbonation",
+            carbonationOperationId: carbonation.id,
+            workerId: assignment.workerId,
+            hoursWorked: assignment.hoursWorked.toString(),
+            hourlyRateSnapshot: hourlyRate.toString(),
+            laborCost: laborCost.toString(),
+          });
+        }
+      }
 
       return {
         carbonation,

@@ -25,6 +25,8 @@ import {
   additivePurchaseItems,
   organizationSettings,
   vesselCleaningOperations,
+  activityLaborAssignments,
+  workers,
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
@@ -520,6 +522,10 @@ const filterBatchSchema = z.object({
   filteredAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
   filteredBy: z.string().optional(),
   notes: z.string().optional(),
+  laborAssignments: z.array(z.object({
+    workerId: z.string().uuid(),
+    hoursWorked: z.number().positive(),
+  })).optional(),
 }).refine((data) => data.volumeAfter < data.volumeBefore, {
   message: "Volume after filtering must be less than volume before",
   path: ["volumeAfter"],
@@ -4660,6 +4666,27 @@ export const batchRouter = router({
           })
           .returning();
 
+        // Save labor assignments if provided
+        if (input.laborAssignments && input.laborAssignments.length > 0) {
+          for (const assignment of input.laborAssignments) {
+            const [worker] = await db
+              .select({ hourlyRate: workers.hourlyRate })
+              .from(workers)
+              .where(eq(workers.id, assignment.workerId))
+              .limit(1);
+            const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+            const laborCost = assignment.hoursWorked * hourlyRate;
+            await db.insert(activityLaborAssignments).values({
+              activityType: "filtering",
+              filterOperationId: filterOperation[0].id,
+              workerId: assignment.workerId,
+              hoursWorked: assignment.hoursWorked.toString(),
+              hourlyRateSnapshot: hourlyRate.toString(),
+              laborCost: laborCost.toString(),
+            });
+          }
+        }
+
         // Update batch current volume
         await db
           .update(batches)
@@ -4700,6 +4727,10 @@ export const batchRouter = router({
         loss: z.number().min(0, "Loss cannot be negative").optional(),
         rackedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
         notes: z.string().optional(),
+        laborAssignments: z.array(z.object({
+          workerId: z.string().uuid(),
+          hoursWorked: z.number().positive(),
+        })).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -5352,6 +5383,30 @@ export const batchRouter = router({
                 updatedAt: new Date(),
               })
               .where(eq(vessels.id, input.destinationVesselId));
+          }
+
+          // 8. Save labor assignments if provided
+          if (input.laborAssignments && input.laborAssignments.length > 0) {
+            for (const assignment of input.laborAssignments) {
+              const [worker] = await tx
+                .select({ hourlyRate: workers.hourlyRate })
+                .from(workers)
+                .where(eq(workers.id, assignment.workerId))
+                .limit(1);
+
+              const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+              const laborCost = assignment.hoursWorked * hourlyRate;
+
+              await tx.insert(activityLaborAssignments).values({
+                activityType: "racking",
+                rackingOperationId: rackingOperation[0].id,
+                workerId: assignment.workerId,
+                hoursWorked: assignment.hoursWorked.toString(),
+                hourlyRateSnapshot: hourlyRate.toString(),
+                laborCost: laborCost.toString(),
+                createdBy: ctx.session.user.id,
+              });
+            }
           }
 
           return {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -40,6 +40,7 @@ import {
   calculateCO2FromSugar,
   estimateResidualCO2,
 } from "lib";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 const SUGAR_TYPE_LABELS: Record<string, string> = {
   sucrose: "Sucrose (Table Sugar)",
@@ -123,6 +124,7 @@ export function CarbonateModal({
   const [yeastPerLiter, setYeastPerLiter] = React.useState<number>(0.5);
   const [yeastInputMode, setYeastInputMode] = React.useState<"gPerL" | "totalG">("gPerL");
   const [yeastTotalGrams, setYeastTotalGrams] = React.useState<number>(0);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   const { validateDate } = useBatchDateValidation(batch.id);
 
@@ -270,6 +272,7 @@ export function CarbonateModal({
       setYeastStrainName("");
       setYeastPerLiter(0.5);
       setDateWarning(null);
+      setLaborAssignments([]);
     }
   }, [open, reset, batch.currentVolume, batch.currentVolumeUnit, vessel?.isPressureVessel]);
 
@@ -413,6 +416,7 @@ export function CarbonateModal({
         volumeUnit: data.startingVolumeUnit,
         gasType: "CO2",
         notes: data.notes,
+        laborAssignments: toApiLaborAssignments(laborAssignments),
       });
     } else {
       const residualCo2 = (data as any).residualCo2Volumes;
@@ -444,6 +448,7 @@ export function CarbonateModal({
             : (yeastPerLiter > 0 ? yeastPerLiter * volumeInLiters : undefined),
           yeastAmountUnit: "g",
         }),
+        laborAssignments: toApiLaborAssignments(laborAssignments),
       });
     }
   };
@@ -1004,6 +1009,13 @@ export function CarbonateModal({
               ))}
             </div>
           )}
+
+          {/* Labor Tracking */}
+          <WorkerLaborInput
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this carbonation operation"
+          />
 
           {/* Actions */}
           <div className="flex justify-end gap-2">

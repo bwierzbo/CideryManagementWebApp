@@ -30,6 +30,7 @@ import { Filter, AlertTriangle } from "lucide-react";
 import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 const filterSchema = z.object({
   filterType: z.enum(["coarse", "fine", "sterile"], {
@@ -68,6 +69,7 @@ export function FilterModal({
   const [calculatedLoss, setCalculatedLoss] = useState(0);
   const [lossPercentage, setLossPercentage] = useState(0);
   const [dateWarning, setDateWarning] = useState<string | null>(null);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   // Date validation
   const { validateDate } = useBatchDateValidation(batchId);
@@ -136,6 +138,7 @@ export function FilterModal({
         filteredAt: new Date(),
         notes: "",
       });
+      setLaborAssignments([]);
     }
   }, [open, currentVolumeL, reset]);
 
@@ -296,6 +299,12 @@ export function FilterModal({
             )}
           </div>
 
+          <WorkerLaborInput
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this filtering operation"
+          />
+
           {/* Notes (Optional) */}
           <div>
             <Label htmlFor="notes">Notes</Label>
@@ -383,6 +392,9 @@ export function FilterModal({
                     filteredAt,
                     filteredBy: undefined,
                     notes: watch("notes"),
+                    ...(laborAssignments.filter(a => a.workerId && a.hoursWorked > 0).length > 0 && {
+                      laborAssignments: toApiLaborAssignments(laborAssignments.filter(a => a.workerId && a.hoursWorked > 0)),
+                    }),
                   });
                 } catch (err: any) {
                   // Error already handled by onError callback in mutation definition

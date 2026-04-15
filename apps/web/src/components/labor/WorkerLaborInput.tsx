@@ -155,7 +155,7 @@ export function WorkerLaborInput({
               <div className="relative">
                 <Input
                   type="number"
-                  step="0.25"
+                  step="0.1"
                   min="0"
                   placeholder="Hours"
                   value={hoursInput}
@@ -206,7 +206,7 @@ export function WorkerLaborInput({
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <Input
                     type="number"
-                    step="0.25"
+                    step="0.1"
                     min="0"
                     className="w-20 h-8 text-center"
                     value={assignment.hoursWorked}

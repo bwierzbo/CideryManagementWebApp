@@ -31,6 +31,7 @@ import { VolumeInput, VolumeUnit } from "@/components/ui/volume-input";
 import { convertVolume } from "lib";
 import { Badge } from "@/components/ui/badge";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import { WorkerLaborInput, type WorkerAssignment, toApiLaborAssignments } from "@/components/labor/WorkerLaborInput";
 
 const rackingSchema = z.object({
   destinationVesselId: z.string().min(1, "Please select a destination vessel"),
@@ -74,6 +75,7 @@ export function RackingModal({
   const [selectedVesselHasBatch, setSelectedVesselHasBatch] = useState(false);
   const [selectedVesselBatchName, setSelectedVesselBatchName] = useState<string | null>(null);
   const [vesselSearchQuery, setVesselSearchQuery] = useState("");
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   // Fetch all vessels (including source vessel for rack-to-self operations)
   const { data: vesselsData } = trpc.vessel.liquidMap.useQuery();
@@ -159,6 +161,7 @@ export function RackingModal({
       setRemainingVolume(0);
       setIsFullRack(false);
       setVesselSearchQuery("");
+      setLaborAssignments([]);
     } else {
       // Set initial volume to rack as current volume
       const initialVolume = sourceVesselCapacityUnit === "gal"
@@ -201,6 +204,8 @@ export function RackingModal({
       ? convertVolume(data.loss || 0, "gal", "L")
       : (data.loss || 0);
 
+    const validLabor = laborAssignments.filter(a => a.workerId && a.hoursWorked > 0);
+
     rackBatchMutation.mutate({
       batchId,
       destinationVesselId: data.destinationVesselId,
@@ -208,6 +213,9 @@ export function RackingModal({
       loss: lossL,
       rackedAt: data.rackedAt,
       notes: data.notes,
+      ...(validLabor.length > 0 && {
+        laborAssignments: toApiLaborAssignments(validLabor),
+      }),
     });
   };
 
@@ -418,6 +426,13 @@ export function RackingModal({
               <p className="text-sm text-red-500">{errors.loss.message}</p>
             )}
           </div>
+
+          {/* Labor Tracking */}
+          <WorkerLaborInput
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this racking operation"
+          />
 
           {/* Notes (Optional) */}
           <div className="space-y-2">

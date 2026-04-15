@@ -113,6 +113,7 @@ export const activityLaborTypeEnum = pgEnum("activity_labor_type", [
   "keg_fill",
   "racking",
   "filtering",
+  "carbonation",
   "cleaning",
 ]);
 
@@ -358,6 +359,9 @@ export const activityLaborAssignments = pgTable(
     pressRunId: uuid("press_run_id"),
     bottleRunId: uuid("bottle_run_id"),
     kegFillId: uuid("keg_fill_id"),
+    filterOperationId: uuid("filter_operation_id"),
+    rackingOperationId: uuid("racking_operation_id"),
+    carbonationOperationId: uuid("carbonation_operation_id"),
     // Worker assignment
     workerId: uuid("worker_id")
       .notNull()
