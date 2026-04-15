@@ -632,7 +632,8 @@ export default function PackagingPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setBulkMarkReadyDate(new Date().toISOString().split("T")[0]);
+                        const now = new Date();
+                        setBulkMarkReadyDate(now.toISOString().slice(0, 16));
                         setBulkMarkReadyOpen(true);
                       }}
                       disabled={bulkMarkReadyMutation.isPending}
@@ -645,7 +646,7 @@ export default function PackagingPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => {
-                        setBulkDistributeDate(new Date().toISOString().split("T")[0]);
+                        setBulkDistributeDate(new Date().toISOString().slice(0, 16));
                         setBulkBottleDistributeOpen(true);
                       }}
                       className="border-purple-300 bg-white text-purple-700 hover:bg-purple-50 h-9"
@@ -830,9 +831,9 @@ export default function PackagingPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Ready Date <span className="text-red-500">*</span></Label>
+              <Label>Ready Date & Time <span className="text-red-500">*</span></Label>
               <Input
-                type="date"
+                type="datetime-local"
                 value={bulkMarkReadyDate}
                 onChange={(e) => setBulkMarkReadyDate(e.target.value)}
                 className="mt-1"
@@ -848,7 +849,7 @@ export default function PackagingPage() {
                   try {
                     const result = await bulkMarkReadyMutation.mutateAsync({
                       runIds: selectedItems,
-                      readyAt: new Date(bulkMarkReadyDate + "T12:00:00"),
+                      readyAt: new Date(bulkMarkReadyDate),
                     });
                     toast({
                       title: "Bulk Mark Ready",
@@ -879,9 +880,9 @@ export default function PackagingPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Distribution Date <span className="text-red-500">*</span></Label>
+              <Label>Distribution Date & Time <span className="text-red-500">*</span></Label>
               <Input
-                type="date"
+                type="datetime-local"
                 value={bulkDistributeDate}
                 onChange={(e) => setBulkDistributeDate(e.target.value)}
                 className="mt-1"
@@ -906,7 +907,7 @@ export default function PackagingPage() {
                   try {
                     const result = await bulkDistributeMutation.mutateAsync({
                       runIds: selectedItems,
-                      distributedAt: new Date(bulkDistributeDate + "T12:00:00"),
+                      distributedAt: new Date(bulkDistributeDate),
                       distributionLocation: bulkDistributeLocation.trim(),
                     });
                     toast({
