@@ -3470,10 +3470,11 @@ export const appRouter = router({
           }
         }
 
-        // Auto-fix: if a vessel has an active batch but status is not "available", correct it
+        // Auto-fix 1: if a vessel has an active batch with volume > 0 but status is not "available", correct it
         const vesselStatusFixes: string[] = [];
         for (const vessel of vesselsWithBatches) {
-          if (vessel.batchId && vessel.vesselStatus !== "available") {
+          const vol = parseFloat(vessel.currentVolume?.toString() || "0");
+          if (vessel.batchId && vol > 0 && vessel.vesselStatus !== "available") {
             vesselStatusFixes.push(vessel.vesselId);
           }
         }
@@ -3482,13 +3483,48 @@ export const appRouter = router({
             .update(vessels)
             .set({ status: "available" as any, updatedAt: new Date() })
             .where(inArray(vessels.id, vesselStatusFixes));
-          // Update in-memory data to reflect the fix
           for (const vessel of vesselsWithBatches) {
             if (vesselStatusFixes.includes(vessel.vesselId)) {
               (vessel as any).vesselStatus = "available";
             }
           }
           console.log(`Auto-fixed vessel status for ${vesselStatusFixes.length} vessels with active batches`);
+        }
+
+        // Auto-fix 2: if a batch has 0 volume but is still active (fermentation/aging), complete it and release the vessel
+        const emptyBatchFixes: { batchId: string; vesselId: string }[] = [];
+        for (const vessel of vesselsWithBatches) {
+          if (!vessel.batchId) continue;
+          const vol = parseFloat(vessel.currentVolume?.toString() || "0");
+          const status = vessel.batchStatus as string;
+          if (vol <= 0 && (status === "fermentation" || status === "aging")) {
+            emptyBatchFixes.push({ batchId: vessel.batchId, vesselId: vessel.vesselId });
+          }
+        }
+        if (emptyBatchFixes.length > 0) {
+          for (const fix of emptyBatchFixes) {
+            await db
+              .update(batches)
+              .set({
+                status: "completed",
+                vesselId: null,
+                endDate: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, fix.batchId));
+            await db
+              .update(vessels)
+              .set({ status: "cleaning" as any, updatedAt: new Date() })
+              .where(eq(vessels.id, fix.vesselId));
+            // Update in-memory data
+            const v = vesselsWithBatches.find((vv) => vv.vesselId === fix.vesselId);
+            if (v) {
+              (v as any).vesselStatus = "cleaning";
+              (v as any).batchId = null;
+              (v as any).batchStatus = "completed";
+            }
+          }
+          console.log(`Auto-fixed ${emptyBatchFixes.length} empty batches still marked as active`);
         }
 
         // Combine vessel data with measurements and last activity
