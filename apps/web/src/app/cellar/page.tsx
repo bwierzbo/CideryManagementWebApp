@@ -1346,6 +1346,20 @@ function VesselMap() {
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
 
+  // Auto-fix vessel/batch status inconsistencies (fire-and-forget on page load)
+  const autoFixMutation = trpc.vessel.autoFixVesselStatus.useMutation({
+    onSuccess: (result) => {
+      if (result.vesselsFixed > 0 || result.batchesFixed > 0) {
+        utils.vessel.liquidMap.invalidate();
+        utils.vessel.list.invalidate();
+      }
+    },
+  });
+  React.useEffect(() => {
+    autoFixMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Computed batch info for the selected vessel (used in tank action dialog headers)
   const selectedVesselInfo = selectedVesselId
     ? liquidMapQuery.data?.vessels.find((v: any) => v.vesselId === selectedVesselId)
