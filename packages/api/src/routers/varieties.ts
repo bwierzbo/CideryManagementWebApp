@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { router, createRbacProcedure, publicProcedure } from "../trpc";
+import { router, createRbacProcedure } from "../trpc";
 import { db, appleVarieties, auditLogs } from "db";
 import { eq, and, isNull, ilike, or, sql, ne } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
@@ -58,7 +58,7 @@ const varietyOutputSchema = z.object({
 
 export const varietiesRouter = router({
   // List all varieties with optional inactive inclusion
-  listAll: publicProcedure
+  listAll: createRbacProcedure("read", "batch")
     .input(
       z.object({
         includeInactive: z.boolean().optional().default(false),
@@ -184,10 +184,6 @@ export const varietiesRouter = router({
   update: createRbacProcedure("update", "apple_variety")
     .input(varietyUpdateSchema)
     .mutation(async ({ input, ctx }) => {
-      console.log(
-        "🔍 Apple variety update called with input:",
-        JSON.stringify(input, null, 2),
-      );
       try {
         // Get existing variety for audit trail
         const existingVariety = await db

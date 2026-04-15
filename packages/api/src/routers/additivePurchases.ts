@@ -108,8 +108,6 @@ export const additivePurchasesRouter = router({
         if (itemType) {
           // Normalize the search itemType (trim and lowercase for case-insensitive matching)
           const normalizedSearchType = itemType.trim().toLowerCase();
-          console.log(`[additivePurchases.list] Filtering for itemType: "${itemType}" (normalized: "${normalizedSearchType}")`);
-          console.log(`[additivePurchases.list] Grouped purchases before filter:`, groupedPurchases.length);
 
           filteredPurchases = groupedPurchases
             .map(purchase => ({
@@ -118,16 +116,10 @@ export const additivePurchasesRouter = router({
                 // Normalize the item's varietyItemType for comparison
                 const normalizedItemType = item.varietyItemType?.trim().toLowerCase();
                 const matches = normalizedItemType === normalizedSearchType;
-                if (!matches && item.varietyItemType) {
-                  console.log(`[additivePurchases.list] Item filtered out - expected: "${itemType}" (normalized: "${normalizedSearchType}"), got: "${item.varietyItemType}" (normalized: "${normalizedItemType}")`);
-                }
                 return matches;
               })
             }))
             .filter(purchase => purchase.items.length > 0); // Remove purchases with no matching items
-
-          console.log(`[additivePurchases.list] Filtered purchases:`, filteredPurchases.length);
-          console.log(`[additivePurchases.list] Total items:`, filteredPurchases.reduce((sum, p) => sum + p.items.length, 0));
         }
 
         const totalCount = await db

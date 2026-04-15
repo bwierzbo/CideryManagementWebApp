@@ -111,10 +111,6 @@ export const userRouter = router({
       // Store token (in production, store in database)
       resetTokens.set(token, { email, expires });
 
-      // In production, send email with reset link
-      // For now, just log the token
-      console.log(`Password reset token for ${email}: ${token}`);
-
       return {
         success: true,
         message: "If an account exists, a reset link has been sent",

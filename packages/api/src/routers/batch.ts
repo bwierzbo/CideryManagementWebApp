@@ -4665,6 +4665,7 @@ export const batchRouter = router({
           .update(batches)
           .set({
             currentVolume: volumeRackedL.toFixed(3),
+            currentVolumeLiters: volumeRackedL.toFixed(3),
             currentVolumeUnit: 'L',
             updatedAt: new Date(),
           })
@@ -4927,6 +4928,7 @@ export const batchRouter = router({
                 .update(batches)
                 .set({
                   currentVolume: volumeRemainingInSourceL.toString(),
+                  currentVolumeLiters: volumeRemainingInSourceL.toString(),
                   currentVolumeUnit: 'L',
                   updatedAt: new Date(),
                 })
@@ -5101,6 +5103,7 @@ export const batchRouter = router({
               .update(batches)
               .set({
                 currentVolume: volumeRemainingInSourceL.toString(),
+                currentVolumeLiters: volumeRemainingInSourceL.toString(),
                 currentVolumeUnit: 'L',
                 updatedAt: new Date(),
               })
@@ -5168,6 +5171,7 @@ export const batchRouter = router({
                 vesselId: null,
                 status: "completed",
                 currentVolume: "0",
+                currentVolumeLiters: "0",
                 isArchived: true,
                 archivedAt: new Date(),
                 archivedReason: 'Auto-archived: Batch fully transferred',
@@ -5227,6 +5231,7 @@ export const batchRouter = router({
                   vesselId: null,
                   status: "completed",
                   currentVolume: "0",
+                  currentVolumeLiters: "0",
                   isArchived: true,
                   archivedAt: new Date(),
                   archivedReason: 'Auto-archived: Batch fully transferred',
@@ -5509,8 +5514,10 @@ export const batchRouter = router({
                 batchNumber: newBatchName,
                 initialVolume: transferVolumeL.toString(),
                 initialVolumeUnit: "L",
+                initialVolumeLiters: transferVolumeL.toString(),
                 currentVolume: transferVolumeL.toString(),
                 currentVolumeUnit: "L",
+                currentVolumeLiters: transferVolumeL.toString(),
                 status: "fermentation",
                 fermentationStage: "not_started", // Juice batch awaiting fermentation
                 fermentationStageUpdatedAt: new Date(),
@@ -5582,6 +5589,7 @@ export const batchRouter = router({
               .update(batches)
               .set({
                 currentVolume: newVolumeL.toString(),
+                currentVolumeLiters: newVolumeL.toString(),
                 currentVolumeUnit: "L",
                 updatedAt: new Date(),
               })
@@ -6514,6 +6522,8 @@ export const batchRouter = router({
           customName: customNameValue,
           initialVolume: volumeLiters.toFixed(3),
           initialVolumeUnit: "L",
+          initialVolumeLiters: volumeLiters.toFixed(3),
+          currentVolume: volumeLiters.toFixed(3),
           currentVolumeLiters: volumeLiters.toFixed(3),
           status: "completed", // Legacy batches are already done fermenting
           productType,

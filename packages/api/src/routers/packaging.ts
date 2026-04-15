@@ -795,13 +795,11 @@ export const packagingRouter = router({
 
         const run = packagingRunData[0];
 
-        console.log("📦 Fetching inventory for runId:", runId);
         // Get inventory items for this run (optimized)
         let inventory: any[] = [];
         try {
           const inventoryMap = await getBottleRunInventory([runId]);
           inventory = inventoryMap.get(runId) || [];
-          console.log("✅ Inventory fetched:", inventory.length, "items");
         } catch (inventoryError) {
           console.error("❌ Inventory fetch error:", inventoryError);
           inventory = [];

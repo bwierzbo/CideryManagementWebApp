@@ -79,15 +79,6 @@ export const vendorRouter = router({
       const { search, limit, offset, sortBy, sortOrder, includeInactive } =
         input;
 
-      console.log("Vendor list query input:", {
-        search,
-        limit,
-        offset,
-        sortBy,
-        sortOrder,
-        includeInactive,
-      });
-
       // Build where conditions array
       const whereConditions = [];
 
@@ -100,7 +91,6 @@ export const vendorRouter = router({
 
       if (search && search.trim()) {
         const searchTerm = `%${search.trim()}%`;
-        console.log("Applying search filter with term:", searchTerm);
 
         // Use ilike for case-insensitive search
         whereConditions.push(
@@ -110,9 +100,6 @@ export const vendorRouter = router({
 
       const whereCondition =
         whereConditions.length > 0 ? and(...whereConditions) : undefined;
-
-      console.log("Where conditions array:", whereConditions);
-      console.log("Final where condition:", whereCondition);
 
       // Build order by
       const orderByFn = sortOrder === "asc" ? asc : desc;
@@ -147,11 +134,6 @@ export const vendorRouter = router({
         .orderBy(orderByFn(orderByField))
         .limit(limit)
         .offset(offset);
-
-      console.log(
-        `Query returned ${vendorList.length} vendors out of ${totalCount} total`,
-      );
-      console.log("Where condition:", whereCondition);
 
       return {
         vendors: vendorList,

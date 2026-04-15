@@ -1168,10 +1168,12 @@ export const appRouter = router({
               .leftJoin(vendors, eq(basefruitPurchases.vendorId, vendors.id))
               .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-            // Get depletion status and item names for basefruit purchases
-            for (const purchase of basefruitResults) {
-              const items = await db
+            // Get depletion status and item names for basefruit purchases (batch query)
+            if (basefruitResults.length > 0) {
+              const purchaseIds = basefruitResults.map((p) => p.id);
+              const allItems = await db
                 .select({
+                  purchaseId: basefruitPurchaseItems.purchaseId,
                   id: basefruitPurchaseItems.id,
                   isDepleted: basefruitPurchaseItems.isDepleted,
                   depletedAt: basefruitPurchaseItems.depletedAt,
@@ -1182,39 +1184,51 @@ export const appRouter = router({
                   baseFruitVarieties,
                   eq(basefruitPurchaseItems.fruitVarietyId, baseFruitVarieties.id),
                 )
-                .where(eq(basefruitPurchaseItems.purchaseId, purchase.id));
+                .where(inArray(basefruitPurchaseItems.purchaseId, purchaseIds));
 
-              const totalItems = items.length;
-              const depletedItems = items.filter(
-                (item) => item.isDepleted,
-              ).length;
-
-              // Get unique variety names
-              const itemNames = Array.from(
-                new Set(
-                  items
-                    .map((item) => item.varietyName)
-                    .filter((name): name is string => name !== null),
-                ),
-              ).join(", ");
-
-              let status = "active";
-              if (purchase.deletedAt) {
-                status = "archived";
-              } else if (depletedItems === totalItems && totalItems > 0) {
-                status = "depleted";
-              } else if (depletedItems > 0) {
-                status = "partially_depleted";
+              const itemsByPurchaseId = new Map<string, typeof allItems>();
+              for (const item of allItems) {
+                const key = item.purchaseId;
+                if (!itemsByPurchaseId.has(key)) {
+                  itemsByPurchaseId.set(key, []);
+                }
+                itemsByPurchaseId.get(key)!.push(item);
               }
 
-              allPurchases.push({
-                ...purchase,
-                materialType: "basefruit" as const,
-                status,
-                totalItems,
-                depletedItems,
-                itemNames,
-              });
+              for (const purchase of basefruitResults) {
+                const items = itemsByPurchaseId.get(purchase.id) ?? [];
+                const totalItems = items.length;
+                const depletedItems = items.filter(
+                  (item) => item.isDepleted,
+                ).length;
+
+                // Get unique variety names
+                const itemNames = Array.from(
+                  new Set(
+                    items
+                      .map((item) => item.varietyName)
+                      .filter((name): name is string => name !== null),
+                  ),
+                ).join(", ");
+
+                let status = "active";
+                if (purchase.deletedAt) {
+                  status = "archived";
+                } else if (depletedItems === totalItems && totalItems > 0) {
+                  status = "depleted";
+                } else if (depletedItems > 0) {
+                  status = "partially_depleted";
+                }
+
+                allPurchases.push({
+                  ...purchase,
+                  materialType: "basefruit" as const,
+                  status,
+                  totalItems,
+                  depletedItems,
+                  itemNames,
+                });
+              }
             }
           }
 
@@ -1256,9 +1270,11 @@ export const appRouter = router({
               .leftJoin(vendors, eq(additivePurchases.vendorId, vendors.id))
               .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-            for (const purchase of additiveResults) {
-              const items = await db
+            if (additiveResults.length > 0) {
+              const purchaseIds = additiveResults.map((p) => p.id);
+              const allItems = await db
                 .select({
+                  purchaseId: additivePurchaseItems.purchaseId,
                   id: additivePurchaseItems.id,
                   varietyName: additiveVarieties.name,
                 })
@@ -1267,27 +1283,40 @@ export const appRouter = router({
                   additiveVarieties,
                   eq(additivePurchaseItems.additiveVarietyId, additiveVarieties.id),
                 )
-                .where(eq(additivePurchaseItems.purchaseId, purchase.id));
+                .where(inArray(additivePurchaseItems.purchaseId, purchaseIds));
 
-              // Get unique variety names
-              const itemNames = Array.from(
-                new Set(
-                  items
-                    .map((item) => item.varietyName)
-                    .filter((name): name is string => name !== null),
-                ),
-              ).join(", ");
+              const itemsByPurchaseId = new Map<string, typeof allItems>();
+              for (const item of allItems) {
+                const key = item.purchaseId;
+                if (!itemsByPurchaseId.has(key)) {
+                  itemsByPurchaseId.set(key, []);
+                }
+                itemsByPurchaseId.get(key)!.push(item);
+              }
 
-              const status = purchase.deletedAt ? "archived" : "active";
+              for (const purchase of additiveResults) {
+                const items = itemsByPurchaseId.get(purchase.id) ?? [];
 
-              allPurchases.push({
-                ...purchase,
-                materialType: "additives" as const,
-                status,
-                totalItems: items.length,
-                depletedItems: 0,
-                itemNames,
-              });
+                // Get unique variety names
+                const itemNames = Array.from(
+                  new Set(
+                    items
+                      .map((item) => item.varietyName)
+                      .filter((name): name is string => name !== null),
+                  ),
+                ).join(", ");
+
+                const status = purchase.deletedAt ? "archived" : "active";
+
+                allPurchases.push({
+                  ...purchase,
+                  materialType: "additives" as const,
+                  status,
+                  totalItems: items.length,
+                  depletedItems: 0,
+                  itemNames,
+                });
+              }
             }
           }
 
@@ -1326,9 +1355,11 @@ export const appRouter = router({
               .leftJoin(vendors, eq(juicePurchases.vendorId, vendors.id))
               .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-            for (const purchase of juiceResults) {
-              const items = await db
+            if (juiceResults.length > 0) {
+              const purchaseIds = juiceResults.map((p) => p.id);
+              const allItems = await db
                 .select({
+                  purchaseId: juicePurchaseItems.purchaseId,
                   id: juicePurchaseItems.id,
                   varietyName: juiceVarieties.name,
                 })
@@ -1337,27 +1368,40 @@ export const appRouter = router({
                   juiceVarieties,
                   eq(juicePurchaseItems.juiceVarietyId, juiceVarieties.id),
                 )
-                .where(eq(juicePurchaseItems.purchaseId, purchase.id));
+                .where(inArray(juicePurchaseItems.purchaseId, purchaseIds));
 
-              // Get unique variety names
-              const itemNames = Array.from(
-                new Set(
-                  items
-                    .map((item) => item.varietyName)
-                    .filter((name): name is string => name !== null),
-                ),
-              ).join(", ");
+              const itemsByPurchaseId = new Map<string, typeof allItems>();
+              for (const item of allItems) {
+                const key = item.purchaseId;
+                if (!itemsByPurchaseId.has(key)) {
+                  itemsByPurchaseId.set(key, []);
+                }
+                itemsByPurchaseId.get(key)!.push(item);
+              }
 
-              const status = purchase.deletedAt ? "archived" : "active";
+              for (const purchase of juiceResults) {
+                const items = itemsByPurchaseId.get(purchase.id) ?? [];
 
-              allPurchases.push({
-                ...purchase,
-                materialType: "juice" as const,
-                status,
-                totalItems: items.length,
-                depletedItems: 0,
-                itemNames,
-              });
+                // Get unique variety names
+                const itemNames = Array.from(
+                  new Set(
+                    items
+                      .map((item) => item.varietyName)
+                      .filter((name): name is string => name !== null),
+                  ),
+                ).join(", ");
+
+                const status = purchase.deletedAt ? "archived" : "active";
+
+                allPurchases.push({
+                  ...purchase,
+                  materialType: "juice" as const,
+                  status,
+                  totalItems: items.length,
+                  depletedItems: 0,
+                  itemNames,
+                });
+              }
             }
           }
 
@@ -1399,9 +1443,11 @@ export const appRouter = router({
               .leftJoin(vendors, eq(packagingPurchases.vendorId, vendors.id))
               .where(conditions.length > 0 ? and(...conditions) : undefined);
 
-            for (const purchase of packagingResults) {
-              const items = await db
+            if (packagingResults.length > 0) {
+              const purchaseIds = packagingResults.map((p) => p.id);
+              const allItems = await db
                 .select({
+                  purchaseId: packagingPurchaseItems.purchaseId,
                   id: packagingPurchaseItems.id,
                   varietyName: packagingVarieties.name,
                 })
@@ -1410,27 +1456,40 @@ export const appRouter = router({
                   packagingVarieties,
                   eq(packagingPurchaseItems.packagingVarietyId, packagingVarieties.id),
                 )
-                .where(eq(packagingPurchaseItems.purchaseId, purchase.id));
+                .where(inArray(packagingPurchaseItems.purchaseId, purchaseIds));
 
-              // Get unique variety names
-              const itemNames = Array.from(
-                new Set(
-                  items
-                    .map((item) => item.varietyName)
-                    .filter((name): name is string => name !== null),
-                ),
-              ).join(", ");
+              const itemsByPurchaseId = new Map<string, typeof allItems>();
+              for (const item of allItems) {
+                const key = item.purchaseId;
+                if (!itemsByPurchaseId.has(key)) {
+                  itemsByPurchaseId.set(key, []);
+                }
+                itemsByPurchaseId.get(key)!.push(item);
+              }
 
-              const status = purchase.deletedAt ? "archived" : "active";
+              for (const purchase of packagingResults) {
+                const items = itemsByPurchaseId.get(purchase.id) ?? [];
 
-              allPurchases.push({
-                ...purchase,
-                materialType: "packaging" as const,
-                status,
-                totalItems: items.length,
-                depletedItems: 0,
-                itemNames,
-              });
+                // Get unique variety names
+                const itemNames = Array.from(
+                  new Set(
+                    items
+                      .map((item) => item.varietyName)
+                      .filter((name): name is string => name !== null),
+                  ),
+                ).join(", ");
+
+                const status = purchase.deletedAt ? "archived" : "active";
+
+                allPurchases.push({
+                  ...purchase,
+                  materialType: "packaging" as const,
+                  status,
+                  totalItems: items.length,
+                  depletedItems: 0,
+                  itemNames,
+                });
+              }
             }
           }
 
