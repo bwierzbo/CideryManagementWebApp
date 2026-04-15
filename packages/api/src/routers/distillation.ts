@@ -388,6 +388,10 @@ export const distillationRouter = router({
         receivedAt: z.union([z.date(), z.string().transform((val) => new Date(val))]),
         tibInboundNumber: z.string().optional(),
         destinationVesselId: z.string().uuid().optional(),
+        destinationVessels: z.array(z.object({
+          vesselId: z.string().uuid(),
+          volume: z.number().positive(),
+        })).optional(),
         notes: z.string().optional(),
         brandyBatchName: z.string().optional(),
       })
@@ -521,7 +525,81 @@ export const distillationRouter = router({
           .where(eq(distillationRecords.id, record.id));
       }
 
-      // Record barrel contents history if destination is a barrel
+      // Handle multi-vessel splitting
+      const multiVessels = input.destinationVessels || [];
+
+      if (multiVessels.length > 1) {
+        // First vessel gets the primary batch — update its volume to the allocated amount
+        const firstVesselVolume = multiVessels[0].volume;
+        const firstVesselVolumeLiters = input.receivedVolumeUnit === "gal"
+          ? firstVesselVolume * LITERS_PER_GALLON
+          : firstVesselVolume;
+
+        await db
+          .update(batches)
+          .set({
+            currentVolume: String(firstVesselVolume),
+            currentVolumeUnit: input.receivedVolumeUnit,
+            currentVolumeLiters: String(firstVesselVolumeLiters),
+            initialVolume: String(firstVesselVolume),
+            initialVolumeUnit: input.receivedVolumeUnit,
+            initialVolumeLiters: String(firstVesselVolumeLiters),
+            updatedAt: new Date(),
+          })
+          .where(eq(batches.id, brandyBatch.id));
+
+        // Create additional batches for remaining vessels
+        for (let i = 1; i < multiVessels.length; i++) {
+          const vesselAlloc = multiVessels[i];
+          const allocVolumeLiters = input.receivedVolumeUnit === "gal"
+            ? vesselAlloc.volume * LITERS_PER_GALLON
+            : vesselAlloc.volume;
+
+          const splitName = `${batchName} #${i + 1}`;
+          const splitBatchNumber = `${batchNumber}-${i + 1}`;
+
+          await db.insert(batches).values({
+            vesselId: vesselAlloc.vesselId,
+            name: splitName,
+            customName: splitName,
+            batchNumber: splitBatchNumber,
+            initialVolume: String(vesselAlloc.volume),
+            initialVolumeUnit: input.receivedVolumeUnit,
+            initialVolumeLiters: String(allocVolumeLiters),
+            currentVolume: String(vesselAlloc.volume),
+            currentVolumeUnit: input.receivedVolumeUnit,
+            currentVolumeLiters: String(allocVolumeLiters),
+            status: "aging",
+            productType: "brandy",
+            actualAbv: String(input.receivedAbv),
+            startDate: input.receivedAt,
+          });
+
+          // Record barrel contents if the vessel is a barrel
+          const [splitVessel] = await db
+            .select({ isBarrel: vessels.isBarrel })
+            .from(vessels)
+            .where(eq(vessels.id, vesselAlloc.vesselId))
+            .limit(1);
+
+          if (splitVessel?.isBarrel) {
+            const receivedDate = input.receivedAt instanceof Date
+              ? input.receivedAt.toISOString().split("T")[0]
+              : new Date(input.receivedAt).toISOString().split("T")[0];
+
+            await db.insert(barrelContentsHistory).values({
+              vesselId: vesselAlloc.vesselId,
+              contentsType: "brandy",
+              contentsDescription: splitName,
+              startedAt: receivedDate,
+              source: "batch",
+              createdBy: ctx.user.id,
+            });
+          }
+        }
+      }
+
+      // Record barrel contents history for primary vessel if it's a barrel
       if (destinationVessel && destinationVessel.isBarrel) {
         const receivedDate = input.receivedAt instanceof Date
           ? input.receivedAt.toISOString().split("T")[0]
@@ -544,6 +622,7 @@ export const distillationRouter = router({
         recordsUpdated: records.length,
         totalSourceVolumeLiters,
         totalProofGallonsSent,
+        vesselCount: multiVessels.length || (input.destinationVesselId ? 1 : 0),
       };
     }),
 

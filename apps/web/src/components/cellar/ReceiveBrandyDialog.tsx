@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Wine, Info, Check } from "lucide-react";
+import { Loader2, Wine, Info, Check, Plus, X } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
 import { formatDate } from "@/utils/date-format";
 
@@ -49,7 +49,9 @@ export function ReceiveBrandyDialog({
   const [receivedAbv, setReceivedAbv] = useState("");
   const [receivedAt, setReceivedAt] = useState(localISOTime);
   const [tibInboundNumber, setTibInboundNumber] = useState("");
-  const [destinationVesselId, setDestinationVesselId] = useState("");
+  const [destinationVessels, setDestinationVessels] = useState<
+    { vesselId: string; volume: string }[]
+  >([]);
   const [brandyBatchName, setBrandyBatchName] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -119,7 +121,7 @@ export function ReceiveBrandyDialog({
     setReceivedAbv("");
     setReceivedAt(localISOTime);
     setTibInboundNumber("");
-    setDestinationVesselId("");
+    setDestinationVessels([]);
     setBrandyBatchName("");
     setNotes("");
   };
@@ -170,6 +172,11 @@ export function ReceiveBrandyDialog({
       return;
     }
 
+    // Use first vessel as primary destination, pass all vessels for splitting
+    const validVessels = destinationVessels.filter(
+      (v) => v.vesselId && parseFloat(v.volume || "0") > 0
+    );
+
     receiveMultipleBrandy.mutate({
       distillationRecordIds: selectedRecordIds,
       receivedVolume: parseFloat(receivedVolume),
@@ -177,7 +184,13 @@ export function ReceiveBrandyDialog({
       receivedAbv: parseFloat(receivedAbv),
       receivedAt: parseDateTimeFromInput(receivedAt),
       tibInboundNumber: tibInboundNumber.trim() || undefined,
-      destinationVesselId: destinationVesselId && destinationVesselId !== "__none__" ? destinationVesselId : undefined,
+      destinationVesselId: validVessels.length > 0 ? validVessels[0].vesselId : undefined,
+      destinationVessels: validVessels.length > 0
+        ? validVessels.map((v) => ({
+            vesselId: v.vesselId,
+            volume: parseFloat(v.volume),
+          }))
+        : undefined,
       notes: notes.trim() || undefined,
       brandyBatchName: brandyBatchName.trim() || undefined,
     });
@@ -375,22 +388,113 @@ export function ReceiveBrandyDialog({
             </div>
           </div>
 
-          {/* Destination Vessel */}
-          <div className="space-y-2">
-            <Label htmlFor="destinationVessel">Destination Vessel (Optional)</Label>
-            <Select value={destinationVesselId} onValueChange={setDestinationVesselId}>
-              <SelectTrigger id="destinationVessel">
-                <SelectValue placeholder="Select a vessel for aging" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">No vessel (unassigned)</SelectItem>
-                {availableVessels.map((vessel: { id: string; name: string | null; material: string | null; capacity: string }) => (
-                  <SelectItem key={vessel.id} value={vessel.id}>
-                    {vessel.name} ({vessel.material || "unknown"}, {vessel.capacity}L)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Destination Vessels */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Destination Vessels (Optional)</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDestinationVessels([...destinationVessels, { vesselId: "", volume: "" }])}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add Vessel
+              </Button>
+            </div>
+
+            {destinationVessels.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No vessels selected — brandy batch will be created unassigned. Click "Add Vessel" to assign to barrels.
+              </p>
+            )}
+
+            {destinationVessels.map((dv, index) => {
+              const selectedIds = destinationVessels.map((v) => v.vesselId).filter(Boolean);
+              const filteredVessels = availableVessels.filter(
+                (v: any) => !selectedIds.includes(v.id) || v.id === dv.vesselId
+              );
+
+              return (
+                <div key={index} className="flex items-end gap-2">
+                  <div className="flex-1">
+                    {index === 0 && (
+                      <Label className="text-xs text-muted-foreground">Vessel</Label>
+                    )}
+                    <Select
+                      value={dv.vesselId}
+                      onValueChange={(value) => {
+                        const updated = [...destinationVessels];
+                        updated[index].vesselId = value;
+                        setDestinationVessels(updated);
+                      }}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select vessel" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredVessels.map((vessel: { id: string; name: string | null; material: string | null; capacity: string }) => (
+                          <SelectItem key={vessel.id} value={vessel.id}>
+                            {vessel.name} ({vessel.capacity}L)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-28">
+                    {index === 0 && (
+                      <Label className="text-xs text-muted-foreground">Volume ({receivedVolumeUnit})</Label>
+                    )}
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      value={dv.volume}
+                      onChange={(e) => {
+                        const updated = [...destinationVessels];
+                        updated[index].volume = e.target.value;
+                        setDestinationVessels(updated);
+                      }}
+                      placeholder="0.0"
+                      className="h-9"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0 shrink-0"
+                    onClick={() => {
+                      setDestinationVessels(destinationVessels.filter((_, i) => i !== index));
+                    }}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              );
+            })}
+
+            {destinationVessels.length > 0 && receivedVolume && (() => {
+              const totalAllocated = destinationVessels.reduce(
+                (sum, v) => sum + (parseFloat(v.volume || "0")), 0
+              );
+              const totalReceived = parseFloat(receivedVolume || "0");
+              const remaining = totalReceived - totalAllocated;
+              return (
+                <div className="text-xs space-y-0.5">
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Allocated: {totalAllocated.toFixed(1)} {receivedVolumeUnit}</span>
+                    <span>
+                      {Math.abs(remaining) < 0.01
+                        ? <span className="text-green-600">Fully allocated</span>
+                        : remaining > 0
+                          ? <span className="text-amber-600">{remaining.toFixed(1)} {receivedVolumeUnit} unallocated</span>
+                          : <span className="text-red-600">{Math.abs(remaining).toFixed(1)} {receivedVolumeUnit} over-allocated</span>
+                      }
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Brandy Batch Name */}
