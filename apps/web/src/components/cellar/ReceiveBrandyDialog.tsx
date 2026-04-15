@@ -214,8 +214,12 @@ export function ReceiveBrandyDialog({
       if (!dv.vesselId || !dv.volume) return false;
       const vessel = availableVessels.find((v: any) => v.id === dv.vesselId);
       if (!vessel) return false;
-      const capacityL = parseFloat(vessel.capacity || "0");
-      const currentFillL = vessel.currentVolume || 0;
+      const capRaw = parseFloat(vessel.capacity || "0");
+      const capUnit = vessel.capacityUnit || "L";
+      const capacityL = capUnit === "gal" ? capRaw * LITERS_PER_GAL : capRaw;
+      const fillRaw = vessel.currentVolume || 0;
+      const fillUnit = vessel.currentVolumeUnit || "L";
+      const currentFillL = fillUnit === "gal" ? fillRaw * LITERS_PER_GAL : fillRaw;
       const availableL = capacityL - currentFillL;
       const enteredL = receivedVolumeUnit === "gal"
         ? parseFloat(dv.volume) * LITERS_PER_GAL
@@ -446,9 +450,20 @@ export function ReceiveBrandyDialog({
 
               // Get selected vessel info for capacity/fill display
               const selectedVessel = dv.vesselId ? availableVessels.find((v: any) => v.id === dv.vesselId) : null;
-              const vesselCapacityL = selectedVessel ? parseFloat(selectedVessel.capacity || "0") : 0;
+              const vesselCapacityRaw = selectedVessel ? parseFloat(selectedVessel.capacity || "0") : 0;
               const vesselCapacityUnit = selectedVessel?.capacityUnit || "L";
-              const currentFillL = selectedVessel?.currentVolume || 0;
+              // Convert capacity to liters
+              const vesselCapacityL = vesselCapacityUnit === "gal"
+                ? vesselCapacityRaw * LITERS_PER_GAL
+                : vesselCapacityUnit === "mL" || vesselCapacityUnit === "ml"
+                  ? vesselCapacityRaw / 1000
+                  : vesselCapacityRaw;
+              // currentVolume from liquidMap — check its unit too
+              const currentFillRaw = selectedVessel?.currentVolume || 0;
+              const currentFillUnit = selectedVessel?.currentVolumeUnit || "L";
+              const currentFillL = currentFillUnit === "gal"
+                ? currentFillRaw * LITERS_PER_GAL
+                : currentFillRaw;
               const availableSpaceL = vesselCapacityL - currentFillL;
               // Convert available space to the user's unit for display
               const availableSpaceDisplay = receivedVolumeUnit === "gal"
@@ -478,12 +493,16 @@ export function ReceiveBrandyDialog({
                         </SelectTrigger>
                         <SelectContent>
                           {filteredVessels.map((vessel: any) => {
-                            const capL = parseFloat(vessel.capacity || "0");
-                            const fillL = vessel.currentVolume || 0;
+                            const capRaw = parseFloat(vessel.capacity || "0");
+                            const capUnit = vessel.capacityUnit || "L";
+                            const capL = capUnit === "gal" ? capRaw * LITERS_PER_GAL : capRaw;
+                            const fillRaw = vessel.currentVolume || 0;
+                            const fillUnit = vessel.currentVolumeUnit || "L";
+                            const fillL = fillUnit === "gal" ? fillRaw * LITERS_PER_GAL : fillRaw;
                             const fillPct = capL > 0 ? Math.round((fillL / capL) * 100) : 0;
                             return (
                               <SelectItem key={vessel.id} value={vessel.id}>
-                                {vessel.name} — {fillPct > 0 ? `${fillPct}% full` : "empty"} ({vessel.capacity}L cap)
+                                {vessel.name} — {fillPct > 0 ? `${fillPct}% full` : "empty"} ({capRaw} {capUnit} cap)
                               </SelectItem>
                             );
                           })}
@@ -522,8 +541,8 @@ export function ReceiveBrandyDialog({
                   {selectedVessel && (
                     <div className="flex items-center gap-3 text-xs text-muted-foreground pl-1">
                       <span>
-                        Current: {currentFillL > 0
-                          ? `${currentFillL.toFixed(1)}L${selectedVessel.batchName ? ` (${selectedVessel.batchName})` : ""}`
+                        Current: {currentFillRaw > 0
+                          ? `${currentFillRaw.toFixed(1)} ${currentFillUnit}${selectedVessel.batchName ? ` (${selectedVessel.batchName})` : ""}`
                           : "Empty"}
                       </span>
                       <span>Available: {availableSpaceDisplay.toFixed(1)} {receivedVolumeUnit}</span>
