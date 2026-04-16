@@ -39,6 +39,7 @@ import { settingsRouter } from "./settings";
 import { customProductTypesRouter } from "./customProductTypes";
 import { distillationRouter } from "./distillation";
 import { productionReportsRouter } from "./productionReports";
+import { recipesRouter } from "./recipes";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import {
   db,
@@ -6618,6 +6619,9 @@ export const appRouter = router({
 
   // Custom Product Types
   customProductTypes: customProductTypesRouter,
+
+  // Recipes
+  recipes: recipesRouter,
 });
 
 export type AppRouter = typeof appRouter;

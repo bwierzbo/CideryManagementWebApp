@@ -1680,6 +1680,77 @@ export const distillationRecords = pgTable(
   }),
 );
 
+// ============================================
+// RECIPES
+// ============================================
+
+export const recipeStyleEnum = pgEnum("recipe_style", [
+  "dry",
+  "semi_dry",
+  "semi_sweet",
+  "sweet",
+  "sparkling",
+  "still",
+]);
+
+export const recipeCategoryEnum = pgEnum("recipe_category", [
+  "traditional",
+  "seasonal",
+  "experimental",
+  "house_blend",
+  "single_variety",
+  "fruit_wine",
+  "specialty",
+]);
+
+export const recipes = pgTable("recipes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description"),
+  style: recipeStyleEnum("style").notNull(),
+  category: recipeCategoryEnum("category").notNull(),
+  targetOG: decimal("target_og", { precision: 5, scale: 3 }),
+  targetFG: decimal("target_fg", { precision: 5, scale: 3 }),
+  targetABV: decimal("target_abv", { precision: 4, scale: 1 }),
+  estimatedFermentationDays: integer("estimated_fermentation_days"),
+  suggestedYeast: text("suggested_yeast"),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at"),
+});
+
+export const recipeIngredients = pgTable("recipe_ingredients", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  recipeId: uuid("recipe_id")
+    .notNull()
+    .references(() => recipes.id, { onDelete: "cascade" }),
+  fruitVarietyId: uuid("fruit_variety_id").references(
+    () => baseFruitVarieties.id,
+  ),
+  customFruitName: text("custom_fruit_name"),
+  percentage: decimal("percentage", { precision: 5, scale: 2 }).notNull(),
+  role: text("role"), // "base", "accent", "tannin", "acid"
+  notes: text("notes"),
+});
+
+export const recipeAdditives = pgTable("recipe_additives", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  recipeId: uuid("recipe_id")
+    .notNull()
+    .references(() => recipes.id, { onDelete: "cascade" }),
+  additiveVarietyId: uuid("additive_variety_id").references(
+    () => additiveVarieties.id,
+  ),
+  customAdditiveName: text("custom_additive_name"),
+  amount: decimal("amount", { precision: 10, scale: 3 }),
+  unit: text("unit"),
+  timing: text("timing"), // "pre_fermentation", "during_fermentation", "post_fermentation", "at_packaging"
+  notes: text("notes"),
+});
+
 // Relations
 export const vendorsRelations = relations(vendors, ({ many }) => ({
   basefruitPurchases: many(basefruitPurchases),
