@@ -17,6 +17,7 @@ import {
   calculateDistillationLoss,
 } from "lib/src/calc/abv";
 import { convertVolume } from "lib/src/utils/volumeConversion";
+import { writeLedgerEntry } from "../lib/volume-ledger";
 
 // Constants
 const LITERS_PER_GALLON = 3.785411784;
@@ -234,6 +235,19 @@ export const distillationRouter = router({
           status: "sent",
         })
         .returning();
+
+      // Record outflow in volume ledger
+      await writeLedgerEntry({
+        batchId: input.sourceBatchId,
+        eventDate: input.sentAt instanceof Date ? input.sentAt : new Date(input.sentAt),
+        eventType: "outflow",
+        volumeChange: -sourceVolumeLiters,
+        vesselId: sourceBatch.vesselId || undefined,
+        sourceDescription: `Sent to distillery (${input.distilleryName})`,
+        linkedEntityType: "distillation_record",
+        linkedEntityId: record.id,
+        performedBy: ctx.user.id,
+      });
 
       // Deduct volume from source batch if requested
       if (input.deductFromBatch) {
@@ -545,6 +559,19 @@ export const distillationRouter = router({
           startDate: input.receivedAt,
         })
         .returning();
+
+      // Record creation in volume ledger
+      await writeLedgerEntry({
+        batchId: brandyBatch.id,
+        eventDate: input.receivedAt instanceof Date ? input.receivedAt : new Date(input.receivedAt),
+        eventType: "creation",
+        volumeChange: receivedVolumeLiters,
+        vesselId: input.destinationVesselId || undefined,
+        sourceAbv: input.receivedAbv,
+        sourceDescription: `Brandy received from ${records[0]?.distilleryName || "distillery"} (${input.receivedVolume} ${input.receivedVolumeUnit})`,
+        linkedEntityType: "distillation_record",
+        performedBy: ctx.user.id,
+      });
 
       // Update all distillation records to reference the same brandy batch
       // Distribute the received volume proportionally across records for tracking

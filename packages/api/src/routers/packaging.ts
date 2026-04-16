@@ -44,6 +44,7 @@ import { eq, and, desc, isNull, isNotNull, sql, gte, lte, like, or, inArray } fr
 import { TRPCError } from "@trpc/server";
 import { publishCreateEvent, publishUpdateEvent } from "lib";
 import { syncInventoryToSquare } from "../lib/square-inventory-sync";
+import { writeLedgerEntry } from "../lib/volume-ledger";
 import {
   getBottleRunsOptimized,
   getUnifiedPackagingRuns,
@@ -447,6 +448,20 @@ export const packagingRouter = router({
           // Use shared minimum working volume threshold (1.0L)
           // Volumes below this are considered residual waste
 
+          // Write packaging ledger entry
+          await writeLedgerEntry({
+            batchId: input.batchId,
+            eventDate: input.packagedAt,
+            eventType: "packaging",
+            volumeChange: -input.volumeTakenL,
+            vesselId: input.vesselId,
+            sourceDescription: `Packaged ${input.unitsProduced} units (${input.packageSizeMl}ml)`,
+            lossReason: "packaging",
+            linkedEntityType: "bottle_run",
+            linkedEntityId: packagingRun.id,
+            performedBy: ctx.session.user.id,
+          }, tx);
+
           if (isBottlingFromKeg) {
             // If keg is empty or below minimum working volume, soft-delete the fill and set keg to cleaning
             if (newVolumeL <= MIN_WORKING_VOLUME_L) {
@@ -503,6 +518,18 @@ export const packagingRouter = router({
                   reason: input.lossNotes || `Packaging loss from ${vessel.name} (${newVolumeL.toFixed(3)}L remaining after bottling)`,
                   adjustedBy: ctx.session.user.id,
                 });
+
+                // Write loss ledger entry for remaining volume
+                await writeLedgerEntry({
+                  batchId: input.batchId,
+                  eventDate: input.packagedAt,
+                  eventType: "loss",
+                  volumeChange: -newVolumeL,
+                  vesselId: input.vesselId,
+                  sourceDescription: `Packaging loss (${input.lossReason || "sediment"})`,
+                  lossReason: input.lossReason || "sediment",
+                  performedBy: ctx.session.user.id,
+                }, tx);
               }
 
               await tx

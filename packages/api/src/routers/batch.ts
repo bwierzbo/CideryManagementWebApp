@@ -45,6 +45,7 @@ import {
   type StallSettings,
 } from "lib";
 import { correctSgForTemperature } from "lib/src/calc/sg-correction";
+import { writeLedgerEntry } from "../lib/volume-ledger";
 
 /**
  * Recalculates composition fractions for a batch based on juice volumes.
@@ -4603,7 +4604,7 @@ export const batchRouter = router({
    */
   filter: createRbacProcedure("create", "batch")
     .input(filterBatchSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
       try {
         // Verify batch exists and get current state
         const batchData = await db
@@ -4709,6 +4710,22 @@ export const batchRouter = router({
             updatedAt: new Date(),
           })
           .where(eq(batches.id, input.batchId));
+
+        // Write filter loss ledger entry
+        const filterLoss = volumeBeforeL - volumeRackedL;
+        if (filterLoss > 0) {
+          await writeLedgerEntry({
+            batchId: input.batchId,
+            eventDate: input.filteredAt || new Date(),
+            eventType: "loss",
+            volumeChange: -filterLoss,
+            vesselId: input.vesselId,
+            sourceDescription: `Filtering loss (${input.filterType} filter)`,
+            lossReason: "filtering",
+            linkedEntityType: "batch_filter_operation",
+            performedBy: ctx.user?.id,
+          });
+        }
 
         return {
           success: true,
@@ -9649,6 +9666,18 @@ export const batchRouter = router({
               updatedAt: new Date(),
             })
             .where(eq(batches.id, input.batchId));
+
+          // Write volume adjustment ledger entry
+          await writeLedgerEntry({
+            batchId: input.batchId,
+            eventDate: input.adjustmentDate,
+            eventType: adjustmentAmount < 0 ? "loss" : "adjustment",
+            volumeChange: adjustmentAmount,
+            sourceDescription: input.reason,
+            lossReason: input.adjustmentType,
+            linkedEntityType: "batch_volume_adjustment",
+            performedBy: ctx.user?.id,
+          }, tx);
 
           // 4. If volume hit 0, mark vessel for cleaning (mirrors transfer/racking behavior)
           if (volumeAfterL <= 0.01 && batch.vesselId) {

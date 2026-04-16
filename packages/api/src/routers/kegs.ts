@@ -24,6 +24,7 @@ import {
 } from "db";
 import { eq, and, desc, isNull, sql, like, or, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { writeLedgerEntry } from "../lib/volume-ledger";
 
 // Input validation schemas
 const kegMaterialSchema = z.object({
@@ -1056,6 +1057,18 @@ export const kegsRouter = router({
               .where(eq(batches.id, input.batchId));
           }
         }
+
+        // Write keg fill ledger entry
+        await writeLedgerEntry({
+          batchId: input.batchId,
+          eventDate: input.filledAt,
+          eventType: "packaging",
+          volumeChange: -totalDeduction,
+          sourceDescription: `Keg fill (${kegsToFill.length} keg${kegsToFill.length > 1 ? "s" : ""})`,
+          lossReason: "packaging",
+          linkedEntityType: "keg_fill",
+          performedBy: ctx.user?.id,
+        });
 
         // Auto-link to most recent carbonation operation if not provided
         let carbonationOpId = input.sourceCarbonationOperationId ?? null;

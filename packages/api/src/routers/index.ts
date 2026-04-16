@@ -41,6 +41,7 @@ import { distillationRouter } from "./distillation";
 import { productionReportsRouter } from "./productionReports";
 import { recipesRouter } from "./recipes";
 import { MIN_WORKING_VOLUME_L } from "lib";
+import { writeLedgerEntry } from "../lib/volume-ledger";
 import {
   db,
   vendors,
@@ -3718,6 +3719,19 @@ export const appRouter = router({
                 })
                 .where(eq(batches.id, sourceBatch[0].id));
 
+              // Volume ledger — rack to self loss
+              await writeLedgerEntry({
+                batchId: sourceBatch[0].id,
+                eventDate: input.transferDate || new Date(),
+                eventType: "loss",
+                volumeChange: -totalLoss,
+                vesselId: input.fromVesselId,
+                sourceDescription: `Rack to self — ${input.lossType || "sediment"} loss`,
+                lossReason: input.lossType || "sediment",
+                performedBy: ctx.user.id,
+                notes: input.notes || null,
+              }, tx);
+
               // Labor assignments
               if (input.laborAssignments && input.laborAssignments.length > 0) {
                 for (const assignment of input.laborAssignments) {
@@ -4340,6 +4354,32 @@ export const appRouter = router({
                 "Transferred batch created from partial transfer via API",
               );
 
+              // Volume ledger — outflow on source for partial transfer
+              const partialTransferDate = input.transferDate || new Date();
+              await writeLedgerEntry({
+                batchId: sourceBatch[0].id,
+                eventDate: partialTransferDate,
+                eventType: "outflow",
+                volumeChange: -input.volumeL,
+                vesselId: input.fromVesselId,
+                sourceDescription: `Partial transfer to ${destVessel[0].name}`,
+                linkedEntityType: "batch_transfer",
+                performedBy: ctx.user.id,
+              }, tx);
+
+              // Volume ledger — creation on child batch
+              await writeLedgerEntry({
+                batchId: transferredBatch.id,
+                eventDate: partialTransferDate,
+                eventType: "creation",
+                volumeChange: input.volumeL,
+                vesselId: input.toVesselId,
+                sourceAbv: parseFloat(sourceBatch[0].actualAbv || sourceBatch[0].estimatedAbv || "0") || null,
+                sourceDescription: `Created from partial transfer of ${sourceBatch[0].customName || sourceBatch[0].name} (${sourceVessel[0].name})`,
+                linkedEntityType: "batch_transfer",
+                performedBy: ctx.user.id,
+              }, tx);
+
               remainingBatch = null; // No longer using "remaining" batch pattern
             } else if (remainingVolumeL > 0 && remainingVolumeL <= MIN_WORKING_VOLUME_L) {
               // Residual volume < MIN_WORKING_VOLUME_L - auto-empty as waste
@@ -4573,6 +4613,32 @@ export const appRouter = router({
                 .set(updateData)
                 .where(eq(batches.id, destBatch[0].id))
                 .returning();
+
+              // Volume ledger — blend inflow on destination batch
+              const blendEventDate = input.transferDate || new Date();
+              await writeLedgerEntry({
+                batchId: destBatch[0].id,
+                eventDate: blendEventDate,
+                eventType: "inflow",
+                volumeChange: input.volumeL,
+                vesselId: input.toVesselId,
+                sourceAbv: parseFloat(sourceBatch[0].actualAbv || sourceBatch[0].estimatedAbv || "0") || null,
+                sourceDescription: `Blend in from ${sourceBatch[0].customName || sourceBatch[0].name} (${sourceVessel[0].name})`,
+                linkedEntityType: "batch_transfer",
+                performedBy: ctx.user.id,
+              }, tx);
+
+              // Volume ledger — blend outflow on source batch
+              await writeLedgerEntry({
+                batchId: sourceBatch[0].id,
+                eventDate: blendEventDate,
+                eventType: "outflow",
+                volumeChange: -input.volumeL,
+                vesselId: input.fromVesselId,
+                sourceDescription: `Transferred to ${destVessel[0].name}`,
+                linkedEntityType: "batch_transfer",
+                performedBy: ctx.user.id,
+              }, tx);
 
               // Handle source batch based on remaining volume
               if (remainingVolumeL > MIN_WORKING_VOLUME_L) {
@@ -4973,6 +5039,19 @@ export const appRouter = router({
                     reason: input.notes || `Transfer loss (${input.lossType || "sediment"})`,
                     adjustedBy: ctx.user.id,
                   });
+
+                  // Volume ledger — transfer loss
+                  const transferDate = input.transferDate || new Date();
+                  await writeLedgerEntry({
+                    batchId: sourceBatch[0].id,
+                    eventDate: transferDate,
+                    eventType: "loss",
+                    volumeChange: -totalLoss,
+                    vesselId: input.fromVesselId,
+                    sourceDescription: `Transfer loss (${input.lossType || "sediment"})`,
+                    lossReason: input.lossType || "sediment",
+                    performedBy: ctx.user.id,
+                  }, tx);
                 }
 
                 // Skip the old child-batch creation block that follows
