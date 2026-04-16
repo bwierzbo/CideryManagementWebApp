@@ -29,6 +29,9 @@ export * from "./constants/cellar";
 // Re-export US states and tax reporting constants (client-safe)
 export * from "./constants/us-states";
 
+// Re-export cider style definitions and guides
+export * from "./constants/cider-styles";
+
 // Re-export date validation utilities (client-safe)
 export * from "./validation/dateValidation";
 
