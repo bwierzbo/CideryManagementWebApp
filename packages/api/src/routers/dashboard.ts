@@ -293,23 +293,38 @@ export const dashboardRouter = router({
         const measurementSchedules: Record<string, MeasurementScheduleConfig | undefined> =
           (settings?.measurementSchedules as Record<string, MeasurementScheduleConfig | undefined>) || {};
 
-        for (const batch of activeBatches) {
-          // Get all measurements for this batch
-          const measurements = await db
-            .select({
-              specificGravity: batchMeasurements.specificGravity,
-              measurementDate: batchMeasurements.measurementDate,
-              measurementMethod: batchMeasurements.measurementMethod,
-            })
-            .from(batchMeasurements)
-            .where(
-              and(
-                eq(batchMeasurements.batchId, batch.id),
-                isNull(batchMeasurements.deletedAt),
-                eq(batchMeasurements.isEstimated, false),
+        // Batch-fetch all measurements for active batches (instead of N+1)
+        const activeBatchIds = activeBatches.map((b) => b.id);
+        const allMeasurements = activeBatchIds.length > 0
+          ? await db
+              .select({
+                batchId: batchMeasurements.batchId,
+                specificGravity: batchMeasurements.specificGravity,
+                measurementDate: batchMeasurements.measurementDate,
+                measurementMethod: batchMeasurements.measurementMethod,
+              })
+              .from(batchMeasurements)
+              .where(
+                and(
+                  inArray(batchMeasurements.batchId, activeBatchIds),
+                  isNull(batchMeasurements.deletedAt),
+                  eq(batchMeasurements.isEstimated, false),
+                )
               )
-            )
-            .orderBy(desc(batchMeasurements.measurementDate));
+              .orderBy(desc(batchMeasurements.measurementDate))
+          : [];
+
+        // Group measurements by batch ID
+        const measurementsByBatch = new Map<string, typeof allMeasurements>();
+        for (const m of allMeasurements) {
+          if (!measurementsByBatch.has(m.batchId)) {
+            measurementsByBatch.set(m.batchId, []);
+          }
+          measurementsByBatch.get(m.batchId)!.push(m);
+        }
+
+        for (const batch of activeBatches) {
+          const measurements = measurementsByBatch.get(batch.id) || [];
 
           // Get the product type schedule config
           const productType = batch.productType || "cider";
