@@ -26,6 +26,7 @@ import {
   organizationSettings,
   vesselCleaningOperations,
   activityLaborAssignments,
+  batchVolumeLedger,
   workers,
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
@@ -6709,6 +6710,21 @@ export const batchRouter = router({
    * Get volume trace for a batch - shows where all volume went.
    * Used for TTB reconciliation to trace volume discrepancies.
    */
+  /**
+   * Get the volume ledger — a clean chronological record of every volume change.
+   */
+  getVolumeLedger: protectedProcedure
+    .input(z.object({ batchId: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const entries = await db
+        .select()
+        .from(batchVolumeLedger)
+        .where(eq(batchVolumeLedger.batchId, input.batchId))
+        .orderBy(batchVolumeLedger.eventDate, batchVolumeLedger.createdAt);
+
+      return { entries };
+    }),
+
   getVolumeTrace: protectedProcedure
     .input(z.object({ batchId: z.string().uuid() }))
     .query(async ({ input }) => {

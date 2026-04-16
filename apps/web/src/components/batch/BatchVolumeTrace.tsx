@@ -233,12 +233,32 @@ function ExpandableTransferRow({
   );
 }
 
+const ledgerEventLabels: Record<string, string> = {
+  creation: "Created",
+  inflow: "Volume In",
+  outflow: "Volume Out",
+  loss: "Loss",
+  adjustment: "Adjustment",
+  packaging: "Packaged",
+};
+
+const ledgerEventColors: Record<string, string> = {
+  creation: "text-blue-700 bg-blue-50",
+  inflow: "text-green-700 bg-green-50",
+  outflow: "text-indigo-700 bg-indigo-50",
+  loss: "text-red-700 bg-red-50",
+  adjustment: "text-purple-700 bg-purple-50",
+  packaging: "text-emerald-700 bg-emerald-50",
+};
+
 export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
   const {
     data,
     isLoading,
     error,
   } = trpc.batch.getVolumeTrace.useQuery({ batchId });
+
+  const { data: ledgerData } = trpc.batch.getVolumeLedger.useQuery({ batchId });
 
   if (isLoading) {
     return (
@@ -287,6 +307,65 @@ export function BatchVolumeTrace({ batchId }: BatchVolumeTraceProps) {
 
   return (
     <div className="space-y-6">
+      {/* Volume Ledger */}
+      {ledgerData && ledgerData.entries.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Scale className="w-5 h-5" />
+              Volume Ledger
+            </CardTitle>
+            <CardDescription>
+              Chronological record of every volume change on this batch
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead className="text-right">Change</TableHead>
+                  <TableHead className="text-right">Balance</TableHead>
+                  <TableHead className="text-right">ABV</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {ledgerData.entries.map((entry: any) => {
+                  const change = parseFloat(entry.volumeChange || "0");
+                  const balance = parseFloat(entry.runningBalance || "0");
+                  return (
+                    <TableRow key={entry.id}>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {formatDateTime(entry.eventDate)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn("text-xs", ledgerEventColors[entry.eventType] || "")}>
+                          {ledgerEventLabels[entry.eventType] || entry.eventType}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm max-w-[250px] truncate" title={entry.sourceDescription}>
+                        {entry.sourceDescription}
+                      </TableCell>
+                      <TableCell className={cn("text-right font-mono text-sm", change >= 0 ? "text-green-700" : "text-red-700")}>
+                        {change >= 0 ? "+" : ""}{change.toFixed(1)}L
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-bold">
+                        {balance.toFixed(1)}L
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">
+                        {entry.sourceAbv ? `${parseFloat(entry.sourceAbv).toFixed(1)}%` : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         <Card>

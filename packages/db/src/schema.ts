@@ -1751,6 +1751,48 @@ export const recipeAdditives = pgTable("recipe_additives", {
   notes: text("notes"),
 });
 
+// ============================================
+// BATCH VOLUME LEDGER
+// ============================================
+
+export const batchVolumeLedgerEventTypeEnum = pgEnum("batch_volume_ledger_event_type", [
+  "creation",
+  "inflow",
+  "outflow",
+  "loss",
+  "adjustment",
+  "packaging",
+]);
+
+export const batchVolumeLedger = pgTable("batch_volume_ledger", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  batchId: uuid("batch_id").notNull().references(() => batches.id),
+  eventDate: timestamp("event_date", { withTimezone: true }).notNull(),
+  eventType: batchVolumeLedgerEventTypeEnum("event_type").notNull(),
+  volumeChange: decimal("volume_change", { precision: 12, scale: 3 }).notNull(),
+  runningBalance: decimal("running_balance", { precision: 12, scale: 3 }).notNull(),
+  unit: text("unit").notNull().default("L"),
+  // Source characteristics snapshot
+  sourceAbv: decimal("source_abv", { precision: 5, scale: 2 }),
+  sourceSg: decimal("source_sg", { precision: 6, scale: 4 }),
+  sourcePh: decimal("source_ph", { precision: 4, scale: 2 }),
+  // Cost tracking
+  materialCost: decimal("material_cost", { precision: 12, scale: 2 }),
+  // Context
+  vesselId: uuid("vessel_id").references(() => vessels.id),
+  sourceDescription: text("source_description"),
+  lossReason: text("loss_reason"),
+  linkedEntityType: text("linked_entity_type"),
+  linkedEntityId: uuid("linked_entity_id"),
+  // Audit
+  performedBy: uuid("performed_by").references(() => users.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  batchIdx: index("batch_volume_ledger_batch_idx").on(table.batchId),
+  eventDateIdx: index("batch_volume_ledger_event_date_idx").on(table.eventDate),
+}));
+
 // Relations
 export const vendorsRelations = relations(vendors, ({ many }) => ({
   basefruitPurchases: many(basefruitPurchases),
