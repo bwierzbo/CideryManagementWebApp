@@ -298,14 +298,11 @@ export function VesselMap() {
 
   // Vessel filter and sort state
   const [vesselMaterialFilter, setVesselMaterialFilter] = useState<string>("all");
-  const [vesselSortBy, setVesselSortBy] = useState<"name" | "capacity" | "material">("name");
+  const [vesselFillFilter, setVesselFillFilter] = useState<string>("all");
+  const [vesselSortBy, setVesselSortBy] = useState<string>("name");
   const [vesselSortOrder, setVesselSortOrder] = useState<"asc" | "desc">("asc");
 
-  const vesselListQuery = trpc.vessel.list.useQuery({
-    material: vesselMaterialFilter === "all" ? undefined : vesselMaterialFilter as any,
-    sortBy: vesselSortBy,
-    sortOrder: vesselSortOrder,
-  });
+  const vesselListQuery = trpc.vessel.list.useQuery({});
   const liquidMapQuery = trpc.vessel.liquidMap.useQuery();
   const utils = trpc.useUtils();
 
@@ -398,9 +395,58 @@ export function VesselMap() {
     return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
   };
 
-  const vessels = [...(vesselListQuery.data?.vessels || [])].sort((a, b) =>
-    naturalSort(a.name || '', b.name || '')
-  );
+  const vessels = React.useMemo(() => {
+    let list = [...(vesselListQuery.data?.vessels || [])];
+
+    // Filter by material
+    if (vesselMaterialFilter !== "all") {
+      list = list.filter((v) => v.material === vesselMaterialFilter);
+    }
+
+    // Filter by filled/empty
+    if (vesselFillFilter !== "all") {
+      list = list.filter((v) => {
+        const lm = liquidMapQuery.data?.vessels.find((lv: any) => lv.vesselId === v.id);
+        const vol = lm?.currentVolume ? parseFloat(lm.currentVolume.toString()) : 0;
+        const hasBatch = !!lm?.batchId;
+        if (vesselFillFilter === "filled") return hasBatch || vol > 0;
+        if (vesselFillFilter === "empty") return !hasBatch && vol <= 0;
+        return true;
+      });
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      let result = 0;
+      switch (vesselSortBy) {
+        case "name":
+          result = naturalSort(a.name || "", b.name || "");
+          break;
+        case "capacity": {
+          const capA = parseFloat(a.capacity?.toString() || "0");
+          const capB = parseFloat(b.capacity?.toString() || "0");
+          result = capA - capB;
+          break;
+        }
+        case "material":
+          result = (a.material || "").localeCompare(b.material || "");
+          break;
+        case "fill": {
+          const lmA = liquidMapQuery.data?.vessels.find((lv: any) => lv.vesselId === a.id);
+          const lmB = liquidMapQuery.data?.vessels.find((lv: any) => lv.vesselId === b.id);
+          const fillA = lmA?.batchId ? 1 : 0;
+          const fillB = lmB?.batchId ? 1 : 0;
+          result = fillA - fillB;
+          break;
+        }
+        default:
+          result = naturalSort(a.name || "", b.name || "");
+      }
+      return vesselSortOrder === "desc" ? -result : result;
+    });
+
+    return list;
+  }, [vesselListQuery.data, liquidMapQuery.data, vesselMaterialFilter, vesselFillFilter, vesselSortBy, vesselSortOrder]);
 
   // Get color based on batch status if batch exists, otherwise vessel status
   const getStatusColor = (vesselStatus: string, batchStatus?: string | null, fermentationStage?: string | null) => {
@@ -903,7 +949,7 @@ export function VesselMap() {
                 onValueChange={setVesselMaterialFilter}
               >
                 <SelectTrigger className="w-[140px] h-8">
-                  <SelectValue placeholder="Filter by material" />
+                  <SelectValue placeholder="Material" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Materials</SelectItem>
@@ -912,13 +958,26 @@ export function VesselMap() {
                   <SelectItem value="wood">Wood</SelectItem>
                 </SelectContent>
               </Select>
+              <Select
+                value={vesselFillFilter}
+                onValueChange={setVesselFillFilter}
+              >
+                <SelectTrigger className="w-[120px] h-8">
+                  <SelectValue placeholder="Fill status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Vessels</SelectItem>
+                  <SelectItem value="filled">Filled</SelectItem>
+                  <SelectItem value="empty">Empty</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex items-center gap-2">
               <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
               <Select
                 value={vesselSortBy}
-                onValueChange={(value) => setVesselSortBy(value as "name" | "capacity" | "material")}
+                onValueChange={setVesselSortBy}
               >
                 <SelectTrigger className="w-[120px] h-8">
                   <SelectValue placeholder="Sort by" />
@@ -927,6 +986,7 @@ export function VesselMap() {
                   <SelectItem value="name">Name</SelectItem>
                   <SelectItem value="capacity">Capacity</SelectItem>
                   <SelectItem value="material">Material</SelectItem>
+                  <SelectItem value="fill">Fill Status</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -939,14 +999,17 @@ export function VesselMap() {
               </Button>
             </div>
 
-            {vesselMaterialFilter !== "all" && (
+            {(vesselMaterialFilter !== "all" || vesselFillFilter !== "all") && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-8 text-muted-foreground"
-                onClick={() => setVesselMaterialFilter("all")}
+                onClick={() => {
+                  setVesselMaterialFilter("all");
+                  setVesselFillFilter("all");
+                }}
               >
-                Clear filter
+                Clear filters
               </Button>
             )}
           </div>
