@@ -603,6 +603,7 @@ export const distillationRouter = router({
           .where(eq(batches.id, brandyBatch.id));
 
         // Create additional batches for remaining vessels
+        // Copy all relevant characteristics from the primary batch
         for (let i = 1; i < multiVessels.length; i++) {
           const vesselAlloc = multiVessels[i];
           const allocVolumeLiters = input.receivedVolumeUnit === "gal"
@@ -617,16 +618,25 @@ export const distillationRouter = router({
             name: splitName,
             customName: splitName,
             batchNumber: splitBatchNumber,
+            // Volume
             initialVolume: String(vesselAlloc.volume),
             initialVolumeUnit: input.receivedVolumeUnit,
             initialVolumeLiters: String(allocVolumeLiters),
             currentVolume: String(vesselAlloc.volume),
             currentVolumeUnit: input.receivedVolumeUnit,
             currentVolumeLiters: String(allocVolumeLiters),
+            // Status & type — inherit from primary
             status: "aging",
-            productType: "brandy",
-            actualAbv: String(input.receivedAbv),
+            productType: brandyBatch.productType || "brandy",
+            // Characteristics — copy from primary batch
+            actualAbv: brandyBatch.actualAbv,
+            estimatedAbv: brandyBatch.estimatedAbv,
+            originalGravity: brandyBatch.originalGravity,
+            finalGravity: brandyBatch.finalGravity,
+            // Dates
             startDate: input.receivedAt,
+            // Lineage — reference primary batch as parent
+            parentBatchId: brandyBatch.id,
           });
 
           // Record barrel contents if the vessel is a barrel
