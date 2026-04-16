@@ -37,6 +37,7 @@ import {
   organizationSettings,
   inventoryDistributions,
   batchFilterOperations,
+  batchRackingOperations,
   batchVolumeAdjustments,
 } from "db";
 import { eq, and, desc, isNull, isNotNull, sql, gte, lte, like, or, inArray } from "drizzle-orm";
@@ -2569,13 +2570,79 @@ export const packagingRouter = router({
           return total + (parseFloat(mat.totalCost?.toString() || "0"));
         }, 0);
 
-        // Labor and overhead from bottle run
-        const laborCostPerHour = parseFloat(bottleRun.laborCostPerHour?.toString() || "0");
-        const bottlingLaborHours = parseFloat(bottleRun.laborHours?.toString() || "0");
-        const pasteurizationLaborHours = parseFloat(bottleRun.pasteurizationLaborHours?.toString() || "0");
-        const labelingLaborHours = parseFloat(bottleRun.labelingLaborHours?.toString() || "0");
-        const totalLaborHours = bottlingLaborHours + pasteurizationLaborHours + labelingLaborHours;
-        const laborCost = totalLaborHours * laborCostPerHour;
+        // Labor costs: prefer activityLaborAssignments, fallback to flat fields
+        // 1. Get direct labor for this bottle run (bottling, pasteurization, labeling)
+        const directLaborAssignments = await db
+          .select({
+            activityType: activityLaborAssignments.activityType,
+            totalCost: sql<number>`SUM(CAST(${activityLaborAssignments.laborCost} AS DECIMAL))`,
+            totalHours: sql<number>`SUM(CAST(${activityLaborAssignments.hoursWorked} AS DECIMAL))`,
+          })
+          .from(activityLaborAssignments)
+          .where(
+            and(
+              eq(activityLaborAssignments.bottleRunId, bottleRunId),
+              sql`${activityLaborAssignments.activityType} IN ('bottle_run', 'pasteurization', 'labeling')`
+            )
+          )
+          .groupBy(activityLaborAssignments.activityType);
+
+        // 2. Get upstream labor (pressing, filtering, racking, carbonation) for the batch
+        const upstreamLaborAssignments = await db
+          .select({
+            activityType: activityLaborAssignments.activityType,
+            totalCost: sql<number>`SUM(CAST(${activityLaborAssignments.laborCost} AS DECIMAL))`,
+            totalHours: sql<number>`SUM(CAST(${activityLaborAssignments.hoursWorked} AS DECIMAL))`,
+          })
+          .from(activityLaborAssignments)
+          .where(
+            or(
+              // Pressing labor linked to the batch's origin press run
+              and(
+                eq(activityLaborAssignments.activityType, "press_run"),
+                sql`${activityLaborAssignments.pressRunId} = (SELECT origin_press_run_id FROM batches WHERE id = ${bottleRun.batchId})`
+              ),
+              // Filtering labor linked to this batch's filter operations
+              and(
+                eq(activityLaborAssignments.activityType, "filtering"),
+                sql`${activityLaborAssignments.filterOperationId} IN (SELECT id FROM batch_filter_operations WHERE batch_id = ${bottleRun.batchId})`
+              ),
+              // Racking labor linked to this batch's racking operations
+              and(
+                eq(activityLaborAssignments.activityType, "racking"),
+                sql`${activityLaborAssignments.rackingOperationId} IN (SELECT id FROM batch_racking_operations WHERE batch_id = ${bottleRun.batchId})`
+              ),
+              // Carbonation labor linked to this batch's carbonation operations
+              and(
+                eq(activityLaborAssignments.activityType, "carbonation"),
+                sql`${activityLaborAssignments.carbonationOperationId} IN (SELECT id FROM batch_carbonation_operations WHERE batch_id = ${bottleRun.batchId})`
+              )
+            )
+          )
+          .groupBy(activityLaborAssignments.activityType);
+
+        const hasLaborAssignments = directLaborAssignments.length > 0 || upstreamLaborAssignments.length > 0;
+
+        let laborCost: number;
+        if (hasLaborAssignments) {
+          // Sum direct labor (no proration needed - it's specific to this bottle run)
+          const directLaborCost = directLaborAssignments.reduce(
+            (sum, a) => sum + Number(a.totalCost), 0
+          );
+          // Sum upstream labor and prorate by volume taken from batch
+          const upstreamLaborCost = upstreamLaborAssignments.reduce(
+            (sum, a) => sum + Number(a.totalCost), 0
+          ) * prorationFactor;
+          laborCost = directLaborCost + upstreamLaborCost;
+        } else {
+          // Fallback: use flat fields on bottle run for backward compatibility
+          const laborCostPerHour = parseFloat(bottleRun.laborCostPerHour?.toString() || "0");
+          const bottlingLaborHours = parseFloat(bottleRun.laborHours?.toString() || "0");
+          const pasteurizationLaborHours = parseFloat(bottleRun.pasteurizationLaborHours?.toString() || "0");
+          const labelingLaborHours = parseFloat(bottleRun.labelingLaborHours?.toString() || "0");
+          const totalLaborHours = bottlingLaborHours + pasteurizationLaborHours + labelingLaborHours;
+          laborCost = totalLaborHours * laborCostPerHour;
+        }
         const overheadCost = parseFloat(bottleRun.overheadCostAllocated?.toString() || "0");
 
         const totalCogs = appleCosts + additiveCosts + packagingCosts + laborCost + overheadCost;

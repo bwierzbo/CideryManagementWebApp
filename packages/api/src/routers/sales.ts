@@ -17,6 +17,9 @@ import {
   batches,
   bottleRuns,
   batchCompositions,
+  batchAdditives,
+  bottleRunMaterials,
+  packagingPurchaseItems,
 } from "db";
 import {
   eq,
@@ -639,9 +642,59 @@ export const salesRouter = router({
             (Number(br.laborCostPerHour) || 0);
           const overhead = Number(br.overheadCostAllocated) || 0;
           const unitsProduced = Number(br.unitsProduced) || 1;
-          const costPerUnit = (laborCost + overhead) / unitsProduced;
-          return [br.id, costPerUnit];
+          return [br.id, { laborCost, overhead, unitsProduced }];
         })
+      );
+
+      // Get additive costs for all batches
+      const additiveCosts =
+        batchIds.length > 0
+          ? await db
+              .select({
+                batchId: batchAdditives.batchId,
+                totalAdditiveCost: sql<number>`COALESCE(SUM(CAST(${batchAdditives.totalCost} AS DECIMAL)), 0)`,
+              })
+              .from(batchAdditives)
+              .where(
+                sql`${batchAdditives.batchId} IN (${sql.join(
+                  batchIds.map((id) => sql`${id}::uuid`),
+                  sql`, `
+                )})`
+              )
+              .groupBy(batchAdditives.batchId)
+          : [];
+
+      const additiveCostMap = new Map(
+        additiveCosts.map((a) => [a.batchId, Number(a.totalAdditiveCost)])
+      );
+
+      // Get packaging material costs for all bottle runs
+      const packagingCosts =
+        bottleRunIds.length > 0
+          ? await db
+              .select({
+                bottleRunId: bottleRunMaterials.bottleRunId,
+                totalPackagingCost: sql<number>`COALESCE(SUM(
+                  CAST(${bottleRunMaterials.quantityUsed} AS DECIMAL) *
+                  CAST(${packagingPurchaseItems.pricePerUnit} AS DECIMAL)
+                ), 0)`,
+              })
+              .from(bottleRunMaterials)
+              .innerJoin(
+                packagingPurchaseItems,
+                eq(bottleRunMaterials.packagingPurchaseItemId, packagingPurchaseItems.id)
+              )
+              .where(
+                sql`${bottleRunMaterials.bottleRunId} IN (${sql.join(
+                  bottleRunIds.map((id) => sql`${id}::uuid`),
+                  sql`, `
+                )})`
+              )
+              .groupBy(bottleRunMaterials.bottleRunId)
+          : [];
+
+      const packagingCostMap = new Map(
+        packagingCosts.map((p) => [p.bottleRunId, Number(p.totalPackagingCost)])
       );
 
       // Calculate margins for each product
@@ -649,19 +702,48 @@ export const salesRouter = router({
         const revenue = Number(s.totalRevenue);
         const units = Number(s.totalUnits);
         const batchData = batchCostMap.get(s.batchId || "");
-        const bottleRunCostPerUnit = bottleRunCostMap.get(s.bottleRunId || "") || 0;
+        const brCosts = bottleRunCostMap.get(s.bottleRunId || "");
 
-        // Calculate COGS per unit
-        let cogsPerUnit = bottleRunCostPerUnit;
+        // Volume per unit in liters
+        const volumePerUnitLiters = (s.packageSizeML || 0) / 1000;
+
+        // Material cost per unit (from batch compositions, prorated by volume)
+        let materialCostPerUnit = 0;
         if (batchData && batchData.volumeLiters > 0) {
-          // Material cost per liter from batch
           const materialCostPerLiter =
             batchData.totalMaterialCost / batchData.volumeLiters;
-          // Volume per unit in liters
-          const volumePerUnitLiters = (s.packageSizeML || 0) / 1000;
-          // Add material cost per unit
-          cogsPerUnit += materialCostPerLiter * volumePerUnitLiters;
+          materialCostPerUnit = materialCostPerLiter * volumePerUnitLiters;
         }
+
+        // Additive cost per unit (from batch additives, prorated by volume)
+        let additiveCostPerUnit = 0;
+        if (batchData && batchData.volumeLiters > 0) {
+          const totalAdditiveCost = additiveCostMap.get(s.batchId || "") || 0;
+          const additiveCostPerLiter = totalAdditiveCost / batchData.volumeLiters;
+          additiveCostPerUnit = additiveCostPerLiter * volumePerUnitLiters;
+        }
+
+        // Packaging material cost per unit (from bottle run materials)
+        const totalPackagingCost = packagingCostMap.get(s.bottleRunId || "") || 0;
+        const brUnitsProduced = brCosts?.unitsProduced || 1;
+        const packagingCostPerUnit = totalPackagingCost / brUnitsProduced;
+
+        // Labor cost per unit (from bottle run flat fields)
+        const laborCostPerUnit = brCosts
+          ? brCosts.laborCost / brCosts.unitsProduced
+          : 0;
+
+        // Overhead cost per unit
+        const overheadCostPerUnit = brCosts
+          ? brCosts.overhead / brCosts.unitsProduced
+          : 0;
+
+        const cogsPerUnit =
+          materialCostPerUnit +
+          additiveCostPerUnit +
+          packagingCostPerUnit +
+          laborCostPerUnit +
+          overheadCostPerUnit;
 
         const totalCogs = cogsPerUnit * units;
         const grossProfit = revenue - totalCogs;

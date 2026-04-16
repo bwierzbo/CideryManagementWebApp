@@ -7,8 +7,16 @@ import {
   basefruitPurchaseItems,
   vendors,
   baseFruitVarieties,
+  batches,
+  batchCompositions,
+  batchAdditives,
+  packagingPurchaseItems,
+  activityLaborAssignments,
+  inventoryItems,
+  inventoryDistributions,
 } from "db";
-import { eq, and, gte, lte, desc, isNull, sql } from "drizzle-orm";
+import { bottleRuns, bottleRunMaterials } from "db/src/schema/packaging";
+import { eq, and, gte, lte, desc, isNull, isNotNull, sql, inArray, ne } from "drizzle-orm";
 // TODO: Re-enable PDF service when server-compatible solution is available
 // import { PdfService } from "../services/pdf/PdfService";
 // import {
@@ -453,6 +461,304 @@ export const reportsRouter = router({
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to get vendor performance data",
+        });
+      }
+    }),
+
+  // COGS breakdown per bottle run with aggregate totals
+  cogsBreakdown: createRbacProcedure("read", "report")
+    .input(
+      z.object({
+        dateFrom: z.date().or(z.string().transform((s) => new Date(s))).optional(),
+        dateTo: z.date().or(z.string().transform((s) => new Date(s))).optional(),
+        productType: z.string().optional(),
+      }),
+    )
+    .query(async ({ input }) => {
+      try {
+        // 1. Fetch bottle runs in date range, joined with batch info
+        const dateConditions = [];
+        if (input.dateFrom) {
+          dateConditions.push(gte(bottleRuns.packagedAt, input.dateFrom));
+        }
+        if (input.dateTo) {
+          dateConditions.push(lte(bottleRuns.packagedAt, input.dateTo));
+        }
+        if (input.productType) {
+          dateConditions.push(eq(batches.productType, input.productType as any));
+        }
+        dateConditions.push(ne(bottleRuns.status, "voided"));
+
+        const runsData = await db
+          .select({
+            id: bottleRuns.id,
+            batchId: bottleRuns.batchId,
+            batchName: batches.name,
+            productType: batches.productType,
+            packagedAt: bottleRuns.packagedAt,
+            unitsProduced: bottleRuns.unitsProduced,
+            volumeTakenLiters: bottleRuns.volumeTakenLiters,
+            volumeTaken: bottleRuns.volumeTaken,
+            overheadCostAllocated: bottleRuns.overheadCostAllocated,
+            retailPrice: bottleRuns.retailPrice,
+          })
+          .from(bottleRuns)
+          .innerJoin(batches, eq(bottleRuns.batchId, batches.id))
+          .where(and(...dateConditions))
+          .orderBy(desc(bottleRuns.packagedAt));
+
+        if (runsData.length === 0) {
+          return {
+            runs: [],
+            totals: {
+              totalFruitCost: 0,
+              totalAdditiveCost: 0,
+              totalPackagingCost: 0,
+              totalLaborCost: 0,
+              totalOverheadCost: 0,
+              totalCogs: 0,
+              totalUnits: 0,
+              totalVolume: 0,
+              avgCostPerUnit: 0,
+              avgCostPerLiter: 0,
+              totalRevenue: 0,
+              avgMargin: 0,
+            },
+          };
+        }
+
+        // Collect unique batch IDs and run IDs for batch queries
+        const batchIds = [...new Set(runsData.map((r) => r.batchId))];
+        const runIds = runsData.map((r) => r.id);
+
+        // 2. Batch-query all cost components in parallel
+
+        // 2a. Fruit costs by batch (batchCompositions.materialCost)
+        const fruitCostRows = await db
+          .select({
+            batchId: batchCompositions.batchId,
+            totalMaterialCost: sql<number>`COALESCE(SUM(${batchCompositions.materialCost}), 0)::float`,
+          })
+          .from(batchCompositions)
+          .where(
+            and(
+              inArray(batchCompositions.batchId, batchIds),
+              isNull(batchCompositions.deletedAt),
+            ),
+          )
+          .groupBy(batchCompositions.batchId);
+
+        const fruitCostByBatch = new Map<string, number>();
+        for (const row of fruitCostRows) {
+          fruitCostByBatch.set(row.batchId, row.totalMaterialCost);
+        }
+
+        // 2b. Additive costs by batch (batchAdditives.totalCost)
+        const additiveCostRows = await db
+          .select({
+            batchId: batchAdditives.batchId,
+            totalAdditiveCost: sql<number>`COALESCE(SUM(${batchAdditives.totalCost}), 0)::float`,
+          })
+          .from(batchAdditives)
+          .where(
+            and(
+              inArray(batchAdditives.batchId, batchIds),
+              isNull(batchAdditives.deletedAt),
+            ),
+          )
+          .groupBy(batchAdditives.batchId);
+
+        const additiveCostByBatch = new Map<string, number>();
+        for (const row of additiveCostRows) {
+          additiveCostByBatch.set(row.batchId, row.totalAdditiveCost);
+        }
+
+        // 2c. Batch total volumes (for proration: volumeTaken / batchTotalVolume)
+        // Sum all volumeTakenLiters across all bottle runs per batch (total volume drawn from batch)
+        const batchTotalVolumeRows = await db
+          .select({
+            batchId: batches.id,
+            initialVolumeLiters: batches.initialVolumeLiters,
+          })
+          .from(batches)
+          .where(inArray(batches.id, batchIds));
+
+        const batchTotalVolume = new Map<string, number>();
+        for (const row of batchTotalVolumeRows) {
+          batchTotalVolume.set(
+            row.batchId,
+            parseFloat(row.initialVolumeLiters?.toString() ?? "0"),
+          );
+        }
+
+        // 2d. Packaging costs by bottle run (bottleRunMaterials joined with packagingPurchaseItems)
+        const packagingCostRows = await db
+          .select({
+            bottleRunId: bottleRunMaterials.bottleRunId,
+            totalPackagingCost: sql<number>`COALESCE(SUM(
+              ${bottleRunMaterials.quantityUsed} * COALESCE(${bottleRunMaterials.costPerUnit}, ${packagingPurchaseItems.pricePerUnit}, 0)
+            ), 0)::float`,
+          })
+          .from(bottleRunMaterials)
+          .leftJoin(
+            packagingPurchaseItems,
+            eq(bottleRunMaterials.packagingPurchaseItemId, packagingPurchaseItems.id),
+          )
+          .where(inArray(bottleRunMaterials.bottleRunId, runIds))
+          .groupBy(bottleRunMaterials.bottleRunId);
+
+        const packagingCostByRun = new Map<string, number>();
+        for (const row of packagingCostRows) {
+          packagingCostByRun.set(row.bottleRunId, row.totalPackagingCost);
+        }
+
+        // 2e. Direct labor costs by bottle run (activityLaborAssignments where bottleRunId = runId)
+        const laborCostRows = await db
+          .select({
+            bottleRunId: activityLaborAssignments.bottleRunId,
+            totalLaborCost: sql<number>`COALESCE(SUM(${activityLaborAssignments.laborCost}), 0)::float`,
+          })
+          .from(activityLaborAssignments)
+          .where(
+            and(
+              inArray(activityLaborAssignments.bottleRunId, runIds),
+              isNotNull(activityLaborAssignments.bottleRunId),
+            ),
+          )
+          .groupBy(activityLaborAssignments.bottleRunId);
+
+        const laborCostByRun = new Map<string, number>();
+        for (const row of laborCostRows) {
+          if (row.bottleRunId) {
+            laborCostByRun.set(row.bottleRunId, row.totalLaborCost);
+          }
+        }
+
+        // 2f. Revenue by bottle run (sum of inventoryDistributions.totalRevenue via inventoryItems)
+        const revenueRows = await db
+          .select({
+            bottleRunId: inventoryItems.bottleRunId,
+            totalRevenue: sql<number>`COALESCE(SUM(${inventoryDistributions.totalRevenue}), 0)::float`,
+          })
+          .from(inventoryDistributions)
+          .innerJoin(
+            inventoryItems,
+            eq(inventoryDistributions.inventoryItemId, inventoryItems.id),
+          )
+          .where(
+            and(
+              inArray(inventoryItems.bottleRunId, runIds),
+              isNotNull(inventoryItems.bottleRunId),
+              isNull(inventoryItems.deletedAt),
+            ),
+          )
+          .groupBy(inventoryItems.bottleRunId);
+
+        const revenueByRun = new Map<string, number>();
+        for (const row of revenueRows) {
+          if (row.bottleRunId) {
+            revenueByRun.set(row.bottleRunId, row.totalRevenue);
+          }
+        }
+
+        // 3. Assemble per-run breakdown
+        let totalFruitCost = 0;
+        let totalAdditiveCost = 0;
+        let totalPackagingCost = 0;
+        let totalLaborCost = 0;
+        let totalOverheadCost = 0;
+        let totalCogs = 0;
+        let totalUnits = 0;
+        let totalVolume = 0;
+        let totalRevenue = 0;
+        let marginSum = 0;
+        let marginCount = 0;
+
+        const runs = runsData.map((run) => {
+          const volumeTakenL = parseFloat(
+            run.volumeTakenLiters?.toString() ?? run.volumeTaken?.toString() ?? "0",
+          );
+          const batchVolume = batchTotalVolume.get(run.batchId) || 1; // avoid division by zero
+          const prorationFactor = batchVolume > 0 ? volumeTakenL / batchVolume : 0;
+
+          const fruitCost = (fruitCostByBatch.get(run.batchId) ?? 0) * prorationFactor;
+          const additiveCost = (additiveCostByBatch.get(run.batchId) ?? 0) * prorationFactor;
+          const packagingCost = packagingCostByRun.get(run.id) ?? 0;
+          const laborCost = laborCostByRun.get(run.id) ?? 0;
+          const overheadCost = parseFloat(run.overheadCostAllocated?.toString() ?? "0");
+          const runTotalCogs = fruitCost + additiveCost + packagingCost + laborCost + overheadCost;
+          const unitsProduced = run.unitsProduced ?? 0;
+          const costPerUnit = unitsProduced > 0 ? runTotalCogs / unitsProduced : 0;
+          const costPerLiter = volumeTakenL > 0 ? runTotalCogs / volumeTakenL : 0;
+
+          const revenue = revenueByRun.has(run.id) ? revenueByRun.get(run.id)! : null;
+          const margin = revenue !== null && revenue > 0
+            ? ((revenue - runTotalCogs) / revenue) * 100
+            : null;
+
+          // Accumulate totals
+          totalFruitCost += fruitCost;
+          totalAdditiveCost += additiveCost;
+          totalPackagingCost += packagingCost;
+          totalLaborCost += laborCost;
+          totalOverheadCost += overheadCost;
+          totalCogs += runTotalCogs;
+          totalUnits += unitsProduced;
+          totalVolume += volumeTakenL;
+          if (revenue !== null) totalRevenue += revenue;
+          if (margin !== null) {
+            marginSum += margin;
+            marginCount++;
+          }
+
+          return {
+            id: run.id,
+            batchName: run.batchName,
+            productType: run.productType,
+            packagedAt: run.packagedAt,
+            unitsProduced,
+            volumeTakenL: Math.round(volumeTakenL * 1000) / 1000,
+            fruitCost: Math.round(fruitCost * 100) / 100,
+            additiveCost: Math.round(additiveCost * 100) / 100,
+            packagingCost: Math.round(packagingCost * 100) / 100,
+            laborCost: Math.round(laborCost * 100) / 100,
+            overheadCost: Math.round(overheadCost * 100) / 100,
+            totalCogs: Math.round(runTotalCogs * 100) / 100,
+            costPerUnit: Math.round(costPerUnit * 100) / 100,
+            costPerLiter: Math.round(costPerLiter * 100) / 100,
+            revenue: revenue !== null ? Math.round(revenue * 100) / 100 : null,
+            margin: margin !== null ? Math.round(margin * 100) / 100 : null,
+          };
+        });
+
+        return {
+          runs,
+          totals: {
+            totalFruitCost: Math.round(totalFruitCost * 100) / 100,
+            totalAdditiveCost: Math.round(totalAdditiveCost * 100) / 100,
+            totalPackagingCost: Math.round(totalPackagingCost * 100) / 100,
+            totalLaborCost: Math.round(totalLaborCost * 100) / 100,
+            totalOverheadCost: Math.round(totalOverheadCost * 100) / 100,
+            totalCogs: Math.round(totalCogs * 100) / 100,
+            totalUnits,
+            totalVolume: Math.round(totalVolume * 1000) / 1000,
+            avgCostPerUnit: totalUnits > 0
+              ? Math.round((totalCogs / totalUnits) * 100) / 100
+              : 0,
+            avgCostPerLiter: totalVolume > 0
+              ? Math.round((totalCogs / totalVolume) * 100) / 100
+              : 0,
+            totalRevenue: Math.round(totalRevenue * 100) / 100,
+            avgMargin: marginCount > 0
+              ? Math.round((marginSum / marginCount) * 100) / 100
+              : 0,
+          },
+        };
+      } catch (error) {
+        console.error("Error generating COGS breakdown:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to generate COGS breakdown report",
         });
       }
     }),
