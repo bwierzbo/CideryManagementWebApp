@@ -1233,6 +1233,11 @@ export default function BatchDetailsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {history?.isInheritedComposition && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4 text-sm text-amber-800">
+                  Composition inherited from source cider batches (via distillation)
+                </div>
+              )}
               {composition && composition.length > 0 ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-3 gap-4 text-sm font-medium bg-gray-50 p-3 rounded-lg">

@@ -28,6 +28,7 @@ interface Measurement {
   temperature?: string | null;
   volume?: string | null;
   volumeUnit?: string;
+  sensoryNotes?: string | null;
   notes?: string | null;
   takenBy?: string | null;
 }
@@ -55,6 +56,7 @@ export function EditMeasurementDialog({
   const [temperature, setTemperature] = useState("");
   const [volume, setVolume] = useState("");
   const [volumeUnit, setVolumeUnit] = useState("L");
+  const [sensoryNotes, setSensoryNotes] = useState("");
   const [notes, setNotes] = useState("");
   const [takenBy, setTakenBy] = useState("");
 
@@ -68,6 +70,7 @@ export function EditMeasurementDialog({
       setTemperature(measurement.temperature || "20");
       setVolume(measurement.volume || "");
       setVolumeUnit(measurement.volumeUnit || "L");
+      setSensoryNotes(measurement.sensoryNotes || "");
       setNotes(measurement.notes || "");
       setTakenBy(measurement.takenBy || "");
     }
@@ -115,6 +118,7 @@ export function EditMeasurementDialog({
     if (temperature) updateData.temperature = parseFloat(temperature);
     if (volume) updateData.volume = parseFloat(volume);
     if (volumeUnit) updateData.volumeUnit = volumeUnit;
+    if (sensoryNotes !== undefined) updateData.sensoryNotes = sensoryNotes;
     if (notes !== undefined) updateData.notes = notes;
     if (takenBy !== undefined) updateData.takenBy = takenBy;
 
@@ -248,6 +252,17 @@ export function EditMeasurementDialog({
               value={takenBy}
               onChange={(e) => setTakenBy(e.target.value)}
               placeholder="Name of person who took the measurement"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="sensoryNotes">Sensory Notes</Label>
+            <Textarea
+              id="sensoryNotes"
+              value={sensoryNotes}
+              onChange={(e) => setSensoryNotes(e.target.value)}
+              placeholder="Tasting notes, aroma, appearance, mouthfeel..."
+              rows={3}
             />
           </div>
 

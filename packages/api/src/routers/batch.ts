@@ -28,6 +28,7 @@ import {
   activityLaborAssignments,
   batchVolumeLedger,
   workers,
+  distillationRecords,
 } from "db";
 import { bottleRuns, kegFills, kegs, bottleRunMaterials } from "db/src/schema/packaging";
 import { batchCarbonationOperations } from "db/src/schema/carbonation";
@@ -470,6 +471,7 @@ const updateMeasurementSchema = z.object({
   temperature: z.number().min(-10, "Temperature must be at least -10°C").max(40, "Temperature must be at most 40°C").optional(),
   volume: z.number().positive().optional(),
   volumeUnit: z.enum(['L', 'gal']).optional(),
+  sensoryNotes: z.string().optional(),
   notes: z.string().optional(),
   takenBy: z.string().optional(),
 });
@@ -635,8 +637,99 @@ export const batchRouter = router({
 
         console.log("📊 Composition data count:", compositionData.length);
 
-        // All composition is now in batch_compositions table
-        const allComposition = compositionData;
+        // For brandy/pommeau batches with no direct composition, trace through distillation
+        let allComposition = compositionData;
+
+        if (compositionData.length === 0) {
+          const batchInfo = await db
+            .select({ productType: batches.productType, parentBatchId: batches.parentBatchId })
+            .from(batches)
+            .where(eq(batches.id, input.batchId))
+            .limit(1);
+
+          const productType = batchInfo[0]?.productType;
+          const parentBatchId = batchInfo[0]?.parentBatchId;
+
+          if (productType === "brandy" || productType === "pommeau") {
+            const distRecords = await db
+              .select({ sourceBatchId: distillationRecords.sourceBatchId })
+              .from(distillationRecords)
+              .where(
+                and(
+                  eq(distillationRecords.resultBatchId, input.batchId),
+                  isNull(distillationRecords.deletedAt),
+                )
+              );
+
+            const distSourceBatchIds = distRecords.map(r => r.sourceBatchId);
+            if (distSourceBatchIds.length > 0) {
+              allComposition = await db
+                .select({
+                  vendorName: vendors.name,
+                  varietyName: sql<string>`
+                    CASE
+                      WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                      WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                      ELSE 'Unknown'
+                    END
+                  `,
+                  lotCode: batchCompositions.lotCode,
+                  inputWeightKg: batchCompositions.inputWeightKg,
+                  juiceVolume: batchCompositions.juiceVolume,
+                  fractionOfBatch: batchCompositions.fractionOfBatch,
+                  materialCost: batchCompositions.materialCost,
+                  avgBrix: batchCompositions.avgBrix,
+                  sourceType: batchCompositions.sourceType,
+                  ph: juicePurchaseItems.ph,
+                  specificGravity: juicePurchaseItems.specificGravity,
+                })
+                .from(batchCompositions)
+                .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+                .leftJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
+                .leftJoin(juicePurchaseItems, eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id))
+                .where(
+                  and(
+                    inArray(batchCompositions.batchId, distSourceBatchIds),
+                    isNull(batchCompositions.deletedAt),
+                  )
+                );
+            }
+          }
+
+          // Also check parentBatchId chain as fallback
+          if (allComposition.length === 0 && parentBatchId) {
+            allComposition = await db
+              .select({
+                vendorName: vendors.name,
+                varietyName: sql<string>`
+                  CASE
+                    WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                    WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                    ELSE 'Unknown'
+                  END
+                `,
+                lotCode: batchCompositions.lotCode,
+                inputWeightKg: batchCompositions.inputWeightKg,
+                juiceVolume: batchCompositions.juiceVolume,
+                fractionOfBatch: batchCompositions.fractionOfBatch,
+                materialCost: batchCompositions.materialCost,
+                avgBrix: batchCompositions.avgBrix,
+                sourceType: batchCompositions.sourceType,
+                ph: juicePurchaseItems.ph,
+                specificGravity: juicePurchaseItems.specificGravity,
+              })
+              .from(batchCompositions)
+              .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+              .leftJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
+              .leftJoin(juicePurchaseItems, eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id))
+              .where(
+                and(
+                  eq(batchCompositions.batchId, parentBatchId),
+                  isNull(batchCompositions.deletedAt),
+                )
+              );
+          }
+        }
 
         // Convert string fields to numbers for the response
         return allComposition.map((item) => ({
@@ -1140,6 +1233,111 @@ export const batchRouter = router({
           )
           .orderBy(desc(batchCompositions.fractionOfBatch));
 
+        // For brandy/pommeau batches with no direct composition, trace through distillation
+        let inheritedComposition: typeof composition = [];
+        if (composition.length === 0 && (batch.productType === "brandy" || batch.productType === "pommeau")) {
+          // Find distillation records where this batch is the result
+          const distRecords = await db
+            .select({
+              sourceBatchId: distillationRecords.sourceBatchId,
+            })
+            .from(distillationRecords)
+            .where(
+              and(
+                eq(distillationRecords.resultBatchId, input.batchId),
+                isNull(distillationRecords.deletedAt),
+              )
+            );
+
+          // Get compositions from all source batches
+          const distSourceBatchIds = distRecords.map(r => r.sourceBatchId);
+          if (distSourceBatchIds.length > 0) {
+            inheritedComposition = await db
+              .select({
+                vendorName: vendors.name,
+                varietyName: sql<string>`
+                  CASE
+                    WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                    WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                    ELSE 'Unknown'
+                  END
+                `,
+                inputWeightKg: batchCompositions.inputWeightKg,
+                juiceVolume: batchCompositions.juiceVolume,
+                fractionOfBatch: batchCompositions.fractionOfBatch,
+                materialCost: batchCompositions.materialCost,
+                avgBrix: batchCompositions.avgBrix,
+                sourceType: batchCompositions.sourceType,
+                lotCode: batchCompositions.lotCode,
+                ph: juicePurchaseItems.ph,
+                specificGravity: juicePurchaseItems.specificGravity,
+                brix: juicePurchaseItems.brix,
+                notes: juicePurchaseItems.notes,
+              })
+              .from(batchCompositions)
+              .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+              .leftJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
+              .leftJoin(juicePurchaseItems, eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id))
+              .where(
+                and(
+                  inArray(batchCompositions.batchId, distSourceBatchIds),
+                  isNull(batchCompositions.deletedAt),
+                )
+              )
+              .orderBy(desc(batchCompositions.fractionOfBatch));
+          }
+        }
+
+        // Also check parentBatchId chain as an alternative source
+        if (composition.length === 0 && inheritedComposition.length === 0 && batch.productType) {
+          // Check if batch has a parentBatchId by querying for it
+          const parentCheck = await db
+            .select({ parentBatchId: batches.parentBatchId })
+            .from(batches)
+            .where(eq(batches.id, input.batchId))
+            .limit(1);
+
+          const parentBatchId = parentCheck[0]?.parentBatchId;
+          if (parentBatchId) {
+            inheritedComposition = await db
+              .select({
+                vendorName: vendors.name,
+                varietyName: sql<string>`
+                  CASE
+                    WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                    WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                    ELSE 'Unknown'
+                  END
+                `,
+                inputWeightKg: batchCompositions.inputWeightKg,
+                juiceVolume: batchCompositions.juiceVolume,
+                fractionOfBatch: batchCompositions.fractionOfBatch,
+                materialCost: batchCompositions.materialCost,
+                avgBrix: batchCompositions.avgBrix,
+                sourceType: batchCompositions.sourceType,
+                lotCode: batchCompositions.lotCode,
+                ph: juicePurchaseItems.ph,
+                specificGravity: juicePurchaseItems.specificGravity,
+                brix: juicePurchaseItems.brix,
+                notes: juicePurchaseItems.notes,
+              })
+              .from(batchCompositions)
+              .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+              .leftJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
+              .leftJoin(juicePurchaseItems, eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id))
+              .where(
+                and(
+                  eq(batchCompositions.batchId, parentBatchId),
+                  isNull(batchCompositions.deletedAt),
+                )
+              )
+              .orderBy(desc(batchCompositions.fractionOfBatch));
+          }
+        }
+
+        const isInheritedComposition = composition.length === 0 && inheritedComposition.length > 0;
+        const finalComposition = composition.length > 0 ? composition : inheritedComposition;
+
         // Get all measurements
         const measurements = await db
           .select({
@@ -1456,7 +1654,8 @@ export const batchRouter = router({
             mergedAt: b.mergedAt,
             sourceType: b.sourceType,
           })),
-          composition: composition.map((item) => ({
+          isInheritedComposition,
+          composition: finalComposition.map((item) => ({
             vendorName: item.vendorName || "Unknown Vendor",
             varietyName: item.varietyName || "Unknown",
             inputWeightKg: parseFloat(item.inputWeightKg || "0"),
@@ -2136,6 +2335,7 @@ export const batchRouter = router({
         if (input.temperature !== undefined) updateData.temperature = input.temperature.toString();
         if (input.volume !== undefined) updateData.volume = input.volume.toString();
         if (input.volumeUnit) updateData.volumeUnit = input.volumeUnit;
+        if (input.sensoryNotes !== undefined) updateData.sensoryNotes = input.sensoryNotes;
         if (input.notes !== undefined) updateData.notes = input.notes;
         if (input.takenBy !== undefined) updateData.takenBy = input.takenBy;
 
@@ -3237,6 +3437,7 @@ export const batchRouter = router({
           kegFillsList,
           statusChangeLogs,
           volumeAdjustmentsList,
+          distillationList,
         ] = await Promise.all([
           // Check for earliest transfer to determine true origin vessel
           db
@@ -3581,6 +3782,32 @@ export const batchRouter = router({
               )
             )
             .orderBy(asc(batchVolumeAdjustments.adjustmentDate)),
+
+          // Distillation events
+          db
+            .select({
+              id: distillationRecords.id,
+              date: distillationRecords.sentAt,
+              type: sql<string>`'distillation'`,
+              status: distillationRecords.status,
+              distilleryName: distillationRecords.distilleryName,
+              sourceVolume: distillationRecords.sourceVolume,
+              receivedVolume: distillationRecords.receivedVolume,
+              receivedAbv: distillationRecords.receivedAbv,
+              receivedAt: distillationRecords.receivedAt,
+              sourceBatchId: distillationRecords.sourceBatchId,
+              resultBatchId: distillationRecords.resultBatchId,
+            })
+            .from(distillationRecords)
+            .where(
+              and(
+                or(
+                  eq(distillationRecords.sourceBatchId, input.batchId),
+                  eq(distillationRecords.resultBatchId, input.batchId),
+                ),
+                isNull(distillationRecords.deletedAt),
+              )
+            ),
         ]);
 
         let activities: any[] = [];
@@ -4094,6 +4321,43 @@ export const batchRouter = router({
           });
         });
 
+        // Process distillation events
+        distillationList.forEach((dr) => {
+          if (dr.sourceBatchId === input.batchId) {
+            // This batch was sent to distillery
+            const vol = parseFloat(dr.sourceVolume || "0").toFixed(1);
+            activities.push({
+              id: `distillation-${dr.id}`,
+              type: "distillation",
+              timestamp: dr.date,
+              description: `Sent to ${dr.distilleryName} for distillation (${vol}L)`,
+              details: {
+                distilleryName: dr.distilleryName,
+                sourceVolume: `${vol}L`,
+                status: dr.status,
+              },
+            });
+          }
+          if (dr.resultBatchId === input.batchId && dr.receivedAt) {
+            // This batch was received back as brandy
+            const abv = dr.receivedAbv ? `${parseFloat(dr.receivedAbv).toFixed(1)}% ABV` : "";
+            const vol = dr.receivedVolume ? `${parseFloat(dr.receivedVolume).toFixed(1)}L` : "";
+            const details = [abv, vol].filter(Boolean).join(", ");
+            activities.push({
+              id: `distillation-received-${dr.id}`,
+              type: "distillation_received",
+              timestamp: dr.receivedAt,
+              description: `Received from ${dr.distilleryName} as brandy${details ? ` (${details})` : ""}`,
+              details: {
+                distilleryName: dr.distilleryName,
+                receivedVolume: vol || null,
+                receivedAbv: abv || null,
+                status: dr.status,
+              },
+            });
+          }
+        });
+
         // Deduplicate activities copied during full transfers.
         // When a batch is fully racked/transferred, the system copies measurements, additives,
         // racking ops, filter ops, and carbonation ops to the new batch. The ancestor chain also
@@ -4325,7 +4589,7 @@ export const batchRouter = router({
           .orderBy(desc(batchTransfers.transferredAt));
 
         // Get activities in parallel (scoped to this batch only, no inheritance)
-        const [measurements, additives, rackings, filters, carbonations, bottlings, kegFillsData] = await Promise.all([
+        const [measurements, additives, rackings, filters, carbonations, bottlings, kegFillsData, distillations] = await Promise.all([
           // Measurements
           db
             .select({
@@ -4455,6 +4719,32 @@ export const batchRouter = router({
               )
             )
             .orderBy(desc(kegFills.filledAt)),
+
+          // Distillation events
+          db
+            .select({
+              id: distillationRecords.id,
+              date: distillationRecords.sentAt,
+              type: sql<string>`'distillation'`,
+              status: distillationRecords.status,
+              distilleryName: distillationRecords.distilleryName,
+              sourceVolume: distillationRecords.sourceVolume,
+              receivedVolume: distillationRecords.receivedVolume,
+              receivedAbv: distillationRecords.receivedAbv,
+              receivedAt: distillationRecords.receivedAt,
+              sourceBatchId: distillationRecords.sourceBatchId,
+              resultBatchId: distillationRecords.resultBatchId,
+            })
+            .from(distillationRecords)
+            .where(
+              and(
+                or(
+                  eq(distillationRecords.sourceBatchId, input.batchId),
+                  eq(distillationRecords.resultBatchId, input.batchId),
+                ),
+                isNull(distillationRecords.deletedAt),
+              )
+            ),
         ]);
 
         // Get child count (transfers out)
@@ -4494,6 +4784,30 @@ export const batchRouter = router({
             return events;
           }),
           ...kegFillsData.map((k) => ({ ...k, activityType: "keg" as const })),
+          ...distillations.flatMap((dr) => {
+            const events: any[] = [];
+            if (dr.sourceBatchId === input.batchId) {
+              const vol = parseFloat(dr.sourceVolume || "0").toFixed(1);
+              events.push({
+                id: `distillation-${dr.id}`,
+                date: dr.date,
+                activityType: "distillation" as const,
+                description: `Sent to ${dr.distilleryName} for distillation (${vol}L)`,
+              });
+            }
+            if (dr.resultBatchId === input.batchId && dr.receivedAt) {
+              const abv = dr.receivedAbv ? `${parseFloat(dr.receivedAbv).toFixed(1)}% ABV` : "";
+              const vol = dr.receivedVolume ? `${parseFloat(dr.receivedVolume).toFixed(1)}L` : "";
+              const details = [abv, vol].filter(Boolean).join(", ");
+              events.push({
+                id: `distillation-received-${dr.id}`,
+                date: dr.receivedAt,
+                activityType: "distillation_received" as const,
+                description: `Received from ${dr.distilleryName} as brandy${details ? ` (${details})` : ""}`,
+              });
+            }
+            return events;
+          }),
         ].sort((a, b) => {
           const dateA = a.date ? new Date(a.date).getTime() : 0;
           const dateB = b.date ? new Date(b.date).getTime() : 0;
