@@ -1353,6 +1353,7 @@ export default function BatchDetailsPage() {
                       <TableHead className="text-right">TA</TableHead>
                       <TableHead className="text-right">Temp °C</TableHead>
                       <TableHead className="text-right">Volume L</TableHead>
+                      <TableHead>Sensory</TableHead>
                       <TableHead>Notes</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1379,6 +1380,9 @@ export default function BatchDetailsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           {measurement.volume?.toFixed(1) || "-"}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">
+                          {(measurement as any).sensoryNotes || "-"}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
                           {measurement.notes || "-"}

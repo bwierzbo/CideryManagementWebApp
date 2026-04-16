@@ -1154,6 +1154,7 @@ export const batchRouter = router({
             volume: batchMeasurements.volume,
             volumeUnit: batchMeasurements.volumeUnit,
             notes: batchMeasurements.notes,
+            sensoryNotes: batchMeasurements.sensoryNotes,
             takenBy: batchMeasurements.takenBy,
             isEstimated: batchMeasurements.isEstimated,
             estimateSource: batchMeasurements.estimateSource,
