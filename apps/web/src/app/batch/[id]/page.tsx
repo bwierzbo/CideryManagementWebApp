@@ -584,7 +584,7 @@ export default function BatchDetailsPage() {
       </div>
 
       {/* Batch Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-gray-600">
@@ -674,6 +674,30 @@ export default function BatchDetailsPage() {
                   ? `${parseFloat(batch.currentVolume).toFixed(1)}${batch.currentVolumeUnit || 'L'}`
                   : "No data"}
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              ABV
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {batch.actualAbv
+                ? `${parseFloat(batch.actualAbv).toFixed(1)}%`
+                : batch.estimatedAbv
+                  ? `~${parseFloat(batch.estimatedAbv).toFixed(1)}%`
+                  : latestMeasurement?.abv
+                    ? `${parseFloat(String(latestMeasurement.abv)).toFixed(1)}%`
+                    : "—"}
+            </div>
+            {batch.actualAbv ? (
+              <p className="text-xs text-muted-foreground">Measured</p>
+            ) : batch.estimatedAbv ? (
+              <p className="text-xs text-muted-foreground">Estimated</p>
+            ) : null}
           </CardContent>
         </Card>
       </div>

@@ -686,6 +686,11 @@ export const batchRouter = router({
             originPressRunId: batches.originPressRunId,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
+            originalGravity: batches.originalGravity,
+            finalGravity: batches.finalGravity,
+            actualAbv: batches.actualAbv,
+            estimatedAbv: batches.estimatedAbv,
+            parentBatchId: batches.parentBatchId,
             createdAt: batches.createdAt,
             updatedAt: batches.updatedAt,
           })
@@ -719,6 +724,11 @@ export const batchRouter = router({
           originPressRunId: batch.originPressRunId,
           currentVolume: batch.currentVolume,
           currentVolumeUnit: batch.currentVolumeUnit,
+          originalGravity: batch.originalGravity,
+          finalGravity: batch.finalGravity,
+          actualAbv: batch.actualAbv,
+          estimatedAbv: batch.estimatedAbv,
+          parentBatchId: batch.parentBatchId,
           createdAt: batch.createdAt,
           updatedAt: batch.updatedAt,
         };
