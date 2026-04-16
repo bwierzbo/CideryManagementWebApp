@@ -74,7 +74,7 @@ function TaskItem({
 
   return (
     <Link
-      href={`/batch/${batchId}`}
+      href={`/batch/${batchId}?tab=measurements`}
       className={cn(
         "block rounded-lg hover:bg-gray-50 transition-colors",
         compact ? "p-2" : "p-3"
@@ -124,7 +124,7 @@ function TaskItem({
             {getStageLabel(fermentationStage)} • {percentFermented.toFixed(0)}%
           </span>
           <span className="text-xs text-gray-400">
-            {daysSince}d since last
+            {daysSince >= 999 ? "Never measured" : `${daysSince}d since last`}
           </span>
         </div>
         <Progress value={Math.min(100, percentFermented)} className="h-1.5" />
@@ -217,7 +217,7 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
       {totalCount > tasks.length && (
         <div className="mt-3 text-center">
           <Link
-            href="/cellar"
+            href="/dashboard/tasks"
             className="text-xs text-blue-600 hover:text-blue-800 font-medium"
           >
             View all {totalCount} tasks →

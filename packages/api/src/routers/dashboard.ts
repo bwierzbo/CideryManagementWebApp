@@ -481,7 +481,9 @@ export const dashboardRouter = router({
                 .map(t => t === "sensory" ? "sensory evaluation" : t === "volume" ? "volume check" : t)
                 .join(", ");
               const recommendedAction = measurementResult.needed
-                ? `Record ${measurementTypeNames} (${measurementResult.daysOverdue} days overdue)`
+                ? measurementResult.daysOverdue === Infinity
+                  ? `Record ${measurementTypeNames} (never measured)`
+                  : `Record ${measurementTypeNames} (${measurementResult.daysOverdue} days overdue)`
                 : `${measurementTypeNames} check coming up soon`;
 
               if (measurementResult.needed) {
