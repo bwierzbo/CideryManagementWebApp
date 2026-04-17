@@ -84,24 +84,18 @@ export function ProductionStatusWidget({ compact, onRefresh }: WidgetProps) {
             <span className={cn("font-bold text-green-900", compact ? "text-sm" : "text-sm")}>
               {totalReadyL > 0 ? `${totalReadyL.toFixed(0)} L` : "—"}
             </span>
+            {(bottlesReady.count > 0 || kegsReady.count > 0) && (
+              <>
+                <span className="text-green-600 mx-1.5">|</span>
+                <span className={cn("font-bold text-green-900", compact ? "text-sm" : "text-sm")}>
+                  {bottlesReady.count > 0 && `${bottlesReady.count.toLocaleString()} bottles`}
+                  {bottlesReady.count > 0 && kegsReady.count > 0 && " · "}
+                  {kegsReady.count > 0 && `${kegsReady.count} kegs`}
+                </span>
+              </>
+            )}
           </div>
         </div>
-
-        {/* Ready breakdown */}
-        {(bottlesReady.count > 0 || kegsReady.count > 0) && (
-          <div className="flex justify-end gap-3 px-2">
-            {bottlesReady.count > 0 && (
-              <span className="text-xs text-green-700">
-                {bottlesReady.count.toLocaleString()} bottles ({bottlesReady.volumeL.toFixed(0)}L)
-              </span>
-            )}
-            {kegsReady.count > 0 && (
-              <span className="text-xs text-green-700">
-                {kegsReady.count} kegs ({kegsReady.volumeL.toFixed(0)}L)
-              </span>
-            )}
-          </div>
-        )}
 
         {/* Total */}
         <div className="text-center pt-1 border-t">
