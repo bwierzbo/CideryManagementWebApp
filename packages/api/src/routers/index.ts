@@ -3501,12 +3501,39 @@ export const appRouter = router({
           return total;
         }, 0);
 
-        // Ensure packaged inventory values are valid numbers
+        // Get actual packaged inventory from bottle_runs and keg_fills
+        const [bottleStats] = await db.execute(sql`
+          SELECT
+            COALESCE(SUM(CASE WHEN br.status IN ('active', 'ready') THEN br.units_produced ELSE 0 END), 0) as bottles_in_stock,
+            COALESCE(SUM(CASE WHEN br.status IN ('active', 'ready') THEN CAST(br.volume_taken AS NUMERIC) ELSE 0 END), 0) as bottle_volume_l,
+            COALESCE(SUM(br.units_produced), 0) as total_bottles_produced,
+            COALESCE(SUM(CASE WHEN br.status = 'distributed' THEN br.units_produced ELSE 0 END), 0) as bottles_distributed
+          FROM bottle_runs br
+          WHERE br.status != 'voided'
+        `).then(r => r.rows);
+
+        const [kegStats] = await db.execute(sql`
+          SELECT
+            COUNT(CASE WHEN kf.status = 'filled' THEN 1 END) as kegs_filled,
+            COUNT(CASE WHEN kf.status = 'distributed' THEN 1 END) as kegs_distributed,
+            COALESCE(SUM(CASE WHEN kf.status = 'filled' THEN CAST(kf.volume_taken AS NUMERIC) ELSE 0 END), 0) as keg_volume_in_stock_l
+          FROM keg_fills kf
+          WHERE kf.deleted_at IS NULL AND kf.status != 'voided'
+        `).then(r => r.rows);
+
+        const bs = bottleStats as any || {};
+        const ks = kegStats as any || {};
         const packagedData = {
-          totalBottles: 0,
-          totalVolumeL: 0,
+          totalBottles: parseInt(bs.bottles_in_stock || "0"),
+          totalBottlesProduced: parseInt(bs.total_bottles_produced || "0"),
+          bottlesDistributed: parseInt(bs.bottles_distributed || "0"),
+          bottleVolumeL: parseFloat(bs.bottle_volume_l || "0"),
+          kegsFilled: parseInt(ks.kegs_filled || "0"),
+          kegsDistributed: parseInt(ks.kegs_distributed || "0"),
+          kegVolumeInStockL: parseFloat(ks.keg_volume_in_stock_l || "0"),
+          totalVolumeL: parseFloat(bs.bottle_volume_l || "0") + parseFloat(ks.keg_volume_in_stock_l || "0"),
         };
-        const packagedVolumeL = 0; // TODO: Implement when packaging tables are ready
+        const packagedVolumeL = packagedData.totalVolumeL;
 
         // Get last activity for vessels without batches (empty/available vessels)
         const vesselIdsWithoutBatches = vesselsWithBatches
@@ -3608,7 +3635,13 @@ export const appRouter = router({
           vessels: vesselsWithMeasurements,
           cellarLiquidL: cellarLiquid,
           packagedInventory: {
-            totalBottles: parseInt(String(packagedData.totalBottles || 0)) || 0,
+            totalBottles: packagedData.totalBottles,
+            totalBottlesProduced: packagedData.totalBottlesProduced,
+            bottlesDistributed: packagedData.bottlesDistributed,
+            bottleVolumeL: packagedData.bottleVolumeL,
+            kegsFilled: packagedData.kegsFilled,
+            kegsDistributed: packagedData.kegsDistributed,
+            kegVolumeInStockL: packagedData.kegVolumeInStockL,
             totalVolumeL: packagedVolumeL,
           },
           totalLiquidL: cellarLiquid + packagedVolumeL,

@@ -19,6 +19,7 @@ import "./VesselMapWidget";
 import "./FermentationHealthWidget";
 import "./ActiveCarbonationsWidget";
 import "./COGSSummaryWidget";
+import "./LowInventoryWidget";
 
 // Re-export widget components for direct use
 export { ProductionStatusWidget } from "./ProductionStatusWidget";
@@ -31,3 +32,4 @@ export { VesselMapWidget } from "./VesselMapWidget";
 export { FermentationHealthWidget } from "./FermentationHealthWidget";
 export { ActiveCarbonationsWidget } from "./ActiveCarbonationsWidget";
 export { COGSSummaryWidget } from "./COGSSummaryWidget";
+export { LowInventoryWidget } from "./LowInventoryWidget";
