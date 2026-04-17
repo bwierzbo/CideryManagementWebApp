@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Navbar } from "@/components/navbar";
 import { trpc } from "@/utils/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,11 +61,34 @@ const stageLabels: Record<string, string> = {
 };
 
 export default function TasksPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <TasksPageContent />
+    </Suspense>
+  );
+}
+
+function TasksPageContent() {
+  const searchParams = useSearchParams();
+  const filterParam = searchParams.get("filter");
+
   const { data, isLoading } = trpc.dashboard.getTasks.useQuery({
     limit: 200,
   });
 
-  const tasks = data?.tasks ?? [];
+  const allTasks = data?.tasks ?? [];
+
+  // Apply filter from URL params
+  const tasks = filterParam
+    ? allTasks.filter((t) => {
+        if (filterParam === "high") return t.priority === "high";
+        if (filterParam === "medium") return t.priority === "medium";
+        if (filterParam === "stalled_fermentation") return t.taskType === "stalled_fermentation";
+        if (filterParam === "confirm_terminal") return t.taskType === "confirm_terminal";
+        return t.taskType === filterParam || t.priority === filterParam;
+      })
+    : allTasks;
+
   const stalledCount = tasks.filter(
     (t) => t.taskType === "stalled_fermentation",
   ).length;
@@ -94,10 +118,24 @@ export default function TasksPage() {
           </div>
         </div>
 
+        {/* Filter indicator */}
+        {filterParam && (
+          <div className="flex items-center gap-2 mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-sm text-blue-800">
+              Filtered: showing {tasks.length} of {allTasks.length} tasks
+            </span>
+            <Link href="/dashboard/tasks">
+              <Button variant="outline" size="sm" className="h-7 text-xs">
+                Clear filter
+              </Button>
+            </Link>
+          </div>
+        )}
+
         {/* Summary */}
         <div className="flex gap-3 mb-6">
           <Badge variant="outline" className="text-sm px-3 py-1">
-            {tasks.length} total
+            {tasks.length}{filterParam ? ` filtered` : ` total`}
           </Badge>
           {highCount > 0 && (
             <Badge className="bg-red-100 text-red-800 border-red-200 text-sm px-3 py-1">

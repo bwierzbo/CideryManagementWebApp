@@ -93,20 +93,20 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
         type: "critical",
         title: `${stalledTasks.length} stalled fermentation${stalledTasks.length > 1 ? "s" : ""}`,
         description: `Avg ${avgPercent}% complete - consider temperature adjustment or yeast addition`,
-        link: "/dashboard/tasks",
+        link: "/dashboard/tasks?filter=stalled_fermentation",
       });
     }
 
     // High priority measurements (very overdue)
     const highPriorityMeasurements = tasksData.tasks.filter(
-      (t) => t.taskType === "measurement_needed" && t.priority === "high"
+      (t) => t.priority === "high"
     );
     if (highPriorityMeasurements.length > 0) {
       alerts.push({
         type: "critical",
         title: `${highPriorityMeasurements.length} batch${highPriorityMeasurements.length > 1 ? "es" : ""} very overdue for measurement`,
         description: `Significantly past recommended measurement schedule`,
-        link: "/dashboard/tasks",
+        link: "/dashboard/tasks?filter=high",
       });
     }
 
@@ -117,20 +117,20 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
         type: "warning",
         title: `${terminalTasks.length} batch${terminalTasks.length > 1 ? "es" : ""} need terminal confirmation`,
         description: "Take another hydrometer reading to confirm final gravity",
-        link: "/dashboard/tasks",
+        link: "/dashboard/tasks?filter=confirm_terminal",
       });
     }
 
     // Medium priority measurements (due based on stage)
     const mediumPriorityMeasurements = tasksData.tasks.filter(
-      (t) => t.taskType === "measurement_needed" && t.priority === "medium"
+      (t) => t.priority === "medium"
     );
     if (mediumPriorityMeasurements.length > 0) {
       alerts.push({
         type: "info",
         title: `${mediumPriorityMeasurements.length} batch${mediumPriorityMeasurements.length > 1 ? "es" : ""} due for measurement`,
         description: "Measurement recommended based on fermentation stage",
-        link: "/dashboard/tasks",
+        link: "/dashboard/tasks?filter=medium",
       });
     }
   }
