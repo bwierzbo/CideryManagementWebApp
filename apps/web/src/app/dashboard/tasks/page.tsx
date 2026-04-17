@@ -136,7 +136,7 @@ export default function TasksPage() {
         <div className="space-y-3">
           {tasks.map((task) => (
             <Link
-              key={task.id}
+              key={`${task.id}-${task.taskType}`}
               href={`/batch/${task.id}?tab=measurements`}
             >
               <Card className="hover:shadow-md transition-shadow cursor-pointer">

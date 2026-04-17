@@ -569,9 +569,20 @@ export const dashboardRouter = router({
           return b.daysSinceLastMeasurement - a.daysSinceLastMeasurement;
         });
 
+        // Deduplicate: show only the most urgent task per batch
+        // (multiple measurement types per batch → keep the highest priority one)
+        const seenBatches = new Set<string>();
+        const deduped = tasks.filter((t) => {
+          if (seenBatches.has(t.id)) return false;
+          seenBatches.add(t.id);
+          return true;
+        });
+
         return {
-          tasks: tasks.slice(0, limit),
-          totalCount: tasks.length,
+          tasks: deduped.slice(0, limit),
+          totalCount: deduped.length,
+          // Also return full count for context
+          totalTasksBeforeDedup: tasks.length,
         };
       } catch (error) {
         console.error("Error fetching tasks:", error);

@@ -209,7 +209,7 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
       <div className={cn("divide-y", compact ? "-mx-2" : "-mx-3")}>
         {tasks.map((task) => (
           <TaskItem
-            key={task.id}
+            key={`${task.id}-${task.taskType}`}
             batchId={task.id}
             batchNumber={task.batchNumber}
             customName={task.customName}
