@@ -1,6 +1,6 @@
 "use client";
 
-import { Beaker, Package, Wine, TrendingUp, Beer, Clock } from "lucide-react";
+import { Beaker, Package, TrendingUp, Clock, Beer } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { WidgetWrapper } from "./WidgetWrapper";
 import { WidgetProps, WidgetConfig } from "./types";
@@ -24,7 +24,6 @@ export function ProductionStatusWidget({ compact, onRefresh }: WidgetProps) {
   const bottlesReady = data?.bottlesReady || { count: 0, volumeL: 0 };
   const kegsReady = data?.kegsReady || { count: 0, volumeL: 0 };
 
-  const totalActiveL = fermenting.volumeL + aging.volumeL;
   const totalReadyL = bottlesReady.volumeL + kegsReady.volumeL;
 
   return (
@@ -40,69 +39,77 @@ export function ProductionStatusWidget({ compact, onRefresh }: WidgetProps) {
       showRefresh
       isEmpty={!data}
     >
-      <div className="space-y-3">
+      <div className="space-y-2">
         {/* Fermenting */}
-        <div className={cn("flex items-center gap-3 p-2 bg-purple-50 rounded-lg", compact && "p-1.5")}>
-          <div className={cn("flex items-center justify-center rounded-lg bg-purple-100", compact ? "w-8 h-8" : "w-10 h-10")}>
-            <Beaker className={cn("text-purple-600", compact ? "w-4 h-4" : "w-5 h-5")} />
+        <div className={cn("flex items-center justify-between p-2.5 bg-purple-50 rounded-lg", compact && "p-2")}>
+          <div className="flex items-center gap-2.5">
+            <Beaker className={cn("text-purple-600 shrink-0", compact ? "w-4 h-4" : "w-5 h-5")} />
+            <span className={cn("font-medium text-purple-900", compact ? "text-xs" : "text-sm")}>Fermenting</span>
           </div>
-          <div className="flex-1">
-            <p className={cn("font-bold text-purple-900", compact ? "text-lg" : "text-xl")}>
-              {fermenting.count}
-              <span className={cn("font-normal text-purple-600 ml-2", compact ? "text-xs" : "text-sm")}>
-                {fermenting.volumeL.toFixed(0)}L
-              </span>
-            </p>
-            <p className={cn("text-purple-700", compact ? "text-xs" : "text-sm")}>Fermenting</p>
+          <div className="text-right">
+            <span className={cn("font-bold text-purple-900", compact ? "text-sm" : "text-sm")}>
+              {fermenting.count} batches
+            </span>
+            <span className="text-purple-600 mx-1.5">|</span>
+            <span className={cn("font-bold text-purple-900", compact ? "text-sm" : "text-sm")}>
+              {fermenting.volumeL.toFixed(0)} L
+            </span>
           </div>
         </div>
 
         {/* Aging */}
-        <div className={cn("flex items-center gap-3 p-2 bg-amber-50 rounded-lg", compact && "p-1.5")}>
-          <div className={cn("flex items-center justify-center rounded-lg bg-amber-100", compact ? "w-8 h-8" : "w-10 h-10")}>
-            <Clock className={cn("text-amber-600", compact ? "w-4 h-4" : "w-5 h-5")} />
+        <div className={cn("flex items-center justify-between p-2.5 bg-amber-50 rounded-lg", compact && "p-2")}>
+          <div className="flex items-center gap-2.5">
+            <Clock className={cn("text-amber-600 shrink-0", compact ? "w-4 h-4" : "w-5 h-5")} />
+            <span className={cn("font-medium text-amber-900", compact ? "text-xs" : "text-sm")}>Aging</span>
           </div>
-          <div className="flex-1">
-            <p className={cn("font-bold text-amber-900", compact ? "text-lg" : "text-xl")}>
-              {aging.count}
-              <span className={cn("font-normal text-amber-600 ml-2", compact ? "text-xs" : "text-sm")}>
-                {aging.volumeL.toFixed(0)}L
-              </span>
-            </p>
-            <p className={cn("text-amber-700", compact ? "text-xs" : "text-sm")}>Aging</p>
+          <div className="text-right">
+            <span className={cn("font-bold text-amber-900", compact ? "text-sm" : "text-sm")}>
+              {aging.count} batches
+            </span>
+            <span className="text-amber-600 mx-1.5">|</span>
+            <span className={cn("font-bold text-amber-900", compact ? "text-sm" : "text-sm")}>
+              {aging.volumeL.toFixed(0)} L
+            </span>
           </div>
         </div>
 
         {/* Ready for Distribution */}
-        <div className={cn("flex items-center gap-3 p-2 bg-green-50 rounded-lg", compact && "p-1.5")}>
-          <div className={cn("flex items-center justify-center rounded-lg bg-green-100", compact ? "w-8 h-8" : "w-10 h-10")}>
-            <Package className={cn("text-green-600", compact ? "w-4 h-4" : "w-5 h-5")} />
+        <div className={cn("flex items-center justify-between p-2.5 bg-green-50 rounded-lg", compact && "p-2")}>
+          <div className="flex items-center gap-2.5">
+            <Package className={cn("text-green-600 shrink-0", compact ? "w-4 h-4" : "w-5 h-5")} />
+            <span className={cn("font-medium text-green-900", compact ? "text-xs" : "text-sm")}>Ready</span>
           </div>
-          <div className="flex-1">
-            <p className={cn("font-bold text-green-900", compact ? "text-lg" : "text-xl")}>
-              {totalReadyL > 0 ? `${totalReadyL.toFixed(0)}L` : "—"}
-            </p>
-            <p className={cn("text-green-700", compact ? "text-xs" : "text-sm")}>
-              Ready for distribution
-              {(bottlesReady.count > 0 || kegsReady.count > 0) && (
-                <span className="text-green-600">
-                  {bottlesReady.count > 0 && ` · ${bottlesReady.count} bottles`}
-                  {kegsReady.count > 0 && ` · ${kegsReady.count} kegs`}
-                </span>
-              )}
-            </p>
+          <div className="text-right">
+            <span className={cn("font-bold text-green-900", compact ? "text-sm" : "text-sm")}>
+              {totalReadyL > 0 ? `${totalReadyL.toFixed(0)} L` : "—"}
+            </span>
           </div>
         </div>
 
-        {/* Total in cellar */}
-        {!compact && (
-          <div className="text-center pt-1 border-t">
-            <p className="text-xs text-muted-foreground">
-              Total in cellar: <span className="font-medium">{totalActiveL.toFixed(0)}L</span>
-              {" "}({fermenting.count + aging.count} batches)
-            </p>
+        {/* Ready breakdown */}
+        {(bottlesReady.count > 0 || kegsReady.count > 0) && (
+          <div className="flex justify-end gap-3 px-2">
+            {bottlesReady.count > 0 && (
+              <span className="text-xs text-green-700">
+                {bottlesReady.count.toLocaleString()} bottles ({bottlesReady.volumeL.toFixed(0)}L)
+              </span>
+            )}
+            {kegsReady.count > 0 && (
+              <span className="text-xs text-green-700">
+                {kegsReady.count} kegs ({kegsReady.volumeL.toFixed(0)}L)
+              </span>
+            )}
           </div>
         )}
+
+        {/* Total */}
+        <div className="text-center pt-1 border-t">
+          <p className="text-xs text-muted-foreground">
+            Total in cellar: <span className="font-medium">{(fermenting.volumeL + aging.volumeL).toFixed(0)}L</span>
+            {" "}· {fermenting.count + aging.count} batches
+          </p>
+        </div>
       </div>
     </WidgetWrapper>
   );
