@@ -52,6 +52,11 @@ import {
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_PER_TYPE_SCHEDULES,
+  type PerTypeMeasurementSchedule,
+  type MeasurementTypeInterval,
+} from "lib";
 
 // Types
 interface MeasurementScheduleConfig {
@@ -652,6 +657,9 @@ export function MeasurementSchedulesSettings() {
           )}
         </div>
 
+        {/* Per-Type Measurement Intervals Section */}
+        <PerTypeMeasurementIntervals />
+
         {/* Custom Product Type Dialog */}
         <CustomProductTypeDialog
           open={customProductDialogOpen}
@@ -923,5 +931,277 @@ function CustomProductTypeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============================================
+// PER-TYPE MEASUREMENT INTERVALS
+// ============================================
+
+const MEASUREMENT_COLS = ["sg", "ph", "temperature", "sensory", "volume"] as const;
+const MEASUREMENT_COL_LABELS: Record<string, string> = {
+  sg: "SG",
+  ph: "pH",
+  temperature: "Temp",
+  sensory: "Sensory",
+  volume: "Volume",
+};
+
+// Product rows: product type + status combinations
+// Brandy and Pommeau only have aging (no fermentation stage)
+const PER_TYPE_ROWS: Array<{
+  label: string;
+  key: string;
+  productType: string;
+  status: "fermenting" | "aging";
+  /** Keys in DEFAULT_PER_TYPE_SCHEDULES that are stage-based (SG/temp tied to stage, not interval) */
+  stageBased?: string[];
+}> = [
+  {
+    label: "Cider Fermenting",
+    key: "cider_fermenting",
+    productType: "cider",
+    status: "fermenting",
+    stageBased: ["sg", "temperature"],
+  },
+  {
+    label: "Cider Aging",
+    key: "cider_aging",
+    productType: "cider",
+    status: "aging",
+  },
+  {
+    label: "Perry Fermenting",
+    key: "perry_fermenting",
+    productType: "perry",
+    status: "fermenting",
+    stageBased: ["sg", "temperature"],
+  },
+  {
+    label: "Perry Aging",
+    key: "perry_aging",
+    productType: "perry",
+    status: "aging",
+  },
+  {
+    label: "Brandy",
+    key: "brandy",
+    productType: "brandy",
+    status: "aging",
+  },
+  {
+    label: "Pommeau",
+    key: "pommeau",
+    productType: "pommeau",
+    status: "aging",
+  },
+];
+
+function PerTypeMeasurementIntervals() {
+  const { toast } = useToast();
+
+  // Fetch saved per-type schedules
+  const { data: savedSchedules, refetch } =
+    trpc.settings.getPerTypeMeasurementSchedules.useQuery();
+  const updateMutation =
+    trpc.settings.updatePerTypeMeasurementSchedule.useMutation();
+
+  // Local state: keyed by row key (e.g. "cider_fermenting")
+  const [localSchedules, setLocalSchedules] = useState<
+    Record<string, PerTypeMeasurementSchedule>
+  >({});
+  const [dirty, setDirty] = useState<Set<string>>(new Set());
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Initialize local state from saved data or defaults
+  useEffect(() => {
+    const init: Record<string, PerTypeMeasurementSchedule> = {};
+    for (const row of PER_TYPE_ROWS) {
+      const saved = (savedSchedules as Record<string, any> | undefined)?.[
+        row.key
+      ] as PerTypeMeasurementSchedule | undefined;
+      init[row.key] = saved || DEFAULT_PER_TYPE_SCHEDULES[row.key] || DEFAULT_PER_TYPE_SCHEDULES["cider_fermenting"];
+    }
+    setLocalSchedules(init);
+    setDirty(new Set());
+  }, [savedSchedules]);
+
+  const updateCell = (
+    rowKey: string,
+    col: string,
+    field: "intervalDays" | "enabled",
+    value: number | null | boolean
+  ) => {
+    setLocalSchedules((prev) => {
+      const schedule = { ...prev[rowKey] } as any;
+      schedule[col] = { ...schedule[col], [field]: value };
+      return { ...prev, [rowKey]: schedule };
+    });
+    setDirty((prev) => new Set(prev).add(rowKey));
+  };
+
+  const handleSave = async () => {
+    if (dirty.size === 0) return;
+    setIsSaving(true);
+    try {
+      const promises = Array.from(dirty).map((rowKey) => {
+        const row = PER_TYPE_ROWS.find((r) => r.key === rowKey);
+        if (!row) return Promise.resolve();
+        return updateMutation.mutateAsync({
+          productType: row.productType,
+          status: row.status,
+          schedule: localSchedules[rowKey],
+        });
+      });
+      await Promise.all(promises);
+      toast({
+        title: "Per-type schedules saved",
+        description: `Updated ${dirty.size} schedule${dirty.size > 1 ? "s" : ""}.`,
+      });
+      setDirty(new Set());
+      refetch();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save per-type measurement schedules.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (Object.keys(localSchedules).length === 0) return null;
+
+  return (
+    <div className="border-t pt-6 mt-6">
+      <div className="mb-4">
+        <h3 className="font-medium">Per-Type Measurement Intervals</h3>
+        <p className="text-sm text-muted-foreground">
+          Customize how often each measurement type is checked for each product
+          and status. &quot;Stage&quot; means frequency is driven by
+          fermentation stage, not a fixed interval.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-2 pr-4 font-medium w-44">
+                Product / Status
+              </th>
+              {MEASUREMENT_COLS.map((col) => (
+                <th
+                  key={col}
+                  className="text-center py-2 px-2 font-medium min-w-[100px]"
+                >
+                  {MEASUREMENT_COL_LABELS[col]}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PER_TYPE_ROWS.map((row) => {
+              const schedule = localSchedules[row.key];
+              if (!schedule) return null;
+
+              return (
+                <tr key={row.key} className="border-b last:border-b-0">
+                  <td className="py-3 pr-4 font-medium text-muted-foreground">
+                    {row.label}
+                  </td>
+                  {MEASUREMENT_COLS.map((col) => {
+                    const cell = (schedule as any)[col] as MeasurementTypeInterval;
+                    const isStageBased = row.stageBased?.includes(col);
+
+                    if (isStageBased && cell.enabled) {
+                      // Stage-based: show "Stage" label, not editable interval
+                      return (
+                        <td key={col} className="py-3 px-2 text-center">
+                          <div className="flex flex-col items-center gap-1">
+                            <Switch
+                              checked={cell.enabled}
+                              onCheckedChange={(checked) =>
+                                updateCell(row.key, col, "enabled", checked)
+                              }
+                            />
+                            <span className="text-xs text-muted-foreground italic">
+                              Stage
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    }
+
+                    return (
+                      <td key={col} className="py-3 px-2 text-center">
+                        <div className="flex flex-col items-center gap-1">
+                          <Switch
+                            checked={cell.enabled}
+                            onCheckedChange={(checked) =>
+                              updateCell(row.key, col, "enabled", checked)
+                            }
+                          />
+                          {cell.enabled && !isStageBased ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                min={1}
+                                className="w-16 h-7 text-xs text-center"
+                                value={cell.intervalDays ?? ""}
+                                onChange={(e) =>
+                                  updateCell(
+                                    row.key,
+                                    col,
+                                    "intervalDays",
+                                    e.target.value
+                                      ? parseInt(e.target.value)
+                                      : null
+                                  )
+                                }
+                                placeholder="--"
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                d
+                              </span>
+                            </div>
+                          ) : !cell.enabled ? (
+                            <span className="text-xs text-muted-foreground">
+                              ---
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <Button onClick={handleSave} disabled={isSaving || dirty.size === 0}>
+          {isSaving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="mr-2 h-4 w-4" />
+              Save Interval Changes
+              {dirty.size > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {dirty.size}
+                </Badge>
+              )}
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
   );
 }

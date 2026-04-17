@@ -564,6 +564,86 @@ export const settingsRouter = router({
   }),
 
   /**
+   * Update per-type measurement schedule for a specific product type and status
+   * Admin only - stores independent intervals for each measurement type
+   */
+  updatePerTypeMeasurementSchedule: adminProcedure
+    .input(
+      z.object({
+        productType: z.string(),
+        status: z.enum(["fermenting", "aging"]),
+        schedule: z.object({
+          sg: z.object({
+            intervalDays: z.number().nullable(),
+            enabled: z.boolean(),
+          }),
+          ph: z.object({
+            intervalDays: z.number().nullable(),
+            enabled: z.boolean(),
+          }),
+          temperature: z.object({
+            intervalDays: z.number().nullable(),
+            enabled: z.boolean(),
+          }),
+          sensory: z.object({
+            intervalDays: z.number().nullable(),
+            enabled: z.boolean(),
+          }),
+          volume: z.object({
+            intervalDays: z.number().nullable(),
+            enabled: z.boolean(),
+          }),
+        }),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const key = `${input.productType}_${input.status}`;
+      const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
+      const [current] = await db
+        .select({
+          measurementSchedules: organizationSettings.measurementSchedules,
+        })
+        .from(organizationSettings)
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+        .limit(1);
+
+      const schedules = (current?.measurementSchedules || {}) as Record<
+        string,
+        any
+      >;
+      schedules[key] = input.schedule;
+
+      await db
+        .update(organizationSettings)
+        .set({
+          measurementSchedules: schedules as MeasurementSchedules,
+          updatedAt: new Date(),
+        })
+        .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID));
+
+      return { success: true, key };
+    }),
+
+  /**
+   * Get per-type measurement schedules (all product type + status combos)
+   * Available to all authenticated users
+   */
+  getPerTypeMeasurementSchedules: protectedProcedure.query(async () => {
+    const DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001";
+
+    const [settings] = await db
+      .select({
+        measurementSchedules: organizationSettings.measurementSchedules,
+      })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, DEFAULT_ORG_ID))
+      .limit(1);
+
+    return settings?.measurementSchedules || {};
+  }),
+
+  /**
    * Get recommended TTB reporting frequency based on estimated annual tax liability
    * TTB Rules:
    * - Annual: ≤$1,000/year tax liability
