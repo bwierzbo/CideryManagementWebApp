@@ -33,75 +33,81 @@ export const dashboardRouter = router({
    */
   getStats: protectedProcedure.query(async () => {
     try {
-      // Get in-progress batches count (fermentation, aging, conditioning)
-      const activeBatchesResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(batches)
-        .where(
-          and(
-            inArray(batches.status, ["fermentation", "aging", "conditioning"]),
-            isNull(batches.deletedAt)
-          )
-        );
-      const activeBatches = activeBatchesResult[0]?.count || 0;
+      // Batch counts and volumes by status
+      const batchStats = await db.execute(sql`
+        SELECT
+          status,
+          COUNT(*)::int as count,
+          COALESCE(SUM(CAST(current_volume_liters AS NUMERIC)), 0) as volume_l
+        FROM batches
+        WHERE deleted_at IS NULL
+          AND status IN ('fermentation', 'aging', 'conditioning')
+          AND vessel_id IS NOT NULL
+        GROUP BY status
+      `);
 
-      // Get total bottles ready (packaged inventory)
-      // DROPPED TABLE: inventory table no longer exists
-      // const bottlesReadyResult = await db
-      //   .select({ total: sql<number>`COALESCE(SUM(quantity)::int, 0)` })
-      //   .from(inventory)
-      //   .where(
-      //     and(
-      //       isNull(inventory.deletedAt),
-      //       sql`quantity > 0`
-      //     )
-      //   );
-      const bottlesReady = 0; // TODO: Implement when inventory system is ready
+      const byStatus: Record<string, { count: number; volumeL: number }> = {};
+      for (const row of batchStats.rows as any[]) {
+        byStatus[row.status] = {
+          count: parseInt(row.count || "0"),
+          volumeL: parseFloat(row.volume_l || "0"),
+        };
+      }
 
-      // Get active vendors count
-      const activeVendorsResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(vendors)
-        .where(
-          and(
-            eq(vendors.isActive, true),
-            isNull(vendors.deletedAt)
-          )
-        );
-      const activeVendors = activeVendorsResult[0]?.count || 0;
+      const fermenting = byStatus["fermentation"] || { count: 0, volumeL: 0 };
+      const aging = byStatus["aging"] || { count: 0, volumeL: 0 };
+      const conditioning = byStatus["conditioning"] || { count: 0, volumeL: 0 };
 
-      // Get all batches count for comparison
-      const allBatchesResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(batches)
-        .where(isNull(batches.deletedAt));
-      const allBatches = allBatchesResult[0]?.count || 0;
+      // Packaged inventory — bottles and kegs in stock (not yet distributed)
+      const [bottleStats] = await db.execute(sql`
+        SELECT
+          COALESCE(SUM(CASE WHEN br.status IN ('active', 'ready') THEN br.units_produced ELSE 0 END), 0)::int as bottles_in_stock,
+          COALESCE(SUM(CASE WHEN br.status IN ('active', 'ready') THEN CAST(br.volume_taken AS NUMERIC) ELSE 0 END), 0) as bottle_volume_l
+        FROM bottle_runs br
+        WHERE br.status != 'voided'
+      `).then(r => r.rows);
 
-      // Get conditioning batches count for comparison
-      const packagedBatchesResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(batches)
-        .where(
-          and(
-            eq(batches.status, "conditioning"),
-            isNull(batches.deletedAt)
-          )
-        );
-      const packagedBatches = packagedBatchesResult[0]?.count || 0;
+      const [kegStats] = await db.execute(sql`
+        SELECT
+          COUNT(CASE WHEN kf.status = 'filled' THEN 1 END)::int as kegs_in_stock,
+          COALESCE(SUM(CASE WHEN kf.status = 'filled' THEN CAST(kf.volume_taken AS NUMERIC) ELSE 0 END), 0) as keg_volume_l
+        FROM keg_fills kf
+        WHERE kf.deleted_at IS NULL AND kf.status != 'voided'
+      `).then(r => r.rows);
+
+      const bs = (bottleStats || {}) as any;
+      const ks = (kegStats || {}) as any;
 
       return {
         activeBatches: {
-          count: activeBatches,
-          total: allBatches,
+          count: fermenting.count + aging.count + conditioning.count,
+          total: fermenting.count + aging.count + conditioning.count,
+        },
+        fermenting: {
+          count: fermenting.count,
+          volumeL: fermenting.volumeL,
+        },
+        aging: {
+          count: aging.count,
+          volumeL: aging.volumeL,
+        },
+        conditioning: {
+          count: conditioning.count,
+          volumeL: conditioning.volumeL,
         },
         bottlesReady: {
-          count: bottlesReady,
+          count: parseInt(bs.bottles_in_stock || "0"),
+          volumeL: parseFloat(bs.bottle_volume_l || "0"),
         },
-        activeVendors: {
-          count: activeVendors,
+        kegsReady: {
+          count: parseInt(ks.kegs_in_stock || "0"),
+          volumeL: parseFloat(ks.keg_volume_l || "0"),
         },
         packagedBatches: {
-          count: packagedBatches,
+          count: conditioning.count,
+        },
+        activeVendors: {
+          count: 0, // Computed elsewhere if needed
         },
       };
     } catch (error) {
