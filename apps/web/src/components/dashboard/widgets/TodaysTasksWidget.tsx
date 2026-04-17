@@ -16,7 +16,7 @@ interface TaskItemProps {
   vesselName: string | null;
   daysSince: number;
   priority: "high" | "medium" | "low";
-  taskType: "measurement_needed" | "stalled_fermentation" | "confirm_terminal" | "sensory_check_due" | "check_in_due";
+  taskType: string;
   percentFermented: number;
   fermentationStage: string;
   recommendedAction: string;
@@ -41,6 +41,11 @@ function getTaskTypeLabel(taskType: string): string {
     case "measurement_needed": return "Measure";
     case "sensory_check_due": return "Sensory";
     case "check_in_due": return "Check In";
+    case "sg_due": return "SG Due";
+    case "ph_due": return "pH Due";
+    case "temperature_due": return "Temp Due";
+    case "sensory_due": return "Sensory Due";
+    case "volume_due": return "Volume Due";
     default: return "Action";
   }
 }
@@ -64,11 +69,16 @@ function TaskItem({
     low: "bg-blue-100 text-blue-800 border-blue-200",
   };
 
-  const taskTypeIcons: Record<TaskItemProps["taskType"], React.ReactNode> = {
+  const taskTypeIcons: Record<string, React.ReactNode> = {
     stalled_fermentation: <AlertTriangle className="w-3 h-3" />,
     confirm_terminal: <CheckCircle className="w-3 h-3" />,
     measurement_needed: <Beaker className="w-3 h-3" />,
     sensory_check_due: <Wine className="w-3 h-3" />,
+    sg_due: <Beaker className="w-3 h-3" />,
+    ph_due: <Beaker className="w-3 h-3" />,
+    temperature_due: <Clock className="w-3 h-3" />,
+    sensory_due: <Wine className="w-3 h-3" />,
+    volume_due: <Beaker className="w-3 h-3" />,
     check_in_due: <CalendarClock className="w-3 h-3" />,
   };
 

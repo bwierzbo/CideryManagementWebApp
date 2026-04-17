@@ -13,7 +13,7 @@ import {
   analyzeFermentationProgress,
   getRecommendedMeasurementFrequency,
   getProductMeasurementSchedule,
-  isMeasurementNeeded,
+  getMeasurementsDue,
   type FermentationMeasurement,
   type StageThresholds,
   type StallSettings,
@@ -287,7 +287,7 @@ export const dashboardRouter = router({
           customName: string | null;
           vesselName: string | null;
           productType: string;
-          taskType: "measurement_needed" | "stalled_fermentation" | "confirm_terminal" | "sensory_check_due" | "check_in_due";
+          taskType: "measurement_needed" | "stalled_fermentation" | "confirm_terminal" | "sensory_check_due" | "check_in_due" | "sg_due" | "ph_due" | "temperature_due" | "sensory_due" | "volume_due";
           alertType: "measurement_overdue" | "check_in_reminder" | null;
           daysSinceLastMeasurement: number;
           priority: "high" | "medium" | "low";
@@ -311,6 +311,10 @@ export const dashboardRouter = router({
               .select({
                 batchId: batchMeasurements.batchId,
                 specificGravity: batchMeasurements.specificGravity,
+                ph: batchMeasurements.ph,
+                temperature: batchMeasurements.temperature,
+                volume: batchMeasurements.volume,
+                sensoryNotes: batchMeasurements.sensoryNotes,
                 measurementDate: batchMeasurements.measurementDate,
                 measurementMethod: batchMeasurements.measurementMethod,
                 isEstimated: batchMeasurements.isEstimated,
@@ -332,6 +336,26 @@ export const dashboardRouter = router({
             measurementsByBatch.set(m.batchId, []);
           }
           measurementsByBatch.get(m.batchId)!.push(m);
+        }
+
+        // Helper: extract last measurement date per type from a batch's measurements
+        function getLastDatesPerType(batchMeasurementList: typeof allMeasurements) {
+          let lastSg: Date | null = null;
+          let lastPh: Date | null = null;
+          let lastTemp: Date | null = null;
+          let lastSensory: Date | null = null;
+          let lastVolume: Date | null = null;
+
+          for (const m of batchMeasurementList) {
+            const date = new Date(m.measurementDate);
+            if (m.specificGravity && (!lastSg || date > lastSg)) lastSg = date;
+            if (m.ph && (!lastPh || date > lastPh)) lastPh = date;
+            if (m.temperature && (!lastTemp || date > lastTemp)) lastTemp = date;
+            if (m.sensoryNotes && m.sensoryNotes.trim() && (!lastSensory || date > lastSensory)) lastSensory = date;
+            if (m.volume && (!lastVolume || date > lastVolume)) lastVolume = date;
+          }
+
+          return { lastSg, lastPh, lastTemp, lastSensory, lastVolume };
         }
 
         for (const batch of activeBatches) {
@@ -463,62 +487,75 @@ export const dashboardRouter = router({
                 recommendedAction: progress.recommendedAction,
               });
             }
+
+            // Per-type checks for non-SG measurements (pH, temp, etc.) during fermentation
+            const perTypeDates = getLastDatesPerType(allBatchMeasurements);
+            const perTypeDue = getMeasurementsDue({
+              productType,
+              batchStatus: batch.status,
+              fermentationStage: batch.fermentationStage as FermentationStage | null,
+              lastSgDate: perTypeDates.lastSg,
+              lastPhDate: perTypeDates.lastPh,
+              lastTempDate: perTypeDates.lastTemp,
+              lastSensoryDate: perTypeDates.lastSensory,
+              lastVolumeDate: perTypeDates.lastVolume,
+            });
+
+            // Add per-type tasks (skip SG — already handled by stage-based system above)
+            for (const due of perTypeDue) {
+              if (due.type === "sg") continue;
+              const taskTypeKey = `${due.type}_due` as "ph_due" | "temperature_due" | "sensory_due" | "volume_due";
+              tasks.push({
+                id: batch.id,
+                batchNumber: batch.batchNumber,
+                customName: batch.customName,
+                vesselName: batch.vesselName,
+                productType,
+                taskType: taskTypeKey,
+                alertType: schedule.alertType,
+                daysSinceLastMeasurement: due.daysOverdue === Infinity ? 999 : due.daysOverdue,
+                priority: due.priority,
+                percentFermented: progress.percentFermented,
+                fermentationStage: progress.stage,
+                recommendedAction: `Record ${due.label}`,
+              });
+            }
           } else {
             // For fixed-interval products (brandy, pommeau, custom types)
-            // Skip if no alerts are configured for this product type
+            // Use per-type measurement scheduling
             if (schedule.alertType === null) {
               continue;
             }
 
-            const measurementResult = isMeasurementNeeded({
+            const perTypeDates = getLastDatesPerType(allBatchMeasurements);
+            const perTypeDue = getMeasurementsDue({
               productType,
-              lastMeasurementDate,
+              batchStatus: batch.status,
               fermentationStage: batch.fermentationStage as FermentationStage | null,
-              hasInitialMeasurement,
-              scheduleConfig,
-              batchOverride,
+              lastSgDate: perTypeDates.lastSg,
+              lastPhDate: perTypeDates.lastPh,
+              lastTempDate: perTypeDates.lastTemp,
+              lastSensoryDate: perTypeDates.lastSensory,
+              lastVolumeDate: perTypeDates.lastVolume,
             });
 
-            if (measurementResult.needed || measurementResult.priority === "low") {
-              // Determine task type based on measurement types
-              let taskType: "sensory_check_due" | "check_in_due" | "measurement_needed" = "check_in_due";
-              if (measurementResult.taskType === "sensory_check_due") {
-                taskType = "sensory_check_due";
-              } else if (measurementResult.taskType === "measurement_needed") {
-                taskType = "measurement_needed";
-              }
-
-              // Calculate days since last measurement
-              const daysSinceLastMeasurement = lastMeasurementDate
-                ? Math.floor((new Date().getTime() - lastMeasurementDate.getTime()) / (1000 * 60 * 60 * 24))
-                : Infinity;
-
-              // Generate recommended action
-              const measurementTypeNames = schedule.measurementTypes
-                .map(t => t === "sensory" ? "sensory evaluation" : t === "volume" ? "volume check" : t)
-                .join(", ");
-              const recommendedAction = measurementResult.needed
-                ? measurementResult.daysOverdue === Infinity
-                  ? `Record ${measurementTypeNames} (never measured)`
-                  : `Record ${measurementTypeNames} (${measurementResult.daysOverdue} days overdue)`
-                : `${measurementTypeNames} check coming up soon`;
-
-              if (measurementResult.needed) {
-                tasks.push({
-                  id: batch.id,
-                  batchNumber: batch.batchNumber,
-                  customName: batch.customName,
-                  vesselName: batch.vesselName,
-                  productType,
-                  taskType,
-                  alertType: schedule.alertType,
-                  daysSinceLastMeasurement: daysSinceLastMeasurement === Infinity ? 999 : daysSinceLastMeasurement,
-                  priority: measurementResult.priority || "medium",
-                  percentFermented: 100, // Not applicable for aged products
-                  fermentationStage: "not_applicable",
-                  recommendedAction,
-                });
-              }
+            // Generate one task per overdue measurement type
+            for (const due of perTypeDue) {
+              const taskTypeKey = `${due.type}_due` as "sg_due" | "ph_due" | "temperature_due" | "sensory_due" | "volume_due";
+              tasks.push({
+                id: batch.id,
+                batchNumber: batch.batchNumber,
+                customName: batch.customName,
+                vesselName: batch.vesselName,
+                productType,
+                taskType: taskTypeKey,
+                alertType: schedule.alertType,
+                daysSinceLastMeasurement: due.daysOverdue === Infinity ? 999 : due.daysOverdue,
+                priority: due.priority,
+                percentFermented: 100, // Not applicable for aged products
+                fermentationStage: "not_applicable",
+                recommendedAction: `Record ${due.label}`,
+              });
             }
           }
         }

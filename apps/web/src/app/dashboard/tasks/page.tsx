@@ -31,6 +31,11 @@ const taskTypeIcons: Record<string, React.ReactNode> = {
   measurement_needed: <Beaker className="w-4 h-4" />,
   sensory_check_due: <Wine className="w-4 h-4" />,
   check_in_due: <CalendarClock className="w-4 h-4" />,
+  sg_due: <Beaker className="w-4 h-4" />,
+  ph_due: <Beaker className="w-4 h-4" />,
+  temperature_due: <CalendarClock className="w-4 h-4" />,
+  sensory_due: <Wine className="w-4 h-4" />,
+  volume_due: <Beaker className="w-4 h-4" />,
 };
 
 const taskTypeLabels: Record<string, string> = {
@@ -39,6 +44,11 @@ const taskTypeLabels: Record<string, string> = {
   measurement_needed: "Measurement Needed",
   sensory_check_due: "Sensory Check Due",
   check_in_due: "Check In Due",
+  sg_due: "SG Reading Due",
+  ph_due: "pH Check Due",
+  temperature_due: "Temperature Check Due",
+  sensory_due: "Sensory Evaluation Due",
+  volume_due: "Volume Check Due",
 };
 
 const stageLabels: Record<string, string> = {

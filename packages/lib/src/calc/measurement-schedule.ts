@@ -380,3 +380,180 @@ export function getAlertTypeDisplay(alertType: AlertType | null): {
       return { label: "No Alert", color: "gray", urgency: null };
   }
 }
+
+// ============================================
+// PER-TYPE MEASUREMENT SCHEDULING
+// ============================================
+
+export interface MeasurementTypeInterval {
+  intervalDays: number | null; // null = not applicable for this product
+  enabled: boolean;
+}
+
+export interface PerTypeMeasurementSchedule {
+  sg: MeasurementTypeInterval;
+  ph: MeasurementTypeInterval;
+  temperature: MeasurementTypeInterval;
+  sensory: MeasurementTypeInterval;
+  volume: MeasurementTypeInterval;
+}
+
+export const DEFAULT_PER_TYPE_SCHEDULES: Record<string, PerTypeMeasurementSchedule> = {
+  // Cider fermenting — SG is stage-based, pH biweekly, temp with SG, no sensory/volume
+  cider_fermenting: {
+    sg: { intervalDays: null, enabled: true }, // stage-based, handled separately
+    ph: { intervalDays: 14, enabled: true },
+    temperature: { intervalDays: null, enabled: true }, // same as SG
+    sensory: { intervalDays: null, enabled: false },
+    volume: { intervalDays: null, enabled: false },
+  },
+  // Cider aging — no SG needed, quarterly pH, monthly temp/sensory, quarterly volume
+  cider_aging: {
+    sg: { intervalDays: null, enabled: false },
+    ph: { intervalDays: 90, enabled: true },
+    temperature: { intervalDays: 30, enabled: true },
+    sensory: { intervalDays: 30, enabled: true },
+    volume: { intervalDays: 90, enabled: true },
+  },
+  // Perry same as cider
+  perry_fermenting: {
+    sg: { intervalDays: null, enabled: true },
+    ph: { intervalDays: 14, enabled: true },
+    temperature: { intervalDays: null, enabled: true },
+    sensory: { intervalDays: null, enabled: false },
+    volume: { intervalDays: null, enabled: false },
+  },
+  perry_aging: {
+    sg: { intervalDays: null, enabled: false },
+    ph: { intervalDays: 90, enabled: true },
+    temperature: { intervalDays: 30, enabled: true },
+    sensory: { intervalDays: 30, enabled: true },
+    volume: { intervalDays: 90, enabled: true },
+  },
+  // Brandy — sensory/temp/volume monthly, no SG/pH
+  brandy: {
+    sg: { intervalDays: null, enabled: false },
+    ph: { intervalDays: null, enabled: false },
+    temperature: { intervalDays: 30, enabled: true },
+    sensory: { intervalDays: 30, enabled: true },
+    volume: { intervalDays: 30, enabled: true },
+  },
+  // Pommeau — sensory/volume quarterly, temp monthly
+  pommeau: {
+    sg: { intervalDays: null, enabled: false },
+    ph: { intervalDays: 90, enabled: true },
+    temperature: { intervalDays: 30, enabled: true },
+    sensory: { intervalDays: 90, enabled: true },
+    volume: { intervalDays: 90, enabled: true },
+  },
+  // Wine — same as cider
+  wine_fermenting: {
+    sg: { intervalDays: null, enabled: true },
+    ph: { intervalDays: 14, enabled: true },
+    temperature: { intervalDays: null, enabled: true },
+    sensory: { intervalDays: null, enabled: false },
+    volume: { intervalDays: null, enabled: false },
+  },
+  wine_aging: {
+    sg: { intervalDays: null, enabled: false },
+    ph: { intervalDays: 90, enabled: true },
+    temperature: { intervalDays: 30, enabled: true },
+    sensory: { intervalDays: 30, enabled: true },
+    volume: { intervalDays: 90, enabled: true },
+  },
+};
+
+/**
+ * Get the per-type measurement schedule for a batch based on product type and status.
+ * Falls back through: custom schedule -> product+status key -> product key -> cider_fermenting default.
+ */
+export function getPerTypeSchedule(
+  productType: string,
+  batchStatus: string,
+  customSchedule?: PerTypeMeasurementSchedule | null,
+): PerTypeMeasurementSchedule {
+  if (customSchedule) return customSchedule;
+
+  const isAging = batchStatus === "aging" || batchStatus === "conditioning";
+  const key = isAging ? `${productType}_aging` : `${productType}_fermenting`;
+
+  return DEFAULT_PER_TYPE_SCHEDULES[key]
+    || DEFAULT_PER_TYPE_SCHEDULES[productType]
+    || DEFAULT_PER_TYPE_SCHEDULES["cider_fermenting"];
+}
+
+export interface MeasurementDueResult {
+  type: MeasurementType;
+  daysOverdue: number;
+  intervalDays: number;
+  priority: "high" | "medium" | "low";
+  label: string; // "SG reading due", "Sensory check due", etc.
+}
+
+/**
+ * Check which measurements are due for a batch, returning a sorted list of overdue measurements.
+ * Only returns measurements that are actually overdue (not ones that are on schedule).
+ */
+export function getMeasurementsDue(params: {
+  productType: string;
+  batchStatus: string;
+  fermentationStage: FermentationStage | null;
+  lastSgDate: Date | null;
+  lastPhDate: Date | null;
+  lastTempDate: Date | null;
+  lastSensoryDate: Date | null;
+  lastVolumeDate: Date | null;
+  customSchedule?: PerTypeMeasurementSchedule | null;
+}): MeasurementDueResult[] {
+  const schedule = getPerTypeSchedule(params.productType, params.batchStatus, params.customSchedule);
+  const now = new Date();
+  const results: MeasurementDueResult[] = [];
+
+  const checks: Array<{
+    type: MeasurementType;
+    config: MeasurementTypeInterval;
+    lastDate: Date | null;
+    label: string;
+  }> = [
+    { type: "sg", config: schedule.sg, lastDate: params.lastSgDate, label: "SG reading" },
+    { type: "ph", config: schedule.ph, lastDate: params.lastPhDate, label: "pH check" },
+    { type: "temperature", config: schedule.temperature, lastDate: params.lastTempDate, label: "Temperature check" },
+    { type: "sensory", config: schedule.sensory, lastDate: params.lastSensoryDate, label: "Sensory evaluation" },
+    { type: "volume", config: schedule.volume, lastDate: params.lastVolumeDate, label: "Volume check" },
+  ];
+
+  for (const check of checks) {
+    if (!check.config.enabled || check.config.intervalDays === null) continue;
+
+    // For SG during fermentation, use stage-based interval
+    let intervalDays = check.config.intervalDays;
+    if (check.type === "sg" && params.fermentationStage) {
+      const stageFreq = getRecommendedMeasurementFrequency(params.fermentationStage);
+      intervalDays = stageFreq.maxDays;
+    }
+
+    if (!check.lastDate) {
+      // Never measured this type
+      results.push({
+        type: check.type,
+        daysOverdue: Infinity,
+        intervalDays,
+        priority: "high",
+        label: `${check.label} (never taken)`,
+      });
+      continue;
+    }
+
+    const daysSince = Math.floor((now.getTime() - new Date(check.lastDate).getTime()) / (1000 * 60 * 60 * 24));
+    const overdue = daysSince - intervalDays;
+
+    if (overdue > intervalDays) {
+      results.push({ type: check.type, daysOverdue: overdue, intervalDays, priority: "high", label: `${check.label} (${overdue}d overdue)` });
+    } else if (overdue > 0) {
+      results.push({ type: check.type, daysOverdue: overdue, intervalDays, priority: "medium", label: `${check.label} (${overdue}d overdue)` });
+    }
+    // If not overdue, don't include in results
+  }
+
+  return results.sort((a, b) => b.daysOverdue - a.daysOverdue);
+}
