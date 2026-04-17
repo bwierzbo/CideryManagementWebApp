@@ -127,18 +127,26 @@ function TaskItem({
         </Badge>
       </div>
 
-      {/* Fermentation progress */}
-      <div className={cn("mt-2", compact && "mt-1")}>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-gray-500">
-            {getStageLabel(fermentationStage)} • {percentFermented.toFixed(0)}%
-          </span>
+      {/* Fermentation progress — only for SG-related tasks */}
+      {(taskType === "measurement_needed" || taskType === "stalled_fermentation" || taskType === "confirm_terminal" || taskType === "sg_due") ? (
+        <div className={cn("mt-2", compact && "mt-1")}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-gray-500">
+              {getStageLabel(fermentationStage)} • {percentFermented.toFixed(0)}%
+            </span>
+            <span className="text-xs text-gray-400">
+              {daysSince >= 999 ? "Never measured" : `${daysSince}d since last`}
+            </span>
+          </div>
+          <Progress value={Math.min(100, percentFermented)} className="h-1.5" />
+        </div>
+      ) : (
+        <div className={cn("mt-1", compact && "mt-0.5")}>
           <span className="text-xs text-gray-400">
-            {daysSince >= 999 ? "Never measured" : `${daysSince}d since last`}
+            {daysSince >= 999 ? "Never taken" : `${daysSince}d since last`}
           </span>
         </div>
-        <Progress value={Math.min(100, percentFermented)} className="h-1.5" />
-      </div>
+      )}
 
       {/* Recommended action - only show in non-compact mode */}
       {!compact && recommendedAction && (
