@@ -301,7 +301,11 @@ export const dashboardRouter = router({
           (settings?.measurementSchedules as Record<string, MeasurementScheduleConfig | undefined>) || {};
 
         // Batch-fetch all measurements for active batches (instead of N+1)
+        // Include estimated measurements — for non-fermenting products (brandy/pommeau),
+        // estimated blend measurements count as "the batch was checked"
         const activeBatchIds = activeBatches.map((b) => b.id);
+        const agingOnlyTypes = new Set(["brandy", "pommeau"]);
+
         const allMeasurements = activeBatchIds.length > 0
           ? await db
               .select({
@@ -309,13 +313,13 @@ export const dashboardRouter = router({
                 specificGravity: batchMeasurements.specificGravity,
                 measurementDate: batchMeasurements.measurementDate,
                 measurementMethod: batchMeasurements.measurementMethod,
+                isEstimated: batchMeasurements.isEstimated,
               })
               .from(batchMeasurements)
               .where(
                 and(
                   inArray(batchMeasurements.batchId, activeBatchIds),
                   isNull(batchMeasurements.deletedAt),
-                  eq(batchMeasurements.isEstimated, false),
                 )
               )
               .orderBy(desc(batchMeasurements.measurementDate))
@@ -331,10 +335,16 @@ export const dashboardRouter = router({
         }
 
         for (const batch of activeBatches) {
-          const measurements = measurementsByBatch.get(batch.id) || [];
+          const productType = batch.productType || "cider";
+          const allBatchMeasurements = measurementsByBatch.get(batch.id) || [];
+
+          // For fermenting products (cider/perry/wine), exclude estimated measurements
+          // For aging products (brandy/pommeau), include them — blend estimates count as check-ins
+          const measurements = agingOnlyTypes.has(productType)
+            ? allBatchMeasurements
+            : allBatchMeasurements.filter(m => !m.isEstimated);
 
           // Get the product type schedule config
-          const productType = batch.productType || "cider";
           const scheduleConfig = measurementSchedules[productType];
           const batchOverride = batch.measurementScheduleOverride as BatchMeasurementOverride | null;
 
