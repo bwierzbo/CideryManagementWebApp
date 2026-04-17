@@ -93,7 +93,7 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
         type: "critical",
         title: `${stalledTasks.length} stalled fermentation${stalledTasks.length > 1 ? "s" : ""}`,
         description: `Avg ${avgPercent}% complete - consider temperature adjustment or yeast addition`,
-        link: "/cellar",
+        link: "/dashboard/tasks",
       });
     }
 
@@ -106,7 +106,7 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
         type: "critical",
         title: `${highPriorityMeasurements.length} batch${highPriorityMeasurements.length > 1 ? "es" : ""} very overdue for measurement`,
         description: `Significantly past recommended measurement schedule`,
-        link: "/cellar",
+        link: "/dashboard/tasks",
       });
     }
 
@@ -117,7 +117,7 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
         type: "warning",
         title: `${terminalTasks.length} batch${terminalTasks.length > 1 ? "es" : ""} need terminal confirmation`,
         description: "Take another hydrometer reading to confirm final gravity",
-        link: "/cellar",
+        link: "/dashboard/tasks",
       });
     }
 
@@ -130,7 +130,7 @@ export function CriticalAlertsWidget({ compact, onRefresh }: WidgetProps) {
         type: "info",
         title: `${mediumPriorityMeasurements.length} batch${mediumPriorityMeasurements.length > 1 ? "es" : ""} due for measurement`,
         description: "Measurement recommended based on fermentation stage",
-        link: "/cellar",
+        link: "/dashboard/tasks",
       });
     }
   }

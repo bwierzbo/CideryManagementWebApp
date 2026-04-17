@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Activity, TrendingDown, AlertCircle, CheckCircle, Beaker } from "lucide-react";
 import { trpc } from "@/utils/trpc";
@@ -102,6 +103,7 @@ function FermentationProgressBar({
  * and identifies stalled fermentations
  */
 export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
+  const [showAll, setShowAll] = useState(false);
   // Use both getRecentBatches and getTasks for combined data
   const { data: batchData, isPending: batchPending, isFetching: batchFetching, error: batchError, refetch: refetchBatches } = trpc.dashboard.getRecentBatches.useQuery();
   const { data: tasksData, isFetching: tasksFetching, refetch: refetchTasks } = trpc.dashboard.getTasks.useQuery({ limit: 50 });
@@ -197,7 +199,7 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
 
         {/* Batch list */}
         <div className="space-y-2">
-          {batches.slice(0, compact ? 3 : 5).map((batch) => (
+          {(showAll ? batches : batches.slice(0, compact ? 3 : 5)).map((batch) => (
             <Link
               key={batch.id}
               href={`/batch/${batch.id}`}
@@ -239,18 +241,18 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
           ))}
         </div>
 
-        {/* View all link */}
+        {/* View all toggle */}
         {batches.length > (compact ? 3 : 5) && (
           <div className="text-center pt-1">
-            <Link
-              href="/cellar"
+            <button
+              onClick={() => setShowAll(!showAll)}
               className={cn(
                 "text-blue-600 hover:text-blue-800 font-medium",
                 compact ? "text-xs" : "text-sm"
               )}
             >
-              View all {batches.length} batches →
-            </Link>
+              {showAll ? "Show less ↑" : `View all ${batches.length} batches →`}
+            </button>
           </div>
         )}
       </div>

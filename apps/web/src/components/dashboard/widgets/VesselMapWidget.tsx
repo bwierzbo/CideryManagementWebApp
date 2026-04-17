@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Container, Droplets, AlertCircle } from "lucide-react";
 import { trpc } from "@/utils/trpc";
@@ -132,6 +133,7 @@ function VesselCard({ vessel, compact }: { vessel: VesselData; compact?: boolean
  * Shows visual representation of all vessels color-coded by status
  */
 export function VesselMapWidget({ compact, onRefresh }: WidgetProps) {
+  const [showAll, setShowAll] = useState(false);
   const { data, isPending, isFetching, error, refetch } = trpc.vessel.liquidMap.useQuery();
 
   const handleRefresh = () => {
@@ -190,23 +192,23 @@ export function VesselMapWidget({ compact, onRefresh }: WidgetProps) {
 
         {/* Vessel grid */}
         <div className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3")}>
-          {vessels.slice(0, compact ? 6 : 9).map((vessel) => (
+          {(showAll ? vessels : vessels.slice(0, compact ? 6 : 9)).map((vessel) => (
             <VesselCard key={vessel.vesselId} vessel={vessel} compact={compact} />
           ))}
         </div>
 
-        {/* View all link */}
+        {/* View all toggle */}
         {vessels.length > (compact ? 6 : 9) && (
           <div className="text-center">
-            <Link
-              href="/cellar"
+            <button
+              onClick={() => setShowAll(!showAll)}
               className={cn(
                 "text-blue-600 hover:text-blue-800 font-medium",
                 compact ? "text-xs" : "text-sm"
               )}
             >
-              View all {vessels.length} vessels →
-            </Link>
+              {showAll ? "Show less ↑" : `View all ${vessels.length} vessels →`}
+            </button>
           </div>
         )}
       </div>

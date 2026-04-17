@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Gauge, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
@@ -69,6 +70,7 @@ function ProgressRing({
  * Shows in-progress carbonation operations with progress tracking
  */
 export function ActiveCarbonationsWidget({ compact, onRefresh }: WidgetProps) {
+  const [showAll, setShowAll] = useState(false);
   const { data, isPending, isFetching, error, refetch } = trpc.carbonation.listActive.useQuery();
 
   const handleRefresh = () => {
@@ -115,7 +117,7 @@ export function ActiveCarbonationsWidget({ compact, onRefresh }: WidgetProps) {
 
         {/* Carbonation list */}
         <div className="space-y-2">
-          {carbonations.slice(0, compact ? 3 : 5).map((item: any) => {
+          {(showAll ? carbonations : carbonations.slice(0, compact ? 3 : 5)).map((item: any) => {
             const batch = item.batch;
             const carbonation = item.carbonation;
             const estimatedHours = 48; // Default estimate
@@ -176,18 +178,18 @@ export function ActiveCarbonationsWidget({ compact, onRefresh }: WidgetProps) {
           })}
         </div>
 
-        {/* View all link */}
+        {/* View all toggle */}
         {carbonations.length > (compact ? 3 : 5) && (
           <div className="text-center pt-1">
-            <Link
-              href="/cellar"
+            <button
+              onClick={() => setShowAll(!showAll)}
               className={cn(
                 "text-blue-600 hover:text-blue-800 font-medium",
                 compact ? "text-xs" : "text-sm"
               )}
             >
-              View all {carbonations.length} carbonations →
-            </Link>
+              {showAll ? "Show less ↑" : `View all ${carbonations.length} carbonations →`}
+            </button>
           </div>
         )}
       </div>
