@@ -436,15 +436,15 @@ export const DEFAULT_PER_TYPE_SCHEDULES: Record<string, PerTypeMeasurementSchedu
     ph: { intervalDays: null, enabled: false },
     temperature: { intervalDays: 30, enabled: true },
     sensory: { intervalDays: 30, enabled: true },
-    volume: { intervalDays: 30, enabled: true },
+    volume: { intervalDays: 90, enabled: false },
   },
-  // Pommeau — sensory/volume quarterly, temp monthly
+  // Pommeau — sensory quarterly, temp monthly, volume disabled by default
   pommeau: {
     sg: { intervalDays: null, enabled: false },
     ph: { intervalDays: 90, enabled: true },
     temperature: { intervalDays: 30, enabled: true },
     sensory: { intervalDays: 90, enabled: true },
-    volume: { intervalDays: 90, enabled: true },
+    volume: { intervalDays: 90, enabled: false },
   },
   // Wine — same as cider
   wine_fermenting: {

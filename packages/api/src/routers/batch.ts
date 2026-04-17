@@ -1288,9 +1288,8 @@ export const batchRouter = router({
           }
         }
 
-        // Also check parentBatchId chain as an alternative source
-        if (composition.length === 0 && inheritedComposition.length === 0 && batch.productType) {
-          // Check if batch has a parentBatchId by querying for it
+        // Also check parentBatchId chain — trace through parent's distillation records too
+        if (composition.length === 0 && inheritedComposition.length === 0) {
           const parentCheck = await db
             .select({ parentBatchId: batches.parentBatchId })
             .from(batches)
@@ -1299,6 +1298,57 @@ export const batchRouter = router({
 
           const parentBatchId = parentCheck[0]?.parentBatchId;
           if (parentBatchId) {
+            // First try: get parent's distillation source compositions
+            const parentDistRecords = await db
+              .select({ sourceBatchId: distillationRecords.sourceBatchId })
+              .from(distillationRecords)
+              .where(
+                and(
+                  eq(distillationRecords.resultBatchId, parentBatchId),
+                  isNull(distillationRecords.deletedAt),
+                )
+              );
+
+            const parentDistSourceIds = parentDistRecords.map(r => r.sourceBatchId);
+            if (parentDistSourceIds.length > 0) {
+              inheritedComposition = await db
+                .select({
+                  vendorName: vendors.name,
+                  varietyName: sql<string>`
+                    CASE
+                      WHEN ${batchCompositions.sourceType} = 'base_fruit' THEN ${baseFruitVarieties.name}
+                      WHEN ${batchCompositions.sourceType} = 'juice_purchase' THEN COALESCE(${juicePurchaseItems.varietyName}, ${juicePurchaseItems.juiceType})
+                      ELSE 'Unknown'
+                    END
+                  `,
+                  inputWeightKg: batchCompositions.inputWeightKg,
+                  juiceVolume: batchCompositions.juiceVolume,
+                  fractionOfBatch: batchCompositions.fractionOfBatch,
+                  materialCost: batchCompositions.materialCost,
+                  avgBrix: batchCompositions.avgBrix,
+                  sourceType: batchCompositions.sourceType,
+                  lotCode: batchCompositions.lotCode,
+                  ph: juicePurchaseItems.ph,
+                  specificGravity: juicePurchaseItems.specificGravity,
+                  brix: juicePurchaseItems.brix,
+                  notes: juicePurchaseItems.notes,
+                })
+                .from(batchCompositions)
+                .leftJoin(vendors, eq(batchCompositions.vendorId, vendors.id))
+                .leftJoin(baseFruitVarieties, eq(batchCompositions.varietyId, baseFruitVarieties.id))
+                .leftJoin(juicePurchaseItems, eq(batchCompositions.juicePurchaseItemId, juicePurchaseItems.id))
+                .where(
+                  and(
+                    inArray(batchCompositions.batchId, parentDistSourceIds),
+                    isNull(batchCompositions.deletedAt),
+                  )
+                )
+                .orderBy(desc(batchCompositions.fractionOfBatch));
+            }
+          }
+
+          // Second fallback: get parent's direct composition
+          if (inheritedComposition.length === 0 && parentBatchId) {
             inheritedComposition = await db
               .select({
                 vendorName: vendors.name,
