@@ -134,6 +134,7 @@ export const dashboardRouter = router({
             isNull(batches.deletedAt),
             inArray(batches.status, ["fermentation", "aging", "conditioning"]),
             sql`CAST(${batches.currentVolumeLiters} AS NUMERIC) > 0`,
+            sql`${batches.vesselId} IS NOT NULL`,
           )
         )
         .orderBy(desc(batches.startDate))
@@ -273,6 +274,8 @@ export const dashboardRouter = router({
               isNull(batches.deletedAt),
               inArray(batches.status, ["fermentation", "aging", "conditioning"]),
               sql`CAST(${batches.currentVolumeLiters} AS NUMERIC) > 0`,
+              // Exclude unassigned batches — they're remnants waiting to be completed
+              sql`${batches.vesselId} IS NOT NULL`,
             )
           )
           .orderBy(desc(batches.startDate));
