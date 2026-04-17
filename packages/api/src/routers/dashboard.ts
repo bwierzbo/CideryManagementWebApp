@@ -268,7 +268,8 @@ export const dashboardRouter = router({
           .where(
             and(
               isNull(batches.deletedAt),
-              inArray(batches.status, ["fermentation", "aging", "conditioning"])
+              inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+              sql`CAST(${batches.currentVolumeLiters} AS NUMERIC) > 0`,
             )
           )
           .orderBy(desc(batches.startDate));
