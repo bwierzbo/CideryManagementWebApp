@@ -125,17 +125,19 @@ export const dashboardRouter = router({
           startDate: batches.startDate,
           vesselId: batches.vesselId,
           vesselName: vessels.name,
+          productType: batches.productType,
         })
         .from(batches)
         .leftJoin(vessels, eq(batches.vesselId, vessels.id))
         .where(
           and(
             isNull(batches.deletedAt),
-            inArray(batches.status, ["fermentation", "aging", "conditioning"])
+            inArray(batches.status, ["fermentation", "aging", "conditioning"]),
+            sql`CAST(${batches.currentVolumeLiters} AS NUMERIC) > 0`,
           )
         )
         .orderBy(desc(batches.startDate))
-        .limit(10);
+        .limit(50);
 
       // Get latest measurements for all batches in one query (instead of N queries)
       const batchIds = recentBatches.map((b) => b.id);
@@ -181,6 +183,7 @@ export const dashboardRouter = router({
             : null,
           daysActive,
           startDate: batch.startDate,
+          productType: batch.productType || "cider",
         };
       });
 

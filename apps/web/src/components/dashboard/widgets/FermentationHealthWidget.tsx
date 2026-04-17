@@ -119,9 +119,19 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
     (tasksData?.tasks || []).map(t => [t.id, t])
   );
 
-  // Process batches with fermentation stage data
+  const [showAllAging, setShowAllAging] = useState(false);
+
+  // Non-fermenting product types — these age but don't ferment
+  const agingOnlyTypes = new Set(["brandy", "pommeau"]);
+
+  // Process batches — exclude non-fermenting products from fermentation widget
   const batches: BatchHealth[] = (batchData?.batches || [])
-    .filter((b: any) => b.status === "fermentation" || b.status === "aging")
+    .filter((b: any) => {
+      if (b.status !== "fermentation" && b.status !== "aging") return false;
+      // Exclude brandy/pommeau — they don't ferment, they age
+      const productType = (b as any).productType || "cider";
+      return !agingOnlyTypes.has(productType);
+    })
     .map((b: any) => {
       const sg = b.specificGravity ? parseFloat(b.specificGravity) : null;
       const taskData = taskMap.get(b.id);
@@ -255,6 +265,71 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
             </button>
           </div>
         )}
+
+        {/* Aging Products Section */}
+        {(() => {
+          const agingBatches = (batchData?.batches || [])
+            .filter((b: any) => agingOnlyTypes.has((b as any).productType || ""))
+            .map((b: any) => ({
+              id: b.id,
+              name: b.customName || b.batchNumber,
+              vesselName: b.vesselName,
+              productType: (b as any).productType || "unknown",
+              daysActive: b.daysActive,
+            }));
+
+          if (agingBatches.length === 0) return null;
+
+          const displayAging = showAllAging ? agingBatches : agingBatches.slice(0, compact ? 2 : 3);
+
+          return (
+            <div className="mt-3 pt-3 border-t">
+              <p className={cn("font-medium text-gray-700 mb-2", compact ? "text-xs" : "text-sm")}>
+                Aging ({agingBatches.length})
+              </p>
+              <div className="space-y-1">
+                {displayAging.map((b: any) => (
+                  <Link
+                    key={b.id}
+                    href={`/batch/${b.id}?tab=overview`}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg hover:bg-amber-50/50 transition-colors",
+                      compact ? "p-1.5" : "p-2"
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className={cn("font-medium truncate", compact ? "text-xs" : "text-sm")}>
+                        {b.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {b.vesselName || "Unassigned"} · {b.productType}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <p className={cn("font-bold text-amber-700", compact ? "text-xs" : "text-sm")}>
+                        {b.daysActive}d
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">aging</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+              {agingBatches.length > (compact ? 2 : 3) && (
+                <div className="text-center pt-1">
+                  <button
+                    onClick={() => setShowAllAging(!showAllAging)}
+                    className={cn(
+                      "text-amber-600 hover:text-amber-800 font-medium",
+                      compact ? "text-xs" : "text-sm"
+                    )}
+                  >
+                    {showAllAging ? "Show less ↑" : `View all ${agingBatches.length} aging →`}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </WidgetWrapper>
   );
