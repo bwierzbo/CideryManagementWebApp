@@ -762,4 +762,130 @@ export const reportsRouter = router({
         });
       }
     }),
+
+  /**
+   * Production Summary — total liquid by state for a time period
+   */
+  productionSummary: createRbacProcedure("read", "report")
+    .input(
+      z.object({
+        dateFrom: z.date().or(z.string().transform((v) => new Date(v))).optional(),
+        dateTo: z.date().or(z.string().transform((v) => new Date(v))).optional(),
+      }).optional()
+    )
+    .query(async ({ input }) => {
+      try {
+        const dateFrom = input?.dateFrom;
+        const dateTo = input?.dateTo;
+
+        // 1. Currently in process (fermentation + aging in vessels)
+        const [inProcessStats] = await db.execute(sql`
+          SELECT
+            COUNT(*)::int as batch_count,
+            COALESCE(SUM(CAST(current_volume_liters AS NUMERIC)), 0) as volume_l,
+            COUNT(CASE WHEN status = 'fermentation' THEN 1 END)::int as fermenting_count,
+            COALESCE(SUM(CASE WHEN status = 'fermentation' THEN CAST(current_volume_liters AS NUMERIC) ELSE 0 END), 0) as fermenting_l,
+            COUNT(CASE WHEN status = 'aging' THEN 1 END)::int as aging_count,
+            COALESCE(SUM(CASE WHEN status = 'aging' THEN CAST(current_volume_liters AS NUMERIC) ELSE 0 END), 0) as aging_l
+          FROM batches
+          WHERE deleted_at IS NULL
+            AND vessel_id IS NOT NULL
+            AND status IN ('fermentation', 'aging', 'conditioning')
+        `).then(r => r.rows) as any[];
+
+        // 2. Packaged (bottles + kegs) within date range
+        const bottleWhere = dateFrom && dateTo
+          ? sql`br.status != 'voided' AND br.packaged_at >= ${dateFrom} AND br.packaged_at <= ${dateTo}`
+          : sql`br.status != 'voided'`;
+
+        const [bottleStats] = await db.execute(sql`
+          SELECT
+            COUNT(DISTINCT br.id)::int as runs,
+            COALESCE(SUM(br.units_produced), 0)::int as units,
+            COALESCE(SUM(CAST(br.volume_taken AS NUMERIC)), 0) as volume_l,
+            COALESCE(SUM(CASE WHEN br.status = 'distributed' THEN br.units_produced ELSE 0 END), 0)::int as distributed_units,
+            COALESCE(SUM(CASE WHEN br.status IN ('active', 'ready') THEN br.units_produced ELSE 0 END), 0)::int as in_stock_units
+          FROM bottle_runs br
+          WHERE ${bottleWhere}
+        `).then(r => r.rows) as any[];
+
+        const kegWhere = dateFrom && dateTo
+          ? sql`kf.deleted_at IS NULL AND kf.status != 'voided' AND kf.filled_at >= ${dateFrom} AND kf.filled_at <= ${dateTo}`
+          : sql`kf.deleted_at IS NULL AND kf.status != 'voided'`;
+
+        const [kegStats] = await db.execute(sql`
+          SELECT
+            COUNT(*)::int as fills,
+            COALESCE(SUM(CAST(kf.volume_taken AS NUMERIC)), 0) as volume_l,
+            COUNT(CASE WHEN kf.status = 'distributed' THEN 1 END)::int as distributed,
+            COUNT(CASE WHEN kf.status = 'filled' THEN 1 END)::int as in_stock
+          FROM keg_fills kf
+          WHERE ${kegWhere}
+        `).then(r => r.rows) as any[];
+
+        // 3. Losses (from volume adjustments)
+        const lossWhere = dateFrom && dateTo
+          ? sql`bva.deleted_at IS NULL AND CAST(bva.adjustment_amount AS NUMERIC) < 0 AND bva.adjustment_date >= ${dateFrom} AND bva.adjustment_date <= ${dateTo}`
+          : sql`bva.deleted_at IS NULL AND CAST(bva.adjustment_amount AS NUMERIC) < 0`;
+
+        const lossRows = await db.execute(sql`
+          SELECT
+            bva.adjustment_type,
+            COUNT(*)::int as count,
+            COALESCE(SUM(ABS(CAST(bva.adjustment_amount AS NUMERIC))), 0) as loss_l
+          FROM batch_volume_adjustments bva
+          WHERE ${lossWhere}
+          GROUP BY bva.adjustment_type
+          ORDER BY loss_l DESC
+        `).then(r => r.rows) as any[];
+
+        const lossByType = lossRows.map((r: any) => ({
+          type: r.adjustment_type || "unknown",
+          volumeL: parseFloat(r.loss_l || "0"),
+          count: parseInt(r.count || "0"),
+        }));
+        const totalLossL = lossByType.reduce((s: number, r: any) => s + r.volumeL, 0);
+
+        return {
+          inProcess: {
+            totalBatches: parseInt(inProcessStats?.batch_count || "0"),
+            totalVolumeL: parseFloat(inProcessStats?.volume_l || "0"),
+            fermenting: {
+              count: parseInt(inProcessStats?.fermenting_count || "0"),
+              volumeL: parseFloat(inProcessStats?.fermenting_l || "0"),
+            },
+            aging: {
+              count: parseInt(inProcessStats?.aging_count || "0"),
+              volumeL: parseFloat(inProcessStats?.aging_l || "0"),
+            },
+          },
+          packaged: {
+            bottles: {
+              runs: parseInt(bottleStats?.runs || "0"),
+              units: parseInt(bottleStats?.units || "0"),
+              volumeL: parseFloat(bottleStats?.volume_l || "0"),
+              distributed: parseInt(bottleStats?.distributed_units || "0"),
+              inStock: parseInt(bottleStats?.in_stock_units || "0"),
+            },
+            kegs: {
+              fills: parseInt(kegStats?.fills || "0"),
+              volumeL: parseFloat(kegStats?.volume_l || "0"),
+              distributed: parseInt(kegStats?.distributed || "0"),
+              inStock: parseInt(kegStats?.in_stock || "0"),
+            },
+            totalVolumeL: parseFloat(bottleStats?.volume_l || "0") + parseFloat(kegStats?.volume_l || "0"),
+          },
+          losses: {
+            totalVolumeL: totalLossL,
+            byType: lossByType,
+          },
+        };
+      } catch (error) {
+        console.error("Error generating production summary:", error);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to generate production summary",
+        });
+      }
+    }),
 });

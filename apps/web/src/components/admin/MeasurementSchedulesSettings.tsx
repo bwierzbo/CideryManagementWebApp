@@ -30,11 +30,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Beaker,
   Wine,
   Grape,
@@ -43,11 +38,9 @@ import {
   Plus,
   Edit,
   Trash2,
-  Bell,
   Clock,
   Thermometer,
   Droplet,
-  ChevronDown,
 } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { useToast } from "@/hooks/use-toast";
@@ -59,15 +52,6 @@ import {
 } from "lib";
 
 // Types
-interface MeasurementScheduleConfig {
-  initialMeasurementTypes: string[];
-  ongoingMeasurementTypes: string[];
-  primaryMeasurement: string;
-  usesFermentationStages: boolean;
-  defaultIntervalDays: number | null;
-  alertType: "check_in_reminder" | "measurement_overdue" | null;
-}
-
 interface CustomProductType {
   id: string;
   name: string;
@@ -91,60 +75,6 @@ const MEASUREMENT_TYPES = [
   { value: "sensory", label: "Sensory Evaluation", icon: Grape },
   { value: "volume", label: "Volume", icon: Droplet },
 ];
-
-// Built-in product types
-const BUILT_IN_PRODUCT_TYPES = [
-  { slug: "cider", name: "Cider", description: "Standard cider with SG-based fermentation tracking" },
-  { slug: "perry", name: "Perry", description: "Pear cider with SG-based fermentation tracking" },
-  { slug: "cyser", name: "Cyser", description: "Apple juice co-fermented with honey (taxed as wine)" },
-  { slug: "brandy", name: "Brandy", description: "Distilled spirit aged in barrels" },
-  { slug: "pommeau", name: "Pommeau", description: "Fortified apple wine aged in barrels" },
-  { slug: "juice", name: "Juice", description: "Non-fermented apple juice" },
-];
-
-// Default schedules
-const DEFAULT_SCHEDULES: Record<string, MeasurementScheduleConfig> = {
-  cider: {
-    initialMeasurementTypes: ["sg", "ph", "temperature"],
-    ongoingMeasurementTypes: ["sg", "ph", "temperature"],
-    primaryMeasurement: "sg",
-    usesFermentationStages: true,
-    defaultIntervalDays: null,
-    alertType: "measurement_overdue",
-  },
-  perry: {
-    initialMeasurementTypes: ["sg", "ph", "temperature"],
-    ongoingMeasurementTypes: ["sg", "ph", "temperature"],
-    primaryMeasurement: "sg",
-    usesFermentationStages: true,
-    defaultIntervalDays: null,
-    alertType: "measurement_overdue",
-  },
-  brandy: {
-    initialMeasurementTypes: ["abv"],
-    ongoingMeasurementTypes: ["sensory", "volume"],
-    primaryMeasurement: "sensory",
-    usesFermentationStages: false,
-    defaultIntervalDays: 30,
-    alertType: "check_in_reminder",
-  },
-  pommeau: {
-    initialMeasurementTypes: ["sg", "ph"],
-    ongoingMeasurementTypes: ["sensory", "volume"],
-    primaryMeasurement: "sensory",
-    usesFermentationStages: false,
-    defaultIntervalDays: 90,
-    alertType: "check_in_reminder",
-  },
-  juice: {
-    initialMeasurementTypes: ["sg", "ph"],
-    ongoingMeasurementTypes: [],
-    primaryMeasurement: "sg",
-    usesFermentationStages: false,
-    defaultIntervalDays: null,
-    alertType: null,
-  },
-};
 
 function MeasurementTypeCheckboxes({
   selected,
@@ -192,264 +122,19 @@ function MeasurementTypeCheckboxes({
   );
 }
 
-function ProductTypeScheduleEditor({
-  productType,
-  config,
-  onSave,
-  isBuiltIn = true,
-}: {
-  productType: { slug: string; name: string; description?: string };
-  config: MeasurementScheduleConfig;
-  onSave: (config: MeasurementScheduleConfig) => Promise<void>;
-  isBuiltIn?: boolean;
-}) {
-  const [localConfig, setLocalConfig] = useState<MeasurementScheduleConfig>(config);
-  const [isSaving, setIsSaving] = useState(false);
-  const { toast } = useToast();
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await onSave(localConfig);
-      toast({
-        title: "Schedule updated",
-        description: `Measurement schedule for ${productType.name} has been saved.`,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to save measurement schedule.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6 p-4 border rounded-lg bg-card">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="font-medium">{productType.name}</h4>
-          {productType.description && (
-            <p className="text-sm text-muted-foreground">{productType.description}</p>
-          )}
-        </div>
-        {isBuiltIn && (
-          <Badge variant="secondary">Built-in</Badge>
-        )}
-      </div>
-
-      <div className="grid gap-6">
-        <MeasurementTypeCheckboxes
-          selected={localConfig.initialMeasurementTypes}
-          onChange={(types) =>
-            setLocalConfig({ ...localConfig, initialMeasurementTypes: types })
-          }
-          label="Initial Measurements (first check)"
-        />
-
-        <MeasurementTypeCheckboxes
-          selected={localConfig.ongoingMeasurementTypes}
-          onChange={(types) =>
-            setLocalConfig({ ...localConfig, ongoingMeasurementTypes: types })
-          }
-          label="Ongoing Measurements (subsequent checks)"
-        />
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor={`${productType.slug}-primary`}>Primary Measurement</Label>
-            <Select
-              value={localConfig.primaryMeasurement}
-              onValueChange={(value) =>
-                setLocalConfig({ ...localConfig, primaryMeasurement: value })
-              }
-            >
-              <SelectTrigger id={`${productType.slug}-primary`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MEASUREMENT_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    {type.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`${productType.slug}-alert`}>Alert Type</Label>
-            <Select
-              value={localConfig.alertType || "none"}
-              onValueChange={(value) =>
-                setLocalConfig({
-                  ...localConfig,
-                  alertType: value === "none" ? null : (value as "check_in_reminder" | "measurement_overdue"),
-                })
-              }
-            >
-              <SelectTrigger id={`${productType.slug}-alert`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No Alerts</SelectItem>
-                <SelectItem value="check_in_reminder">Check-in Reminder</SelectItem>
-                <SelectItem value="measurement_overdue">Measurement Overdue</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between p-3 border rounded-lg">
-          <div className="flex items-center gap-3">
-            <Clock className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="font-medium">Use Fermentation Stages</p>
-              <p className="text-sm text-muted-foreground">
-                Measurement frequency based on fermentation progress
-              </p>
-            </div>
-          </div>
-          <Switch
-            checked={localConfig.usesFermentationStages}
-            onCheckedChange={(checked) =>
-              setLocalConfig({ ...localConfig, usesFermentationStages: checked })
-            }
-          />
-        </div>
-
-        {!localConfig.usesFermentationStages && (
-          <div className="space-y-2">
-            <Label htmlFor={`${productType.slug}-interval`}>
-              Check-in Interval (days)
-            </Label>
-            <Input
-              id={`${productType.slug}-interval`}
-              type="number"
-              min={1}
-              value={localConfig.defaultIntervalDays || ""}
-              onChange={(e) =>
-                setLocalConfig({
-                  ...localConfig,
-                  defaultIntervalDays: e.target.value ? parseInt(e.target.value) : null,
-                })
-              }
-              placeholder="No scheduled interval"
-            />
-            <p className="text-sm text-muted-foreground">
-              Leave empty for no automatic check-in reminders
-            </p>
-          </div>
-        )}
-
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              Save Changes
-            </>
-          )}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function CollapsibleProductType({
-  productType,
-  schedule,
-  onSave,
-}: {
-  productType: { slug: string; name: string; description?: string };
-  schedule: MeasurementScheduleConfig;
-  onSave: (config: MeasurementScheduleConfig) => Promise<void>;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <CollapsibleTrigger asChild>
-        <button className="flex items-center justify-between w-full p-4 text-left border rounded-lg hover:bg-accent transition-colors">
-          <div className="flex items-center gap-3">
-            <span className="font-medium">{productType.name}</span>
-            <Badge variant="outline" className="text-xs">
-              {schedule.usesFermentationStages
-                ? "SG-based"
-                : schedule.defaultIntervalDays
-                ? `Every ${schedule.defaultIntervalDays} days`
-                : "No schedule"}
-            </Badge>
-          </div>
-          <ChevronDown
-            className={cn(
-              "h-4 w-4 transition-transform",
-              isOpen && "rotate-180"
-            )}
-          />
-        </button>
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-2">
-        <ProductTypeScheduleEditor
-          productType={productType}
-          config={schedule}
-          onSave={onSave}
-          isBuiltIn
-        />
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
 export function MeasurementSchedulesSettings() {
   const { toast } = useToast();
   const [customProductDialogOpen, setCustomProductDialogOpen] = useState(false);
   const [editingCustomProduct, setEditingCustomProduct] = useState<CustomProductType | null>(null);
 
-  // Fetch measurement schedules
-  const { data: schedules, isLoading, refetch } = trpc.settings.getMeasurementSchedules.useQuery();
-
   // Fetch custom product types
-  const { data: customProductTypes, refetch: refetchCustomTypes } =
+  const { data: customProductTypes, isLoading, refetch: refetchCustomTypes } =
     trpc.customProductTypes.list.useQuery();
 
   // Mutations
-  const updateScheduleMutation = trpc.settings.updateMeasurementSchedule.useMutation();
   const createCustomTypeMutation = trpc.customProductTypes.create.useMutation();
   const updateCustomTypeMutation = trpc.customProductTypes.update.useMutation();
   const deleteCustomTypeMutation = trpc.customProductTypes.delete.useMutation();
-
-  // Get schedule for a product type
-  const getSchedule = (slug: string): MeasurementScheduleConfig => {
-    const schedulesMap = schedules as Record<string, MeasurementScheduleConfig | undefined> | undefined;
-    const customSchedule = schedulesMap?.[slug];
-    return customSchedule || DEFAULT_SCHEDULES[slug] || DEFAULT_SCHEDULES.cider;
-  };
-
-  // Save built-in product type schedule
-  const handleSaveBuiltInSchedule = async (
-    productType: string,
-    config: MeasurementScheduleConfig
-  ) => {
-    await updateScheduleMutation.mutateAsync({
-      productType: productType as "cider" | "perry" | "brandy" | "pommeau" | "juice",
-      config: {
-        initialMeasurementTypes: config.initialMeasurementTypes as Array<"sg" | "abv" | "ph" | "temperature" | "sensory" | "volume">,
-        ongoingMeasurementTypes: config.ongoingMeasurementTypes as Array<"sg" | "abv" | "ph" | "temperature" | "sensory" | "volume">,
-        primaryMeasurement: config.primaryMeasurement as "sg" | "abv" | "sensory" | "ph",
-        usesFermentationStages: config.usesFermentationStages,
-        defaultIntervalDays: config.defaultIntervalDays,
-        alertType: config.alertType,
-      },
-    });
-    refetch();
-  };
 
   // Create or update custom product type
   const handleSaveCustomProductType = async (data: {
@@ -566,16 +251,8 @@ export function MeasurementSchedulesSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="space-y-2">
-          {BUILT_IN_PRODUCT_TYPES.map((productType) => (
-            <CollapsibleProductType
-              key={productType.slug}
-              productType={productType}
-              schedule={getSchedule(productType.slug)}
-              onSave={(config) => handleSaveBuiltInSchedule(productType.slug, config)}
-            />
-          ))}
-        </div>
+        {/* Per-Type Measurement Intervals Section */}
+        <PerTypeMeasurementIntervals />
 
         {/* Custom Product Types Section */}
         <div className="border-t pt-6 mt-6">
@@ -656,9 +333,6 @@ export function MeasurementSchedulesSettings() {
             </p>
           )}
         </div>
-
-        {/* Per-Type Measurement Intervals Section */}
-        <PerTypeMeasurementIntervals />
 
         {/* Custom Product Type Dialog */}
         <CustomProductTypeDialog

@@ -334,6 +334,27 @@ export default function ReportsPage() {
             </Card>
           </Link>
 
+          <Link href="/reports/production">
+            <Card className="hover:shadow-md transition-shadow cursor-pointer border-blue-200 hover:border-blue-400">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-100 rounded-lg">
+                      <BarChart3 className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Production Summary</h3>
+                      <p className="text-sm text-gray-500">
+                        Total liquid by state — in process, packaged, losses
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-gray-400" />
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
           <Link href="/reports/cogs">
             <Card className="hover:shadow-md transition-shadow cursor-pointer border-green-200 hover:border-green-400">
               <CardContent className="p-6">

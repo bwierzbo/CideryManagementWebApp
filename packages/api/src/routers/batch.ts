@@ -3334,6 +3334,7 @@ export const batchRouter = router({
             juiceType: juicePurchaseItems.juiceType,
             juiceVarietyName: juicePurchaseItems.varietyName,
             juiceVendorName: sql<string>`juice_vendor.name`.as("juiceVendorName"),
+            parentBatchId: batches.parentBatchId,
           })
           .from(batches)
           .leftJoin(vessels, eq(batches.vesselId, vessels.id))
@@ -3854,6 +3855,12 @@ export const batchRouter = router({
                 or(
                   eq(distillationRecords.sourceBatchId, input.batchId),
                   eq(distillationRecords.resultBatchId, input.batchId),
+                  // For split batches (e.g., brandy splits), also find distillation records
+                  // where the result points to the parent batch, so the child inherits
+                  // the "received as brandy" event from its parent.
+                  ...(batch[0].parentBatchId
+                    ? [eq(distillationRecords.resultBatchId, batch[0].parentBatchId)]
+                    : []),
                 ),
                 isNull(distillationRecords.deletedAt),
               )
@@ -4388,16 +4395,18 @@ export const batchRouter = router({
               },
             });
           }
-          if (dr.resultBatchId === input.batchId && dr.receivedAt) {
-            // This batch was received back as brandy
+          if ((dr.resultBatchId === input.batchId || dr.resultBatchId === batch[0].parentBatchId) && dr.receivedAt) {
+            // This batch (or its parent) was received back as brandy
             const abv = dr.receivedAbv ? `${parseFloat(dr.receivedAbv).toFixed(1)}% ABV` : "";
             const vol = dr.receivedVolume ? `${parseFloat(dr.receivedVolume).toFixed(1)}L` : "";
             const details = [abv, vol].filter(Boolean).join(", ");
+            const inherited = dr.resultBatchId !== input.batchId;
             activities.push({
               id: `distillation-received-${dr.id}`,
               type: "distillation_received",
               timestamp: dr.receivedAt,
               description: `Received from ${dr.distilleryName} as brandy${details ? ` (${details})` : ""}`,
+              ...(inherited ? { inherited: true, inheritedFrom: "parent batch" } : {}),
               details: {
                 distilleryName: dr.distilleryName,
                 receivedVolume: vol || null,
@@ -4791,6 +4800,10 @@ export const batchRouter = router({
                 or(
                   eq(distillationRecords.sourceBatchId, input.batchId),
                   eq(distillationRecords.resultBatchId, input.batchId),
+                  // For split batches, also find distillation records targeting the parent
+                  ...(batchData.parentBatchId
+                    ? [eq(distillationRecords.resultBatchId, batchData.parentBatchId)]
+                    : []),
                 ),
                 isNull(distillationRecords.deletedAt),
               )
@@ -4845,7 +4858,7 @@ export const batchRouter = router({
                 description: `Sent to ${dr.distilleryName} for distillation (${vol}L)`,
               });
             }
-            if (dr.resultBatchId === input.batchId && dr.receivedAt) {
+            if ((dr.resultBatchId === input.batchId || dr.resultBatchId === batchData.parentBatchId) && dr.receivedAt) {
               const abv = dr.receivedAbv ? `${parseFloat(dr.receivedAbv).toFixed(1)}% ABV` : "";
               const vol = dr.receivedVolume ? `${parseFloat(dr.receivedVolume).toFixed(1)}L` : "";
               const details = [abv, vol].filter(Boolean).join(", ");
@@ -9056,6 +9069,7 @@ export const batchRouter = router({
           vesselId: batches.vesselId,
           vesselName: vessels.name,
           startDate: batches.startDate,
+          parentBatchId: batches.parentBatchId,
         })
         .from(batches)
         .leftJoin(vessels, eq(batches.vesselId, vessels.id))
@@ -9855,7 +9869,7 @@ export const batchRouter = router({
       // Check for orphan brandy batches (no distillation record linking them)
       for (const batch of batchesByType.brandy) {
         const hasDistillationLink = distillationRecords.some(
-          dr => dr.result_batch_id === batch.id
+          dr => dr.result_batch_id === batch.id || (batch.parentBatchId && dr.result_batch_id === batch.parentBatchId)
         );
         if (!hasDistillationLink && parseFloat(batch.initialVolume || "0") > 0) {
           discrepancies.push({
