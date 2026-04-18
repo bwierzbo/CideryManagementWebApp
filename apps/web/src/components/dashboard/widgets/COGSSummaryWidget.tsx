@@ -1,46 +1,31 @@
 "use client";
 
-import { useMemo } from "react";
 import Link from "next/link";
-import { DollarSign, TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
+import { DollarSign, Package, Droplets } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { WidgetWrapper } from "./WidgetWrapper";
 import { WidgetProps, WidgetConfig } from "./types";
 import { registerWidget, WIDGET_IDS } from "./registry";
 import { cn } from "@/lib/utils";
 
-function formatCurrency(value: number): string {
+function fmt(n: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function formatPercent(value: number): string {
-  return `${value.toFixed(1)}%`;
+  }).format(n);
 }
 
 /**
  * COGS Summary Widget
- * Shows cost summary and margins across products
+ * Shows year-to-date cost of goods sold breakdown
  */
 export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
-  // Memoize dates to prevent infinite re-fetching
-  const { startDateStr, endDateStr } = useMemo(() => {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 30);
-    return {
-      startDateStr: startDate.toISOString(),
-      endDateStr: endDate.toISOString(),
-    };
-  }, []);
-
-  const { data, isPending, isFetching, error, refetch } = trpc.sales.getMargins.useQuery({
-    startDate: startDateStr,
-    endDate: endDateStr,
+  const currentYear = new Date().getFullYear();
+  const { data, isPending, isFetching, error, refetch } = trpc.pdfReports.cogsBreakdown.useQuery({
+    dateFrom: new Date(`${currentYear}-01-01`),
+    dateTo: new Date(`${currentYear}-12-31T23:59:59`),
   });
 
   const handleRefresh = () => {
@@ -49,18 +34,22 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
   };
 
   const totals = data?.totals;
-  const products = data?.products || [];
-  const hasData = totals && (totals.revenue > 0 || totals.cogs > 0);
+  const totalCogs = totals?.totalCogs || 0;
+  const totalUnits = totals?.totalUnits || 0;
+  const avgCostPerUnit = totals?.avgCostPerUnit || 0;
+  const runCount = data?.runs?.length || 0;
 
-  // Sort products by revenue
-  const topProducts = [...products].sort((a, b) => b.revenue - a.revenue).slice(0, compact ? 3 : 5);
-
-  // Find products with low margins
-  const lowMarginProducts = products.filter((p) => p.marginPercent < 30 && p.revenue > 0);
+  const costBreakdown = [
+    { label: "Fruit", value: totals?.totalFruitCost || 0, color: "bg-green-500" },
+    { label: "Additives", value: totals?.totalAdditiveCost || 0, color: "bg-purple-500" },
+    { label: "Packaging", value: totals?.totalPackagingCost || 0, color: "bg-blue-500" },
+    { label: "Labor", value: totals?.totalLaborCost || 0, color: "bg-amber-500" },
+    { label: "Overhead", value: totals?.totalOverheadCost || 0, color: "bg-gray-400" },
+  ];
 
   return (
     <WidgetWrapper
-      title="COGS Summary"
+      title={`COGS ${currentYear}`}
       icon={DollarSign}
       compact={compact}
       isLoading={isPending}
@@ -69,122 +58,71 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
       onRefresh={handleRefresh}
       isRefreshing={isFetching}
       showRefresh
-      isEmpty={!hasData}
-      emptyMessage="No sales data for the last 30 days"
+      isEmpty={runCount === 0}
+      emptyState={
+        <div className="text-center py-4">
+          <DollarSign className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+          <p className="text-sm text-gray-500">No packaging runs this year</p>
+        </div>
+      }
     >
       <div className="space-y-3">
         {/* Summary stats */}
-        {totals && (
-          <div className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-3")}>
-            <div className="bg-blue-50 rounded-lg p-2">
-              <div className="text-xs text-blue-600 mb-0.5">Revenue</div>
-              <div className={cn("font-bold text-blue-900", compact ? "text-sm" : "text-lg")}>
-                {formatCurrency(totals.revenue)}
-              </div>
-            </div>
-            <div className="bg-orange-50 rounded-lg p-2">
-              <div className="text-xs text-orange-600 mb-0.5">COGS</div>
-              <div className={cn("font-bold text-orange-900", compact ? "text-sm" : "text-lg")}>
-                {formatCurrency(totals.cogs)}
-              </div>
-            </div>
-            {!compact && (
-              <div className="bg-green-50 rounded-lg p-2">
-                <div className="text-xs text-green-600 mb-0.5">Gross Profit</div>
-                <div className={cn("font-bold text-green-900", "text-lg")}>
-                  {formatCurrency(totals.grossProfit)}
-                </div>
-              </div>
-            )}
+        <div className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-3")}>
+          <div className="p-2 bg-red-50 rounded-lg text-center">
+            <p className={cn("font-bold text-red-900", compact ? "text-sm" : "text-lg")}>{fmt(totalCogs)}</p>
+            <p className="text-[10px] text-red-600">Total COGS</p>
           </div>
-        )}
-
-        {/* Margin indicator */}
-        {totals && totals.revenue > 0 && (
-          <div className="flex items-center justify-between bg-gray-50 rounded-lg p-2">
-            <span className="text-sm text-gray-600">Gross Margin</span>
-            <div className="flex items-center gap-2">
-              {totals.marginPercent >= 40 ? (
-                <TrendingUp className="w-4 h-4 text-green-600" />
-              ) : totals.marginPercent < 25 ? (
-                <TrendingDown className="w-4 h-4 text-red-600" />
-              ) : null}
-              <span
-                className={cn(
-                  "font-bold text-lg",
-                  totals.marginPercent >= 40
-                    ? "text-green-600"
-                    : totals.marginPercent < 25
-                    ? "text-red-600"
-                    : "text-yellow-600"
-                )}
-              >
-                {formatPercent(totals.marginPercent)}
-              </span>
-            </div>
+          <div className="p-2 bg-blue-50 rounded-lg text-center">
+            <p className={cn("font-bold text-blue-900", compact ? "text-sm" : "text-lg")}>{fmt(avgCostPerUnit)}</p>
+            <p className="text-[10px] text-blue-600">Per Bottle</p>
           </div>
-        )}
-
-        {/* Low margin warning */}
-        {lowMarginProducts.length > 0 && (
-          <div className="flex items-start gap-2 bg-yellow-50 rounded-lg p-2 text-xs">
-            <AlertCircle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
-            <div className="text-yellow-800">
-              {lowMarginProducts.length} product{lowMarginProducts.length > 1 ? "s" : ""} with
-              margin below 30%
+          {!compact && (
+            <div className="p-2 bg-green-50 rounded-lg text-center">
+              <p className={cn("font-bold text-green-900 text-lg")}>{totalUnits.toLocaleString()}</p>
+              <p className="text-[10px] text-green-600">Units ({runCount} runs)</p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Top products */}
-        {topProducts.length > 0 && (
-          <div className="space-y-1">
-            <div className="text-xs text-gray-500 font-medium">Top Products</div>
-            {topProducts.map((product, idx) => (
-              <div
-                key={product.inventoryItemId || idx}
-                className="flex items-center justify-between py-1 border-b border-gray-100 last:border-0"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className={cn("truncate", compact ? "text-xs" : "text-sm")}>
-                    {product.productName || "Unknown"}
-                  </div>
-                  <div className="text-[10px] text-gray-400">
-                    {product.units} units sold
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className={cn("font-medium", compact ? "text-xs" : "text-sm")}>
-                    {formatCurrency(product.revenue)}
-                  </div>
+        {/* Cost breakdown bar */}
+        {totalCogs > 0 && (
+          <div>
+            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden flex">
+              {costBreakdown.map((item) => {
+                const pct = totalCogs > 0 ? (item.value / totalCogs) * 100 : 0;
+                if (pct < 0.5) return null;
+                return (
                   <div
-                    className={cn(
-                      "text-[10px]",
-                      product.marginPercent >= 40
-                        ? "text-green-600"
-                        : product.marginPercent < 25
-                        ? "text-red-600"
-                        : "text-gray-500"
-                    )}
-                  >
-                    {formatPercent(product.marginPercent)} margin
-                  </div>
-                </div>
-              </div>
-            ))}
+                    key={item.label}
+                    className={cn(item.color, "h-full")}
+                    style={{ width: `${pct}%` }}
+                    title={`${item.label}: ${fmt(item.value)} (${pct.toFixed(0)}%)`}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
+              {costBreakdown.map((item) => (
+                <span key={item.label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <span className={cn("w-2 h-2 rounded-full", item.color)} />
+                  {item.label}: {fmt(item.value)}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* View reports link */}
+        {/* Link to full report */}
         <div className="text-center pt-1">
           <Link
-            href="/reports"
+            href="/reports/cogs"
             className={cn(
               "text-blue-600 hover:text-blue-800 font-medium",
               compact ? "text-xs" : "text-sm"
             )}
           >
-            View Full Reports →
+            View Full COGS Report →
           </Link>
         </div>
       </div>
@@ -196,12 +134,12 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
 const config: WidgetConfig = {
   id: WIDGET_IDS.COGS_SUMMARY,
   title: "COGS Summary",
-  description: "Cost of goods sold and margin analysis",
+  description: "Year-to-date cost of goods sold breakdown",
   icon: DollarSign,
-  category: "reports",
+  category: "inventory",
   component: COGSSummaryWidget,
   defaultSize: "md",
-  allowedSizes: ["sm", "md", "lg"],
+  allowedSizes: ["sm", "md"],
   supportsRefresh: true,
   defaultRefreshInterval: 600000, // 10 minutes
 };
