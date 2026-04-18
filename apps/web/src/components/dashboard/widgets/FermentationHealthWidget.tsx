@@ -104,6 +104,8 @@ function FermentationProgressBar({
  */
 export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
   const [showAll, setShowAll] = useState(false);
+  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"days_asc" | "days_desc" | "progress_asc" | "progress_desc">("days_asc");
   // Use both getRecentBatches and getTasks for combined data
   const { data: batchData, isPending: batchPending, isFetching: batchFetching, error: batchError, refetch: refetchBatches } = trpc.dashboard.getRecentBatches.useQuery();
   const { data: tasksData, isFetching: tasksFetching, refetch: refetchTasks } = trpc.dashboard.getTasks.useQuery({ limit: 50 });
@@ -158,6 +160,24 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
   const nearDryCount = batches.filter((b) => b.fermentationStage === "approaching_dry" && !b.isStalled).length;
   const terminalCount = batches.filter((b) => b.fermentationStage === "terminal" && !b.isStalled).length;
 
+  // Filter by stage
+  const filteredBatches = stageFilter === "all"
+    ? batches
+    : stageFilter === "stalled"
+      ? batches.filter((b) => b.isStalled)
+      : batches.filter((b) => b.fermentationStage === stageFilter && !b.isStalled);
+
+  // Sort
+  const sortedBatches = [...filteredBatches].sort((a, b) => {
+    switch (sortBy) {
+      case "days_asc": return a.daysActive - b.daysActive;
+      case "days_desc": return b.daysActive - a.daysActive;
+      case "progress_asc": return a.percentFermented - b.percentFermented;
+      case "progress_desc": return b.percentFermented - a.percentFermented;
+      default: return 0;
+    }
+  });
+
   return (
     <WidgetWrapper
       title="Fermentation Health"
@@ -173,43 +193,100 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
       emptyMessage="No active fermentations"
     >
       <div className="space-y-3">
-        {/* Stage summary */}
+        {/* Stage filter badges — click to filter */}
         <div className={cn("flex flex-wrap gap-1.5", compact && "gap-1")}>
+          <button
+            onClick={() => setStageFilter("all")}
+            className={cn(
+              "px-2 py-1 rounded-full text-xs font-medium transition-colors",
+              stageFilter === "all" ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            )}
+          >
+            All ({batches.length})
+          </button>
           {stalledCount > 0 && (
-            <div className="flex items-center gap-1 bg-red-50 text-red-700 px-2 py-1 rounded-full text-xs">
+            <button
+              onClick={() => setStageFilter(stageFilter === "stalled" ? "all" : "stalled")}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors",
+                stageFilter === "stalled" ? "bg-red-600 text-white" : "bg-red-50 text-red-700 hover:bg-red-100"
+              )}
+            >
               <AlertCircle className="w-3 h-3" />
               {stalledCount} stalled
-            </div>
+            </button>
           )}
           {earlyCount > 0 && (
-            <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-full text-xs">
-              <Activity className="w-3 h-3" />
+            <button
+              onClick={() => setStageFilter(stageFilter === "early" ? "all" : "early")}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors",
+                stageFilter === "early" ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+              )}
+            >
               {earlyCount} early
-            </div>
+            </button>
           )}
           {midCount > 0 && (
-            <div className="flex items-center gap-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded-full text-xs">
-              <TrendingDown className="w-3 h-3" />
+            <button
+              onClick={() => setStageFilter(stageFilter === "mid" ? "all" : "mid")}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors",
+                stageFilter === "mid" ? "bg-yellow-600 text-white" : "bg-yellow-50 text-yellow-700 hover:bg-yellow-100"
+              )}
+            >
               {midCount} mid
-            </div>
+            </button>
           )}
           {nearDryCount > 0 && (
-            <div className="flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-full text-xs">
-              <Beaker className="w-3 h-3" />
+            <button
+              onClick={() => setStageFilter(stageFilter === "approaching_dry" ? "all" : "approaching_dry")}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors",
+                stageFilter === "approaching_dry" ? "bg-orange-600 text-white" : "bg-orange-50 text-orange-700 hover:bg-orange-100"
+              )}
+            >
               {nearDryCount} near dry
-            </div>
+            </button>
           )}
           {terminalCount > 0 && (
-            <div className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-full text-xs">
-              <CheckCircle className="w-3 h-3" />
+            <button
+              onClick={() => setStageFilter(stageFilter === "terminal" ? "all" : "terminal")}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium transition-colors",
+                stageFilter === "terminal" ? "bg-green-600 text-white" : "bg-green-50 text-green-700 hover:bg-green-100"
+              )}
+            >
               {terminalCount} terminal
-            </div>
+            </button>
           )}
+        </div>
+
+        {/* Sort toggle */}
+        <div className="flex gap-1">
+          <button
+            onClick={() => setSortBy(sortBy === "days_asc" ? "days_desc" : "days_asc")}
+            className={cn(
+              "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+              sortBy.startsWith("days") ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            )}
+          >
+            Days {sortBy === "days_asc" ? "↑" : sortBy === "days_desc" ? "↓" : ""}
+          </button>
+          <button
+            onClick={() => setSortBy(sortBy === "progress_desc" ? "progress_asc" : "progress_desc")}
+            className={cn(
+              "px-2 py-0.5 rounded text-[10px] font-medium transition-colors",
+              sortBy.startsWith("progress") ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            )}
+          >
+            Progress {sortBy === "progress_desc" ? "↓" : sortBy === "progress_asc" ? "↑" : ""}
+          </button>
         </div>
 
         {/* Batch list */}
         <div className="space-y-2">
-          {(showAll ? batches : batches.slice(0, compact ? 3 : 5)).map((batch) => (
+          {(showAll ? sortedBatches : sortedBatches.slice(0, compact ? 3 : 5)).map((batch) => (
             <Link
               key={batch.id}
               href={`/batch/${batch.id}`}
@@ -252,7 +329,7 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
         </div>
 
         {/* View all toggle */}
-        {batches.length > (compact ? 3 : 5) && (
+        {sortedBatches.length > (compact ? 3 : 5) && (
           <div className="text-center pt-1">
             <button
               onClick={() => setShowAll(!showAll)}
@@ -261,7 +338,7 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
                 compact ? "text-xs" : "text-sm"
               )}
             >
-              {showAll ? "Show less ↑" : `View all ${batches.length} batches →`}
+              {showAll ? "Show less ↑" : `View all ${sortedBatches.length} batches →`}
             </button>
           </div>
         )}
