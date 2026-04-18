@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { DollarSign, Package, Droplets } from "lucide-react";
+import { DollarSign } from "lucide-react";
 import { trpc } from "@/utils/trpc";
 import { WidgetWrapper } from "./WidgetWrapper";
 import { WidgetProps, WidgetConfig } from "./types";
@@ -9,17 +9,12 @@ import { registerWidget, WIDGET_IDS } from "./registry";
 import { cn } from "@/lib/utils";
 
 function fmt(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
+  return `$${n.toFixed(2)}`;
 }
 
 /**
  * COGS Summary Widget
- * Shows year-to-date cost of goods sold breakdown
+ * Shows recent packaging run costs — what it costs to produce per bottle
  */
 export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
   const currentYear = new Date().getFullYear();
@@ -33,23 +28,12 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
     onRefresh?.();
   };
 
-  const totals = data?.totals;
-  const totalCogs = totals?.totalCogs || 0;
-  const totalUnits = totals?.totalUnits || 0;
-  const avgCostPerUnit = totals?.avgCostPerUnit || 0;
-  const runCount = data?.runs?.length || 0;
-
-  const costBreakdown = [
-    { label: "Fruit", value: totals?.totalFruitCost || 0, color: "bg-green-500" },
-    { label: "Additives", value: totals?.totalAdditiveCost || 0, color: "bg-purple-500" },
-    { label: "Packaging", value: totals?.totalPackagingCost || 0, color: "bg-blue-500" },
-    { label: "Labor", value: totals?.totalLaborCost || 0, color: "bg-amber-500" },
-    { label: "Overhead", value: totals?.totalOverheadCost || 0, color: "bg-gray-400" },
-  ];
+  const runs = data?.runs || [];
+  const recentRuns = runs.slice(0, compact ? 3 : 5);
 
   return (
     <WidgetWrapper
-      title={`COGS ${currentYear}`}
+      title={`Cost per Bottle ${currentYear}`}
       icon={DollarSign}
       compact={compact}
       isLoading={isPending}
@@ -58,7 +42,7 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
       onRefresh={handleRefresh}
       isRefreshing={isFetching}
       showRefresh
-      isEmpty={runCount === 0}
+      isEmpty={runs.length === 0}
       emptyState={
         <div className="text-center py-4">
           <DollarSign className="w-8 h-8 mx-auto text-gray-300 mb-2" />
@@ -66,55 +50,48 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
         </div>
       }
     >
-      <div className="space-y-3">
-        {/* Summary stats */}
-        <div className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-3")}>
-          <div className="p-2 bg-red-50 rounded-lg text-center">
-            <p className={cn("font-bold text-red-900", compact ? "text-sm" : "text-lg")}>{fmt(totalCogs)}</p>
-            <p className="text-[10px] text-red-600">Total COGS</p>
-          </div>
-          <div className="p-2 bg-blue-50 rounded-lg text-center">
-            <p className={cn("font-bold text-blue-900", compact ? "text-sm" : "text-lg")}>{fmt(avgCostPerUnit)}</p>
-            <p className="text-[10px] text-blue-600">Per Bottle</p>
-          </div>
-          {!compact && (
-            <div className="p-2 bg-green-50 rounded-lg text-center">
-              <p className={cn("font-bold text-green-900 text-lg")}>{totalUnits.toLocaleString()}</p>
-              <p className="text-[10px] text-green-600">Units ({runCount} runs)</p>
+      <div className="space-y-2">
+        {/* Recent runs with cost per bottle */}
+        {recentRuns.map((run: any) => (
+          <Link
+            key={run.id}
+            href={`/packaging/${run.id}`}
+            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <div className="min-w-0 flex-1">
+              <p className={cn("font-medium truncate", compact ? "text-xs" : "text-sm")}>
+                {run.batchName}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {run.unitsProduced} units · {run.volumeTakenL.toFixed(0)}L
+              </p>
             </div>
-          )}
-        </div>
+            <div className="text-right shrink-0 ml-3">
+              <p className={cn("font-bold", compact ? "text-sm" : "text-base", run.costPerUnit > 5 ? "text-red-700" : run.costPerUnit > 3 ? "text-amber-700" : "text-green-700")}>
+                {fmt(run.costPerUnit)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">per bottle</p>
+            </div>
+          </Link>
+        ))}
 
-        {/* Cost breakdown bar */}
-        {totalCogs > 0 && (
-          <div>
-            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden flex">
-              {costBreakdown.map((item) => {
-                const pct = totalCogs > 0 ? (item.value / totalCogs) * 100 : 0;
-                if (pct < 0.5) return null;
-                return (
-                  <div
-                    key={item.label}
-                    className={cn(item.color, "h-full")}
-                    style={{ width: `${pct}%` }}
-                    title={`${item.label}: ${fmt(item.value)} (${pct.toFixed(0)}%)`}
-                  />
-                );
-              })}
-            </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5">
-              {costBreakdown.map((item) => (
-                <span key={item.label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                  <span className={cn("w-2 h-2 rounded-full", item.color)} />
-                  {item.label}: {fmt(item.value)}
-                </span>
-              ))}
-            </div>
+        {runs.length > recentRuns.length && (
+          <p className="text-xs text-muted-foreground text-center">
+            +{runs.length - recentRuns.length} more runs
+          </p>
+        )}
+
+        {/* Average */}
+        {runs.length > 0 && (
+          <div className="pt-2 border-t text-center">
+            <p className="text-xs text-muted-foreground">
+              Avg cost/bottle: <span className="font-bold text-gray-900">{fmt(data?.totals?.avgCostPerUnit || 0)}</span>
+              {" "}across {runs.length} runs
+            </p>
           </div>
         )}
 
-        {/* Link to full report */}
-        <div className="text-center pt-1">
+        <div className="text-center">
           <Link
             href="/reports/cogs"
             className={cn(
@@ -122,7 +99,7 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
               compact ? "text-xs" : "text-sm"
             )}
           >
-            View Full COGS Report →
+            Full COGS Report →
           </Link>
         </div>
       </div>
@@ -133,15 +110,15 @@ export function COGSSummaryWidget({ compact, onRefresh }: WidgetProps) {
 // Register the widget
 const config: WidgetConfig = {
   id: WIDGET_IDS.COGS_SUMMARY,
-  title: "COGS Summary",
-  description: "Year-to-date cost of goods sold breakdown",
+  title: "Cost per Bottle",
+  description: "Recent packaging run costs per bottle",
   icon: DollarSign,
   category: "inventory",
   component: COGSSummaryWidget,
   defaultSize: "md",
   allowedSizes: ["sm", "md"],
   supportsRefresh: true,
-  defaultRefreshInterval: 600000, // 10 minutes
+  defaultRefreshInterval: 600000,
 };
 
 registerWidget(config);
