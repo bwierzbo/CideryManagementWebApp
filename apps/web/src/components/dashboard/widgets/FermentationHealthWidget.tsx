@@ -343,8 +343,8 @@ export function FermentationHealthWidget({ compact, onRefresh }: WidgetProps) {
           </div>
         )}
 
-        {/* Aging Products Section */}
-        {(() => {
+        {/* Aging Products Section — hidden when filtering by stage */}
+        {stageFilter === "all" && (() => {
           const agingBatches = (batchData?.batches || [])
             .filter((b: any) => agingOnlyTypes.has((b as any).productType || ""))
             .map((b: any) => ({
