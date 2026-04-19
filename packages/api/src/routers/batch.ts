@@ -553,6 +553,8 @@ const updateBatchSchema = z.object({
     .or(z.string().transform((val) => new Date(val)))
     .optional(),
   notes: z.string().optional(),
+  originalGravity: z.number().min(0.990).max(1.200).optional().nullable(),
+  finalGravity: z.number().min(0.990).max(1.200).optional().nullable(),
   reconciliationStatus: z.enum(["verified", "duplicate", "excluded", "pending"]).optional(),
   reconciliationNotes: z.string().optional(),
 });
@@ -2807,6 +2809,10 @@ export const batchRouter = router({
         if (input.vesselId !== undefined) updateData.vesselId = input.vesselId;
         if (input.startDate) updateData.startDate = input.startDate;
         if (input.endDate) updateData.endDate = input.endDate;
+        if (input.originalGravity !== undefined)
+          updateData.originalGravity = input.originalGravity?.toString() ?? null;
+        if (input.finalGravity !== undefined)
+          updateData.finalGravity = input.finalGravity?.toString() ?? null;
         if (input.reconciliationStatus !== undefined)
           updateData.reconciliationStatus = input.reconciliationStatus;
         if (input.reconciliationNotes !== undefined)
