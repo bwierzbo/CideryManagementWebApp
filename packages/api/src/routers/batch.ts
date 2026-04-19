@@ -5809,6 +5809,23 @@ export const batchRouter = router({
             }
           }
 
+          // Audit log for racking operation
+          await tx.insert(auditLogs).values({
+            tableName: 'batches',
+            recordId: input.batchId,
+            operation: 'update',
+            oldData: { currentVolume: volumeBeforeL.toString() },
+            newData: { currentVolume: updatedBatch[0].currentVolume },
+            diffData: {
+              currentVolume: {
+                old: volumeBeforeL.toString(),
+                new: updatedBatch[0].currentVolume,
+              },
+            },
+            changedAt: input.rackedAt || new Date(),
+            reason: resultMessage,
+          });
+
           return {
             success: true,
             message: resultMessage,

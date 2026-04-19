@@ -176,7 +176,8 @@ async function fetchBulkVolumeData(batchIds: string[]) {
         ),
       ),
 
-    // 2b. Merge history (juice added from press runs, juice purchases, batch transfers post-creation)
+    // 2b. Merge history (juice added from press runs, juice purchases, etc.)
+    // Exclude source_type = 'batch_transfer' — those are already tracked via batchTransfers above.
     db
       .select({
         targetBatchId: batchMergeHistory.targetBatchId,
@@ -188,6 +189,7 @@ async function fetchBulkVolumeData(batchIds: string[]) {
         and(
           inArray(batchMergeHistory.targetBatchId, batchIds),
           isNull(batchMergeHistory.deletedAt),
+          sql`${batchMergeHistory.sourceType} != 'batch_transfer'`,
         ),
       ),
 

@@ -4482,10 +4482,6 @@ export const appRouter = router({
                   (sourceProductType === "juice" || destProductType === "juice") ? "juice" :
                   (sourceProductType === "perry" || destProductType === "perry") ? "perry" : "cider";
 
-                // No batchMergeHistory insert here — the batchTransfers record (created below)
-                // already captures this volume movement. Creating both would double-count
-                // the volume in TTB reconciliation (mergesIn + transfersIn on destination).
-
                 blendNote = isBrandyToPommeau
                   ? `🍎🥃 Brandy added to pommeau! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${otherVolumeL.toFixed(1)}L pommeau @ ${otherAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`
                   : `🍎🥃 Pommeau blend created! ${brandyVolumeL.toFixed(1)}L brandy @ ${brandyAbv}% ABV + ${otherVolumeL.toFixed(1)}L ${otherLabel} @ ${otherAbv}% ABV = ${newVolumeL.toFixed(1)}L @ ${newEstimatedAbv}% ABV`;
@@ -4548,6 +4544,25 @@ export const appRouter = router({
                 .set(updateData)
                 .where(eq(batches.id, destBatch[0].id))
                 .returning();
+
+              // Record merge history for TTB reconciliation and audit trail.
+              // Uses sourceType 'batch_transfer' so the validation/TTB code can
+              // distinguish this from juice/press-run merges and avoid double-counting
+              // with the batchTransfers record created below.
+              await tx.insert(batchMergeHistory).values({
+                targetBatchId: destBatch[0].id,
+                sourceBatchId: sourceBatch[0].id,
+                sourceType: "batch_transfer",
+                volumeAdded: input.volumeL.toString(),
+                volumeAddedUnit: "L",
+                targetVolumeBefore: destCurrentVolumeL.toString(),
+                targetVolumeBeforeUnit: "L",
+                targetVolumeAfter: newVolumeL.toString(),
+                targetVolumeAfterUnit: "L",
+                mergedAt: input.transferDate || new Date(),
+                mergedBy: ctx.session?.user?.id,
+                createdAt: new Date(),
+              });
 
               // Volume ledger — blend inflow on destination batch
               const blendEventDate = input.transferDate || new Date();
@@ -5171,6 +5186,7 @@ export const appRouter = router({
                     .update(batches)
                     .set({
                       currentVolume: remainingVolumeL.toString(),
+                      currentVolumeLiters: remainingVolumeL.toString(),
                       currentVolumeUnit: "L",
                       updatedAt: new Date(),
                     })
@@ -5181,6 +5197,7 @@ export const appRouter = router({
                     .update(batches)
                     .set({
                       currentVolume: "0",
+                      currentVolumeLiters: "0",
                       status: "completed",
                       vesselId: null,
                       endDate: new Date(),
@@ -5197,6 +5214,7 @@ export const appRouter = router({
                   .set({
                     vesselId: input.toVesselId,
                     currentVolume: input.volumeL.toString(),
+                    currentVolumeLiters: input.volumeL.toString(),
                     currentVolumeUnit: "L",
                     updatedAt: new Date(),
                   })
