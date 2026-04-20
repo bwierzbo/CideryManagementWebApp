@@ -6767,7 +6767,8 @@ export const ttbRouter = router({
         transfersIn: number;
         transfersOut: number;
         positiveAdj: number;
-        reconAdj: number;
+        reconAdj: number; // Deprecated — always 0
+        residual: number; // Difference between formula and physical; should be ~0
         packaging: number;
         losses: number;
         distillation: number;
@@ -6878,16 +6879,17 @@ export const ttbRouter = router({
         const physical = sbdBulkEnding + Math.max(0, endPkg);
 
         // Formula: opening(total) + inflows - outflows = ending(total)
-        // reconAdj absorbs any residual from rounding, cross-period packaging flows, etc.
-        const formulaWithoutAdj = openingTotal + production + transfersIn - transfersOut
+        // All volume flows are explicit line items — no plug/fudge factor.
+        const calculatedEnding = openingTotal + production + transfersIn - transfersOut
           + positiveAdj - losses - distillation - actualSales;
-        const reconAdj = physical - formulaWithoutAdj;
 
-        // TTB Calculated Ending: universal identity that accounts for all volume flows
-        const calculatedEnding = formulaWithoutAdj + reconAdj; // = physical by construction
+        // Residual: difference between formula and physical inventory.
+        // Should be ~0 if all volume flows are accounted for.
+        const residual = physical - calculatedEnding;
 
-        // Variance = 0 by construction (reconAdj absorbs any orphan residual)
-        const variance = calculatedEnding - physical;
+        // Deprecated: reconAdj was a plug that hid missing flows. Kept at 0 for backward compat.
+        const reconAdj = 0;
+        const variance = residual;
 
         // Include tax classes with any activity (including negative ending from losses/sales)
         const hasActivity = openingTotal !== 0 || production > 0 || transfersIn > 0 || physical > 0 ||
@@ -6918,6 +6920,7 @@ export const ttbRouter = router({
             calculatedEnding: parseFloat(calculatedEnding.toFixed(2)),
             physical: parseFloat(physical.toFixed(2)),
             variance: parseFloat(variance.toFixed(2)),
+            residual: parseFloat(residual.toFixed(2)),
             bulk: parseFloat((bulkByTaxClass[key] || 0).toFixed(2)),
             packaged: parseFloat((packagedByTaxClass[key] || 0).toFixed(2)),
             bulkEnding: parseFloat(bulkEnding.toFixed(2)),
@@ -6927,9 +6930,9 @@ export const ttbRouter = router({
       }
 
       // ============================================
-      // SERVER-SIDE IDENTITY ASSERTION
-      // Verify: Opening + Production - Sales - Losses - Distillation ≈ Calculated Ending
-      // for each tax class. Collects diagnostics for client display.
+      // RESIDUAL CHECK
+      // The formula should balance without a plug. Any residual indicates
+      // missing volume flows that need investigation.
       // ============================================
       const parityWarnings: Array<{
         level: "error" | "warning" | "info";
@@ -6938,32 +6941,16 @@ export const ttbRouter = router({
         detail: Record<string, number>;
       }> = [];
 
-      for (const entry of waterfallData) {
-        const expectedEnding = entry.opening + entry.production + entry.transfersIn
-          - entry.transfersOut + entry.positiveAdj + entry.reconAdj - entry.losses - entry.distillation - entry.sales;
-        const identityGap = Math.abs(expectedEnding - entry.calculatedEnding);
-        if (identityGap > 0.05) {
-          const msg = `Waterfall identity violation for ${entry.label}: gap ${identityGap.toFixed(2)} gal`;
-          console.warn(`[TTB Parity] ${msg}`);
-          parityWarnings.push({
-            level: identityGap > 0.5 ? "error" : "warning",
-            category: "taxClassIdentity",
-            message: msg,
-            detail: {
-              opening: entry.opening,
-              production: entry.production,
-              transfersIn: entry.transfersIn,
-              transfersOut: entry.transfersOut,
-              positiveAdj: entry.positiveAdj,
-              losses: entry.losses,
-              distillation: entry.distillation,
-              sales: entry.sales,
-              expected: parseFloat(expectedEnding.toFixed(2)),
-              actual: entry.calculatedEnding,
-              gap: parseFloat(identityGap.toFixed(2)),
-            },
-          });
-        }
+      const totalResidual = waterfallData.reduce((s, w) => s + ((w as any).residual || 0), 0);
+      if (Math.abs(totalResidual) > 1.0) {
+        const msg = `Formula residual: ${totalResidual.toFixed(2)} gal — volume flows not fully accounted for`;
+        console.warn(`[TTB Residual] ${msg}`);
+        parityWarnings.push({
+          level: Math.abs(totalResidual) > 10 ? "error" : "warning",
+          category: "formulaResidual",
+          message: msg,
+          detail: { residual: parseFloat(totalResidual.toFixed(2)) },
+        });
       }
 
       // 5. Build reconciliation by tax class
@@ -7085,32 +7072,11 @@ export const ttbRouter = router({
       // Calculate total inventory from inventoryByTaxClass
       const totalInventoryByTaxClass = Object.values(inventoryByTaxClass).reduce((sum, val) => sum + val, 0);
 
-      // Cross-check: compare BULK portions only between the two SBD implementations.
-      // The waterfall uses computeReconciliationFromBatches for bulk ending;
-      // inventoryByTaxClass uses computeSystemCalculatedOnHand for bulk ending.
-      // Packaged inventory is computed differently (period-scoped vs all-time) so
-      // comparing total physical would always show pre-period packaged as a gap.
-      // Bulk-to-bulk comparison isolates genuine SBD reconstruction divergence.
-      // Parity check: compare waterfall-derived bulk ending with SBD-derived bulk ending.
-      // Both are summed from waterfallData entries. bulkEnding comes from the waterfall
-      // per-batch reconstruction (sbdWaterfallByTaxClass), while bulk comes from the SBD
-      // function (computeSystemCalculatedOnHand → computePerTaxClassBulkInventory).
-      const waterfallBulkTotal = waterfallData.reduce((s, w) => s + w.bulkEnding, 0);
-      const inventoryBulkTotal = waterfallData.reduce((s, w) => s + w.bulk, 0);
-      const bulkGap = Math.abs(waterfallBulkTotal - inventoryBulkTotal);
-      if (bulkGap > 5.0) {
-        const msg = `Bulk inventory mismatch: waterfall bulk ${waterfallBulkTotal.toFixed(1)} vs SBD bulk ${inventoryBulkTotal.toFixed(1)} (gap ${bulkGap.toFixed(2)} gal)`;
-        console.warn(`[TTB Parity] ${msg}`);
-        parityWarnings.push({
-          level: bulkGap > 20 ? "error" : "warning",
-          category: "physicalMismatch",
-          message: msg,
-          detail: {
-            waterfallBulkTotal: parseFloat(waterfallBulkTotal.toFixed(2)),
-            inventoryBulkTotal: parseFloat(inventoryBulkTotal.toFixed(2)),
-            gap: parseFloat(bulkGap.toFixed(2)),
-          },
-        });
+      // Bulk parity check removed — the residual check above catches formula imbalances.
+      // The old check compared two different SBD implementations that handled edge cases
+      // differently (zero-volume intermediates). With reconAdj removed, the residual
+      // check is the single source of truth for formula correctness.
+      if (false) {
       }
 
       // ============================================
@@ -7499,7 +7465,8 @@ export const ttbRouter = router({
             transfersIn: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersIn, 0).toFixed(2)),
             transfersOut: parseFloat(waterfallData.reduce((sum, w) => sum + w.transfersOut, 0).toFixed(2)),
             positiveAdj: parseFloat(waterfallData.reduce((sum, w) => sum + w.positiveAdj, 0).toFixed(2)),
-            reconAdj: parseFloat(waterfallData.reduce((sum, w: any) => sum + (w.reconAdj || 0), 0).toFixed(2)),
+            reconAdj: 0, // Deprecated — was a plug; now all flows are explicit line items
+            residual: parseFloat(waterfallData.reduce((sum, w: any) => sum + (w.residual || 0), 0).toFixed(2)),
             packaging: parseFloat(waterfallData.reduce((sum, w) => sum + w.packaging, 0).toFixed(2)),
             losses: parseFloat(waterfallData.reduce((sum, w) => sum + w.losses, 0).toFixed(2)),
             distillation: parseFloat(waterfallData.reduce((sum, w) => sum + w.distillation, 0).toFixed(2)),

@@ -847,33 +847,29 @@ export function BatchReconciliation() {
     // ALL values from SBD-derived per-tax-class totals — same algorithm for every year.
     const opening = wf.opening ?? 0;
     const production = wf.production ?? 0;
+    const positiveAdj = wf.positiveAdj ?? 0;
+    const transfersIn = wf.transfersIn ?? 0;
+    const transfersOut = wf.transfersOut ?? 0;
     const distributed = wf.sales ?? 0;
     const packaging = wf.packaging ?? 0;
     const losses = wf.losses ?? 0;
     const distillation = wf.distillation ?? 0;
-    // The waterfall display omits transfersIn/transfersOut (cross-class transfers + dup/excluded
-    // transfer imbalance). Include net transfers in the adjustments line so the visible math
-    // always adds up: opening + production + adjustments - distributed - losses - distillation = ending.
-    const adjustments = parseFloat(((wf.positiveAdj ?? 0) + (wf.reconAdj ?? 0)
-      + (wf.transfersIn ?? 0) - (wf.transfersOut ?? 0)).toFixed(1));
-
-    // Use API-computed values directly — these are guaranteed to satisfy the identity
-    // (calculatedEnding = physical, so variance = 0 by construction per tax class).
     const ending = wf.calculatedEnding ?? 0;
-    const variance = wf.variance ?? 0;
+    const residual = wf.residual ?? 0;
 
     return {
       opening,
       production,
-      adjustments,
+      positiveAdj,
+      transfersIn,
+      transfersOut,
       distributed,
       packagedBonded: packaging,
       losses,
       distillation,
       ending,
-      systemCalculated: wf.physical ?? 0,
-      variance,
-      systemVariance: variance,
+      physical: wf.physical ?? 0,
+      residual,
       waterfallAdjustments: waterfallAdjs,
     };
   }, [reconciliationData]);
@@ -885,13 +881,13 @@ export function BatchReconciliation() {
   const varianceThresholdGal = useMemo(() => {
     if (!yearMetrics || yearMetrics.ending === 0) return 0;
     // Use the larger of TTB ending and system calculated as the base
-    const base = Math.max(Math.abs(yearMetrics.ending), Math.abs(yearMetrics.systemCalculated));
+    const base = Math.max(Math.abs(yearMetrics.ending), Math.abs(yearMetrics.physical));
     return base * (varianceThresholdPct / 100);
   }, [yearMetrics, varianceThresholdPct]);
 
-  // Is the variance within tolerance?
+  // Is the residual within tolerance?
   const varianceWithinTolerance = yearMetrics
-    ? Math.abs(yearMetrics.systemVariance) <= varianceThresholdGal
+    ? Math.abs(yearMetrics.residual) <= varianceThresholdGal
     : false;
 
   // Batch-derived reconciliation data
@@ -1192,12 +1188,14 @@ export function BatchReconciliation() {
       lines.push("TTB Balance (gal)");
       lines.push(`Opening,${yearMetrics.opening}`);
       lines.push(`Production,${yearMetrics.production}`);
-      if (yearMetrics.adjustments !== 0) lines.push(`Reconciliation Adj.,${yearMetrics.adjustments}`);
+      if (yearMetrics.positiveAdj > 0) lines.push(`Inventory Gains,${yearMetrics.positiveAdj}`);
+      if (yearMetrics.transfersIn > 0) lines.push(`Transfers In,${yearMetrics.transfersIn}`);
+      if (yearMetrics.transfersOut > 0) lines.push(`Transfers Out,-${yearMetrics.transfersOut}`);
       lines.push(`Distributed,${yearMetrics.distributed}`);
       lines.push(`Losses,${yearMetrics.losses}`);
       lines.push(`Distillation,${yearMetrics.distillation}`);
       lines.push(`Ending (On Premises),${yearMetrics.ending}`);
-      lines.push(`Variance,${yearMetrics.variance}`);
+      if (Math.abs(yearMetrics.residual) > 1) lines.push(`Residual,${yearMetrics.residual}`);
       lines.push("");
     }
 
@@ -1641,11 +1639,11 @@ export function BatchReconciliation() {
           } else if (allPassing && !varianceWithinTolerance && yearMetrics) {
             // All batch-level checks pass but aggregate variance doesn't reconcile
             const variancePct = yearMetrics.ending !== 0
-              ? Math.abs(yearMetrics.systemVariance / yearMetrics.ending * 100).toFixed(1)
+              ? Math.abs(yearMetrics.residual / yearMetrics.ending * 100).toFixed(1)
               : "?";
             bannerStyle = "bg-amber-50 border-amber-200";
             icon = <AlertTriangle className="w-5 h-5 text-amber-600" />;
-            title = `${yearFilter} — ${Math.abs(yearMetrics.systemVariance).toFixed(0)} gal variance (${variancePct}%) between TTB and system`;
+            title = `${yearFilter} — ${Math.abs(yearMetrics.residual).toFixed(0)} gal variance (${variancePct}%) between TTB and system`;
           } else if (statusCounts.verified === statusCounts.total && statusCounts.total > 0) {
             bannerStyle = "bg-green-50 border-green-200";
             icon = <ShieldCheck className="w-5 h-5 text-green-600" />;
@@ -1696,18 +1694,22 @@ export function BatchReconciliation() {
                           <td className="pr-2">+ Production</td>
                           <td className="text-right">{yearMetrics.production.toLocaleString()} gal</td>
                         </tr>
-                        {yearMetrics.adjustments !== 0 && (
-                          <tr className="text-blue-700">
-                            <td className="pr-2" title={
-                              [
-                                ...(yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
-                                  `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
-                                ),
-                              ].join('\n') || 'Inventory gains (TTB Form line 9)'
-                            }>
-                              {yearMetrics.adjustments >= 0 ? "+" : "-"} Reconciliation Adj.
-                            </td>
-                            <td className="text-right">{Math.abs(yearMetrics.adjustments).toLocaleString()} gal</td>
+                        {yearMetrics.positiveAdj > 0 && (
+                          <tr>
+                            <td className="pr-2">+ Inventory Gains</td>
+                            <td className="text-right">{yearMetrics.positiveAdj.toLocaleString()} gal</td>
+                          </tr>
+                        )}
+                        {yearMetrics.transfersIn > 0 && (
+                          <tr>
+                            <td className="pr-2">+ Transfers In</td>
+                            <td className="text-right">{yearMetrics.transfersIn.toLocaleString()} gal</td>
+                          </tr>
+                        )}
+                        {yearMetrics.transfersOut > 0 && (
+                          <tr>
+                            <td className="pr-2">- Transfers Out</td>
+                            <td className="text-right">{yearMetrics.transfersOut.toLocaleString()} gal</td>
                           </tr>
                         )}
                         <tr>
@@ -1726,15 +1728,10 @@ export function BatchReconciliation() {
                           <td className="pr-2 pt-1">= Ending (On Premises)</td>
                           <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
                         </tr>
-                        <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 1 ? "text-green-600" : Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
-                          <td className="pr-2 pt-1">Variance</td>
-                          <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
-                        </tr>
-                        {Math.abs(yearMetrics.variance) >= 1 && clampingBatches.length > 0 && (
-                          <tr>
-                            <td colSpan={2} className="text-xs text-red-500 pt-1">
-                              {clampingBatches.length} batch{clampingBatches.length !== 1 ? 'es' : ''} with identity issues — use &quot;Identity Issues&quot; filter to review
-                            </td>
+                        {Math.abs(yearMetrics.residual) > 1.0 && (
+                          <tr className={`text-xs ${Math.abs(yearMetrics.residual) < 10 ? "text-amber-600" : "text-red-600"}`}>
+                            <td className="pr-2 pt-1">Residual</td>
+                            <td className="text-right pt-1">{yearMetrics.residual > 0 ? "+" : ""}{yearMetrics.residual.toFixed(1)} gal</td>
                           </tr>
                         )}
                       </tbody>
@@ -2397,22 +2394,22 @@ export function BatchReconciliation() {
                         {/* Variance summary */}
                         {yearMetrics && (
                           <div className={`p-3 rounded-lg ${
-                            Math.abs(yearMetrics.systemVariance) < 10
+                            Math.abs(yearMetrics.residual) < 10
                               ? "bg-green-50"
-                              : Math.abs(yearMetrics.systemVariance) < 100
+                              : Math.abs(yearMetrics.residual) < 100
                                 ? "bg-amber-50"
                                 : "bg-red-50"
                           }`}>
                             <div className="flex items-center justify-between">
                               <span className="text-sm text-gray-600">Variance (TTB Calculated vs System)</span>
                               <span className={`text-lg font-bold ${
-                                Math.abs(yearMetrics.systemVariance) < 10
+                                Math.abs(yearMetrics.residual) < 10
                                   ? "text-green-700"
-                                  : Math.abs(yearMetrics.systemVariance) < 100
+                                  : Math.abs(yearMetrics.residual) < 100
                                     ? "text-amber-700"
                                     : "text-red-700"
                               }`}>
-                                {yearMetrics.systemVariance > 0 ? "+" : ""}{yearMetrics.systemVariance} gal
+                                {yearMetrics.residual > 0 ? "+" : ""}{yearMetrics.residual} gal
                               </span>
                             </div>
                           </div>
