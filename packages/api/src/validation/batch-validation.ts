@@ -98,6 +98,11 @@ interface MergeHistoryRow {
   volumeAddedUnit: string | null;
 }
 
+interface MergeOutRow {
+  sourceBatchId: string;
+  volumeAdded: string | null;
+}
+
 interface DistillationRow {
   source_batch_id: string;
   source_volume_liters: string | null;
@@ -123,6 +128,7 @@ async function fetchBulkVolumeData(batchIds: string[]) {
       transfersOutByBatch: new Map<string, TransferOut[]>(),
       transfersInByBatch: new Map<string, TransferIn[]>(),
       mergeHistoryByBatch: new Map<string, MergeHistoryRow[]>(),
+      mergeOutByBatch: new Map<string, MergeOutRow[]>(),
       bottleRunsByBatch: new Map<string, BottleRunRow[]>(),
       kegFillsByBatch: new Map<string, KegFillRow[]>(),
       adjustmentsByBatch: new Map<string, AdjustmentRow[]>(),
@@ -137,6 +143,7 @@ async function fetchBulkVolumeData(batchIds: string[]) {
     transfersOut,
     transfersIn,
     mergeHistory,
+    mergeOuts,
     bottles,
     kegs_,
     adjustments,
@@ -190,6 +197,22 @@ async function fetchBulkVolumeData(batchIds: string[]) {
           inArray(batchMergeHistory.targetBatchId, batchIds),
           isNull(batchMergeHistory.deletedAt),
           sql`${batchMergeHistory.sourceType} != 'batch_transfer'`,
+        ),
+      ),
+
+    // 2c. Merge-outs (volume leaving this batch as source of a merge, e.g. pommeau creation)
+    // Only count source_type = 'batch' (not 'batch_transfer' which is tracked via batchTransfers)
+    db
+      .select({
+        sourceBatchId: batchMergeHistory.sourceBatchId,
+        volumeAdded: batchMergeHistory.volumeAdded,
+      })
+      .from(batchMergeHistory)
+      .where(
+        and(
+          inArray(batchMergeHistory.sourceBatchId, batchIds),
+          isNull(batchMergeHistory.deletedAt),
+          sql`${batchMergeHistory.sourceType} = 'batch'`,
         ),
       ),
 
@@ -299,6 +322,7 @@ async function fetchBulkVolumeData(batchIds: string[]) {
     transfersOutByBatch: groupBy(transfersOut as TransferOut[], (r) => r.sourceBatchId),
     transfersInByBatch: groupBy(transfersIn as TransferIn[], (r) => r.destinationBatchId),
     mergeHistoryByBatch: groupBy(mergeHistory as MergeHistoryRow[], (r) => r.targetBatchId),
+    mergeOutByBatch: groupBy(mergeOuts as MergeOutRow[], (r) => r.sourceBatchId),
     bottleRunsByBatch: groupBy(bottles as BottleRunRow[], (r) => r.batchId),
     kegFillsByBatch: groupBy(kegs_ as KegFillRow[], (r) => r.batchId),
     adjustmentsByBatch: groupBy(adjustments as AdjustmentRow[], (r) => r.batchId),
@@ -371,6 +395,8 @@ function checkVolumeBalance(
     .reduce((s, r) => s + num(r.volumeLoss), 0);
   const filterLosses = data.filters.reduce((s, f) => s + num(f.volumeLoss), 0);
   const distillation = data.distillations.reduce((s, d) => s + num(d.source_volume_liters), 0);
+  // Merge-outs: volume leaving this batch as source of a merge (e.g. pommeau creation)
+  const mergeOuts = data.mergeOuts.reduce((s, m) => s + num(m.volumeAdded), 0);
 
   // Transfer-created batches use 0 initial (volume comes from transfer-in).
   // Only zero initial if transfers account for most of the initial volume (>= 90%).
@@ -392,7 +418,8 @@ function checkVolumeBalance(
     distillation +
     adjustments - // adjustments can be positive (gain) or negative (loss)
     rackingLosses -
-    filterLosses;
+    filterLosses -
+    mergeOuts;
 
   const discrepancy = current - expectedCurrent;
   const absDiscrepancy = Math.abs(discrepancy);
@@ -522,6 +549,7 @@ function getBatchVolumeData(
     transfersOut: bulkData.transfersOutByBatch.get(batchId) || [],
     transfersIn: bulkData.transfersInByBatch.get(batchId) || [],
     mergeHistory: bulkData.mergeHistoryByBatch.get(batchId) || [],
+    mergeOuts: bulkData.mergeOutByBatch.get(batchId) || [],
     bottleRuns: bulkData.bottleRunsByBatch.get(batchId) || [],
     kegFills: bulkData.kegFillsByBatch.get(batchId) || [],
     adjustments: bulkData.adjustmentsByBatch.get(batchId) || [],
