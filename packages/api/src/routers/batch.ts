@@ -7341,6 +7341,7 @@ export const batchRouter = router({
         .orderBy(asc(batchVolumeAdjustments.adjustmentDate));
 
       // 8. Merge history (juice added post-creation from press runs, juice purchases, etc.)
+      // Exclude source_type = 'batch_transfer' — those are already tracked via batchTransfers above.
       const merges = await db
         .select({
           id: batchMergeHistory.id,
@@ -7353,6 +7354,7 @@ export const batchRouter = router({
           and(
             eq(batchMergeHistory.targetBatchId, batchId),
             isNull(batchMergeHistory.deletedAt),
+            sql`${batchMergeHistory.sourceType} != 'batch_transfer'`,
           ),
         )
         .orderBy(asc(batchMergeHistory.mergedAt));
