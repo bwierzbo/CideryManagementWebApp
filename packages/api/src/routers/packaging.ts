@@ -570,6 +570,39 @@ export const packagingRouter = router({
           const effectivelyEmptyCheck = newVolumeL <= MIN_WORKING_VOLUME_L || (input.remainingAction === "loss" && newVolumeL > 0);
           let vesselStatus = (!isBottlingFromKeg && effectivelyEmptyCheck) ? ("cleaning" as any) : vessel.status;
 
+          // 5b. Auto-complete open carbonation operations
+          // When a batch is bottled, any in-progress carbonation (especially bottle conditioning)
+          // has effectively completed. Set finalCo2Volumes to target and mark as completed.
+          if (latestCarbonation && !latestCarbonation.finalCo2Volumes) {
+            const [fullCarb] = await tx
+              .select({
+                id: batchCarbonationOperations.id,
+                targetCo2Volumes: batchCarbonationOperations.targetCo2Volumes,
+                startedAt: batchCarbonationOperations.startedAt,
+                durationHours: batchCarbonationOperations.durationHours,
+              })
+              .from(batchCarbonationOperations)
+              .where(eq(batchCarbonationOperations.id, latestCarbonation.id));
+
+            if (fullCarb) {
+              // Calculate expected completion date from startedAt + durationHours
+              const completedAt = fullCarb.durationHours
+                ? new Date(new Date(fullCarb.startedAt).getTime() + parseFloat(fullCarb.durationHours) * 3600000)
+                : input.packagedAt;
+
+              await tx
+                .update(batchCarbonationOperations)
+                .set({
+                  finalCo2Volumes: fullCarb.targetCo2Volumes,
+                  completedAt: completedAt,
+                  qualityCheck: "pass" as any,
+                  qualityNotes: "Auto-completed at bottling — assumed target CO₂ reached",
+                  updatedAt: new Date(),
+                })
+                .where(eq(batchCarbonationOperations.id, fullCarb.id));
+            }
+          }
+
           // 6. Generate lot code and create inventory item
           const lotCode = generateLotCode(
             batch.name || "BATCH",
