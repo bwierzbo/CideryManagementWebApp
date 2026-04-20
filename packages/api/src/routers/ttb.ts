@@ -1260,9 +1260,11 @@ async function computeReconciliationFromBatches(
       mergesDuring.filter((m: any) => m.source_type === 'press_run' || m.source_type === 'juice_purchase'),
       "volume_added",
     );
-    // Batch-to-batch merges are internal volume movement
+    // Batch-to-batch merges (source_type = 'batch') are internal volume movement
+    // (e.g. brandy additions for pommeau). Note: 'batch_transfer' type is already
+    // excluded from the merge query and tracked via batchTransfers/periodTransfersInL.
     const internalMergesInL = sumField(
-      mergesDuring.filter((m: any) => m.source_type === 'batch_transfer'),
+      mergesDuring.filter((m: any) => m.source_type === 'batch'),
       "volume_added",
     );
     const periodProductionL = productionInitialL + newMaterialMergesL + internalMergesInL;
