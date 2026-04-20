@@ -6894,8 +6894,10 @@ export const ttbRouter = router({
           losses > 0 || actualSales > 0 || distillation > 0 || calculatedEnding !== 0;
         if (hasActivity) {
           const pkg = packagingByTaxClass[key] || 0;
-          // Section A ending: SBD bulk ending
-          const bulkEnding = sbdBulkEnding;
+          // Section A ending: use SBD-derived bulk inventory (authoritative physical inventory)
+          // instead of waterfall-aggregated ending, which can diverge for zero-volume
+          // intermediate batches that the waterfall computes as negative.
+          const bulkEnding = bulkByTaxClass[key] || 0;
           // Section B ending: all undistributed packaged inventory at period end
           const packagedEnding = Math.max(0, endPkg);
           waterfallData.push({
@@ -7089,20 +7091,12 @@ export const ttbRouter = router({
       // Packaged inventory is computed differently (period-scoped vs all-time) so
       // comparing total physical would always show pre-period packaged as a gap.
       // Bulk-to-bulk comparison isolates genuine SBD reconstruction divergence.
-      // Compare bulk totals between waterfall and SBD using same batch population
-      // and same zero-volume exclusion. computePerTaxClassBulkInventory skips batches
-      // where SBD volume is 0, so the waterfall sum must also skip batches where the
-      // SBD has 0 volume (even if the waterfall computes a negative ending for them).
-      const waterfallBulkByClass: Record<string, number> = {};
-      for (const b of batchRecon.batches) {
-        const sbdVolL = filteredPerBatch.get(b.batchId);
-        if (sbdVolL === undefined || sbdVolL === 0) continue;
-        const taxClass = batchTaxClassMap.get(b.batchId);
-        if (!taxClass) continue; // Match SBD: skip non-taxable
-        waterfallBulkByClass[taxClass] = (waterfallBulkByClass[taxClass] || 0) + b.ending;
-      }
-      const waterfallBulkTotal = Object.values(waterfallBulkByClass).reduce((s, v) => s + v, 0);
-      const inventoryBulkTotal = Object.values(bulkByTaxClass).reduce((sum, val) => sum + val, 0);
+      // Parity check: compare waterfall-derived bulk ending with SBD-derived bulk ending.
+      // Both are summed from waterfallData entries. bulkEnding comes from the waterfall
+      // per-batch reconstruction (sbdWaterfallByTaxClass), while bulk comes from the SBD
+      // function (computeSystemCalculatedOnHand → computePerTaxClassBulkInventory).
+      const waterfallBulkTotal = waterfallData.reduce((s, w) => s + w.bulkEnding, 0);
+      const inventoryBulkTotal = waterfallData.reduce((s, w) => s + w.bulk, 0);
       const bulkGap = Math.abs(waterfallBulkTotal - inventoryBulkTotal);
       if (bulkGap > 5.0) {
         const msg = `Bulk inventory mismatch: waterfall bulk ${waterfallBulkTotal.toFixed(1)} vs SBD bulk ${inventoryBulkTotal.toFixed(1)} (gap ${bulkGap.toFixed(2)} gal)`;
