@@ -7089,7 +7089,18 @@ export const ttbRouter = router({
       // Packaged inventory is computed differently (period-scoped vs all-time) so
       // comparing total physical would always show pre-period packaged as a gap.
       // Bulk-to-bulk comparison isolates genuine SBD reconstruction divergence.
-      const waterfallBulkTotal = waterfallData.reduce((s, w) => s + w.bulkEnding, 0);
+      // Build waterfall bulk total using ONLY batches that are in the SBD set,
+      // so we compare the same population. The waterfall may include intermediate
+      // batches (pending/excluded) with negative endings that the SBD excludes.
+      const sbdBatchIds = new Set(filteredPerBatch.keys());
+      const waterfallBulkByClass: Record<string, number> = {};
+      for (const b of batchRecon.batches) {
+        if (!sbdBatchIds.has(b.batchId)) continue;
+        const taxClass = batchTaxClassMap.get(b.batchId);
+        const classKey = taxClass || "hardCider";
+        waterfallBulkByClass[classKey] = (waterfallBulkByClass[classKey] || 0) + b.ending;
+      }
+      const waterfallBulkTotal = Object.values(waterfallBulkByClass).reduce((s, v) => s + v, 0);
       const inventoryBulkTotal = Object.values(bulkByTaxClass).reduce((sum, val) => sum + val, 0);
       const bulkGap = Math.abs(waterfallBulkTotal - inventoryBulkTotal);
       if (bulkGap > 5.0) {
