@@ -836,43 +836,65 @@ export function BatchReconciliation() {
     if (!reconciliationData || !("hasOpeningBalances" in reconciliationData) || !reconciliationData.hasOpeningBalances) {
       return null;
     }
-    const t = reconciliationData.totals as TtbTotals;
-    // All years use the same SBD-derived per-tax-class totals (no special opening year case).
-    // The "waterfall" object is the per-tax-class aggregation of SBD per-batch reconstruction.
-    const wf = (reconciliationData as any)?.waterfall?.totals;
-    if (!wf) return null;
+    // Use TTB Form 5120.17 data as single source of truth for the balance card.
+    // The form generator correctly handles bulk/packaged separation, distribution scoping,
+    // and cross-period packaging — unlike the waterfall which mixes them.
+    const fd = (formData512017 as any)?.formData;
+    if (!fd) return null;
 
-    const waterfallAdjs = (reconciliationData as any)?.waterfallAdjustments ?? [];
+    const bulkByClass: Record<string, any> = fd.bulkWinesByTaxClass || {};
+    const bottledByClass: Record<string, any> = fd.bottledWinesByTaxClass || {};
 
-    // ALL values from SBD-derived per-tax-class totals — same algorithm for every year.
-    const opening = wf.opening ?? 0;
-    const production = wf.production ?? 0;
-    const positiveAdj = wf.positiveAdj ?? 0;
-    const transfersIn = wf.transfersIn ?? 0;
-    const transfersOut = wf.transfersOut ?? 0;
-    const distributed = wf.sales ?? 0;
-    const packaging = wf.packaging ?? 0;
-    const losses = wf.losses ?? 0;
-    const distillation = wf.distillation ?? 0;
-    const ending = wf.calculatedEnding ?? 0;
-    const residual = wf.residual ?? 0;
+    // Sum Section A (bulk) totals across all tax classes
+    let bulkOpening = 0, bulkProduced = 0, bulkGains = 0, bulkBottled = 0;
+    let bulkLosses = 0, bulkDistillation = 0, bulkEnding = 0, bulkTotal = 0;
+    for (const section of Object.values(bulkByClass) as any[]) {
+      bulkOpening += section.line1_onHandBeginning ?? 0;
+      bulkProduced += section.line2_produced ?? 0;
+      bulkGains += (section.line5_writeIn ?? 0) + (section.line9_inventoryGains ?? 0);
+      bulkBottled += section.line13_bottled ?? 0;
+      bulkLosses += (section.line29_losses ?? 0) + (section.line30_inventoryLosses ?? 0);
+      bulkDistillation += section.line16_distillingMaterial ?? 0;
+      bulkEnding += section.line31_onHandEnd ?? 0;
+      bulkTotal += section.line12_total ?? 0;
+    }
+
+    // Sum Section B (packaged) totals across all tax classes
+    let pkgOpening = 0, pkgBottled = 0, pkgDistributed = 0, pkgEnding = 0;
+    for (const section of Object.values(bottledByClass) as any[]) {
+      pkgOpening += section.line1_onHandBeginning ?? 0;
+      pkgBottled += section.line2_bottled ?? 0;
+      pkgDistributed += section.line8_removedTaxpaid ?? 0;
+      pkgEnding += section.line20_onHandEnd ?? 0;
+    }
+
+    // Combined on-premises summary
+    const opening = bulkOpening + pkgOpening;
+    const ending = bulkEnding + pkgEnding;
+
+    // The formula identity for combined on-premises:
+    // Opening + Production + Gains - Losses - Distillation - Distributed = Ending
+    // (Packaging is an internal transfer: -bulk +packaged, net zero)
+    const calculatedEnding = opening + bulkProduced + bulkGains
+      - bulkLosses - bulkDistillation - pkgDistributed;
+    const residual = ending - calculatedEnding;
 
     return {
-      opening,
-      production,
-      positiveAdj,
-      transfersIn,
-      transfersOut,
-      distributed,
-      packagedBonded: packaging,
-      losses,
-      distillation,
-      ending,
-      physical: wf.physical ?? 0,
-      residual,
-      waterfallAdjustments: waterfallAdjs,
+      opening: parseFloat(opening.toFixed(2)),
+      production: parseFloat(bulkProduced.toFixed(2)),
+      positiveAdj: parseFloat(bulkGains.toFixed(2)),
+      transfersIn: 0, // Internal transfers net to 0 across all batches
+      transfersOut: 0,
+      distributed: parseFloat(pkgDistributed.toFixed(2)),
+      packagedBonded: parseFloat(bulkBottled.toFixed(2)),
+      losses: parseFloat(bulkLosses.toFixed(2)),
+      distillation: parseFloat(bulkDistillation.toFixed(2)),
+      ending: parseFloat(ending.toFixed(2)),
+      physical: parseFloat(ending.toFixed(2)),
+      residual: parseFloat(residual.toFixed(2)),
+      waterfallAdjustments: [],
     };
-  }, [reconciliationData]);
+  }, [reconciliationData, formData512017]);
 
   // Variance threshold from org settings (percentage-based, default 0.5%)
   const varianceThresholdPct = (reconciliationData as any)?.varianceThresholdPct ?? 0.5;
