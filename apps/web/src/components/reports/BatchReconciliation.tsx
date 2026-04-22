@@ -841,18 +841,8 @@ export function BatchReconciliation() {
     // and computes all line items with proper bulk/packaged separation.
     const fd = (formData512017 as any)?.formData;
     if (!fd) {
-      // Fallback to waterfall if form data not loaded yet
-      const wf = (reconciliationData as any)?.waterfall?.totals;
-      if (!wf) return null;
-      const adjustments = parseFloat(((wf.positiveAdj ?? 0) + (wf.reconAdj ?? 0)
-        + (wf.transfersIn ?? 0) - (wf.transfersOut ?? 0)).toFixed(1));
-      return {
-        opening: wf.opening ?? 0, production: wf.production ?? 0, adjustments,
-        distributed: wf.sales ?? 0, losses: wf.losses ?? 0, distillation: wf.distillation ?? 0,
-        ending: wf.calculatedEnding ?? 0, systemCalculated: wf.physical ?? 0,
-        variance: wf.variance ?? 0, systemVariance: wf.variance ?? 0,
-        waterfallAdjustments: [], useFormData: false,
-      };
+      // Wait for form data to load — don't show stale waterfall numbers
+      return null;
     }
 
     const bulkByClass: Record<string, any> = fd.bulkWinesByTaxClass || {};
