@@ -38,7 +38,7 @@ function getTaskTypeLabel(taskType: string): string {
   switch (taskType) {
     case "stalled_fermentation": return "Stalled";
     case "confirm_terminal": return "Confirm FG";
-    case "measurement_needed": return "Measure";
+    case "measurement_needed": return "SG Due";
     case "sensory_check_due": return "Sensory";
     case "check_in_due": return "Check In";
     case "sg_due": return "SG Due";

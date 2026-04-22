@@ -42,7 +42,7 @@ const taskTypeIcons: Record<string, React.ReactNode> = {
 const taskTypeLabels: Record<string, string> = {
   stalled_fermentation: "Stalled Fermentation",
   confirm_terminal: "Confirm Final Gravity",
-  measurement_needed: "Measurement Needed",
+  measurement_needed: "SG Measurement Due",
   sensory_check_due: "Sensory Check Due",
   check_in_due: "Check In Due",
   sg_due: "SG Reading Due",
