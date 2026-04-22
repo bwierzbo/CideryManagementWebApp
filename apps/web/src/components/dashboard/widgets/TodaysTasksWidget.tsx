@@ -50,6 +50,25 @@ function getTaskTypeLabel(taskType: string): string {
   }
 }
 
+const priorityColors: Record<string, string> = {
+  high: "bg-red-100 text-red-800 border-red-200",
+  medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
+  low: "bg-blue-100 text-blue-800 border-blue-200",
+};
+
+const taskTypeIcons: Record<string, React.ReactNode> = {
+  stalled_fermentation: <AlertTriangle className="w-3 h-3" />,
+  confirm_terminal: <CheckCircle className="w-3 h-3" />,
+  measurement_needed: <Beaker className="w-3 h-3" />,
+  sensory_check_due: <Wine className="w-3 h-3" />,
+  sg_due: <Beaker className="w-3 h-3" />,
+  ph_due: <Beaker className="w-3 h-3" />,
+  temperature_due: <Clock className="w-3 h-3" />,
+  sensory_due: <Wine className="w-3 h-3" />,
+  volume_due: <Beaker className="w-3 h-3" />,
+  check_in_due: <CalendarClock className="w-3 h-3" />,
+};
+
 function TaskItem({
   batchNumber,
   customName,
@@ -63,24 +82,6 @@ function TaskItem({
   compact,
   batchId,
 }: TaskItemProps) {
-  const priorityColors = {
-    high: "bg-red-100 text-red-800 border-red-200",
-    medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
-    low: "bg-blue-100 text-blue-800 border-blue-200",
-  };
-
-  const taskTypeIcons: Record<string, React.ReactNode> = {
-    stalled_fermentation: <AlertTriangle className="w-3 h-3" />,
-    confirm_terminal: <CheckCircle className="w-3 h-3" />,
-    measurement_needed: <Beaker className="w-3 h-3" />,
-    sensory_check_due: <Wine className="w-3 h-3" />,
-    sg_due: <Beaker className="w-3 h-3" />,
-    ph_due: <Beaker className="w-3 h-3" />,
-    temperature_due: <Clock className="w-3 h-3" />,
-    sensory_due: <Wine className="w-3 h-3" />,
-    volume_due: <Beaker className="w-3 h-3" />,
-    check_in_due: <CalendarClock className="w-3 h-3" />,
-  };
 
   return (
     <Link
@@ -215,22 +216,65 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
       }
     >
       <div className={cn("divide-y", compact ? "-mx-2" : "-mx-3")}>
-        {tasks.map((task) => (
-          <TaskItem
-            key={`${task.id}-${task.taskType}`}
-            batchId={task.id}
-            batchNumber={task.batchNumber}
-            customName={task.customName}
-            vesselName={task.vesselName}
-            daysSince={task.daysSinceLastMeasurement}
-            priority={task.priority}
-            taskType={task.taskType}
-            percentFermented={task.percentFermented}
-            fermentationStage={task.fermentationStage}
-            recommendedAction={task.recommendedAction}
-            compact={compact}
-          />
-        ))}
+        {(() => {
+          // Group tasks by batch so all flags show on one row
+          const grouped = new Map<string, typeof tasks>();
+          for (const task of tasks) {
+            const existing = grouped.get(task.id) || [];
+            existing.push(task);
+            grouped.set(task.id, existing);
+          }
+          const batchEntries = Array.from(grouped.values());
+          return batchEntries.map((batchTasks) => {
+            // Use highest priority task as the primary display
+            const primary = batchTasks.sort((a, b) =>
+              a.priority === "high" ? -1 : b.priority === "high" ? 1 : 0
+            )[0];
+            return (
+              <Link
+                key={primary.id}
+                href={`/batch/${primary.id}?tab=measurements`}
+                className={cn(
+                  "block rounded-lg hover:bg-gray-50 transition-colors",
+                  compact ? "px-2 py-1.5" : "px-3 py-2.5"
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("font-medium text-gray-900 truncate", compact ? "text-xs" : "text-sm")}>
+                      {primary.customName || primary.batchNumber}
+                    </p>
+                    {primary.vesselName && (
+                      <p className="text-xs text-gray-500 truncate">{primary.vesselName}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1 shrink-0">
+                    {batchTasks.map((t) => (
+                      <Badge
+                        key={t.taskType}
+                        variant="outline"
+                        className={cn("text-[10px] px-1.5 py-0", priorityColors[t.priority])}
+                      >
+                        {taskTypeIcons[t.taskType]}
+                        <span className="ml-0.5">{getTaskTypeLabel(t.taskType)}</span>
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className={cn("mt-1", compact && "mt-0.5")}>
+                  <span className="text-xs text-gray-400">
+                    {primary.daysSinceLastMeasurement >= 999 ? "Never taken" : `${primary.daysSinceLastMeasurement}d since last`}
+                  </span>
+                </div>
+                {!compact && primary.recommendedAction && (
+                  <p className="text-xs text-gray-500 mt-1 truncate" title={primary.recommendedAction}>
+                    {primary.recommendedAction}
+                  </p>
+                )}
+              </Link>
+            );
+          });
+        })()}
       </div>
       {totalCount > tasks.length && (
         <div className="mt-3 text-center">

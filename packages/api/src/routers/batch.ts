@@ -6378,13 +6378,22 @@ export const batchRouter = router({
 
         // Update batch fermentation stage if it changed
         if (progress.stage !== batchData.fermentationStage && progress.stage !== "unknown") {
+          const updateData: Record<string, unknown> = {
+            fermentationStage: progress.stage,
+            fermentationStageUpdatedAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+          // Auto-transition to aging when fermentation reaches confirmed terminal.
+          // This eliminates the need for manual status changes when a batch finishes.
+          if (progress.stage === "terminal" && progress.isTerminalConfirmed
+              && batchData.status === "fermentation") {
+            updateData.status = "aging";
+          }
+
           await db
             .update(batches)
-            .set({
-              fermentationStage: progress.stage,
-              fermentationStageUpdatedAt: new Date(),
-              updatedAt: new Date(),
-            })
+            .set(updateData)
             .where(eq(batches.id, input.batchId));
         }
 
