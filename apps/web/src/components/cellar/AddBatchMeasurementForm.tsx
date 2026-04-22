@@ -175,6 +175,15 @@ export function AddBatchMeasurementForm({
     addMeasurement.mutate(measurementData);
   };
 
+  // Prevent Enter key from submitting the form in input fields.
+  // Enter accepts the value (stays in field), Tab moves to next field,
+  // only the "Add Measurement" button submits.
+  const preventEnterSubmit = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "TEXTAREA") {
+      e.preventDefault();
+    }
+  };
+
   const hasActiveCalibration = calibrationData?.calibration !== null;
   const showOGField = measurementMethod === "refractometer" && !isFreshJuice;
   const hasCorrectionApplied = correctionPreview && Object.keys(correctionPreview.corrections).length > 0;
@@ -197,7 +206,7 @@ export function AddBatchMeasurementForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} onKeyDown={preventEnterSubmit} className="space-y-4">
       {/* Date/Time - always visible */}
       <div className={showSgFields ? "grid grid-cols-2 gap-4" : ""}>
         <div className="space-y-2">
