@@ -848,16 +848,21 @@ export function BatchReconciliation() {
     const bulkByClass: Record<string, any> = fd.bulkWinesByTaxClass || {};
     const bottledByClass: Record<string, any> = fd.bottledWinesByTaxClass || {};
 
-    // Sum Section A (bulk) across all tax classes
-    let bulkOpening = 0, bulkProduced = 0, bulkGains = 0;
+    // Sum Section A (bulk) total column — use the (a) Total column values
+    // which are already balanced (line 12 = line 32) per the form generator.
+    let bulkOpening = 0, bulkProduced = 0, bulkGains = 0, bulkReceived = 0;
     let bulkBottled = 0, bulkLosses = 0, bulkDistillation = 0, bulkEnding = 0;
+    let bulkClassOut = 0, bulkSpiritsIn = 0;
     for (const section of Object.values(bulkByClass) as any[]) {
       bulkOpening += section.line1_onHandBeginning ?? 0;
       bulkProduced += section.line2_produced ?? 0;
+      bulkSpiritsIn += section.line4_wineSpirits ?? 0;
       bulkGains += (section.line5_writeIn ?? 0) + (section.line9_inventoryGains ?? 0);
+      bulkReceived += section.line10_writeIn ?? 0;
       bulkBottled += section.line13_bottled ?? 0;
       bulkLosses += (section.line29_losses ?? 0) + (section.line30_inventoryLosses ?? 0);
       bulkDistillation += section.line16_distillingMaterial ?? 0;
+      bulkClassOut += (section.line24_writeIn1 ?? 0);
       bulkEnding += section.line31_onHandEnd ?? 0;
     }
 
@@ -870,17 +875,20 @@ export function BatchReconciliation() {
       pkgEnding += section.line20_onHandEnd ?? 0;
     }
 
-    // Combined on-premises totals
+    // Combined on-premises totals from the form's actual values
     const opening = parseFloat((bulkOpening + pkgOpening).toFixed(2));
     const ending = parseFloat((bulkEnding + pkgEnding).toFixed(2));
-    const production = parseFloat(bulkProduced.toFixed(2));
+    // Production: fermentation + wine spirits addition (line 2 + line 4)
+    const production = parseFloat((bulkProduced + bulkSpiritsIn).toFixed(2));
     const gains = parseFloat(bulkGains.toFixed(2));
     const distributed = parseFloat(pkgDistributed.toFixed(2));
     const losses = parseFloat(bulkLosses.toFixed(2));
     const distillation = parseFloat(bulkDistillation.toFixed(2));
 
-    // Formula: Opening + Production + Gains - Distributed - Losses - Distillation = Ending
-    // Packaging (bulk→bottled) is internal and cancels in the combined view.
+    // Residual: ending vs what the formula computes.
+    // Cross-class transfers (line 10/24) cancel in the total column EXCEPT when volume
+    // changes tax class during packaging (e.g., HC bulk → carbonated wine bottled).
+    // These are internal movements that net to zero on premises.
     const calculatedEnding = opening + production + gains - distributed - losses - distillation;
     const residual = parseFloat((ending - calculatedEnding).toFixed(2));
 
