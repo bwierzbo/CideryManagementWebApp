@@ -836,47 +836,79 @@ export function BatchReconciliation() {
     if (!reconciliationData || !("hasOpeningBalances" in reconciliationData) || !reconciliationData.hasOpeningBalances) {
       return null;
     }
-    const t = reconciliationData.totals as TtbTotals;
-    // All years use the same SBD-derived per-tax-class totals (no special opening year case).
-    // The "waterfall" object is the per-tax-class aggregation of SBD per-batch reconstruction.
-    const wf = (reconciliationData as any)?.waterfall?.totals;
-    if (!wf) return null;
+    // Use TTB Form 5120.17 data as single source of truth.
+    // The form generator uses finalized period snapshots for opening balances
+    // and computes all line items with proper bulk/packaged separation.
+    const fd = (formData512017 as any)?.formData;
+    if (!fd) {
+      // Fallback to waterfall if form data not loaded yet
+      const wf = (reconciliationData as any)?.waterfall?.totals;
+      if (!wf) return null;
+      const adjustments = parseFloat(((wf.positiveAdj ?? 0) + (wf.reconAdj ?? 0)
+        + (wf.transfersIn ?? 0) - (wf.transfersOut ?? 0)).toFixed(1));
+      return {
+        opening: wf.opening ?? 0, production: wf.production ?? 0, adjustments,
+        distributed: wf.sales ?? 0, losses: wf.losses ?? 0, distillation: wf.distillation ?? 0,
+        ending: wf.calculatedEnding ?? 0, systemCalculated: wf.physical ?? 0,
+        variance: wf.variance ?? 0, systemVariance: wf.variance ?? 0,
+        waterfallAdjustments: [], useFormData: false,
+      };
+    }
 
-    const waterfallAdjs = (reconciliationData as any)?.waterfallAdjustments ?? [];
+    const bulkByClass: Record<string, any> = fd.bulkWinesByTaxClass || {};
+    const bottledByClass: Record<string, any> = fd.bottledWinesByTaxClass || {};
 
-    // ALL values from SBD-derived per-tax-class totals — same algorithm for every year.
-    const opening = wf.opening ?? 0;
-    const production = wf.production ?? 0;
-    const distributed = wf.sales ?? 0;
-    const packaging = wf.packaging ?? 0;
-    const losses = wf.losses ?? 0;
-    const distillation = wf.distillation ?? 0;
-    // The waterfall display omits transfersIn/transfersOut (cross-class transfers + dup/excluded
-    // transfer imbalance). Include net transfers in the adjustments line so the visible math
-    // always adds up: opening + production + adjustments - distributed - losses - distillation = ending.
-    const adjustments = parseFloat(((wf.positiveAdj ?? 0) + (wf.reconAdj ?? 0)
-      + (wf.transfersIn ?? 0) - (wf.transfersOut ?? 0)).toFixed(1));
+    // Sum Section A (bulk) across all tax classes
+    let bulkOpening = 0, bulkProduced = 0, bulkGains = 0;
+    let bulkBottled = 0, bulkLosses = 0, bulkDistillation = 0, bulkEnding = 0;
+    for (const section of Object.values(bulkByClass) as any[]) {
+      bulkOpening += section.line1_onHandBeginning ?? 0;
+      bulkProduced += section.line2_produced ?? 0;
+      bulkGains += (section.line5_writeIn ?? 0) + (section.line9_inventoryGains ?? 0);
+      bulkBottled += section.line13_bottled ?? 0;
+      bulkLosses += (section.line29_losses ?? 0) + (section.line30_inventoryLosses ?? 0);
+      bulkDistillation += section.line16_distillingMaterial ?? 0;
+      bulkEnding += section.line31_onHandEnd ?? 0;
+    }
 
-    // Use API-computed values directly — these are guaranteed to satisfy the identity
-    // (calculatedEnding = physical, so variance = 0 by construction per tax class).
-    const ending = wf.calculatedEnding ?? 0;
-    const variance = wf.variance ?? 0;
+    // Sum Section B (packaged) across all tax classes
+    let pkgOpening = 0, pkgBottled = 0, pkgDistributed = 0, pkgEnding = 0;
+    for (const section of Object.values(bottledByClass) as any[]) {
+      pkgOpening += section.line1_onHandBeginning ?? 0;
+      pkgBottled += section.line2_bottled ?? 0;
+      pkgDistributed += section.line8_removedTaxpaid ?? 0;
+      pkgEnding += section.line20_onHandEnd ?? 0;
+    }
+
+    // Combined on-premises totals
+    const opening = parseFloat((bulkOpening + pkgOpening).toFixed(2));
+    const ending = parseFloat((bulkEnding + pkgEnding).toFixed(2));
+    const production = parseFloat(bulkProduced.toFixed(2));
+    const gains = parseFloat(bulkGains.toFixed(2));
+    const distributed = parseFloat(pkgDistributed.toFixed(2));
+    const losses = parseFloat(bulkLosses.toFixed(2));
+    const distillation = parseFloat(bulkDistillation.toFixed(2));
+
+    // Formula: Opening + Production + Gains - Distributed - Losses - Distillation = Ending
+    // Packaging (bulk→bottled) is internal and cancels in the combined view.
+    const calculatedEnding = opening + production + gains - distributed - losses - distillation;
+    const residual = parseFloat((ending - calculatedEnding).toFixed(2));
 
     return {
       opening,
       production,
-      adjustments,
+      adjustments: gains, // Inventory gains / write-ins
       distributed,
-      packagedBonded: packaging,
       losses,
       distillation,
       ending,
-      systemCalculated: wf.physical ?? 0,
-      variance,
-      systemVariance: variance,
-      waterfallAdjustments: waterfallAdjs,
+      systemCalculated: ending,
+      variance: residual,
+      systemVariance: residual,
+      waterfallAdjustments: [],
+      useFormData: true,
     };
-  }, [reconciliationData]);
+  }, [reconciliationData, formData512017]);
 
   // Variance threshold from org settings (percentage-based, default 0.5%)
   const varianceThresholdPct = (reconciliationData as any)?.varianceThresholdPct ?? 0.5;
@@ -1192,12 +1224,12 @@ export function BatchReconciliation() {
       lines.push("TTB Balance (gal)");
       lines.push(`Opening,${yearMetrics.opening}`);
       lines.push(`Production,${yearMetrics.production}`);
-      if (yearMetrics.adjustments !== 0) lines.push(`Reconciliation Adj.,${yearMetrics.adjustments}`);
+      if (yearMetrics.adjustments > 0) lines.push(`Inventory Gains,${yearMetrics.adjustments}`);
       lines.push(`Distributed,${yearMetrics.distributed}`);
       lines.push(`Losses,${yearMetrics.losses}`);
       lines.push(`Distillation,${yearMetrics.distillation}`);
       lines.push(`Ending (On Premises),${yearMetrics.ending}`);
-      lines.push(`Variance,${yearMetrics.variance}`);
+      if (Math.abs(yearMetrics.variance) > 1) lines.push(`Residual,${yearMetrics.variance}`);
       lines.push("");
     }
 
@@ -1696,18 +1728,10 @@ export function BatchReconciliation() {
                           <td className="pr-2">+ Production</td>
                           <td className="text-right">{yearMetrics.production.toLocaleString()} gal</td>
                         </tr>
-                        {yearMetrics.adjustments !== 0 && (
-                          <tr className="text-blue-700">
-                            <td className="pr-2" title={
-                              [
-                                ...(yearMetrics.waterfallAdjustments ?? []).map((a: any) =>
-                                  `${a.reason}${a.notes ? `: ${a.notes.substring(0, 100)}` : ''}`
-                                ),
-                              ].join('\n') || 'Inventory gains (TTB Form line 9)'
-                            }>
-                              {yearMetrics.adjustments >= 0 ? "+" : "-"} Reconciliation Adj.
-                            </td>
-                            <td className="text-right">{Math.abs(yearMetrics.adjustments).toLocaleString()} gal</td>
+                        {yearMetrics.adjustments > 0 && (
+                          <tr>
+                            <td className="pr-2">+ Inventory Gains</td>
+                            <td className="text-right">{yearMetrics.adjustments.toLocaleString()} gal</td>
                           </tr>
                         )}
                         <tr>
@@ -1726,15 +1750,10 @@ export function BatchReconciliation() {
                           <td className="pr-2 pt-1">= Ending (On Premises)</td>
                           <td className="text-right pt-1">{yearMetrics.ending.toLocaleString()} gal</td>
                         </tr>
-                        <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 1 ? "text-green-600" : Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
-                          <td className="pr-2 pt-1">Variance</td>
-                          <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
-                        </tr>
-                        {Math.abs(yearMetrics.variance) >= 1 && clampingBatches.length > 0 && (
-                          <tr>
-                            <td colSpan={2} className="text-xs text-red-500 pt-1">
-                              {clampingBatches.length} batch{clampingBatches.length !== 1 ? 'es' : ''} with identity issues — use &quot;Identity Issues&quot; filter to review
-                            </td>
+                        {Math.abs(yearMetrics.variance) > 1.0 && (
+                          <tr className={`text-xs ${Math.abs(yearMetrics.variance) < 10 ? "text-amber-600" : "text-red-600"}`}>
+                            <td className="pr-2 pt-1">Residual</td>
+                            <td className="text-right pt-1">{yearMetrics.variance > 0 ? "+" : ""}{yearMetrics.variance.toFixed(1)} gal</td>
                           </tr>
                         )}
                       </tbody>
