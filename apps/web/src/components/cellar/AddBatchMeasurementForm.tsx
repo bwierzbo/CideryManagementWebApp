@@ -66,7 +66,7 @@ export function AddBatchMeasurementForm({
   // Pommeau: Sensory/volume-focused (aging - no active fermentation)
   const showSgFields = ["cider", "perry", "juice", "wine", "cyser"].includes(productType);
   const showAbvField = true; // Always show ABV as it can be useful
-  const showSensoryFields = ["brandy", "pommeau"].includes(productType) || !showSgFields;
+  const showSensoryFields = true; // Always show — every batch can have sensory observations
   const showVolumeField = ["brandy", "pommeau"].includes(productType);
 
   // Fetch active calibration status
