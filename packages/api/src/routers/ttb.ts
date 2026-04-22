@@ -3484,11 +3484,23 @@ export const ttbRouter = router({
         const ciderLine12 = roundGallons(
           ciderBeginning + ciderProducedGallons + ciderChangeIn + ciderGains
         );
-        // Line 29 = all losses (bulk + bottling). Line 30 reserved for physical inventory shortages only.
-        const ciderLosses = roundGallons(
+        // Losses (line 29) = available - documented outflows - ending.
+        // Per TTB instructions: if negative (more accounted for than available),
+        // put the abs value on line 9 (Inventory Gains) and set losses to 0.
+        // This happens when volume enters from batches outside the reconciliation scope
+        // via same-class blending operations.
+        const ciderLossesRaw = roundGallons(
           ciderLine12 - ciderPacked - ciderDistillation - ciderChangeOut - endingCiderBulkGallons
         );
-        const ciderLine32 = ciderLine12;
+        const ciderLosses = Math.max(0, ciderLossesRaw);
+        const ciderInventoryGains = ciderLossesRaw < 0
+          ? roundGallons(ciderGains + Math.abs(ciderLossesRaw))
+          : ciderGains;
+        // If gains absorbed negative losses, line 12 increases to maintain balance
+        const ciderLine12Final = ciderLossesRaw < 0
+          ? roundGallons(ciderLine12 + Math.abs(ciderLossesRaw))
+          : ciderLine12;
+        const ciderLine32 = ciderLine12Final;
         const ciderBulkWines: BulkWinesSection = {
           line1_onHandBeginning: ciderBeginning,
           line2_produced: ciderProducedGallons,
@@ -3498,10 +3510,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: ciderGains,
+          line9_inventoryGains: ciderInventoryGains,
           line10_writeIn: ciderChangeIn,
           line10_writeInDesc: ciderChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: ciderLine12,
+          line12_total: ciderLine12Final,
           line13_bottled: ciderPacked,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3532,11 +3544,18 @@ export const ttbRouter = router({
         const wineUnder16Packed = roundGallons(wineUnder16Bottled + wineUnder16KegFilled - wineUnder16BottlingLoss);
         const wineUnder16RecordedLosses = roundGallons((lossesByTaxClass["wineUnder16"] || 0) - (clampedByTaxClass["wineUnder16"] || 0));
         const wineUnder16Line12 = roundGallons(beginningWineUnder16BulkGallons + fruitWineProducedGallons + wineUnder16ChangeIn + wineUnder16Gains);
-        // Line 29 = all losses (bulk + bottling). Line 30 reserved for physical inventory shortages only.
-        const wineUnder16Losses = roundGallons(
+        // Losses/Gains split — same pattern as HC
+        const wineUnder16LossesRaw = roundGallons(
           wineUnder16Line12 - wineUnder16Packed - wineUnder16ChangeOut - endingWineUnder16BulkGallons
         );
-        const wineUnder16Line32 = wineUnder16Line12;
+        const wineUnder16Losses = Math.max(0, wineUnder16LossesRaw);
+        const wineUnder16InventoryGains = wineUnder16LossesRaw < 0
+          ? roundGallons(wineUnder16Gains + Math.abs(wineUnder16LossesRaw))
+          : wineUnder16Gains;
+        const wineUnder16Line12Final = wineUnder16LossesRaw < 0
+          ? roundGallons(wineUnder16Line12 + Math.abs(wineUnder16LossesRaw))
+          : wineUnder16Line12;
+        const wineUnder16Line32 = wineUnder16Line12Final;
         const wineUnder16BulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningWineUnder16BulkGallons,
           line2_produced: fruitWineProducedGallons,
@@ -3546,10 +3565,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: wineUnder16Gains,
+          line9_inventoryGains: wineUnder16InventoryGains,
           line10_writeIn: wineUnder16ChangeIn,
           line10_writeInDesc: wineUnder16ChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: wineUnder16Line12,
+          line12_total: wineUnder16Line12Final,
           line13_bottled: wineUnder16Packed,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
@@ -3584,11 +3603,18 @@ export const ttbRouter = router({
         const pommeauDistillation = roundGallons(distillationByTaxClass["wine16To21"] || 0);
         const pommeauRecordedLosses = roundGallons((lossesByTaxClass["wine16To21"] || 0) - (clampedByTaxClass["wine16To21"] || 0));
         const pommeauLine12 = roundGallons(beginningPommeauBulkGallons + pommeauProducedGallons + pommeauChangeIn + pommeauGains);
-        // Line 29 = all losses (bulk + bottling). Line 30 reserved for physical inventory shortages only.
-        const pommeauLosses = roundGallons(
+        // Losses/Gains split — same pattern as HC
+        const pommeauLossesRaw = roundGallons(
           pommeauLine12 - pommeauPacked - pommeauDistillation - pommeauChangeOut - endingPommeauBulkGallons
         );
-        const pommeauLine32 = pommeauLine12;
+        const pommeauLosses = Math.max(0, pommeauLossesRaw);
+        const pommeauInventoryGains = pommeauLossesRaw < 0
+          ? roundGallons(pommeauGains + Math.abs(pommeauLossesRaw))
+          : pommeauGains;
+        const pommeauLine12Final = pommeauLossesRaw < 0
+          ? roundGallons(pommeauLine12 + Math.abs(pommeauLossesRaw))
+          : pommeauLine12;
+        const pommeauLine32 = pommeauLine12Final;
         const pommeauBulkWines: BulkWinesSection = {
           line1_onHandBeginning: beginningPommeauBulkGallons,
           line2_produced: 0,
@@ -3598,10 +3624,10 @@ export const ttbRouter = router({
           line6_amelioration: 0,
           line7_receivedInBond: 0,
           line8_dumpedToBulk: 0,
-          line9_inventoryGains: pommeauGains,
+          line9_inventoryGains: pommeauInventoryGains,
           line10_writeIn: pommeauChangeIn,
           line10_writeInDesc: pommeauChangeIn > 0 ? "CHANGE OF CLASS IN" : undefined,
-          line12_total: pommeauLine12,
+          line12_total: pommeauLine12Final,
           line13_bottled: pommeauPacked,
           line14_removedTaxpaid: 0,
           line15_transfersInBond: 0,
