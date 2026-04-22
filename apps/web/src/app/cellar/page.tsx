@@ -6,7 +6,9 @@ import {
   Beaker,
   FlaskConical,
   Wine,
+  ClipboardCheck,
 } from "lucide-react";
+import Link from "next/link";
 import { KegsManagement } from "@/components/packaging/kegs/KegsManagement";
 import { BatchManagementTable } from "@/components/cellar/BatchManagementTable";
 import { VesselMap } from "@/components/cellar/VesselMap";
@@ -19,12 +21,21 @@ export default function CellarPage() {
       <Navbar />
 
       <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Cellar</h1>
-          <p className="text-gray-600 mt-1">
-            Monitor fermentation vessels, track batch progress, and record
-            measurements.
-          </p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Cellar</h1>
+            <p className="text-gray-600 mt-1">
+              Monitor fermentation vessels, track batch progress, and record
+              measurements.
+            </p>
+          </div>
+          <Link
+            href="/cellar/physical-inventory"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            Physical Inventory
+          </Link>
         </div>
 
         {/* Tab Navigation */}
