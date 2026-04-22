@@ -1550,6 +1550,9 @@ export default function BatchDetailsPage() {
               onSuccess={() => {
                 setShowMeasurementForm(false);
                 utils.batch.getHistory.invalidate({ batchId });
+                utils.batch.get.invalidate({ batchId });
+                utils.vessel.liquidMap.invalidate();
+                utils.batch.list.invalidate();
                 toast({
                   title: "Success",
                   description: "Measurement added successfully",
