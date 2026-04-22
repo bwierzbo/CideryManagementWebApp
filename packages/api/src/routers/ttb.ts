@@ -3372,10 +3372,12 @@ export const ttbRouter = router({
           const srcType = row.sourceProductType || "";
           const dstType = row.destProductType || "";
 
-          // Exclude transfers involving brandy or pommeau — these are accounted for
-          // separately as wine spirits (Line 4) and pommeau production, not change of class.
+          // Exclude transfers involving brandy — brandy is tracked in Part III (spirits),
+          // not as a wine tax class change.
           if (srcType === "brandy" || dstType === "brandy") continue;
-          if (dstType === "pommeau" || srcType === "pommeau") continue;
+          // Note: pommeau transfers ARE counted as class changes. When cider goes into
+          // a pommeau batch, the cider volume leaves hardCider (line 24) and enters
+          // wine16To21 (line 10). The brandy portion is tracked separately in Part III.
 
           if (srcType === dstType) continue;
 
