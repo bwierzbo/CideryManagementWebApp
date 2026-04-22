@@ -396,7 +396,9 @@ export const dashboardRouter = router({
           );
 
           // For products that use fermentation stages (cider/perry), use detailed analysis
-          if (schedule.usesFermentationStages) {
+          // But skip fermentation-based tasks for batches already in aging/conditioning —
+          // they should only get aging schedule tasks (pH, sensory, temp), not SG tasks.
+          if (schedule.usesFermentationStages && batch.status === "fermentation") {
             // Convert to FermentationMeasurement format
             const fermentationMeasurements: FermentationMeasurement[] = measurements
               .filter(m => m.specificGravity !== null)
