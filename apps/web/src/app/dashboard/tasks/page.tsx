@@ -175,7 +175,7 @@ function TasksPageContent() {
           {tasks.map((task) => (
             <Link
               key={`${task.id}-${task.taskType}`}
-              href={`/batch/${task.id}?tab=measurements`}
+              href={`/batch/${task.id}?tab=measurements&addMeasurement=true`}
             >
               <Card className="hover:shadow-md transition-shadow cursor-pointer">
                 <CardContent className="p-4">
