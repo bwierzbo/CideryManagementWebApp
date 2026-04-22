@@ -2181,12 +2181,10 @@ export const ttbRouter = router({
               isNull(batches.deletedAt),
               sql`COALESCE(${batches.reconciliationStatus}, 'pending') NOT IN ('duplicate', 'excluded')`,
               eq(batches.productType, "wine"),
-              // Exclude transfer-derived batches (racking, blending) — only count
-              // primary fermentation batches to avoid double-counting
-              or(
-                isNull(batches.parentBatchId),
-                eq(batches.isRackingDerivative, false)
-              ),
+              // Only count primary fermentation batches (no parent = not transfer-derived).
+              // Transfer-created batches have parentBatchId set — their volume entered
+              // the system via the source batch's press run, not as separate production.
+              isNull(batches.parentBatchId),
               gte(batches.startDate, startDate),
               lte(batches.startDate, endDate)
             )
