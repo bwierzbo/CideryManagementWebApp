@@ -111,7 +111,16 @@ export default function BatchDetailsPage() {
   const [weightDisplayUnit, setWeightDisplayUnit] = useState<WeightUnit>("lb");
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
+  const addMeasurementParam = searchParams.get("addMeasurement");
   const [activeTab, setActiveTab] = useState(tabParam || "activity");
+
+  // Auto-open measurement form when linked from dashboard tasks
+  React.useEffect(() => {
+    if (addMeasurementParam === "true") {
+      setShowMeasurementForm(true);
+      setActiveTab("measurements");
+    }
+  }, [addMeasurementParam]);
 
   const utils = trpc.useUtils();
 

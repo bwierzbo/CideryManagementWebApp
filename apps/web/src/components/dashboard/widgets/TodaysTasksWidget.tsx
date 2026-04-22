@@ -233,7 +233,7 @@ export function TodaysTasksWidget({ compact, limit = 5, onRefresh }: WidgetProps
             return (
               <Link
                 key={primary.id}
-                href={`/batch/${primary.id}?tab=measurements`}
+                href={`/batch/${primary.id}?tab=measurements&addMeasurement=true`}
                 className={cn(
                   "block rounded-lg hover:bg-gray-50 transition-colors",
                   compact ? "px-2 py-1.5" : "px-3 py-2.5"
