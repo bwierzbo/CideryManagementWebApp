@@ -118,6 +118,22 @@ export default function PhysicalInventoryPage() {
   const [isActive, setIsActive] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
 
+  // Adjustment dialog state
+  const [adjustingVariance, setAdjustingVariance] = useState<{
+    vesselId: string;
+    vesselName: string;
+    batchId: string | null;
+    batchName: string | null;
+    bookGal: number;
+    physicalGal: number;
+    varianceGal: number;
+  } | null>(null);
+  const [adjReason, setAdjReason] = useState("");
+  const [adjType, setAdjType] = useState<string>("measurement_error");
+  const [adjNotes, setAdjNotes] = useState("");
+  const [adjApplyToBatch, setAdjApplyToBatch] = useState(true);
+  const [adjustedVessels, setAdjustedVessels] = useState<Set<string>>(new Set());
+
   // Card mode form state
   const [cardPhysicalGallons, setCardPhysicalGallons] = useState("");
   const [cardMethod, setCardMethod] = useState<MeasurementMethod>("estimated");
@@ -144,6 +160,7 @@ export default function PhysicalInventoryPage() {
   // --- Mutations ---
   const saveReconciliation = trpc.ttb.saveReconciliation.useMutation();
   const saveCount = trpc.ttb.savePhysicalInventoryCount.useMutation();
+  const createAdjustment = trpc.ttb.createReconciliationAdjustment.useMutation();
 
   // --- Derived ---
   const vessels: Vessel[] = vesselsQuery.data?.vessels ?? [];
@@ -157,11 +174,15 @@ export default function PhysicalInventoryPage() {
     let totalBookGal = 0;
     let totalPhysicalGal = 0;
     const variances: Array<{
+      vesselId: string;
       vesselName: string;
+      batchId: string | null;
+      batchName: string | null;
       bookGal: number;
       physicalGal: number;
       varianceGal: number;
       variancePct: number;
+      adjusted: boolean;
     }> = [];
 
     for (const v of vessels) {
@@ -172,12 +193,17 @@ export default function PhysicalInventoryPage() {
         totalPhysicalGal += entry.physicalGallons;
         const varianceGal = entry.physicalGallons - bookGal;
         const variancePct = bookGal > 0 ? (varianceGal / bookGal) * 100 : 0;
+        const primaryBatch = v.batches?.[0];
         variances.push({
+          vesselId: v.vesselId,
           vesselName: v.vesselName,
+          batchId: primaryBatch?.id || null,
+          batchName: primaryBatch?.name || null,
           bookGal,
           physicalGal: entry.physicalGallons,
           varianceGal,
           variancePct,
+          adjusted: false,
         });
       }
     }
@@ -381,6 +407,37 @@ export default function PhysicalInventoryPage() {
     });
   }, [countedCount, totalVessels, toast]);
 
+  const handleCreateAdjustment = useCallback(async () => {
+    if (!adjustingVariance || !snapshotId || !adjReason.trim()) return;
+    try {
+      const bookLiters = adjustingVariance.bookGal * LITERS_PER_GALLON;
+      const physicalLiters = adjustingVariance.physicalGal * LITERS_PER_GALLON;
+      await createAdjustment.mutateAsync({
+        reconciliationSnapshotId: snapshotId,
+        batchId: adjustingVariance.batchId || undefined,
+        vesselId: adjustingVariance.vesselId,
+        adjustmentType: adjType as "evaporation" | "measurement_error" | "sampling" | "contamination" | "spillage" | "theft" | "sediment" | "correction_up" | "correction_down" | "other",
+        volumeBeforeLiters: bookLiters,
+        volumeAfterLiters: physicalLiters,
+        reason: adjReason,
+        notes: adjNotes || undefined,
+        applyToBatch: adjApplyToBatch && !!adjustingVariance.batchId,
+      });
+      setAdjustedVessels(prev => new Set(prev).add(adjustingVariance.vesselId));
+      setAdjustingVariance(null);
+      setAdjReason("");
+      setAdjNotes("");
+      toast({
+        title: "Adjustment Created",
+        description: adjApplyToBatch && adjustingVariance.batchId
+          ? `Volume adjusted on ${adjustingVariance.batchName || "batch"}. Change will appear in reconciliation reporting.`
+          : "Adjustment recorded for reconciliation.",
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+  }, [adjustingVariance, snapshotId, adjReason, adjType, adjNotes, adjApplyToBatch, createAdjustment, toast]);
+
   // Load existing entry when navigating in card mode
   const loadCardEntry = useCallback(
     (index: number) => {
@@ -535,48 +592,61 @@ export default function PhysicalInventoryPage() {
           </Card>
         </div>
 
-        {/* Variance table */}
+        {/* Variance table with adjustment actions */}
         {summaryStats.variances.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle>Variances by Magnitude</CardTitle>
+              <p className="text-sm text-gray-500">Review variances and create adjustments to update batch volumes.</p>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Vessel</TableHead>
+                    <TableHead>Batch</TableHead>
                     <TableHead className="text-right">Book (gal)</TableHead>
-                    <TableHead className="text-right">
-                      Physical (gal)
-                    </TableHead>
-                    <TableHead className="text-right">
-                      Variance (gal)
-                    </TableHead>
+                    <TableHead className="text-right">Physical (gal)</TableHead>
+                    <TableHead className="text-right">Variance (gal)</TableHead>
                     <TableHead className="text-right">Variance %</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {summaryStats.variances.map((v) => (
-                    <TableRow key={v.vesselName}>
-                      <TableCell className="font-medium">
-                        {v.vesselName}
-                      </TableCell>
+                    <TableRow key={v.vesselId} className={adjustedVessels.has(v.vesselId) ? "bg-green-50" : ""}>
+                      <TableCell className="font-medium">{v.vesselName}</TableCell>
+                      <TableCell className="text-xs text-gray-500">{v.batchName || "—"}</TableCell>
+                      <TableCell className="text-right">{formatGallons(v.bookGal)}</TableCell>
+                      <TableCell className="text-right">{formatGallons(v.physicalGal)}</TableCell>
                       <TableCell className="text-right">
-                        {formatGallons(v.bookGal)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatGallons(v.physicalGal)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {v.varianceGal >= 0 ? "+" : ""}
-                        {formatGallons(v.varianceGal)}
+                        {v.varianceGal >= 0 ? "+" : ""}{formatGallons(v.varianceGal)}
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge variant={varianceBadgeVariant(v.variancePct)}>
-                          {v.variancePct >= 0 ? "+" : ""}
-                          {v.variancePct.toFixed(1)}%
+                          {v.variancePct >= 0 ? "+" : ""}{v.variancePct.toFixed(1)}%
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {adjustedVessels.has(v.vesselId) ? (
+                          <Badge variant="outline" className="text-green-700 border-green-300">Adjusted</Badge>
+                        ) : Math.abs(v.variancePct) > 0.5 ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setAdjustingVariance(v);
+                              setAdjType(v.varianceGal < 0 ? "evaporation" : "measurement_error");
+                              setAdjReason("");
+                              setAdjNotes("");
+                              setAdjApplyToBatch(true);
+                            }}
+                          >
+                            Adjust
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-gray-400">OK</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -586,9 +656,104 @@ export default function PhysicalInventoryPage() {
           </Card>
         )}
 
-        {/* Server-loaded summary if available */}
-        {summaryQuery.isLoading && (
-          <p className="text-sm text-gray-500 mt-4">Loading server summary...</p>
+        {/* Adjustment Dialog */}
+        {adjustingVariance && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <Card className="w-full max-w-md">
+              <CardHeader>
+                <CardTitle>Create Adjustment</CardTitle>
+                <p className="text-sm text-gray-500">
+                  {adjustingVariance.vesselName} — {adjustingVariance.varianceGal >= 0 ? "+" : ""}{formatGallons(adjustingVariance.varianceGal)} gal variance
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Adjustment Type</label>
+                  <Select value={adjType} onValueChange={setAdjType}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="evaporation">Evaporation (angel&apos;s share)</SelectItem>
+                      <SelectItem value="measurement_error">Measurement Error</SelectItem>
+                      <SelectItem value="sampling">Sampling / QC</SelectItem>
+                      <SelectItem value="spillage">Spillage</SelectItem>
+                      <SelectItem value="sediment">Sediment / Lees</SelectItem>
+                      <SelectItem value="contamination">Contamination</SelectItem>
+                      <SelectItem value="correction_up">Correction Up</SelectItem>
+                      <SelectItem value="correction_down">Correction Down</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Reason (required)</label>
+                  <Input
+                    value={adjReason}
+                    onChange={(e) => setAdjReason(e.target.value)}
+                    placeholder="e.g., Evaporation loss over aging period"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Notes (optional)</label>
+                  <Textarea
+                    value={adjNotes}
+                    onChange={(e) => setAdjNotes(e.target.value)}
+                    placeholder="Additional details..."
+                    rows={2}
+                  />
+                </div>
+
+                <div className="bg-gray-50 p-3 rounded-lg text-sm">
+                  <div className="flex justify-between mb-1">
+                    <span className="text-gray-500">Book volume:</span>
+                    <span>{formatGallons(adjustingVariance.bookGal)} gal</span>
+                  </div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-gray-500">Physical volume:</span>
+                    <span>{formatGallons(adjustingVariance.physicalGal)} gal</span>
+                  </div>
+                  <div className="flex justify-between font-medium border-t pt-1 mt-1">
+                    <span>Adjustment:</span>
+                    <span className={adjustingVariance.varianceGal >= 0 ? "text-green-700" : "text-red-700"}>
+                      {adjustingVariance.varianceGal >= 0 ? "+" : ""}{formatGallons(adjustingVariance.varianceGal)} gal
+                    </span>
+                  </div>
+                </div>
+
+                {adjustingVariance.batchId && (
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={adjApplyToBatch}
+                      onChange={(e) => setAdjApplyToBatch(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span>Apply adjustment to batch volume</span>
+                    <span className="text-gray-400">(updates {adjustingVariance.batchName})</span>
+                  </label>
+                )}
+
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    className="flex-1"
+                    onClick={handleCreateAdjustment}
+                    disabled={!adjReason.trim() || createAdjustment.isPending}
+                  >
+                    {createAdjustment.isPending ? "Saving..." : "Create Adjustment"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setAdjustingVariance(null)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
         <div className="mt-8">
