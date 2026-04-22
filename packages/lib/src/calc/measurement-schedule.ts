@@ -407,13 +407,14 @@ export const DEFAULT_PER_TYPE_SCHEDULES: Record<string, PerTypeMeasurementSchedu
     sensory: { intervalDays: null, enabled: false },
     volume: { intervalDays: null, enabled: false },
   },
-  // Cider aging — no SG needed, quarterly pH, monthly temp/sensory, quarterly volume
+  // Cider aging — no SG needed, quarterly pH, monthly temp/sensory
+  // Volume checks handled via Physical Inventory page, not per-batch tasks
   cider_aging: {
     sg: { intervalDays: null, enabled: false },
     ph: { intervalDays: 90, enabled: true },
     temperature: { intervalDays: 30, enabled: true },
     sensory: { intervalDays: 30, enabled: true },
-    volume: { intervalDays: 90, enabled: true },
+    volume: { intervalDays: null, enabled: false },
   },
   // Perry same as cider
   perry_fermenting: {
@@ -428,7 +429,7 @@ export const DEFAULT_PER_TYPE_SCHEDULES: Record<string, PerTypeMeasurementSchedu
     ph: { intervalDays: 90, enabled: true },
     temperature: { intervalDays: 30, enabled: true },
     sensory: { intervalDays: 30, enabled: true },
-    volume: { intervalDays: 90, enabled: true },
+    volume: { intervalDays: null, enabled: false },
   },
   // Brandy — sensory/temp/volume monthly, no SG/pH
   brandy: {
@@ -459,7 +460,7 @@ export const DEFAULT_PER_TYPE_SCHEDULES: Record<string, PerTypeMeasurementSchedu
     ph: { intervalDays: 90, enabled: true },
     temperature: { intervalDays: 30, enabled: true },
     sensory: { intervalDays: 30, enabled: true },
-    volume: { intervalDays: 90, enabled: true },
+    volume: { intervalDays: null, enabled: false },
   },
 };
 
