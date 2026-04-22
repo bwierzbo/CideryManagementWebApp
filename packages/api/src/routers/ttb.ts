@@ -1745,6 +1745,21 @@ export const ttbRouter = router({
           beginningWineUnder16BulkGallons = roundGallons(
             parseFloat(previousSnapshot.bulkWineUnder16 || "0")
           );
+          // Extract spirits opening from snapshot
+          brandyOpening = parseFloat(previousSnapshot.spiritsAppleBrandy || "0");
+          // Extract per-class beginning bottled inventory from snapshot
+          const snapshotBottled: Record<string, number> = {
+            hardCider: parseFloat(previousSnapshot.bottledHardCider || "0"),
+            wineUnder16: parseFloat(previousSnapshot.bottledWineUnder16 || "0"),
+            wine16To21: parseFloat(previousSnapshot.bottledWine16To21 || "0"),
+            wine21To24: parseFloat(previousSnapshot.bottledWine21To24 || "0"),
+            sparklingWine: parseFloat(previousSnapshot.bottledSparklingWine || "0"),
+            carbonatedWine: parseFloat(previousSnapshot.bottledCarbonatedWine || "0"),
+          };
+          for (const [cls, val] of Object.entries(snapshotBottled)) {
+            const g = roundGallons(val);
+            if (g > 0) beginningBottledByClass[cls] = g;
+          }
         } else {
           // 2. Check for TTB Opening Balance
           const [settings] = await db
