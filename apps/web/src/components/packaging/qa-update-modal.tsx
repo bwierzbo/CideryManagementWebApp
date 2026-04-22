@@ -40,6 +40,11 @@ const qaUpdateSchema = z.object({
     .min(0, "ABV cannot be negative")
     .max(100, "ABV cannot exceed 100%")
     .optional(),
+  phAtPackaging: z
+    .number()
+    .min(0, "pH cannot be negative")
+    .max(14, "pH cannot exceed 14")
+    .optional(),
   carbonationLevel: z.enum(["still", "petillant", "sparkling"]).optional(),
   testMethod: z.string().max(100, "Test method too long").optional(),
   testDate: z.string().optional(),
@@ -94,6 +99,7 @@ export function QAUpdateModal({
       fillCheck: undefined,
       fillVarianceMl: undefined,
       abvAtPackaging: undefined,
+      phAtPackaging: undefined,
       carbonationLevel: undefined,
       testMethod: "",
       testDate: "",
@@ -108,6 +114,7 @@ export function QAUpdateModal({
         fillCheck: (runData.fillCheck as any) || undefined,
         fillVarianceMl: runData.fillVarianceML || undefined,
         abvAtPackaging: runData.abvAtPackaging || undefined,
+        phAtPackaging: (runData as any).phAtPackaging || undefined,
         carbonationLevel: (runData.carbonationLevel as any) || undefined,
         testMethod: runData.testMethod || "",
         testDate: runData.testDate
@@ -198,6 +205,8 @@ export function QAUpdateModal({
         updateData.fillVarianceMl = data.fillVarianceMl;
       if (data.abvAtPackaging !== undefined)
         updateData.abvAtPackaging = data.abvAtPackaging;
+      if (data.phAtPackaging !== undefined)
+        updateData.phAtPackaging = data.phAtPackaging;
       if (data.carbonationLevel !== undefined)
         updateData.carbonationLevel = data.carbonationLevel;
       if (data.testMethod !== undefined && data.testMethod.trim() !== "")
@@ -381,6 +390,31 @@ export function QAUpdateModal({
                   </span>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* pH at Packaging */}
+          <div>
+            <Label
+              htmlFor="phAtPackaging"
+              className="text-sm md:text-base font-medium"
+            >
+              pH at Packaging
+            </Label>
+            <Input
+              id="phAtPackaging"
+              type="number"
+              step="0.01"
+              min="0"
+              max="14"
+              placeholder="e.g., 3.5"
+              className="h-10 md:h-11 text-base"
+              {...register("phAtPackaging", { valueAsNumber: true })}
+            />
+            {errors.phAtPackaging && (
+              <p className="text-sm text-red-600 mt-1">
+                {errors.phAtPackaging.message}
+              </p>
             )}
           </div>
 

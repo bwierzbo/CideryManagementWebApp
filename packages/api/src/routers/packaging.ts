@@ -1410,6 +1410,7 @@ export const packagingRouter = router({
         fillCheck: z.enum(["pass", "fail", "not_tested"]).optional(),
         fillVarianceMl: z.number().optional(),
         abvAtPackaging: z.number().min(0).max(100).optional(),
+        phAtPackaging: z.number().min(0).max(14).optional(),
         carbonationLevel: z
           .enum(["still", "petillant", "sparkling"])
           .optional(),
@@ -1477,6 +1478,8 @@ export const packagingRouter = router({
             updateData.fillVarianceML = input.fillVarianceMl.toString();
           if (input.abvAtPackaging !== undefined)
             updateData.abvAtPackaging = input.abvAtPackaging.toString();
+          if (input.phAtPackaging !== undefined)
+            updateData.phAtPackaging = input.phAtPackaging.toString();
           if (input.carbonationLevel !== undefined)
             updateData.carbonationLevel = input.carbonationLevel;
           if (input.testMethod !== undefined)

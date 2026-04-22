@@ -109,6 +109,7 @@ export const bottleRuns = pgTable(
 
     // QA Fields (optional)
     abvAtPackaging: decimal("abv_at_packaging", { precision: 5, scale: 2 }),
+    phAtPackaging: decimal("ph_at_packaging", { precision: 4, scale: 2 }),
     carbonationLevel: carbonationLevelEnum("carbonation_level"),
     fillCheck: fillCheckEnum("fill_check"),
     fillVarianceML: decimal("fill_variance_ml", { precision: 6, scale: 2 }),
