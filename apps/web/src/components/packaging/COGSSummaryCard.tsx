@@ -54,13 +54,18 @@ interface COGSSummaryCardProps {
   cogsData: COGSData;
   unitsProduced: number;
   className?: string;
+  productType?: string | null;
 }
 
 export function COGSSummaryCard({
   cogsData,
   unitsProduced,
   className,
+  productType,
 }: COGSSummaryCardProps) {
+  // Use product type to determine fruit cost label
+  const fruitLabel = productType === "perry" ? "Pear Costs" :
+    productType === "wine" || productType === "cyser" ? "Fruit Costs" : "Apple Costs";
   // Format currency
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -80,7 +85,7 @@ export function COGSSummaryCard({
 
   const breakdownItems = [
     {
-      label: "Apple Costs",
+      label: fruitLabel,
       amount: cogsData.appleCosts.totalCost,
       percentage: getPercentage(cogsData.appleCosts.totalCost),
       icon: Package,
@@ -220,7 +225,7 @@ export function COGSSummaryCard({
           {cogsData.appleCosts.costByVariety.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-gray-700 mb-3">
-                Apple Costs by Variety
+                {fruitLabel} by Variety
               </h4>
               <div className="space-y-2">
                 {cogsData.appleCosts.costByVariety.map((variety, idx) => (

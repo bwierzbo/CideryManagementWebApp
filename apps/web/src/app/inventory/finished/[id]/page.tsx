@@ -281,6 +281,7 @@ export default function FinishedGoodDetailPage() {
             <COGSSummaryCard
               cogsData={enhancedData.cogs}
               unitsProduced={runData?.unitsProduced || 0}
+              productType={(runData as any)?.batch?.productType}
             />
             <MarginAnalysisCard
               margins={enhancedData.margins}

@@ -366,6 +366,7 @@ export default function PackagingDetailPage() {
             <COGSSummaryCard
               cogsData={enhancedData.cogs}
               unitsProduced={runData.unitsProduced}
+              productType={(runData as any).batch?.productType}
             />
             <MarginAnalysisCard
               margins={enhancedData.margins}
