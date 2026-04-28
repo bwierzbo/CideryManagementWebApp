@@ -3982,9 +3982,19 @@ export const appRouter = router({
               const totalRackingLossL = parseFloat(rackingLosses[0]?.totalLoss || "0");
               const totalAdjustmentL = parseFloat(volumeAdjustments[0]?.totalAdjustment || "0");
 
-              // Historical volume = initial + transfers in - transfers out - racking losses + adjustments
+              // Get merge history volume (juice additions from press runs, blends)
+              const mergesIn = await tx.execute(sql`
+                SELECT COALESCE(SUM(CAST(volume_added AS decimal)), 0) AS total
+                FROM batch_merge_history
+                WHERE target_batch_id = ${sourceBatch[0].id}
+                  AND deleted_at IS NULL
+                  AND merged_at <= ${transferDate}
+              `);
+              const totalMergesInL = parseFloat((mergesIn.rows[0] as any)?.total || "0");
+
+              // Historical volume = initial + transfers in + merges in - transfers out - racking losses + adjustments
               // (adjustmentAmount is signed: positive for additions, negative for reductions)
-              const historicalVolumeL = initialInLiters + totalInL - totalOutL - totalRackingLossL + totalAdjustmentL;
+              const historicalVolumeL = initialInLiters + totalInL + totalMergesInL - totalOutL - totalRackingLossL + totalAdjustmentL;
 
               if (transferVolumeL > historicalVolumeL + tolerance) {
                 const overdrawL = transferVolumeL - historicalVolumeL;
