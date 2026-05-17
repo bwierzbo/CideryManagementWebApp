@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Navbar } from "@/components/navbar";
 import {
   Select,
   SelectContent,
@@ -335,20 +336,23 @@ export default function BatchDetailsPage() {
 
   if (batchError) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-2xl mx-auto">
-          <div className="text-center py-8">
-            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h1 className="text-2xl font-bold text-red-600 mb-2">
-              Batch Not Found
-            </h1>
-            <p className="text-gray-600 mb-4">
-              {batchError.message || "The requested batch could not be found."}
-            </p>
-            <Button onClick={() => router.push("/cellar")} variant="outline">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Cellar
-            </Button>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <div className="max-w-2xl mx-auto">
+            <div className="text-center py-8">
+              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <h1 className="text-2xl font-bold text-red-600 mb-2">
+                Batch Not Found
+              </h1>
+              <p className="text-gray-600 mb-4">
+                {batchError.message || "The requested batch could not be found."}
+              </p>
+              <Button onClick={() => router.push("/cellar")} variant="outline">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Cellar
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -357,11 +361,14 @@ export default function BatchDetailsPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-            <p className="text-sm text-gray-600">Loading batch details...</p>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+              <p className="text-sm text-gray-600">Loading batch details...</p>
+            </div>
           </div>
         </div>
       </div>
@@ -370,9 +377,12 @@ export default function BatchDetailsPage() {
 
   if (!batch) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center py-8">
-          <p className="text-gray-600">No batch data available</p>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center py-8">
+            <p className="text-gray-600">No batch data available</p>
+          </div>
         </div>
       </div>
     );
@@ -387,7 +397,9 @@ export default function BatchDetailsPage() {
     composition?.reduce((sum, comp) => sum + comp.juiceVolume, 0) || 0;
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
@@ -1755,6 +1767,7 @@ export default function BatchDetailsPage() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

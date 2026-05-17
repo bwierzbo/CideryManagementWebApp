@@ -6,9 +6,11 @@ import {
   organizations,
   organizationSettings,
   bottleRuns,
+  additiveVolumeDefaults,
   type MeasurementSchedules,
 } from "db";
-import { eq, and, gte, lt, sql } from "drizzle-orm";
+import { eq, and, gte, lt, sql, asc, isNull } from "drizzle-orm";
+import { TRPCError } from "@trpc/server";
 
 /**
  * Settings Router
@@ -677,6 +679,149 @@ export const settingsRouter = router({
         recommended: "monthly" as const,
         reason: "Monthly filing is required for tax liability >$50,000/year",
       };
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Additive volume defaults — user-managed table of (additive type + name
+  // pattern → density) used to suggest a default volume contribution when
+  // recording an additive. Critical for cyser (honey), fortified ciders
+  // (brandy/spirits), fruit wines (purées), and similar volume-changing
+  // additions. Negligible-volume additives (yeast, nutrients, acids) are
+  // unaffected.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List all active volume defaults for display in the settings UI.
+   */
+  listVolumeDefaults: protectedProcedure.query(async () => {
+    return await db
+      .select()
+      .from(additiveVolumeDefaults)
+      .where(isNull(additiveVolumeDefaults.deletedAt))
+      .orderBy(
+        asc(additiveVolumeDefaults.additiveType),
+        asc(additiveVolumeDefaults.sortOrder),
+      );
+  }),
+
+  /**
+   * Lookup the best-matching default density for a (type, name) pair.
+   * Returns null if no rule matches. Most-specific (with name_pattern) wins.
+   */
+  lookupVolumeDefault: protectedProcedure
+    .input(
+      z.object({
+        additiveType: z.string().min(1),
+        additiveName: z.string(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const rules = await db
+        .select()
+        .from(additiveVolumeDefaults)
+        .where(
+          and(
+            isNull(additiveVolumeDefaults.deletedAt),
+            eq(additiveVolumeDefaults.isActive, true),
+            eq(additiveVolumeDefaults.additiveType, input.additiveType),
+          ),
+        )
+        .orderBy(asc(additiveVolumeDefaults.sortOrder));
+
+      const haystack = input.additiveName.toLowerCase();
+      // Prefer rules with a matching name_pattern over wildcard rules.
+      const specific = rules.find(
+        (r) => r.namePattern && haystack.includes(r.namePattern.toLowerCase()),
+      );
+      const wildcard = rules.find((r) => !r.namePattern);
+      const match = specific ?? wildcard ?? null;
+      if (!match) return null;
+      return {
+        id: match.id,
+        densityKgPerL: parseFloat(match.densityKgPerL.toString()),
+        displayLabel: match.displayLabel,
+        notes: match.notes,
+      };
+    }),
+
+  createVolumeDefault: adminProcedure
+    .input(
+      z.object({
+        additiveType: z.string().min(1),
+        namePattern: z.string().nullable().optional(),
+        densityKgPerL: z.number().positive(),
+        displayLabel: z.string().min(1),
+        notes: z.string().nullable().optional(),
+        sortOrder: z.number().int().default(0),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const [row] = await db
+        .insert(additiveVolumeDefaults)
+        .values({
+          additiveType: input.additiveType,
+          namePattern: input.namePattern ?? null,
+          densityKgPerL: input.densityKgPerL.toString(),
+          displayLabel: input.displayLabel,
+          notes: input.notes ?? null,
+          sortOrder: input.sortOrder,
+          createdBy: ctx.session.user.id,
+          updatedBy: ctx.session.user.id,
+        })
+        .returning();
+      return row;
+    }),
+
+  updateVolumeDefault: adminProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        additiveType: z.string().min(1).optional(),
+        namePattern: z.string().nullable().optional(),
+        densityKgPerL: z.number().positive().optional(),
+        displayLabel: z.string().min(1).optional(),
+        notes: z.string().nullable().optional(),
+        sortOrder: z.number().int().optional(),
+        isActive: z.boolean().optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { id, ...patch } = input;
+      const updates: Record<string, unknown> = {
+        updatedAt: new Date(),
+        updatedBy: ctx.session.user.id,
+      };
+      if (patch.additiveType !== undefined)  updates.additiveType = patch.additiveType;
+      if (patch.namePattern !== undefined)   updates.namePattern = patch.namePattern;
+      if (patch.densityKgPerL !== undefined) updates.densityKgPerL = patch.densityKgPerL.toString();
+      if (patch.displayLabel !== undefined)  updates.displayLabel = patch.displayLabel;
+      if (patch.notes !== undefined)         updates.notes = patch.notes;
+      if (patch.sortOrder !== undefined)     updates.sortOrder = patch.sortOrder;
+      if (patch.isActive !== undefined)      updates.isActive = patch.isActive;
+
+      const [row] = await db
+        .update(additiveVolumeDefaults)
+        .set(updates)
+        .where(eq(additiveVolumeDefaults.id, id))
+        .returning();
+      if (!row) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Volume default not found" });
+      }
+      return row;
+    }),
+
+  deleteVolumeDefault: adminProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      await db
+        .update(additiveVolumeDefaults)
+        .set({
+          deletedAt: new Date(),
+          updatedAt: new Date(),
+          updatedBy: ctx.session.user.id,
+        })
+        .where(eq(additiveVolumeDefaults.id, input.id));
+      return { success: true };
     }),
 });
 

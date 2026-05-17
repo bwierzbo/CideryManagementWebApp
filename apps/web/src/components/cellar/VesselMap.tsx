@@ -63,6 +63,8 @@ import {
   SlidersHorizontal,
   Sprout,
   Scale,
+  Sparkles,
+  Archive,
 } from "lucide-react";
 import {
   formatVolume,
@@ -461,10 +463,15 @@ export function VesselMap() {
           return "border-purple-300 bg-purple-50";
         case "aging":
           return "border-blue-300 bg-blue-50";
+        case "conditioning":
+          return "border-teal-300 bg-teal-50";
+        case "completed":
+          return "border-slate-300 bg-slate-100";
         case "discarded":
           return "border-gray-400 bg-gray-100";
+        // Unknown batch status — call it out distinctly so misconfig is visible
         default:
-          return "border-purple-300 bg-purple-50";
+          return "border-amber-300 bg-amber-50";
       }
     }
 
@@ -481,36 +488,84 @@ export function VesselMap() {
     }
   };
 
-  const getStatusIcon = (vesselStatus: string, batchStatus?: string | null, fermentationStage?: string | null) => {
-    // If vessel has a batch, icon based on batch status
+  /**
+   * Human-readable label for the current status indicator. Used as the
+   * tooltip (`title`) on the status icon so operators don't have to memorize
+   * what each icon means.
+   */
+  const getStatusLabel = (vesselStatus: string, batchStatus?: string | null, fermentationStage?: string | null): string => {
     if (batchStatus) {
-      // Check if batch is awaiting fermentation (needs attention)
-      if (fermentationStage === "not_started") {
-        return <Sprout className="w-4 h-4 text-orange-600" />;
-      }
+      if (fermentationStage === "not_started") return "Awaiting fermentation start";
       switch (batchStatus) {
-        case "fermentation":
-          return <Beaker className="w-4 h-4 text-purple-600" />;
-        case "aging":
-          return <Clock className="w-4 h-4 text-blue-600" />;
-        case "discarded":
-          return <AlertTriangle className="w-4 h-4 text-gray-600" />;
-        default:
-          return <Beaker className="w-4 h-4 text-purple-600" />;
+        case "fermentation": return "Active fermentation";
+        case "aging":        return "Aging";
+        case "conditioning": return "Conditioning";
+        case "completed":    return "Production complete (ready to package or archived)";
+        case "discarded":    return "Batch discarded";
+        default:             return `Batch status: ${batchStatus}`;
+      }
+    }
+    switch (vesselStatus) {
+      case "available":   return "Vessel available";
+      case "cleaning":    return "Vessel being cleaned";
+      case "maintenance": return "Vessel in maintenance";
+      default:            return `Vessel status: ${vesselStatus}`;
+    }
+  };
+
+  /**
+   * Status icon with an instant CSS-only hover tooltip showing the status
+   * name. Purely informational — no click action. (We tried a click-to-change
+   * popover but it added unnecessary complexity for everyday use; status
+   * changes go through Actions → View Batch instead.)
+   *
+   * Why CSS hover instead of the native `title` attribute: native tooltips
+   * have a ~1-2 second delay and are easy to miss. The group-hover trick
+   * here shows the label instantly and styles match the app.
+   */
+  const getStatusIcon = (vesselStatus: string, batchStatus?: string | null, fermentationStage?: string | null) => {
+    const label = getStatusLabel(vesselStatus, batchStatus, fermentationStage);
+    let icon: React.ReactNode;
+
+    if (batchStatus) {
+      if (fermentationStage === "not_started") {
+        icon = <Sprout className="w-4 h-4 text-orange-600" />;
+      } else {
+        switch (batchStatus) {
+          case "fermentation": icon = <Beaker className="w-4 h-4 text-purple-600" />; break;
+          case "aging":        icon = <Clock className="w-4 h-4 text-blue-600" />; break;
+          case "conditioning": icon = <Sparkles className="w-4 h-4 text-teal-600" />; break;
+          case "completed":    icon = <Archive className="w-4 h-4 text-slate-500" />; break;
+          case "discarded":    icon = <AlertTriangle className="w-4 h-4 text-gray-600" />; break;
+          default:             icon = <AlertTriangle className="w-4 h-4 text-amber-600" />;
+        }
+      }
+    } else {
+      switch (vesselStatus) {
+        case "available":   icon = <CheckCircle className="w-4 h-4 text-green-600" />; break;
+        case "cleaning":    icon = <RotateCcw className="w-4 h-4 text-yellow-600" />; break;
+        case "maintenance": icon = <AlertTriangle className="w-4 h-4 text-red-600" />; break;
+        default:            icon = <Clock className="w-4 h-4 text-gray-600" />;
       }
     }
 
-    // No batch, use vessel status
-    switch (vesselStatus) {
-      case "available":
-        return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case "cleaning":
-        return <RotateCcw className="w-4 h-4 text-yellow-600" />;
-      case "maintenance":
-        return <AlertTriangle className="w-4 h-4 text-red-600" />;
-      default:
-        return <Clock className="w-4 h-4 text-gray-600" />;
-    }
+    return (
+      <span
+        className="relative inline-flex group"
+        aria-label={label}
+        title={label}
+      >
+        {icon}
+        {/* CSS hover tooltip — appears instantly on hover, no JS needed.
+            Positioned below-and-left so it doesn't escape the card edge. */}
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute right-0 top-full mt-1 z-20 hidden group-hover:block whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white shadow-lg"
+        >
+          {label}
+        </span>
+      </span>
+    );
   };
 
   const formatMaterial = (material: string | null) => {
@@ -1086,9 +1141,20 @@ export function VesselMap() {
                   <div className="pb-2 border-b h-[56px] flex flex-col justify-start">
                     {liquidMapVessel?.batchId ? (
                       <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium text-gray-900">
+                        {/* Batch name → opens batch history modal (where the
+                            name can be edited). Pointer cursor + underline on
+                            hover signal the click affordance. */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewBatch(vessel.id);
+                          }}
+                          className="text-sm font-medium text-gray-900 cursor-pointer hover:text-blue-700 hover:underline focus:outline-none focus:underline truncate text-left"
+                          title="View batch history (click to edit name and details)"
+                        >
                           {liquidMapVessel.batchCustomName ? liquidMapVessel.batchCustomName : liquidMapVessel.batchNumber}
-                        </p>
+                        </button>
                         {(() => {
                           const pt = liquidMapVessel.productType || "cider";
                           const badgeStyle =

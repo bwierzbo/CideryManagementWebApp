@@ -10,7 +10,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -44,17 +47,87 @@ interface AddBatchAdditiveFormProps {
   onCancel: () => void;
 }
 
-const units = [
-  { value: "g", label: "Grams (g)" },
-  { value: "kg", label: "Kilograms (kg)" },
-  { value: "lbs", label: "Pounds (lbs)" },
-  { value: "ml", label: "Milliliters (ml)" },
-  { value: "L", label: "Liters (L)" },
-  { value: "ppm", label: "Parts per million (ppm)" },
-  { value: "mg/L", label: "Milligrams per liter (mg/L)" },
-  { value: "g/L", label: "Grams per liter (g/L)" },
-  { value: "units", label: "Units" },
+// Grouped so absolute amounts and concentrations can be visually separated
+// in the dropdown. Removed `mg/L` (every historical use was a typo for g/L)
+// and `units` (never used, ambiguous). Added `oz` for small flavorings.
+const unitGroups: Array<{ groupLabel: string; options: { value: string; label: string }[] }> = [
+  {
+    groupLabel: "Weight",
+    options: [
+      { value: "g",   label: "Grams (g)" },
+      { value: "kg",  label: "Kilograms (kg)" },
+      { value: "oz",  label: "Ounces (oz)" },
+      { value: "lbs", label: "Pounds (lbs)" },
+    ],
+  },
+  {
+    groupLabel: "Volume",
+    options: [
+      { value: "ml", label: "Milliliters (mL)" },
+      { value: "L",  label: "Liters (L)" },
+    ],
+  },
+  {
+    groupLabel: "Concentration",
+    options: [
+      { value: "g/L", label: "Grams per liter (g/L)" },
+      { value: "ppm", label: "Parts per million (ppm)" },
+    ],
+  },
 ];
+
+// Flat list for places that just need to iterate all options.
+const units = unitGroups.flatMap((g) => g.options);
+
+/**
+ * Sanity-check rules. Returns a warning message when the entered amount is
+ * implausibly low for the given additive type, otherwise null. Operators can
+ * always confirm-and-proceed past the warning.
+ *
+ * Rule of thumb (g/L of total batch volume):
+ *   Fermentation Organisms (yeast):  typical 0.5-2 g/L,  warn below 0.1 g/L
+ *   Sugar & Sweeteners / Fruit:      typical 50-200 g/L, warn below 5 g/L
+ *   Acids / Preservatives / others:  typical < 1 g/L,    no warning (small
+ *                                    doses are normal)
+ */
+function computeSanityWarning(
+  additiveType: string,
+  amount: number,
+  unit: string,
+  batchVolumeL: number | null,
+): string | null {
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (!batchVolumeL || batchVolumeL <= 0) return null;
+
+  // Convert amount to total grams and concentration in g/L.
+  let totalGrams: number | null = null;
+  const u = unit.toLowerCase();
+  if (u === "g")        totalGrams = amount;
+  else if (u === "kg")  totalGrams = amount * 1000;
+  else if (u === "oz")  totalGrams = amount * 28.3495;
+  else if (u === "lbs" || u === "lb") totalGrams = amount * 453.592;
+  else if (u === "g/l") totalGrams = amount * batchVolumeL;
+  else if (u === "ppm") totalGrams = (amount * batchVolumeL) / 1000; // 1 ppm = 1 mg/L
+  // mL / L not convertible to mass without density — skip
+
+  if (totalGrams === null) return null;
+  const gPerL = totalGrams / batchVolumeL;
+
+  // Per-type minimum thresholds. Below these warns.
+  let minGPerL = 0;
+  if (additiveType === "Fermentation Organisms") minGPerL = 0.1;
+  else if (additiveType === "Sugar & Sweeteners" || additiveType === "Fruit/Fruit Product") minGPerL = 5;
+  // Other types: no minimum (acids/preservatives/enzymes/nutrients are
+  // legitimately very small doses)
+
+  if (gPerL < minGPerL) {
+    return (
+      `That works out to ${totalGrams.toFixed(2)} g across ${batchVolumeL.toFixed(1)}L ` +
+      `(= ${gPerL.toFixed(3)} g/L).`
+    );
+  }
+  return null;
+}
 
 const additiveTypes = [
   { value: "Fermentation Organisms", label: "Fermentation Organisms" },
@@ -98,6 +171,14 @@ export function AddBatchAdditiveForm({
   const [dosageRate, setDosageRate] = useState("");
   const [dosageRateUnit, setDosageRateUnit] = useState("mL/L");
   const [isApplePearFruit, setIsApplePearFruit] = useState(false);
+  /**
+   * Liters this addition contributes to the batch volume. Defaults from the
+   * additive_volume_defaults table when an ingredient with a known density
+   * is picked (honey, brandy, fruit purée, etc.). Operator can override.
+   * Empty string = treated as 0 / not contributing.
+   */
+  const [volumeContributionL, setVolumeContributionL] = useState("");
+  const [volumeContributionAutoSet, setVolumeContributionAutoSet] = useState(false);
 
   // Date validation
   const { validateDate } = useBatchDateValidation(batchId);
@@ -152,6 +233,44 @@ export function AddBatchAdditiveForm({
   const showDosageCalculator = useMemo(() => {
     return DOSAGE_RATE_TYPES.has(selectedAdditiveType) && batchVolumeLiters;
   }, [selectedAdditiveType, batchVolumeLiters]);
+
+  // Look up the default density for the selected additive type + name combo.
+  // Returns null when no rule matches (typical for yeast/nutrients/acids).
+  const additiveName =
+    selectedInventoryItem?.varietyName || selectedInventoryItem?.productName || "";
+  const { data: volumeDefault } = trpc.settings.lookupVolumeDefault.useQuery(
+    { additiveType: selectedAdditiveType, additiveName },
+    { enabled: !!selectedAdditiveType && !!additiveName },
+  );
+
+  // Convert the entered amount to kg so we can apply the density (if any).
+  const amountAsKg = useMemo(() => {
+    const n = parseFloat(amount);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const u = unit?.toLowerCase();
+    if (u === "kg")  return n;
+    if (u === "g")   return n / 1000;
+    if (u === "lb" || u === "lbs") return n * 0.453592;
+    if (u === "oz")  return n * 0.0283495;
+    return null; // mass unknown — can't auto-compute volume
+  }, [amount, unit]);
+
+  // Auto-fill volume contribution from density × mass when:
+  //   1. We have a matching default density rule
+  //   2. The amount is in a mass unit
+  //   3. The operator hasn't manually overridden the value
+  // The operator can clear/edit the field at any time.
+  React.useEffect(() => {
+    if (
+      volumeDefault &&
+      amountAsKg !== null &&
+      (!volumeContributionL || volumeContributionAutoSet)
+    ) {
+      const computedL = amountAsKg / volumeDefault.densityKgPerL;
+      setVolumeContributionL(computedL.toFixed(2));
+      setVolumeContributionAutoSet(true);
+    }
+  }, [volumeDefault, amountAsKg, volumeContributionL, volumeContributionAutoSet]);
 
   // Extract latest pH from batch measurements
   const latestPH = useMemo(() => {
@@ -242,6 +361,9 @@ export function AddBatchAdditiveForm({
     setSearchQuery("");
     setIsApplePearFruit(false);
     setDosageRate("");
+    // Clear volume contribution so the next selection re-derives it.
+    setVolumeContributionL("");
+    setVolumeContributionAutoSet(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -282,6 +404,32 @@ export function AddBatchAdditiveForm({
       return;
     }
 
+    // Volume contribution: zero/empty/garbage = don't pass.
+    const parsedVolumeL = parseFloat(volumeContributionL);
+    const includeVolume = Number.isFinite(parsedVolumeL) && parsedVolumeL > 0;
+
+    // ─── Sanity guard ────────────────────────────────────────────────────
+    // Convert the amount to grams-per-liter and warn if it's implausibly low
+    // for the additive type. Two big historical errors we've cleaned up:
+    //   - Yeast at 0.05 g/L (should be ~1 g/L) → 20× under-pitched
+    //   - mg/L picked instead of g/L (already removed from picker)
+    // We warn — don't block — because edge cases exist (sample additions,
+    // calibration runs, etc.) and the operator might really mean it.
+    const sanityWarning = computeSanityWarning(
+      additiveType,
+      parsedAmount,
+      unit,
+      batchVolumeLiters,
+    );
+    if (sanityWarning) {
+      const ok = window.confirm(
+        `${sanityWarning}\n\nThis is unusually low for "${additiveType}". ` +
+          `Continue anyway?`,
+      );
+      if (!ok) return;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     const additiveData = {
       batchId,
       additiveType,
@@ -294,6 +442,9 @@ export function AddBatchAdditiveForm({
       additivePurchaseItemId: selectedInventoryItem.id,
       // Also pass cost for COGS calculation
       costPerUnit: selectedInventoryItem.pricePerUnit ? parseFloat(selectedInventoryItem.pricePerUnit) : undefined,
+      // Volume contribution (honey, brandy, fruit purée, etc.). When > 0,
+      // the API also bumps batch.current_volume and writes an audit row.
+      ...(includeVolume ? { volumeAddedL: parsedVolumeL } : {}),
       // Fruit additive classification (TTB IC 17-2)
       ...(additiveType === "Fruit/Fruit Product" ? { isApplePearFruit } : {}),
     };
@@ -670,15 +821,65 @@ export function AddBatchAdditiveForm({
               <SelectValue placeholder="Select unit" />
             </SelectTrigger>
             <SelectContent>
-              {units.map((u) => (
-                <SelectItem key={u.value} value={u.value}>
-                  {u.label}
-                </SelectItem>
+              {unitGroups.map((group, gi) => (
+                <React.Fragment key={group.groupLabel}>
+                  {gi > 0 && <SelectSeparator />}
+                  <SelectGroup>
+                    <SelectLabel>{group.groupLabel}</SelectLabel>
+                    {group.options.map((u) => (
+                      <SelectItem key={u.value} value={u.value}>
+                        {u.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </React.Fragment>
               ))}
             </SelectContent>
           </Select>
         </div>
       </div>
+
+      {/* Volume contribution — only shown when the selected ingredient has
+          a known density (or operator wants to manually record it). */}
+      {(volumeDefault || volumeContributionL) && (
+        <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50/50 p-3">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="volumeContribution" className="text-sm font-medium">
+              Volume contribution to batch (L)
+            </Label>
+            {volumeDefault && (
+              <span className="text-xs text-blue-700">
+                Auto-derived from {volumeDefault.displayLabel} density (
+                {volumeDefault.densityKgPerL} kg/L)
+              </span>
+            )}
+          </div>
+          <Input
+            id="volumeContribution"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            value={volumeContributionL}
+            onChange={(e) => {
+              setVolumeContributionL(e.target.value);
+              setVolumeContributionAutoSet(false);
+            }}
+          />
+          <p className="text-xs text-muted-foreground">
+            Liters of liquid this addition adds to the batch (e.g. honey,
+            brandy, fruit purée). Leave 0 / blank for additives with negligible
+            volume (yeast, nutrients, acids). When &gt; 0, the batch&apos;s
+            current volume is bumped automatically.
+            {volumeDefault?.notes && (
+              <>
+                <br />
+                <span className="italic">{volumeDefault.notes}</span>
+              </>
+            )}
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="addedDate">Date & Time Added *</Label>

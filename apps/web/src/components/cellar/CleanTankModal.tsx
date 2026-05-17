@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -19,6 +19,11 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { CheckCircle } from "lucide-react";
 import { useDateFormat } from "@/hooks/useDateFormat";
+import {
+  WorkerLaborInput,
+  type WorkerAssignment,
+  toApiLaborAssignments,
+} from "@/components/labor/WorkerLaborInput";
 
 const cleanTankSchema = z.object({
   cleanedAt: z.date(),
@@ -59,6 +64,9 @@ export function CleanTankModal({
   });
 
   const cleanedAt = watch("cleanedAt");
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>(
+    [],
+  );
 
   // Reset when modal opens
   useEffect(() => {
@@ -67,6 +75,7 @@ export function CleanTankModal({
         cleanedAt: new Date(),
         notes: "",
       });
+      setLaborAssignments([]);
     }
   }, [open, reset]);
 
@@ -95,6 +104,7 @@ export function CleanTankModal({
       vesselId,
       cleanedAt: data.cleanedAt,
       notes: data.notes,
+      laborAssignments: toApiLaborAssignments(laborAssignments),
     });
   };
 
@@ -152,6 +162,13 @@ export function CleanTankModal({
               Record the cleaning method, sanitizers used, and any observations (optional)
             </p>
           </div>
+
+          {/* Labor tracking — mirrors other activities (bottle runs, racking, etc.). */}
+          <WorkerLaborInput
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this cleaning"
+          />
 
           <div className="flex justify-end space-x-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose}>

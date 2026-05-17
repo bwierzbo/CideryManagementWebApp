@@ -99,6 +99,14 @@ export function TankTransferForm({
   const [displayUnit, setDisplayUnit] = useState<"L" | "gal">("L");
   const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
   const [lossType, setLossType] = useState<string>("sediment");
+  /**
+   * Tracks whether the operator has manually touched the loss field. While
+   * this stays false, loss is auto-calculated as (current - transfer) — the
+   * common racking case where everything not transferred is lees. Once the
+   * operator types in the loss field (including setting it to 0 to indicate
+   * "the leftover stays in the source tank"), we stop auto-overwriting.
+   */
+  const [lossManuallyEdited, setLossManuallyEdited] = useState(false);
 
   // Update display unit when vessel data loads
   React.useEffect(() => {
@@ -183,6 +191,19 @@ export function TankTransferForm({
 
   const watchedVolumeL = watch("volumeL") || 0;
   const watchedLoss = (watch("loss") as number | undefined) || 0;
+
+  // Auto-calculate loss when the operator hasn't touched it. This makes
+  // racking one-click: type the transfer volume and the leftover defaults
+  // to "loss" (lees). Operator can override by typing in the loss field.
+  React.useEffect(() => {
+    if (lossManuallyEdited) return;
+    if (!Number.isFinite(currentVolume) || currentVolume <= 0) return;
+    const transferAmt = Number(watchedVolumeL) || 0;
+    const auto = Math.max(0, currentVolume - transferAmt);
+    // Round to display precision so the field stays clean.
+    const rounded = Math.round(auto * 10) / 10;
+    setValue("loss", rounded);
+  }, [watchedVolumeL, currentVolume, lossManuallyEdited, setValue]);
 
   // Calculate remaining volume with epsilon tolerance
   const transferInLiters = watchedVolumeL ? toLiters(watchedVolumeL, displayUnit) : 0;
@@ -429,15 +450,37 @@ export function TankTransferForm({
           )}
         </div>
         <div>
-          <Label htmlFor="lossL">Loss/Waste ({displayUnit})</Label>
+          <div className="flex justify-between items-center mb-1">
+            <Label htmlFor="lossL">Loss/Waste ({displayUnit})</Label>
+            {lossManuallyEdited && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setLossManuallyEdited(false)}
+                className="h-7 text-xs"
+                title="Recompute as (current − transfer)"
+              >
+                Reset to auto
+              </Button>
+            )}
+          </div>
           <Input
             id="lossL"
             type="number"
             step="0.1"
             min="0"
             placeholder="0"
-            {...register("loss", { valueAsNumber: true })}
+            {...register("loss", {
+              valueAsNumber: true,
+              onChange: () => setLossManuallyEdited(true),
+            })}
           />
+          {!lossManuallyEdited && (
+            <p className="text-xs text-blue-700 mt-1">
+              Auto-calculated from transfer volume. Edit to override.
+            </p>
+          )}
           {errors.loss && (
             <p className="text-sm text-red-600">{errors.loss.message}</p>
           )}

@@ -81,6 +81,7 @@ export const batchVolumeAdjustmentTypeEnum = pgEnum(
     "donation", // Volume donated or given away
     "correction_up", // Undercount correction (increases volume)
     "correction_down", // Overcount correction (decreases volume)
+    "addition", // Volume added (e.g., honey, brandy, fruit purée — additives that contribute material liquid volume)
     "other", // Other reason (requires notes)
   ],
 );
@@ -204,6 +205,13 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").notNull().default("operator"),
   isActive: boolean("is_active").notNull().default(true),
   lastLoginAt: timestamp("last_login_at"),
+  /**
+   * Per-user permission overrides layered over the role's defaults.
+   * Format: { "recipe:author": true, "plan:edit": false, ... }
+   * A flag set to true GRANTS even if the role lacks it; false DENIES even
+   * if the role has it. Admin-managed via the user-management UI.
+   */
+  permissionOverrides: jsonb("permission_overrides").notNull().default(sql`'{}'::jsonb`),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
@@ -362,6 +370,7 @@ export const activityLaborAssignments = pgTable(
     filterOperationId: uuid("filter_operation_id"),
     rackingOperationId: uuid("racking_operation_id"),
     carbonationOperationId: uuid("carbonation_operation_id"),
+    vesselCleaningOperationId: uuid("vessel_cleaning_operation_id"),
     // Worker assignment
     workerId: uuid("worker_id")
       .notNull()
@@ -384,6 +393,7 @@ export const activityLaborAssignments = pgTable(
     pressRunIdx: index("activity_labor_assignments_press_run_idx").on(table.pressRunId),
     bottleRunIdx: index("activity_labor_assignments_bottle_run_idx").on(table.bottleRunId),
     kegFillIdx: index("activity_labor_assignments_keg_fill_idx").on(table.kegFillId),
+    vesselCleaningIdx: index("activity_labor_assignments_vessel_cleaning_idx").on(table.vesselCleaningOperationId),
     activityTypeIdx: index("activity_labor_assignments_activity_type_idx").on(table.activityType),
   }),
 );
@@ -937,6 +947,30 @@ export const batchMeasurements = pgTable(
   }),
 );
 
+/**
+ * User-managed table of default volume contributions for additives.
+ * When the operator picks an additive type + name in the entry form, the
+ * system looks up the most-specific matching row here to suggest a default
+ * "volume contribution" value. The operator can override.
+ */
+export const additiveVolumeDefaults = pgTable("additive_volume_defaults", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  additiveType: text("additive_type").notNull(),
+  /** Case-insensitive substring match against additive_name. NULL = all of type. */
+  namePattern: text("name_pattern"),
+  /** Density in kg per liter. volume_l = mass_kg / density. */
+  densityKgPerL: decimal("density_kg_per_l", { precision: 6, scale: 3 }).notNull(),
+  displayLabel: text("display_label").notNull(),
+  notes: text("notes"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdBy: uuid("created_by").references(() => users.id),
+  updatedBy: uuid("updated_by").references(() => users.id),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
 export const batchAdditives = pgTable("batch_additives", {
   id: uuid("id").primaryKey().defaultRandom(),
   batchId: uuid("batch_id")
@@ -949,6 +983,13 @@ export const batchAdditives = pgTable("batch_additives", {
   additiveName: text("additive_name").notNull(),
   amount: decimal("amount", { precision: 10, scale: 3 }).notNull(),
   unit: text("unit").notNull(),
+  /**
+   * Liters of liquid this addition contributes to the batch volume. NULL or 0
+   * means negligible (the default for yeast, nutrients, acids). Honey, fruit
+   * purée, juice concentrate, brandy/spirits, etc. should populate this so
+   * batch.current_volume tracks reality.
+   */
+  volumeAddedL: decimal("volume_added_l", { precision: 10, scale: 3 }),
   // Cost tracking fields - link to purchase and snapshot cost at time of use
   additivePurchaseItemId: uuid("additive_purchase_item_id").references(
     () => additivePurchaseItems.id,
@@ -1681,75 +1722,173 @@ export const distillationRecords = pgTable(
 );
 
 // ============================================
-// RECIPES
+// RECIPES (Phase 1 — IP repository, scale-invariant templates)
 // ============================================
+// Replaces a legacy beer-recipe-shaped schema (style/category/target_og)
+// that was never used. The new design models the cidery's actual workflow:
+// scale-invariant rates per liter, parent batch dependencies (e.g. fruit
+// ciders draw from a base cider), and a checklist-driven builder UX.
 
-export const recipeStyleEnum = pgEnum("recipe_style", [
-  "dry",
-  "semi_dry",
-  "semi_sweet",
-  "sweet",
-  "sparkling",
-  "still",
-]);
+/**
+ * Recipe head — represents the current/active version. Each save creates
+ * an immutable snapshot in `recipeVersions`.
+ */
+export const recipes = pgTable(
+  "recipes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    description: text("description"),
+    productType: productTypeEnum("product_type").notNull(),
 
-export const recipeCategoryEnum = pgEnum("recipe_category", [
-  "traditional",
-  "seasonal",
-  "experimental",
-  "house_blend",
-  "single_variety",
-  "fruit_wine",
-  "specialty",
-]);
+    /**
+     * Top-level checklist of which sections of the recipe are enabled.
+     * Drives builder UI visibility. Free-form JSONB so sections can be
+     * added without schema migration. Example:
+     *   { nutrient_plan: true, carbonation_plan: true, pasteurization: false }
+     */
+    enabledSections: jsonb("enabled_sections").notNull().default(sql`'{}'::jsonb`),
 
-export const recipes = pgTable("recipes", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  description: text("description"),
-  style: recipeStyleEnum("style").notNull(),
-  category: recipeCategoryEnum("category").notNull(),
-  targetOG: decimal("target_og", { precision: 5, scale: 3 }),
-  targetFG: decimal("target_fg", { precision: 5, scale: 3 }),
-  targetABV: decimal("target_abv", { precision: 4, scale: 1 }),
-  estimatedFermentationDays: integer("estimated_fermentation_days"),
-  suggestedYeast: text("suggested_yeast"),
-  notes: text("notes"),
-  isActive: boolean("is_active").notNull().default(true),
-  createdBy: uuid("created_by").references(() => users.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  deletedAt: timestamp("deleted_at"),
-});
+    /** Incremented on each save; matches the latest row in recipeVersions. */
+    currentVersion: integer("current_version").notNull().default(1),
 
-export const recipeIngredients = pgTable("recipe_ingredients", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  recipeId: uuid("recipe_id")
-    .notNull()
-    .references(() => recipes.id, { onDelete: "cascade" }),
-  fruitVarietyId: uuid("fruit_variety_id").references(
-    () => baseFruitVarieties.id,
-  ),
-  customFruitName: text("custom_fruit_name"),
-  percentage: decimal("percentage", { precision: 5, scale: 2 }).notNull(),
-  role: text("role"), // "base", "accent", "tannin", "acid"
-  notes: text("notes"),
-});
+    /** 'draft' | 'active' | 'archived' (CHECK-constrained in SQL). */
+    status: text("status").notNull().default("draft"),
 
-export const recipeAdditives = pgTable("recipe_additives", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  recipeId: uuid("recipe_id")
-    .notNull()
-    .references(() => recipes.id, { onDelete: "cascade" }),
-  additiveVarietyId: uuid("additive_variety_id").references(
-    () => additiveVarieties.id,
-  ),
-  customAdditiveName: text("custom_additive_name"),
-  amount: decimal("amount", { precision: 10, scale: 3 }),
-  unit: text("unit"),
-  timing: text("timing"), // "pre_fermentation", "during_fermentation", "post_fermentation", "at_packaging"
-  notes: text("notes"),
-});
+    notes: text("notes"),
+
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (table) => ({
+    productTypeIdx: index("recipes_product_type_idx").on(table.productType),
+    createdByIdx: index("recipes_created_by_idx").on(table.createdBy),
+  }),
+);
+
+/**
+ * Recipe input — what goes IN. Either an `ingredient` (additive rate per
+ * liter) or a `parent_batch_requirement` (e.g. "60L of cider at terminal SG").
+ */
+export const recipeInputs = pgTable(
+  "recipe_inputs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+
+    /** 'ingredient' | 'parent_batch_requirement' | 'press_run_requirement' | 'juice_purchase_requirement' */
+    kind: text("kind").notNull(),
+    label: text("label").notNull(),
+
+    additiveType: text("additive_type"),
+    additiveName: text("additive_name"),
+
+    /** Scale-invariant rate per liter of finished batch. e.g. 75 (g/L). */
+    rateValue: decimal("rate_value", { precision: 12, scale: 4 }),
+    rateUnit: text("rate_unit"),
+
+    /** For parent_batch_requirement: what kind of source batch satisfies this. */
+    sourceProductType: productTypeEnum("source_product_type"),
+
+    /**
+     * Optional density (kg/L) for ingredients that contribute liquid volume
+     * (honey, brandy, fruit purée). Used by the wizard to pre-compute the
+     * volume_added_l contribution at instantiation time.
+     */
+    densityKgPerL: decimal("density_kg_per_l", { precision: 8, scale: 4 }),
+
+    sortOrder: integer("sort_order").notNull().default(0),
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    recipeIdx: index("recipe_inputs_recipe_idx").on(table.recipeId, table.sortOrder),
+  }),
+);
+
+/**
+ * Recipe step — what HAPPENS, in order. Hybrid normalized + JSONB:
+ * indexable common fields (kind, sequence, recipe_id) plus kind-specific
+ * `triggerData` and `actionData` JSONB so new step types don't require
+ * schema changes.
+ */
+export const recipeSteps = pgTable(
+  "recipe_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+
+    /**
+     * 'pitch_yeast' | 'add_additive' | 'measurement' | 'rack' | 'filter' |
+     * 'transfer' | 'carbonate' | 'package' | 'pasteurize' | 'label' |
+     * 'wait' | 'qa_gate' | 'note'
+     */
+    kind: text("kind").notNull(),
+    sequence: integer("sequence").notNull(),
+    label: text("label").notNull(),
+    description: text("description"),
+
+    /**
+     * 'date_offset_from_start' | 'date_offset_from_previous' |
+     * 'sg_threshold' | 'sg_terminal_confirmed' | 'manual'
+     */
+    triggerKind: text("trigger_kind").notNull().default("manual"),
+    /**
+     * Trigger parameters. Shape depends on triggerKind:
+     *   date_offset_*  → { days: 14 } or { hours: 48 }
+     *   sg_threshold   → { sg: 1.005, direction: "below" }
+     *   sg_terminal_confirmed → {}
+     *   manual         → {}
+     */
+    triggerData: jsonb("trigger_data").notNull().default(sql`'{}'::jsonb`),
+    /** Kind-specific action data; see migration 0128 for shape examples. */
+    actionData: jsonb("action_data").notNull().default(sql`'{}'::jsonb`),
+
+    estimatedDurationHours: decimal("estimated_duration_hours", { precision: 6, scale: 2 }),
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    recipeSeqIdx: index("recipe_steps_recipe_seq_idx").on(table.recipeId, table.sequence),
+    kindIdx: index("recipe_steps_kind_idx").on(table.kind),
+    seqUnique: uniqueIndex("recipe_steps_recipe_sequence_unique").on(table.recipeId, table.sequence),
+  }),
+);
+
+/**
+ * Immutable snapshot per saved version. Full JSONB blob containing
+ * { recipe, inputs, steps } — enough to reconstruct the recipe exactly
+ * for "re-run the 2024 winning recipe" reproducibility.
+ */
+export const recipeVersions = pgTable(
+  "recipe_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    recipeId: uuid("recipe_id")
+      .notNull()
+      .references(() => recipes.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    snapshot: jsonb("snapshot").notNull(),
+    changeSummary: text("change_summary"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    recipeVersionIdx: index("recipe_versions_recipe_idx").on(table.recipeId, table.version),
+    versionUnique: uniqueIndex("recipe_versions_recipe_version_unique").on(table.recipeId, table.version),
+  }),
+);
 
 // ============================================
 // BATCH VOLUME LEDGER

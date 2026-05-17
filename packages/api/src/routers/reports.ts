@@ -573,23 +573,78 @@ export const reportsRouter = router({
           additiveCostByBatch.set(row.batchId, row.totalAdditiveCost);
         }
 
-        // 2c. Batch total volumes (for proration: volumeTaken / batchTotalVolume)
-        // Sum all volumeTakenLiters across all bottle runs per batch (total volume drawn from batch)
-        const batchTotalVolumeRows = await db
-          .select({
-            batchId: batches.id,
-            initialVolumeLiters: batches.initialVolumeLiters,
-          })
-          .from(batches)
-          .where(inArray(batches.id, batchIds));
+        // 2c. Batch denominators (for proration: volumeTaken / batchVolume)
+        // Primary denominator: batches.initialVolumeLiters.
+        // Fallback denominator: total volume drawn across ALL of this batch's
+        // non-voided bottle runs (across all time, not just the date filter).
+        // The fallback prevents a divide-by-1 explosion when a batch row is
+        // missing initialVolumeLiters (e.g., remnant batches from blends/
+        // transfers that didn't get the field populated). Without it, a
+        // single bottle run can claim 100x+ of the batch's costs.
+        const [batchTotalVolumeRows, batchDrawnVolumeRows] = await Promise.all([
+          db
+            .select({
+              batchId: batches.id,
+              initialVolumeLiters: batches.initialVolumeLiters,
+            })
+            .from(batches)
+            .where(inArray(batches.id, batchIds)),
+          // Combine bottle + keg volumes from this batch's history (across
+          // all time). Keg fills are tracked in a separate table from bottle
+          // runs but represent the same kind of outflow for proration.
+          db.execute(sql`
+            SELECT batch_id::text AS "batchId",
+                   COALESCE(SUM(drawn), 0)::float AS "totalDrawn"
+            FROM (
+              SELECT batch_id,
+                     CAST(COALESCE(volume_taken_liters, volume_taken) AS NUMERIC) AS drawn
+              FROM bottle_runs
+              WHERE batch_id IN (${sql.join(batchIds.map((id) => sql`${id}::uuid`), sql`, `)})
+                AND status <> 'voided'
+              UNION ALL
+              SELECT batch_id,
+                     CAST(volume_taken AS NUMERIC) AS drawn
+              FROM keg_fills
+              WHERE batch_id IN (${sql.join(batchIds.map((id) => sql`${id}::uuid`), sql`, `)})
+                AND voided_at IS NULL
+                AND deleted_at IS NULL
+            ) all_packaging
+            GROUP BY batch_id
+          `).then((r) => r.rows as unknown as Array<{ batchId: string; totalDrawn: number }>),
+        ]);
 
-        const batchTotalVolume = new Map<string, number>();
+        const batchInitialVolume = new Map<string, number>();
         for (const row of batchTotalVolumeRows) {
-          batchTotalVolume.set(
+          batchInitialVolume.set(
             row.batchId,
             parseFloat(row.initialVolumeLiters?.toString() ?? "0"),
           );
         }
+
+        const batchDrawnVolume = new Map<string, number>();
+        for (const row of batchDrawnVolumeRows) {
+          batchDrawnVolume.set(row.batchId, row.totalDrawn);
+        }
+
+        /**
+         * Resolve the denominator for cost proration.
+         * Uses initialVolumeLiters when present; otherwise falls back to the
+         * total volume actually drawn from the batch via bottle runs. Logs a
+         * warning when the fallback is used so the data issue stays visible.
+         */
+        const resolveBatchVolume = (batchId: string): number => {
+          const initial = batchInitialVolume.get(batchId) ?? 0;
+          if (initial > 0) return initial;
+          const drawn = batchDrawnVolume.get(batchId) ?? 0;
+          if (drawn > 0) {
+            console.warn(
+              `[cogsBreakdown] Batch ${batchId} missing initialVolumeLiters; ` +
+                `using sum of bottle-run volumes (${drawn}L) as denominator. ` +
+                `Fix the batch row to silence this.`,
+            );
+          }
+          return drawn;
+        };
 
         // 2d. Packaging costs by bottle run (bottleRunMaterials joined with packagingPurchaseItems)
         const packagingCostRows = await db
@@ -678,7 +733,10 @@ export const reportsRouter = router({
           const volumeTakenL = parseFloat(
             run.volumeTakenLiters?.toString() ?? run.volumeTaken?.toString() ?? "0",
           );
-          const batchVolume = batchTotalVolume.get(run.batchId) || 1; // avoid division by zero
+          const batchVolume = resolveBatchVolume(run.batchId);
+          // If we still can't determine a denominator (no initial volume AND
+          // no other bottle runs), prorationFactor is 0 — costs aren't
+          // attributed for this run, which is preferable to inflating them.
           const prorationFactor = batchVolume > 0 ? volumeTakenL / batchVolume : 0;
 
           const fruitCost = (fruitCostByBatch.get(run.batchId) ?? 0) * prorationFactor;

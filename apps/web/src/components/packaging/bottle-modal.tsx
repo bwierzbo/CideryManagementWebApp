@@ -261,6 +261,25 @@ export function BottleModal({
     }
   }, [currentMaterialId, unitsProduced]);
 
+  // Sync already-added materials when unitsProduced changes. Without this, a
+  // user who adds bottles/caps BEFORE typing the unit count gets quantityUsed=1
+  // (the default staging value) frozen in selectedMaterials, which then prorates
+  // COGS against 1 bottle instead of e.g. 132. Cap at availableQuantity so a
+  // user-entered count larger than stock doesn't silently inflate.
+  useEffect(() => {
+    if (!unitsProduced || unitsProduced <= 0) return;
+    setSelectedMaterials(prev => {
+      let changed = false;
+      const next = prev.map(m => {
+        const target = Math.min(unitsProduced, m.availableQuantity);
+        if (m.quantityUsed === target) return m;
+        changed = true;
+        return { ...m, quantityUsed: target };
+      });
+      return changed ? next : prev;
+    });
+  }, [unitsProduced]);
+
   // Update form materials when selectedMaterials changes
   useEffect(() => {
     setValue("materials", selectedMaterials);
@@ -502,7 +521,104 @@ export function BottleModal({
             />
           )}
 
-          {/* 4. Input Mode Toggle */}
+          {/* 4. Packaging Materials — moved here from later in the form so the
+                operator picks the bottle/can size BEFORE choosing how to enter
+                quantity. The unit-count input mode below depends on knowing the
+                package size to compute units. */}
+          <div className="space-y-3">
+            <Label className="text-sm md:text-base font-medium">
+              Packaging Materials *
+            </Label>
+            <p className="text-xs text-blue-600">
+              💡 Select primary packaging first (e.g., 750ml bottles) to calculate units
+            </p>
+
+            {/* Add Material Section */}
+            <Card className="p-3 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <SearchableSelect
+                    options={allPackagingItems.map((item) => ({
+                      value: item.id,
+                      label: `${item.varietyName || item.size} (${item.quantity} avail)`,
+                      description: item.type,
+                    }))}
+                    value={currentMaterialId}
+                    onValueChange={setCurrentMaterialId}
+                    placeholder={
+                      primaryPackagingQuery.isLoading ? "Loading materials..." :
+                      allPackagingItems.length === 0 ? "No materials available" :
+                      "Select packaging material"
+                    }
+                    searchPlaceholder="Type to search materials..."
+                    emptyText="No matching materials"
+                    disabled={primaryPackagingQuery.isLoading}
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="^\d+$"
+                    min="1"
+                    value={currentQuantity}
+                    onChange={(e) => setCurrentQuantity(parseInt(e.target.value) || 1)}
+                    placeholder="Qty"
+                    className="h-10"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAddMaterial}
+                    disabled={!currentMaterialId || currentQuantity <= 0}
+                    size="sm"
+                    className="flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add
+                  </Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Selected Materials List */}
+            {selectedMaterials.length > 0 && (
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">
+                  Selected Materials ({selectedMaterials.length})
+                </Label>
+                {selectedMaterials.map((material) => (
+                  <Card key={material.packagingPurchaseItemId} className="p-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{material.itemName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {material.materialType} - Using {material.quantityUsed} of {material.availableQuantity} available
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveMaterial(material.packagingPurchaseItemId)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {errors.materials && (
+              <p className="text-sm text-red-600">
+                {errors.materials.message}
+              </p>
+            )}
+          </div>
+
+          {/* 5. Input Mode Toggle */}
           <div>
             <Label className="text-sm md:text-base font-medium">
               How do you want to enter the quantity? *
@@ -535,7 +651,7 @@ export function BottleModal({
             </div>
           </div>
 
-          {/* 5. Volume / Unit Count Input Fields */}
+          {/* 6. Volume / Unit Count Input Fields */}
           <div className="space-y-3">
             {inputMode === "volume" ? (
               /* Volume input mode (original behavior) */
@@ -793,100 +909,6 @@ export function BottleModal({
             </div>
           )}
 
-          {/* 6. Packaging Materials */}
-          <div className="space-y-3">
-            <Label className="text-sm md:text-base font-medium">
-              Packaging Materials *
-            </Label>
-            <p className="text-xs text-blue-600">
-              💡 Select primary packaging first (e.g., 750ml bottles) to calculate units
-            </p>
-
-            {/* Add Material Section */}
-            <Card className="p-3 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <SearchableSelect
-                    options={allPackagingItems.map((item) => ({
-                      value: item.id,
-                      label: `${item.varietyName || item.size} (${item.quantity} avail)`,
-                      description: item.type,
-                    }))}
-                    value={currentMaterialId}
-                    onValueChange={setCurrentMaterialId}
-                    placeholder={
-                      primaryPackagingQuery.isLoading ? "Loading materials..." :
-                      allPackagingItems.length === 0 ? "No materials available" :
-                      "Select packaging material"
-                    }
-                    searchPlaceholder="Type to search materials..."
-                    emptyText="No matching materials"
-                    disabled={primaryPackagingQuery.isLoading}
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="^\d+$"
-                    min="1"
-                    value={currentQuantity}
-                    onChange={(e) => setCurrentQuantity(parseInt(e.target.value) || 1)}
-                    placeholder="Qty"
-                    className="h-10"
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleAddMaterial}
-                    disabled={!currentMaterialId || currentQuantity <= 0}
-                    size="sm"
-                    className="flex items-center gap-1"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            {/* Selected Materials List */}
-            {selectedMaterials.length > 0 && (
-              <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">
-                  Selected Materials ({selectedMaterials.length})
-                </Label>
-                {selectedMaterials.map((material) => (
-                  <Card key={material.packagingPurchaseItemId} className="p-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{material.itemName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {material.materialType} - Using {material.quantityUsed} of {material.availableQuantity} available
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveMaterial(material.packagingPurchaseItemId)}
-                        className="h-8 w-8 p-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {errors.materials && (
-              <p className="text-sm text-red-600">
-                {errors.materials.message}
-              </p>
-            )}
-          </div>
-
           {/* 7. Remaining volume handling */}
           {hasRemaining && (
             <div className="p-3 border rounded-lg space-y-3">
@@ -990,7 +1012,7 @@ export function BottleModal({
             activityLabel="this packaging run"
           />
 
-          {/* 8. Notes */}
+          {/* 9. Notes */}
           <div>
             <Label htmlFor="notes" className="text-sm md:text-base font-medium">
               Notes (optional)

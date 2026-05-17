@@ -85,6 +85,8 @@ export const WIDGET_IDS = {
   ACTIVE_CARBONATIONS: "active-carbonations",
   COGS_SUMMARY: "cogs-summary",
   LOW_INVENTORY: "low-inventory",
+  RECENT_ACTIVITY: "recent-activity",
+  UPCOMING_TASKS: "upcoming-tasks",
 } as const;
 
 export type WidgetId = (typeof WIDGET_IDS)[keyof typeof WIDGET_IDS];

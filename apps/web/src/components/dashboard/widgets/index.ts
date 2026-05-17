@@ -20,6 +20,8 @@ import "./FermentationHealthWidget";
 import "./ActiveCarbonationsWidget";
 import "./COGSSummaryWidget";
 import "./LowInventoryWidget";
+import "./RecentActivityWidget";
+import "./UpcomingTasksWidget";
 
 // Re-export widget components for direct use
 export { ProductionStatusWidget } from "./ProductionStatusWidget";
@@ -33,3 +35,5 @@ export { FermentationHealthWidget } from "./FermentationHealthWidget";
 export { ActiveCarbonationsWidget } from "./ActiveCarbonationsWidget";
 export { COGSSummaryWidget } from "./COGSSummaryWidget";
 export { LowInventoryWidget } from "./LowInventoryWidget";
+export { RecentActivityWidget } from "./RecentActivityWidget";
+export { UpcomingTasksWidget } from "./UpcomingTasksWidget";

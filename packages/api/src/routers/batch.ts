@@ -456,6 +456,14 @@ const addAdditiveSchema = z.object({
   costPerUnit: z.number().min(0).optional(),
   // Fruit additive classification (TTB IC 17-2)
   isApplePearFruit: z.boolean().default(false).optional(),
+  /**
+   * Liters of liquid this addition contributes to the batch volume.
+   * Optional — leave undefined or 0 for additives with negligible volume
+   * (yeast, nutrients, acids). Set for honey, fruit purée, juice
+   * concentrate, brandy/spirits, etc. When > 0, the mutation also bumps
+   * batch.current_volume(_liters) and writes an audit row.
+   */
+  volumeAddedL: z.number().min(0).optional(),
   notes: z.string().optional(),
   addedBy: z.string().optional(),
   addedAt: z.date().or(z.string().transform((val) => new Date(val))).optional(),
@@ -1617,8 +1625,28 @@ export const batchRouter = router({
           return true;
         });
 
-        // Get additives from blend source batches (inherited via merge)
+        // Get additives from blend source batches (inherited via merge).
+        // For correct concentration math (SO2 ppm etc.) we also need to know
+        // how much volume actually came from each source into THIS batch —
+        // because in a blend, the source's concentration gets diluted by the
+        // other liquids already in the destination.
         const sourceBatchIds = batchSourcedComposition.map((b) => b.sourceBatchId).filter((id): id is string => !!id);
+
+        // Sum total transferred volume per source (across ALL merges/transfers
+        // from that source into this batch — same source can contribute via
+        // multiple events). Normalize gallons → liters where needed.
+        const transferredVolumeBySource = new Map<string, number>();
+        const allSourceContributions = [...mergeSourcedComp, ...transferSourcedComp];
+        for (const row of allSourceContributions) {
+          if (!row.sourceBatchId) continue;
+          const raw = parseFloat((row.volumeAdded as unknown as string) ?? "0");
+          const liters = row.volumeAddedUnit === "gal" ? raw * 3.78541 : raw;
+          transferredVolumeBySource.set(
+            row.sourceBatchId,
+            (transferredVolumeBySource.get(row.sourceBatchId) ?? 0) + liters,
+          );
+        }
+
         let blendSourceAdditives: Array<{
           id: string;
           additiveType: string;
@@ -1629,6 +1657,18 @@ export const batchRouter = router({
           addedAt: Date;
           addedBy: string | null;
           sourceBatchName: string;
+          /**
+           * Volume (liters) of the source batch at the time the addition was
+           * made. Used to compute the source's resulting concentration.
+           */
+          sourceBatchVolumeLiters: number | null;
+          /**
+           * Volume (liters) actually transferred from the source batch into
+           * this batch. Concentration in the destination is diluted by the
+           * ratio (transferredVolume / destinationVolume) when the source
+           * mixes with other liquids.
+           */
+          transferredVolumeFromSourceLiters: number | null;
         }> = [];
         if (sourceBatchIds.length > 0) {
           const sourceAdditivesRaw = await db
@@ -1644,6 +1684,7 @@ export const batchRouter = router({
               batchId: batchAdditives.batchId,
               batchName: batches.customName,
               batchFallbackName: batches.name,
+              sourceBatchInitialVolumeLiters: batches.initialVolumeLiters,
             })
             .from(batchAdditives)
             .innerJoin(batches, eq(batchAdditives.batchId, batches.id))
@@ -1664,6 +1705,11 @@ export const batchRouter = router({
             addedAt: a.addedAt,
             addedBy: a.addedBy,
             sourceBatchName: a.batchName || a.batchFallbackName || "Unknown",
+            sourceBatchVolumeLiters: a.sourceBatchInitialVolumeLiters
+              ? parseFloat(a.sourceBatchInitialVolumeLiters.toString())
+              : null,
+            transferredVolumeFromSourceLiters:
+              transferredVolumeBySource.get(a.batchId) ?? null,
           }));
         }
 
@@ -2048,6 +2094,10 @@ export const batchRouter = router({
             additiveName: input.additiveName,
             amount: input.amount.toString(),
             unit: input.unit,
+            volumeAddedL:
+              input.volumeAddedL && input.volumeAddedL > 0
+                ? input.volumeAddedL.toString()
+                : null,
             additivePurchaseItemId: input.additivePurchaseItemId,
             costPerUnit: costPerUnit?.toString(),
             totalCost: totalCost?.toString(),
@@ -2056,6 +2106,48 @@ export const batchRouter = router({
             addedAt: input.addedAt || new Date(),
           })
           .returning();
+
+        // If the additive contributed material liquid volume (honey, brandy
+        // for fortification, fruit purée, etc.), bump the batch volume and
+        // record an audit adjustment so the timeline reflects the change.
+        if (input.volumeAddedL && input.volumeAddedL > 0) {
+          const beforeL = parseFloat(
+            batchData[0].currentVolume?.toString() ?? "0",
+          );
+          const beforeInLiters =
+            batchData[0].currentVolumeUnit === "gal"
+              ? beforeL * 3.78541
+              : beforeL;
+          const afterInLiters = beforeInLiters + input.volumeAddedL;
+
+          // Update both the unit-native and liters-normalized volume.
+          // We always store back in liters here since that's universal —
+          // the trigger that maintains current_volume_liters from
+          // current_volume in native units may not pick up this change.
+          await db
+            .update(batches)
+            .set({
+              currentVolume: afterInLiters.toString(),
+              currentVolumeUnit: "L",
+              currentVolumeLiters: afterInLiters.toString(),
+              updatedAt: new Date(),
+            })
+            .where(eq(batches.id, input.batchId));
+
+          // Write an audit row in batch_volume_adjustments so the timeline
+          // shows "Volume increased by X L from {additive}".
+          await db.insert(batchVolumeAdjustments).values({
+            batchId: input.batchId,
+            vesselId: batchData[0].vesselId,
+            adjustmentDate: input.addedAt || new Date(),
+            adjustmentType: "addition",
+            volumeBefore: beforeInLiters.toString(),
+            volumeAfter: afterInLiters.toString(),
+            adjustmentAmount: input.volumeAddedL.toString(),
+            reason: `Volume contribution from ${input.additiveType}: ${input.additiveName}`,
+            adjustedBy: ctx.user.id,
+          });
+        }
 
         // Update quantityUsed on the source purchase item if provided
         if (input.additivePurchaseItemId && purchaseItemUnit) {
@@ -3327,6 +3419,7 @@ export const batchRouter = router({
             createdAt: batches.startDate,
             initialVolume: batches.initialVolume,
             initialVolumeUnit: batches.initialVolumeUnit,
+            initialVolumeLiters: batches.initialVolumeLiters,
             currentVolume: batches.currentVolume,
             currentVolumeUnit: batches.currentVolumeUnit,
             status: batches.status,
@@ -3554,6 +3647,8 @@ export const batchRouter = router({
               unit: batchAdditives.unit,
               notes: batchAdditives.notes,
               addedBy: batchAdditives.addedBy,
+              costPerUnit: batchAdditives.costPerUnit,
+              totalCost: batchAdditives.totalCost,
             })
             .from(batchAdditives)
             .where(
@@ -3970,18 +4065,59 @@ export const batchRouter = router({
           });
         });
 
-        // Process additives (filter by split timestamp for ancestors)
+        // Process additives (filter by split timestamp for ancestors).
+        // Headline now includes the amount (e.g., "8 kg Strawberries") so
+        // operators see the recipe at a glance without having to expand.
+        // Expanded details add cost, concentration (g/L), and notes.
+        const batchInitialL = parseFloat(
+          (batch[0].initialVolumeLiters as unknown as string | null) ?? "0",
+        );
+
         additives.forEach((a) => {
           if (!shouldIncludeAncestorActivity(a.batchId, a.addedAt)) return;
+
+          const amtNum = parseFloat(a.amount?.toString() ?? "0");
+          // Trim trailing zeros: "8.00" → "8", "0.50" → "0.5", "9.001" → "9.001"
+          const amountLabel = `${parseFloat(amtNum.toFixed(3)).toString()} ${a.unit}`;
+          const costPerUnit = parseFloat(a.costPerUnit?.toString() ?? "0");
+          const totalCost = parseFloat(a.totalCost?.toString() ?? "0");
+
+          // Compute concentration in g/L when we have a sane initial volume
+          // and an absolute-mass unit. If the unit is already g/L, also
+          // compute the implied total amount.
+          let concentration: string | null = null;
+          let totalImplied: string | null = null;
+          if (batchInitialL > 0) {
+            if (a.unit === "kg") {
+              concentration = `${((amtNum * 1000) / batchInitialL).toFixed(2)} g/L`;
+            } else if (a.unit === "g") {
+              concentration = `${(amtNum / batchInitialL).toFixed(3)} g/L`;
+            } else if (a.unit === "L") {
+              concentration = `${((amtNum * 1000) / batchInitialL).toFixed(2)} mL/L`;
+            } else if (a.unit === "mL" || a.unit === "ml") {
+              concentration = `${(amtNum / batchInitialL).toFixed(2)} mL/L`;
+            } else if (a.unit === "g/L") {
+              totalImplied = `${(amtNum * batchInitialL).toFixed(0)} g total`;
+            } else if (a.unit === "mL/L" || a.unit === "ml/L") {
+              totalImplied = `${(amtNum * batchInitialL).toFixed(0)} mL total`;
+            }
+          }
 
           const inheritedInfo = getInheritedInfo(a.batchId);
           activities.push({
             id: `additive-${a.id}`,
             type: "additive",
             timestamp: a.addedAt,
-            description: `${a.additiveType} added: ${a.additiveName}`,
+            description: `${a.additiveType} added: ${amountLabel} ${a.additiveName}`,
             details: {
-              amount: `${a.amount} ${a.unit}`,
+              amount: amountLabel,
+              concentration,
+              totalImplied,
+              cost:
+                totalCost > 0
+                  ? `$${totalCost.toFixed(2)}` +
+                    (costPerUnit > 0 ? ` @ $${costPerUnit.toFixed(4)}/${a.unit}` : "")
+                  : null,
               addedBy: a.addedBy || null,
               notes: a.notes || null,
             },

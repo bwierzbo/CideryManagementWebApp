@@ -23,6 +23,20 @@ interface SO2Addition {
   unit: string;
   addedAt: string;
   notes: string | null;
+  /**
+   * Volume of the source batch when this addition was made. Set for
+   * inherited additions (from blend/transfer sources). Used as the
+   * denominator when computing the source batch's resulting concentration.
+   */
+  sourceBatchVolumeLiters?: number | null;
+  /**
+   * Volume actually transferred from the source batch into the current
+   * batch. When the source's contents are mixed with other liquids in the
+   * destination, the inherited concentration is diluted by
+   * (transferredVolume / currentBatchVolume). Without this, a partial
+   * blend would still get attributed the full source concentration.
+   */
+  transferredVolumeFromSourceLiters?: number | null;
 }
 
 interface SO2CalculatorProps {
@@ -32,22 +46,62 @@ interface SO2CalculatorProps {
   onUseCalculatedAmount: (grams: number, unit: string, notes: string) => void;
 }
 
-/** Convert a recorded sulfite addition to estimated ppm SO2 added */
+/**
+ * Convert a recorded sulfite addition to estimated ppm SO2 contributed to
+ * the current batch.
+ *
+ * For additions made directly to this batch:
+ *   ppm = mass × efficiency / current_volume
+ *
+ * For additions inherited from a blend/transfer source, the source's
+ * resulting concentration is diluted by the fraction transferred:
+ *   source_concentration = source_mass × efficiency / source_volume
+ *   ppm = source_concentration × (transferred_volume / current_volume)
+ *
+ * Example: 30 ppm in a 1000L parent, transfer 25L into a 125L blend with
+ * 100L of unsulfited cider →
+ *   ppm = 30 × (25 / 125) = 6 ppm
+ */
 function estimateSO2PpmFromAddition(
   addition: SO2Addition,
-  volumeLiters: number,
+  currentBatchVolumeLiters: number,
 ): number {
-  if (volumeLiters <= 0) return 0;
+  if (currentBatchVolumeLiters <= 0) return 0;
+
   let grams = addition.amount;
   const u = addition.unit.toLowerCase();
-  // Convert to grams
   if (u === "kg") grams *= 1000;
   else if (u === "lbs" || u === "lb") grams *= 453.592;
   else if (u === "mg" || u === "mg/l") grams /= 1000;
-  else if (u !== "g") return 0; // can't convert non-weight units
+  else if (u !== "g") return 0;
 
-  // KMS grams -> SO2 ppm: ppm = (grams * 1000 * efficiency) / volumeL
-  return (grams * 1000 * KMS_SO2_EFFICIENCY) / volumeLiters;
+  const so2Ppm_perLiter_factor = grams * 1000 * KMS_SO2_EFFICIENCY;
+
+  // Inherited from a source — apply blend dilution.
+  if (
+    addition.sourceBatchVolumeLiters &&
+    addition.sourceBatchVolumeLiters > 0
+  ) {
+    const sourceConcentration = so2Ppm_perLiter_factor / addition.sourceBatchVolumeLiters;
+    // If we know how much actually transferred, use the dilution ratio.
+    // Cap at 1.0 in case of pathological data (transferred > current).
+    if (
+      addition.transferredVolumeFromSourceLiters &&
+      addition.transferredVolumeFromSourceLiters > 0
+    ) {
+      const dilutionRatio = Math.min(
+        1,
+        addition.transferredVolumeFromSourceLiters / currentBatchVolumeLiters,
+      );
+      return sourceConcentration * dilutionRatio;
+    }
+    // Fallback: assume the full transferred portion = current volume (full
+    // simple transfer, no other liquids mixed in).
+    return sourceConcentration;
+  }
+
+  // Direct addition to this batch.
+  return so2Ppm_perLiter_factor / currentBatchVolumeLiters;
 }
 
 export function SO2Calculator({
@@ -60,7 +114,11 @@ export function SO2Calculator({
   const [currentFreeSO2, setCurrentFreeSO2] = useState("0");
   const [pH, setPH] = useState(batchPH?.toFixed(2) ?? "3.60");
 
-  // Running totals from previous sulfite additions
+  // Running totals from previous sulfite additions.
+  // For inherited additions (with sourceBatchVolumeLiters), the KMS that
+  // actually reached this batch is scaled by the transferred fraction:
+  //   reachedHere = sourceMass × (currentVolume / sourceVolume).
+  // For direct additions, the full mass is here.
   const runningTotals = useMemo(() => {
     if (!previousAdditions.length || !batchVolumeLiters) {
       return null;
@@ -73,7 +131,26 @@ export function SO2Calculator({
       if (u === "kg") grams *= 1000;
       else if (u === "lbs" || u === "lb") grams *= 453.592;
       else if (u !== "g") continue;
-      totalKMSGrams += grams;
+
+      // Mass attribution: for inherited additions, only the fraction of
+      // KMS that actually traveled with the transferred volume reached
+      // this batch:  reachedHere = sourceMass × (transferredVol / sourceVol).
+      // For direct additions, the full mass is here.
+      if (
+        add.sourceBatchVolumeLiters &&
+        add.sourceBatchVolumeLiters > 0
+      ) {
+        const transferred =
+          add.transferredVolumeFromSourceLiters &&
+          add.transferredVolumeFromSourceLiters > 0
+            ? add.transferredVolumeFromSourceLiters
+            : batchVolumeLiters; // fallback: assume simple transfer
+        const fraction = Math.min(1, transferred / add.sourceBatchVolumeLiters);
+        totalKMSGrams += grams * fraction;
+      } else {
+        totalKMSGrams += grams;
+      }
+
       totalSO2Ppm += estimateSO2PpmFromAddition(add, batchVolumeLiters);
     }
     const parsedPH = parseFloat(pH);

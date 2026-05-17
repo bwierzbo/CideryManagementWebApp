@@ -4531,6 +4531,24 @@ export const appRouter = router({
                 blendedOG = (((input.volumeL * srcOG) + (destCurrentVolumeL * dstOG)) / newVolumeL).toFixed(4);
               }
 
+              // "Least mature wins" rule for batch status during blends.
+              // If a more-active batch (e.g., still fermenting) is mixed into
+              // a less-active one (e.g., aging), the result must inherit the
+              // more-active treatment because residual sugar/yeast can
+              // restart fermentation in the destination. Maturity order:
+              //   fermentation < aging < conditioning < completed
+              const STATUS_MATURITY: Record<string, number> = {
+                fermentation: 0,
+                aging:        1,
+                conditioning: 2,
+                completed:    3,
+              };
+              const srcStatus = (sourceBatch[0].status as string) || "fermentation";
+              const dstStatus = (destBatch[0].status as string) || "fermentation";
+              const srcRank = STATUS_MATURITY[srcStatus] ?? Infinity;
+              const dstRank = STATUS_MATURITY[dstStatus] ?? Infinity;
+              const blendedStatus = srcRank < dstRank ? srcStatus : dstStatus;
+
               // Update destination batch with combined volume and blended ABV
               const updateData: Record<string, unknown> = {
                 currentVolume: newVolumeL.toString(),
@@ -4538,6 +4556,17 @@ export const appRouter = router({
                 currentVolumeUnit: "L",
                 updatedAt: new Date(),
               };
+
+              // Only set status when it actually needs to change downward,
+              // so we don't churn updatedAt-equivalent fields needlessly.
+              if (blendedStatus !== dstStatus) {
+                updateData.status = blendedStatus;
+                // If blending revives a closed batch (dest was completed),
+                // clear the end_date so it's no longer marked finished.
+                if (dstStatus === "completed") {
+                  updateData.endDate = null;
+                }
+              }
 
               if (isPommeauBlend) {
                 updateData.productType = newProductType;
@@ -4555,24 +4584,17 @@ export const appRouter = router({
                 .where(eq(batches.id, destBatch[0].id))
                 .returning();
 
-              // Record merge history for TTB reconciliation and audit trail.
-              // Uses sourceType 'batch_transfer' so the validation/TTB code can
-              // distinguish this from juice/press-run merges and avoid double-counting
-              // with the batchTransfers record created below.
-              await tx.insert(batchMergeHistory).values({
-                targetBatchId: destBatch[0].id,
-                sourceBatchId: sourceBatch[0].id,
-                sourceType: "batch_transfer",
-                volumeAdded: input.volumeL.toString(),
-                volumeAddedUnit: "L",
-                targetVolumeBefore: destCurrentVolumeL.toString(),
-                targetVolumeBeforeUnit: "L",
-                targetVolumeAfter: newVolumeL.toString(),
-                targetVolumeAfterUnit: "L",
-                mergedAt: input.transferDate || new Date(),
-                mergedBy: ctx.session?.user?.id,
-                createdAt: new Date(),
-              });
+              // NOTE: previously this branch wrote a batch_merge_history row
+              // with sourceType='batch_transfer' "for TTB reconciliation".
+              // That was wrong — TTB queries explicitly EXCLUDE source_type=
+              // 'batch_transfer' rows (see ttb.ts), so nothing actually
+              // consumed those records. They just inflated volume conservation
+              // math (Perry #2 case + ~58 other historical instances).
+              //
+              // The batch_transfers record written below this block is the
+              // single source of truth for batch-to-batch blends. getBatchHistory
+              // already merges + dedupes both sources, so reads remain correct.
+              // Removed 2026-05-10.
 
               // Volume ledger — blend inflow on destination batch
               const blendEventDate = input.transferDate || new Date();
@@ -4985,7 +5007,11 @@ export const appRouter = router({
                   })
                   .where(eq(vessels.id, input.toVesselId));
 
-                // Record sediment loss as volume adjustment if specified
+                // Record sediment loss as volume adjustment if specified.
+                // The adjustment row models the LOSS event only (not the
+                // transfer); the constraint requires volumeAfter = volumeBefore
+                // + adjustmentAmount. So volumeAfter must be (current - loss),
+                // NOT the transfer-out amount which conflated two operations.
                 const totalLoss = input.loss || 0;
                 if (totalLoss > 0) {
                   await tx.insert(batchVolumeAdjustments).values({
@@ -4994,7 +5020,7 @@ export const appRouter = router({
                     adjustmentDate: input.transferDate || new Date(),
                     adjustmentType: input.lossType || "sediment",
                     volumeBefore: currentVolumeL.toString(),
-                    volumeAfter: input.volumeL.toString(),
+                    volumeAfter: Math.max(0, currentVolumeL - totalLoss).toString(),
                     adjustmentAmount: (-totalLoss).toString(),
                     reason: input.notes || `Transfer loss (${input.lossType || "sediment"})`,
                     adjustedBy: ctx.user.id,
@@ -5371,9 +5397,15 @@ export const appRouter = router({
         } catch (error) {
           if (error instanceof TRPCError) throw error;
           console.error("Error transferring vessel liquid:", error);
+          // Surface the underlying error so the operator can see WHY it
+          // failed instead of a generic "Failed" — most failures here are
+          // validation issues (volume math, foreign keys, constraints) that
+          // are safe to expose.
+          const detail =
+            error instanceof Error ? `: ${error.message}` : "";
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to transfer vessel liquid",
+            message: `Failed to transfer vessel liquid${detail}`,
           });
         }
       }),
@@ -6049,18 +6081,31 @@ export const appRouter = router({
         }
       }),
 
-    // Clean tank - mark as available after cleaning and record cleaning details
+    // Clean tank - mark as available after cleaning and record cleaning details.
+    // Optionally accepts a list of worker assignments (workerId + hoursWorked)
+    // to record labor like other activities (bottle runs, press runs, etc.).
     cleanTank: createRbacProcedure("update", "vessel")
       .input(
         z.object({
           vesselId: z.string().uuid("Invalid vessel ID"),
           cleanedAt: z.date().or(z.string().transform((val) => new Date(val))),
           notes: z.string().optional(),
+          // Optional worker labor tracking — mirrors the bottle-run pattern.
+          // Each worker contributes hours; the server snapshots their current
+          // hourly rate and computes laborCost.
+          laborAssignments: z
+            .array(
+              z.object({
+                workerId: z.string().uuid(),
+                hoursWorked: z.number().positive(),
+              }),
+            )
+            .optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
         try {
-          const { vesselId, cleanedAt, notes } = input;
+          const { vesselId, cleanedAt, notes, laborAssignments } = input;
 
           // Verify vessel exists
           const vessel = await db
@@ -6081,14 +6126,47 @@ export const appRouter = router({
             });
           }
 
-          // Record cleaning operation
-          await db.insert(vesselCleaningOperations).values({
-            vesselId,
-            cleanedAt,
-            cleanedBy: ctx.session?.user?.id || null,
-            notes,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+          // Wrap cleaning op + labor assignments in a transaction so partial
+          // failure (e.g., bad worker ID) doesn't leave a half-recorded clean.
+          const cleaningOpId = await db.transaction(async (tx) => {
+            const [cleaningOp] = await tx
+              .insert(vesselCleaningOperations)
+              .values({
+                vesselId,
+                cleanedAt,
+                cleanedBy: ctx.session?.user?.id || null,
+                notes,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .returning({ id: vesselCleaningOperations.id });
+
+            if (laborAssignments && laborAssignments.length > 0) {
+              for (const assignment of laborAssignments) {
+                const [worker] = await tx
+                  .select({ hourlyRate: workers.hourlyRate })
+                  .from(workers)
+                  .where(eq(workers.id, assignment.workerId))
+                  .limit(1);
+
+                const hourlyRate = parseFloat(
+                  worker?.hourlyRate?.toString() || "20.00",
+                );
+                const laborCost = assignment.hoursWorked * hourlyRate;
+
+                await tx.insert(activityLaborAssignments).values({
+                  activityType: "cleaning",
+                  vesselCleaningOperationId: cleaningOp.id,
+                  workerId: assignment.workerId,
+                  hoursWorked: assignment.hoursWorked.toString(),
+                  hourlyRateSnapshot: hourlyRate.toString(),
+                  laborCost: laborCost.toString(),
+                  createdBy: ctx.session?.user?.id,
+                });
+              }
+            }
+
+            return cleaningOp.id;
           });
 
           // Clear vesselId from any completed/deleted batches that still reference this vessel
@@ -6147,9 +6225,16 @@ export const appRouter = router({
             `Vessel cleaned and marked as available${clearedBatches.length > 0 ? ` (cleared ${clearedBatches.length} stale batch associations)` : ""}`,
           );
 
+          const workerCount = laborAssignments?.length ?? 0;
+          const workerSuffix = workerCount > 0
+            ? ` · ${workerCount} worker${workerCount === 1 ? "" : "s"} logged`
+            : "";
+
           return {
             success: true,
-            message: `Tank ${vessel[0].name || "Unknown"} cleaned and marked as available${clearedBatches.length > 0 ? ` (cleared ${clearedBatches.length} stale batch associations)` : ""}`,
+            cleaningOperationId: cleaningOpId,
+            workerCount,
+            message: `Tank ${vessel[0].name || "Unknown"} cleaned and marked as available${clearedBatches.length > 0 ? ` (cleared ${clearedBatches.length} stale batch associations)` : ""}${workerSuffix}`,
           };
         } catch (error) {
           if (error instanceof TRPCError) throw error;

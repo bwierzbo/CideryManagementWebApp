@@ -69,6 +69,7 @@ export const authOptions = {
             name: user[0].name,
             role: user[0].role,
             isActive: user[0].isActive,
+            permissionOverrides: user[0].permissionOverrides,
           };
         } catch (error) {
           console.error("Auth error:", error);
@@ -82,6 +83,10 @@ export const authOptions = {
       if (user) {
         token.role = user.role;
         token.isActive = user.isActive;
+        // Store permission overrides in the JWT so RBAC checks don't need a
+        // DB hit per request. Note: changes to a user's overrides won't take
+        // effect until they re-sign-in. The admin UI should mention this.
+        token.permissionOverrides = user.permissionOverrides;
       }
       return token;
     },
@@ -90,6 +95,7 @@ export const authOptions = {
         session.user.id = token.sub;
         session.user.role = token.role as string;
         session.user.isActive = token.isActive as boolean;
+        session.user.permissionOverrides = token.permissionOverrides ?? {};
       }
       return session;
     },

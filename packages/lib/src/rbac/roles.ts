@@ -27,7 +27,9 @@ export type Entity =
   | "audit_log"
   | "audit"
   | "carbonation"
-  | "activity";
+  | "activity"
+  | "recipe"  // Recipe templates (the IP repository)
+  | "plan";   // Batch plans / scheduling (Phase 2+)
 
 // Permission definition
 type Permission = {
@@ -92,6 +94,14 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
       actions: ["create", "read", "update", "delete", "list"],
     },
     { entity: "activity", actions: ["read", "list"] }, // Activity register is read-only
+    {
+      entity: "recipe",
+      actions: ["create", "read", "update", "delete", "list"],
+    },
+    {
+      entity: "plan",
+      actions: ["create", "read", "update", "delete", "list"],
+    },
   ],
 
   operator: [
@@ -140,6 +150,11 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
       actions: ["create", "read", "update", "delete", "list"],
     },
     { entity: "activity", actions: ["read", "list"] }, // Can view activity register
+    // Operators can read + use recipes; only admins create/edit by default.
+    // Granting `recipe:author` per-user via permission_overrides lets a senior
+    // operator author recipes without becoming a full admin.
+    { entity: "recipe", actions: ["read", "list", "create"] }, // create = "instantiate" via wizard
+    { entity: "plan", actions: ["create", "read", "update", "list"] },
   ],
 
   viewer: [
@@ -161,6 +176,8 @@ export const RBAC_MATRIX: Record<UserRole, Permission[]> = {
     { entity: "audit", actions: ["read", "list"] }, // Can view audit information
     { entity: "carbonation", actions: ["read", "list"] }, // Can view carbonation operations
     { entity: "activity", actions: ["read", "list"] }, // Can view activity register
+    { entity: "recipe", actions: ["read", "list"] }, // Read-only on recipes
+    { entity: "plan", actions: ["read", "list"] }, // Read-only on plans
   ],
 };
 
@@ -314,4 +331,52 @@ export function hasHigherPermissions(
   role2: UserRole,
 ): boolean {
   return getRoleLevel(role1) > getRoleLevel(role2);
+}
+
+// ============================================================================
+// PER-USER PERMISSION OVERRIDES
+// ============================================================================
+// Layered over the role's defaults from RBAC_MATRIX. Format:
+//   { "recipe:author": true, "plan:edit": false, ... }
+// A flag set to TRUE grants the permission even if the role lacks it.
+// A flag set to FALSE denies the permission even if the role has it.
+// Stored on `users.permission_overrides` (JSONB).
+
+export type PermissionOverrides = Record<string, boolean>;
+
+/**
+ * Build the override key for a (action, entity) pair. Used both to write
+ * overrides and to look them up.
+ *
+ * @example
+ * permissionKey("create", "recipe")  // → "recipe:create"
+ * permissionKey("update", "plan")    // → "plan:update"
+ */
+export function permissionKey(action: Action, entity: Entity): string {
+  return `${entity}:${action}`;
+}
+
+/**
+ * Final permission decision combining role defaults + per-user overrides.
+ * Override always wins over role default, in either direction.
+ *
+ * @param userRole          The user's assigned role
+ * @param action            The action being attempted
+ * @param entity            The entity the action targets
+ * @param overrides         The user's permission_overrides JSONB (may be undefined / empty)
+ * @returns true if allowed, false if denied
+ */
+export function canWithOverrides(
+  userRole: UserRole,
+  action: Action,
+  entity: Entity,
+  overrides: PermissionOverrides | undefined | null,
+): boolean {
+  // Override takes precedence in either direction (grant or deny).
+  const key = permissionKey(action, entity);
+  if (overrides && key in overrides) {
+    return overrides[key] === true;
+  }
+  // No override → fall back to role default.
+  return can(userRole, action, entity);
 }

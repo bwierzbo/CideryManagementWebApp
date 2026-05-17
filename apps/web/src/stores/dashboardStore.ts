@@ -8,15 +8,17 @@ import { WIDGET_IDS } from "@/components/dashboard/widgets/registry";
  */
 const DEFAULT_WIDGETS: WidgetInstance[] = [
   { id: "1", widgetId: WIDGET_IDS.CRITICAL_ALERTS, size: "full", order: 0 },
-  { id: "2", widgetId: WIDGET_IDS.PRODUCTION_STATUS, size: "md", order: 1 },
-  { id: "3", widgetId: WIDGET_IDS.TODAYS_TASKS, size: "md", order: 2 },
-  { id: "4", widgetId: WIDGET_IDS.QUICK_ACTIONS, size: "sm", order: 3 },
-  { id: "5", widgetId: WIDGET_IDS.VESSEL_MAP, size: "md", order: 4 },
-  { id: "6", widgetId: WIDGET_IDS.FERMENTATION_HEALTH, size: "md", order: 5 },
-  { id: "7", widgetId: WIDGET_IDS.ACTIVE_CARBONATIONS, size: "md", order: 6 },
-  { id: "8", widgetId: WIDGET_IDS.FINISHED_GOODS, size: "md", order: 7 },
-  { id: "9", widgetId: WIDGET_IDS.COGS_SUMMARY, size: "md", order: 8 },
-  { id: "10", widgetId: WIDGET_IDS.RAW_MATERIALS, size: "md", order: 9 },
+  { id: "2", widgetId: WIDGET_IDS.RECENT_ACTIVITY, size: "lg", order: 1 },
+  { id: "3", widgetId: WIDGET_IDS.QUICK_ACTIONS, size: "sm", order: 2 },
+  { id: "4", widgetId: WIDGET_IDS.TODAYS_TASKS, size: "md", order: 3 },
+  { id: "5", widgetId: WIDGET_IDS.UPCOMING_TASKS, size: "md", order: 4 },
+  { id: "6", widgetId: WIDGET_IDS.PRODUCTION_STATUS, size: "md", order: 5 },
+  { id: "7", widgetId: WIDGET_IDS.VESSEL_MAP, size: "md", order: 6 },
+  { id: "8", widgetId: WIDGET_IDS.FERMENTATION_HEALTH, size: "md", order: 7 },
+  { id: "9", widgetId: WIDGET_IDS.ACTIVE_CARBONATIONS, size: "md", order: 8 },
+  { id: "10", widgetId: WIDGET_IDS.FINISHED_GOODS, size: "md", order: 9 },
+  { id: "11", widgetId: WIDGET_IDS.COGS_SUMMARY, size: "md", order: 10 },
+  { id: "12", widgetId: WIDGET_IDS.RAW_MATERIALS, size: "md", order: 11 },
 ];
 
 interface DashboardState {
@@ -185,6 +187,66 @@ export const useDashboardStore = create<DashboardState>()(
       partialize: (state) => ({
         layout: state.layout,
       }),
+      // Bump when adding a widget that should appear in existing users' layouts.
+      version: 2,
+      migrate: (persistedState: any, fromVersion) => {
+        if (!persistedState?.layout?.widgets) return persistedState;
+
+        if (fromVersion < 1) {
+          const widgets: WidgetInstance[] = persistedState.layout.widgets;
+          const hasRecentActivity = widgets.some(
+            (w) => w.widgetId === WIDGET_IDS.RECENT_ACTIVITY,
+          );
+
+          if (!hasRecentActivity) {
+            // Insert Recent Activity right after the first widget
+            // (Critical Alerts in the default layout) and shift everything else down.
+            const shifted = widgets.map((w) =>
+              w.order >= 1 ? { ...w, order: w.order + 1 } : w,
+            );
+            const newWidget: WidgetInstance = {
+              id: `widget-recent-activity-${Date.now()}`,
+              widgetId: WIDGET_IDS.RECENT_ACTIVITY,
+              size: "lg",
+              order: 1,
+            };
+            persistedState.layout.widgets = [...shifted, newWidget];
+            persistedState.layout.updatedAt = new Date();
+          }
+        }
+
+        if (fromVersion < 2) {
+          const widgets: WidgetInstance[] = persistedState.layout.widgets;
+          const hasUpcoming = widgets.some(
+            (w) => w.widgetId === WIDGET_IDS.UPCOMING_TASKS,
+          );
+
+          if (!hasUpcoming) {
+            // Place Upcoming next to Today's Tasks if we can find it,
+            // otherwise just append at the end.
+            const todayTask = widgets.find(
+              (w) => w.widgetId === WIDGET_IDS.TODAYS_TASKS,
+            );
+            const targetOrder = todayTask
+              ? todayTask.order + 1
+              : Math.max(...widgets.map((w) => w.order), -1) + 1;
+
+            const shifted = widgets.map((w) =>
+              w.order >= targetOrder ? { ...w, order: w.order + 1 } : w,
+            );
+            const newWidget: WidgetInstance = {
+              id: `widget-upcoming-tasks-${Date.now()}`,
+              widgetId: WIDGET_IDS.UPCOMING_TASKS,
+              size: "md",
+              order: targetOrder,
+            };
+            persistedState.layout.widgets = [...shifted, newWidget];
+            persistedState.layout.updatedAt = new Date();
+          }
+        }
+
+        return persistedState;
+      },
     }
   )
 );

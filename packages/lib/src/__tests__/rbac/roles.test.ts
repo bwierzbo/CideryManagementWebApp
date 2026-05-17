@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   can,
+  canWithOverrides,
   getPermissions,
   getAllowedActions,
   hasAccess,
@@ -9,6 +10,7 @@ import {
   canPerformBulkOperations,
   getRoleLevel,
   hasHigherPermissions,
+  permissionKey,
   RBAC_MATRIX,
 } from "../../rbac/roles";
 
@@ -417,6 +419,132 @@ describe("RBAC System", () => {
           expect(hasAccess("operator", entity as any)).toBe(true);
         }
       });
+    });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Recipe + plan entities (Phase 1 of recipe system)
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("recipe entity defaults", () => {
+  it("admin has full recipe access", () => {
+    for (const action of ["create", "read", "update", "delete", "list"] as const) {
+      expect(can("admin", action, "recipe")).toBe(true);
+    }
+  });
+
+  it("operator can read/list/create recipes but not update/delete", () => {
+    expect(can("operator", "read", "recipe")).toBe(true);
+    expect(can("operator", "list", "recipe")).toBe(true);
+    expect(can("operator", "create", "recipe")).toBe(true);
+    expect(can("operator", "update", "recipe")).toBe(false);
+    expect(can("operator", "delete", "recipe")).toBe(false);
+  });
+
+  it("viewer is read-only on recipes", () => {
+    expect(can("viewer", "read", "recipe")).toBe(true);
+    expect(can("viewer", "list", "recipe")).toBe(true);
+    expect(can("viewer", "create", "recipe")).toBe(false);
+    expect(can("viewer", "update", "recipe")).toBe(false);
+  });
+});
+
+describe("plan entity defaults", () => {
+  it("admin has full plan access", () => {
+    for (const action of ["create", "read", "update", "delete", "list"] as const) {
+      expect(can("admin", action, "plan")).toBe(true);
+    }
+  });
+
+  it("operator can create/read/update/list plans but not delete", () => {
+    expect(can("operator", "create", "plan")).toBe(true);
+    expect(can("operator", "update", "plan")).toBe(true);
+    expect(can("operator", "delete", "plan")).toBe(false);
+  });
+});
+
+describe("permissionKey", () => {
+  it("formats as entity:action", () => {
+    expect(permissionKey("create", "recipe")).toBe("recipe:create");
+    expect(permissionKey("update", "plan")).toBe("plan:update");
+    expect(permissionKey("delete", "vendor")).toBe("vendor:delete");
+  });
+});
+
+describe("canWithOverrides", () => {
+  describe("when no overrides present", () => {
+    it("falls back to role default (allowed)", () => {
+      expect(canWithOverrides("operator", "read", "recipe", {})).toBe(true);
+      expect(canWithOverrides("operator", "read", "recipe", undefined)).toBe(true);
+      expect(canWithOverrides("operator", "read", "recipe", null)).toBe(true);
+    });
+
+    it("falls back to role default (denied)", () => {
+      expect(canWithOverrides("operator", "update", "recipe", {})).toBe(false);
+      expect(canWithOverrides("viewer", "create", "recipe", undefined)).toBe(false);
+    });
+  });
+
+  describe("when override grants a permission the role lacks", () => {
+    it("operator can update recipe when granted", () => {
+      // Default operator can NOT update recipes
+      expect(can("operator", "update", "recipe")).toBe(false);
+      // With override → allowed
+      const overrides = { "recipe:update": true };
+      expect(canWithOverrides("operator", "update", "recipe", overrides)).toBe(true);
+    });
+
+    it("viewer can author recipes when granted (recipe:create)", () => {
+      expect(can("viewer", "create", "recipe")).toBe(false);
+      expect(canWithOverrides("viewer", "create", "recipe", { "recipe:create": true })).toBe(true);
+    });
+
+    it("override works for any entity, not just recipe", () => {
+      expect(can("operator", "delete", "vendor")).toBe(false);
+      expect(canWithOverrides("operator", "delete", "vendor", { "vendor:delete": true })).toBe(true);
+    });
+  });
+
+  describe("when override denies a permission the role normally has", () => {
+    it("admin can be denied a specific permission", () => {
+      expect(can("admin", "delete", "vendor")).toBe(true);
+      expect(canWithOverrides("admin", "delete", "vendor", { "vendor:delete": false })).toBe(false);
+    });
+
+    it("operator can lose recipe:read", () => {
+      expect(can("operator", "read", "recipe")).toBe(true);
+      expect(canWithOverrides("operator", "read", "recipe", { "recipe:read": false })).toBe(false);
+    });
+  });
+
+  describe("override key isolation", () => {
+    it("override on one (action, entity) doesn't affect others", () => {
+      const overrides = { "recipe:update": true };
+      // Granted update specifically...
+      expect(canWithOverrides("operator", "update", "recipe", overrides)).toBe(true);
+      // ...but delete is unchanged (still default-denied)
+      expect(canWithOverrides("operator", "delete", "recipe", overrides)).toBe(false);
+      // ...and other entities unaffected
+      expect(canWithOverrides("operator", "update", "vendor", overrides))
+        .toBe(can("operator", "update", "vendor"));
+    });
+  });
+
+  describe("edge cases", () => {
+    it("ignores override values that aren't strict booleans", () => {
+      // Defensive: only TRUE grants, only FALSE denies. Anything else = ignore.
+      // Per the implementation, the key check is `overrides[key] === true`
+      // for grant; anything in the key falls through to "denied via override"
+      // unless it's literally true. Documented here so behavior stays explicit.
+      const overrides: any = { "recipe:read": "yes" };
+      expect(canWithOverrides("operator", "read", "recipe", overrides)).toBe(false);
+    });
+
+    it("override key absent → role default applies", () => {
+      const overrides = { "vendor:delete": true }; // unrelated grant
+      expect(canWithOverrides("operator", "read", "recipe", overrides))
+        .toBe(can("operator", "read", "recipe"));
     });
   });
 });

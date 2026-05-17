@@ -1,5 +1,5 @@
 import { initTRPC, TRPCError } from "@trpc/server";
-import { can } from "lib/src/rbac/roles";
+import { canWithOverrides, type PermissionOverrides } from "lib/src/rbac/roles";
 import {
   auditMiddleware,
   enhancedAuditMiddleware,
@@ -14,6 +14,8 @@ export interface AuthUser {
   image?: string | null;
   role: string;
   isActive?: boolean;
+  /** Per-user permission grants/denies layered over role defaults. */
+  permissionOverrides?: PermissionOverrides | null;
 }
 
 export interface AuthSession {
@@ -85,7 +87,15 @@ export const createRbacProcedure = (action: string, entity: string) =>
   protectedProcedure.use(({ ctx, next }) => {
     const userRole = ctx.user.role as "admin" | "operator" | "viewer";
 
-    if (!userRole || !can(userRole, action as any, entity as any)) {
+    if (
+      !userRole ||
+      !canWithOverrides(
+        userRole,
+        action as any,
+        entity as any,
+        ctx.user.permissionOverrides,
+      )
+    ) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: `Insufficient permissions to ${action} ${entity}`,

@@ -7,8 +7,10 @@ import {
   batchMeasurements,
   vessels,
   organizationSettings,
+  auditLogs,
+  users,
 } from "db";
-import { eq, and, isNull, sql, desc, or, inArray, lt } from "drizzle-orm";
+import { eq, and, isNull, sql, desc, or, inArray, lt, notInArray } from "drizzle-orm";
 import {
   analyzeFermentationProgress,
   getRecommendedMeasurementFrequency,
@@ -21,6 +23,8 @@ import {
   type MeasurementScheduleConfig,
   type BatchMeasurementOverride,
 } from "lib";
+import { formatRecentActivity } from "../services/recentActivityFormatter";
+import { gatherUpcomingTasks } from "../services/upcomingTasks";
 
 /**
  * Dashboard Router
@@ -462,8 +466,21 @@ export const dashboardRouter = router({
                 fermentationStage: progress.stage,
                 recommendedAction: progress.recommendedAction,
               });
-            } else if (progress.stage === "terminal" && !progress.isTerminalConfirmed) {
-              // Terminal but needs confirmation
+            } else if (
+              progress.stage === "terminal" &&
+              !progress.isTerminalConfirmed &&
+              progress.daysSinceLastMeasurement * 24 >= terminalConfirmationHours
+            ) {
+              // Terminal stage, awaiting a second hydrometer reading. We only
+              // surface this once enough time has passed since the last
+              // reading that a *confirming* reading is actually possible —
+              // alerting earlier just nags about something the operator
+              // can't act on yet. Escalate to high priority if the window
+              // has been open for more than 5 days without confirmation.
+              const daysOverdue =
+                progress.daysSinceLastMeasurement - terminalConfirmationHours / 24;
+              const priority: "high" | "medium" = daysOverdue > 5 ? "high" : "medium";
+
               tasks.push({
                 id: batch.id,
                 batchNumber: batch.batchNumber,
@@ -473,7 +490,7 @@ export const dashboardRouter = router({
                 taskType: "confirm_terminal",
                 alertType: "measurement_overdue",
                 daysSinceLastMeasurement: progress.daysSinceLastMeasurement,
-                priority: "medium",
+                priority,
                 percentFermented: progress.percentFermented,
                 fermentationStage: progress.stage,
                 recommendedAction: progress.recommendedAction,
@@ -596,5 +613,135 @@ export const dashboardRouter = router({
         console.error("Error fetching tasks:", error);
         throw error;
       }
+    }),
+
+  /**
+   * Get recent activity (audit log) for the dashboard.
+   * Returns the most recent data-entry actions across all users so a returning
+   * user can see where they (or teammates) last left off.
+   */
+  getRecentActivity: protectedProcedure
+    .input(
+      z
+        .object({
+          limit: z.number().min(1).max(50).default(5),
+          offset: z.number().min(0).default(0),
+        })
+        .optional(),
+    )
+    .query(async ({ input }) => {
+      const limit = input?.limit ?? 5;
+      const offset = input?.offset ?? 0;
+
+      // Tables that represent system/auth noise rather than data entry.
+      const EXCLUDED_TABLES = [
+        "audit_logs",
+        "sessions",
+        "accounts",
+        "verification_tokens",
+        "users",
+        "organization_settings",
+      ];
+
+      // Skip batches.update events whose primary change is just vesselId —
+      // those are produced as a side-effect of batch_transfers and would
+      // double up the activity feed (the transfer itself already shows
+      // source → destination + volume). We keep rows where status also
+      // changed so transitions like "X batch closed" still surface.
+      const skipBatchVesselOnlyUpdate = sql`NOT (
+        ${auditLogs.tableName} = 'batches'
+        AND ${auditLogs.operation} = 'update'
+        AND COALESCE(${auditLogs.oldData}->>'vesselId', ${auditLogs.oldData}->>'vessel_id')
+            IS DISTINCT FROM COALESCE(${auditLogs.newData}->>'vesselId', ${auditLogs.newData}->>'vessel_id')
+        AND COALESCE(${auditLogs.oldData}->>'status', '')
+            = COALESCE(${auditLogs.newData}->>'status', '')
+      )`;
+
+      // Skip "phantom closure" events: a batch's status flips to 'completed'
+      // when it's already empty (vesselId is null). This happens after blends
+      // and full transfers — the source batch row is paperwork-closed even
+      // though the cider lives on under a different batch ID. No operational
+      // meaning; would just confuse the user.
+      const skipPhantomClosure = sql`NOT (
+        ${auditLogs.tableName} = 'batches'
+        AND ${auditLogs.operation} = 'update'
+        AND COALESCE(${auditLogs.newData}->>'status', '') = 'completed'
+        AND COALESCE(${auditLogs.oldData}->>'status', '') <> 'completed'
+        AND COALESCE(${auditLogs.newData}->>'vesselId', ${auditLogs.newData}->>'vessel_id') IS NULL
+      )`;
+
+      // Fetch limit+1 so we can tell whether there's another page without a
+      // separate COUNT query against the (potentially large) audit table.
+      const rows = await db
+        .select({
+          id: auditLogs.id,
+          tableName: auditLogs.tableName,
+          recordId: auditLogs.recordId,
+          operation: auditLogs.operation,
+          changedAt: auditLogs.changedAt,
+          changedByEmail: auditLogs.changedByEmail,
+          oldData: auditLogs.oldData,
+          newData: auditLogs.newData,
+          userName: users.name,
+          userEmail: users.email,
+        })
+        .from(auditLogs)
+        .leftJoin(users, eq(auditLogs.changedBy, users.id))
+        .where(
+          and(
+            notInArray(auditLogs.tableName, EXCLUDED_TABLES),
+            skipBatchVesselOnlyUpdate,
+            skipPhantomClosure,
+          ),
+        )
+        .orderBy(desc(auditLogs.changedAt))
+        .limit(limit + 1)
+        .offset(offset);
+
+      const hasMore = rows.length > limit;
+      const items = await formatRecentActivity(rows.slice(0, limit));
+
+      return { items, hasMore };
+    }),
+
+  /**
+   * Get upcoming tasks for the dashboard "Upcoming" widget.
+   * Shows tasks due within `daysAhead` (default 7 days), sorted by due date.
+   *
+   * Multi-source by design — currently merges:
+   *   - calculated (next measurement reading per type, terminal confirmation
+   *     window opening)
+   *   - aging milestones (stub — wired up when target durations are set)
+   *   - recipe steps (stub — wired up when per-batch recipes ship)
+   *
+   * Pagination: fetch limit+1 to detect hasMore without a count query.
+   * The assignedTo/assignedRole inputs are placeholders for the multi-user
+   * future and are accepted but ignored today.
+   */
+  getUpcomingTasks: protectedProcedure
+    .input(
+      z
+        .object({
+          limit: z.number().min(1).max(50).default(5),
+          offset: z.number().min(0).default(0),
+          daysAhead: z.number().min(1).max(60).default(7),
+          assignedTo: z.string().optional(),
+          assignedRole: z.string().optional(),
+        })
+        .optional(),
+    )
+    .query(async ({ input }) => {
+      const limit = input?.limit ?? 5;
+      const offset = input?.offset ?? 0;
+
+      const all = await gatherUpcomingTasks({
+        daysAhead: input?.daysAhead ?? 7,
+        assignedTo: input?.assignedTo,
+        assignedRole: input?.assignedRole,
+      });
+
+      const page = all.slice(offset, offset + limit + 1);
+      const hasMore = page.length > limit;
+      return { items: page.slice(0, limit), hasMore };
     }),
 });

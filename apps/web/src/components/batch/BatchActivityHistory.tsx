@@ -589,8 +589,14 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                           </span>
                         </div>
 
-                        <p className="font-medium text-sm">
-                          {activity.description}
+                        <p className="font-medium text-sm flex items-center gap-1.5">
+                          {/* Affordance: chevron makes "click to expand" obvious */}
+                          {hasDetails && (
+                            isExpanded
+                              ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          <span>{activity.description}</span>
                           {/* inheritedFrom text removed — parent activities now shown in separate collapsible section */}
                         </p>
 
@@ -605,6 +611,21 @@ export function BatchActivityHistory({ batchId, bottleRunId }: BatchActivityHist
                               {activity.details.amount && (
                                 <div className="text-sm text-muted-foreground">
                                   Amount: {activity.details.amount}
+                                  {activity.details.concentration && (
+                                    <span className="ml-2 text-xs">
+                                      (= {activity.details.concentration})
+                                    </span>
+                                  )}
+                                  {activity.details.totalImplied && (
+                                    <span className="ml-2 text-xs">
+                                      (= {activity.details.totalImplied})
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {activity.details.cost && (
+                                <div className="text-sm text-muted-foreground">
+                                  Cost: {activity.details.cost}
                                 </div>
                               )}
                               {activity.details.volumeAdded && (

@@ -1,0 +1,211 @@
+# Recipes Phase 1 — Manual UI Smoke Checklist
+
+Walk through this against the dev server before declaring Phase 1 done. Not a substitute for the unit/integration tests — those cover the logic. This catches things only a human can: visual layout, navigation flow, real-feel UX, browser-back behavior, permission UX gates.
+
+**Estimated time:** ~20 minutes for a full pass.
+
+---
+
+## 0 · Prerequisites
+
+- [ ] `pnpm dev` is running, web app responds at the configured port
+- [ ] You can sign in as an **admin** user
+- [ ] (Optional) You can sign in as an **operator** user — needed for the permission gate checks. If not, skip the operator-specific items.
+
+---
+
+## 1 · Recipe library — `/recipes`
+
+### Layout & loading
+- [ ] Page loads without console errors (open DevTools → Console)
+- [ ] Global Navbar is visible at top
+- [ ] Header reads "Recipe Library" with the BookOpen icon
+- [ ] "+ New Recipe" button visible in the top-right
+- [ ] 4 summary cards visible (Recipes shown / Active / Drafts / Product types) — values may be 0 on a fresh DB
+
+### Filters
+- [ ] Search box accepts text and filters the list as you type
+- [ ] Product type dropdown shows: All, Cider, Perry, Wine, Cyser, Pommeau, Brandy, Juice, Other
+- [ ] Status dropdown shows: All, Draft, Active
+- [ ] "Show archived" button toggles between included / excluded; archived recipes appear faded when included
+
+### Empty state
+- [ ] When no recipes match, the empty state appears with the BookOpen icon
+- [ ] Empty state shows "Create Recipe" CTA when admin
+
+---
+
+## 2 · Recipe builder — `/recipes/new`
+
+### Navigation in
+- [ ] "+ New Recipe" button on `/recipes` lands on `/recipes/new`
+- [ ] "Back to recipes" arrow navigates back to `/recipes`
+
+### Basics card
+- [ ] Required asterisk appears on "Recipe name *"
+- [ ] Product type dropdown lists all 8 product types
+- [ ] Status dropdown shows "Draft" and "Active"
+
+### Section checklist
+- [ ] All 7 sections appear: Ingredients, Parent batch input, Process steps, Carbonation plan, Packaging plan, Pasteurization, Labeling
+- [ ] Toggling a section's checkbox adds/removes the matching section card below
+- [ ] By default, "Ingredients" and "Process steps" are checked
+
+### Ingredients section (when toggled on)
+- [ ] "Add ingredient" button creates a new row
+- [ ] Each row has: type select / name input / rate / unit / trash button
+- [ ] "Type" select shows all 9 additive types
+- [ ] "Unit" select shows g/L, kg/L, mL/L, L/L, ppm, %v/v
+- [ ] Trash button removes only that row
+
+### Parent batch section (when toggled on)
+- [ ] "Add parent batch" creates a row with label / source product type / volume rate / unit
+- [ ] Source product type dropdown lists all product types
+
+### Process steps section
+- [ ] "Add step" creates a step with default kind "wait"
+- [ ] Step header shows # number, label input, ↑ ↓ arrows, trash
+- [ ] Click chevron at left to expand/collapse step body
+- [ ] Step kind dropdown shows all 13 kinds (pitch_yeast, add_additive, measurement, etc.)
+- [ ] Trigger dropdown shows all 5 trigger kinds
+- [ ] Selecting "N days/hours after previous step" reveals a Days input
+- [ ] Selecting "When SG crosses a value" reveals SG value + direction inputs
+- [ ] Selecting "Manual" hides trigger params
+- [ ] ↑ / ↓ buttons reorder steps; ↑ disabled on first step, ↓ disabled on last
+
+### Validation
+- [ ] Submitting with empty name shows red error banner "Recipe name is required"
+- [ ] Submitting with an ingredient that has no label shows the related error
+- [ ] Submitting with a step that has no label shows the related error
+
+### Save
+- [ ] Successful save toast appears, then navigation to `/recipes/[id]`
+- [ ] The new recipe appears in the list when you go back to `/recipes`
+
+---
+
+## 3 · Recipe detail view — `/recipes/[id]`
+
+Use the recipe you just created.
+
+### Header
+- [ ] Recipe name displayed prominently
+- [ ] Product type badge color-matches (cider=yellow, perry=green, etc.)
+- [ ] Status badge present (draft=gray, active=green, archived=slate)
+- [ ] Version badge shows "v1"
+- [ ] "Last updated" timestamp visible
+
+### Action row
+- [ ] "Back to recipes" navigates to `/recipes`
+- [ ] "Edit" button visible when admin (gated)
+- [ ] "Clone" button visible when admin
+- [ ] "Archive" button visible (when not archived)
+- [ ] "Use this recipe" button is disabled with tooltip "Coming in Phase 2"
+
+### Volume scale preview
+- [ ] Default batch volume is 60 L
+- [ ] Quick-pick buttons (20, 60, 120, 240, 1000) update the input
+- [ ] Manual input updates the ingredient amounts in real time
+- [ ] Below 1g the amount switches to mg (try ppm with low values)
+- [ ] Above 1000g the amount switches to kg
+- [ ] Below 1000mL stays in mL
+
+### Ingredients section
+- [ ] Each ingredient shows the rate (e.g. "100 g/L") AND the scaled total ("→ 6 kg" at 60L)
+- [ ] Notes appear in italics under the name when present
+
+### Parent batch section
+- [ ] Shows source product type
+- [ ] L/L rate scales correctly (e.g. 1.0 × 60L = 60.0 L)
+
+### Process steps
+- [ ] Steps numbered 1, 2, 3...
+- [ ] Step kind label appears as a badge ("Pitch yeast", "Wait / age", etc.)
+- [ ] Trigger description reads naturally ("Day 14 from batch start", "When SG below 1.005", "Manual — operator decides")
+- [ ] Estimated duration shown when set
+
+### Version history
+- [ ] Collapsible block at the bottom — click to expand
+- [ ] Shows "v1" with "current" badge
+
+### Clone flow
+- [ ] Click "Clone" → dialog appears pre-filled with "Original Name (copy)"
+- [ ] Submitting creates a new draft and navigates to its detail page
+- [ ] The clone has all the same ingredients/steps but is its own v1
+- [ ] Editing the clone does NOT modify the original
+
+### Archive / restore
+- [ ] Click "Archive" → confirm dialog → recipe status flips to "archived"
+- [ ] Card appears faded in the list view
+- [ ] "Restore" button appears in place of Archive on detail page
+- [ ] Click "Restore" → status returns to "draft"
+
+---
+
+## 4 · Recipe edit — `/recipes/[id]/edit`
+
+### Navigation in
+- [ ] "Edit" button on detail page navigates to `/recipes/[id]/edit`
+- [ ] "Back to recipe" arrow navigates back
+
+### State preservation
+- [ ] All existing fields are pre-filled correctly
+- [ ] Ingredients show with correct values
+- [ ] Steps show with correct kind, trigger, label
+
+### Versioning
+- [ ] Header announces "Saving creates version v2"
+- [ ] After save, detail page shows "v2" badge
+- [ ] Version history shows both v1 and v2; v2 is "current"
+- [ ] Optional: enter a Change summary — appears in the version history
+
+### Browser back
+- [ ] During edit, hit browser back — you should land on the detail page (not lose all the form data on a refresh, but a back arrow should be safe)
+
+---
+
+## 5 · Permission gating
+
+If you have an operator user available:
+
+- [ ] Sign in as **operator**
+- [ ] On `/recipes`: "+ New Recipe" button is visible (operators can create per default RBAC)
+- [ ] Per-card Archive/Restore buttons are HIDDEN
+- [ ] On `/recipes/[id]`: "Edit" button is HIDDEN
+- [ ] On `/recipes/[id]`: "Archive" button is HIDDEN
+- [ ] Manually navigating to `/recipes/[id]/edit` and submitting shows a toast/error from the server (`FORBIDDEN`)
+
+---
+
+## 6 · Edge cases & regressions
+
+### Cross-page nav
+- [ ] Navbar links from `/recipes` to other pages (Dashboard, Cellar, etc.) still work
+- [ ] Sign out still works
+
+### Browser quirks
+- [ ] Refresh during recipe builder loses form state (acceptable — no warning needed)
+- [ ] Opening a recipe in a new tab works (Cmd-click on a row)
+
+### Visual layout
+- [ ] No horizontal scrollbar on any page at desktop width (≥1024px)
+- [ ] Tables and cards collapse cleanly at mobile width (~375px)
+- [ ] Long recipe names truncate with ellipsis on cards
+
+### Console hygiene
+- [ ] No red errors in the browser console while doing the above
+- [ ] Yellow warnings about React hydration are OK if pre-existing (note new ones if you see them)
+
+---
+
+## Reporting
+
+When done, paste any failures back into the conversation in this format:
+
+```
+[section] Item that failed
+What happened: ...
+Expected: ...
+```
+
+Anything not on this list that surprised you (good or bad) — also worth flagging.

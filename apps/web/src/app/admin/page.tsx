@@ -102,6 +102,7 @@ import { SquareIntegration } from "@/components/admin/SquareIntegration";
 import { WorkersManagement } from "@/components/admin/WorkersManagement";
 import { OverheadSettings } from "@/components/admin/OverheadSettings";
 import { MeasurementSchedulesSettings } from "@/components/admin/MeasurementSchedulesSettings";
+import { AdditiveVolumeDefaultsSettings } from "@/components/admin/AdditiveVolumeDefaultsSettings";
 import { BarrelOriginTypesManagement } from "@/components/cellar/BarrelOriginTypesManagement";
 import { CalibrationSettings } from "@/components/admin/CalibrationSettings";
 import { TTBOpeningBalancesSettings } from "@/components/admin/TTBOpeningBalancesSettings";
@@ -1889,6 +1890,10 @@ function SystemSettings() {
 
       {/* Measurement Schedules - Product-type-specific measurement schedules */}
       <MeasurementSchedulesSettings />
+
+      {/* Per-additive volume defaults — used to suggest a volume contribution
+          when recording honey, brandy, fruit purée, etc. */}
+      <AdditiveVolumeDefaultsSettings />
 
       {/* Save Button */}
       <div className="flex justify-end">
