@@ -897,8 +897,26 @@ export const reportsRouter = router({
           ORDER BY loss_l DESC
         `).then(r => r.rows) as any[];
 
+        // Friendly labels for TTB-style loss breakdowns. "destruction" is the
+        // intentional-disposal bucket from the Destroy Batch flow and surfaces
+        // on Form 5120.17 as "Destroyed in process" — distinct from sediment
+        // (racking lees), contamination (partial spoilage), etc.
+        const lossTypeLabel: Record<string, string> = {
+          destruction: "Destroyed in process",
+          sediment: "Sediment / lees",
+          evaporation: "Evaporation (angel's share)",
+          contamination: "Contamination",
+          spillage: "Spillage",
+          sampling: "QC sampling",
+          theft: "Suspected theft",
+          donation: "Donation",
+          measurement_error: "Measurement correction",
+          correction_down: "Inventory correction (down)",
+          other: "Other",
+        };
         const lossByType = lossRows.map((r: any) => ({
           type: r.adjustment_type || "unknown",
+          label: lossTypeLabel[r.adjustment_type] || r.adjustment_type || "Unknown",
           volumeL: parseFloat(r.loss_l || "0"),
           count: parseInt(r.count || "0"),
         }));

@@ -82,6 +82,7 @@ export const batchVolumeAdjustmentTypeEnum = pgEnum(
     "correction_up", // Undercount correction (increases volume)
     "correction_down", // Overcount correction (decreases volume)
     "addition", // Volume added (e.g., honey, brandy, fruit purée — additives that contribute material liquid volume)
+    "destruction", // Intentional destruction of a batch (contamination, off-flavor, equipment failure) — TTB-tracked as "Destroyed in process"
     "other", // Other reason (requires notes)
   ],
 );
@@ -796,6 +797,12 @@ export const batches = pgTable(
     isRackingDerivative: boolean("is_racking_derivative").default(false),
     // Volume protection flag - prevents trigger overwrites of manually corrected volume fields
     volumeManuallyCorrected: boolean("volume_manually_corrected").default(false),
+    // Destruction tracking (Destroy Batch flow). When populated, batch.status
+    // is 'discarded' and a 'destruction' batch_volume_adjustments row records
+    // the loss for TTB Form 5120.17.
+    destroyedAt: timestamp("destroyed_at", { withTimezone: true }),
+    destructionReason: text("destruction_reason"),
+    destructionCategory: text("destruction_category"),
     // User attribution
     createdBy: uuid("created_by").references(() => users.id),
     createdAt: timestamp("created_at").notNull().defaultNow(),

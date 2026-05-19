@@ -2149,40 +2149,56 @@ export const batchRouter = router({
           });
         }
 
-        // Update quantityUsed on the source purchase item if provided
+        // Update quantityUsed on the source purchase item if provided.
+        // Conversions cover three classes:
+        //   - mass ↔ mass (g/kg/lb/oz)
+        //   - volume ↔ volume (mL/L/gal)
+        //   - dosage-rate (g/L, g/hL, mL/L) → total mass or volume via batch
+        //     volume, then to purchase unit. Without this the deduction would
+        //     fall back to raw amount and badly over-deduct (e.g. 100 g/L was
+        //     deducted as 100 kg from a strawberry purchase — May 2026 bug).
         if (input.additivePurchaseItemId && purchaseItemUnit) {
-          // Convert amount to purchase item's unit if different
           let amountInPurchaseUnit = input.amount;
 
           if (input.unit !== purchaseItemUnit) {
-            // Weight conversions
             const toGrams: Record<string, number> = {
-              'g': 1,
-              'kg': 1000,
-              'lb': 453.592,
-              'lbs': 453.592,
-              'oz': 28.3495,
+              g: 1, kg: 1000, lb: 453.592, lbs: 453.592, oz: 28.3495,
             };
-
-            // Volume conversions (to mL)
             const toMl: Record<string, number> = {
-              'ml': 1,
-              'mL': 1,
-              'L': 1000,
-              'gal': 3785.41,
+              ml: 1, mL: 1, L: 1000, l: 1000, gal: 3785.41,
             };
 
-            // Check if both are weight units
-            if (toGrams[input.unit] && toGrams[purchaseItemUnit]) {
-              const amountInGrams = input.amount * toGrams[input.unit];
-              amountInPurchaseUnit = amountInGrams / toGrams[purchaseItemUnit];
+            // Dosage-rate: collapse to a single total mass (g) or volume (mL)
+            // before applying the unit conversion below. Needs batch volume.
+            let amountInGramsFromRate: number | null = null;
+            let amountInMlFromRate: number | null = null;
+            const batchVolL = batchData[0].currentVolume
+              ? batchData[0].currentVolumeUnit === "gal"
+                ? parseFloat(batchData[0].currentVolume) * 3.78541
+                : parseFloat(batchData[0].currentVolume)
+              : null;
+            if (batchVolL) {
+              if (input.unit === "g/L")  amountInGramsFromRate = input.amount * batchVolL;
+              if (input.unit === "g/hL") amountInGramsFromRate = (input.amount * batchVolL) / 100;
+              if (input.unit === "mL/L") amountInMlFromRate = input.amount * batchVolL;
             }
-            // Check if both are volume units
-            else if (toMl[input.unit] && toMl[purchaseItemUnit]) {
-              const amountInMl = input.amount * toMl[input.unit];
-              amountInPurchaseUnit = amountInMl / toMl[purchaseItemUnit];
+
+            if (amountInGramsFromRate !== null && toGrams[purchaseItemUnit]) {
+              amountInPurchaseUnit = amountInGramsFromRate / toGrams[purchaseItemUnit];
+            } else if (amountInMlFromRate !== null && toMl[purchaseItemUnit]) {
+              amountInPurchaseUnit = amountInMlFromRate / toMl[purchaseItemUnit];
+            } else if (toGrams[input.unit] && toGrams[purchaseItemUnit]) {
+              amountInPurchaseUnit = (input.amount * toGrams[input.unit]) / toGrams[purchaseItemUnit];
+            } else if (toMl[input.unit] && toMl[purchaseItemUnit]) {
+              amountInPurchaseUnit = (input.amount * toMl[input.unit]) / toMl[purchaseItemUnit];
+            } else {
+              // Truly incompatible (e.g. g/L → L without density). Fail loudly
+              // rather than silently over-deducting with raw amount.
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Cannot convert ${input.amount} ${input.unit} to purchase unit ${purchaseItemUnit} — units are incompatible. Record the addition in a compatible unit (mass↔mass or volume↔volume) and try again.`,
+              });
             }
-            // If units are incompatible (e.g., weight vs volume), use raw amount
           }
 
           await db

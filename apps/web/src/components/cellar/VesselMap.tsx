@@ -77,6 +77,8 @@ import { FilterModal } from "@/components/cellar/FilterModal";
 import { RackingModal } from "@/components/cellar/RackingModal";
 import { VolumeAdjustmentModal } from "@/components/cellar/VolumeAdjustmentModal";
 import { CleanTankModal } from "@/components/cellar/CleanTankModal";
+import { DestroyBatchModal } from "@/components/cellar/DestroyBatchModal";
+import { PrepForCleaningModal } from "@/components/cellar/PrepForCleaningModal";
 import { CarbonateModal } from "@/components/batch/CarbonateModal";
 import { VolumeDisplay } from "@/components/ui/volume-input";
 import { VesselHistoryModal } from "@/components/cellar/VesselHistoryModal";
@@ -173,10 +175,20 @@ export function VesselMap() {
     id: string;
     name: string | null;
   } | null>(null);
-  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
-  const [vesselToPurge, setVesselToPurge] = useState<{
-    id: string;
-    name: string | null;
+  // Old single "Purge Tank" was replaced by two flows:
+  //   - Destroy Batch (bad cider, TTB-tracked as "Destroyed in process")
+  //   - Prep for Cleaning (residue/lees, vessel goes to cleaning)
+  const [destroyModalCtx, setDestroyModalCtx] = useState<{
+    vesselId: string;
+    vesselName: string;
+    batchName: string;
+    currentVolumeL: number;
+  } | null>(null);
+  const [prepModalCtx, setPrepModalCtx] = useState<{
+    vesselId: string;
+    vesselName: string;
+    batchName: string | null;
+    currentVolumeL: number;
   } | null>(null);
   const [showMeasurementForm, setShowMeasurementForm] = useState(false);
   const [showAdditiveForm, setShowAdditiveForm] = useState(false);
@@ -349,29 +361,7 @@ export function VesselMap() {
     },
   });
 
-  const purgeMutation = trpc.vessel.purge.useMutation({
-    onSuccess: async () => {
-      // Invalidate and refetch to ensure UI updates
-      await Promise.all([
-        utils.vessel.list.invalidate(),
-        utils.vessel.liquidMap.invalidate(),
-        utils.batch.list.invalidate(),
-      ]);
-      toast({
-        title: "Tank Purged",
-        description: "The tank has been purged and the batch removed.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const updateBatchStatusMutation = trpc.batch.update.useMutation({
+const updateBatchStatusMutation = trpc.batch.update.useMutation({
     onSuccess: async () => {
       await Promise.all([
         utils.vessel.list.invalidate(),
@@ -597,22 +587,32 @@ export function VesselMap() {
     setVesselToDelete(null);
   };
 
-  const handlePurgeTank = (vesselId: string, vesselName: string | null) => {
-    setVesselToPurge({ id: vesselId, name: vesselName });
-    setPurgeConfirmOpen(true);
+  const handleOpenDestroy = (vesselId: string, vesselName: string | null) => {
+    const lmv = liquidMapQuery.data?.vessels.find((v: any) => v.vesselId === vesselId);
+    const batchName = lmv?.batchCustomName || lmv?.batchNumber || "Unnamed Batch";
+    const currentVolumeL = lmv?.currentVolume
+      ? parseFloat(String(lmv.currentVolume))
+      : 0;
+    setDestroyModalCtx({
+      vesselId,
+      vesselName: vesselName || "Unknown Tank",
+      batchName,
+      currentVolumeL,
+    });
   };
 
-  const handlePurgeConfirm = () => {
-    if (vesselToPurge) {
-      purgeMutation.mutate({ vesselId: vesselToPurge.id });
-      setPurgeConfirmOpen(false);
-      setVesselToPurge(null);
-    }
-  };
-
-  const handlePurgeCancel = () => {
-    setPurgeConfirmOpen(false);
-    setVesselToPurge(null);
+  const handleOpenPrep = (vesselId: string, vesselName: string | null) => {
+    const lmv = liquidMapQuery.data?.vessels.find((v: any) => v.vesselId === vesselId);
+    const batchName = lmv?.batchCustomName || lmv?.batchNumber || null;
+    const currentVolumeL = lmv?.currentVolume
+      ? parseFloat(String(lmv.currentVolume))
+      : 0;
+    setPrepModalCtx({
+      vesselId,
+      vesselName: vesselName || "Unknown Tank",
+      batchName,
+      currentVolumeL,
+    });
   };
 
   const handleCleanTank = (vesselId: string, vesselName: string | null) => {
@@ -1647,13 +1647,32 @@ export function VesselMap() {
 
                       <DropdownMenuSeparator />
 
+                      {/* Destroy Batch: only valid when there is an active
+                          batch with volume > 0. Bad cider, off-flavor, etc.
+                          Captures TTB-tracked destruction record. */}
                       <DropdownMenuItem
-                        onClick={() => handlePurgeTank(vessel.id, vessel.name)}
+                        onClick={() => handleOpenDestroy(vessel.id, vessel.name)}
+                        disabled={
+                          !liquidMapVessel?.batchId ||
+                          !liquidMapVessel.currentVolume ||
+                          parseFloat(String(liquidMapVessel.currentVolume)) <= 0
+                        }
+                        className="text-red-600"
+                      >
+                        <AlertTriangle className="w-3 h-3 mr-2" />
+                        Destroy Batch
+                      </DropdownMenuItem>
+
+                      {/* Prep for Cleaning: shown whenever there is anything to
+                          clear (batch, stuck completed batch, or press run).
+                          Common case = residue/dregs after racking/packaging. */}
+                      <DropdownMenuItem
+                        onClick={() => handleOpenPrep(vessel.id, vessel.name)}
                         disabled={!liquidMapVessel?.batchId}
-                        className="text-orange-600"
+                        className="text-amber-600"
                       >
                         <Droplets className="w-3 h-3 mr-2" />
-                        Purge Tank
+                        Prep for Cleaning
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
@@ -1696,32 +1715,29 @@ export function VesselMap() {
           </DialogContent>
         </Dialog>
 
-        {/* Purge Tank Confirmation Modal */}
-        <Dialog open={purgeConfirmOpen} onOpenChange={setPurgeConfirmOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Purge Tank</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to purge &quot;
-                {vesselToPurge?.name || "Unknown"}&quot;? This will delete the
-                batch currently in the tank and clear all liquid. This action
-                cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex justify-end space-x-2 mt-4">
-              <Button variant="outline" onClick={handlePurgeCancel}>
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handlePurgeConfirm}
-                disabled={purgeMutation.isPending}
-              >
-                {purgeMutation.isPending ? "Purging..." : "Purge Tank"}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {/* Destroy Batch + Prep for Cleaning modals replace the old Purge
+            Tank dialog. Each is opened by setting its context; closing
+            clears the context. */}
+        {destroyModalCtx && (
+          <DestroyBatchModal
+            open={!!destroyModalCtx}
+            onClose={() => setDestroyModalCtx(null)}
+            vesselId={destroyModalCtx.vesselId}
+            vesselName={destroyModalCtx.vesselName}
+            batchName={destroyModalCtx.batchName}
+            currentVolumeL={destroyModalCtx.currentVolumeL}
+          />
+        )}
+        {prepModalCtx && (
+          <PrepForCleaningModal
+            open={!!prepModalCtx}
+            onClose={() => setPrepModalCtx(null)}
+            vesselId={prepModalCtx.vesselId}
+            vesselName={prepModalCtx.vesselName}
+            batchName={prepModalCtx.batchName}
+            currentVolumeL={prepModalCtx.currentVolumeL}
+          />
+        )}
 
         {/* Batch Measurement Form */}
         <Dialog

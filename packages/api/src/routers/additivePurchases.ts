@@ -208,7 +208,9 @@ export const additivePurchasesRouter = router({
             });
           }
 
-          // Create the purchase
+          // Create the purchase header. We still record it so the audit trail
+          // (who bought what, on what date, for how much) stays intact, even
+          // when individual items roll up into an existing inventory lot.
           const newPurchase = await tx
             .insert(additivePurchases)
             .values({
@@ -223,24 +225,85 @@ export const additivePurchasesRouter = router({
 
           const purchaseId = newPurchase[0].id;
 
-          // Create purchase items
-          const newItems = await tx
-            .insert(additivePurchaseItems)
-            .values(
-              processedItems.map((item) => ({
-                purchaseId,
-                ...item,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              })),
-            )
-            .returning();
+          // For each line item, look for an existing inventory row from the
+          // same vendor + variety + unit. If found, merge (add quantity,
+          // recompute weighted-average price, refresh expiration/lot to the
+          // newest values). Else create a new row. This keeps "one row per
+          // ingredient per vendor" instead of fragmenting inventory into a
+          // new lot for every purchase (the bug the user reported when 10 lb
+          // of Ginger landed in a new row while an old −3 lb row sat orphaned).
+          const newItems = [];
+          const mergedItems = [];
+          for (const item of processedItems) {
+            const existing = await tx
+              .select({
+                id: additivePurchaseItems.id,
+                quantity: additivePurchaseItems.quantity,
+                totalCost: additivePurchaseItems.totalCost,
+                expirationDate: additivePurchaseItems.expirationDate,
+                lotBatchNumber: additivePurchaseItems.lotBatchNumber,
+              })
+              .from(additivePurchaseItems)
+              .innerJoin(additivePurchases, eq(additivePurchaseItems.purchaseId, additivePurchases.id))
+              .where(
+                and(
+                  eq(additivePurchases.vendorId, input.vendorId),
+                  eq(additivePurchaseItems.additiveVarietyId, item.additiveVarietyId),
+                  eq(additivePurchaseItems.unit, item.unit),
+                  isNull(additivePurchaseItems.deletedAt),
+                  isNull(additivePurchases.deletedAt),
+                ),
+              )
+              .orderBy(desc(additivePurchases.purchaseDate))
+              .limit(1);
+
+            if (existing.length > 0) {
+              const existingQty = parseFloat(existing[0].quantity);
+              const existingCost = parseFloat(existing[0].totalCost || "0");
+              const newQty = existingQty + parseFloat(item.quantity);
+              const newCost = existingCost + parseFloat(item.totalCost);
+              // Weighted average price. Guard against div-by-zero (e.g. all
+              // historical receipts had pricePerUnit=null/0).
+              const newPricePerUnit = newQty > 0 ? newCost / newQty : 0;
+              const [updated] = await tx
+                .update(additivePurchaseItems)
+                .set({
+                  quantity: newQty.toString(),
+                  totalCost: newCost.toString(),
+                  pricePerUnit: newPricePerUnit > 0 ? newPricePerUnit.toString() : null,
+                  // Refresh expiration/lot tracking to the newer purchase
+                  // when present — otherwise keep the existing value so old
+                  // expiration warnings stay accurate.
+                  expirationDate: item.expirationDate ?? existing[0].expirationDate,
+                  lotBatchNumber: item.lotBatchNumber ?? existing[0].lotBatchNumber,
+                  updatedAt: new Date(),
+                })
+                .where(eq(additivePurchaseItems.id, existing[0].id))
+                .returning();
+              mergedItems.push(updated);
+            } else {
+              const [inserted] = await tx
+                .insert(additivePurchaseItems)
+                .values({
+                  purchaseId,
+                  ...item,
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                })
+                .returning();
+              newItems.push(inserted);
+            }
+          }
 
           return {
             success: true,
             purchase: newPurchase[0],
-            items: newItems,
-            message: "Additive purchase created successfully",
+            items: [...newItems, ...mergedItems],
+            mergedCount: mergedItems.length,
+            message:
+              mergedItems.length > 0
+                ? `Additive purchase recorded; ${mergedItems.length} item(s) merged into existing inventory`
+                : "Additive purchase created successfully",
           };
         });
       } catch (error) {

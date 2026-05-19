@@ -5940,16 +5940,40 @@ export const appRouter = router({
       }),
 
     // Purge vessel - delete batch and/or clear completed press runs
-    purge: createRbacProcedure("update", "vessel")
+    // Destroy a batch (replaces the old vessel.purge). For when a batch is
+    // contaminated, off-flavor, or otherwise has to be thrown out. Captures
+    // a TTB-compliant destruction record:
+    //   - batch.status='discarded' + destroyed_at / destruction_reason /
+    //     destruction_category populated
+    //   - batch_volume_adjustments row of type='destruction' so loss reports
+    //     surface it on TTB Form 5120.17 under "Destroyed in process"
+    //   - batch row stays visible (not soft-deleted) so it remains
+    //     auditable and reportable
+    // The earlier purge silently soft-deleted, which made destroyed cider
+    // disappear from TTB books entirely. Do NOT regress to that pattern.
+    destroyBatch: createRbacProcedure("update", "vessel")
       .input(
         z.object({
           vesselId: z.string().uuid("Invalid vessel ID"),
+          volumeL: z.number().positive("Volume must be > 0"),
+          category: z.enum([
+            "contamination_spoilage",
+            "failed_quality",
+            "equipment_failure",
+            "accidental_loss",
+            "lab_rd",
+            "other",
+          ]),
+          reason: z.string().min(10, "Reason must be at least 10 characters"),
+          confirmed: z
+            .boolean()
+            .refine((v) => v === true, { message: "Destruction must be explicitly confirmed" }),
         }),
       )
       .mutation(async ({ input, ctx }) => {
         try {
-          // Find active batch in vessel (fermentation, conditioning, or aging)
-          const activeBatch = await db
+          // Locate the active batch in the vessel
+          const [batch] = await db
             .select()
             .from(batches)
             .where(
@@ -5958,15 +5982,136 @@ export const appRouter = router({
                 or(
                   eq(batches.status, "fermentation"),
                   eq(batches.status, "conditioning"),
-                  eq(batches.status, "aging")
+                  eq(batches.status, "aging"),
+                ),
+                isNull(batches.deletedAt),
+                isNull(batches.destroyedAt),
+              ),
+            )
+            .limit(1);
+
+          if (!batch) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message:
+                "No active batch found in this vessel. Use Prep for Cleaning if the tank just has residue.",
+            });
+          }
+
+          const volumeBefore = parseFloat(batch.currentVolumeLiters || batch.currentVolume || "0");
+          if (input.volumeL > volumeBefore + 0.01) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Destroy volume (${input.volumeL} L) exceeds batch current volume (${volumeBefore} L)`,
+            });
+          }
+
+          await db.transaction(async (tx) => {
+            // 1. Volume adjustment row of new 'destruction' type
+            await tx.insert(batchVolumeAdjustments).values({
+              batchId: batch.id,
+              vesselId: input.vesselId,
+              adjustmentDate: new Date(),
+              adjustmentType: "destruction",
+              volumeBefore: volumeBefore.toString(),
+              volumeAfter: "0",
+              adjustmentAmount: (-input.volumeL).toString(),
+              reason: input.reason,
+              notes: `Category: ${input.category}`,
+              adjustedBy: ctx.user.id,
+            });
+
+            // 2. Mark batch as discarded + populate destruction fields
+            await tx
+              .update(batches)
+              .set({
+                status: "discarded",
+                currentVolume: "0",
+                currentVolumeLiters: "0",
+                currentVolumeUnit: "L",
+                destroyedAt: new Date(),
+                destructionReason: input.reason,
+                destructionCategory: input.category,
+                updatedAt: new Date(),
+              })
+              .where(eq(batches.id, batch.id));
+
+            // 3. Vessel → cleaning
+            await tx
+              .update(vessels)
+              .set({ status: "cleaning", updatedAt: new Date() })
+              .where(eq(vessels.id, input.vesselId));
+          });
+
+          await publishUpdateEvent(
+            "batches",
+            batch.id,
+            { status: batch.status, currentVolume: batch.currentVolume },
+            {
+              status: "discarded",
+              destroyedAt: new Date().toISOString(),
+              destructionCategory: input.category,
+              destructionReason: input.reason,
+              volumeDestroyedL: input.volumeL,
+            },
+            ctx.user.id,
+            `Batch destroyed (${input.category}): ${input.reason}`,
+          );
+
+          return {
+            success: true,
+            message: `Batch ${batch.batchNumber} destroyed (${input.volumeL} L). Vessel sent to cleaning.`,
+            batchId: batch.id,
+            volumeDestroyedL: input.volumeL,
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          console.error("Error destroying batch:", error);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Failed to destroy batch",
+          });
+        }
+      }),
+
+    // Prep tank for cleaning: clears any leftover residue (dregs/lees) and
+    // sends the vessel to cleaning. NOT for throwing out a bad batch — that's
+    // Destroy Batch. The common case is "I packaged/transferred this batch,
+    // there's just a bit of sludge left, get me ready to clean."
+    //
+    // If residueL > 0, writes a 'sediment' adjustment row (same category as
+    // racking sediment loss). If residueL = 0, just clears the vessel.
+    // Preserves the old purge's handling of stuck completed batches and
+    // lingering press runs that the cellar UX would otherwise leave behind.
+    prepForCleaning: createRbacProcedure("update", "vessel")
+      .input(
+        z.object({
+          vesselId: z.string().uuid("Invalid vessel ID"),
+          residueL: z.number().nonnegative().default(0),
+          notes: z.string().optional(),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        try {
+          // Find any active batch sitting in the vessel
+          const [activeBatch] = await db
+            .select()
+            .from(batches)
+            .where(
+              and(
+                eq(batches.vesselId, input.vesselId),
+                or(
+                  eq(batches.status, "fermentation"),
+                  eq(batches.status, "conditioning"),
+                  eq(batches.status, "aging"),
                 ),
                 isNull(batches.deletedAt),
               ),
             )
             .limit(1);
 
-          // Find completed batches still assigned to vessel (data integrity issue)
-          const stuckCompletedBatch = await db
+          // Stuck completed batches (data drift) still pinned to this vessel
+          const [stuckCompleted] = await db
             .select()
             .from(batches)
             .where(
@@ -5978,7 +6123,7 @@ export const appRouter = router({
             )
             .limit(1);
 
-          // Find completed press runs in vessel
+          // Completed press runs that never got cleared off the vessel
           const completedPressRuns = await db
             .select()
             .from(pressRuns)
@@ -5990,93 +6135,101 @@ export const appRouter = router({
               ),
             );
 
-          if (!activeBatch.length && !stuckCompletedBatch.length && !completedPressRuns.length) {
+          if (!activeBatch && !stuckCompleted && !completedPressRuns.length) {
             throw new TRPCError({
               code: "NOT_FOUND",
-              message: "No liquid found in this vessel",
+              message: "Vessel has no batch or press run to clear",
             });
           }
 
-          // Soft delete the batch if it exists
-          if (activeBatch.length) {
-            await db
-              .update(batches)
-              .set({
-                deletedAt: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, activeBatch[0].id));
+          const messages: string[] = [];
 
-            // Publish audit event for batch deletion
-            await publishDeleteEvent(
-              "batches",
-              activeBatch[0].id,
-              {
-                batchId: activeBatch[0].id,
-                vesselId: input.vesselId,
-                reason: "Vessel purged",
-              },
-              ctx.session?.user?.id,
-              "Batch deleted via vessel purge",
-            );
-          }
+          await db.transaction(async (tx) => {
+            if (activeBatch) {
+              const volumeBefore = parseFloat(
+                activeBatch.currentVolumeLiters || activeBatch.currentVolume || "0",
+              );
 
-          // Clear vessel assignment from stuck completed batches (shouldn't happen, but fix if it does)
-          if (stuckCompletedBatch.length) {
-            await db
-              .update(batches)
-              .set({
-                vesselId: null,
-                updatedAt: new Date(),
-              })
-              .where(eq(batches.id, stuckCompletedBatch[0].id));
-          }
+              // Only write the sediment adjustment when the operator is
+              // actually disposing of some residue. residueL=0 = "tank was
+              // already empty, just need to send it to cleaning".
+              if (input.residueL > 0) {
+                if (input.residueL > volumeBefore + 0.01) {
+                  throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: `Residue (${input.residueL} L) exceeds batch volume (${volumeBefore} L)`,
+                  });
+                }
 
-          // Clear vessel association from completed press runs
-          if (completedPressRuns.length) {
-            for (const pressRun of completedPressRuns) {
-              await db
-                .update(pressRuns)
+                await tx.insert(batchVolumeAdjustments).values({
+                  batchId: activeBatch.id,
+                  vesselId: input.vesselId,
+                  adjustmentDate: new Date(),
+                  adjustmentType: "sediment",
+                  volumeBefore: volumeBefore.toString(),
+                  volumeAfter: (volumeBefore - input.residueL).toString(),
+                  adjustmentAmount: (-input.residueL).toString(),
+                  reason: "Residue cleared for tank cleaning",
+                  notes: input.notes ?? null,
+                  adjustedBy: ctx.user.id,
+                });
+              }
+
+              // Batch closes out: completed, off the vessel
+              await tx
+                .update(batches)
                 .set({
+                  status: "completed",
+                  currentVolume: "0",
+                  currentVolumeLiters: "0",
+                  currentVolumeUnit: "L",
                   vesselId: null,
+                  endDate: new Date(),
                   updatedAt: new Date(),
                 })
-                .where(eq(pressRuns.id, pressRun.id));
+                .where(eq(batches.id, activeBatch.id));
+
+              messages.push(
+                input.residueL > 0
+                  ? `batch ${activeBatch.batchNumber} closed (${input.residueL} L residue logged)`
+                  : `batch ${activeBatch.batchNumber} closed`,
+              );
             }
-          }
 
-          // Update vessel to cleaning (needs cleaning after being emptied)
-          await db
-            .update(vessels)
-            .set({
-              status: "cleaning",
-              updatedAt: new Date(),
-            })
-            .where(eq(vessels.id, input.vesselId));
+            if (stuckCompleted) {
+              await tx
+                .update(batches)
+                .set({ vesselId: null, updatedAt: new Date() })
+                .where(eq(batches.id, stuckCompleted.id));
+              messages.push(`completed batch ${stuckCompleted.batchNumber} released from vessel`);
+            }
 
-          const messages = [];
-          if (activeBatch.length) {
-            messages.push(`batch ${activeBatch[0].batchNumber} deleted`);
-          }
-          if (stuckCompletedBatch.length) {
-            messages.push(`completed batch ${stuckCompletedBatch[0].batchNumber} released from vessel`);
-          }
-          if (completedPressRuns.length) {
-            messages.push(
-              `${completedPressRuns.length} completed press run(s) cleared`,
-            );
-          }
+            for (const pr of completedPressRuns) {
+              await tx
+                .update(pressRuns)
+                .set({ vesselId: null, updatedAt: new Date() })
+                .where(eq(pressRuns.id, pr.id));
+            }
+            if (completedPressRuns.length) {
+              messages.push(`${completedPressRuns.length} completed press run(s) cleared`);
+            }
+
+            await tx
+              .update(vessels)
+              .set({ status: "cleaning", updatedAt: new Date() })
+              .where(eq(vessels.id, input.vesselId));
+          });
 
           return {
             success: true,
-            message: `Vessel purged: ${messages.join(", ")}`,
+            message: `Prep for cleaning: ${messages.join(", ")}`,
           };
         } catch (error) {
           if (error instanceof TRPCError) throw error;
-          console.error("Error purging vessel:", error);
+          console.error("Error prepping vessel for cleaning:", error);
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to purge vessel",
+            message: "Failed to prep vessel for cleaning",
           });
         }
       }),

@@ -192,15 +192,26 @@ export function TankTransferForm({
   const watchedVolumeL = watch("volumeL") || 0;
   const watchedLoss = (watch("loss") as number | undefined) || 0;
 
-  // Auto-calculate loss when the operator hasn't touched it. This makes
-  // racking one-click: type the transfer volume and the leftover defaults
-  // to "loss" (lees). Operator can override by typing in the loss field.
+  // Auto-calculate loss when the operator hasn't touched it.
+  //
+  // We split behavior by transfer fraction:
+  //   - ≥ 90% of source moves    → likely a full racking; the leftover IS lees.
+  //                                  Default loss = leftover (one-click racking).
+  //   - <  90% of source moves   → likely a partial transfer; the leftover
+  //                                  stays in the source tank. Default loss = 0.
+  //
+  // Without the threshold, the form misrecorded a 120 L → 845 L partial
+  // transfer in May 2026 as a 725 L "sediment loss" because the auto-fill
+  // dumped the entire leftover into the loss field (Summer Community Blend 4
+  // on TANK-1000-1). Operator can still override either way by typing.
+  const FULL_RACK_THRESHOLD = 0.9;
   React.useEffect(() => {
     if (lossManuallyEdited) return;
     if (!Number.isFinite(currentVolume) || currentVolume <= 0) return;
     const transferAmt = Number(watchedVolumeL) || 0;
-    const auto = Math.max(0, currentVolume - transferAmt);
-    // Round to display precision so the field stays clean.
+    const leftover = Math.max(0, currentVolume - transferAmt);
+    const fraction = transferAmt / currentVolume;
+    const auto = fraction >= FULL_RACK_THRESHOLD ? leftover : 0;
     const rounded = Math.round(auto * 10) / 10;
     setValue("loss", rounded);
   }, [watchedVolumeL, currentVolume, lossManuallyEdited, setValue]);

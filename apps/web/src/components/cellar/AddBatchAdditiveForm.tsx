@@ -244,6 +244,10 @@ export function AddBatchAdditiveForm({
   );
 
   // Convert the entered amount to kg so we can apply the density (if any).
+  // Dosage-rate units (g/L, mL/L, g/hL) need batchVolumeLiters to convert; we
+  // handle those here too so the operator gets correct auto-fill instead of a
+  // blank field they might fill in with the wrong number (the bug that caused
+  // a +100L overshoot on a Strawberry Rhubarb batch in May 2026).
   const amountAsKg = useMemo(() => {
     const n = parseFloat(amount);
     if (!Number.isFinite(n) || n <= 0) return null;
@@ -252,25 +256,49 @@ export function AddBatchAdditiveForm({
     if (u === "g")   return n / 1000;
     if (u === "lb" || u === "lbs") return n * 0.453592;
     if (u === "oz")  return n * 0.0283495;
+    if (batchVolumeLiters) {
+      if (u === "g/l")   return (n * batchVolumeLiters) / 1000;
+      if (u === "g/hl")  return (n * batchVolumeLiters) / 100_000;
+    }
     return null; // mass unknown — can't auto-compute volume
-  }, [amount, unit]);
+  }, [amount, unit, batchVolumeLiters]);
 
-  // Auto-fill volume contribution from density × mass when:
+  // mL/L is a volume rate — convert directly to liters, no density needed.
+  const amountAsL = useMemo(() => {
+    const n = parseFloat(amount);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    const u = unit?.toLowerCase();
+    if (u === "ml")  return n / 1000;
+    if (u === "l")   return n;
+    if (u === "gal") return n * 3.78541;
+    if (u === "ml/l" && batchVolumeLiters) return (n * batchVolumeLiters) / 1000;
+    return null;
+  }, [amount, unit, batchVolumeLiters]);
+
+  // Whether the current unit is one we can convert without ambiguity. We use
+  // this to gate visibility of the Volume Contribution field — if the unit is
+  // something we can't auto-derive volume from, hiding the field prevents the
+  // operator from typing a wrong number into a box they don't understand.
+  const canAutoComputeVolume = amountAsKg !== null || amountAsL !== null;
+
+  // Auto-fill volume contribution from density × mass (or direct volume) when:
   //   1. We have a matching default density rule
-  //   2. The amount is in a mass unit
+  //   2. We have a unit we can convert
   //   3. The operator hasn't manually overridden the value
-  // The operator can clear/edit the field at any time.
   React.useEffect(() => {
-    if (
-      volumeDefault &&
-      amountAsKg !== null &&
-      (!volumeContributionL || volumeContributionAutoSet)
-    ) {
-      const computedL = amountAsKg / volumeDefault.densityKgPerL;
+    if (!volumeDefault) return;
+    if (volumeContributionL && !volumeContributionAutoSet) return; // user override
+    let computedL: number | null = null;
+    if (amountAsL !== null) {
+      computedL = amountAsL; // direct volume — density not needed
+    } else if (amountAsKg !== null) {
+      computedL = amountAsKg / volumeDefault.densityKgPerL;
+    }
+    if (computedL !== null) {
       setVolumeContributionL(computedL.toFixed(2));
       setVolumeContributionAutoSet(true);
     }
-  }, [volumeDefault, amountAsKg, volumeContributionL, volumeContributionAutoSet]);
+  }, [volumeDefault, amountAsKg, amountAsL, volumeContributionL, volumeContributionAutoSet]);
 
   // Extract latest pH from batch measurements
   const latestPH = useMemo(() => {
@@ -839,9 +867,12 @@ export function AddBatchAdditiveForm({
         </div>
       </div>
 
-      {/* Volume contribution — only shown when the selected ingredient has
-          a known density (or operator wants to manually record it). */}
-      {(volumeDefault || volumeContributionL) && (
+      {/* Volume contribution — only shown when the selected ingredient has a
+          known density AND we can convert the amount into a volume without
+          ambiguity (or operator has already typed a value). For unsupported
+          units we hide the field entirely to prevent the operator from
+          typing a wrong number into a confusing box. */}
+      {((volumeDefault && canAutoComputeVolume) || volumeContributionL) && (
         <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50/50 p-3">
           <div className="flex items-center justify-between">
             <Label htmlFor="volumeContribution" className="text-sm font-medium">
