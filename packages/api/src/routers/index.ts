@@ -3671,6 +3671,12 @@ export const appRouter = router({
             workerId: z.string().uuid(),
             hoursWorked: z.number().positive(),
           })).optional(),
+          // Optional rename for the batch landing at the destination. Applied
+          // after the transfer succeeds. Skipped silently for blends since
+          // the destination batch already has its own identity. For partial
+          // transfers it renames only the new batch at the destination —
+          // the source-side remainder keeps its original name.
+          destinationCustomName: z.string().trim().min(1).max(120).optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
@@ -5381,9 +5387,31 @@ export const appRouter = router({
               }
             }
 
+            // Optional rename for the destination batch (operator-supplied
+            // identity for the cider after racking / moving). Applied for both
+            // full transfers (renames the moved batch) and partial transfers
+            // (renames only the new batch at the destination — source-side
+            // remainder is untouched). Skipped for blends.
+            let renamedTo: string | null = null;
+            if (input.destinationCustomName && !isBlending && updatedBatch[0]) {
+              await tx
+                .update(batches)
+                .set({
+                  customName: input.destinationCustomName,
+                  updatedAt: new Date(),
+                })
+                .where(eq(batches.id, updatedBatch[0].id));
+              updatedBatch[0] = {
+                ...updatedBatch[0],
+                customName: input.destinationCustomName,
+              };
+              renamedTo = input.destinationCustomName;
+            }
+
+            const renameSuffix = renamedTo ? ` and renamed to "${renamedTo}"` : "";
             const message = isBlending
               ? `Successfully blended ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} into ${destVessel[0].name || "Unknown"}. ${blendNote}${remainingVolumeL > 0 ? ` Remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`
-              : `Successfully transferred ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`;
+              : `Successfully transferred ${input.volumeL}L${adjustedLoss > 0 ? ` (${adjustedLoss.toFixed(2)}L loss)` : ""} from ${sourceVessel[0].name || "Unknown"} to ${destVessel[0].name || "Unknown"}. Batch moved to new vessel${renameSuffix}${remainingVolumeL > 0 ? `, remaining batch created with ${remainingVolumeL.toFixed(2)}L` : ""}.`;
 
             return {
               success: true,
@@ -5392,6 +5420,7 @@ export const appRouter = router({
               remainingSourceBatch: remainingBatch,
               transferRecord: transferRecord[0],
               isBlend: isBlending,
+              renamedTo,
             };
           });
         } catch (error) {

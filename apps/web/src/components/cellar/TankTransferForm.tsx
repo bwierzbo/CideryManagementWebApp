@@ -48,6 +48,11 @@ const transferSchema = z.object({
     z.date().or(z.string().transform((val) => new Date(val))).optional()
   ),
   notes: z.string().optional(),
+  // Optional rename for the batch that lands in the destination tank. Only
+  // applied when destination is empty (true transfer, not a blend). For
+  // partial transfers, only the new batch at the destination is renamed —
+  // the source-side remainder keeps its original name.
+  destinationCustomName: z.string().trim().max(120).optional(),
 });
 
 export function TankTransferForm({
@@ -265,14 +270,20 @@ export function TankTransferForm({
     const volumeInLiters = toLiters(data.volumeL, displayUnit);
     const lossInLiters = data.loss ? toLiters(data.loss, displayUnit) : 0;
 
-    // Proceed with transfer (API expects liters)
+    // Proceed with transfer (API expects liters).
+    // destinationCustomName is dropped when destination has existing liquid
+    // (blend): the API skips rename in that case anyway, but sending nothing
+    // keeps the success toast accurate.
     const validLabor = laborAssignments.filter(a => a.workerId && a.hoursWorked > 0);
+    const newName = (data.destinationCustomName || "").trim();
     transferMutation.mutate({
       ...data,
       volumeL: volumeInLiters,
       loss: lossInLiters,
       lossType: lossInLiters > 0 ? lossType as any : undefined,
       transferDate: data.transferDate,
+      destinationCustomName:
+        newName && !destHasLiquid ? newName : undefined,
       ...(validLabor.length > 0 && {
         laborAssignments: toApiLaborAssignments(validLabor),
       }),
@@ -544,6 +555,31 @@ export function TankTransferForm({
         onChange={setLaborAssignments}
         activityLabel="this transfer"
       />
+
+      {/* Optional rename for the cider landing in the destination tank.
+          Hidden when blending — the destination batch already has its own
+          identity in that case and the API ignores the rename input. */}
+      {!destHasLiquid && (
+        <div>
+          <Label htmlFor="destinationCustomName">
+            Rename batch at destination{" "}
+            <span className="text-xs text-muted-foreground font-normal">
+              (optional)
+            </span>
+          </Label>
+          <Input
+            id="destinationCustomName"
+            placeholder="e.g. Salish 2025 #3 (racked off lees)"
+            maxLength={120}
+            {...register("destinationCustomName")}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Leave blank to keep the original name. For a partial transfer
+            only the new batch in the destination is renamed — the
+            source-side remainder keeps its current name.
+          </p>
+        </div>
+      )}
 
       <div>
         <Label htmlFor="notes">Notes</Label>
