@@ -30,6 +30,7 @@ import {
   RotateCcw,
   CheckCircle2,
   Sparkles,
+  MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -413,6 +414,12 @@ export function KegsTable({
                 <SortableHeader canSort={false} className="font-semibold text-gray-700 text-xs uppercase tracking-wide">
                   Status
                 </SortableHeader>
+                <SortableHeader canSort={false} className="font-semibold text-gray-700 text-xs uppercase tracking-wide">
+                  Location
+                </SortableHeader>
+                <SortableHeader canSort={false} className="font-semibold text-gray-700 text-xs uppercase tracking-wide">
+                  CO₂
+                </SortableHeader>
                 <SortableHeader canSort={false} className="w-[100px] font-semibold text-gray-700 text-xs uppercase tracking-wide">
                   Actions
                 </SortableHeader>
@@ -449,6 +456,12 @@ export function KegsTable({
                       <Skeleton className="h-4 w-20" />
                     </TableCell>
                     <TableCell>
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-16" />
+                    </TableCell>
+                    <TableCell>
                       <Skeleton className="h-8 w-8" />
                     </TableCell>
                   </TableRow>
@@ -456,7 +469,7 @@ export function KegsTable({
               ) : kegFills.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={enableSelection ? 9 : 8}
+                    colSpan={enableSelection ? 11 : 10}
                     className="text-center py-12 text-gray-500"
                   >
                     No keg fills found
@@ -538,17 +551,31 @@ export function KegsTable({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getStatusBadge(item.status)}
-                          {(item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
-                            <Badge className={cn("text-xs gap-1", "bg-cyan-100 text-cyan-700 hover:bg-cyan-200")}>
-                              <Sparkles className="h-3 w-3" />
-                              {item.carbonationCo2Volumes
-                                ? `${item.carbonationCo2Volumes.toFixed(1)} vol CO₂`
-                                : item.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
-                            </Badge>
-                          )}
-                        </div>
+                        {getStatusBadge(item.status)}
+                      </TableCell>
+                      <TableCell>
+                        {item.distributionLocation ? (
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                            <span className="text-sm text-gray-700 truncate max-w-[160px]">
+                              {item.distributionLocation}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {(item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) ? (
+                          <Badge className={cn("text-xs gap-1", "bg-cyan-100 text-cyan-700 hover:bg-cyan-200")}>
+                            <Sparkles className="h-3 w-3" />
+                            {item.carbonationCo2Volumes
+                              ? `${item.carbonationCo2Volumes.toFixed(1)} vol`
+                              : item.carbonationLevel === "sparkling" ? "Sparkling" : "Pétillant"}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
@@ -760,8 +787,14 @@ export function KegsTable({
                   </div>
                 </div>
 
-                <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2">
+                <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 flex-wrap">
                   {getStatusBadge(item.status)}
+                  {item.distributionLocation && (
+                    <span className="text-xs text-gray-600 inline-flex items-center gap-1">
+                      <MapPin className="h-3 w-3 text-gray-400" />
+                      {item.distributionLocation}
+                    </span>
+                  )}
                   {(item.carbonationCo2Volumes || (item.carbonationLevel && item.carbonationLevel !== "still")) && (
                     <Badge className={cn("text-xs gap-1", "bg-cyan-100 text-cyan-700 hover:bg-cyan-200")}>
                       <Sparkles className="h-3 w-3" />

@@ -1592,6 +1592,23 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                             <ArrowRight className="w-3 h-3 mr-2" />
                             Transfer to Another Tank
                           </DropdownMenuItem>
+
+                          {/* Destroy Batch: only valid when there is an active
+                              batch with volume > 0. Bad cider, off-flavor, etc.
+                              Captures TTB-tracked destruction record. */}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleOpenDestroy(vessel.id, vessel.name)}
+                            disabled={
+                              !liquidMapVessel?.batchId ||
+                              !liquidMapVessel.currentVolume ||
+                              parseFloat(String(liquidMapVessel.currentVolume)) <= 0
+                            }
+                            className="text-red-600"
+                          >
+                            <AlertTriangle className="w-3 h-3 mr-2" />
+                            Destroy Batch
+                          </DropdownMenuItem>
                         </>
                       )}
                     </DropdownMenuContent>
@@ -1646,22 +1663,6 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                       )}
 
                       <DropdownMenuSeparator />
-
-                      {/* Destroy Batch: only valid when there is an active
-                          batch with volume > 0. Bad cider, off-flavor, etc.
-                          Captures TTB-tracked destruction record. */}
-                      <DropdownMenuItem
-                        onClick={() => handleOpenDestroy(vessel.id, vessel.name)}
-                        disabled={
-                          !liquidMapVessel?.batchId ||
-                          !liquidMapVessel.currentVolume ||
-                          parseFloat(String(liquidMapVessel.currentVolume)) <= 0
-                        }
-                        className="text-red-600"
-                      >
-                        <AlertTriangle className="w-3 h-3 mr-2" />
-                        Destroy Batch
-                      </DropdownMenuItem>
 
                       {/* Prep for Cleaning: shown whenever there is anything to
                           clear (batch, stuck completed batch, or press run).
