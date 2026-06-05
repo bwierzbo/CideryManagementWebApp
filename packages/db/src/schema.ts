@@ -117,6 +117,7 @@ export const activityLaborTypeEnum = pgEnum("activity_labor_type", [
   "filtering",
   "carbonation",
   "cleaning",
+  "destruction",
 ]);
 
 // Fruit variety characteristic enums
@@ -372,6 +373,7 @@ export const activityLaborAssignments = pgTable(
     rackingOperationId: uuid("racking_operation_id"),
     carbonationOperationId: uuid("carbonation_operation_id"),
     vesselCleaningOperationId: uuid("vessel_cleaning_operation_id"),
+    batchVolumeAdjustmentId: uuid("batch_volume_adjustment_id"),
     // Worker assignment
     workerId: uuid("worker_id")
       .notNull()
@@ -395,6 +397,7 @@ export const activityLaborAssignments = pgTable(
     bottleRunIdx: index("activity_labor_assignments_bottle_run_idx").on(table.bottleRunId),
     kegFillIdx: index("activity_labor_assignments_keg_fill_idx").on(table.kegFillId),
     vesselCleaningIdx: index("activity_labor_assignments_vessel_cleaning_idx").on(table.vesselCleaningOperationId),
+    batchVolumeAdjustmentIdx: index("activity_labor_assignments_bva_idx").on(table.batchVolumeAdjustmentId),
     activityTypeIdx: index("activity_labor_assignments_activity_type_idx").on(table.activityType),
   }),
 );

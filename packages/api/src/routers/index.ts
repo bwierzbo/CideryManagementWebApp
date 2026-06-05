@@ -6027,6 +6027,22 @@ export const appRouter = router({
             "other",
           ]),
           reason: z.string().min(10, "Reason must be at least 10 characters"),
+          notes: z.string().optional(),
+          // When the destruction physically happened (defaults to now). Allows
+          // backdating without a direct DB edit.
+          destroyedAt: z.preprocess(
+            (val) => (val === null || val === undefined ? undefined : val),
+            z.date().or(z.string().transform((v) => new Date(v))).optional(),
+          ),
+          // Who did the work and for how long (feeds the labor record).
+          laborAssignments: z
+            .array(
+              z.object({
+                workerId: z.string().uuid(),
+                hoursWorked: z.number().positive(),
+              }),
+            )
+            .optional(),
           confirmed: z
             .boolean()
             .refine((v) => v === true, { message: "Destruction must be explicitly confirmed" }),
@@ -6068,20 +6084,28 @@ export const appRouter = router({
             });
           }
 
+          // When the destruction physically happened (defaults to now).
+          const destroyedAt = input.destroyedAt ?? new Date();
+
           await db.transaction(async (tx) => {
-            // 1. Volume adjustment row of new 'destruction' type
-            await tx.insert(batchVolumeAdjustments).values({
-              batchId: batch.id,
-              vesselId: input.vesselId,
-              adjustmentDate: new Date(),
-              adjustmentType: "destruction",
-              volumeBefore: volumeBefore.toString(),
-              volumeAfter: "0",
-              adjustmentAmount: (-input.volumeL).toString(),
-              reason: input.reason,
-              notes: `Category: ${input.category}`,
-              adjustedBy: ctx.user.id,
-            });
+            // 1. Volume adjustment row of 'destruction' type
+            const [adjustment] = await tx
+              .insert(batchVolumeAdjustments)
+              .values({
+                batchId: batch.id,
+                vesselId: input.vesselId,
+                adjustmentDate: destroyedAt,
+                adjustmentType: "destruction",
+                volumeBefore: volumeBefore.toString(),
+                volumeAfter: "0",
+                adjustmentAmount: (-input.volumeL).toString(),
+                reason: input.reason,
+                notes: input.notes
+                  ? `Category: ${input.category}\n${input.notes}`
+                  : `Category: ${input.category}`,
+                adjustedBy: ctx.user.id,
+              })
+              .returning({ id: batchVolumeAdjustments.id });
 
             // 2. Mark batch as discarded + populate destruction fields
             await tx
@@ -6091,7 +6115,7 @@ export const appRouter = router({
                 currentVolume: "0",
                 currentVolumeLiters: "0",
                 currentVolumeUnit: "L",
-                destroyedAt: new Date(),
+                destroyedAt,
                 destructionReason: input.reason,
                 destructionCategory: input.category,
                 updatedAt: new Date(),
@@ -6103,6 +6127,29 @@ export const appRouter = router({
               .update(vessels)
               .set({ status: "cleaning", updatedAt: new Date() })
               .where(eq(vessels.id, input.vesselId));
+
+            // 4. Labor: who performed the destruction and for how long. Linked
+            // to the destruction adjustment row so it's attributable in reports.
+            if (input.laborAssignments && input.laborAssignments.length > 0) {
+              for (const assignment of input.laborAssignments) {
+                const [worker] = await tx
+                  .select({ hourlyRate: workers.hourlyRate })
+                  .from(workers)
+                  .where(eq(workers.id, assignment.workerId))
+                  .limit(1);
+                const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+                const laborCost = assignment.hoursWorked * hourlyRate;
+                await tx.insert(activityLaborAssignments).values({
+                  activityType: "destruction",
+                  batchVolumeAdjustmentId: adjustment.id,
+                  workerId: assignment.workerId,
+                  hoursWorked: assignment.hoursWorked.toString(),
+                  hourlyRateSnapshot: hourlyRate.toString(),
+                  laborCost: laborCost.toString(),
+                  createdBy: ctx.user.id,
+                });
+              }
+            }
           });
 
           await publishUpdateEvent(
@@ -6111,7 +6158,7 @@ export const appRouter = router({
             { status: batch.status, currentVolume: batch.currentVolume },
             {
               status: "discarded",
-              destroyedAt: new Date().toISOString(),
+              destroyedAt: destroyedAt.toISOString(),
               destructionCategory: input.category,
               destructionReason: input.reason,
               volumeDestroyedL: input.volumeL,
