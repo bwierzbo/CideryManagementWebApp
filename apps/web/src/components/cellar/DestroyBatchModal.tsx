@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -37,7 +36,6 @@ const DESTRUCTION_CATEGORIES = [
 ] as const;
 
 const destroySchema = z.object({
-  volumeL: z.number().positive("Volume must be > 0"),
   category: z.enum([
     "contamination_spoilage",
     "failed_quality",
@@ -84,7 +82,6 @@ export function DestroyBatchModal({
   } = useForm<DestroyForm>({
     resolver: zodResolver(destroySchema),
     defaultValues: {
-      volumeL: currentVolumeL,
       category: undefined as unknown as DestroyForm["category"],
       reason: "",
       confirmed: false,
@@ -95,14 +92,13 @@ export function DestroyBatchModal({
   useEffect(() => {
     if (open) {
       reset({
-        volumeL: currentVolumeL,
         category: undefined as unknown as DestroyForm["category"],
         reason: "",
         confirmed: false,
       });
       setSubmitError(null);
     }
-  }, [open, currentVolumeL, reset]);
+  }, [open, reset]);
 
   const destroyMutation = trpc.vessel.destroyBatch.useMutation({
     onSuccess: (result) => {
@@ -126,9 +122,10 @@ export function DestroyBatchModal({
 
   const onSubmit = (data: DestroyForm) => {
     setSubmitError(null);
+    // Destroy is always whole-batch: send the batch's full current volume.
     destroyMutation.mutate({
       vesselId,
-      volumeL: data.volumeL,
+      volumeL: currentVolumeL,
       category: data.category,
       reason: data.reason,
       confirmed: true,
@@ -154,20 +151,14 @@ export function DestroyBatchModal({
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="volumeL">Volume to destroy (L) *</Label>
-            <Input
-              id="volumeL"
-              type="number"
-              step="0.01"
-              min="0"
-              {...register("volumeL", { valueAsNumber: true })}
-            />
-            {errors.volumeL && (
-              <p className="text-sm text-red-600">{errors.volumeL.message}</p>
-            )}
+            <Label>Volume to destroy</Label>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span className="font-medium">{currentVolumeL} L</span>
+              <span className="text-muted-foreground"> — entire batch</span>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Pre-filled with batch current volume ({currentVolumeL} L). Adjust
-              if your physical count differs.
+              The whole batch is destroyed and recorded as a loss. There is no
+              partial destroy.
             </p>
           </div>
 

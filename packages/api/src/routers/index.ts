@@ -3309,6 +3309,11 @@ export const appRouter = router({
                 SELECT b.id FROM batches b
                 WHERE b.vessel_id = vessels.id
                   AND b.deleted_at IS NULL
+                  -- Destroyed/discarded batches are dead: the vessel should read as
+                  -- empty (so a cleaning vessel shows yellow, not grey, and no stale
+                  -- ABV/SG/pH carries over from the destroyed batch).
+                  AND b.status != 'discarded'
+                  AND b.destroyed_at IS NULL
                   AND NOT (b.status = 'completed' AND COALESCE(b.current_volume_liters, 0) <= 0.01)
                 ORDER BY
                   CASE WHEN b.status != 'completed' THEN 0 ELSE 1 END,
