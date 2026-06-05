@@ -3915,6 +3915,34 @@ export const appRouter = router({
             const transferDate = input.transferDate || new Date();
             const isBackdated = input.transferDate && input.transferDate < new Date();
 
+            // Idempotency guard: reject an identical transfer submitted within the
+            // last 60s. Defends against double-click / double-submit, which would
+            // otherwise create duplicate batch_transfers rows (and, for transfers to
+            // an empty vessel, duplicate destination batches). The window is keyed on
+            // created_at so legitimate backdated transfers sharing transferredAt are
+            // unaffected.
+            const recentDuplicate = await tx
+              .select({ id: batchTransfers.id })
+              .from(batchTransfers)
+              .where(
+                and(
+                  eq(batchTransfers.sourceBatchId, sourceBatch[0].id),
+                  eq(batchTransfers.destinationVesselId, input.toVesselId),
+                  eq(batchTransfers.transferredAt, transferDate),
+                  isNull(batchTransfers.deletedAt),
+                  sql`${batchTransfers.volumeTransferred}::decimal = ${input.volumeL}`,
+                  gt(batchTransfers.createdAt, sql`now() - interval '60 seconds'`),
+                ),
+              )
+              .limit(1);
+            if (recentDuplicate.length) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message:
+                  "This transfer was just submitted moments ago. If you meant to record a second identical transfer, wait a minute or adjust the volume or time.",
+              });
+            }
+
             if (isBackdated) {
               // For backdated transfers, reconstruct the historical volume at that point in time
               // Start from the batch's initial volume in liters

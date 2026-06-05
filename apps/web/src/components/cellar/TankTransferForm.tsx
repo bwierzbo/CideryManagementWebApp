@@ -276,6 +276,9 @@ export function TankTransferForm({
     // keeps the success toast accurate.
     const validLabor = laborAssignments.filter(a => a.workerId && a.hoursWorked > 0);
     const newName = (data.destinationCustomName || "").trim();
+    // Guard against double-submit: the button-disable below has a one-tick race
+    // window (two clicks before isPending flips). Bail out if already in flight.
+    if (transferMutation.isPending) return;
     transferMutation.mutate({
       ...data,
       volumeL: volumeInLiters,
@@ -607,10 +610,10 @@ export function TankTransferForm({
         <Button
           type="submit"
           disabled={
-            !isVolumeValid || !watchedVolumeL || watchedVolumeL <= 0 || wouldExceedMaxCapacity
+            transferMutation.isPending || !isVolumeValid || !watchedVolumeL || watchedVolumeL <= 0 || wouldExceedMaxCapacity
           }
         >
-          Transfer Liquid
+          {transferMutation.isPending ? "Transferring…" : "Transfer Liquid"}
         </Button>
       </div>
 
