@@ -103,6 +103,7 @@ export interface KegFillListItem {
   // Keg-specific fields
   kegId: string;
   kegNumber: string | null;
+  kegStatus?: string | null; // Physical keg asset status (e.g. "cleaning", "available")
   remainingVolumeL: number | null;
   // Distribution fields
   readyAt?: Date | null;

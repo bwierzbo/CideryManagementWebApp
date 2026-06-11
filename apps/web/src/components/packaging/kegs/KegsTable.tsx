@@ -31,6 +31,7 @@ import {
   CheckCircle2,
   Sparkles,
   MapPin,
+  Droplets,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/utils/trpc";
@@ -39,6 +40,7 @@ import { formatDate } from "@/utils/date-format";
 import { useToast } from "@/hooks/use-toast";
 import { DistributeKegModal } from "./DistributeKegModal";
 import { ReturnKegModal } from "./ReturnKegModal";
+import { CleanKegModal } from "./CleanKegModal";
 import { MarkReadyModal } from "../MarkReadyModal";
 
 // Type for keg fill from API
@@ -60,6 +62,7 @@ interface KegFill {
   // Keg-specific fields
   kegId?: string;
   kegNumber?: string | null;
+  kegStatus?: string | null; // Physical keg asset status (e.g. "cleaning", "available")
   remainingVolumeL?: number | null;
   // Distribution fields
   distributedAt?: Date | string | null;
@@ -136,6 +139,11 @@ export function KegsTable({
   const [markReadyModalOpen, setMarkReadyModalOpen] = useState(false);
   const [selectedKegForMarkReady, setSelectedKegForMarkReady] = useState<{
     kegFillId: string;
+    kegNumber: string;
+  } | null>(null);
+  const [cleanKegModalOpen, setCleanKegModalOpen] = useState(false);
+  const [selectedKegForCleaning, setSelectedKegForCleaning] = useState<{
+    kegId: string;
     kegNumber: string;
   } | null>(null);
 
@@ -317,6 +325,14 @@ export function KegsTable({
     }
   }, []);
 
+  const handleClean = useCallback((item: KegFill, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (item.kegId && item.kegNumber) {
+      setSelectedKegForCleaning({ kegId: item.kegId, kegNumber: item.kegNumber });
+      setCleanKegModalOpen(true);
+    }
+  }, []);
+
   const handleRowClick = useCallback(
     (item: KegFill) => {
       router.push(`/keg-fills/${item.id}`);
@@ -345,6 +361,28 @@ export function KegsTable({
         <span className="text-sm text-gray-700">{config.label}</span>
       </div>
     );
+  };
+
+  // Cleaning-status badge for returned kegs (returned keg → physical keg sits in "cleaning")
+  const getCleaningBadge = (item: KegFill) => {
+    if (item.status !== "returned") return null;
+    if (item.kegStatus === "cleaning") {
+      return (
+        <Badge className="text-xs gap-1 bg-amber-100 text-amber-700 hover:bg-amber-200">
+          <Droplets className="h-3 w-3" />
+          Needs Cleaning
+        </Badge>
+      );
+    }
+    if (item.kegStatus === "available") {
+      return (
+        <Badge className="text-xs gap-1 bg-green-100 text-green-700 hover:bg-green-200">
+          <CheckCircle2 className="h-3 w-3" />
+          Cleaned
+        </Badge>
+      );
+    }
+    return null;
   };
 
   // Volume percentage
@@ -551,7 +589,10 @@ export function KegsTable({
                         </div>
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(item.status)}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {getStatusBadge(item.status)}
+                          {getCleaningBadge(item)}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {item.distributionLocation ? (
@@ -620,6 +661,16 @@ export function KegsTable({
                               <RotateCcw className="w-4 h-4 mr-2" />
                               Return Keg
                             </DropdownMenuItem>
+                            {item.status === "returned" && (
+                              <DropdownMenuItem
+                                onClick={(e) => handleClean(item, e)}
+                                disabled={item.kegStatus !== "cleaning"}
+                                className={item.kegStatus !== "cleaning" ? "text-gray-400" : "text-cyan-600"}
+                              >
+                                <Droplets className="w-4 h-4 mr-2" />
+                                {item.kegStatus === "available" ? "Already Cleaned" : "Clean Keg"}
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -789,6 +840,7 @@ export function KegsTable({
 
                 <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2 flex-wrap">
                   {getStatusBadge(item.status)}
+                  {getCleaningBadge(item)}
                   {item.distributionLocation && (
                     <span className="text-xs text-gray-600 inline-flex items-center gap-1">
                       <MapPin className="h-3 w-3 text-gray-400" />
@@ -840,6 +892,22 @@ export function KegsTable({
           }}
           kegFillId={selectedKegForReturn.kegFillId}
           kegNumber={selectedKegForReturn.kegNumber}
+          onSuccess={() => {
+            refetch();
+          }}
+        />
+      )}
+
+      {/* Clean Keg Modal */}
+      {selectedKegForCleaning && (
+        <CleanKegModal
+          open={cleanKegModalOpen}
+          onClose={() => {
+            setCleanKegModalOpen(false);
+            setSelectedKegForCleaning(null);
+          }}
+          kegId={selectedKegForCleaning.kegId}
+          kegNumber={selectedKegForCleaning.kegNumber}
           onSuccess={() => {
             refetch();
           }}
