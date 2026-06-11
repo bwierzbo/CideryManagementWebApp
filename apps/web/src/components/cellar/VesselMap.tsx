@@ -1514,15 +1514,6 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                                 <FilterIcon className="w-3 h-3 mr-2" />
                                 Filter
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handlePackage(vessel.id)}
-                                disabled={
-                                  !liquidMapVessel?.batchId || currentVolume <= 0
-                                }
-                              >
-                                <Package className="w-3 h-3 mr-2" />
-                                Package
-                              </DropdownMenuItem>
                             </>
                           )}
                           {liquidMapVessel?.batchStatus === "aging" && (
@@ -1544,15 +1535,6 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                               >
                                 <FilterIcon className="w-3 h-3 mr-2" />
                                 Filter
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handlePackage(vessel.id)}
-                                disabled={
-                                  !liquidMapVessel?.batchId || currentVolume <= 0
-                                }
-                              >
-                                <Package className="w-3 h-3 mr-2" />
-                                Package
                               </DropdownMenuItem>
                             </>
                           )}
@@ -1584,6 +1566,18 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                           >
                             <Eye className="w-3 h-3 mr-2" />
                             View Batch
+                          </DropdownMenuItem>
+                          {/* Package: available for any batch with volume,
+                              regardless of status (matches Transfer/Destroy).
+                              The packaging handler itself has no status gate. */}
+                          <DropdownMenuItem
+                            onClick={() => handlePackage(vessel.id)}
+                            disabled={
+                              !liquidMapVessel?.batchId || currentVolume <= 0
+                            }
+                          >
+                            <Package className="w-3 h-3 mr-2" />
+                            Package
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleTankTransfer(vessel.id)}
