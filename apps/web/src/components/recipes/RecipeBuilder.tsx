@@ -962,6 +962,14 @@ function summarizeStepAction(step: RecipeStepDraft): string | null {
         : null;
     case "label":
       return d.labelVarietyName ? `→ ${d.labelVarietyName}` : null;
+    case "carbonate":
+      return d.targetCo2Volumes != null
+        ? `→ ${d.targetCo2Volumes} vol${d.method ? ` (${d.method})` : ""}`
+        : null;
+    case "measurement":
+      return Array.isArray(d.measures) && d.measures.length
+        ? `→ measure ${d.measures.join(", ")}`
+        : null;
     case "filter":
       return d.micronRating
         ? `→ ${d.micronRating} micron${d.padType ? ` (${d.padType})` : ""}`
@@ -1398,6 +1406,71 @@ function StepActionParams({
           </div>
         </div>
       );
+
+    case "carbonate": {
+      const target = (data.targetCo2Volumes as number | undefined) ??
+        Number(orgSettings.defaultTargetCO2);
+      const method = (data.method as string) ?? "forced";
+      return (
+        <div className="grid grid-cols-12 gap-2">
+          <div className="col-span-4">
+            <Label className="text-xs">Target CO₂ (volumes)</Label>
+            <Input
+              type="number"
+              step="0.1"
+              min="0"
+              value={Number.isFinite(target) ? target : ""}
+              onChange={(e) => setData({ targetCo2Volumes: e.target.value === "" ? null : Number(e.target.value) })}
+              className="h-9"
+            />
+          </div>
+          <div className="col-span-5">
+            <Label className="text-xs">Method</Label>
+            <Select value={method} onValueChange={(v) => setData({ method: v })}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="forced">Forced (CO₂ under pressure)</SelectItem>
+                <SelectItem value="natural">Natural (bottle / keg conditioning)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-3 flex items-end text-xs text-muted-foreground">
+            Target prefilled from Settings → default CO₂.
+          </div>
+        </div>
+      );
+    }
+
+    case "measurement": {
+      const measures = Array.isArray(data.measures) ? (data.measures as string[]) : [];
+      const toggle = (m: string) =>
+        setData({
+          measures: measures.includes(m) ? measures.filter((x) => x !== m) : [...measures, m],
+        });
+      const MEASURE_OPTIONS = [
+        { value: "sg", label: "Specific gravity (SG)" },
+        { value: "ph", label: "pH" },
+        { value: "temperature", label: "Temperature" },
+        { value: "co2", label: "CO₂" },
+        { value: "ta", label: "Titratable acidity" },
+      ];
+      return (
+        <div>
+          <Label className="text-xs">What to measure</Label>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 mt-1">
+            {MEASURE_OPTIONS.map((o) => (
+              <label key={o.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                <Checkbox
+                  checked={measures.includes(o.value)}
+                  onCheckedChange={() => toggle(o.value)}
+                />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      );
+    }
 
     case "filter":
       return (
