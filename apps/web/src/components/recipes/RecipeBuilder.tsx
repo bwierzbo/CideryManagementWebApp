@@ -16,7 +16,10 @@
  * via the `onSubmit` prop. Parent owns navigation on success.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { calculatePU } from "lib";
+import { trpc } from "@/utils/trpc";
+import { useOrganizationSettings } from "@/contexts/SettingsContext";
 import {
   Card,
   CardContent,
@@ -615,6 +618,7 @@ export function RecipeBuilder({
                     index={idx}
                     total={draft.steps.length}
                     editing={editingIds.has(step.uiId)}
+                    ingredients={draft.inputs.filter((i) => i.kind === "ingredient")}
                     onChange={(p) => updateStep(step.uiId, p)}
                     onRemove={() => removeStep(step.uiId)}
                     onMoveUp={() => moveStep(step.uiId, "up")}
@@ -938,11 +942,41 @@ function SummaryRow({
   );
 }
 
+// One-line summary of a step's action params for the collapsed view. Reads
+// from actionData (names are denormalized there, so no query needed).
+function summarizeStepAction(step: RecipeStepDraft): string | null {
+  const d = step.actionData as Record<string, any>;
+  switch (step.kind) {
+    case "add_additive":
+    case "pitch_yeast":
+      return d.ingredientLabel ? `→ ${d.ingredientLabel}` : null;
+    case "pasteurize":
+      return d.targetPu != null
+        ? `→ ${d.targetPu} PU @ ${d.tempC}°C / ${d.timeMinutes} min`
+        : null;
+    case "package":
+      return d.containerVarietyName
+        ? `→ ${d.containerVarietyName}${d.sizeML ? ` (${d.sizeML} mL)` : ""}${
+            d.capVarietyName ? ` + ${d.capVarietyName}` : ""
+          }`
+        : null;
+    case "label":
+      return d.labelVarietyName ? `→ ${d.labelVarietyName}` : null;
+    case "filter":
+      return d.micronRating
+        ? `→ ${d.micronRating} micron${d.padType ? ` (${d.padType})` : ""}`
+        : null;
+    default:
+      return null;
+  }
+}
+
 function StepRow({
   step,
   index,
   total,
   editing,
+  ingredients,
   onChange,
   onRemove,
   onMoveUp,
@@ -954,6 +988,7 @@ function StepRow({
   index: number;
   total: number;
   editing: boolean;
+  ingredients: RecipeInputDraft[];
   onChange: (p: Partial<RecipeStepDraft>) => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -964,6 +999,7 @@ function StepRow({
   const kindLabel = STEP_KINDS.find((k) => k.value === step.kind)?.label ?? step.kind;
   const triggerLabel =
     TRIGGER_KINDS.find((t) => t.value === step.triggerKind)?.label ?? step.triggerKind;
+  const actionSummary = summarizeStepAction(step);
 
   return (
     <div className="border rounded-md bg-gray-50/50">
@@ -1026,6 +1062,9 @@ function StepRow({
               </Badge>
             )}
           </div>
+          {actionSummary ? (
+            <div className="truncate text-gray-600">{actionSummary}</div>
+          ) : null}
           {step.description?.trim() ? (
             <div className="line-clamp-2 whitespace-pre-wrap text-gray-600">
               {step.description}
@@ -1041,7 +1080,7 @@ function StepRow({
               <Label className="text-xs">Step kind</Label>
               <Select
                 value={step.kind}
-                onValueChange={(v) => onChange({ kind: v as StepKind })}
+                onValueChange={(v) => onChange({ kind: v as StepKind, actionData: {} })}
               >
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -1088,7 +1127,10 @@ function StepRow({
             </div>
           </div>
 
-          {/* Trigger params — kind-specific */}
+          {/* Action params — kind-specific (what to do / how much) */}
+          <StepActionParams step={step} ingredients={ingredients} onChange={onChange} />
+
+          {/* Trigger params — kind-specific (when it fires) */}
           <TriggerParams step={step} onChange={onChange} />
 
           <div>
@@ -1125,6 +1167,265 @@ function StepRow({
       )}
     </div>
   );
+}
+
+// Kind-specific "what to do" fields, written to step.actionData. Mirrors the
+// per-kind structure of TriggerParams. Grows one case per step kind as the
+// structured-step-params feature is built out (additive, filter, pasteurize,
+// package, label, carbonate, measurement…).
+function StepActionParams({
+  step,
+  ingredients,
+  onChange,
+}: {
+  step: RecipeStepDraft;
+  ingredients: RecipeInputDraft[];
+  onChange: (p: Partial<RecipeStepDraft>) => void;
+}) {
+  const orgSettings = useOrganizationSettings();
+  // Packaging varieties for package/label dropdowns. React Query dedupes this
+  // across every rendered step row, so it's a single shared request.
+  const varietiesQuery = trpc.packagingVarieties.list.useQuery({ limit: 100 });
+  const varieties = varietiesQuery.data?.varieties ?? [];
+  // Bottles AND caps both live under "Primary Packaging" in inventory; labels
+  // are "Secondary Packaging".
+  const containerOpts = varieties.filter((v) => v.itemType === "Primary Packaging");
+  const labelOpts = varieties.filter((v) => v.itemType === "Secondary Packaging");
+  const data = step.actionData;
+  const setData = (patch: Record<string, unknown>) =>
+    onChange({ actionData: { ...data, ...patch } });
+
+  // Auto-fill pasteurize params from the org defaults the first time a step
+  // becomes a pasteurize step (empty actionData), so the values are captured
+  // in the version snapshot even if the operator doesn't touch them.
+  useEffect(() => {
+    if (step.kind === "pasteurize" && Object.keys(step.actionData).length === 0) {
+      onChange({
+        actionData: {
+          targetPu: Number(orgSettings.defaultPasteurizationTargetPu),
+          tempC: Number(orgSettings.defaultPasteurizationTempC),
+          timeMinutes: Number(orgSettings.defaultPasteurizationTimeMinutes),
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.kind]);
+
+  switch (step.kind) {
+    case "add_additive":
+    case "pitch_yeast": {
+      // References an additive already declared in the Ingredients section —
+      // amount/rate is defined once there, the step just says when to add it.
+      const selected = (data.ingredientLabel as string) ?? "";
+      const ing = ingredients.find((i) => i.label === selected);
+      return (
+        <div className="grid grid-cols-12 gap-2">
+          <div className="col-span-6">
+            <Label className="text-xs">Additive (from Ingredients)</Label>
+            <Select value={selected} onValueChange={(v) => setData({ ingredientLabel: v })}>
+              <SelectTrigger className="h-9">
+                <SelectValue
+                  placeholder={ingredients.length ? "Select ingredient…" : "Add an ingredient first"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {ingredients
+                  .filter((i) => i.label.trim())
+                  .map((i) => (
+                    <SelectItem key={i.uiId} value={i.label}>{i.label}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-6 flex items-end text-xs text-muted-foreground">
+            {ing
+              ? `Rate: ${ing.rateValue ?? "?"} ${ing.rateUnit ?? ""} — defined in the Ingredients section`
+              : "Declare additives & rates in the Ingredients section, then pick one here."}
+          </div>
+        </div>
+      );
+    }
+
+    case "pasteurize": {
+      const targetPu = (data.targetPu as number | undefined) ??
+        Number(orgSettings.defaultPasteurizationTargetPu);
+      const tempC = (data.tempC as number | undefined) ??
+        Number(orgSettings.defaultPasteurizationTempC);
+      const timeMinutes = (data.timeMinutes as number | undefined) ??
+        Number(orgSettings.defaultPasteurizationTimeMinutes);
+      const achievedPu = calculatePU(tempC, timeMinutes);
+      const meets = achievedPu >= targetPu;
+      return (
+        <div className="space-y-2">
+          <div className="grid grid-cols-12 gap-2">
+            <div className="col-span-4">
+              <Label className="text-xs">Target PU</Label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={Number.isFinite(targetPu) ? targetPu : ""}
+                onChange={(e) => setData({ targetPu: e.target.value === "" ? null : Number(e.target.value) })}
+                className="h-9"
+              />
+            </div>
+            <div className="col-span-4">
+              <Label className="text-xs">Hold temp (°C)</Label>
+              <Input
+                type="number"
+                step="0.5"
+                min="0"
+                value={Number.isFinite(tempC) ? tempC : ""}
+                onChange={(e) => setData({ tempC: e.target.value === "" ? null : Number(e.target.value) })}
+                className="h-9"
+              />
+            </div>
+            <div className="col-span-4">
+              <Label className="text-xs">Hold time (min)</Label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={Number.isFinite(timeMinutes) ? timeMinutes : ""}
+                onChange={(e) => setData({ timeMinutes: e.target.value === "" ? null : Number(e.target.value) })}
+                className="h-9"
+              />
+            </div>
+          </div>
+          <p className={`text-xs ${meets ? "text-green-700" : "text-amber-700"}`}>
+            ≈ {achievedPu.toFixed(1)} PU at {tempC}°C for {timeMinutes} min (60°C ref).{" "}
+            {meets
+              ? `Meets target ${targetPu} PU.`
+              : `Below target ${targetPu} PU — increase temp or time.`}{" "}
+            <span className="text-muted-foreground">Prefilled from Settings → Pasteurization Defaults.</span>
+          </p>
+        </div>
+      );
+    }
+
+    case "package":
+      return (
+        <div className="space-y-2">
+          <div className="grid grid-cols-12 gap-2">
+            <div className="col-span-5">
+              <Label className="text-xs">Container (bottle / can / keg)</Label>
+              <Select
+                value={(data.containerVarietyId as string) ?? ""}
+                onValueChange={(id) => {
+                  const v = containerOpts.find((x) => x.id === id);
+                  setData({ containerVarietyId: id, containerVarietyName: v?.name ?? null });
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder={containerOpts.length ? "Select container…" : "No packaging in inventory"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {containerOpts.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-3">
+              <Label className="text-xs">Size (mL)</Label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                value={(data.sizeML as number) ?? ""}
+                onChange={(e) => setData({ sizeML: e.target.value === "" ? null : Number(e.target.value) })}
+                placeholder="750"
+                className="h-9"
+              />
+            </div>
+            <div className="col-span-4">
+              <Label className="text-xs">Cap / closure</Label>
+              <Select
+                value={(data.capVarietyId as string) ?? ""}
+                onValueChange={(id) => {
+                  const v = containerOpts.find((x) => x.id === id);
+                  setData({ capVarietyId: id, capVarietyName: v?.name ?? null });
+                }}
+              >
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select cap…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {containerOpts.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Pick the bottle/can and cap from packaging inventory. Size drives the unit
+            count (⌈volume ÷ size⌉) when this feeds inventory planning.
+          </p>
+        </div>
+      );
+
+    case "label":
+      return (
+        <div className="grid grid-cols-12 gap-2">
+          <div className="col-span-6">
+            <Label className="text-xs">Label</Label>
+            <Select
+              value={(data.labelVarietyId as string) ?? ""}
+              onValueChange={(id) => {
+                const v = labelOpts.find((x) => x.id === id);
+                setData({ labelVarietyId: id, labelVarietyName: v?.name ?? null });
+              }}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder={labelOpts.length ? "Select label…" : "No labels in inventory"} />
+              </SelectTrigger>
+              <SelectContent>
+                {labelOpts.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="col-span-6">
+            <Label className="text-xs">Label note (optional)</Label>
+            <Input
+              value={(data.labelNote as string) ?? ""}
+              onChange={(e) => setData({ labelNote: e.target.value })}
+              placeholder="e.g. front + back label"
+              className="h-9"
+            />
+          </div>
+        </div>
+      );
+
+    case "filter":
+      return (
+        <div className="grid grid-cols-12 gap-2">
+          <div className="col-span-4">
+            <Label className="text-xs">Micron rating</Label>
+            <Input
+              value={(data.micronRating as string) ?? ""}
+              onChange={(e) => setData({ micronRating: e.target.value })}
+              placeholder="e.g. 5-7"
+              className="h-9"
+            />
+          </div>
+          <div className="col-span-4">
+            <Label className="text-xs">Pad / media type</Label>
+            <Input
+              value={(data.padType as string) ?? ""}
+              onChange={(e) => setData({ padType: e.target.value })}
+              placeholder="e.g. cellulose pad"
+              className="h-9"
+            />
+          </div>
+        </div>
+      );
+
+    default:
+      return null;
+  }
 }
 
 function TriggerParams({

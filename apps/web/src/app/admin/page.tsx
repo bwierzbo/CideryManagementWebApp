@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { calculatePU } from "lib";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
@@ -1342,6 +1343,9 @@ function SystemSettings() {
     ttbReminderDays: settings.ttbReminderDays,
     defaultTargetCO2: settings.defaultTargetCO2,
     warehouseTemperatureCelsius: settings.warehouseTemperatureCelsius,
+    defaultPasteurizationTargetPu: settings.defaultPasteurizationTargetPu,
+    defaultPasteurizationTempC: settings.defaultPasteurizationTempC,
+    defaultPasteurizationTimeMinutes: settings.defaultPasteurizationTimeMinutes,
     sgDecimalPlaces: settings.sgDecimalPlaces,
     phDecimalPlaces: settings.phDecimalPlaces,
     sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
@@ -1397,6 +1401,9 @@ function SystemSettings() {
         sgTemperatureCorrectionEnabled: formData.sgTemperatureCorrectionEnabled,
         hydrometerCalibrationTempC: formData.hydrometerCalibrationTempC,
         warehouseTemperatureCelsius: formData.warehouseTemperatureCelsius,
+        defaultPasteurizationTargetPu: formData.defaultPasteurizationTargetPu,
+        defaultPasteurizationTempC: formData.defaultPasteurizationTempC,
+        defaultPasteurizationTimeMinutes: formData.defaultPasteurizationTimeMinutes,
       });
 
       utils.invalidate();
@@ -1419,6 +1426,9 @@ function SystemSettings() {
         sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
         hydrometerCalibrationTempC: settings.hydrometerCalibrationTempC,
         warehouseTemperatureCelsius: settings.warehouseTemperatureCelsius,
+        defaultPasteurizationTargetPu: settings.defaultPasteurizationTargetPu,
+        defaultPasteurizationTempC: settings.defaultPasteurizationTempC,
+        defaultPasteurizationTimeMinutes: settings.defaultPasteurizationTimeMinutes,
       }));
     }
   }, [isLoadingSettings, settings]);
@@ -1824,6 +1834,80 @@ function SystemSettings() {
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Pasteurization Defaults */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Pasteurization Defaults"
+            description="Pre-fill the Pasteurize recipe step. Editable per step."
+            icon={Thermometer}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="pastTargetPu">Target PU</Label>
+              <Input
+                id="pastTargetPu"
+                type="number"
+                step="1"
+                min="0"
+                value={formData.defaultPasteurizationTargetPu}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, defaultPasteurizationTargetPu: e.target.value }))
+                }
+                className="w-28"
+              />
+              <p className="text-xs text-gray-500">Pasteurization units to achieve.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pastTemp">Hold Temperature</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="pastTemp"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="100"
+                  value={formData.defaultPasteurizationTempC}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, defaultPasteurizationTempC: e.target.value }))
+                  }
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">°C</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pastTime">Hold Time</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="pastTime"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={formData.defaultPasteurizationTimeMinutes}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, defaultPasteurizationTimeMinutes: e.target.value }))
+                  }
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">min</span>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-3">
+            {(() => {
+              const t = parseFloat(formData.defaultPasteurizationTempC || "64");
+              const m = parseFloat(formData.defaultPasteurizationTimeMinutes || "20");
+              const pu = calculatePU(t, m);
+              return `At ${t}°C for ${m} min ≈ ${pu.toFixed(1)} PU (60°C reference).`;
+            })()}
+          </p>
         </CardContent>
       </Card>
 
