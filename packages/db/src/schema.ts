@@ -1866,6 +1866,16 @@ export const recipeSteps = pgTable(
     estimatedDurationHours: decimal("estimated_duration_hours", { precision: 6, scale: 2 }),
     notes: text("notes"),
 
+    /**
+     * Which packaging path this step applies to:
+     *   'all'    → runs regardless of packaging format (default)
+     *   'bottle' → only for the bottled portion of the batch
+     *   'keg'    → only for the kegged portion of the batch
+     * A single batch can be split across formats (e.g. 600 L kegged, 400 L
+     * bottled), so both 'bottle' and 'keg' tails can run on one batch.
+     */
+    packagingPath: text("packaging_path").notNull().default("all"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -111,6 +111,41 @@ describe("evaluateTrigger", () => {
     });
   });
 
+  describe("after_previous", () => {
+    it("waits when previous step has not completed yet", () => {
+      const r = evaluateTrigger(
+        { kind: "after_previous", data: {} },
+        makeCtx({ previousStepCompletedAt: null }),
+        NOW,
+      );
+      expect(r.ready).toBe(false);
+      expect(r.readyAt).toBeNull();
+      expect(r.reason).toContain("previous");
+    });
+
+    it("fires immediately once the previous step has completed", () => {
+      const prevAt = new Date("2026-04-25T00:00:00Z");
+      const r = evaluateTrigger(
+        { kind: "after_previous", data: {} },
+        makeCtx({ previousStepCompletedAt: prevAt }),
+        NOW, // any time at/after prevAt
+      );
+      expect(r.ready).toBe(true);
+      expect(r.readyAt).toEqual(prevAt);
+    });
+
+    it("fires exactly at the previous-step completion moment (boundary)", () => {
+      const prevAt = new Date("2026-04-25T00:00:00Z");
+      const r = evaluateTrigger(
+        { kind: "after_previous", data: {} },
+        makeCtx({ previousStepCompletedAt: prevAt }),
+        prevAt,
+      );
+      expect(r.ready).toBe(true);
+      expect(r.readyAt).toEqual(prevAt);
+    });
+  });
+
   describe("sg_threshold", () => {
     it("fires on the FIRST measurement that crossed below the threshold", () => {
       // Three readings: 1.020, 1.010, 1.004 (newest-first per contract)

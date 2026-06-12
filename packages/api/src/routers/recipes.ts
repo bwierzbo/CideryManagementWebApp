@@ -47,6 +47,7 @@ const STEP_KINDS = [
 const TRIGGER_KINDS = [
   "date_offset_from_start",
   "date_offset_from_previous",
+  "after_previous",
   "sg_threshold",
   "sg_terminal_confirmed",
   "manual",
@@ -77,6 +78,7 @@ const recipeStepInputSchema = z.object({
   actionData: z.record(z.string(), z.unknown()).default({}),
   estimatedDurationHours: z.number().nonnegative().nullish(),
   notes: z.string().nullish(),
+  packagingPath: z.enum(["all", "bottle", "keg"]).default("all"),
 });
 
 const recipeCreateSchema = z.object({
@@ -328,6 +330,7 @@ export const recipesRouter = router({
               actionData: s.actionData,
               estimatedDurationHours: s.estimatedDurationHours?.toString() ?? null,
               notes: s.notes ?? null,
+              packagingPath: s.packagingPath,
             })),
           );
         }

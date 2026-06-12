@@ -13,6 +13,7 @@
 
 export type TriggerKind =
   | "manual"
+  | "after_previous"
   | "date_offset_from_start"
   | "date_offset_from_previous"
   | "sg_threshold"
@@ -89,6 +90,24 @@ export function evaluateTrigger(
         ready: now.getTime() >= readyAt.getTime(),
         readyAt,
         reason: `Day ${formatOffset(spec.data)} from batch start (${readyAt.toISOString()})`,
+      };
+    }
+
+    case "after_previous": {
+      // Fires the instant the previous step completes — no delay. Equivalent
+      // to date_offset_from_previous with a zero offset. Used for chained
+      // actions (e.g. "rack, then immediately add sugar").
+      if (!ctx.previousStepCompletedAt) {
+        return {
+          ready: false,
+          readyAt: null,
+          reason: "Waiting on previous step to complete",
+        };
+      }
+      return {
+        ready: now.getTime() >= ctx.previousStepCompletedAt.getTime(),
+        readyAt: ctx.previousStepCompletedAt,
+        reason: "Immediately after previous step completes",
       };
     }
 

@@ -42,8 +42,9 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
-  GripVertical,
   AlertCircle,
+  Check,
+  Pencil,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -67,9 +68,13 @@ export type StepKind =
 export type TriggerKind =
   | "date_offset_from_start"
   | "date_offset_from_previous"
+  | "after_previous"
   | "sg_threshold"
   | "sg_terminal_confirmed"
   | "manual";
+
+/** Which packaging format(s) a step applies to. */
+export type PackagingPath = "all" | "bottle" | "keg";
 
 export interface RecipeInputDraft {
   /** Local-only id used for React keys. Not sent to the API. */
@@ -94,6 +99,7 @@ export interface RecipeStepDraft {
   actionData: Record<string, unknown>;
   estimatedDurationHours?: number | null;
   notes?: string | null;
+  packagingPath: PackagingPath;
 }
 
 export interface RecipeDraft {
@@ -158,8 +164,15 @@ const STEP_KINDS: { value: StepKind; label: string }[] = [
   { value: "note",         label: "Note / instruction" },
 ];
 
+const PACKAGING_PATHS: { value: PackagingPath; label: string; short: string }[] = [
+  { value: "all",    label: "All packaging (always runs)", short: "All packaging" },
+  { value: "bottle", label: "Bottle only",                 short: "Bottle only" },
+  { value: "keg",    label: "Keg only",                    short: "Keg only" },
+];
+
 const TRIGGER_KINDS: { value: TriggerKind; label: string }[] = [
   { value: "manual",                    label: "Manual (operator decides when)" },
+  { value: "after_previous",            label: "Immediately after previous step" },
   { value: "date_offset_from_previous", label: "N days/hours after previous step" },
   { value: "date_offset_from_start",    label: "N days from batch start" },
   { value: "sg_threshold",              label: "When SG crosses a value" },
@@ -206,6 +219,18 @@ export function RecipeBuilder({
   const [changeSummary, setChangeSummary] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Which rows (by uiId) are open for editing. Rows not in this set render as
+  // a compact, read-only summary. Newly added rows are opened automatically;
+  // rows hydrated from `initial` start collapsed.
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
+  const setEditing = (uiId: string, on: boolean) =>
+    setEditingIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(uiId);
+      else next.delete(uiId);
+      return next;
+    });
+
   const sectionOn = (key: string) => !!draft.enabledSections[key];
   const toggleSection = (key: string) => {
     setDraft((d) => ({
@@ -220,12 +245,13 @@ export function RecipeBuilder({
 
   // ── Inputs (ingredients + parent batch req) ─────────────────────────────
   const addIngredient = () => {
+    const uiId = uid();
     setDraft((d) => ({
       ...d,
       inputs: [
         ...d.inputs,
         {
-          uiId: uid(),
+          uiId,
           kind: "ingredient",
           label: "",
           additiveType: null,
@@ -236,15 +262,17 @@ export function RecipeBuilder({
         },
       ],
     }));
+    setEditing(uiId, true);
   };
 
   const addParentBatchRequirement = () => {
+    const uiId = uid();
     setDraft((d) => ({
       ...d,
       inputs: [
         ...d.inputs,
         {
-          uiId: uid(),
+          uiId,
           kind: "parent_batch_requirement",
           label: "Base batch",
           sourceProductType: "cider",
@@ -254,6 +282,7 @@ export function RecipeBuilder({
         },
       ],
     }));
+    setEditing(uiId, true);
   };
 
   const updateInput = (uiId: string, patch: Partial<RecipeInputDraft>) => {
@@ -269,21 +298,24 @@ export function RecipeBuilder({
 
   // ── Steps ────────────────────────────────────────────────────────────────
   const addStep = () => {
+    const uiId = uid();
     setDraft((d) => ({
       ...d,
       steps: [
         ...d.steps,
         {
-          uiId: uid(),
+          uiId,
           kind: "wait",
           label: "",
           triggerKind: "manual",
           triggerData: {},
           actionData: {},
           notes: null,
+          packagingPath: "all",
         },
       ],
     }));
+    setEditing(uiId, true);
   };
 
   const updateStep = (uiId: string, patch: Partial<RecipeStepDraft>) => {
@@ -469,16 +501,30 @@ export function RecipeBuilder({
                 No ingredients added yet.
               </p>
             ) : (
-              draft.inputs
-                .filter((i) => i.kind === "ingredient")
-                .map((ing) => (
-                  <IngredientRow
-                    key={ing.uiId}
-                    input={ing}
-                    onChange={(p) => updateInput(ing.uiId, p)}
-                    onRemove={() => removeInput(ing.uiId)}
-                  />
-                ))
+              <>
+                {draft.inputs
+                  .filter((i) => i.kind === "ingredient")
+                  .map((ing) => (
+                    <IngredientRow
+                      key={ing.uiId}
+                      input={ing}
+                      editing={editingIds.has(ing.uiId)}
+                      onChange={(p) => updateInput(ing.uiId, p)}
+                      onRemove={() => removeInput(ing.uiId)}
+                      onEdit={() => setEditing(ing.uiId, true)}
+                      onDone={() => setEditing(ing.uiId, false)}
+                    />
+                  ))}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={addIngredient}
+                  className="w-full border border-dashed text-muted-foreground"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add another ingredient
+                </Button>
+              </>
             )}
           </CardContent>
         </Card>
@@ -509,16 +555,30 @@ export function RecipeBuilder({
                 No parent batches required.
               </p>
             ) : (
-              draft.inputs
-                .filter((i) => i.kind === "parent_batch_requirement")
-                .map((p) => (
-                  <ParentBatchRow
-                    key={p.uiId}
-                    input={p}
-                    onChange={(patch) => updateInput(p.uiId, patch)}
-                    onRemove={() => removeInput(p.uiId)}
-                  />
-                ))
+              <>
+                {draft.inputs
+                  .filter((i) => i.kind === "parent_batch_requirement")
+                  .map((p) => (
+                    <ParentBatchRow
+                      key={p.uiId}
+                      input={p}
+                      editing={editingIds.has(p.uiId)}
+                      onChange={(patch) => updateInput(p.uiId, patch)}
+                      onRemove={() => removeInput(p.uiId)}
+                      onEdit={() => setEditing(p.uiId, true)}
+                      onDone={() => setEditing(p.uiId, false)}
+                    />
+                  ))}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={addParentBatchRequirement}
+                  className="w-full border border-dashed text-muted-foreground"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add another parent batch
+                </Button>
+              </>
             )}
           </CardContent>
         </Card>
@@ -547,18 +607,32 @@ export function RecipeBuilder({
                 No steps yet.
               </p>
             ) : (
-              draft.steps.map((step, idx) => (
-                <StepRow
-                  key={step.uiId}
-                  step={step}
-                  index={idx}
-                  total={draft.steps.length}
-                  onChange={(p) => updateStep(step.uiId, p)}
-                  onRemove={() => removeStep(step.uiId)}
-                  onMoveUp={() => moveStep(step.uiId, "up")}
-                  onMoveDown={() => moveStep(step.uiId, "down")}
-                />
-              ))
+              <>
+                {draft.steps.map((step, idx) => (
+                  <StepRow
+                    key={step.uiId}
+                    step={step}
+                    index={idx}
+                    total={draft.steps.length}
+                    editing={editingIds.has(step.uiId)}
+                    onChange={(p) => updateStep(step.uiId, p)}
+                    onRemove={() => removeStep(step.uiId)}
+                    onMoveUp={() => moveStep(step.uiId, "up")}
+                    onMoveDown={() => moveStep(step.uiId, "down")}
+                    onEdit={() => setEditing(step.uiId, true)}
+                    onDone={() => setEditing(step.uiId, false)}
+                  />
+                ))}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={addStep}
+                  className="w-full border border-dashed text-muted-foreground"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add another step
+                </Button>
+              </>
             )}
           </CardContent>
         </Card>
@@ -625,13 +699,34 @@ export function RecipeBuilder({
 
 function IngredientRow({
   input,
+  editing,
   onChange,
   onRemove,
+  onEdit,
+  onDone,
 }: {
   input: RecipeInputDraft;
+  editing: boolean;
   onChange: (p: Partial<RecipeInputDraft>) => void;
   onRemove: () => void;
+  onEdit: () => void;
+  onDone: () => void;
 }) {
+  if (!editing) {
+    const meta = [
+      input.additiveType,
+      input.rateValue != null ? `${input.rateValue} ${input.rateUnit ?? ""}`.trim() : null,
+      input.notes,
+    ].filter(Boolean).join(" · ");
+    return (
+      <SummaryRow
+        title={input.label || "Untitled ingredient"}
+        meta={meta}
+        onEdit={onEdit}
+        onRemove={onRemove}
+      />
+    );
+  }
   return (
     <div className="grid grid-cols-12 gap-2 p-3 border rounded-md bg-gray-50/50">
       <div className="col-span-3">
@@ -696,19 +791,45 @@ function IngredientRow({
           className="h-8 text-xs"
         />
       </div>
+      <div className="col-span-12 flex justify-end">
+        <Button type="button" size="sm" onClick={onDone} disabled={!input.label.trim()}>
+          <Check className="w-4 h-4 mr-1" /> Done
+        </Button>
+      </div>
     </div>
   );
 }
 
 function ParentBatchRow({
   input,
+  editing,
   onChange,
   onRemove,
+  onEdit,
+  onDone,
 }: {
   input: RecipeInputDraft;
+  editing: boolean;
   onChange: (p: Partial<RecipeInputDraft>) => void;
   onRemove: () => void;
+  onEdit: () => void;
+  onDone: () => void;
 }) {
+  if (!editing) {
+    const meta = [
+      input.sourceProductType,
+      input.rateValue != null ? `${input.rateValue} ${input.rateUnit ?? ""}`.trim() : null,
+      input.notes,
+    ].filter(Boolean).join(" · ");
+    return (
+      <SummaryRow
+        title={input.label || "Untitled parent batch"}
+        meta={meta}
+        onEdit={onEdit}
+        onRemove={onRemove}
+      />
+    );
+  }
   return (
     <div className="grid grid-cols-12 gap-2 p-3 border rounded-md bg-gray-50/50">
       <div className="col-span-4">
@@ -772,6 +893,47 @@ function ParentBatchRow({
           className="h-8 text-xs"
         />
       </div>
+      <div className="col-span-12 flex justify-end">
+        <Button type="button" size="sm" onClick={onDone} disabled={!input.label.trim()}>
+          <Check className="w-4 h-4 mr-1" /> Done
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Compact, read-only summary used by collapsed ingredient / parent-batch rows.
+function SummaryRow({
+  title,
+  meta,
+  onEdit,
+  onRemove,
+}: {
+  title: string;
+  meta?: string;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 p-3 border rounded-md bg-white">
+      <button
+        type="button"
+        onClick={onEdit}
+        className="min-w-0 flex-1 text-left"
+      >
+        <div className="text-sm font-medium truncate">{title}</div>
+        {meta ? (
+          <div className="text-xs text-muted-foreground truncate">{meta}</div>
+        ) : null}
+      </button>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button type="button" variant="ghost" size="sm" onClick={onEdit} className="h-8">
+          <Pencil className="w-4 h-4 mr-1" /> Edit
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onRemove} className="h-8">
+          <Trash2 className="w-4 h-4 text-red-500" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -780,61 +942,99 @@ function StepRow({
   step,
   index,
   total,
+  editing,
   onChange,
   onRemove,
   onMoveUp,
   onMoveDown,
+  onEdit,
+  onDone,
 }: {
   step: RecipeStepDraft;
   index: number;
   total: number;
+  editing: boolean;
   onChange: (p: Partial<RecipeStepDraft>) => void;
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onEdit: () => void;
+  onDone: () => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const kindLabel = STEP_KINDS.find((k) => k.value === step.kind)?.label ?? step.kind;
+  const triggerLabel =
+    TRIGGER_KINDS.find((t) => t.value === step.triggerKind)?.label ?? step.triggerKind;
 
   return (
     <div className="border rounded-md bg-gray-50/50">
-      {/* Header row */}
+      {/* Header row — always visible */}
       <div className="flex items-center gap-2 p-2 border-b bg-white rounded-t-md">
         <button
           type="button"
-          onClick={() => setExpanded((e) => !e)}
+          onClick={editing ? onDone : onEdit}
           className="text-gray-500 hover:text-gray-900"
           aria-label="Expand/collapse"
         >
-          {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          {editing ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
-        <div className="flex flex-col gap-0">
-          <Button
-            type="button" variant="ghost" size="sm"
-            className="h-4 px-1"
-            onClick={onMoveUp}
-            disabled={index === 0}
-            title="Move up"
-          >
-            <GripVertical className="w-3 h-3 rotate-90" />
-          </Button>
-        </div>
         <Badge variant="outline" className="text-xs">#{index + 1}</Badge>
-        <Input
-          value={step.label}
-          onChange={(e) => onChange({ label: e.target.value })}
-          placeholder="Step label (e.g. Pitch yeast at 18°C)"
-          className="h-8 flex-1"
-        />
+        {editing ? (
+          <Input
+            value={step.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+            placeholder="Step label (e.g. Pitch yeast at 18°C)"
+            className="h-8 flex-1"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex-1 text-left text-sm font-medium truncate"
+          >
+            {step.label || "Untitled step"}
+          </button>
+        )}
         <div className="flex gap-1">
           <Button type="button" variant="ghost" size="sm" onClick={onMoveUp} disabled={index === 0} title="Move up" className="h-8 px-2">↑</Button>
           <Button type="button" variant="ghost" size="sm" onClick={onMoveDown} disabled={index === total - 1} title="Move down" className="h-8 px-2">↓</Button>
+          {!editing && (
+            <Button type="button" variant="ghost" size="sm" onClick={onEdit} title="Edit" className="h-8 px-2">
+              <Pencil className="w-4 h-4" />
+            </Button>
+          )}
           <Button type="button" variant="ghost" size="sm" onClick={onRemove} className="h-8 px-2">
             <Trash2 className="w-4 h-4 text-red-500" />
           </Button>
         </div>
       </div>
 
-      {expanded && (
+      {/* Collapsed summary — full description collapses to a 2-line preview */}
+      {!editing && (
+        <div className="px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="truncate">{kindLabel} · {triggerLabel}</span>
+            {step.packagingPath !== "all" && (
+              <Badge
+                variant="outline"
+                className={`text-[10px] ${
+                  step.packagingPath === "bottle"
+                    ? "border-blue-300 text-blue-700"
+                    : "border-amber-300 text-amber-700"
+                }`}
+              >
+                {PACKAGING_PATHS.find((p) => p.value === step.packagingPath)?.short}
+              </Badge>
+            )}
+          </div>
+          {step.description?.trim() ? (
+            <div className="line-clamp-2 whitespace-pre-wrap text-gray-600">
+              {step.description}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {editing && (
         <div className="p-3 space-y-3">
           <div className="grid grid-cols-12 gap-2">
             <div className="col-span-6">
@@ -867,6 +1067,27 @@ function StepRow({
             </div>
           </div>
 
+          <div className="grid grid-cols-12 gap-2">
+            <div className="col-span-6">
+              <Label className="text-xs">Applies to packaging</Label>
+              <Select
+                value={step.packagingPath}
+                onValueChange={(v) => onChange({ packagingPath: v as PackagingPath })}
+              >
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PACKAGING_PATHS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-6 flex items-end text-xs text-muted-foreground">
+              Use &quot;Bottle only&quot; / &quot;Keg only&quot; for steps that run on just
+              one format (e.g. pasteurize &amp; label are bottle-only).
+            </div>
+          </div>
+
           {/* Trigger params — kind-specific */}
           <TriggerParams step={step} onChange={onChange} />
 
@@ -893,6 +1114,12 @@ function StepRow({
                 className="h-9"
               />
             </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button type="button" size="sm" onClick={onDone} disabled={!step.label.trim()}>
+              <Check className="w-4 h-4 mr-1" /> Done
+            </Button>
           </div>
         </div>
       )}

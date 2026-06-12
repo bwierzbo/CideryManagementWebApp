@@ -106,6 +106,8 @@ function describeTrigger(triggerKind: string, triggerData: any): string {
       return `Day ${triggerData?.days ?? "?"} from batch start`;
     case "date_offset_from_previous":
       return `${triggerData?.days ?? "?"} day(s) after previous step`;
+    case "after_previous":
+      return "Immediately after previous step";
     case "sg_threshold":
       return `When SG ${triggerData?.direction ?? "below"} ${triggerData?.sg ?? "?"}`;
     case "sg_terminal_confirmed":
@@ -446,6 +448,18 @@ export default function RecipeDetailPage() {
                       <Badge variant="outline" className="text-xs">
                         {STEP_KIND_LABEL[s.kind] ?? s.kind}
                       </Badge>
+                      {s.packagingPath && s.packagingPath !== "all" && (
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            s.packagingPath === "bottle"
+                              ? "border-blue-300 text-blue-700"
+                              : "border-amber-300 text-amber-700"
+                          }`}
+                        >
+                          {s.packagingPath === "bottle" ? "Bottle only" : "Keg only"}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {describeTrigger(s.triggerKind, s.triggerData)}

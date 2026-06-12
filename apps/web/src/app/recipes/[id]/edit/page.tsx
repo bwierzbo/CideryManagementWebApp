@@ -24,6 +24,7 @@ import {
   type InputKind,
   type StepKind,
   type TriggerKind,
+  type PackagingPath,
 } from "@/components/recipes/RecipeBuilder";
 
 export default function EditRecipePage() {
@@ -107,6 +108,7 @@ export default function EditRecipePage() {
       actionData: (s.actionData as Record<string, unknown>) ?? {},
       estimatedDurationHours: s.estimatedDurationHours !== null ? Number(s.estimatedDurationHours) : null,
       notes: s.notes,
+      packagingPath: ((s as { packagingPath?: string }).packagingPath as PackagingPath) ?? "all",
     })),
   };
 
