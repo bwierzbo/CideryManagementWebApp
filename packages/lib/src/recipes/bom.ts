@@ -172,3 +172,60 @@ export function computeRecipeBOM(input: RecipeBomInput): RecipeBom {
     warnings,
   };
 }
+
+// ─── Cross-batch aggregation (for annual planning) ──────────────────────────
+
+export interface PlannedBatchBom {
+  /** Period bucket, e.g. "2026-03" (monthly) or "2026-Q1" (quarterly). */
+  period: string;
+  bom: RecipeBom;
+}
+
+export interface AggregatedRequirement {
+  period: string;
+  category: "additive" | "packaging";
+  varietyId: string | null;
+  name: string;
+  unit: string;
+  quantity: number;
+  /** Number of batch lines that contributed to this total. */
+  sources: number;
+}
+
+/**
+ * Sum many per-batch BOMs into per-period, per-variety requirements.
+ *
+ * Lines combine by (period, category, varietyId, name, unit) — so the same
+ * bottle used across 10 planned batches in March becomes one March line with
+ * the total count. This is what the annual planner compares against on-hand
+ * stock to produce a buy list.
+ */
+export function aggregateRecipeBOMs(batches: PlannedBatchBom[]): AggregatedRequirement[] {
+  const map = new Map<string, AggregatedRequirement>();
+  for (const { period, bom } of batches) {
+    for (const line of [...bom.additives, ...bom.packaging]) {
+      const key = `${period}|${line.category}|${line.varietyId ?? "null"}|${line.name}|${line.unit}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.quantity += line.quantity;
+        existing.sources += 1;
+      } else {
+        map.set(key, {
+          period,
+          category: line.category,
+          varietyId: line.varietyId,
+          name: line.name,
+          unit: line.unit,
+          quantity: line.quantity,
+          sources: 1,
+        });
+      }
+    }
+  }
+  return Array.from(map.values()).sort(
+    (a, b) =>
+      a.period.localeCompare(b.period) ||
+      a.category.localeCompare(b.category) ||
+      a.name.localeCompare(b.name),
+  );
+}

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeRecipeBOM, type RecipeBomInput } from "../../recipes/bom";
+import {
+  computeRecipeBOM,
+  aggregateRecipeBOMs,
+  type RecipeBomInput,
+} from "../../recipes/bom";
 
 const bottlePackageStep = {
   kind: "package",
@@ -157,5 +161,45 @@ describe("computeRecipeBOM", () => {
       // Two identical bottle steps each on the full bottle portion → 534 + 534
       expect(bom.packaging.find((p) => p.name === "750ml Glass Bottles")?.quantity).toBe(1068);
     });
+  });
+});
+
+describe("aggregateRecipeBOMs", () => {
+  const hopsBom = (qty: number) =>
+    computeRecipeBOM({
+      ingredients: [{ label: "Cascade Hops", additiveVarietyId: "v1", rateValue: qty, rateUnit: "g/L" }],
+      steps: [
+        {
+          kind: "package",
+          packagingPath: "bottle",
+          actionData: { containerVarietyId: "b1", containerVarietyName: "750ml Glass Bottles", sizeML: 750 },
+        },
+      ],
+      targetVolumeL: 1000,
+    });
+
+  it("sums same variety + period across batches", () => {
+    const agg = aggregateRecipeBOMs([
+      { period: "2026-03", bom: hopsBom(1) }, // 1000 g hops, 1334 bottles
+      { period: "2026-03", bom: hopsBom(1) }, // another identical batch
+    ]);
+    const hops = agg.find((l) => l.varietyId === "v1" && l.period === "2026-03");
+    const bottles = agg.find((l) => l.varietyId === "b1" && l.period === "2026-03");
+    expect(hops?.quantity).toBe(2000); // kg-base: 1000 + 1000 g
+    expect(hops?.sources).toBe(2);
+    expect(bottles?.quantity).toBe(2668); // 1334 + 1334
+  });
+
+  it("keeps different periods as separate lines", () => {
+    const agg = aggregateRecipeBOMs([
+      { period: "2026-03", bom: hopsBom(1) },
+      { period: "2026-Q2", bom: hopsBom(1) },
+    ]);
+    const periods = agg.filter((l) => l.varietyId === "v1").map((l) => l.period).sort();
+    expect(periods).toEqual(["2026-03", "2026-Q2"]);
+  });
+
+  it("returns an empty array for no batches", () => {
+    expect(aggregateRecipeBOMs([])).toEqual([]);
   });
 });
