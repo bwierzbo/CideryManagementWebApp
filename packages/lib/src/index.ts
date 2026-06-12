@@ -20,6 +20,9 @@ export * from "./calculations/pasteurization";
 export * from "./calculations/ttb";
 export * from "./calculations/so2";
 
+// Re-export recipe domain logic (client-safe)
+export * from "./recipes/bom";
+
 // Re-export apple-related constants and utilities (client-safe)
 export * from "./apples";
 

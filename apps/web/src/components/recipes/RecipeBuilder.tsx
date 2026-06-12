@@ -86,6 +86,7 @@ export interface RecipeInputDraft {
   label: string;
   additiveType?: string | null;
   additiveName?: string | null;
+  additiveVarietyId?: string | null;
   rateValue?: number | null;
   rateUnit?: string | null;
   sourceProductType?: ProductType | null;
@@ -259,6 +260,7 @@ export function RecipeBuilder({
           label: "",
           additiveType: null,
           additiveName: null,
+          additiveVarietyId: null,
           rateValue: null,
           rateUnit: "g/L",
           notes: null,
@@ -716,10 +718,15 @@ function IngredientRow({
   onEdit: () => void;
   onDone: () => void;
 }) {
+  // Inventory additive varieties for the optional link. Deduped across rows.
+  const varietiesQuery = trpc.additiveVarieties.list.useQuery({ limit: 100 });
+  const additiveOpts = varietiesQuery.data?.varieties ?? [];
+
   if (!editing) {
     const meta = [
       input.additiveType,
       input.rateValue != null ? `${input.rateValue} ${input.rateUnit ?? ""}`.trim() : null,
+      input.additiveVarietyId ? "inventory-linked" : null,
       input.notes,
     ].filter(Boolean).join(" · ");
     return (
@@ -786,6 +793,36 @@ function IngredientRow({
         <Button type="button" variant="ghost" size="sm" onClick={onRemove} className="h-9">
           <Trash2 className="w-4 h-4 text-red-500" />
         </Button>
+      </div>
+      <div className="col-span-12">
+        <Label className="text-xs">Inventory item (optional — links this ingredient to stock for planning)</Label>
+        <Select
+          value={input.additiveVarietyId ?? "__none__"}
+          onValueChange={(v) => {
+            if (v === "__none__") {
+              onChange({ additiveVarietyId: null });
+              return;
+            }
+            const variety = additiveOpts.find((x) => x.id === v);
+            onChange({
+              additiveVarietyId: v,
+              // Fill the name from the variety if the operator hasn't typed one.
+              ...(input.label.trim()
+                ? {}
+                : { label: variety?.name ?? "", additiveName: variety?.name ?? "" }),
+            });
+          }}
+        >
+          <SelectTrigger className="h-9">
+            <SelectValue placeholder="Not linked (custom ingredient)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Not linked (custom ingredient)</SelectItem>
+            {additiveOpts.map((v) => (
+              <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div className="col-span-12">
         <Input

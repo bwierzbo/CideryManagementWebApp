@@ -56,6 +56,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { canWithOverrides } from "lib/src/rbac/roles";
 import { computeScaledAmount } from "lib/src/recipes/scaling";
+import { computeRecipeBOM } from "lib/src/recipes/bom";
 
 // Color helpers (mirrored from the list page)
 function productTypeBadgeClass(productType: string): string {
@@ -143,6 +144,7 @@ export default function RecipeDetailPage() {
   );
 
   const [previewVolumeL, setPreviewVolumeL] = useState<number>(60);
+  const [kegPortionL, setKegPortionL] = useState<number>(0);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [cloneName, setCloneName] = useState("");
@@ -207,6 +209,32 @@ export default function RecipeDetailPage() {
   const isArchived = !!recipe.archivedAt;
   const ingredients = inputs.filter((i) => i.kind === "ingredient");
   const parentBatchInputs = inputs.filter((i) => i.kind === "parent_batch_requirement");
+
+  // Bill of materials for the previewed batch size + bottle/keg split.
+  const kegL = Math.min(Math.max(0, kegPortionL), previewVolumeL);
+  const bom = computeRecipeBOM({
+    ingredients: ingredients.map((i) => ({
+      label: i.label,
+      additiveVarietyId: (i as { additiveVarietyId?: string | null }).additiveVarietyId ?? null,
+      rateValue: i.rateValue != null ? Number(i.rateValue) : null,
+      rateUnit: i.rateUnit,
+    })),
+    steps: steps.map((s) => ({
+      kind: s.kind,
+      label: s.label,
+      packagingPath: (s as { packagingPath?: string | null }).packagingPath ?? "all",
+      actionData: (s.actionData as Record<string, unknown>) ?? {},
+    })),
+    targetVolumeL: previewVolumeL,
+    bottleL: previewVolumeL - kegL,
+    kegL,
+  });
+  const fmtQty = (q: number, unit: string) => {
+    if (unit === "g" && q >= 1000) return `${(q / 1000).toFixed(2)} kg`;
+    if (unit === "mL" && q >= 1000) return `${(q / 1000).toFixed(2)} L`;
+    if (unit === "units") return `${q.toLocaleString()}`;
+    return `${q >= 10 ? Math.round(q).toLocaleString() : q.toFixed(2)} ${unit}`;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -476,6 +504,101 @@ export default function RecipeDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Bill of materials */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Bill of materials</CardTitle>
+            <CardDescription>
+              Inventory consumed for a {previewVolumeL}L batch. Adjust the batch size
+              above; set the keg portion to split bottle vs keg.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <Label className="text-xs">Keg portion (L)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max={previewVolumeL}
+                  step="1"
+                  value={kegPortionL}
+                  onChange={(e) => setKegPortionL(e.target.value === "" ? 0 : Number(e.target.value))}
+                  className="h-9 w-28"
+                />
+              </div>
+              <div className="text-sm text-muted-foreground pb-2">
+                → {previewVolumeL - kegL}L bottled · {kegL}L kegged
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Additives
+                </h4>
+                {bom.additives.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">None.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {bom.additives.map((l, idx) => (
+                      <li key={idx} className="flex justify-between text-sm gap-3">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{l.name}</span>
+                          {!l.varietyId && (
+                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 shrink-0">
+                              unlinked
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="font-mono shrink-0">{fmtQty(l.quantity, l.unit)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Packaging
+                </h4>
+                {bom.packaging.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">
+                    None — add a Package step with a container size.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {bom.packaging.map((l, idx) => (
+                      <li key={idx} className="flex justify-between text-sm gap-3">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{l.name}</span>
+                          {!l.varietyId && (
+                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 shrink-0">
+                              unlinked
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="font-mono shrink-0">{fmtQty(l.quantity, l.unit)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {bom.warnings.length > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1">
+                {bom.warnings.map((w, idx) => (
+                  <p key={idx} className="text-xs text-amber-800 flex items-start gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    {w}
+                  </p>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Notes */}
         {recipe.notes && (

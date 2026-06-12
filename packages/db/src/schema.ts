@@ -1798,6 +1798,16 @@ export const recipeInputs = pgTable(
     additiveType: text("additive_type"),
     additiveName: text("additive_name"),
 
+    /**
+     * Optional link to a real inventory additive variety. Lets the recipe's
+     * bill-of-materials resolve ingredient consumption to actual stock.
+     * Nullable: free-text ingredients (no inventory link yet) are still valid.
+     */
+    additiveVarietyId: uuid("additive_variety_id").references(
+      () => additiveVarieties.id,
+      { onDelete: "set null" },
+    ),
+
     /** Scale-invariant rate per liter of finished batch. e.g. 75 (g/L). */
     rateValue: decimal("rate_value", { precision: 12, scale: 4 }),
     rateUnit: text("rate_unit"),

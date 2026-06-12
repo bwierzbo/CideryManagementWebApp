@@ -93,6 +93,7 @@ export default function EditRecipePage() {
       label: i.label,
       additiveType: i.additiveType,
       additiveName: i.additiveName,
+      additiveVarietyId: (i as { additiveVarietyId?: string | null }).additiveVarietyId ?? null,
       rateValue: i.rateValue !== null ? Number(i.rateValue) : null,
       rateUnit: i.rateUnit,
       sourceProductType: (i.sourceProductType as ProductType | null) ?? null,
