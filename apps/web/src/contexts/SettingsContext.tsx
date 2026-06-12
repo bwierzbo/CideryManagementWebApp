@@ -64,6 +64,7 @@ export interface OrganizationSettings {
   defaultPasteurizationTargetPu: string;
   defaultPasteurizationTempC: string;
   defaultPasteurizationTimeMinutes: string;
+  planningGranularity: string;
 
   // Alert Thresholds
   stalledBatchDays: number;
@@ -139,6 +140,7 @@ const defaultSettings: OrganizationSettings = {
   defaultPasteurizationTargetPu: "20.0",
   defaultPasteurizationTempC: "64.0",
   defaultPasteurizationTimeMinutes: "20.0",
+  planningGranularity: "monthly",
   stalledBatchDays: 14,
   longAgingDays: 90,
   lowInventoryThreshold: 24,
@@ -216,6 +218,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       defaultPasteurizationTargetPu: data.defaultPasteurizationTargetPu ?? "20.0",
       defaultPasteurizationTempC: data.defaultPasteurizationTempC ?? "64.0",
       defaultPasteurizationTimeMinutes: data.defaultPasteurizationTimeMinutes ?? "20.0",
+      planningGranularity: data.planningGranularity ?? "monthly",
       stalledBatchDays: data.stalledBatchDays,
       longAgingDays: data.longAgingDays,
       lowInventoryThreshold: data.lowInventoryThreshold,

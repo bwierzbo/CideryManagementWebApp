@@ -167,6 +167,9 @@ export const organizationSettings = pgTable(
       .notNull()
       .default("20.0"),
 
+    // Production planning time-bucket granularity: 'monthly' | 'quarterly'.
+    planningGranularity: text("planning_granularity").notNull().default("monthly"),
+
     // ==========================================
     // Alert Thresholds
     // ==========================================

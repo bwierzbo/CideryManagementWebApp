@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { calculatePU } from "lib";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -1999,6 +1999,128 @@ function SystemSettings() {
   );
 }
 
+function PlanningSettings() {
+  const { settings } = useSettings();
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
+  const [granularity, setGranularity] = useState<string>(settings.planningGranularity ?? "monthly");
+
+  useEffect(() => {
+    setGranularity(settings.planningGranularity ?? "monthly");
+  }, [settings.planningGranularity]);
+
+  const updateMutation = trpc.settings.updateOrganizationSettings.useMutation({
+    onSuccess: () => {
+      toast({ title: "Saved", description: "Planning settings updated." });
+      utils.invalidate();
+    },
+    onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Planning granularity — implemented */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Planning Granularity"
+            description="Time buckets the annual production plan aggregates into."
+            icon={Calendar}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="space-y-2">
+              <Label htmlFor="granularity">Granularity</Label>
+              <Select value={granularity} onValueChange={setGranularity}>
+                <SelectTrigger id="granularity" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={() => updateMutation.mutate({ planningGranularity: granularity as "monthly" | "quarterly" })}
+              disabled={updateMutation.isPending || granularity === (settings.planningGranularity ?? "monthly")}
+            >
+              {updateMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          <p className="text-xs text-gray-500 mt-3">
+            Requirements from each planned batch are summed into {granularity} buckets vs. on-hand inventory.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Production plans (scenarios) — coming soon */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Production Plans"
+            description="Named annual/seasonal plans (scenarios). Save several, mark one operational."
+            icon={FileText}
+            implemented={false}
+          />
+        </CardHeader>
+        <CardContent>
+          <DisabledOverlay implemented={false}>
+            <p className="text-sm text-gray-600">
+              Build named plans of recipe × volume × period × bottle/keg split. Compare
+              scenarios side by side and activate the one you'll operate to.
+            </p>
+          </DisabledOverlay>
+        </CardContent>
+      </Card>
+
+      {/* Reorder thresholds + buy list — coming soon */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Reorder Thresholds & Buy List"
+            description="Per-item reorder points; auto buy-list = plan requirements − on hand."
+            icon={Package}
+            implemented={false}
+          />
+        </CardHeader>
+        <CardContent>
+          <DisabledOverlay implemented={false}>
+            <p className="text-sm text-gray-600">
+              Set a reorder threshold per inventory variety. The system compares the
+              active plan's per-period requirements against current stock and thresholds
+              to produce a simple, editable buy list.
+            </p>
+          </DisabledOverlay>
+        </CardContent>
+      </Card>
+
+      {/* Batch execution / work queue — coming soon */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Batch Execution & Work Queue"
+            description="Instantiate recipes into batches; a cross-batch 'today/this week' task queue."
+            icon={Clock}
+            implemented={false}
+          />
+        </CardHeader>
+        <CardContent>
+          <DisabledOverlay implemented={false}>
+            <p className="text-sm text-gray-600">
+              Starting a batch from a recipe stamps out an editable per-batch checklist and
+              a schedule. A cross-batch work queue surfaces what's due, opens the pre-filled
+              action, and draws down inventory on completion.
+            </p>
+          </DisabledOverlay>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function TTBSettingsTab() {
   const { settings } = useSettings();
 
@@ -2053,7 +2175,7 @@ function TTBSettingsTab() {
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    "users" | "reference" | "settings" | "calibration" | "square" | "ttb"
+    "users" | "reference" | "settings" | "planning" | "calibration" | "square" | "ttb"
   >("users");
 
   // Check if TTB onboarding has been completed
@@ -2100,6 +2222,7 @@ export default function AdminPage() {
             { key: "users", label: "User Management", icon: Users },
             { key: "reference", label: "Reference Data", icon: Database },
             { key: "settings", label: "System Settings", icon: Settings },
+            { key: "planning", label: "Planning", icon: Calendar },
             { key: "ttb", label: "TTB", icon: FileText },
             { key: "calibration", label: "Calibration", icon: Ruler },
             { key: "square", label: "Square Integration", icon: CreditCard },
@@ -2133,6 +2256,7 @@ export default function AdminPage() {
             </>
           )}
           {activeTab === "settings" && <SystemSettings />}
+          {activeTab === "planning" && <PlanningSettings />}
           {activeTab === "ttb" && <TTBSettingsTab />}
           {activeTab === "calibration" && <CalibrationSettings />}
           {activeTab === "square" && <SquareIntegration />}
