@@ -56,7 +56,7 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { canWithOverrides } from "lib/src/rbac/roles";
 import { computeScaledAmount } from "lib/src/recipes/scaling";
-import { computeRecipeBOM } from "lib/src/recipes/bom";
+import { computeRecipeBOM, recipeRowsToBomInput } from "lib/src/recipes/bom";
 
 // Color helpers (mirrored from the list page)
 function productTypeBadgeClass(productType: string): string {
@@ -212,23 +212,13 @@ export default function RecipeDetailPage() {
 
   // Bill of materials for the previewed batch size + bottle/keg split.
   const kegL = Math.min(Math.max(0, kegPortionL), previewVolumeL);
-  const bom = computeRecipeBOM({
-    ingredients: ingredients.map((i) => ({
-      label: i.label,
-      additiveVarietyId: (i as { additiveVarietyId?: string | null }).additiveVarietyId ?? null,
-      rateValue: i.rateValue != null ? Number(i.rateValue) : null,
-      rateUnit: i.rateUnit,
-    })),
-    steps: steps.map((s) => ({
-      kind: s.kind,
-      label: s.label,
-      packagingPath: (s as { packagingPath?: string | null }).packagingPath ?? "all",
-      actionData: (s.actionData as Record<string, unknown>) ?? {},
-    })),
-    targetVolumeL: previewVolumeL,
-    bottleL: previewVolumeL - kegL,
-    kegL,
-  });
+  const bom = computeRecipeBOM(
+    recipeRowsToBomInput(inputs, steps, {
+      targetVolumeL: previewVolumeL,
+      bottleL: previewVolumeL - kegL,
+      kegL,
+    }),
+  );
   const fmtQty = (q: number, unit: string) => {
     if (unit === "g" && q >= 1000) return `${(q / 1000).toFixed(2)} kg`;
     if (unit === "mL" && q >= 1000) return `${(q / 1000).toFixed(2)} L`;

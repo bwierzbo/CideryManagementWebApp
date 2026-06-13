@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   computeRecipeBOM,
   aggregateRecipeBOMs,
+  recipeRowsToBomInput,
   type RecipeBomInput,
 } from "../../recipes/bom";
 
@@ -201,5 +202,45 @@ describe("aggregateRecipeBOMs", () => {
 
   it("returns an empty array for no batches", () => {
     expect(aggregateRecipeBOMs([])).toEqual([]);
+  });
+});
+
+describe("recipeRowsToBomInput", () => {
+  it("drops non-ingredient inputs and coerces string rates to numbers", () => {
+    const input = recipeRowsToBomInput(
+      [
+        // Decimal columns arrive as strings from Drizzle.
+        { kind: "ingredient", label: "Cascade Hops", additiveVarietyId: "v1", rateValue: "1.5", rateUnit: "g/L" },
+        // parent_batch_requirement is not an additive — must be excluded.
+        { kind: "parent_batch_requirement", label: "60L base cider", rateValue: null, rateUnit: null },
+      ],
+      [{ kind: "package", label: "Bottle", packagingPath: "bottle", actionData: { sizeML: 750 } }],
+      { targetVolumeL: 1000 },
+    );
+    expect(input.ingredients).toHaveLength(1);
+    expect(input.ingredients[0]).toMatchObject({ label: "Cascade Hops", additiveVarietyId: "v1", rateValue: 1.5, rateUnit: "g/L" });
+    expect(input.steps).toHaveLength(1);
+    expect(input.targetVolumeL).toBe(1000);
+  });
+
+  it("feeds straight into computeRecipeBOM to produce the expected lines", () => {
+    const bom = computeRecipeBOM(
+      recipeRowsToBomInput(
+        [{ kind: "ingredient", label: "Cascade Hops", additiveVarietyId: "v1", rateValue: "1.5", rateUnit: "g/L" }],
+        [
+          { kind: "package", label: "Bottle", packagingPath: "bottle", actionData: { containerVarietyId: "b1", containerVarietyName: "750ml Glass Bottles", sizeML: 750 } },
+        ],
+        { targetVolumeL: 1000 },
+      ),
+    );
+    // 1.5 g/L × 1000 L = 1500 g; ⌈1000 L ÷ 0.75 L⌉ = 1334 bottles.
+    expect(bom.additives.find((a) => a.varietyId === "v1")?.quantity).toBe(1500);
+    expect(bom.packaging.find((p) => p.varietyId === "b1")?.quantity).toBe(1334);
+  });
+
+  it("passes through the bottle/keg split", () => {
+    const input = recipeRowsToBomInput([], [], { targetVolumeL: 1000, bottleL: 400, kegL: 600 });
+    expect(input.bottleL).toBe(400);
+    expect(input.kegL).toBe(600);
   });
 });

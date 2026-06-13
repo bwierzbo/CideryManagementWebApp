@@ -2562,3 +2562,6 @@ export * from "./schema/square";
 
 // Re-export organization schema
 export * from "./schema/organization";
+
+// Re-export production planning schema (depends on recipes + organization)
+export * from "./schema/planning";

@@ -173,6 +173,60 @@ export function computeRecipeBOM(input: RecipeBomInput): RecipeBom {
   };
 }
 
+// ─── Mapping DB/API recipe rows → BOM input ─────────────────────────────────
+
+/** Loose shape of a recipe_inputs row, as returned by the API/DB. */
+export interface RecipeInputRow {
+  kind: string;
+  label: string;
+  additiveVarietyId?: string | null;
+  /** Decimal columns come back as strings from Drizzle; numbers are accepted too. */
+  rateValue?: string | number | null;
+  rateUnit?: string | null;
+}
+
+/** Loose shape of a recipe_steps row, as returned by the API/DB. */
+export interface RecipeStepRow {
+  kind: string;
+  label?: string | null;
+  packagingPath?: string | null;
+  /** JSONB column — Drizzle surfaces it as `unknown`; cast at the boundary. */
+  actionData?: unknown;
+}
+
+/**
+ * Turn raw recipe rows (inputs + steps) into the `RecipeBomInput` that
+ * `computeRecipeBOM` expects. Filters inputs down to `ingredient` kinds (the
+ * only ones that consume additive stock) and normalizes decimal-string rates
+ * to numbers. Shared by the recipe view page and the production planner so the
+ * recipe → BOM mapping lives in exactly one place.
+ */
+export function recipeRowsToBomInput(
+  inputs: RecipeInputRow[],
+  steps: RecipeStepRow[],
+  opts: { targetVolumeL: number; bottleL?: number; kegL?: number },
+): RecipeBomInput {
+  return {
+    ingredients: inputs
+      .filter((i) => i.kind === "ingredient")
+      .map((i) => ({
+        label: i.label,
+        additiveVarietyId: i.additiveVarietyId ?? null,
+        rateValue: i.rateValue != null ? Number(i.rateValue) : null,
+        rateUnit: i.rateUnit ?? null,
+      })),
+    steps: steps.map((s) => ({
+      kind: s.kind,
+      label: s.label ?? undefined,
+      packagingPath: s.packagingPath ?? "all",
+      actionData: (s.actionData as Record<string, unknown> | null) ?? {},
+    })),
+    targetVolumeL: opts.targetVolumeL,
+    bottleL: opts.bottleL,
+    kegL: opts.kegL,
+  };
+}
+
 // ─── Cross-batch aggregation (for annual planning) ──────────────────────────
 
 export interface PlannedBatchBom {

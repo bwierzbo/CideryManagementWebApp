@@ -2056,23 +2056,29 @@ function PlanningSettings() {
         </CardContent>
       </Card>
 
-      {/* Production plans (scenarios) — coming soon */}
+      {/* Production plans (scenarios) — implemented on the Planning page */}
       <Card>
         <CardHeader>
           <SettingsSectionHeader
             title="Production Plans"
             description="Named annual/seasonal plans (scenarios). Save several, mark one operational."
             icon={FileText}
-            implemented={false}
+            implemented={true}
           />
         </CardHeader>
         <CardContent>
-          <DisabledOverlay implemented={false}>
+          <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-gray-600">
-              Build named plans of recipe × volume × period × bottle/keg split. Compare
-              scenarios side by side and activate the one you'll operate to.
+              Build named plans of recipe × volume × period × bottle/keg split and see the
+              per-period inventory each plan requires.
             </p>
-          </DisabledOverlay>
+            <Button variant="outline" asChild>
+              <Link href="/planning">
+                <Calendar className="w-4 h-4 mr-2" />
+                Open Planning
+              </Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

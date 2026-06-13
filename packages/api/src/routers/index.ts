@@ -40,6 +40,7 @@ import { customProductTypesRouter } from "./customProductTypes";
 import { distillationRouter } from "./distillation";
 import { productionReportsRouter } from "./productionReports";
 import { recipesRouter } from "./recipes";
+import { planningRouter } from "./planning";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import { writeLedgerEntry } from "../lib/volume-ledger";
 import {
@@ -6913,6 +6914,9 @@ export const appRouter = router({
 
   // Recipes
   recipes: recipesRouter,
+
+  // Production planning (plans, planned batches, requirements)
+  planning: planningRouter,
 });
 
 export type AppRouter = typeof appRouter;
