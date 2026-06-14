@@ -16,7 +16,7 @@ import {
   calculateProofGallons,
   calculateDistillationLoss,
 } from "lib/src/calc/abv";
-import { convertVolume } from "lib/src/utils/volumeConversion";
+import { convertVolume } from "lib/src/units/conversions";
 import { writeLedgerEntry } from "../lib/volume-ledger";
 
 // Constants
