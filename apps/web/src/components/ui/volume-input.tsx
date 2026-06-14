@@ -12,7 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 
 // Note: Includes all units from schema unitEnum, though vessels typically use volume units
-export type VolumeUnit = "L" | "gal" | "oz" | "ml" | "kg" | "lb" | "bushel";
+export type VolumeUnit = "L" | "gal" | "oz" | "mL" | "kg" | "lb" | "bushel";
 
 interface VolumeInputProps {
   value?: number;

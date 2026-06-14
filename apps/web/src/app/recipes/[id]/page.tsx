@@ -56,6 +56,8 @@ import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
 import { canWithOverrides } from "lib/src/rbac/roles";
 import { computeScaledAmount } from "lib/src/recipes/scaling";
+import { computeRecipeBOM, recipeRowsToBomInput } from "lib/src/recipes/bom";
+import { computeCumulativeOffsets, summarizeStepTrigger } from "lib/src/recipes/triggers";
 
 // Color helpers (mirrored from the list page)
 function productTypeBadgeClass(productType: string): string {
@@ -98,23 +100,6 @@ const STEP_KIND_LABEL: Record<string, string> = {
   note:         "Note",
 };
 
-function describeTrigger(triggerKind: string, triggerData: any): string {
-  switch (triggerKind) {
-    case "manual":
-      return "Manual — operator decides when";
-    case "date_offset_from_start":
-      return `Day ${triggerData?.days ?? "?"} from batch start`;
-    case "date_offset_from_previous":
-      return `${triggerData?.days ?? "?"} day(s) after previous step`;
-    case "sg_threshold":
-      return `When SG ${triggerData?.direction ?? "below"} ${triggerData?.sg ?? "?"}`;
-    case "sg_terminal_confirmed":
-      return "When terminal SG is confirmed";
-    default:
-      return triggerKind;
-  }
-}
-
 export default function RecipeDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -140,7 +125,8 @@ export default function RecipeDetailPage() {
     { enabled: !!recipeId },
   );
 
-  const [previewVolumeL, setPreviewVolumeL] = useState<number>(60);
+  const [previewVolumeL, setPreviewVolumeL] = useState<number>(120);
+  const [kegPortionL, setKegPortionL] = useState<number>(0);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [cloneName, setCloneName] = useState("");
@@ -202,9 +188,28 @@ export default function RecipeDetailPage() {
   if (!data) return null;
 
   const { recipe, inputs, steps } = data;
+  const stepCumulativeHours = computeCumulativeOffsets(
+    steps.map((s) => ({ triggerKind: s.triggerKind, triggerData: s.triggerData as Record<string, unknown> })),
+  );
   const isArchived = !!recipe.archivedAt;
   const ingredients = inputs.filter((i) => i.kind === "ingredient");
   const parentBatchInputs = inputs.filter((i) => i.kind === "parent_batch_requirement");
+
+  // Bill of materials for the previewed batch size + bottle/keg split.
+  const kegL = Math.min(Math.max(0, kegPortionL), previewVolumeL);
+  const bom = computeRecipeBOM(
+    recipeRowsToBomInput(inputs, steps, {
+      targetVolumeL: previewVolumeL,
+      bottleL: previewVolumeL - kegL,
+      kegL,
+    }),
+  );
+  const fmtQty = (q: number, unit: string) => {
+    if (unit === "g" && q >= 1000) return `${(q / 1000).toFixed(2)} kg`;
+    if (unit === "mL" && q >= 1000) return `${(q / 1000).toFixed(2)} L`;
+    if (unit === "units") return `${q.toLocaleString()}`;
+    return `${q >= 10 ? Math.round(q).toLocaleString() : q.toFixed(2)} ${unit}`;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -317,17 +322,25 @@ export default function RecipeDetailPage() {
                   className="w-32"
                 />
                 <span className="text-sm">L</span>
-                <div className="flex gap-1 ml-2">
-                  {[20, 60, 120, 240, 1000].map((v) => (
+                <div className="flex gap-1 ml-2 flex-wrap">
+                  {[
+                    { l: 20, note: "Carboy" },
+                    { l: 120, note: "Barrel" },
+                    { l: 240 },
+                    { l: 350, note: "3 BBL brite tank" },
+                    { l: 360 },
+                    { l: 1000 },
+                  ].map(({ l, note }) => (
                     <Button
-                      key={v}
+                      key={l}
                       type="button"
-                      variant={previewVolumeL === v ? "default" : "outline"}
+                      title={note}
+                      variant={previewVolumeL === l ? "default" : "outline"}
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() => setPreviewVolumeL(v)}
+                      onClick={() => setPreviewVolumeL(l)}
                     >
-                      {v}L
+                      {l}L
                     </Button>
                   ))}
                 </div>
@@ -446,9 +459,24 @@ export default function RecipeDetailPage() {
                       <Badge variant="outline" className="text-xs">
                         {STEP_KIND_LABEL[s.kind] ?? s.kind}
                       </Badge>
+                      {s.packagingPath && s.packagingPath !== "all" && (
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            s.packagingPath === "bottle"
+                              ? "border-blue-300 text-blue-700"
+                              : "border-amber-300 text-amber-700"
+                          }`}
+                        >
+                          {s.packagingPath === "bottle" ? "Bottle only" : "Keg only"}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {describeTrigger(s.triggerKind, s.triggerData)}
+                      {summarizeStepTrigger(
+                        { triggerKind: s.triggerKind, triggerData: s.triggerData as Record<string, unknown> },
+                        stepCumulativeHours[i],
+                      )}
                       {s.estimatedDurationHours
                         ? ` · est. ${s.estimatedDurationHours}h`
                         : ""}
@@ -462,6 +490,101 @@ export default function RecipeDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Bill of materials */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Bill of materials</CardTitle>
+            <CardDescription>
+              Inventory consumed for a {previewVolumeL}L batch. Adjust the batch size
+              above; set the keg portion to split bottle vs keg.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-end gap-3 flex-wrap">
+              <div>
+                <Label className="text-xs">Keg portion (L)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max={previewVolumeL}
+                  step="1"
+                  value={kegPortionL}
+                  onChange={(e) => setKegPortionL(e.target.value === "" ? 0 : Number(e.target.value))}
+                  className="h-9 w-28"
+                />
+              </div>
+              <div className="text-sm text-muted-foreground pb-2">
+                → {previewVolumeL - kegL}L bottled · {kegL}L kegged
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Additives
+                </h4>
+                {bom.additives.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">None.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {bom.additives.map((l, idx) => (
+                      <li key={idx} className="flex justify-between text-sm gap-3">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{l.name}</span>
+                          {!l.varietyId && (
+                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 shrink-0">
+                              unlinked
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="font-mono shrink-0">{fmtQty(l.quantity, l.unit)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">
+                  Packaging
+                </h4>
+                {bom.packaging.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">
+                    None — add a Package step with a container size.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {bom.packaging.map((l, idx) => (
+                      <li key={idx} className="flex justify-between text-sm gap-3">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{l.name}</span>
+                          {!l.varietyId && (
+                            <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700 shrink-0">
+                              unlinked
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="font-mono shrink-0">{fmtQty(l.quantity, l.unit)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            {bom.warnings.length > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-1">
+                {bom.warnings.map((w, idx) => (
+                  <p key={idx} className="text-xs text-amber-800 flex items-start gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    {w}
+                  </p>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Notes */}
         {recipe.notes && (

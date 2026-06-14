@@ -32,6 +32,7 @@ interface CleanKegModalProps {
   onClose: () => void;
   kegId: string;
   kegNumber: string;
+  onSuccess?: () => void;
 }
 
 export function CleanKegModal({
@@ -39,6 +40,7 @@ export function CleanKegModal({
   onClose,
   kegId,
   kegNumber,
+  onSuccess,
 }: CleanKegModalProps) {
   const utils = trpc.useUtils();
   const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
@@ -77,6 +79,7 @@ export function CleanKegModal({
         description: data.message,
       });
       utils.packaging.kegs.listKegs.invalidate();
+      onSuccess?.();
       onClose();
       reset();
     },

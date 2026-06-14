@@ -117,6 +117,7 @@ export const activityLaborTypeEnum = pgEnum("activity_labor_type", [
   "filtering",
   "carbonation",
   "cleaning",
+  "destruction",
 ]);
 
 // Fruit variety characteristic enums
@@ -372,6 +373,7 @@ export const activityLaborAssignments = pgTable(
     rackingOperationId: uuid("racking_operation_id"),
     carbonationOperationId: uuid("carbonation_operation_id"),
     vesselCleaningOperationId: uuid("vessel_cleaning_operation_id"),
+    batchVolumeAdjustmentId: uuid("batch_volume_adjustment_id"),
     // Worker assignment
     workerId: uuid("worker_id")
       .notNull()
@@ -395,6 +397,7 @@ export const activityLaborAssignments = pgTable(
     bottleRunIdx: index("activity_labor_assignments_bottle_run_idx").on(table.bottleRunId),
     kegFillIdx: index("activity_labor_assignments_keg_fill_idx").on(table.kegFillId),
     vesselCleaningIdx: index("activity_labor_assignments_vessel_cleaning_idx").on(table.vesselCleaningOperationId),
+    batchVolumeAdjustmentIdx: index("activity_labor_assignments_bva_idx").on(table.batchVolumeAdjustmentId),
     activityTypeIdx: index("activity_labor_assignments_activity_type_idx").on(table.activityType),
   }),
 );
@@ -1762,6 +1765,12 @@ export const recipes = pgTable(
     /** 'draft' | 'active' | 'archived' (CHECK-constrained in SQL). */
     status: text("status").notNull().default("draft"),
 
+    /**
+     * Style template — a reusable starting point (e.g. "Fruited cider",
+     * "Bottle-conditioned single varietal"). Cloned to make specific recipes.
+     */
+    isTemplate: boolean("is_template").notNull().default(false),
+
     notes: text("notes"),
 
     createdBy: uuid("created_by").references(() => users.id),
@@ -1794,6 +1803,16 @@ export const recipeInputs = pgTable(
 
     additiveType: text("additive_type"),
     additiveName: text("additive_name"),
+
+    /**
+     * Optional link to a real inventory additive variety. Lets the recipe's
+     * bill-of-materials resolve ingredient consumption to actual stock.
+     * Nullable: free-text ingredients (no inventory link yet) are still valid.
+     */
+    additiveVarietyId: uuid("additive_variety_id").references(
+      () => additiveVarieties.id,
+      { onDelete: "set null" },
+    ),
 
     /** Scale-invariant rate per liter of finished batch. e.g. 75 (g/L). */
     rateValue: decimal("rate_value", { precision: 12, scale: 4 }),
@@ -1862,6 +1881,23 @@ export const recipeSteps = pgTable(
 
     estimatedDurationHours: decimal("estimated_duration_hours", { precision: 6, scale: 2 }),
     notes: text("notes"),
+
+    /**
+     * Which packaging path this step applies to:
+     *   'all'    → runs regardless of packaging format (default)
+     *   'bottle' → only for the bottled portion of the batch
+     *   'keg'    → only for the kegged portion of the batch
+     * A single batch can be split across formats (e.g. 600 L kegged, 400 L
+     * bottled), so both 'bottle' and 'keg' tails can run on one batch.
+     */
+    packagingPath: text("packaging_path").notNull().default("all"),
+
+    /**
+     * Situational step — included or skipped per batch at execution time
+     * (e.g. force-carbonation vs bottle-conditioning, optional pasteurization).
+     * Lets one recipe cover both finishes without separate variants.
+     */
+    isOptional: boolean("is_optional").notNull().default(false),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -2539,3 +2575,6 @@ export * from "./schema/square";
 
 // Re-export organization schema
 export * from "./schema/organization";
+
+// Re-export production planning schema (depends on recipes + organization)
+export * from "./schema/planning";

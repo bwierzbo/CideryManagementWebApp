@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { evaluateTrigger, type TriggerContext } from "../../recipes/triggers";
+import {
+  evaluateTrigger,
+  computeCumulativeOffsets,
+  summarizeStepTrigger,
+  formatDurationHours,
+  type TriggerContext,
+} from "../../recipes/triggers";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -108,6 +114,41 @@ describe("evaluateTrigger", () => {
       );
       expect(r.ready).toBe(false);
       expect(r.readyAt).toEqual(new Date("2026-05-04T00:00:00Z"));
+    });
+  });
+
+  describe("after_previous", () => {
+    it("waits when previous step has not completed yet", () => {
+      const r = evaluateTrigger(
+        { kind: "after_previous", data: {} },
+        makeCtx({ previousStepCompletedAt: null }),
+        NOW,
+      );
+      expect(r.ready).toBe(false);
+      expect(r.readyAt).toBeNull();
+      expect(r.reason).toContain("previous");
+    });
+
+    it("fires immediately once the previous step has completed", () => {
+      const prevAt = new Date("2026-04-25T00:00:00Z");
+      const r = evaluateTrigger(
+        { kind: "after_previous", data: {} },
+        makeCtx({ previousStepCompletedAt: prevAt }),
+        NOW, // any time at/after prevAt
+      );
+      expect(r.ready).toBe(true);
+      expect(r.readyAt).toEqual(prevAt);
+    });
+
+    it("fires exactly at the previous-step completion moment (boundary)", () => {
+      const prevAt = new Date("2026-04-25T00:00:00Z");
+      const r = evaluateTrigger(
+        { kind: "after_previous", data: {} },
+        makeCtx({ previousStepCompletedAt: prevAt }),
+        prevAt,
+      );
+      expect(r.ready).toBe(true);
+      expect(r.readyAt).toEqual(prevAt);
     });
   });
 
@@ -253,5 +294,95 @@ describe("evaluateTrigger", () => {
       expect(r.ready).toBe(false);
       expect(r.reason).toContain("at least 2");
     });
+  });
+});
+
+describe("computeCumulativeOffsets", () => {
+  it("accumulates date_offset_from_previous, treating after_previous/manual as +0", () => {
+    // Mirrors the hopped-cider recipe: manual start, two immediate adds, then a
+    // 2-day rack, then immediate, then a 1-day measurement.
+    const offsets = computeCumulativeOffsets([
+      { triggerKind: "manual", triggerData: {} },                                  // day 0
+      { triggerKind: "after_previous", triggerData: {} },                          // day 0
+      { triggerKind: "after_previous", triggerData: {} },                          // day 0
+      { triggerKind: "date_offset_from_previous", triggerData: { days: 2 } },      // day 2
+      { triggerKind: "after_previous", triggerData: {} },                          // day 2
+      { triggerKind: "date_offset_from_previous", triggerData: { days: 1 } },      // day 3
+    ]);
+    expect(offsets).toEqual([0, 0, 0, 48, 48, 72]); // hours
+  });
+
+  it("date_offset_from_start sets an absolute position", () => {
+    const offsets = computeCumulativeOffsets([
+      { triggerKind: "date_offset_from_previous", triggerData: { days: 5 } },      // day 5
+      { triggerKind: "date_offset_from_start", triggerData: { days: 3 } },         // reset → day 3
+      { triggerKind: "date_offset_from_previous", triggerData: { hours: 12 } },    // day 3.5
+    ]);
+    expect(offsets).toEqual([120, 72, 84]);
+  });
+
+  it("goes indeterminate (null) from an SG-based or unset trigger onward", () => {
+    const offsets = computeCumulativeOffsets([
+      { triggerKind: "date_offset_from_previous", triggerData: { days: 1 } },      // day 1
+      { triggerKind: "sg_threshold", triggerData: { sg: 1.0 } },                   // unknown → null
+      { triggerKind: "after_previous", triggerData: {} },                          // still null
+    ]);
+    expect(offsets).toEqual([24, null, null]);
+  });
+
+  it("treats a missing date offset as indeterminate", () => {
+    const offsets = computeCumulativeOffsets([
+      { triggerKind: "date_offset_from_previous", triggerData: {} },               // no days/hours
+      { triggerKind: "after_previous", triggerData: {} },
+    ]);
+    expect(offsets).toEqual([null, null]);
+  });
+});
+
+describe("summarizeStepTrigger", () => {
+  it("shows the per-step offset AND the running total from start", () => {
+    expect(
+      summarizeStepTrigger({ triggerKind: "date_offset_from_previous", triggerData: { days: 2 } }, 120),
+    ).toBe("2 days after previous · 5 days from start");
+  });
+
+  it("appends the total to an immediate step when the clock has advanced", () => {
+    expect(
+      summarizeStepTrigger({ triggerKind: "after_previous", triggerData: {} }, 48),
+    ).toBe("Immediately after previous · 2 days from start");
+  });
+
+  it("omits the total at the start (cumulative 0)", () => {
+    expect(
+      summarizeStepTrigger({ triggerKind: "after_previous", triggerData: {} }, 0),
+    ).toBe("Immediately after previous step");
+  });
+
+  it("never renders a literal placeholder for a date offset", () => {
+    const s = summarizeStepTrigger({ triggerKind: "date_offset_from_previous", triggerData: { days: 3 } }, null);
+    expect(s).toBe("3 days after previous");
+    expect(s).not.toContain("N ");
+  });
+
+  it("prompts when a date offset is unset rather than showing 'N'", () => {
+    expect(
+      summarizeStepTrigger({ triggerKind: "date_offset_from_previous", triggerData: {} }, null),
+    ).toBe("Set a duration after previous step");
+  });
+
+  it("formats date_offset_from_start as an absolute day", () => {
+    expect(
+      summarizeStepTrigger({ triggerKind: "date_offset_from_start", triggerData: { days: 3 } }, 72),
+    ).toBe("3 days from batch start");
+  });
+});
+
+describe("formatDurationHours", () => {
+  it("formats whole days, sub-day hours, and fractional days", () => {
+    expect(formatDurationHours(0)).toBe("0 days");
+    expect(formatDurationHours(24)).toBe("1 day");
+    expect(formatDurationHours(48)).toBe("2 days");
+    expect(formatDurationHours(12)).toBe("12 hours");
+    expect(formatDurationHours(36)).toBe("1.5 days");
   });
 });

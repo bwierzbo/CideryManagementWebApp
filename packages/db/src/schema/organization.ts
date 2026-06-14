@@ -155,6 +155,21 @@ export const organizationSettings = pgTable(
       .notNull()
       .default("20.0"),
 
+    // Default pasteurization assumptions. Pre-fill the Pasteurize recipe step;
+    // editable per step. PU = pasteurization units (Craft Metrics, 60°C ref).
+    defaultPasteurizationTargetPu: decimal("default_pasteurization_target_pu", { precision: 5, scale: 1 })
+      .notNull()
+      .default("20.0"),
+    defaultPasteurizationTempC: decimal("default_pasteurization_temp_c", { precision: 4, scale: 1 })
+      .notNull()
+      .default("64.0"),
+    defaultPasteurizationTimeMinutes: decimal("default_pasteurization_time_minutes", { precision: 5, scale: 1 })
+      .notNull()
+      .default("20.0"),
+
+    // Production planning time-bucket granularity: 'monthly' | 'quarterly'.
+    planningGranularity: text("planning_granularity").notNull().default("monthly"),
+
     // ==========================================
     // Alert Thresholds
     // ==========================================

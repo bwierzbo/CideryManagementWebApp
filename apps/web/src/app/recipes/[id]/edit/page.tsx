@@ -24,6 +24,7 @@ import {
   type InputKind,
   type StepKind,
   type TriggerKind,
+  type PackagingPath,
 } from "@/components/recipes/RecipeBuilder";
 
 export default function EditRecipePage() {
@@ -86,12 +87,14 @@ export default function EditRecipePage() {
     status: (data.recipe.status === "archived" ? "draft" : data.recipe.status) as RecipeStatus,
     enabledSections: (data.recipe.enabledSections as Record<string, boolean>) ?? {},
     notes: data.recipe.notes,
+    isTemplate: (data.recipe as { isTemplate?: boolean }).isTemplate ?? false,
     inputs: data.inputs.map((i, idx) => ({
       uiId: `existing-input-${i.id}`,
       kind: i.kind as InputKind,
       label: i.label,
       additiveType: i.additiveType,
       additiveName: i.additiveName,
+      additiveVarietyId: (i as { additiveVarietyId?: string | null }).additiveVarietyId ?? null,
       rateValue: i.rateValue !== null ? Number(i.rateValue) : null,
       rateUnit: i.rateUnit,
       sourceProductType: (i.sourceProductType as ProductType | null) ?? null,
@@ -107,6 +110,8 @@ export default function EditRecipePage() {
       actionData: (s.actionData as Record<string, unknown>) ?? {},
       estimatedDurationHours: s.estimatedDurationHours !== null ? Number(s.estimatedDurationHours) : null,
       notes: s.notes,
+      packagingPath: ((s as { packagingPath?: string }).packagingPath as PackagingPath) ?? "all",
+      isOptional: (s as { isOptional?: boolean }).isOptional ?? false,
     })),
   };
 

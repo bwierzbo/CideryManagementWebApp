@@ -61,6 +61,10 @@ export interface OrganizationSettings {
   carbonationMethods: string[];
   defaultTargetCO2: string;
   warehouseTemperatureCelsius: string;
+  defaultPasteurizationTargetPu: string;
+  defaultPasteurizationTempC: string;
+  defaultPasteurizationTimeMinutes: string;
+  planningGranularity: string;
 
   // Alert Thresholds
   stalledBatchDays: number;
@@ -133,6 +137,10 @@ const defaultSettings: OrganizationSettings = {
   carbonationMethods: ["forced"],
   defaultTargetCO2: "2.70",
   warehouseTemperatureCelsius: "20.0",
+  defaultPasteurizationTargetPu: "20.0",
+  defaultPasteurizationTempC: "64.0",
+  defaultPasteurizationTimeMinutes: "20.0",
+  planningGranularity: "monthly",
   stalledBatchDays: 14,
   longAgingDays: 90,
   lowInventoryThreshold: 24,
@@ -207,6 +215,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       carbonationMethods: data.carbonationMethods,
       defaultTargetCO2: data.defaultTargetCO2,
       warehouseTemperatureCelsius: data.warehouseTemperatureCelsius ?? "20.0",
+      defaultPasteurizationTargetPu: data.defaultPasteurizationTargetPu ?? "20.0",
+      defaultPasteurizationTempC: data.defaultPasteurizationTempC ?? "64.0",
+      defaultPasteurizationTimeMinutes: data.defaultPasteurizationTimeMinutes ?? "20.0",
+      planningGranularity: data.planningGranularity ?? "monthly",
       stalledBatchDays: data.stalledBatchDays,
       longAgingDays: data.longAgingDays,
       lowInventoryThreshold: data.lowInventoryThreshold,

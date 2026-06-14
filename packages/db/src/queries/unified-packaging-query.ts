@@ -286,6 +286,7 @@ export async function getUnifiedPackagingRuns(
         batchCustomName: batches.customName,
         vesselName: vessels.name,
         kegNumber: kegs.kegNumber,
+        kegStatus: kegs.status,
         kegCapacityML: kegs.capacityML,
         carbonationLevel: kegFills.carbonationLevel,
         carbonationCo2Volumes: sql<string>`COALESCE(keg_carb_op.final_co2_volumes, keg_carb_op.target_co2_volumes)`.as("kegCarbonationCo2Volumes"),
@@ -349,6 +350,7 @@ export async function getUnifiedPackagingRuns(
         : null,
       qaTechnicianName: null,
       kegNumber: item.kegNumber,
+      kegStatus: item.kegStatus,
       remainingVolumeL: item.remainingVolume
         ? parseFloat(item.remainingVolume.toString())
         : null,

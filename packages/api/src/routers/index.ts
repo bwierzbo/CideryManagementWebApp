@@ -40,6 +40,7 @@ import { customProductTypesRouter } from "./customProductTypes";
 import { distillationRouter } from "./distillation";
 import { productionReportsRouter } from "./productionReports";
 import { recipesRouter } from "./recipes";
+import { planningRouter } from "./planning";
 import { MIN_WORKING_VOLUME_L } from "lib";
 import { writeLedgerEntry } from "../lib/volume-ledger";
 import {
@@ -94,7 +95,7 @@ import {
   lte,
 } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { convertVolume, roundToDecimals } from "lib/src/utils/volumeConversion";
+import { convertVolume, roundToDecimals } from "lib/src/units/conversions";
 import {
   publishCreateEvent,
   publishUpdateEvent,
@@ -3309,6 +3310,11 @@ export const appRouter = router({
                 SELECT b.id FROM batches b
                 WHERE b.vessel_id = vessels.id
                   AND b.deleted_at IS NULL
+                  -- Destroyed/discarded batches are dead: the vessel should read as
+                  -- empty (so a cleaning vessel shows yellow, not grey, and no stale
+                  -- ABV/SG/pH carries over from the destroyed batch).
+                  AND b.status != 'discarded'
+                  AND b.destroyed_at IS NULL
                   AND NOT (b.status = 'completed' AND COALESCE(b.current_volume_liters, 0) <= 0.01)
                 ORDER BY
                   CASE WHEN b.status != 'completed' THEN 0 ELSE 1 END,
@@ -3914,6 +3920,34 @@ export const appRouter = router({
 
             const transferDate = input.transferDate || new Date();
             const isBackdated = input.transferDate && input.transferDate < new Date();
+
+            // Idempotency guard: reject an identical transfer submitted within the
+            // last 60s. Defends against double-click / double-submit, which would
+            // otherwise create duplicate batch_transfers rows (and, for transfers to
+            // an empty vessel, duplicate destination batches). The window is keyed on
+            // created_at so legitimate backdated transfers sharing transferredAt are
+            // unaffected.
+            const recentDuplicate = await tx
+              .select({ id: batchTransfers.id })
+              .from(batchTransfers)
+              .where(
+                and(
+                  eq(batchTransfers.sourceBatchId, sourceBatch[0].id),
+                  eq(batchTransfers.destinationVesselId, input.toVesselId),
+                  eq(batchTransfers.transferredAt, transferDate),
+                  isNull(batchTransfers.deletedAt),
+                  sql`${batchTransfers.volumeTransferred}::decimal = ${input.volumeL}`,
+                  gt(batchTransfers.createdAt, sql`now() - interval '60 seconds'`),
+                ),
+              )
+              .limit(1);
+            if (recentDuplicate.length) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message:
+                  "This transfer was just submitted moments ago. If you meant to record a second identical transfer, wait a minute or adjust the volume or time.",
+              });
+            }
 
             if (isBackdated) {
               // For backdated transfers, reconstruct the historical volume at that point in time
@@ -5994,6 +6028,22 @@ export const appRouter = router({
             "other",
           ]),
           reason: z.string().min(10, "Reason must be at least 10 characters"),
+          notes: z.string().optional(),
+          // When the destruction physically happened (defaults to now). Allows
+          // backdating without a direct DB edit.
+          destroyedAt: z.preprocess(
+            (val) => (val === null || val === undefined ? undefined : val),
+            z.date().or(z.string().transform((v) => new Date(v))).optional(),
+          ),
+          // Who did the work and for how long (feeds the labor record).
+          laborAssignments: z
+            .array(
+              z.object({
+                workerId: z.string().uuid(),
+                hoursWorked: z.number().positive(),
+              }),
+            )
+            .optional(),
           confirmed: z
             .boolean()
             .refine((v) => v === true, { message: "Destruction must be explicitly confirmed" }),
@@ -6035,20 +6085,28 @@ export const appRouter = router({
             });
           }
 
+          // When the destruction physically happened (defaults to now).
+          const destroyedAt = input.destroyedAt ?? new Date();
+
           await db.transaction(async (tx) => {
-            // 1. Volume adjustment row of new 'destruction' type
-            await tx.insert(batchVolumeAdjustments).values({
-              batchId: batch.id,
-              vesselId: input.vesselId,
-              adjustmentDate: new Date(),
-              adjustmentType: "destruction",
-              volumeBefore: volumeBefore.toString(),
-              volumeAfter: "0",
-              adjustmentAmount: (-input.volumeL).toString(),
-              reason: input.reason,
-              notes: `Category: ${input.category}`,
-              adjustedBy: ctx.user.id,
-            });
+            // 1. Volume adjustment row of 'destruction' type
+            const [adjustment] = await tx
+              .insert(batchVolumeAdjustments)
+              .values({
+                batchId: batch.id,
+                vesselId: input.vesselId,
+                adjustmentDate: destroyedAt,
+                adjustmentType: "destruction",
+                volumeBefore: volumeBefore.toString(),
+                volumeAfter: "0",
+                adjustmentAmount: (-input.volumeL).toString(),
+                reason: input.reason,
+                notes: input.notes
+                  ? `Category: ${input.category}\n${input.notes}`
+                  : `Category: ${input.category}`,
+                adjustedBy: ctx.user.id,
+              })
+              .returning({ id: batchVolumeAdjustments.id });
 
             // 2. Mark batch as discarded + populate destruction fields
             await tx
@@ -6058,7 +6116,7 @@ export const appRouter = router({
                 currentVolume: "0",
                 currentVolumeLiters: "0",
                 currentVolumeUnit: "L",
-                destroyedAt: new Date(),
+                destroyedAt,
                 destructionReason: input.reason,
                 destructionCategory: input.category,
                 updatedAt: new Date(),
@@ -6070,6 +6128,29 @@ export const appRouter = router({
               .update(vessels)
               .set({ status: "cleaning", updatedAt: new Date() })
               .where(eq(vessels.id, input.vesselId));
+
+            // 4. Labor: who performed the destruction and for how long. Linked
+            // to the destruction adjustment row so it's attributable in reports.
+            if (input.laborAssignments && input.laborAssignments.length > 0) {
+              for (const assignment of input.laborAssignments) {
+                const [worker] = await tx
+                  .select({ hourlyRate: workers.hourlyRate })
+                  .from(workers)
+                  .where(eq(workers.id, assignment.workerId))
+                  .limit(1);
+                const hourlyRate = parseFloat(worker?.hourlyRate?.toString() || "20.00");
+                const laborCost = assignment.hoursWorked * hourlyRate;
+                await tx.insert(activityLaborAssignments).values({
+                  activityType: "destruction",
+                  batchVolumeAdjustmentId: adjustment.id,
+                  workerId: assignment.workerId,
+                  hoursWorked: assignment.hoursWorked.toString(),
+                  hourlyRateSnapshot: hourlyRate.toString(),
+                  laborCost: laborCost.toString(),
+                  createdBy: ctx.user.id,
+                });
+              }
+            }
           });
 
           await publishUpdateEvent(
@@ -6078,7 +6159,7 @@ export const appRouter = router({
             { status: batch.status, currentVolume: batch.currentVolume },
             {
               status: "discarded",
-              destroyedAt: new Date().toISOString(),
+              destroyedAt: destroyedAt.toISOString(),
               destructionCategory: input.category,
               destructionReason: input.reason,
               volumeDestroyedL: input.volumeL,
@@ -6833,6 +6914,9 @@ export const appRouter = router({
 
   // Recipes
   recipes: recipesRouter,
+
+  // Production planning (plans, planned batches, requirements)
+  planning: planningRouter,
 });
 
 export type AppRouter = typeof appRouter;

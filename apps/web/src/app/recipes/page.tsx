@@ -102,6 +102,7 @@ export default function RecipesPage() {
   const [search, setSearch] = useState("");
   const [productType, setProductType] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [templateFilter, setTemplateFilter] = useState<string>("all");
   const [includeArchived, setIncludeArchived] = useState(false);
 
   const utils = trpc.useUtils();
@@ -109,6 +110,7 @@ export default function RecipesPage() {
     search: search.trim() || undefined,
     productType: productType === "all" ? undefined : (productType as any),
     status: statusFilter === "all" ? undefined : (statusFilter as any),
+    isTemplate: templateFilter === "all" ? undefined : templateFilter === "templates",
     includeArchived,
     limit: 100,
     offset: 0,
@@ -210,6 +212,17 @@ export default function RecipesPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div>
+              <Label className="text-xs">Type</Label>
+              <Select value={templateFilter} onValueChange={setTemplateFilter}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All recipes</SelectItem>
+                  <SelectItem value="templates">Templates only</SelectItem>
+                  <SelectItem value="recipes">Recipes only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-end gap-2">
               <Button
                 variant={includeArchived ? "default" : "outline"}
@@ -301,6 +314,11 @@ export default function RecipesPage() {
                       >
                         {r.status}
                       </Badge>
+                      {r.isTemplate && (
+                        <Badge variant="outline" className="text-xs bg-purple-100 text-purple-800 border-purple-200">
+                          Template
+                        </Badge>
+                      )}
                       <span className="text-xs text-muted-foreground">
                         v{r.currentVersion}
                       </span>

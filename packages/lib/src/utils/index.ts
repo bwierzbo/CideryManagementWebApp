@@ -5,24 +5,8 @@
  * across the cidery management system.
  */
 
-// Unit conversion utilities
-export * from "./unitConversion";
-// Export only non-conflicting items from volumeConversion
-export {
-  type WeightUnit,
-  convertVolume,
-  convertWeight,
-  roundToDecimals,
-  toStorageVolume,
-  toStorageWeight,
-  formatWeight,
-  getVolumeUnitName,
-  getWeightUnitName,
-  isValidVolumeUnit,
-  isValidWeightUnit,
-  estimateWeightFromVolume,
-  calculateTotalVolume
-} from "./volumeConversion";
+// Unit conversion utilities — single canonical module (../units/conversions).
+export * from "../units/conversions";
 
 // Carbonation calculation utilities
 export * from "./carbonation-calculations";

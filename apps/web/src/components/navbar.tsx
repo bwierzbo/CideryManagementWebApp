@@ -24,6 +24,7 @@ import {
   Activity,
   Apple,
   History,
+  Calendar,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import {
@@ -108,6 +109,12 @@ export function Navbar() {
       href: "/recipes",
       icon: BookOpen,
       description: "Recipe Management",
+    },
+    {
+      name: "Planning",
+      href: "/planning",
+      icon: Calendar,
+      description: "Production Planning",
     },
     {
       name: "Admin",

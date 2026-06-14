@@ -25,6 +25,12 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { trpc } from "@/utils/trpc";
 import { toast } from "@/hooks/use-toast";
+import { useDateFormat } from "@/hooks/useDateFormat";
+import {
+  WorkerLaborInput,
+  type WorkerAssignment,
+  toApiLaborAssignments,
+} from "@/components/labor/WorkerLaborInput";
 import { AlertTriangle } from "lucide-react";
 
 const DESTRUCTION_CATEGORIES = [
@@ -37,7 +43,7 @@ const DESTRUCTION_CATEGORIES = [
 ] as const;
 
 const destroySchema = z.object({
-  volumeL: z.number().positive("Volume must be > 0"),
+  destroyedAt: z.date({ message: "Destruction date is required" }),
   category: z.enum([
     "contamination_spoilage",
     "failed_quality",
@@ -47,6 +53,7 @@ const destroySchema = z.object({
     "other",
   ]),
   reason: z.string().min(10, "Reason must be at least 10 characters"),
+  notes: z.string().optional(),
   confirmed: z.boolean().refine((v) => v === true, {
     message: "You must confirm the destruction",
   }),
@@ -72,7 +79,9 @@ export function DestroyBatchModal({
   currentVolumeL,
 }: DestroyBatchModalProps) {
   const utils = trpc.useUtils();
+  const { formatDateTimeForInput, parseDateTimeFromInput } = useDateFormat();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [laborAssignments, setLaborAssignments] = useState<WorkerAssignment[]>([]);
 
   const {
     register,
@@ -84,9 +93,10 @@ export function DestroyBatchModal({
   } = useForm<DestroyForm>({
     resolver: zodResolver(destroySchema),
     defaultValues: {
-      volumeL: currentVolumeL,
+      destroyedAt: new Date(),
       category: undefined as unknown as DestroyForm["category"],
       reason: "",
+      notes: "",
       confirmed: false,
     },
   });
@@ -95,14 +105,16 @@ export function DestroyBatchModal({
   useEffect(() => {
     if (open) {
       reset({
-        volumeL: currentVolumeL,
+        destroyedAt: new Date(),
         category: undefined as unknown as DestroyForm["category"],
         reason: "",
+        notes: "",
         confirmed: false,
       });
+      setLaborAssignments([]);
       setSubmitError(null);
     }
-  }, [open, currentVolumeL, reset]);
+  }, [open, reset]);
 
   const destroyMutation = trpc.vessel.destroyBatch.useMutation({
     onSuccess: (result) => {
@@ -126,17 +138,25 @@ export function DestroyBatchModal({
 
   const onSubmit = (data: DestroyForm) => {
     setSubmitError(null);
+    const validLabor = laborAssignments.filter((a) => a.workerId && a.hoursWorked > 0);
+    // Destroy is always whole-batch: send the batch's full current volume.
     destroyMutation.mutate({
       vesselId,
-      volumeL: data.volumeL,
+      volumeL: currentVolumeL,
       category: data.category,
       reason: data.reason,
+      notes: data.notes?.trim() || undefined,
+      destroyedAt: data.destroyedAt,
       confirmed: true,
+      ...(validLabor.length > 0 && {
+        laborAssignments: toApiLaborAssignments(validLabor),
+      }),
     });
   };
 
   const selectedCategory = watch("category");
   const confirmed = watch("confirmed");
+  const destroyedAt = watch("destroyedAt");
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -154,20 +174,33 @@ export function DestroyBatchModal({
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="volumeL">Volume to destroy (L) *</Label>
+            <Label htmlFor="destroyedAt">Destruction Date & Time *</Label>
             <Input
-              id="volumeL"
-              type="number"
-              step="0.01"
-              min="0"
-              {...register("volumeL", { valueAsNumber: true })}
+              id="destroyedAt"
+              type="datetime-local"
+              value={destroyedAt ? formatDateTimeForInput(destroyedAt) : ""}
+              onChange={(e) => {
+                if (e.target.value) {
+                  setValue("destroyedAt", parseDateTimeFromInput(e.target.value), {
+                    shouldValidate: true,
+                  });
+                }
+              }}
             />
-            {errors.volumeL && (
-              <p className="text-sm text-red-600">{errors.volumeL.message}</p>
+            {errors.destroyedAt && (
+              <p className="text-sm text-red-600">{errors.destroyedAt.message}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Volume to destroy</Label>
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <span className="font-medium">{currentVolumeL} L</span>
+              <span className="text-muted-foreground"> — entire batch</span>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Pre-filled with batch current volume ({currentVolumeL} L). Adjust
-              if your physical count differs.
+              The whole batch is destroyed and recorded as a loss. There is no
+              partial destroy.
             </p>
           </div>
 
@@ -205,6 +238,22 @@ export function DestroyBatchModal({
               <p className="text-sm text-red-600">{errors.reason.message}</p>
             )}
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Notes (optional)</Label>
+            <Textarea
+              id="notes"
+              rows={2}
+              placeholder="Anything else worth recording about this destruction"
+              {...register("notes")}
+            />
+          </div>
+
+          <WorkerLaborInput
+            value={laborAssignments}
+            onChange={setLaborAssignments}
+            activityLabel="this destruction"
+          />
 
           <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3">
             <Checkbox

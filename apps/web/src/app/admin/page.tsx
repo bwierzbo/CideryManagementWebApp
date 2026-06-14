@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { calculatePU } from "lib";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { Navbar } from "@/components/navbar";
@@ -1342,6 +1343,9 @@ function SystemSettings() {
     ttbReminderDays: settings.ttbReminderDays,
     defaultTargetCO2: settings.defaultTargetCO2,
     warehouseTemperatureCelsius: settings.warehouseTemperatureCelsius,
+    defaultPasteurizationTargetPu: settings.defaultPasteurizationTargetPu,
+    defaultPasteurizationTempC: settings.defaultPasteurizationTempC,
+    defaultPasteurizationTimeMinutes: settings.defaultPasteurizationTimeMinutes,
     sgDecimalPlaces: settings.sgDecimalPlaces,
     phDecimalPlaces: settings.phDecimalPlaces,
     sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
@@ -1397,6 +1401,9 @@ function SystemSettings() {
         sgTemperatureCorrectionEnabled: formData.sgTemperatureCorrectionEnabled,
         hydrometerCalibrationTempC: formData.hydrometerCalibrationTempC,
         warehouseTemperatureCelsius: formData.warehouseTemperatureCelsius,
+        defaultPasteurizationTargetPu: formData.defaultPasteurizationTargetPu,
+        defaultPasteurizationTempC: formData.defaultPasteurizationTempC,
+        defaultPasteurizationTimeMinutes: formData.defaultPasteurizationTimeMinutes,
       });
 
       utils.invalidate();
@@ -1419,6 +1426,9 @@ function SystemSettings() {
         sgTemperatureCorrectionEnabled: settings.sgTemperatureCorrectionEnabled,
         hydrometerCalibrationTempC: settings.hydrometerCalibrationTempC,
         warehouseTemperatureCelsius: settings.warehouseTemperatureCelsius,
+        defaultPasteurizationTargetPu: settings.defaultPasteurizationTargetPu,
+        defaultPasteurizationTempC: settings.defaultPasteurizationTempC,
+        defaultPasteurizationTimeMinutes: settings.defaultPasteurizationTimeMinutes,
       }));
     }
   }, [isLoadingSettings, settings]);
@@ -1827,6 +1837,80 @@ function SystemSettings() {
         </CardContent>
       </Card>
 
+      {/* Pasteurization Defaults */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Pasteurization Defaults"
+            description="Pre-fill the Pasteurize recipe step. Editable per step."
+            icon={Thermometer}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <Label htmlFor="pastTargetPu">Target PU</Label>
+              <Input
+                id="pastTargetPu"
+                type="number"
+                step="1"
+                min="0"
+                value={formData.defaultPasteurizationTargetPu}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, defaultPasteurizationTargetPu: e.target.value }))
+                }
+                className="w-28"
+              />
+              <p className="text-xs text-gray-500">Pasteurization units to achieve.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pastTemp">Hold Temperature</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="pastTemp"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="100"
+                  value={formData.defaultPasteurizationTempC}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, defaultPasteurizationTempC: e.target.value }))
+                  }
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">°C</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pastTime">Hold Time</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="pastTime"
+                  type="number"
+                  step="1"
+                  min="0"
+                  value={formData.defaultPasteurizationTimeMinutes}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, defaultPasteurizationTimeMinutes: e.target.value }))
+                  }
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">min</span>
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-3">
+            {(() => {
+              const t = parseFloat(formData.defaultPasteurizationTempC || "64");
+              const m = parseFloat(formData.defaultPasteurizationTimeMinutes || "20");
+              const pu = calculatePU(t, m);
+              return `At ${t}°C for ${m} min ≈ ${pu.toFixed(1)} PU (60°C reference).`;
+            })()}
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Alert Thresholds - NOT IMPLEMENTED */}
       <Card>
         <CardHeader>
@@ -1915,6 +1999,134 @@ function SystemSettings() {
   );
 }
 
+function PlanningSettings() {
+  const { settings } = useSettings();
+  const { toast } = useToast();
+  const utils = trpc.useUtils();
+  const [granularity, setGranularity] = useState<string>(settings.planningGranularity ?? "monthly");
+
+  useEffect(() => {
+    setGranularity(settings.planningGranularity ?? "monthly");
+  }, [settings.planningGranularity]);
+
+  const updateMutation = trpc.settings.updateOrganizationSettings.useMutation({
+    onSuccess: () => {
+      toast({ title: "Saved", description: "Planning settings updated." });
+      utils.invalidate();
+    },
+    onError: (e) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Planning granularity — implemented */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Planning Granularity"
+            description="Time buckets the annual production plan aggregates into."
+            icon={Calendar}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="space-y-2">
+              <Label htmlFor="granularity">Granularity</Label>
+              <Select value={granularity} onValueChange={setGranularity}>
+                <SelectTrigger id="granularity" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              onClick={() => updateMutation.mutate({ planningGranularity: granularity as "monthly" | "quarterly" })}
+              disabled={updateMutation.isPending || granularity === (settings.planningGranularity ?? "monthly")}
+            >
+              {updateMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          <p className="text-xs text-gray-500 mt-3">
+            Requirements from each planned batch are summed into {granularity} buckets vs. on-hand inventory.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Production plans (scenarios) — implemented on the Planning page */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Production Plans"
+            description="Named annual/seasonal plans (scenarios). Save several, mark one operational."
+            icon={FileText}
+            implemented={true}
+          />
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-gray-600">
+              Build named plans of recipe × volume × period × bottle/keg split and see the
+              per-period inventory each plan requires.
+            </p>
+            <Button variant="outline" asChild>
+              <Link href="/planning">
+                <Calendar className="w-4 h-4 mr-2" />
+                Open Planning
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Reorder thresholds + buy list — coming soon */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Reorder Thresholds & Buy List"
+            description="Per-item reorder points; auto buy-list = plan requirements − on hand."
+            icon={Package}
+            implemented={false}
+          />
+        </CardHeader>
+        <CardContent>
+          <DisabledOverlay implemented={false}>
+            <p className="text-sm text-gray-600">
+              Set a reorder threshold per inventory variety. The system compares the
+              active plan's per-period requirements against current stock and thresholds
+              to produce a simple, editable buy list.
+            </p>
+          </DisabledOverlay>
+        </CardContent>
+      </Card>
+
+      {/* Batch execution / work queue — coming soon */}
+      <Card>
+        <CardHeader>
+          <SettingsSectionHeader
+            title="Batch Execution & Work Queue"
+            description="Instantiate recipes into batches; a cross-batch 'today/this week' task queue."
+            icon={Clock}
+            implemented={false}
+          />
+        </CardHeader>
+        <CardContent>
+          <DisabledOverlay implemented={false}>
+            <p className="text-sm text-gray-600">
+              Starting a batch from a recipe stamps out an editable per-batch checklist and
+              a schedule. A cross-batch work queue surfaces what's due, opens the pre-filled
+              action, and draws down inventory on completion.
+            </p>
+          </DisabledOverlay>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function TTBSettingsTab() {
   const { settings } = useSettings();
 
@@ -1969,7 +2181,7 @@ function TTBSettingsTab() {
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<
-    "users" | "reference" | "settings" | "calibration" | "square" | "ttb"
+    "users" | "reference" | "settings" | "planning" | "calibration" | "square" | "ttb"
   >("users");
 
   // Check if TTB onboarding has been completed
@@ -2016,6 +2228,7 @@ export default function AdminPage() {
             { key: "users", label: "User Management", icon: Users },
             { key: "reference", label: "Reference Data", icon: Database },
             { key: "settings", label: "System Settings", icon: Settings },
+            { key: "planning", label: "Planning", icon: Calendar },
             { key: "ttb", label: "TTB", icon: FileText },
             { key: "calibration", label: "Calibration", icon: Ruler },
             { key: "square", label: "Square Integration", icon: CreditCard },
@@ -2049,6 +2262,7 @@ export default function AdminPage() {
             </>
           )}
           {activeTab === "settings" && <SystemSettings />}
+          {activeTab === "planning" && <PlanningSettings />}
           {activeTab === "ttb" && <TTBSettingsTab />}
           {activeTab === "calibration" && <CalibrationSettings />}
           {activeTab === "square" && <SquareIntegration />}

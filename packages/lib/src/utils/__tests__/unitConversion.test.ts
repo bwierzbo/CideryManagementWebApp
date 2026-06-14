@@ -24,7 +24,7 @@ import {
   toDisplayVolume,
   VolumeUnit,
   VOLUME_UNIT_SYMBOLS,
-} from "../unitConversion";
+} from "../../units/conversions";
 import { QuantityValidationError } from "../../validation/errors";
 
 describe("Unit Conversion - bushelsToKg", () => {

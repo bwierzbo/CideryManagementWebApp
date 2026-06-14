@@ -1514,15 +1514,6 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                                 <FilterIcon className="w-3 h-3 mr-2" />
                                 Filter
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handlePackage(vessel.id)}
-                                disabled={
-                                  !liquidMapVessel?.batchId || currentVolume <= 0
-                                }
-                              >
-                                <Package className="w-3 h-3 mr-2" />
-                                Package
-                              </DropdownMenuItem>
                             </>
                           )}
                           {liquidMapVessel?.batchStatus === "aging" && (
@@ -1544,15 +1535,6 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                               >
                                 <FilterIcon className="w-3 h-3 mr-2" />
                                 Filter
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handlePackage(vessel.id)}
-                                disabled={
-                                  !liquidMapVessel?.batchId || currentVolume <= 0
-                                }
-                              >
-                                <Package className="w-3 h-3 mr-2" />
-                                Package
                               </DropdownMenuItem>
                             </>
                           )}
@@ -1585,12 +1567,41 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                             <Eye className="w-3 h-3 mr-2" />
                             View Batch
                           </DropdownMenuItem>
+                          {/* Package: available for any batch with volume,
+                              regardless of status (matches Transfer/Destroy).
+                              The packaging handler itself has no status gate. */}
+                          <DropdownMenuItem
+                            onClick={() => handlePackage(vessel.id)}
+                            disabled={
+                              !liquidMapVessel?.batchId || currentVolume <= 0
+                            }
+                          >
+                            <Package className="w-3 h-3 mr-2" />
+                            Package
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => handleTankTransfer(vessel.id)}
                             disabled={currentVolume <= 0}
                           >
                             <ArrowRight className="w-3 h-3 mr-2" />
                             Transfer to Another Tank
+                          </DropdownMenuItem>
+
+                          {/* Destroy Batch: only valid when there is an active
+                              batch with volume > 0. Bad cider, off-flavor, etc.
+                              Captures TTB-tracked destruction record. */}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleOpenDestroy(vessel.id, vessel.name)}
+                            disabled={
+                              !liquidMapVessel?.batchId ||
+                              !liquidMapVessel.currentVolume ||
+                              parseFloat(String(liquidMapVessel.currentVolume)) <= 0
+                            }
+                            className="text-red-600"
+                          >
+                            <AlertTriangle className="w-3 h-3 mr-2" />
+                            Destroy Batch
                           </DropdownMenuItem>
                         </>
                       )}
@@ -1646,22 +1657,6 @@ const updateBatchStatusMutation = trpc.batch.update.useMutation({
                       )}
 
                       <DropdownMenuSeparator />
-
-                      {/* Destroy Batch: only valid when there is an active
-                          batch with volume > 0. Bad cider, off-flavor, etc.
-                          Captures TTB-tracked destruction record. */}
-                      <DropdownMenuItem
-                        onClick={() => handleOpenDestroy(vessel.id, vessel.name)}
-                        disabled={
-                          !liquidMapVessel?.batchId ||
-                          !liquidMapVessel.currentVolume ||
-                          parseFloat(String(liquidMapVessel.currentVolume)) <= 0
-                        }
-                        className="text-red-600"
-                      >
-                        <AlertTriangle className="w-3 h-3 mr-2" />
-                        Destroy Batch
-                      </DropdownMenuItem>
 
                       {/* Prep for Cleaning: shown whenever there is anything to
                           clear (batch, stuck completed batch, or press run).
